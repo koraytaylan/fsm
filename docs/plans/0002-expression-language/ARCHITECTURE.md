@@ -2,6 +2,18 @@
 
 > The concrete deltas, by symbol.
 
+## Implementer orientation
+
+Read this before your first task. The workflow is identical for every task in this plan:
+
+1. Read your task file top to bottom, then only the parts of this document your workstream covers. Everything is decided here — if you find yourself making a design choice, you have missed a sentence; re-read before improvising.
+2. Fixtures first, always: commit the vectors/goldens/corpus your task names before writing implementation code. They are the executable definition of done — when they pass, you are done; do not "improve" beyond them.
+3. Stay inside your task's `touches` list. Needing another file is a signal you misread the design, not a reason to edit it.
+4. Run the gates locally before every commit: `cargo test && cargo clippy --workspace -- -D warnings && cargo fmt`. A red gate is never someone else's flake — this workspace has zero dependencies and deterministic tests.
+5. Write the obvious version. Determinism and reviewability beat cleverness everywhere here; where a trick is genuinely needed, this document names it — and if it doesn't, don't use one.
+6. When a golden or byte-comparison test fails, fix the code to match the fixture — never the fixture to match the code — unless the fixture demonstrably contradicts this document; then say so in your commit message.
+7. The grammar and typing tables below are normative; error codes, spans, and hint contents are part of the behavior under test, not decoration.
+
 ## 0006 — Lexing
 
 Task `0601` is the plan's first task, so it also wires the module: `crates/fsm-core/src/lib.rs` gains `pub mod expr;`, and `src/expr/mod.rs` is created declaring `pub mod ast; pub mod lexer; pub mod parser; pub mod typeck; pub mod eval; pub mod partial;` with empty stub files for each, so later tasks fill files without touching `lib.rs` or `mod.rs` again. `src/expr/mod.rs` also owns the shared error type:
@@ -82,6 +94,12 @@ The typing rules, exactly (each violation names its code):
 `crates/fsm-core/src/ident.rs` (a plan-0001 stub; the cross-plan touch is safe because plans land sequentially) gains `pub fn suggest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str>` — classic dynamic-programming Levenshtein, best candidate at distance ≤ 2.
 
 Fixtures first: `crates/fsm-core/tests/fixtures/expr/typeck.jsonl` — lines declaring a scope inline (`{"ctx": {"limit": "decimal(2)"}, "evt": {"amount": "decimal(2)"}, "enums": {"Risk": ["low", "high"]}, "src": "...", "ty": "decimal(2)"}` or `"err": "expr/mixed_class"`), one line minimum per error code; `crates/fsm-core/tests/expr_typeck.rs` asserts every line.
+
+Worked examples (these exact errors and hints are golden-tested):
+
+- `ctx.total + 1` where `total: decimal(2)` → `expr/mixed_class`, hint offering both fixes: write the literal at the right scale (`ctx.total + 1.00`) or widen explicitly (`ctx.total + dec(1, 2)`). Mixing Dec and Int on `+`/`-`/comparison is always an error; `Dec × Int` alone is legal because it is exact.
+- `if evt.express then 2.50 else 1.0` → branches `Dec(2)` and `Dec(1)` unify by exact widening to `Dec(2)`. `if evt.express then 2.50 else 1` → `expr/type_mismatch`: branches must be the same class.
+- `round(ctx.rate, ctx.places, half_even)` → `expr/scale_not_literal`: scale and mode arguments must be literals, because otherwise the expression's *type* would depend on a runtime value and static checking would be impossible — the hint says exactly that.
 
 ## 0009 — Evaluation
 

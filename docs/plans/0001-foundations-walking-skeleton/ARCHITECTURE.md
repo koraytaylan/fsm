@@ -2,6 +2,18 @@
 
 > The concrete deltas, by symbol.
 
+## Implementer orientation
+
+Read this before your first task. The workflow is identical for every task in this plan:
+
+1. Read your task file top to bottom, then only the parts of this document your workstream covers. Everything is decided here — if you find yourself making a design choice, you have missed a sentence; re-read before improvising.
+2. Fixtures first, always: commit the vectors/goldens/corpus your task names before writing implementation code. They are the executable definition of done — when they pass, you are done; do not "improve" beyond them.
+3. Stay inside your task's `touches` list. Needing another file is a signal you misread the design, not a reason to edit it.
+4. Run the gates locally before every commit: `cargo test && cargo clippy --workspace -- -D warnings && cargo fmt`. A red gate is never someone else's flake — this workspace has zero dependencies and deterministic tests.
+5. Write the obvious version. Determinism and reviewability beat cleverness everywhere here; where a trick is genuinely needed, this document names it — and if it doesn't, don't use one.
+6. When a golden or byte-comparison test fails, fix the code to match the fixture — never the fixture to match the code — unless the fixture demonstrably contradicts this document; then say so in your commit message.
+7. The purity gates are mechanical allies: when clippy rejects `HashMap` or the policy test flags `f64`, switch to `BTreeMap`/decimals — never fight or silence a gate.
+
 ## 0001 — Scaffold
 
 Root `Cargo.toml` is a `[workspace]` with `members = ["crates/fsm-core", "crates/fsm-cli"]`, `resolver = "3"`, and a `[workspace.package]` table pinning `edition = "2024"`, `rust-version = "1.89"`, `version = "X.Y.Z"`, `license = "MIT OR Apache-2.0"`. A `[workspace.lints.rust]` table sets `unsafe_code = "forbid"`. `rust-toolchain.toml` pins `channel = "1.89.0"` with `components = ["clippy", "rustfmt"]`.
@@ -32,6 +44,8 @@ Policy gates (task `0102`) — machine-checked enforcement, so the rules cannot 
 - `pub struct JsonLimits { pub max_depth: u32, pub max_bytes: usize }` with `pub const DEFAULT: JsonLimits { max_depth: 64, max_bytes: 16 * 1024 * 1024 }`.
 - `pub fn parse(input: &[u8], limits: &JsonLimits) -> Result<Value, JsonError>` — recursive descent over bytes with an explicit depth counter. Rules, each with a dedicated `JsonErrorKind`: input must be UTF-8; exactly one top-level value with only whitespace after it; **duplicate object keys are an error** (never last-wins); number tokens must match the RFC 8259 grammar and are captured verbatim into `Value::Num`; string escapes limited to `\" \\ \/ \b \f \n \r \t \uXXXX`; `\uXXXX` surrogate pairs must be correctly paired (lone surrogates are an error); raw control bytes < 0x20 inside strings are an error; depth beyond `max_depth` and input beyond `max_bytes` are errors.
 - `pub struct JsonError { pub kind: JsonErrorKind, pub offset: usize, pub message: String }`.
+
+Surrogate handling, exactly: after `\u`, read 4 hex digits → `cp`. If `cp` is in `[0xD800, 0xDBFF]` (high surrogate), the next input MUST be another `\u` escape decoding to `lo` in `[0xDC00, 0xDFFF]`; combine as `0x10000 + ((cp − 0xD800) << 10) + (lo − 0xDC00)` and push that character. A high surrogate not followed this way, or a bare low surrogate, is the lone-surrogate error.
 
 Fixtures land first: `crates/fsm-core/tests/fixtures/json/` with `y_*.json` (must parse) and `n_*.json` (must fail) cases — a curated ~40-case subset in the spirit of JSONTestSuite (deep nesting at the limit and one past it, `1e309`-style extreme numbers preserved as tokens, lone surrogate, unpaired `\uD800`, duplicate keys, trailing garbage, raw control characters, BOM rejection) plus our stricter verdicts written into the filenames. `crates/fsm-core/tests/json_corpus.rs` iterates the directory and asserts each verdict.
 
@@ -69,6 +83,12 @@ Fixtures first: `crates/fsm-core/tests/fixtures/sha256/vectors.txt` — NIST byt
 `crates/fsm-core/src/decimal/u256.rs`:
 
 - `pub struct U256 { hi: u128, lo: u128 }` with `from_u128`, `checked_mul_pow10(u32)`, `cmp`, and `div_rem_u128(self, d: u128) -> (U256, u128)` — schoolbook long division, division by a u128 divisor only (all our divisors are `|mant| ≤ MAX_MANT` or a power of ten times that, folded before widening). ~150 lines, exhaustively unit-tested against u128-representable cases.
+
+Worked examples (normative — the starter vectors encode these):
+
+- `round` of `"2.345"` (mant 2345, scale 3) to scale 2: divide mant by 10^(3−2)=10 → q=234, r=5, half=5 — an exact tie. `down`→2.34, `up`→2.35, `floor`→2.34, `ceiling`→2.35, `half_up`→2.35, `half_down`→2.34, `half_even`→2.34 (q is even). The same input negated: `floor`→−2.35, `ceiling`→−2.34, `half_even`→−2.34 — round the magnitude then re-apply the sign, except `floor`/`ceiling`, which follow the number line.
+- `div(1, 3, scale 4, half_even)`: k = 4 − 0 + 0 = 4; n = 1·10⁴ = 10000; 10000 ÷ 3 → q=3333, r=1; 2r=2 < 3 → no bump → `"0.3333"`. `div(2, 3, 4, half_even)`: q=6666, r=2; 2r=4 > 3 → bump → `"0.6667"`. No intermediate rounded value ever exists — that is precisely what "never double-rounded" means.
+- Why `cmp` needs u256: comparing mant = 10³⁸−1 at scale 0 against any scale-12 value means aligning by ×10¹², whose product exceeds i128; widening into u256 keeps comparison total for every representable pair.
 
 Fixtures first: `crates/fsm-core/tests/fixtures/decimal/starter_vectors.jsonl` — ~100 hand-authored lines `{"op":"add|sub|mul|cmp|round|div|parse|format", "a":"...", "b":"...", "scale":N, "mode":"half_even", "expect":"..."}` or `"expect_err":"overflow|div_zero|scale_cap|parse"`, covering every mode at exact ties (`.5` remainders both signs), mantissa at ±(10³⁸−1), add-alignment overflow at the boundary, cmp pairs whose naive alignment would overflow i128, `1/3` and `1/7` at scales 0 and 12, exact divisions, the `k < 0` division path, and `-0.00` normalization. `crates/fsm-core/tests/decimal_golden.rs` runs every line of every `*.jsonl` file in that directory (so the generated file from task 0402 is picked up without edits).
 

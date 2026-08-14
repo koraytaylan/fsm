@@ -2,6 +2,18 @@
 
 > The concrete deltas, by symbol.
 
+## Implementer orientation
+
+Read this before your first task. The workflow is identical for every task in this plan:
+
+1. Read your task file top to bottom, then only the parts of this document your workstream covers. Everything is decided here — if you find yourself making a design choice, you have missed a sentence; re-read before improvising.
+2. Fixtures first, always: commit the vectors/goldens/corpus your task names before writing implementation code. They are the executable definition of done — when they pass, you are done; do not "improve" beyond them.
+3. Stay inside your task's `touches` list. Needing another file is a signal you misread the design, not a reason to edit it.
+4. Run the gates locally before every commit: `cargo test && cargo clippy --workspace -- -D warnings && cargo fmt`. A red gate is never someone else's flake — this workspace has zero dependencies and deterministic tests.
+5. Write the obvious version. Determinism and reviewability beat cleverness everywhere here; where a trick is genuinely needed, this document names it — and if it doesn't, don't use one.
+6. When a golden or byte-comparison test fails, fix the code to match the fixture — never the fixture to match the code — unless the fixture demonstrably contradicts this document; then say so in your commit message.
+7. Keep `docs/SPEC.md` §Semantics open while implementing — the goldens cite it. The worked walkthrough in workstream 0014 is your mental model; check each step of your code against it.
+
 ## 0012 — Spec Model
 
 Task `1201` is the plan's first task, so it wires the modules: `crates/fsm-core/src/lib.rs` gains `pub mod tree; pub mod spec; pub mod machine; pub mod step; pub mod trace; pub mod analyze; pub mod simulate; pub mod hashes;` with empty stub files, so later tasks fill files without touching `lib.rs` again.
@@ -59,6 +71,23 @@ Tree machinery (task `1401`), `crates/fsm-core/src/tree.rs` — isolated so LCA/
 - `pub fn chain(&self, leaf: u16) -> impl Iterator<Item = u16>` (leaf → top-level, innermost first); `pub fn proper_lca(&self, a: u16, b: u16) -> Option<u16>` (`None` = the implicit root, which is unnamed, has no blocks, and is never exited or entered); `pub fn exit_set(&self, leaf: u16, dom: Option<u16>) -> Vec<u16>` (inner → outer, from the leaf up to the child of `dom`); `pub fn entry_path(&self, dom: Option<u16>, target: u16) -> Vec<u16>` (outer → inner); `pub fn initial_descent(&self, from: u16) -> Vec<u16>` (descend `initial_child` to a leaf); `pub fn history_descent(&self, hist: u16, binding: Option<&str>) -> Vec<u16>` (deep bound leaf: path from owner to that leaf; shallow bound child: the child then its initial descent; unbound: the owner's initial descent).
 
 `crates/fsm-core/src/machine.rs` (task `1401`): `pub enum Status { Running, Completed, Cancelled }`; `pub struct InstanceState { pub status: Status, pub leaf: String, pub ctx: BTreeMap<String, Val>, pub history: BTreeMap<String, String>, pub pending: Vec<String> }` — `history` maps compound name → bound state name and **is hashed state**; `pending` holds shell-issued effect ids (the pure crate treats them as data).
+
+The reference machine as a tree, and the one walkthrough to hold in your head (the `suspend`/`resume` goldens of task `1503` pin every step):
+
+```
+(root)
+├── intake
+├── in_review              compound · initial: docs_review
+│   │                      entry: visits := visits + 1, emit notify · exit: notes := 0
+│   ├── resume_review      deep history
+│   ├── docs_review
+│   └── risk_review        entry: score := 0
+├── suspended
+├── approved               terminal
+└── rejected               terminal
+```
+
+Active leaf `risk_review`, event `suspend`: `risk_review` declares no candidate; the ancestor `in_review` does → source = `in_review`, target = `suspended`. `dom = properLCA(in_review, suspended)` = root, so `exit_set = [risk_review, in_review]` (inner → outer) and `entry = [suspended]`. Pipeline: exit `risk_review` (no block) → exit `in_review` (`notes := 0`) → transition block (none) → entry `suspended` (none). History capture fires because `in_review`, in the exit set, owns `resume_review` (deep): binding `in_review ↦ risk_review`, taken from the **pre-transition** leaf. Later, `resume` from `suspended`: the target `resume_review` is a history pseudostate owned by `in_review`, and the source is outside the owner (legal). Descent: enter `in_review` — its entry block runs again (`visits` increments, `notify` emits) — then the bound leaf `risk_review` (entry runs: `score := 0`). Configuration restored, `ctx` persisted; the re-run entry blocks are exactly why `visits` counts re-entries. Had `resume_review` never been bound, the descent would instead be `in_review`'s initial chain, landing on `docs_review`.
 
 Transition selection (task `1402`), `crates/fsm-core/src/step.rs`:
 

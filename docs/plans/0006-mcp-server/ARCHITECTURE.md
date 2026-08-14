@@ -2,6 +2,18 @@
 
 > The concrete deltas, by symbol.
 
+## Implementer orientation
+
+Read this before your first task. The workflow is identical for every task in this plan:
+
+1. Read your task file top to bottom, then only the parts of this document your workstream covers. Everything is decided here — if you find yourself making a design choice, you have missed a sentence; re-read before improvising.
+2. Fixtures first, always: commit the vectors/goldens/corpus your task names before writing implementation code. They are the executable definition of done — when they pass, you are done; do not "improve" beyond them.
+3. Stay inside your task's `touches` list. Needing another file is a signal you misread the design, not a reason to edit it.
+4. Run the gates locally before every commit: `cargo test && cargo clippy --workspace -- -D warnings && cargo fmt`. A red gate is never someone else's flake — this workspace has zero dependencies and deterministic tests.
+5. Write the obvious version. Determinism and reviewability beat cleverness everywhere here; where a trick is genuinely needed, this document names it — and if it doesn't, don't use one.
+6. When a golden or byte-comparison test fails, fix the code to match the fixture — never the fixture to match the code — unless the fixture demonstrably contradicts this document; then say so in your commit message.
+7. stdout carries protocol JSON only, through the single chokepoint — a stray print breaks every host. Transcript fixtures are hand-derived from the schema tables (see the authoring note in workstream 0031).
+
 ## 0028 — Protocol
 
 `crates/fsm-cli/src/mcp/serve.rs` grows from the plan-0001 skeleton into the full lifecycle (task `2801`). It also creates stub modules `tools.rs`, `descriptions.rs`, `resources.rs`, `prompts.rs` (registered in `mcp/mod.rs`) and pre-routes every method, so the three workstream-0029/0030 fill-in tasks touch only their own files:
@@ -80,6 +92,6 @@ The budget test `crates/fsm-cli/tests/tools_budget.rs` builds the full `tools/li
 
 ## 0031 — Proof
 
-Golden transcripts (task `3101`): fixtures-first `crates/fsm-cli/tests/fixtures/transcripts/full_2025-06-18.{in,out}.jsonl`, `full_2025-03-26.{in,out}.jsonl`, `full_2024-11-05.{in,out}.jsonl` — the same session content per revision: initialize → resources/list → prompts/get author_machine → machine_create dry-run with a deliberate expression error → corrected create → instance_create → instance_send (applied, with effects) → effect_ack → domain event advancing to terminal → instance_history with `include_trace: true` → simulate → EOF. `crates/fsm-cli/tests/mcp_full.rs` runs each through `serve` with a temp store and a `FixedClock` (steps 1000 ms per journal append) and byte-compares the full stdout stream. `crates/fsm-cli/tests/mcp_structured_parity.rs` replays the operations behind the plan-0005 `tests/fixtures/structured/*.json` fixtures through tool dispatch and asserts `structuredContent` is byte-identical to those CLI `--json` fixtures.
+Golden transcripts (task `3101`): fixtures-first `crates/fsm-cli/tests/fixtures/transcripts/full_2025-06-18.{in,out}.jsonl`, `full_2025-03-26.{in,out}.jsonl`, `full_2024-11-05.{in,out}.jsonl` — the same session content per revision: initialize → resources/list → prompts/get author_machine → machine_create dry-run with a deliberate expression error → corrected create → instance_create → instance_send (applied, with effects) → effect_ack → domain event advancing to terminal → instance_history with `include_trace: true` → simulate → EOF. `crates/fsm-cli/tests/mcp_full.rs` runs each through `serve` with a temp store and a `FixedClock` (steps 1000 ms per journal append) and byte-compares the full stdout stream. `crates/fsm-cli/tests/mcp_structured_parity.rs` replays the operations behind the plan-0005 `tests/fixtures/structured/*.json` fixtures through tool dispatch and asserts `structuredContent` is byte-identical to those CLI `--json` fixtures. Authoring the `.out` fixtures by hand: derive each response from the workstream-0029 schema tables — fields appear in canonical (alphabetical) key order because the writer sorts keys — with `FixedClock` timestamps and seq-derived ids; then run the test and read the byte diff. When they differ, fix the server, unless the fixture contradicts this document or `docs/SPEC.md` — changing a fixture requires saying so in the commit message.
 
 Naive-caller suite (task `3102`): `crates/fsm-cli/tests/naive_caller.rs` — a table of scripted wrong calls, one per error code (float-where-decimal payload, unknown event name, guard-failing payload, terminal-instance send, ambiguous machine ref, stale `expect_seq`, unknown effect id, oversized spec, malformed expression, duplicate-key spec JSON, …); for each: assert the expected `code`, then build the corrected call *from the error's `details`/`hint` data* and assert it succeeds in exactly one step. Coverage: `fsm_core::error::ALL_CODES` (a `pub const` slice added there if not yet present) minus an explicit justified allowlist (`io/*`, `internal/*`, `store/*` infrastructure codes not reachable through well-formed tool calls) must all be exercised across this suite and the goldens.

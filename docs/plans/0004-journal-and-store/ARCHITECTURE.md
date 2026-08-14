@@ -2,6 +2,18 @@
 
 > The concrete deltas, by symbol.
 
+## Implementer orientation
+
+Read this before your first task. The workflow is identical for every task in this plan:
+
+1. Read your task file top to bottom, then only the parts of this document your workstream covers. Everything is decided here — if you find yourself making a design choice, you have missed a sentence; re-read before improvising.
+2. Fixtures first, always: commit the vectors/goldens/corpus your task names before writing implementation code. They are the executable definition of done — when they pass, you are done; do not "improve" beyond them.
+3. Stay inside your task's `touches` list. Needing another file is a signal you misread the design, not a reason to edit it.
+4. Run the gates locally before every commit: `cargo test && cargo clippy --workspace -- -D warnings && cargo fmt`. A red gate is never someone else's flake — this workspace has zero dependencies and deterministic tests.
+5. Write the obvious version. Determinism and reviewability beat cleverness everywhere here; where a trick is genuinely needed, this document names it — and if it doesn't, don't use one.
+6. When a golden or byte-comparison test fails, fix the code to match the fixture — never the fixture to match the code — unless the fixture demonstrably contradicts this document; then say so in your commit message.
+7. The fsync ordering and the dedup-before-expect_seq check ordering are load-bearing correctness, not style — implement them in exactly the order written.
+
 ## 0017 — Records
 
 (task `1701`) `crates/fsm-core/src/lib.rs` gains `pub mod record; pub mod replay;`.
@@ -74,7 +86,7 @@ Fixtures first: `crates/fsm-cli/tests/fixtures/journals/{clean,torn_tail,interio
 
 ## 0021 — Proof
 
-(task `2101`) `crates/fsm-cli/tests/crash_harness.rs` — manifests are frozen, so the harness re-executes its own test binary: the parent spawns `std::env::current_exe()` targeting a child entry test with env `FSM_CRASH_CHILD=<data_dir>;<seed>`; the child appends a scripted stream of requests through the real `Store`, printing each request_id to stdout as its success response returns; the parent kills the child after a seeded random delay, records which requests were acknowledged, recovers (running repair when the classification is a torn tail), and asserts the invariant: recovered state equals the replay of a prefix of the issued requests, and every acknowledged request lies inside that prefix. **1,000 iterations** (env `FSM_CRASH_ITERS` may raise the count, never lower it in CI); failures print the seed.
+(task `2101`) `crates/fsm-cli/tests/crash_harness.rs` — manifests are frozen, so the harness re-executes its own test binary: the parent spawns `std::env::current_exe()` targeting a child entry test with env `FSM_CRASH_CHILD=<data_dir>;<seed>`; the child appends a scripted stream of requests through the real `Store`, printing each request_id to stdout as its success response returns; the parent kills the child after a seeded random delay, records which requests were acknowledged, recovers (running repair when the classification is a torn tail), and asserts the invariant: recovered state equals the replay of a prefix of the issued requests, and every acknowledged request lies inside that prefix. **1,000 iterations** (env `FSM_CRASH_ITERS` may raise the count, never lower it in CI); failures print the seed. The re-exec mechanics under libtest, spelled out: the parent runs `Command::new(std::env::current_exe()?)` with args `["crash_child", "--exact", "--nocapture"]` plus the env var — `crash_child` is itself a `#[test]` in this same file whose body returns immediately (passing) when `FSM_CRASH_CHILD` is absent and enters the append loop when present. That is the entire trick: no manifest change, no helper binary.
 
 (task `2102`) `crates/fsm-cli/tests/replay_determinism.rs` — drives a real `Store` through a scripted mixed session (defines, creates, applied events with effects, a rejection, an ack, a cancel, an annotation) in a temp dir, then asserts: refolding the journal while ignoring snapshots reproduces the live state hashes bit-identically; forcing a snapshot and reopening through it reproduces the same hashes; byte-copying the journal directory elsewhere and opening there reproduces the same hashes; and `verify` returns each committed fixture directory's exact `JournalHealth` classification.
 

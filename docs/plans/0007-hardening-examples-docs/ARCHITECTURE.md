@@ -2,6 +2,18 @@
 
 > The concrete deltas, by symbol.
 
+## Implementer orientation
+
+Read this before your first task. The workflow is identical for every task in this plan:
+
+1. Read your task file top to bottom, then only the parts of this document your workstream covers. Everything is decided here — if you find yourself making a design choice, you have missed a sentence; re-read before improvising.
+2. Fixtures first, always: commit the vectors/goldens/corpus your task names before writing implementation code. They are the executable definition of done — when they pass, you are done; do not "improve" beyond them.
+3. Stay inside your task's `touches` list. Needing another file is a signal you misread the design, not a reason to edit it.
+4. Run the gates locally before every commit: `cargo test && cargo clippy --workspace -- -D warnings && cargo fmt`. A red gate is never someone else's flake — this workspace has zero dependencies and deterministic tests.
+5. Write the obvious version. Determinism and reviewability beat cleverness everywhere here; where a trick is genuinely needed, this document names it — and if it doesn't, don't use one.
+6. When a golden or byte-comparison test fails, fix the code to match the fixture — never the fixture to match the code — unless the fixture demonstrably contradicts this document; then say so in your commit message.
+7. These suites guard everyone else's work: a failure you uncover is a bug in the owning module to report and fix there, never something to paper over inside the suite.
+
 ## 0032 — Adversarial
 
 Fuzz side crate (task `3201`): `fuzz/Cargo.toml` declares `[package] name = "fsm-fuzz"`, an **empty `[workspace]` table** (which excludes it from the root workspace — the documented, shipped-tree-exempt exception to zero dependencies: `libfuzzer-sys` lives only here and is never in the `fsm` binary's dependency graph, so the plan-0001 `zero_deps` guard over the workspace is unaffected), `[dependencies] libfuzzer-sys = "0.4"`, `fsm-core = { path = "../crates/fsm-core" }`, `fsm-cli = { path = "../crates/fsm-cli" }`, and one `[[bin]]` per target under `fuzz/fuzz_targets/`:
