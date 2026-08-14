@@ -20,9 +20,14 @@ Every hash in the system — machine identity, journal chain, state hashes — i
 
 **Steps:**
 
-1. Author golden fixtures first under `crates/fsm-core/tests/fixtures/canon/`: input-JSON → expected-canonical-bytes pairs covering key reordering, escape normalization, Unicode passthrough, number-token verbatim output, and nested empties, plus `crates/fsm-core/tests/canon_golden.rs` asserting them.
+1. Author the golden pairs under `crates/fsm-core/tests/fixtures/canon/` and `crates/fsm-core/tests/canon_golden.rs` first, encoding exactly the inventory under **Tests**.
 2. Implement `write_canonical(&Value, &mut Vec<u8>)` in `crates/fsm-core/src/json/write.rs` — single line, byte-sorted keys, minimal escaping, verbatim `Num` tokens — as the only JSON serializer in the system.
 3. Implement `canon_bytes(&Value)` and `is_canonical(bytes, &JsonLimits)` (parse → re-serialize → byte-compare) in `crates/fsm-core/src/canon.rs`.
-4. Add the round-trip property to `canon_golden.rs`: for every `y_*` JSON corpus fixture, parse∘write∘parse is identity and a second canonicalization is byte-identical.
 
-- **Done when:** all canon goldens and the corpus round-trip property pass under `cargo test -p fsm-core --test canon_golden`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+**Tests:**
+
+- Golden input→canonical-bytes pairs in `fixtures/canon/`, asserted byte-for-byte by `canon_golden.rs`: an object whose keys arrive unsorted → byte-sorted output; escape normalization (a backslash-u escape for a printable character collapses to the raw character; an escaped forward slash becomes a bare `/`; quote, backslash, and the C0 escapes stay escaped, other control characters as lowercase `\u00xx`); non-ASCII passthrough (`é`, an emoji) as raw UTF-8; number tokens written verbatim (`1e309`, `-0.0` preserved exactly as parsed); nested empties `{"a":[],"b":{}}`; whitespace-heavy input collapsing to a single line.
+- Round-trip property in `canon_golden.rs`: for every `y_*` fixture of the JSON corpus, `parse ∘ write_canonical ∘ parse` is identity, and canonicalizing the canonical bytes again is byte-identical (idempotence).
+- `is_canonical`: returns true on canonical bytes; false on the same document with a single inserted space; false on the same document with two keys swapped; propagates a parse error (not `false`) on invalid JSON.
+
+- **Done when:** all canon goldens, the corpus round-trip property, and the `is_canonical` cases pass under `cargo test -p fsm-core --test canon_golden`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.

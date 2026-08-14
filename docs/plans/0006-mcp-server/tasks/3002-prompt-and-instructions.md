@@ -18,8 +18,17 @@ The `author_machine` prompt and the `initialize.instructions` text are the onboa
 
 **Steps:**
 
-1. Author `crates/fsm-cli/tests/mcp_prompts.rs` first: assert `prompts/list` returns exactly `author_machine` with its required `goal` argument; `prompts/get` with a sample goal returns one user message containing the goal and the five flow stages (read spec, dry-run until clean, create, simulate happy and rejection paths, create and drive an instance); and the initialize result's `instructions` field contains the key phrases `enabled_events`, `dry_run`, `effect_ack`, and `request_id`.
+1. Author `crates/fsm-cli/tests/mcp_prompts.rs` first, encoding exactly the inventory under **Tests**.
 2. Implement `prompts/list` and `prompts/get` in `crates/fsm-cli/src/mcp/prompts.rs` with the architecture's prompt template, interpolating `goal`.
 3. Replace the empty `INSTRUCTIONS` const with the architecture's ~120-word text, verbatim.
 
-- **Done when:** `cargo test -p fsm-cli --test mcp_prompts` passes all three assertions, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+**Tests:**
+
+- `prompts/list`: exactly one prompt, `author_machine`, declaring the single required argument `goal`.
+- `prompts/get` with `goal: "track a mediation case"`: one user-role message whose text contains the goal string and, in this order (ordered substring search), the five flow stages — read `fsm://docs/spec`; `machine_create` with `dry_run` until clean; `machine_create`; `simulate` a happy path and a rejection path; `instance_create` and drive with `instance_send`.
+- `prompts/get` without `goal` → the args-invalid error naming `goal` in `details`.
+- `prompts/get` for an unknown prompt name → the not-found error listing `author_machine` as the valid name.
+- Instructions: the initialize result's `instructions` field is present, is at most 130 words, and contains each of the key phrases `enabled_events`, `dry_run`, `effect_ack`, `request_id`, and `JSON strings`.
+- Capabilities coherence: the advertised prompts capability is `{listChanged: false}`.
+
+- **Done when:** `cargo test -p fsm-cli --test mcp_prompts` passes all listed assertions, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.

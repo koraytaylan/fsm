@@ -18,7 +18,17 @@ Correctly-rounded division of the exact rational at the target scale — never d
 
 **Steps:**
 
-1. Author `crates/fsm-core/tests/fixtures/decimal/div_vectors.jsonl` first: the architecture's worked `1/3` and `2/3` cases, repeating expansions at scales 0 and 12, exact divisions, ties in every mode and both signs, division by zero, the `k < 0` fold path, at least three fold-overflow cases (large-mantissa divisor with `k < 0`) asserting the `q = 0`-with-`bump` rule per mode, and a result exceeding the mantissa bound (`overflow`); the existing `decimal_golden` test picks the file up automatically.
-2. Implement `div(a: Dec, b: Dec, scale: u8, mode: RoundMode) -> Result<Dec, DecError>` in `crates/fsm-core/src/decimal/mod.rs` exactly per the architecture procedure: `b` zero → `DivZero`; compute `k = scale − a.scale + b.scale`; for `k ≥ 0` widen `|a.mant|` into u256, `checked_mul_pow10(k)`, `div_rem_u128(|b.mant|)`; for `k < 0` fold `10^|k|` into the divisor, applying the stated overflow rule (fold exceeds u128 ⟹ `q = 0`, `r = |a.mant|`, and `2r < d` is guaranteed by the bound argument quoted in architecture) when it fires; decide the final digit with the shared `bump` from the rounding task using `(2r) cmp d`; re-apply the combined sign; bound-check the quotient.
+1. Author `crates/fsm-core/tests/fixtures/decimal/div_vectors.jsonl` first, encoding exactly the inventory under **Tests**; the existing `decimal_golden` test picks the file up automatically.
+2. Implement `div(a: Dec, b: Dec, scale: u8, mode: RoundMode) -> Result<Dec, DecError>` in `crates/fsm-core/src/decimal/mod.rs` exactly per the architecture procedure: `b` zero → `DivZero`; `k = scale − a.scale + b.scale`; `k ≥ 0` widens `|a.mant|` into u256, `checked_mul_pow10(k)`, `div_rem_u128(|b.mant|)`; `k < 0` folds `10^|k|` into the divisor, applying the stated overflow rule (`q = 0`, `r = |a.mant|`, `2r < d` guaranteed) when the fold exceeds u128; final digit via the shared `bump` with `(2r) cmp d`; combined sign; quotient bound-checked.
 
-- **Done when:** every line of `div_vectors.jsonl` passes — including the fold-overflow cases — under `cargo test -p fsm-core --test decimal_golden`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+**Tests:**
+
+- `div_vectors.jsonl` — worked block: `div(1, 3, 4, half_even)` → `0.3333` and `div(2, 3, 4, half_even)` → `0.6667` (the architecture's traced cases), plus both with negated operands in each position (sign combinations).
+- Exact divisions: `1 / 4` at scale 2 → `0.25`; `10 / 2` at scale 0 → `5`; remainders of zero never consult the mode (same result in all seven).
+- Tie rows with parity: `1 / 8` at scale 2 (q = 12, tie: `half_up` → `0.13`, `half_down` → `0.12`, `half_even` → `0.12` even) and `3 / 8` at scale 2 (q = 37, tie: `half_even` → `0.38` odd) — every mode pinned on both rows.
+- Repeating expansions at scale 12 (`1/3`, `1/7`) against independently computed digits.
+- Negative-k fold path: `5.000000000000` (scale 12) ÷ `2` at scale 0 — k = −12, folded divisor `2·10¹²`, an exact tie resolved per mode.
+- Fold-overflow rows (≥3): a divisor mantissa near `10³⁸` with k = −12, asserting the `q = 0` rule per mode — half modes and `down` → `0`, `up` → one ulp away from zero, `floor`/`ceiling` by sign — for positive and negative dividends.
+- Errors: division by zero → `div_zero`; `(10³⁸−1)` at scale 0 ÷ `0.000000000001` at scale 12 at scale 0 → `overflow` (quotient exceeds the mantissa bound).
+
+- **Done when:** every line of `div_vectors.jsonl` passes — including the fold-overflow and tie-parity rows — under `cargo test -p fsm-core --test decimal_golden`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.

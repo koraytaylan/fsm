@@ -19,8 +19,16 @@ The enabled-events report needs to answer "could this guard pass?" for a live in
 
 **Steps:**
 
-1. Author `crates/fsm-core/tests/fixtures/expr/partial.jsonl` first: context bindings plus source mapped to `true`/`false`/`unknown`, covering the Kleene tables (`false and unknown = false`, `true or unknown = true`), Unknown propagation through comparisons and arithmetic, fully-concrete subtrees evaluating exactly, and the conservative-error rule; plus `crates/fsm-core/tests/expr_partial.rs` asserting every line.
+1. Author `crates/fsm-core/tests/fixtures/expr/partial.jsonl` and `crates/fsm-core/tests/expr_partial.rs` first, encoding exactly the inventory under **Tests**.
 2. Implement `Truth { True, False, Unknown }` and `partial_eval_bool(e, ctx, budget) -> Truth` in `crates/fsm-core/src/expr/partial.rs` per architecture, reusing `eval` for concrete subtrees under the shared budget.
-3. Add inline unit tests pinning that a concrete sub-evaluation error (overflow in a ctx-only subtree) yields Unknown, with a comment pointing at the SPEC.md rationale.
 
-- **Done when:** every line of `partial.jsonl` holds under `cargo test -p fsm-core --test expr_partial`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+**Tests:**
+
+- Kleene truth tables pinned exhaustively inline in `partial.rs`: all nine `and` cells, all nine `or` cells, all three `not` cells — the 21-cell table asserted against the architecture semantics (`False and Unknown = False`, `True or Unknown = True`, `not Unknown = Unknown`, …), so any transcription slip is a named cell.
+- Unknown propagation lines in `partial.jsonl`: `evt.amount > 100.00` → `unknown`; arithmetic containing an `evt` operand compared to a constant → `unknown`; `Unknown` flowing through a comparison, an `if` condition, and a nested call argument.
+- Pruning lines: `ctx.flag and evt.x > 1` with `flag = false` → `false` (the Unknown side never matters); the `or`-mirror with `flag = true` → `true`.
+- Concrete decision lines: a fully-`ctx` guard evaluates exactly (`ctx.limit > 0.00` with a binding → `true`, and with a zero binding → `false`), matching `eval`'s verdict on the same bindings.
+- Conservative-error rule (fixture line *and* inline test with the SPEC.md-rationale comment): a ctx-only subtree that overflows → `unknown`, never a panic or error; budget exhaustion inside a concrete sub-evaluation follows the same rule → `unknown`.
+- Budget sharing, inline: partial evaluation decrements the same `Budget` as `eval` (a hand-counted expression consumes the expected visits).
+
+- **Done when:** every line of `partial.jsonl` holds and the 21-cell Kleene table passes under `cargo test -p fsm-core --test expr_partial` and `cargo test -p fsm-core partial`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
