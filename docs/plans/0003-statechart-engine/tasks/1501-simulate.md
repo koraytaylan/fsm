@@ -5,6 +5,7 @@ workstream: "0015"
 kind: task
 depends_on:
   - apply-pipeline
+  - creation-entry-chain
 gated: false
 touches:
   - crates/fsm-core/src/simulate.rs

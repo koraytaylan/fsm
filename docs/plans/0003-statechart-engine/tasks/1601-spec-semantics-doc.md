@@ -4,7 +4,7 @@ title: "Spec Semantics Doc"
 workstream: "0016"
 kind: chore
 depends_on:
-  - apply-pipeline
+  - creation-entry-chain
 gated: false
 touches:
   - docs/SPEC.md

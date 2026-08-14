@@ -5,7 +5,7 @@ workstream: "0015"
 kind: task
 depends_on:
   - apply-pipeline
-  - static-analysis
+  - shadowing-and-const-fold
 gated: false
 touches:
   - crates/fsm-core/src/analyze.rs

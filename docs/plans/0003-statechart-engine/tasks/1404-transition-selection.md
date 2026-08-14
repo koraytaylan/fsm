@@ -4,7 +4,7 @@ title: "Transition Selection"
 workstream: "0014"
 kind: task
 depends_on:
-  - configuration-and-lca
+  - tree-tables
 gated: false
 touches:
   - crates/fsm-core/src/step.rs

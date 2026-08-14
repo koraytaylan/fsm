@@ -4,7 +4,7 @@ title: "Jsonrpc Envelope"
 workstream: "0005"
 kind: task
 depends_on:
-  - json-value-and-parser
+  - json-structural-parser
 gated: false
 touches:
   - crates/fsm-cli/src/mcp/jsonrpc.rs

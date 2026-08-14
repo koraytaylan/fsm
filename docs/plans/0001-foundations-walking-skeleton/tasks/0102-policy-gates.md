@@ -5,7 +5,7 @@ workstream: "0001"
 kind: chore
 depends_on:
   - workspace-scaffold
-  - json-value-and-parser
+  - json-structural-parser
 gated: false
 touches:
   - crates/fsm-core/clippy.toml

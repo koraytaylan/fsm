@@ -4,7 +4,7 @@ title: "Json Canonical Writer"
 workstream: "0002"
 kind: task
 depends_on:
-  - json-value-and-parser
+  - json-structural-parser
 gated: false
 touches:
   - crates/fsm-core/src/json/write.rs

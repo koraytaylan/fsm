@@ -4,7 +4,7 @@ title: "Decimal Differential Harness"
 workstream: "0004"
 kind: task
 depends_on:
-  - decimal-core
+  - dec-division
 gated: false
 touches:
   - tools/gen_decimal_vectors.py
@@ -18,7 +18,7 @@ An independent oracle — Python integer arithmetic with explicit remainder-base
 
 **Steps:**
 
-1. Write `tools/gen_decimal_vectors.py` (Python 3 stdlib only): exact rational results via integer quotient/remainder with per-mode rounding implemented in integer space, a fixed seed and no wall-clock input, covering boundary mantissas, all mode-by-tie combinations, and ~5,000 seeded random cases across scales 0–12.
+1. Write `tools/gen_decimal_vectors.py` (Python 3 stdlib only): exact rational results via integer quotient/remainder with per-mode rounding implemented in integer space (the same seven-row decision table, independently transcribed), a fixed seed and no wall-clock input, covering boundary mantissas, all mode-by-tie combinations, the negative-`k` fold path including its overflow rule (which the integer oracle handles with no special case — a useful cross-check), and ~5,000 seeded random cases across scales 0–12.
 2. Run it to produce `crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl`, sorted and byte-stable, and commit the file (the existing `decimal_golden` test picks up every `*.jsonl` automatically).
 3. Document at the top of the script how to regenerate and that a diff on regeneration is a release blocker.
 

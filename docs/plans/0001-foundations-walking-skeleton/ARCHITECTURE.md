@@ -35,21 +35,23 @@ Policy gates (task `0102`) — machine-checked enforcement, so the rules cannot 
 
 ## 0002 — JSON
 
-`crates/fsm-core/src/json/value.rs`:
+Three tasks, ordered so the fiddly scalar work is finished and vector-proven before any structure parsing exists.
+
+Value model and scalar helpers (task `0201`), `crates/fsm-core/src/json/value.rs` and `parse.rs`:
 
 - `pub enum Value { Null, Bool(bool), Num(String), Str(String), Arr(Vec<Value>), Obj(BTreeMap<String, Value>) }` — `Num` holds the raw number token verbatim; no float type exists anywhere in the crate. Accessors: `as_str`, `as_obj`, `as_arr`, `as_bool`, `get(&str)`, plus `is_*` predicates. `PartialEq/Eq/Clone/Debug` derived.
+- `pub(crate) fn unescape_string(raw: &str) -> Result<String, ScalarError>` — input is the escaped contents *between* the quotes (the parser scans to the closing quote with a trivial backslash-parity walk and hands over the slice). Algorithm: copy bytes until `\`; then match the next byte against the eight simple escapes; on `u`, read 4 hex digits → `cp`. If `cp` is in `[0xD800, 0xDBFF]` (high surrogate), the next input MUST be another backslash-u escape decoding to `lo` in `[0xDC00, 0xDFFF]`; combine as `0x10000 + ((cp − 0xD800) << 10) + (lo − 0xDC00)` and push that character. A high surrogate not followed this way, or a bare low surrogate, is the lone-surrogate error. Any other byte after `\` is an invalid-escape error.
+- `pub(crate) fn check_number_token(tok: &str) -> bool` — the RFC 8259 grammar as a four-phase scan: (1) optional `-`; (2) integer part: a single `0`, or a nonzero digit followed by digits; (3) optional fraction: `.` followed by one or more digits; (4) optional exponent: `e|E`, optional sign, one or more digits; end of input required. No other forms (`+1`, `.5`, `1.`, `01`, hex, `NaN`, `Infinity`).
+- Fixtures first: `crates/fsm-core/tests/fixtures/json-scalars/{strings.txt, numbers.txt}` verdict files + `crates/fsm-core/tests/json_scalars.rs` asserting every line — every escape, correct and broken surrogate sequences, truncated `\u`, and the number-grammar accept/reject set.
 
-`crates/fsm-core/src/json/parse.rs`:
+Structural parser (task `0202`), `crates/fsm-core/src/json/parse.rs`:
 
 - `pub struct JsonLimits { pub max_depth: u32, pub max_bytes: usize }` with `pub const DEFAULT: JsonLimits { max_depth: 64, max_bytes: 16 * 1024 * 1024 }`.
-- `pub fn parse(input: &[u8], limits: &JsonLimits) -> Result<Value, JsonError>` — recursive descent over bytes with an explicit depth counter. Rules, each with a dedicated `JsonErrorKind`: input must be UTF-8; exactly one top-level value with only whitespace after it; **duplicate object keys are an error** (never last-wins); number tokens must match the RFC 8259 grammar and are captured verbatim into `Value::Num`; string escapes limited to `\" \\ \/ \b \f \n \r \t \uXXXX`; `\uXXXX` surrogate pairs must be correctly paired (lone surrogates are an error); raw control bytes < 0x20 inside strings are an error; depth beyond `max_depth` and input beyond `max_bytes` are errors.
+- `pub fn parse(input: &[u8], limits: &JsonLimits) -> Result<Value, JsonError>` — with scalars already solved, this is a plain recursive descent: validate UTF-8; skip whitespace; `parse_value` dispatches on the first byte (`{` object, `[` array, `"` string via the quote-scan + `unescape_string`, `-`/digit number via longest-token scan + `check_number_token` capturing the token verbatim, `t`/`f`/`n` literals); objects build `BTreeMap` and **reject duplicate keys**; an explicit depth counter enforces `max_depth`; exactly one top-level value with only whitespace after it; every error carries a byte offset and a dedicated `JsonErrorKind`.
 - `pub struct JsonError { pub kind: JsonErrorKind, pub offset: usize, pub message: String }`.
+- Fixtures first: `crates/fsm-core/tests/fixtures/json/` with `y_*.json` / `n_*.json` verdict cases (~40, JSONTestSuite-spirited: depth at the limit and past it, extreme number tokens preserved as strings, duplicate keys, trailing garbage, BOM rejection, raw control characters, full-document surrogate cases) + `crates/fsm-core/tests/json_corpus.rs` iterating the directory.
 
-Surrogate handling, exactly: after `\u`, read 4 hex digits → `cp`. If `cp` is in `[0xD800, 0xDBFF]` (high surrogate), the next input MUST be another `\u` escape decoding to `lo` in `[0xDC00, 0xDFFF]`; combine as `0x10000 + ((cp − 0xD800) << 10) + (lo − 0xDC00)` and push that character. A high surrogate not followed this way, or a bare low surrogate, is the lone-surrogate error.
-
-Fixtures land first: `crates/fsm-core/tests/fixtures/json/` with `y_*.json` (must parse) and `n_*.json` (must fail) cases — a curated ~40-case subset in the spirit of JSONTestSuite (deep nesting at the limit and one past it, `1e309`-style extreme numbers preserved as tokens, lone surrogate, unpaired `\uD800`, duplicate keys, trailing garbage, raw control characters, BOM rejection) plus our stricter verdicts written into the filenames. `crates/fsm-core/tests/json_corpus.rs` iterates the directory and asserts each verdict.
-
-Canonical writer (task `0202`):
+Canonical writer (task `0203`):
 
 `crates/fsm-core/src/json/write.rs`:
 
@@ -72,32 +74,79 @@ Fixtures first: `crates/fsm-core/tests/fixtures/sha256/vectors.txt` — NIST byt
 
 ## 0004 — Decimal
 
-`crates/fsm-core/src/decimal/mod.rs`:
+Five tasks, ordered so every hard step is a transcription of an algorithm given here verbatim, landing against vectors committed first. Shared bounds: `scale ≤ 12`, `|mant| ≤ 10³⁸−1`; `Dec { mant: i128, scale: u8 }`, value = mant·10⁻ˢᶜᵃˡᵉ, **not normalized** (scale is semantic: `1.50` stays `{150, 2}`).
 
-- `pub struct Dec { mant: i128, scale: u8 }` — value = mant·10⁻ˢᶜᵃˡᵉ, **not normalized** (scale is semantic: `1.50` stays `{150, 2}`). Constants `MAX_SCALE: u8 = 12`, `MAX_MANT: i128 = 10i128.pow(38) - 1`.
-- `pub enum RoundMode { Down, Up, Floor, Ceiling, HalfUp, HalfDown, HalfEven }` — exactly Python `decimal`'s set minus `ROUND_05UP`.
-- `pub enum DecError { Overflow, DivZero, ScaleCap, Parse(String) }`.
-- Operations: `checked_add/checked_sub` (rescale the smaller-scale operand by checked ×10^Δ to `max(s1, s2)`, then checked add; any overflow → `Overflow` — the true result is unrepresentable); `checked_mul` (result scale `s1+s2`; caller enforces the ≤12 cap statically in plan 0002's typechecker, this module returns `ScaleCap` dynamically); `cmp(&self, other) -> Ordering` — total, **via u256 widening** (naive rescale of a 38-digit mantissa by 10¹² overflows i128; sign-compare first, then align magnitudes in u256); `round(self, scale: u8, mode: RoundMode)` (upscale = exact checked widen; downscale = divide mantissa by 10^Δ rounding by (quotient, remainder, half-divisor) per mode, `HalfEven` on quotient parity); `div(a, b, scale, mode)` — **the correctly-rounded value of the exact rational a/b at the target scale, never double-rounded**: compute `n = a.mant · 10^k` with `k = scale − a.scale + b.scale`; `k ≥ 0` widens `n` in u256 and long-divides by `|b.mant|`; `k < 0` folds `10^|k|` into the divisor; round the integer quotient by remainder-vs-divisor per mode with the combined sign; bound-check the result.
-- `parse(&str, scale: u8) -> Result<Dec, DecError>` — grammar `-?(0|[1-9][0-9]*)(\.[0-9]+)?`; fewer fraction digits than `scale` widen exactly; more are `Parse` (never rounded); `-0` normalizes to sign-dropped zero. `format(&self) -> String` — canonical form with exactly `scale` fraction digits, no exponent, no `+`.
+u256 primitives (task `0401`), `crates/fsm-core/src/decimal/u256.rs` — `pub struct U256 { hi: u128, lo: u128 }` with exactly four operations:
 
-`crates/fsm-core/src/decimal/u256.rs`:
+- `from_u128(x)` and `cmp` (compare `hi`, then `lo`).
+- `checked_mul_pow10(self, k: u32) -> Option<U256>` — a loop of `k` single ×10 steps; each step, verbatim:
 
-- `pub struct U256 { hi: u128, lo: u128 }` with `from_u128`, `checked_mul_pow10(u32)`, `cmp`, and `div_rem_u128(self, d: u128) -> (U256, u128)` — schoolbook long division, division by a u128 divisor only (all our divisors are `|mant| ≤ MAX_MANT` or a power of ten times that, folded before widening). ~150 lines, exhaustively unit-tested against u128-representable cases.
+  ```text
+  lo_lo = lo & 0xFFFF_FFFF_FFFF_FFFF          # low 64 bits, as u128
+  lo_hi = lo >> 64
+  p0 = lo_lo * 10                              # fits u128
+  p1 = lo_hi * 10 + (p0 >> 64)                 # fits u128
+  new_lo = (p1 << 64) | (p0 & 0xFFFF_FFFF_FFFF_FFFF)
+  carry  = p1 >> 64
+  new_hi = hi.checked_mul(10)? .checked_add(carry)?   # None ⇒ overflow ⇒ whole call returns None
+  ```
 
-Worked examples (normative — the starter vectors encode these):
+- `div_rem_u128(self, d: u128) -> (U256, u128)` (`d != 0`, caller-guaranteed) — restoring division, one bit per iteration, high bit first, verbatim:
 
-- `round` of `"2.345"` (mant 2345, scale 3) to scale 2: divide mant by 10^(3−2)=10 → q=234, r=5, half=5 — an exact tie. `down`→2.34, `up`→2.35, `floor`→2.34, `ceiling`→2.35, `half_up`→2.35, `half_down`→2.34, `half_even`→2.34 (q is even). The same input negated: `floor`→−2.35, `ceiling`→−2.34, `half_even`→−2.34 — round the magnitude then re-apply the sign, except `floor`/`ceiling`, which follow the number line.
-- `div(1, 3, scale 4, half_even)`: k = 4 − 0 + 0 = 4; n = 1·10⁴ = 10000; 10000 ÷ 3 → q=3333, r=1; 2r=2 < 3 → no bump → `"0.3333"`. `div(2, 3, 4, half_even)`: q=6666, r=2; 2r=4 > 3 → bump → `"0.6667"`. No intermediate rounded value ever exists — that is precisely what "never double-rounded" means.
-- Why `cmp` needs u256: comparing mant = 10³⁸−1 at scale 0 against any scale-12 value means aligning by ×10¹², whose product exceeds i128; widening into u256 keeps comparison total for every representable pair.
+  ```text
+  q = U256::ZERO; rem: u128 = 0
+  for i in (0..256).rev():
+      bit    = (self >> i) & 1                 # via hi/lo indexing
+      hi_bit = rem >> 127
+      r2     = (rem << 1) | bit                # may wrap; see rule
+      if hi_bit == 1 or r2 >= d:
+          r2 = r2.wrapping_sub(d)              # exact: see invariant
+          q.set_bit(i)
+      rem = r2
+  return (q, rem)
+  ```
 
-Fixtures first: `crates/fsm-core/tests/fixtures/decimal/starter_vectors.jsonl` — ~100 hand-authored lines `{"op":"add|sub|mul|cmp|round|div|parse|format", "a":"...", "b":"...", "scale":N, "mode":"half_even", "expect":"..."}` or `"expect_err":"overflow|div_zero|scale_cap|parse"`, covering every mode at exact ties (`.5` remainders both signs), mantissa at ±(10³⁸−1), add-alignment overflow at the boundary, cmp pairs whose naive alignment would overflow i128, `1/3` and `1/7` at scales 0 and 12, exact divisions, the `k < 0` division path, and `-0.00` normalization. `crates/fsm-core/tests/decimal_golden.rs` runs every line of every `*.jsonl` file in that directory (so the generated file from task 0402 is picked up without edits).
+  Invariant argument (goes in the module docs, and is why `wrapping_sub` is exact): before each step `rem < d`, so the true shifted value `2·rem + bit < 2d`; when `hi_bit == 1` the true value is ≥ 2¹²⁸ > `u128::MAX` ≥ `d`, so the subtract branch is always correct there, and `true_value − d < d ≤ u128::MAX` always fits — the wrap-around arithmetic lands on exactly that difference.
+- Tests are inline (the type is crate-internal): a seeded sweep cross-checking every operation against native u128 arithmetic where operands and results fit, both 2¹²⁸-crossing directions, and the worked division example below asserted digit for digit.
 
-Differential harness (task `0402`):
+Representation and alignment (task `0402`), `crates/fsm-core/src/decimal/mod.rs`:
+
+- `parse(&str, scale)` — grammar `-?(0|[1-9][0-9]*)(\.[0-9]+)?`; fewer fraction digits than `scale` widen exactly, more are an error (never rounded); `-0` normalizes to sign-dropped zero. `format` — exactly `scale` fraction digits, no exponent, no `+`.
+- `checked_add/checked_sub`: rescale the smaller-scale operand by checked ×10^Δ to `max(s1, s2)`, then checked add — any overflow is `DecError::Overflow` (the true result is unrepresentable). `checked_mul`: result scale `s1+s2`, `ScaleCap` beyond 12, checked i128 multiply plus the mantissa bound.
+- `cmp`: total value comparison across scales, **through u256** — comparing mant = 10³⁸−1 at scale 0 against any scale-12 value means aligning by ×10¹², whose product exceeds i128; sign-compare first, then align magnitudes in u256.
+- Vectors first in `align_vectors.jsonl`; `tests/decimal_golden.rs` (authored here) runs every line of every `*.jsonl` in the fixtures directory, so later tasks add files without touching the test.
+
+Rounding (task `0403`), same module — one shared decision function used by `round` here and `div` in the next task:
+
+- `fn bump(mode, negative: bool, twice_rem_vs_divisor: Ordering, q_is_even: bool) -> bool`, the complete table (`r == 0` never reaches `bump`):
+
+  | mode | bump? |
+  |---|---|
+  | `down` | never |
+  | `up` | always |
+  | `floor` | iff `negative` |
+  | `ceiling` | iff not `negative` |
+  | `half_up` | iff `2r ≥ d` (Greater or Equal) |
+  | `half_down` | iff `2r > d` (Greater only) |
+  | `half_even` | iff `2r > d`, or `2r == d` and `q` is odd |
+
+- `round(x, S, mode)`: `S ≥ x.scale` → exact checked upscale (mode irrelevant, still total). `S < x.scale` → divide the magnitude by `10^(x.scale − S)` to get `(q, r)`, call `bump` with `(2r) cmp 10^Δ` and `q`'s parity, re-apply the sign.
+- Worked set (encoded in `round_vectors.jsonl`): `2.345` (mant 2345, scale 3) to scale 2 → q=234, r=5, an exact tie: `down`→2.34, `up`→2.35, `floor`→2.34, `ceiling`→2.35, `half_up`→2.35, `half_down`→2.34, `half_even`→2.34 (q even). Negated: `floor`→−2.35, `ceiling`→−2.34, `half_even`→−2.34 — round the magnitude then re-apply the sign, except `floor`/`ceiling`, which follow the number line.
+
+Division (task `0404`), same module — **the correctly-rounded value of the exact rational a/b at scale S, never double-rounded**:
+
+- `div(a, b, S, mode)`: `b` zero → `DivZero`. Compute `k = S − a.scale + b.scale`.
+  - `k ≥ 0`: `n = U256::from(|a.mant|).checked_mul_pow10(k)` (cannot fail: n ≤ 10³⁸·10²⁴ = 10⁶² < 2²⁵⁶), then `(q, r) = n.div_rem_u128(|b.mant|)` (divisor ≤ 10³⁸−1 < 2¹²⁷, always fits).
+  - `k < 0`: fold the power into the divisor, `d = |b.mant| · 10^|k|`. **If that multiply overflows u128, the answer is already decided**: `d > u128::MAX ≈ 3.4·10³⁸` while `r = |a.mant| ≤ 10³⁸−1`, so `q = 0` and `2r ≤ 2·(10³⁸−1) < 3.4·10³⁸ < d` — a tie is impossible, and `bump` (with `Less`) yields 0 for the half modes and ±1 ulp only for `up` and the matching `floor`/`ceiling` direction (when `r > 0`). Otherwise long-divide as above.
+  - Decide the final digit with the shared `bump` using `(2r) cmp d`; re-apply the combined sign; the quotient must satisfy the mantissa bound or the call is `Overflow`.
+- Worked cases (encoded in `div_vectors.jsonl`): `div(1, 3, 4, half_even)`: k=4, n=10000, 10000÷3 → q=3333, r=1, 2r=2 < 3 → `"0.3333"`. `div(2, 3, 4, half_even)`: q=6666, r=2, 2r=4 > 3 → `"0.6667"`. No intermediate rounded value ever exists — that is precisely what "never double-rounded" means.
+
+Differential harness (task `0405`):
 
 `tools/gen_decimal_vectors.py` — Python 3 stdlib only, run manually and in CI, never a build dependency:
 
-- Implements the **independent oracle**: exact rational arithmetic over Python ints (`a·10^k // b` with explicit remainder-based rounding per mode implemented in integer space — deliberately *not* `decimal.quantize`, which could itself double-round), plus `decimal` with a 60-digit context as a second cross-check where applicable.
-- Deterministic case generation (fixed seed, no wall clock): boundary mantissas, all mode×tie combinations, ~5,000 seeded random op cases across scales 0..12.
+- Implements the **independent oracle**: exact rational arithmetic over Python ints (`a·10^k // b` with explicit remainder-based rounding per mode implemented in integer space — deliberately *not* `decimal.quantize`, which could itself double-round; the negative-`k` fold-overflow rule needs no special case in unbounded integers, making it a true cross-check), plus `decimal` with a 60-digit context as a second check where applicable.
+- Deterministic case generation (fixed seed, no wall clock): boundary mantissas, all mode-by-tie combinations, ~5,000 seeded random op cases across scales 0..12.
 - Writes `crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl` sorted and byte-stable: running the generator twice must produce identical bytes (asserted in the task's done-when).
 
 ## 0005 — MCP Skeleton

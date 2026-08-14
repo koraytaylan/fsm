@@ -56,19 +56,48 @@ Expression binding (task `1301`), in `spec.rs` plus `crates/fsm-core/src/machine
 - `def/assign_type`: a `set` target's declared type must equal the RHS type **exactly, scale included** — every scale change is a visible `round`/`dec` call in the definition (this is where "no implicit rounding" is enforced at the machine level). `def/dup_set`: duplicate set targets within one block are a definition error (across blocks is legal; the pipeline order resolves it deterministically).
 - `pub struct CompiledMachine { pub machine_id: String, pub spec: MachineSpec, pub canonical: Vec<u8>, pub transitions_by: BTreeMap<(String, String), Vec<usize>>, pub compiled_exprs: … }` — `transitions_by` maps (source state, event) to document-ordered indices into `spec.transitions`; compiled expressions are stored with their inferred types and verbatim sources for spans.
 
-Static analysis (task `1302`), `crates/fsm-core/src/analyze.rs` — `pub fn analyze(m: &CompiledMachine, t: &Tree) -> Findings` with `pub struct Finding { pub severity: Error | Warning, pub code: &'static str, pub message: String, pub path: String, pub span: Option<Span>, pub hint: String }`:
+Reachability and completeness (task `1302`), `crates/fsm-core/src/analyze.rs` — `pub struct Finding { pub severity: Error | Warning, pub code: &'static str, pub message: String, pub path: String, pub span: Option<Span>, pub hint: String }`:
 
-- **Enterable-set reachability** (exact, not approximate): seed with the creation entry chain; each transition from an enterable source contributes its full entry set (target path, initial descents). History targets are modeled as the owner's initial chain, justified by the stated lemma — *history never extends the reachable set*, since deep/shallow bindings can only name configurations that were previously active, and a shallow child's initial descent requires that child reachable some other way first. Guard-optimistic (guards assumed satisfiable). Unenterable states → warning `def/unreachable_state`.
+- **Enterable-set reachability** (exact, not approximate) as a plain worklist walk: seed with the creation entry chain; while any transition's source is enterable, add its full possible entry set (target path, initial descents); history targets are modeled as the owner's initial chain, justified by the stated lemma — *history never extends the reachable set*, since deep/shallow bindings can only name configurations that were previously active, and a shallow child's initial descent requires that child reachable some other way first. Guard-optimistic (guards assumed satisfiable). Unenterable states → warning `def/unreachable_state`.
 - **Completeness matrix**: rows = leaves, columns = events; each cell is `handled@<source_state>` (the innermost chain level declaring a transition for that event) or `unhandled(<policy>)`. The `@level` annotation is the hierarchy payoff for diagnosis.
-- **Shadowing, pinned claims** (nothing more is promised): within one (from, on) group, a guardless or literal-`true` transition preceding later entries → error `def/shadowed`; two entries with structurally identical span-stripped guard ASTs → error `def/duplicate_guard`. Ancestor-vs-descendant handling of the same event is **legal by design** (child-first override is the feature); warning `def/ancestor_shadowed` fires only when the ancestor's transition is provably globally dead: for every leaf under the ancestor, some strictly-inner state on that leaf's chain declares a guardless/`true` transition on the same event, or masks it with an identical-normalized-guard transition — both conditions decidable.
-- **`def/create_always_fails`**: const-fold the creation entry chain with declared initial values (all initializers are literals); if every path deterministically errors (e.g. an entry-block overflow independent of overrides), report it. Conservative: only provable failures are reported.
+
+Shadowing and const fold (task `1303`), same module — each claim a bounded checklist, nothing more promised:
+
+- Within one `(from, on)` group in document order: a guardless or literal-`true` transition preceding later entries → error `def/shadowed`; two entries with structurally identical span-stripped guard ASTs → error `def/duplicate_guard`.
+- Ancestor-vs-descendant handling of the same event is **legal by design** (child-first override is the feature). Warning `def/ancestor_shadowed` fires only when the ancestor A's transition on e is provably globally dead, checked as two plain loops: **for every leaf under A**, walk that leaf's chain strictly below A; if every leaf finds a transition on e that is guardless/`true` or structurally identical to A's guard, the ancestor transition can never fire — warn. One live leaf → no warning.
+- **`def/create_always_fails`**: evaluate the creation entry chain with the declared initial values — all initializers are literals, so this is ordinary evaluation, not symbolic; report only when it deterministically errors regardless of overrides. Conservative: only provable failures are reported.
 
 ## 0014 — Engine
 
-Tree machinery (task `1401`), `crates/fsm-core/src/tree.rs` — isolated so LCA/history logic is testable alone:
+Seven tasks: three lay hierarchy tables and path computations as separately tested units, selection and the pipeline assemble them, creation reuses the pipeline, and traces/hashes close the workstream. Each algorithm below is given to be transcribed, not designed.
 
-- `pub struct Tree { names: Vec<String>, parent: Vec<Option<u16>>, depth: Vec<u8>, children: Vec<Vec<u16>>, initial_child: Vec<Option<u16>>, kind: Vec<NodeKind>, index: BTreeMap<String, u16> }` with `pub enum NodeKind { Leaf, Compound, History(HistoryKind) }`; built once per `CompiledMachine` by `pub fn build(states: &[StateNode]) -> Tree`.
-- `pub fn chain(&self, leaf: u16) -> impl Iterator<Item = u16>` (leaf → top-level, innermost first); `pub fn proper_lca(&self, a: u16, b: u16) -> Option<u16>` (`None` = the implicit root, which is unnamed, has no blocks, and is never exited or entered); `pub fn exit_set(&self, leaf: u16, dom: Option<u16>) -> Vec<u16>` (inner → outer, from the leaf up to the child of `dom`); `pub fn entry_path(&self, dom: Option<u16>, target: u16) -> Vec<u16>` (outer → inner); `pub fn initial_descent(&self, from: u16) -> Vec<u16>` (descend `initial_child` to a leaf); `pub fn history_descent(&self, hist: u16, binding: Option<&str>) -> Vec<u16>` (deep bound leaf: path from owner to that leaf; shallow bound child: the child then its initial descent; unbound: the owner's initial descent).
+Tree tables (task `1401`), `crates/fsm-core/src/tree.rs` — isolated so hierarchy logic is testable alone:
+
+- `pub struct Tree { names: Vec<String>, parent: Vec<Option<u16>>, depth: Vec<u8>, children: Vec<Vec<u16>>, initial_child: Vec<Option<u16>>, kind: Vec<NodeKind>, index: BTreeMap<String, u16> }` with `pub enum NodeKind { Leaf, Compound, History(HistoryKind) }`.
+- `pub fn build(states: &[StateNode]) -> Tree` — one stack-based document-order walk, verbatim:
+
+  ```text
+  push (child, None) for top-level children, in reverse    # so pops come in document order
+  while stack: (node, parent) = pop
+      idx = tables.len(); record name, parent, kind
+      depth = 1 if parent is None else depth[parent] + 1
+      push (child, idx) for node.states, in reverse
+  afterwards: for each compound, initial_child = index[node.initial]   # names validated by task 1202
+  ```
+
+- `pub fn chain(&self, leaf: u16) -> impl Iterator<Item = u16>` — leaf → top level, innermost first; the implicit unnamed root is not a node and never appears in any table.
+- Expected tables for the reference machine (the `tree_build` golden, spelled out):
+
+  | idx | name | parent | depth | kind | initial_child |
+  |---|---|---|---|---|---|
+  | 0 | intake | — | 1 | Leaf | — |
+  | 1 | in_review | — | 1 | Compound | 3 (docs_review) |
+  | 2 | resume_review | 1 | 2 | History(Deep) | — |
+  | 3 | docs_review | 1 | 2 | Leaf | — |
+  | 4 | risk_review | 1 | 2 | Leaf | — |
+  | 5 | suspended | — | 1 | Leaf | — |
+  | 6 | approved | — | 1 | Leaf | — |
+  | 7 | rejected | — | 1 | Leaf | — |
 
 `crates/fsm-core/src/machine.rs` (task `1401`): `pub enum Status { Running, Completed, Cancelled }`; `pub struct InstanceState { pub status: Status, pub leaf: String, pub ctx: BTreeMap<String, Val>, pub history: BTreeMap<String, String>, pub pending: Vec<String> }` — `history` maps compound name → bound state name and **is hashed state**; `pending` holds shell-issued effect ids (the pure crate treats them as data).
 
@@ -89,25 +118,58 @@ The reference machine as a tree, and the one walkthrough to hold in your head (t
 
 Active leaf `risk_review`, event `suspend`: `risk_review` declares no candidate; the ancestor `in_review` does → source = `in_review`, target = `suspended`. `dom = properLCA(in_review, suspended)` = root, so `exit_set = [risk_review, in_review]` (inner → outer) and `entry = [suspended]`. Pipeline: exit `risk_review` (no block) → exit `in_review` (`notes := 0`) → transition block (none) → entry `suspended` (none). History capture fires because `in_review`, in the exit set, owns `resume_review` (deep): binding `in_review ↦ risk_review`, taken from the **pre-transition** leaf. Later, `resume` from `suspended`: the target `resume_review` is a history pseudostate owned by `in_review`, and the source is outside the owner (legal). Descent: enter `in_review` — its entry block runs again (`visits` increments, `notify` emits) — then the bound leaf `risk_review` (entry runs: `score := 0`). Configuration restored, `ctx` persisted; the re-run entry blocks are exactly why `visits` counts re-entries. Had `resume_review` never been bound, the descent would instead be `in_review`'s initial chain, landing on `docs_review`.
 
-Transition selection (task `1402`), `crates/fsm-core/src/step.rs`:
+LCA and paths (task `1402`), same module:
 
-- Candidate collection: for each state on `chain(leaf)` innermost-first, the document-ordered transitions in `transitions_by[(state, event)]`; an empty candidate list across the whole chain is `run/unhandled` (the only case where `on_unhandled: "ignore"` applies). Guards evaluate **against the pre-transition (ctx, evt) only**, in candidate order, under the shared `Budget`; a guard evaluation error anywhere aborts the whole event with `run/guard_error` (source state, transition index, span, operand values) — never "treat as false". The first true guard wins; later candidates are traced `not_considered`. All guards false → `run/not_enabled` with per-chain-level guard traces (the caller sees whether to fix the payload or add a child override).
+- `pub fn proper_lca(&self, a: u16, b: u16) -> Option<u16>` — verbatim (`None` = the implicit root; treat `None`'s depth as 0):
 
-Apply pipeline and creation (task `1403`), `step.rs` — the full pure decision procedure:
+  ```text
+  x = parent(a); y = parent(b)
+  while depth(x) > depth(y): x = parent(x)
+  while depth(y) > depth(x): y = parent(y)
+  while x != y: x = parent(x); y = parent(y)
+  return x
+  ```
+
+- `pub fn exit_set(&self, leaf: u16, dom: Option<u16>) -> Vec<u16>` — the chain from the leaf up to, and excluding, `dom` (inner → outer). `pub fn entry_path(&self, dom: Option<u16>, target: u16) -> Vec<u16>` — the chain from just below `dom` down to `target` (outer → inner; build by walking target upward, then reverse).
+- The dom/exit/entry golden table for the reference machine (task `1402`'s `tree_paths` fixture, row by row; history targets resolve to their **owner** for dom purposes):
+
+  | source → target (active leaf) | dom | exit_set | entry_path |
+  |---|---|---|---|
+  | intake → in_review (intake) | root | [intake] | [in_review] + initial → [in_review, docs_review] |
+  | docs_review → risk_review (docs_review) | in_review | [docs_review] | [risk_review] |
+  | risk_review → approved (risk_review) | root | [risk_review, in_review] | [approved] |
+  | in_review → rejected, `withdraw` (docs_review) | root | [docs_review, in_review] | [rejected] |
+  | in_review → suspended, `suspend` (risk_review) | root | [risk_review, in_review] | [suspended] |
+  | suspended → resume_review⇒owner in_review (suspended) | root | [suspended] | [in_review] + descent |
+  | in_review → (internal `note_added`, any leaf) | — | [] | [] |
+
+Descents (task `1403`), same module:
+
+- `pub fn initial_descent(&self, from: u16) -> Vec<u16>` — follow `initial_child` from `from` down to a leaf, collecting each entered node.
+- `pub fn history_descent(&self, hist: u16, binding: Option<&str>) -> Vec<u16>` — the rule table: deep bound leaf → path from the owner down to that leaf, entering each node; shallow bound child → that child, then its initial descent; no binding → the owner's initial descent.
+
+Transition selection (task `1404`), `crates/fsm-core/src/step.rs`:
+
+- Candidate collection: for each state on `chain(leaf)` innermost-first, the document-ordered transitions in `transitions_by[(state, event)]`; an empty candidate list across the whole chain is `run/unhandled` (the only case where `on_unhandled: "ignore"` applies). Guards evaluate **against the pre-transition (ctx, evt) only**, in candidate order, under the shared `Budget`; a guard evaluation error anywhere aborts the whole event with `run/guard_error` (source state, transition index, span, operand values) — never "treat as false". The first true guard wins; later candidates are traced `not_considered`. All guards false → `run/not_enabled` with per-chain-level guard traces (the caller sees whether to fix a payload or add a child override).
+- `pub fn validate_event(m: &CompiledMachine, name: &str, payload: &Value) -> Result<BTreeMap<String, Val>, Rejection>` — declared event (`req/event_unknown`), exact field set (`req/field_missing` / `req/field_unknown`), values parsed at declared types with **no raw JSON number tokens** (`req/number_token`, `req/field_type`, `req/field_scale` — shorter decimal fractions widen exactly, longer are errors, never rounded).
+
+Apply pipeline (task `1405`), `step.rs` — the pure decision procedure assembled from the landed pieces:
 
 - `pub enum Outcome { Applied(Applied), Rejected(Rejection), Ignored }`; `pub struct Applied { pub leaf_after: String, pub ctx_after: BTreeMap<String, Val>, pub history_after: BTreeMap<String, String>, pub effects: Vec<EffectOut>, pub monitor_flags: Vec<String>, pub status_after: Status, pub internal: bool, pub source_state: String, pub transition_idx: u32, pub exited: Vec<String>, pub entered: Vec<String>, pub trace: DecisionTrace }`; `pub struct EffectOut { pub name: String, pub args: BTreeMap<String, Val>, pub k: u32 }` — effect ids (`{instance}/{seq}/{k}`) are composed by the shell; the pure core supplies only `k`.
-- `pub fn validate_event(m: &CompiledMachine, name: &str, payload: &Value) -> Result<BTreeMap<String, Val>, Rejection>` — declared event (`req/event_unknown`), exact field set (`req/field_missing` / `req/field_unknown`), values parsed at declared types with **no raw JSON number tokens** (`req/number_token`, `req/field_type`, `req/field_scale` — shorter decimal fractions widen exactly, longer are errors, never rounded).
-- `pub fn step(m: &CompiledMachine, t: &Tree, st: &InstanceState, event: &str, payload: &BTreeMap<String, Val>, budget: &mut Budget) -> Outcome`, pure:
+- `pub fn step(m, t, st, event, payload, budget) -> Outcome`, pure:
   1. Status gate: `Completed` → `run/instance_completed`; `Cancelled` → `run/instance_cancelled`.
-  2. Select per task `1402`.
+  2. Select per task `1404`.
   3. Resolve the target: `to` absent → internal (no exit/entry, leaf unchanged; observably different from an external self-transition, which computes `dom = parent(from)` and exits/re-enters); a history target resolves through `history_descent` with the instance's current binding.
   4. Action pipeline, ctx threading block to block: exit blocks inner → outer, then the transition block (**the only block that sees `evt`**), then entry blocks outer → inner. Each block is snapshot-internal (all RHS evaluated against the ctx left by the previous block, then applied atomically). Emits collect across all blocks in pipeline order under one global `k` counter. Any evaluation error in any block → `Rejected(run/action_error)` naming the block (`exit(state)` | `transition` | `entry(state)`) and span, with computed-but-discarded values of completed blocks preserved in the trace.
   5. History capture: for each compound in the exit set owning a history pseudostate, capture from the **pre-transition** configuration (deep = the pre leaf; shallow = the owner's direct child on the pre chain) into `history_after`, atomically with the transition.
   6. Invariants: **all** evaluated on the final ctx, never short-circuited; any `enforce` failure or evaluation error → `Rejected(run/invariant)` listing every failing invariant with traces; `monitor` failures collect into `monitor_flags` and never block.
   7. `status_after = Completed` iff the new leaf is terminal. Rejection at any point discards everything — ctx, configuration, history bindings, effects (`step` is pure; the caller commits only `Applied`).
-- `pub fn create(m: &CompiledMachine, t: &Tree, overrides: &BTreeMap<String, Val>) -> Result<Applied, Rejection>` — ctx₀ = declared inits + validated overrides; enter the root's initial descent outer → inner running entry blocks per the pipeline; collect effects; evaluate all invariants; `history` starts empty (creation exits nothing, so no captures). Creation failure is `run/create_failed` wrapping the inner error and full trace; there is no prior instance state, so the outcome is a pure function of (definition, overrides) — the shell never journals it, and no id or seq is consumed.
 
-Traces and state hash (task `1404`):
+Creation entry chain (task `1406`), `step.rs`:
+
+- `pub fn create(m: &CompiledMachine, t: &Tree, overrides: &BTreeMap<String, Val>) -> Result<Applied, Rejection>` — validate overrides against declared context types (same value rules as event fields); ctx₀ = declared inits + overrides; enter the root's initial descent outer → inner, reusing the pipeline's block-application helper for each entry block; collect effects under the same global `k`; evaluate all invariants on the final ctx; `history` starts empty (creation exits nothing, so no captures). Creation failure is `run/create_failed` wrapping the inner error and full trace; there is no prior instance state, so the outcome is a pure function of (definition, overrides) — the shell never journals it, and no id or seq is consumed.
+
+Traces and state hash (task `1407`):
 
 - `crates/fsm-core/src/trace.rs`: `pub struct DecisionTrace { pub candidates: Vec<LevelTrace>, pub pipeline: Vec<BlockTrace>, pub invariants: Vec<InvariantTrace> }` — `LevelTrace { source_state, transitions: Vec<CandidateTrace { transition_idx, guard: Evaluated(TraceNode) | NotConsidered } > }` in chain order; `BlockTrace { block: Exit(String) | Transition | Entry(String), sets: Vec<SetTrace { target, before, after, expr: TraceNode }>, emits: Vec<EmitTrace> }`; rejections carry the completed blocks' traces marked discarded. `pub fn to_value(&self) -> Value` renders the whole trace as JSON for `explain` and the API layer.
 - `crates/fsm-core/src/hashes.rs` gains `pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String` — tag `fsm:state:1` over the canonical Value `{format: "fsm.state/1", machine_id, instance_id, seq, status, state: <leaf>, ctx: {name: canonical string}, history: {compound: state}, pending: [sorted ids]}` (BTreeMap ordering makes ctx/history sorting free).
