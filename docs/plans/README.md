@@ -17,9 +17,9 @@ docs/plans/
 
 ## Task document contract
 
-Each task file has closed YAML frontmatter (`id`, `title`, four-digit `workstream`, `kind`, `depends_on`, `gated`, `touches`, `status`, and `merged_as`) followed by an exact title, ordered `**Steps:**`, and one falsifiable `- **Done when:**` criterion. Filenames, IDs, workstreams, dependencies, and repository-relative mutation footprints are validated as one DAG.
+Each task file has closed YAML frontmatter (`id`, `title`, four-digit `workstream`, `kind`, `depends_on`, `gated`, `touches`, `status`, and `merged_as`) followed by an exact title, ordered `**Steps:**`, and one falsifiable `- **Done when:**` criterion. Filenames, IDs, workstreams, dependencies, and repository-relative mutation footprints are validated as one DAG. A later task that owns source inside a crate whose `Cargo.toml` another task already claims will have that crate's manifest adopted into its footprint on generation.
 
-Before a generated blueprint is published, a critic model judges each task as a single independently testable target or a compound ticket. Compound tickets are handed back to the author to split. The host does not count types or commas.
+Before a generated blueprint is published, a critic model judges each task as a single independently testable target, a compound ticket, or a landlocked one. Compound and landlocked tickets are handed back to the author to split or to pin on the owner. The host does not count types or commas.
 
 Task lifecycle fields, landing OIDs, plan progress/integration evidence, and the root roll-up are coordinator-owned. Volatile checkpoints live outside the repository and cannot establish completion. A committed bundle is `Unregistered` until exact Phase R binds its validation base; after registration, dependency-ready ungated tasks are `Ready`. Working-tree-only bundles are `AwaitingCommit`.
 
