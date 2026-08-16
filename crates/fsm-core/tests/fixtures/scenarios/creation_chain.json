@@ -1,0 +1,1 @@
+{"machine":"inline","src":"{\"format\":\"fsm.machine/1\",\"name\":\"m\",\"states\":[{\"name\":\"c\",\"initial\":\"l\",\"states\":[{\"name\":\"l\"}]}],\"initial\":\"c\",\"context\":[],\"events\":[],\"transitions\":[]}","check":"create","entered":["c","l"]}

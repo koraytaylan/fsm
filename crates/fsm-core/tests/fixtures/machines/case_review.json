@@ -1,0 +1,63 @@
+{
+  "format": "fsm.machine/1",
+  "name": "case_review",
+  "description": "Reference machine for hierarchical selection, history, and invariants.",
+  "context": [
+    {"name": "visits", "ty": "int", "init": "0"},
+    {"name": "notes", "ty": "int", "init": "0"},
+    {"name": "score", "ty": "int", "init": "0"}
+  ],
+  "events": [
+    {"name": "docs_ok", "fields": []},
+    {"name": "scored", "fields": [{"name": "score", "ty": "int"}]},
+    {"name": "note_added", "fields": [{"name": "text", "ty": "str"}]},
+    {"name": "withdraw", "fields": []},
+    {"name": "suspend", "fields": []},
+    {"name": "resume", "fields": []}
+  ],
+  "effects": [
+    {"name": "notify", "fields": []}
+  ],
+  "states": [
+    {"name": "intake"},
+    {
+      "name": "in_review",
+      "initial": "docs_review",
+      "entry": {
+        "do": [{"target": "visits", "value": "ctx.visits + 1"}],
+        "emit": [{"effect": "notify", "args": {}}]
+      },
+      "exit": {
+        "do": [{"target": "notes", "value": "0"}]
+      },
+      "states": [
+        {"name": "resume_review", "history": "deep"},
+        {"name": "docs_review"},
+        {
+          "name": "risk_review",
+          "entry": {
+            "do": [{"target": "score", "value": "0"}]
+          }
+        }
+      ]
+    },
+    {"name": "suspended"},
+    {"name": "approved", "terminal": true},
+    {"name": "rejected", "terminal": true}
+  ],
+  "initial": "intake",
+  "on_unhandled": "reject",
+  "transitions": [
+    {"from": "intake", "on": "docs_ok", "to": "in_review"},
+    {"from": "docs_review", "on": "docs_ok", "to": "risk_review"},
+    {"from": "risk_review", "on": "scored", "if": "evt.score >= 700", "to": "approved"},
+    {"from": "risk_review", "on": "scored", "to": "rejected"},
+    {"from": "in_review", "on": "note_added", "do": [{"target": "notes", "value": "1"}]},
+    {"from": "in_review", "on": "withdraw", "to": "rejected"},
+    {"from": "in_review", "on": "suspend", "to": "suspended"},
+    {"from": "suspended", "on": "resume", "to": "resume_review"}
+  ],
+  "invariants": [
+    {"name": "score_range", "expr": "ctx.score >= 0", "mode": "enforce"}
+  ]
+}

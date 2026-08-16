@@ -1,0 +1,34 @@
+{"builtin":"min","src":"min(1, 3)","ty":"int","value":"1"}
+{"builtin":"min","src":"min(1.4, 1.50)","ty":"decimal(2)","value":"1.40"}
+{"builtin":"min","ctx":{"a":"ts:5","b":"ts:9"},"ctx_ty":{"a":"timestamp","b":"timestamp"},"src":"min(ctx.a, ctx.b)","ty":"timestamp","value":"5"}
+{"builtin":"min","err":"expr/type_mismatch","src":"min(1, 1.0)"}
+{"builtin":"max","src":"max(1, 3)","ty":"int","value":"3"}
+{"builtin":"max","src":"max(1.4, 1.50)","ty":"decimal(2)","value":"1.50"}
+{"builtin":"abs","src":"abs(-4)","ty":"int","value":"4"}
+{"builtin":"abs","ctx":{"d":"dur:-5"},"ctx_ty":{"d":"duration"},"src":"abs(ctx.d)","ty":"duration","value":"5"}
+{"builtin":"abs","ctx":{"n":"int:-9223372036854775808"},"ctx_ty":{"n":"int"},"err":"run/overflow","src":"abs(ctx.n)"}
+{"builtin":"abs","src":"abs(-1.50)","ty":"decimal(2)","value":"1.50"}
+{"builtin":"dec","src":"dec(1, 2)","ty":"decimal(2)","value":"1.00"}
+{"builtin":"dec","src":"dec(1.50, 4)","ty":"decimal(4)","value":"1.5000"}
+{"builtin":"dec","err":"expr/scale_narrow","hint_contains":"round","src":"dec(1.5000, 2)"}
+{"builtin":"dec","ctx_ty":{"x":"int"},"err":"expr/scale_not_literal","src":"dec(ctx.x, 13)"}
+{"builtin":"round","src":"round(2.345, 2, down)","ty":"decimal(2)","value":"2.34"}
+{"builtin":"round","src":"round(2.345, 2, up)","ty":"decimal(2)","value":"2.35"}
+{"builtin":"round","src":"round(2.345, 2, floor)","ty":"decimal(2)","value":"2.34"}
+{"builtin":"round","src":"round(2.345, 2, ceiling)","ty":"decimal(2)","value":"2.35"}
+{"builtin":"round","src":"round(2.345, 2, half_up)","ty":"decimal(2)","value":"2.35"}
+{"builtin":"round","src":"round(2.345, 2, half_down)","ty":"decimal(2)","value":"2.34"}
+{"builtin":"round","src":"round(2.345, 2, half_even)","ty":"decimal(2)","value":"2.34"}
+{"builtin":"round","src":"round(1.5, 4, half_even)","ty":"decimal(4)","value":"1.5000","warn":"expr/round_widens"}
+{"builtin":"round","ctx_ty":{"places":"int","rate":"decimal(4)"},"err":"expr/scale_not_literal","hint_contains":"runtime value","src":"round(ctx.rate, ctx.places, half_even)"}
+{"builtin":"div","src":"div(1, 3, 4, half_even)","ty":"decimal(4)","value":"0.3333"}
+{"builtin":"div","src":"div(10, 2, 0, down)","ty":"decimal(0)","value":"5"}
+{"builtin":"div","ctx":{"a":"dec:1.00@2"},"ctx_ty":{"a":"decimal(2)"},"err":"run/div_zero","src":"div(ctx.a, 0.00, 2, down)"}
+{"builtin":"div","ctx_ty":{"m":"str"},"err":"expr/mode_invalid","src":"div(1, 3, 2, ctx.m)"}
+{"builtin":"div","err":"expr/mode_invalid","hint_contains":"half_even","src":"div(1, 3, 2, half_evenn)"}
+{"builtin":"dur","src":"dur(5, min)","ty":"duration","value":"300000"}
+{"builtin":"dur","src":"dur(0, d)","ty":"duration","value":"0"}
+{"builtin":"dur","err":"run/overflow","src":"dur(9223372036854775807, d)"}
+{"builtin":"dur","err":"expr/mode_invalid","hint_contains":"ms","src":"dur(1, week)"}
+{"ctx_ty":{"a":"int"},"err":"expr/arity","hint_contains":"expected 2","src":"min(ctx.a)"}
+{"ctx_ty":{"a":"int"},"err":"expr/unknown_builtin","hint_contains":"min","src":"clamp(ctx.a, 1, 2)"}

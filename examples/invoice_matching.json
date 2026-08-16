@@ -1,0 +1,30 @@
+{
+  "format": "fsm.machine/1",
+  "name": "invoice_matching",
+  "description": "Exact decimal accumulation with a tolerance band.",
+  "context": [
+    {"name": "invoice_total", "ty": {"decimal": "2"}, "init": "100.00"},
+    {"name": "received_total", "ty": {"decimal": "2"}, "init": "0.00"},
+    {"name": "tolerance", "ty": {"decimal": "2"}, "init": "0.50"},
+    {"name": "ratio", "ty": {"decimal": "4"}, "init": "0.0000"}
+  ],
+  "events": [
+    {"name": "receive", "fields": [{"name": "amount", "ty": {"decimal": "2"}}]},
+    {"name": "match", "fields": []},
+    {"name": "dispute", "fields": [{"name": "reason", "ty": "str"}]}
+  ],
+  "states": [
+    {"name": "open"},
+    {"name": "matched", "terminal": true},
+    {"name": "disputed", "terminal": true}
+  ],
+  "initial": "open",
+  "transitions": [
+    {"from": "open", "on": "receive", "do": [
+      {"target": "received_total", "value": "ctx.received_total + evt.amount"},
+      {"target": "ratio", "value": "div(ctx.received_total + evt.amount, ctx.invoice_total, 4, half_even)"}
+    ]},
+    {"from": "open", "on": "match", "if": "abs(ctx.invoice_total - ctx.received_total) <= ctx.tolerance", "to": "matched"},
+    {"from": "open", "on": "dispute", "to": "disputed"}
+  ]
+}

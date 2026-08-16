@@ -1,0 +1,16 @@
+[package]
+name = "fsm-cli"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fsm"
+path = "src/main.rs"
+
+[dependencies]
+fsm-core = { path = "../fsm-core" }
+
+[lints]
+workspace = true

@@ -1,0 +1,46 @@
+{
+  "format": "fsm.machine/1",
+  "name": "order_lifecycle",
+  "description": "Effects, acknowledgement, and a stamped confirmation.",
+  "context": [
+    {"name": "notes", "ty": "int", "init": "0"}
+  ],
+  "events": [
+    {"name": "place", "fields": []},
+    {"name": "pick", "fields": []},
+    {"name": "ship", "fields": []},
+    {"name": "confirmed", "fields": [{"name": "at", "ty": "timestamp"}]},
+    {"name": "note_added", "fields": [{"name": "text", "ty": "str"}]},
+    {"name": "cancel", "fields": []}
+  ],
+  "effects": [
+    {"name": "request_confirmation", "fields": []}
+  ],
+  "states": [
+    {"name": "placed"},
+    {
+      "name": "fulfilment",
+      "initial": "picking",
+      "entry": {
+        "emit": [{"effect": "request_confirmation", "args": {}}]
+      },
+      "states": [
+        {"name": "picking"},
+        {"name": "shipping"}
+      ]
+    },
+    {"name": "awaiting_confirmation"},
+    {"name": "closed", "terminal": true},
+    {"name": "cancelled", "terminal": true}
+  ],
+  "initial": "placed",
+  "transitions": [
+    {"from": "placed", "on": "place", "to": "fulfilment"},
+    {"from": "picking", "on": "pick", "to": "shipping"},
+    {"from": "shipping", "on": "ship", "to": "awaiting_confirmation"},
+    {"from": "awaiting_confirmation", "on": "confirmed", "to": "closed"},
+    {"from": "fulfilment", "on": "note_added", "do": [{"target": "notes", "value": "1"}]},
+    {"from": "fulfilment", "on": "cancel", "to": "cancelled"},
+    {"from": "placed", "on": "cancel", "to": "cancelled"}
+  ]
+}

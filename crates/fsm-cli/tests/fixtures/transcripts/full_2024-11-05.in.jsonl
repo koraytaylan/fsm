@@ -1,0 +1,12 @@
+{"id":1,"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05"}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"id":2,"jsonrpc":"2.0","method":"resources/list"}
+{"id":3,"jsonrpc":"2.0","method":"prompts/get","params":{"name":"author_machine","arguments":{"goal":"review a case"}}}
+{"id":4,"jsonrpc":"2.0","method":"tools/call","params":{"name":"machine_create","arguments":{"dry_run":true,"spec":{"context":[{"init":"0","name":"n","ty":"int"}],"effects":[{"fields":[],"name":"notify"}],"events":[{"fields":[],"name":"start"},{"fields":[],"name":"confirmed"}],"format":"fsm.machine/1","initial":"idle","name":"flow","states":[{"name":"idle"},{"entry":{"emit":[{"args":{},"effect":"notify"}]},"name":"working"},{"name":"done","terminal":true}],"transitions":[{"from":"idle","if":"ctx.m == 0","on":"start","to":"working"},{"from":"working","on":"confirmed","to":"done"}]}}}}
+{"id":5,"jsonrpc":"2.0","method":"tools/call","params":{"name":"machine_create","arguments":{"spec":{"context":[{"init":"0","name":"n","ty":"int"}],"effects":[{"fields":[],"name":"notify"}],"events":[{"fields":[],"name":"start"},{"fields":[],"name":"confirmed"}],"format":"fsm.machine/1","initial":"idle","name":"flow","states":[{"name":"idle"},{"entry":{"emit":[{"args":{},"effect":"notify"}]},"name":"working"},{"name":"done","terminal":true}],"transitions":[{"from":"idle","on":"start","to":"working"},{"from":"working","on":"confirmed","to":"done"}]}}}}
+{"id":6,"jsonrpc":"2.0","method":"tools/call","params":{"name":"instance_create","arguments":{"machine":"flow","request_id":"c1"}}}
+{"id":7,"jsonrpc":"2.0","method":"tools/call","params":{"name":"instance_send","arguments":{"event":{"name":"start"},"instance_id":"inst-c1","request_id":"s1"}}}
+{"id":8,"jsonrpc":"2.0","method":"tools/call","params":{"name":"effect_ack","arguments":{"effect_id":"inst-c1/3/0","instance_id":"inst-c1","outcome":"ok","request_id":"a1"}}}
+{"id":9,"jsonrpc":"2.0","method":"tools/call","params":{"name":"instance_send","arguments":{"event":{"name":"confirmed"},"instance_id":"inst-c1","request_id":"s2"}}}
+{"id":10,"jsonrpc":"2.0","method":"tools/call","params":{"name":"instance_history","arguments":{"include_trace":true,"instance_id":"inst-c1"}}}
+{"id":11,"jsonrpc":"2.0","method":"tools/call","params":{"name":"simulate","arguments":{"events":[{"name":"start"},{"name":"confirmed"}],"machine":"flow"}}}

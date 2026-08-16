@@ -1,0 +1,1 @@
+{"machine":"inline","src":"{\"format\":\"fsm.machine/1\",\"name\":\"m\",\"states\":[{\"name\":\"c\",\"initial\":\"l\",\"states\":[{\"name\":\"l\"}]}],\"initial\":\"c\",\"context\":[],\"events\":[{\"name\":\"e\",\"fields\":[]}],\"transitions\":[{\"from\":\"l\",\"on\":\"e\",\"to\":\"c\"}]}","events":[{"on":"e"}],"exited":["l","c"],"entered":["c","l"]}

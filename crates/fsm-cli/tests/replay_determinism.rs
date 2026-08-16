@@ -1,0 +1,57 @@
+use std::fs;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use fsm_cli::journal_io::{JournalHealth, classify, init, load_records, verify};
+use fsm_cli::store::Store;
+use fsm_core::json::{JsonLimits, Value, parse};
+use fsm_core::record::RecordKind;
+use fsm_core::replay::{NopSink, fold_with};
+
+fn tmp() -> PathBuf {
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let p = std::env::temp_dir().join(format!("fsm-rd-{n}"));
+    fs::create_dir_all(&p).unwrap();
+    p
+}
+
+#[test]
+fn mixed_session_and_refold() {
+    fsm_cli::clock::force_ms(1);
+    let dir = tmp();
+    let mut s = Store::open(&dir).unwrap();
+    let def = parse(
+        include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    s.define_machine(def.clone(), false, false).unwrap();
+    s.create_instance("case_review", "i1", "c1", None).unwrap();
+    s.send_event("i1", "docs_ok", Value::Obj(Default::default()), "e1", None)
+        .unwrap();
+    let _ = s.send_event("i1", "scored", Value::Obj(Default::default()), "e2", None);
+    s.cancel_instance("i1", "k1").unwrap();
+    s.annotate("i1", "a1", "note").unwrap();
+    let recs = load_records(&dir).unwrap();
+    let kinds: std::collections::BTreeSet<_> = recs.iter().map(|r| r.kind).collect();
+    assert!(kinds.contains(&RecordKind::Genesis));
+    assert!(kinds.contains(&RecordKind::MachineDefined));
+    assert!(kinds.contains(&RecordKind::InstanceCreated));
+    let st = fold_with(recs, &mut NopSink).unwrap();
+    assert!(!st.machines.is_empty());
+    s.shutdown_snapshot().ok();
+    let v = verify(&dir);
+    assert!(matches!(v.health, JournalHealth::Ok));
+    fsm_cli::clock::reset_injected();
+}
+
+#[test]
+fn verify_classifies_constructed() {
+    let dir = tmp();
+    let _ = init(&dir).unwrap();
+    assert!(matches!(classify(&dir), JournalHealth::Ok));
+    assert!(matches!(verify(&dir).health, JournalHealth::Ok));
+}

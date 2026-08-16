@@ -1,0 +1,251 @@
+//! Drive the real `fsm` binary against the authored 2701 session and structured fixtures.
+
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static N: AtomicU64 = AtomicU64::new(0);
+
+fn bin() -> &'static str {
+    env!("CARGO_BIN_EXE_fsm")
+}
+
+fn spec() -> String {
+    format!(
+        "{}/../fsm-core/tests/fixtures/machines/case_review.json",
+        env!("CARGO_MANIFEST_DIR")
+    )
+}
+
+fn fixtures() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+struct Step {
+    name: String,
+    argv: Vec<String>,
+    exit: i32,
+    stdout: String,
+    stderr: String,
+}
+
+fn parse_session(text: &str, spec_path: &str) -> Vec<Step> {
+    let mut steps = Vec::new();
+    let mut name = String::new();
+    let mut argv = Vec::new();
+    let mut exit = 0i32;
+    let mut mode = "";
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let flush = |steps: &mut Vec<Step>,
+                 name: &mut String,
+                 argv: &mut Vec<String>,
+                 exit: i32,
+                 stdout: &mut String,
+                 stderr: &mut String| {
+        if name.is_empty() {
+            return;
+        }
+        steps.push(Step {
+            name: name.clone(),
+            argv: argv.clone(),
+            exit,
+            stdout: stdout.clone(),
+            stderr: stderr.clone(),
+        });
+        name.clear();
+        argv.clear();
+        stdout.clear();
+        stderr.clear();
+    };
+    for line in text.lines() {
+        if let Some(n) = line.strip_prefix('[') {
+            if let Some(n) = n.strip_suffix(']') {
+                flush(
+                    &mut steps,
+                    &mut name,
+                    &mut argv,
+                    exit,
+                    &mut stdout,
+                    &mut stderr,
+                );
+                name = n.to_string();
+                exit = 0;
+                mode = "";
+                continue;
+            }
+        }
+        if let Some(rest) = line.strip_prefix("argv: ") {
+            argv = rest
+                .split_whitespace()
+                .map(|t| {
+                    if t == "SPEC" {
+                        spec_path.to_string()
+                    } else {
+                        t.to_string()
+                    }
+                })
+                .collect();
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("exit: ") {
+            exit = rest.parse().unwrap();
+            continue;
+        }
+        if line == "--- stdout ---" {
+            mode = "stdout";
+            continue;
+        }
+        if line == "--- stderr ---" {
+            mode = "stderr";
+            continue;
+        }
+        match mode {
+            "stdout" => {
+                stdout.push_str(line);
+                stdout.push('\n');
+            }
+            "stderr" => {
+                stderr.push_str(line);
+                stderr.push('\n');
+            }
+            _ => {}
+        }
+    }
+    flush(
+        &mut steps,
+        &mut name,
+        &mut argv,
+        exit,
+        &mut stdout,
+        &mut stderr,
+    );
+    steps
+}
+
+fn tmp() -> PathBuf {
+    let n = N.fetch_add(1, Ordering::SeqCst);
+    let p = std::env::temp_dir().join(format!("fsm-golden-{}-{n}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&p);
+    std::fs::create_dir_all(&p).unwrap();
+    p
+}
+
+fn run(dir: &Path, args: &[String], json: bool) -> (i32, String, String) {
+    let mut cmd = Command::new(bin());
+    cmd.args(args)
+        .arg(format!("--data-dir={}", dir.display()))
+        .env("FSM_CLOCK_MS", "5000")
+        .env("NO_COLOR", "1");
+    if json {
+        cmd.arg("--json");
+    }
+    let out = cmd.output().unwrap();
+    (
+        out.status.code().unwrap_or(255),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+fn drive_human(dir: &Path, steps: &[Step]) -> Vec<(String, String)> {
+    let mut streams = Vec::new();
+    for step in steps {
+        let (code, out, err) = run(dir, &step.argv, false);
+        assert_eq!(
+            code, step.exit,
+            "step {} {code} stdout={out} stderr={err}",
+            step.name
+        );
+        assert_eq!(out, step.stdout, "stdout {}", step.name);
+        if step.exit == 0 {
+            assert!(err.is_empty(), "stderr {} not empty: {err}", step.name);
+        } else {
+            assert!(out.is_empty(), "failure stdout {} not empty", step.name);
+            assert_eq!(err, step.stderr, "stderr {}", step.name);
+        }
+        if !out.is_empty() {
+            assert!(
+                out.ends_with('\n') && !out[..out.len() - 1].contains('\n') || out.ends_with('\n')
+            );
+            assert_eq!(out.chars().filter(|&c| c == '\n').count() > 0, true);
+            assert!(
+                !out.ends_with("\n\n"),
+                "double trailing newline {}",
+                step.name
+            );
+        }
+        streams.push((out, err));
+    }
+    streams
+}
+
+fn drive_json(dir: &Path, steps: &[Step]) {
+    let struct_dir = fixtures().join("structured");
+    let mut used = BTreeSet::new();
+    for step in steps {
+        const CLI_ONLY: &[&str] = &["annotate", "journal_verify"];
+        let (code, out, err) = run(dir, &step.argv, true);
+        if CLI_ONLY.contains(&step.name.as_str()) {
+            assert_eq!(code, step.exit, "json {} skipped-fixture", step.name);
+            continue;
+        }
+        let path = struct_dir.join(format!("{}.json", step.name));
+        assert!(
+            path.exists(),
+            "missing structured fixture {}.json",
+            step.name
+        );
+        used.insert(format!("{}.json", step.name));
+        assert_eq!(code, step.exit, "json {} {err}", step.name);
+        let want = std::fs::read_to_string(&path).unwrap();
+        if step.exit == 0 {
+            assert_eq!(out, want, "json stdout {}", step.name);
+            assert!(err.is_empty(), "json stderr {}", step.name);
+        } else {
+            assert!(out.is_empty(), "json failure stdout {}", step.name);
+            assert_eq!(err, want, "json stderr {}", step.name);
+        }
+        let got = if step.exit == 0 { &out } else { &err };
+        assert!(got.ends_with('\n'), "json missing newline {}", step.name);
+        assert!(
+            !got[..got.len() - 1].ends_with('\n'),
+            "json extra newline {}",
+            step.name
+        );
+    }
+    let on_disk: BTreeSet<String> = std::fs::read_dir(&struct_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".json"))
+        .collect();
+    assert_eq!(used, on_disk, "orphan structured fixtures");
+}
+
+#[test]
+fn session_transcript() {
+    let text = include_str!("fixtures/sessions/case_review.txt");
+    let steps = parse_session(text, &spec());
+    assert_eq!(steps.len(), 10);
+    let dir = tmp();
+    let a = drive_human(&dir, &steps);
+    let dirj = tmp();
+    drive_json(&dirj, &steps);
+    let dir2 = tmp();
+    let b = drive_human(&dir2, &steps);
+    assert_eq!(a, b, "human streams not deterministic");
+    let dirj2 = tmp();
+    drive_json(&dirj2, &steps);
+}
+
+#[test]
+fn version_and_docs() {
+    let out = Command::new(bin()).args(["version"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        format!("{}\n", env!("CARGO_PKG_VERSION"))
+    );
+}

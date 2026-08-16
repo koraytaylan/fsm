@@ -1,0 +1,2 @@
+{"file":"../machines/case_review.json","id":"case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c"}
+{"inline":{"context":[],"events":[],"format":"fsm.machine/1","initial":"only","name":"mini","states":[{"name":"only"}],"transitions":[]},"id":"mini@sha256:fbdc3f2128e9c4c98bfa1fc3dd5c4c505993e10f4f8d1ed01e709a7b9accbc2c"}

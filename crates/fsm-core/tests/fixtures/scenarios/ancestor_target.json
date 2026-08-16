@@ -1,0 +1,1 @@
+{"machine":"case_review","events":[{"on":"docs_ok"},{"on":"withdraw"}],"exited":["docs_review","in_review"],"entered":["rejected"]}

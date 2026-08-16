@@ -1,0 +1,13 @@
+{"src":"2 + 3 * 4","value":"14"}
+{"src":"1.5 + 0.25","value":"1.75"}
+{"src":"1.5 == 1.50","value":"true"}
+{"ctx":{"d":"dur:250","t":"ts:1000"},"src":"ctx.t + ctx.d","value":"1250"}
+{"ctx":{"t":"ts:1000","u":"ts:200"},"src":"ctx.t - ctx.u","value":"800"}
+{"ctx":{"r":"enum:Risk.low"},"src":"ctx.r == Risk.low","value":"true"}
+{"ctx":{"s":"str:hi"},"src":"ctx.s == \"hi\"","value":"true"}
+{"src":"false and (9223372036854775807 + 1 > 0)","value":"false"}
+{"src":"true or (9223372036854775807 + 1 > 0)","value":"true"}
+{"src":"if false then 9223372036854775807 + 1 else 1","value":"1"}
+{"ctx":{"n":"int:-9223372036854775808"},"detail_contains":"-9223372036854775808","err":"run/overflow","src":"-(ctx.n)"}
+{"detail_contains":"9223372036854775807","err":"run/overflow","src":"9223372036854775807 + 1"}
+{"ctx":{"a":"dec:99999999999999999999999999999999999999@0","b":"dec:1@0"},"err":"run/overflow","src":"ctx.a + ctx.b"}

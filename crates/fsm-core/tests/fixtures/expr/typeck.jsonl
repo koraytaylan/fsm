@@ -1,0 +1,36 @@
+{"ctx":{"total":"decimal(2)"},"err":"expr/mixed_class","hint_contains":"dec(1, 2)","src":"ctx.total + 1"}
+{"evt":{"express":"bool"},"src":"if evt.express then 2.50 else 1.0","ty":"decimal(2)"}
+{"err":"expr/type_mismatch","evt":{"express":"bool"},"src":"if evt.express then 2.50 else 1"}
+{"src":"1 + 2","ty":"int"}
+{"src":"1.0 + 1.00","ty":"decimal(2)"}
+{"ctx":{"d":"duration","t":"timestamp"},"src":"ctx.t + ctx.d","ty":"timestamp"}
+{"ctx":{"d":"duration","t":"timestamp"},"src":"ctx.d + ctx.t","ty":"timestamp"}
+{"ctx":{"t":"timestamp"},"src":"ctx.t - ctx.t","ty":"duration"}
+{"ctx":{"d":"duration","t":"timestamp"},"src":"ctx.t - ctx.d","ty":"timestamp"}
+{"ctx":{"d":"duration"},"src":"ctx.d - ctx.d","ty":"duration"}
+{"src":"1.00 * 2","ty":"decimal(2)"}
+{"src":"2 * 1.00","ty":"decimal(2)"}
+{"err":"expr/scale_cap","src":"1.0000000 * 1.000000"}
+{"ctx":{"d":"duration"},"src":"ctx.d * 2","ty":"duration"}
+{"ctx":{"s":"str"},"err":"expr/type_mismatch","src":"ctx.s + ctx.s"}
+{"ctx":{"s":"str"},"err":"expr/type_mismatch","src":"-ctx.s"}
+{"src":"1.5 == 1.50","ty":"bool"}
+{"ctx":{"a":"int","b":"int"},"src":"ctx.a < ctx.b","ty":"bool"}
+{"ctx":{"x":"decimal(2)","y":"decimal(2)"},"src":"ctx.x < ctx.y","ty":"bool"}
+{"ctx":{"t":"timestamp"},"src":"ctx.t < ctx.t","ty":"bool"}
+{"ctx":{"d":"duration"},"src":"ctx.d < ctx.d","ty":"bool"}
+{"ctx":{"s":"str"},"err":"expr/cmp_unordered","src":"ctx.s < ctx.s"}
+{"enums":{"Risk":["low","high"]},"err":"expr/cmp_unordered","src":"Risk.low < Risk.high"}
+{"enums":{"Risk":["low","high"]},"src":"Risk.low == Risk.high","ty":"bool"}
+{"enums":{"Other":["x"],"Risk":["low","high"]},"err":"expr/type_mismatch","src":"Risk.low == Other.x"}
+{"err":"expr/type_mismatch","src":"true and 1"}
+{"err":"expr/type_mismatch","src":"if 1 then true else false"}
+{"err":"expr/evt_in_invariant","evt":{"amount":"decimal(2)"},"scope":"invariant","src":"evt.amount > 0.00"}
+{"err":"expr/evt_in_block","evt":{"amount":"decimal(2)"},"scope":"block","src":"evt.amount > 0.00"}
+{"evt":{"amount":"decimal(2)"},"scope":"guard","src":"evt.amount > 0.00","ty":"bool"}
+{"ctx":{"limit":"decimal(2)"},"err":"expr/unknown_var","hint_contains":"limit","src":"ctx.limit_nam"}
+{"err":"expr/unknown_field","evt":{"amount":"decimal(2)"},"hint_contains":"amount","src":"evt.amonut"}
+{"enums":{"Risk":["low","high"]},"err":"expr/unknown_enum","hint_contains":"Risk","src":"Rsk.low"}
+{"enums":{"Risk":["low","high"]},"err":"expr/unknown_variant","hint_contains":"low","src":"Risk.lo"}
+{"ctx":{"r":"decimal(2)"},"err":"expr/unknown_builtin","hint_contains":"min","src":"nope(ctx.r)"}
+{"ctx":{"total":"decimal(2)"},"err":"expr/mixed_class","hint_contains":"1.00","src":"ctx.total + 1"}

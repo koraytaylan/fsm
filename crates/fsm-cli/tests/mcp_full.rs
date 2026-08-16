@@ -1,0 +1,109 @@
+//! Byte-exact full-session MCP transcripts per negotiated revision.
+
+use std::io::Cursor;
+
+use fsm_cli::clock::{self, SystemClock};
+use fsm_cli::mcp::serve::serve_session;
+use fsm_cli::mcp::tools::names;
+use fsm_cli::store::Store;
+
+static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn drive(input: &str) -> String {
+    let _g = LOCK.lock().unwrap();
+    let dir = std::env::temp_dir().join(format!(
+        "fsm-full-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    clock::reset_injected();
+    clock::force_ms(1_000);
+    clock::set_step(1);
+    let mut store = Store::open(&dir).unwrap();
+    let mut clk = SystemClock;
+    let mut out = Vec::new();
+    serve_session(
+        Some(&mut store),
+        &mut clk,
+        Cursor::new(input.as_bytes()),
+        &mut out,
+    )
+    .unwrap();
+    String::from_utf8(out).unwrap()
+}
+
+fn assert_transcript(ver: &str) {
+    let input = match ver {
+        "2025-06-18" => include_str!("fixtures/transcripts/full_2025-06-18.in.jsonl"),
+        "2025-03-26" => include_str!("fixtures/transcripts/full_2025-03-26.in.jsonl"),
+        "2024-11-05" => include_str!("fixtures/transcripts/full_2024-11-05.in.jsonl"),
+        _ => unreachable!(),
+    };
+    let expected = match ver {
+        "2025-06-18" => include_str!("fixtures/transcripts/full_2025-06-18.out.jsonl"),
+        "2025-03-26" => include_str!("fixtures/transcripts/full_2025-03-26.out.jsonl"),
+        "2024-11-05" => include_str!("fixtures/transcripts/full_2024-11-05.out.jsonl"),
+        _ => unreachable!(),
+    };
+    let got = drive(input);
+    assert_eq!(got, expected, "transcript {ver}");
+}
+
+#[test]
+fn thirteen_tools_in_order() {
+    assert_eq!(
+        names(),
+        [
+            "machine_create",
+            "machine_list",
+            "machine_get",
+            "machine_analyze",
+            "machine_diagram",
+            "instance_create",
+            "instance_send",
+            "effect_ack",
+            "instance_cancel",
+            "instance_get",
+            "instance_list",
+            "instance_history",
+            "simulate",
+        ]
+    );
+}
+
+#[test]
+fn full_2025_06_18() {
+    assert_transcript("2025-06-18");
+}
+
+#[test]
+fn full_2025_03_26() {
+    assert_transcript("2025-03-26");
+}
+
+#[test]
+fn full_2024_11_05() {
+    assert_transcript("2024-11-05");
+}
+
+#[test]
+fn cross_revision_invariance() {
+    let a = include_str!("fixtures/transcripts/full_2025-06-18.out.jsonl");
+    let b = include_str!("fixtures/transcripts/full_2025-03-26.out.jsonl")
+        .replace("2025-03-26", "2025-06-18");
+    let c = include_str!("fixtures/transcripts/full_2024-11-05.out.jsonl")
+        .replace("2024-11-05", "2025-06-18");
+    assert_eq!(a, b);
+    assert_eq!(a, c);
+}
+
+#[test]
+fn determinism_twice() {
+    let input = include_str!("fixtures/transcripts/full_2025-06-18.in.jsonl");
+    assert_eq!(drive(input), drive(input));
+}

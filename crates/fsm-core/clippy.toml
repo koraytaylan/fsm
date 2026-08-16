@@ -1,0 +1,6 @@
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "fsm-core is pure and platform-deterministic; use BTreeMap/BTreeSet; time enters as data" },
+    { path = "std::collections::HashSet", reason = "fsm-core is pure and platform-deterministic; use BTreeMap/BTreeSet; time enters as data" },
+    { path = "std::time::SystemTime", reason = "fsm-core is pure and platform-deterministic; use BTreeMap/BTreeSet; time enters as data" },
+    { path = "std::time::Instant", reason = "fsm-core is pure and platform-deterministic; use BTreeMap/BTreeSet; time enters as data" },
+]

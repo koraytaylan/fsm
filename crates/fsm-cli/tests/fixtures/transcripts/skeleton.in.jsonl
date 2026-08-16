@@ -1,0 +1,9 @@
+{"id":1,"jsonrpc":"2.0","method":"ping"}
+{"id":2,"jsonrpc":"2.0","method":"tools/list"}
+{"id":3,"jsonrpc":"2.0","method":"initialize","params":{"capabilities":{},"clientInfo":{"name":"test","version":"0"},"protocolVersion":"2025-11-25"}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"id":4,"jsonrpc":"2.0","method":"tools/list"}
+{"id":5,"jsonrpc":"2.0","method":"tools/call","params":{"arguments":{},"name":"fsm_ping"}}
+[{"id":6,"jsonrpc":"2.0","method":"ping"}]
+{"id":7,"jsonrpc":"2.0","method":"no/such"}
+{not json

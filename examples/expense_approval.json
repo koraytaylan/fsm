@@ -1,0 +1,42 @@
+{
+  "format": "fsm.machine/1",
+  "name": "expense_approval",
+  "description": "Hierarchical review with a decimal limit guard and ancestor withdraw.",
+  "context": [
+    {"name": "limit", "ty": {"decimal": "2"}, "init": "500.00"},
+    {"name": "total", "ty": {"decimal": "2"}, "init": "0.00"},
+    {"name": "approvals", "ty": "int", "init": "0"}
+  ],
+  "events": [
+    {"name": "submit", "fields": [{"name": "amount", "ty": {"decimal": "2"}}]},
+    {"name": "approve", "fields": []},
+    {"name": "refuse", "fields": []},
+    {"name": "withdraw", "fields": []}
+  ],
+  "states": [
+    {"name": "draft"},
+    {
+      "name": "review",
+      "initial": "peer_review",
+      "states": [
+        {"name": "peer_review"},
+        {"name": "manager_review"}
+      ]
+    },
+    {"name": "approved", "terminal": true},
+    {"name": "refused", "terminal": true}
+  ],
+  "initial": "draft",
+  "transitions": [
+    {"from": "draft", "on": "submit", "if": "evt.amount <= ctx.limit", "to": "peer_review", "do": [{"target": "total", "value": "evt.amount"}]},
+    {"from": "draft", "on": "submit", "to": "manager_review", "do": [{"target": "total", "value": "evt.amount"}]},
+    {"from": "peer_review", "on": "approve", "to": "approved", "do": [{"target": "approvals", "value": "ctx.approvals + 1"}]},
+    {"from": "manager_review", "on": "approve", "to": "approved", "do": [{"target": "approvals", "value": "ctx.approvals + 1"}]},
+    {"from": "manager_review", "on": "withdraw", "to": "draft"},
+    {"from": "review", "on": "withdraw", "to": "draft"},
+    {"from": "review", "on": "refuse", "to": "refused"}
+  ],
+  "invariants": [
+    {"name": "nonneg", "expr": "ctx.total >= 0.00", "mode": "enforce"}
+  ]
+}

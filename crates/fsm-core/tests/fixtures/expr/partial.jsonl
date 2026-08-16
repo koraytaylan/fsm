@@ -1,0 +1,9 @@
+{"src":"evt.amount > 100.00","truth":"unknown"}
+{"src":"evt.amount + 1.00 > 0.00","truth":"unknown"}
+{"src":"if evt.ok then true else false","truth":"unknown"}
+{"src":"min(evt.a, 1) > 0","truth":"unknown"}
+{"ctx":{"flag":"bool:false"},"src":"ctx.flag and evt.x > 1","truth":"false"}
+{"ctx":{"flag":"bool:true"},"src":"ctx.flag or evt.x > 1","truth":"true"}
+{"ctx":{"limit":"dec:1.00@2"},"src":"ctx.limit > 0.00","truth":"true"}
+{"ctx":{"limit":"dec:0.00@2"},"src":"ctx.limit > 0.00","truth":"false"}
+{"src":"9223372036854775807 + 1 > 0","truth":"unknown"}

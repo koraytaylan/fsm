@@ -1,0 +1,59 @@
+//! Partial-evaluation corpus.
+
+use std::collections::BTreeMap;
+
+use fsm_core::decimal::Dec;
+use fsm_core::expr::eval::{Budget, Val};
+use fsm_core::expr::parser::parse;
+use fsm_core::expr::partial::{Truth, partial_eval_bool};
+use fsm_core::json::{JsonLimits, Value, parse as json_parse};
+
+fn s<'a>(v: &'a Value, k: &str) -> Option<&'a str> {
+    v.get(k).and_then(Value::as_str)
+}
+
+fn parse_val(spec: &str) -> Val {
+    let (tag, rest) = spec.split_once(':').unwrap();
+    match tag {
+        "bool" => Val::Bool(rest == "true"),
+        "int" => Val::Int(rest.parse().unwrap()),
+        "dec" => {
+            let (d, sc) = rest.split_once('@').unwrap();
+            Val::Dec(Dec::parse(d, sc.parse().unwrap()).unwrap())
+        }
+        _ => panic!("{spec}"),
+    }
+}
+
+#[test]
+fn partial_jsonl() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/expr/partial.jsonl"
+    ))
+    .unwrap();
+    for (idx, line) in text.lines().enumerate() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let rec = json_parse(line.as_bytes(), &JsonLimits::DEFAULT)
+            .unwrap_or_else(|e| panic!("line {}: {e:?}", idx + 1));
+        let src = s(&rec, "src").unwrap();
+        let e = parse(src).unwrap();
+        let mut ctx = BTreeMap::new();
+        if let Some(obj) = rec.get("ctx").and_then(Value::as_obj) {
+            for (k, val) in obj {
+                ctx.insert(k.clone(), parse_val(val.as_str().unwrap()));
+            }
+        }
+        let mut bud = Budget::new(4096);
+        let got = partial_eval_bool(&e, &ctx, &mut bud);
+        let want = match s(&rec, "truth").unwrap() {
+            "true" => Truth::True,
+            "false" => Truth::False,
+            "unknown" => Truth::Unknown,
+            other => panic!("{other}"),
+        };
+        assert_eq!(got, want, "line {} src={src}", idx + 1);
+    }
+}

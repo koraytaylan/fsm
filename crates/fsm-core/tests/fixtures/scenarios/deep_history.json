@@ -1,0 +1,1 @@
+{"machine":"case_review","events":[{"on":"docs_ok"},{"on":"docs_ok"},{"on":"suspend"},{"on":"resume"}],"exited":["suspended"],"entered":["in_review","risk_review"]}

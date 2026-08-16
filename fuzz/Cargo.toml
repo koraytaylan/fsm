@@ -1,0 +1,48 @@
+[package]
+name = "fsm-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+fsm-core = { path = "../crates/fsm-core" }
+fsm-cli = { path = "../crates/fsm-cli" }
+
+[[bin]]
+name = "json_parse"
+path = "fuzz_targets/json_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "expr_parse"
+path = "fuzz_targets/expr_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "decimal_parse"
+path = "fuzz_targets/decimal_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "canon_roundtrip"
+path = "fuzz_targets/canon_roundtrip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "record_line"
+path = "fuzz_targets/record_line.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "jsonrpc_loop"
+path = "fuzz_targets/jsonrpc_loop.rs"
+test = false
+doc = false

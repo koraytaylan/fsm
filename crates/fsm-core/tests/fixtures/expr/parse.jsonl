@@ -1,0 +1,31 @@
+{"ast":"(add (ctx a) (mul (ctx b) (ctx c)))","src":"ctx.a + ctx.b * ctx.c"}
+{"ast":"(mul (neg (ctx a)) (ctx b))","src":"-ctx.a * ctx.b"}
+{"ast":"(sub (sub (ctx a) (ctx b)) (ctx c))","src":"ctx.a - ctx.b - ctx.c"}
+{"ast":"(and (not (ctx a)) (ctx b))","src":"not ctx.a and ctx.b"}
+{"ast":"(or (ctx a) (and (ctx b) (ctx c)))","src":"ctx.a or ctx.b and ctx.c"}
+{"ast":"(mul (add (ctx a) (ctx b)) (ctx c))","src":"(ctx.a + ctx.b) * ctx.c"}
+{"ast":"(neg (mul (ctx a) (ctx b)))","src":"-(ctx.a * ctx.b)"}
+{"ast":"(sub (sub (ctx a) (ctx b)) (ctx c))","src":"(ctx.a - ctx.b) - ctx.c"}
+{"ast":"(not (and (ctx a) (ctx b)))","src":"not (ctx.a and ctx.b)"}
+{"ast":"(and (or (ctx a) (ctx b)) (ctx c))","src":"(ctx.a or ctx.b) and ctx.c"}
+{"ast":"(if (ctx a) 1 (if (ctx b) 2 3))","src":"if ctx.a then 1 else if ctx.b then 2 else 3"}
+{"ast":"(if (ctx a) (if (ctx b) 1 2) 3)","src":"if ctx.a then if ctx.b then 1 else 2 else 3"}
+{"ast":"(cmp == (ctx a) (enum Risk low))","src":"ctx.a == Risk.low"}
+{"ast":"\"hi\"","src":"\"hi\""}
+{"ast":"true","src":"true"}
+{"ast":"false","src":"false"}
+{"ast":"42","src":"42"}
+{"ast":"1.50","src":"1.50"}
+{"ast":"(call round (ctx r) 2 (word half_even))","src":"round(ctx.r, 2, half_even)"}
+{"ast":"(call min (ctx a) (ctx b))","src":"min(ctx.a, ctx.b)"}
+{"ast":"(call f)","src":"f()"}
+{"err":"expr/chained_cmp","hint":"use `and` to combine comparisons","span":[14,15],"src":"ctx.a < ctx.b < ctx.c"}
+{"err":"expr/int_range","src":"12345678901234567890"}
+{"err":"expr/dec_range","src":"123456789012345678901234567890123456789.0"}
+{"err":"expr/dec_range","src":"1.0000000000000"}
+{"err":"expr/lex","hint_contains":"div(a, b, scale, mode)","src":"a / b"}
+{"err":"expr/parse","hint_contains":"identifier","src":"ctx."}
+{"err":"expr/parse","hint_contains":")","src":"(ctx.a"}
+{"err":"expr/parse","src":"1 2"}
+{"err":"expr/too_deep","src":"(((((((((((((((((((((((((((((((((true)))))))))))))))))))))))))))))))))"}
+{"err":"expr/too_long","src":"1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1"}

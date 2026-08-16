@@ -1,0 +1,6 @@
+{"body":{"created_ts":"0","format":"fsm.journal/1","limits":{}},"hash":"00","kind":"genesis","prev":"0000000000000000000000000000000000000000000000000000000000000000","seq":0,"ts":0}
+{"body":{"def":{},"machine_id":"m"},"hash":"01","kind":"machine_defined","prev":"00","seq":1,"ts":1}
+{"body":{"instance_id":"i","leaf":"intake","machine_id":"m","request_id":"r","state_hash":"s"},"hash":"02","kind":"instance_created","prev":"01","seq":2,"ts":2}
+{"body":{"entered":[],"event":"e","exited":[],"instance_id":"i","payload":{},"request_id":"r2","source_state":"s","state_hash":"s"},"hash":"03","kind":"event_applied","prev":"02","seq":3,"ts":3}
+{"body":{"code":"x","instance_id":"i","request_id":"r3","state_hash":"s"},"hash":"04","kind":"event_rejected","prev":"03","seq":4,"ts":4}
+{"body":{"effect_id":"e","instance_id":"i","request_id":"r4"},"hash":"05","kind":"effect_acked","prev":"04","seq":5,"ts":5}

@@ -1,0 +1,27 @@
+# input_spec TAB verdict
+# input_spec / verdict: lit:<text> or hex:<hex> or ERR
+# eight simple escapes
+hex:5c22	lit:"
+hex:5c5c	lit:\
+hex:5c2f	lit:/
+hex:5c62	hex:08
+hex:5c66	hex:0c
+hex:5c6e	hex:0a
+hex:5c72	hex:0d
+hex:5c74	hex:09
+# \u0041 → A
+hex:5c7530303431	lit:A
+# surrogate pair 😀 U+1F600 = \uD83D\uDE00
+hex:5c75443833445c7544453030	lit:😀
+# high surrogate + plain character
+hex:5c754438334421	ERR
+# high surrogate + \u not in low range
+hex:5c75443833445c7530303431	ERR
+# bare low surrogate
+hex:5c7544453030	ERR
+# truncated \u12
+hex:5c753132	ERR
+# unknown escape \q
+hex:5c71	ERR
+# raw control byte 0x01
+hex:01	ERR

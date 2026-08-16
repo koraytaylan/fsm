@@ -1,0 +1,1 @@
+{"format":"fsm.machine/1","name":"x","badkey":1,"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}
