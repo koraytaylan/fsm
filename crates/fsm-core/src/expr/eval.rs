@@ -348,11 +348,29 @@ fn apply_static_dec(v: Val, e: &Expr, b: &Bindings<'_>, span: Span) -> Result<Va
     let evt_owned: Option<BTreeMap<String, Ty>> = b
         .evt
         .map(|m| m.iter().map(|(k, val)| (k.clone(), val_ty(val))).collect());
+    let mut enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for val in b
+        .ctx
+        .values()
+        .chain(b.evt.into_iter().flatten().map(|(_, v)| v))
+    {
+        if let Val::Enum { ty, variant } = val {
+            let vs = enums.entry(ty.clone()).or_default();
+            if !vs.iter().any(|x| x == variant) {
+                vs.push(variant.clone());
+            }
+        }
+    }
+    let kind = if b.evt.is_some() {
+        ScopeKind::TransitionAction
+    } else {
+        ScopeKind::Block
+    };
     let scope = Scope {
-        kind: ScopeKind::Block,
+        kind,
         ctx: &ctx_tys,
         evt: evt_owned.as_ref(),
-        enums: &BTreeMap::new(),
+        enums: &enums,
     };
     let target = match typecheck(e, &scope) {
         Ok((Ty::Dec(s), _)) => s,

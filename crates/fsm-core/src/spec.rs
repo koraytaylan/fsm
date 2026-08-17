@@ -481,6 +481,15 @@ fn parse_ty_spec(v: &Value, path: &str, errs: &mut Vec<Finding>) -> Option<TySpe
     }
     if let Some(obj) = v.as_obj() {
         check_keys(obj, &["decimal", "enum"], path, errs);
+        if obj.contains_key("decimal") && obj.contains_key("enum") {
+            errs.push(Finding::err(
+                "def/shape",
+                path,
+                "type object must be decimal or enum, not both",
+                "use one type constructor",
+            ));
+            return None;
+        }
         if let Some(n) = obj.get("decimal") {
             if n.as_num().is_some() {
                 errs.push(Finding::err(
@@ -1667,8 +1676,61 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
         }
     }
     let event_names: BTreeSet<_> = spec.events.iter().map(|e| e.name.as_str()).collect();
+    let mut seen_fx = BTreeSet::new();
+    for ev in &spec.effects {
+        if !seen_fx.insert(ev.name.as_str()) {
+            errs.push(Finding::err(
+                "def/dup_name",
+                format!("/effects/{}", ev.name),
+                format!("duplicate effect {}", ev.name),
+                "rename one of the effects",
+            ));
+        }
+        let mut seen_f = BTreeSet::new();
+        for f in &ev.fields {
+            if !seen_f.insert(f.name.as_str()) {
+                errs.push(Finding::err(
+                    "def/dup_name",
+                    format!("/effects/{}/{}", ev.name, f.name),
+                    format!("duplicate field {}", f.name),
+                    "rename one of the fields",
+                ));
+            }
+        }
+    }
     let effect_names: BTreeSet<_> = spec.effects.iter().map(|e| e.name.as_str()).collect();
+    let mut seen_ctx = BTreeSet::new();
+    for c in &spec.context {
+        if !seen_ctx.insert(c.name.as_str()) {
+            errs.push(Finding::err(
+                "def/dup_name",
+                format!("/context/{}", c.name),
+                format!("duplicate context {}", c.name),
+                "rename one of the variables",
+            ));
+        }
+    }
+    let mut seen_ev = BTreeSet::new();
     for e in &spec.events {
+        if !seen_ev.insert(e.name.as_str()) {
+            errs.push(Finding::err(
+                "def/dup_name",
+                format!("/events/{}", e.name),
+                format!("duplicate event {}", e.name),
+                "rename one of the events",
+            ));
+        }
+        let mut seen_f = BTreeSet::new();
+        for f in &e.fields {
+            if !seen_f.insert(f.name.as_str()) {
+                errs.push(Finding::err(
+                    "def/dup_name",
+                    format!("/events/{}/{}", e.name, f.name),
+                    format!("duplicate field {}", f.name),
+                    "rename one of the fields",
+                ));
+            }
+        }
         if e.name.starts_with('$') {
             errs.push(Finding::err(
                 "def/reserved_ident",
@@ -1859,6 +1921,13 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
                     format!("/context/{}", c.name),
                     format!("unknown enum {of}"),
                     "declare the enum",
+                ));
+            } else if !spec.enums[of].iter().any(|v| v == &c.init) {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("/context/{}/init", c.name),
+                    format!("unknown variant {}", c.init),
+                    "use a declared variant",
                 ));
             }
         }
@@ -2172,6 +2241,14 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
 
 /// Compile a definition using the accepted source document as the identity input.
 pub fn compile_accepted(source: &Value) -> Result<CompiledMachine, Vec<Finding>> {
+    if crate::canon::canon_bytes(source).len() > limits::MAX_DEF_BYTES {
+        return Err(vec![Finding::err(
+            "def/limit_bytes",
+            "/",
+            "definition exceeds 256 KiB",
+            "shrink the document",
+        )]);
+    }
     let spec = parse_machine(source)?;
     let mut compiled = compile(spec)?;
     compiled.canonical = crate::canon::canon_bytes(source);

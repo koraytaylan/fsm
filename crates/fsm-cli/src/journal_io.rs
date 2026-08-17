@@ -7,7 +7,7 @@
 //! deliberately no stale-lock heuristic.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
 use fsm_core::json::{JsonLimits, Value, parse};
@@ -84,6 +84,9 @@ pub enum JournalHealth {
         field: String,
     },
     MissingGenesis,
+    VersionMismatch {
+        found: String,
+    },
 }
 
 impl JournalHealth {
@@ -124,6 +127,11 @@ impl JournalHealth {
             }
             JournalHealth::MissingGenesis => {
                 "journal has no genesis record; delete the data directory and recreate".into()
+            }
+            JournalHealth::VersionMismatch { found } => {
+                format!(
+                    "store format {found} is not compatible; delete the data directory and recreate"
+                )
             }
         }
     }
@@ -448,6 +456,13 @@ fn active_segment_meta(jdir: &Path, recs: &[Record]) -> Result<(String, u64, u64
 }
 
 pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreState), OpenError> {
+    if let Err(h) = require_store_format(dir) {
+        return Err(OpenError::Health(h));
+    }
+    let ver = dir.join("VERSION");
+    if !ver.exists() {
+        fs::write(&ver, "2\n").map_err(|e| OpenError::Io(e.to_string()))?;
+    }
     let jdir = journal_dir(dir);
     fs::create_dir_all(&jdir).map_err(|e| OpenError::Io(e.to_string()))?;
     let lock = acquire_lock(&jdir).map_err(|e| match e {
@@ -546,19 +561,17 @@ pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
         let v = fs::read_to_string(&ver).unwrap_or_default();
         let t = v.trim();
         if t == "1" {
-            return Err(JournalHealth::LockIo(
-                "store format 1 is not compatible; delete the data directory".into(),
-            ));
+            return Err(JournalHealth::VersionMismatch { found: "1".into() });
         }
         if t != "2" {
-            return Err(JournalHealth::LockIo(format!("VERSION {v}")));
+            return Err(JournalHealth::VersionMismatch {
+                found: t.to_string(),
+            });
         }
         return Ok(());
     }
     if has_journal {
-        return Err(JournalHealth::LockIo(
-            "store format 1 is not compatible; delete the data directory".into(),
-        ));
+        return Err(JournalHealth::VersionMismatch { found: "1".into() });
     }
     Ok(())
 }
@@ -624,7 +637,7 @@ pub enum RepairError {
 
 pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError> {
     if let Err(h) = require_store_format(dir) {
-        return Err(RepairError::Io(h.message()));
+        return Err(RepairError::Interior(h));
     }
     let jdir = journal_dir(dir);
     let _lock = acquire_lock(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
@@ -644,14 +657,26 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
             let tail = data[offset as usize..].to_vec();
             let qdir = jdir.join("quarantine");
             fs::create_dir_all(&qdir).map_err(|e| RepairError::Io(e.to_string()))?;
+            sync_dir(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
             let recs = load_prefix(&data[..offset as usize]);
-            let first_bad = recs.last().map(|r| r.seq + 1).unwrap_or(0);
-            let qpath = qdir.join(format!("{segment}-tail-{first_bad}.bin"));
-            let qf = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&qpath)
-                .map_err(|e| RepairError::Io(e.to_string()))?;
+            let seg_first = segment
+                .strip_prefix("seg-")
+                .and_then(|s| s.strip_suffix(".jsonl"))
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+            let first_bad = recs.last().map(|r| r.seq + 1).unwrap_or(seg_first);
+            let mut qpath = qdir.join(format!("{segment}-tail-{first_bad}.bin"));
+            let mut n = 0u32;
+            let qf = loop {
+                match OpenOptions::new().write(true).create_new(true).open(&qpath) {
+                    Ok(f) => break f,
+                    Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                        n += 1;
+                        qpath = qdir.join(format!("{segment}-tail-{first_bad}-{n}.bin"));
+                    }
+                    Err(e) => return Err(RepairError::Io(e.to_string())),
+                }
+            };
             {
                 let mut qf = qf;
                 qf.write_all(&tail)
@@ -659,6 +684,7 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
                 qf.sync_all().map_err(|e| RepairError::Io(e.to_string()))?;
             }
             sync_dir(&qdir).map_err(|e| RepairError::Io(e.to_string()))?;
+            sync_dir(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
             let mut f = OpenOptions::new()
                 .write(true)
                 .open(&path)
@@ -667,23 +693,34 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
                 .map_err(|e| RepairError::Io(e.to_string()))?;
             f.sync_all().map_err(|e| RepairError::Io(e.to_string()))?;
             sync_dir(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
-            if offset == 0 {
+            if offset == 0 && seg_first == 0 {
                 write_genesis_unlocked(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
             }
             Ok(RepairReport {
                 quarantined: qpath,
                 bytes,
-                truncated_to_seq: recs.last().map(|r| r.seq).unwrap_or(0),
+                truncated_to_seq: recs
+                    .last()
+                    .map(|r| r.seq)
+                    .unwrap_or(seg_first.saturating_sub(1)),
             })
         }
         other => Err(RepairError::Interior(other)),
     }
 }
 
+fn peek_seq_prev(line: &[u8]) -> Option<(u64, String)> {
+    let raw = line.strip_suffix(&[b'\n']).unwrap_or(line);
+    let v = parse(raw, &JsonLimits::DEFAULT).ok()?;
+    let seq = v.get("seq")?.as_num()?.parse().ok()?;
+    let prev = v.get("prev")?.as_str()?.to_string();
+    Some((seq, prev))
+}
+
 fn load_prefix(bytes: &[u8]) -> Vec<Record> {
     let mut out = Vec::new();
-    let mut expect = 0u64;
-    let mut prev = zeros();
+    let mut expect: Option<u64> = None;
+    let mut prev: Option<String> = None;
     let mut start = 0;
     while start < bytes.len() {
         let end = bytes[start..]
@@ -691,9 +728,24 @@ fn load_prefix(bytes: &[u8]) -> Vec<Record> {
             .position(|&b| b == b'\n')
             .map(|i| start + i + 1)
             .unwrap_or(bytes.len());
-        if let Ok(rec) = verify_line(&bytes[start..end], expect, &prev) {
-            expect = rec.seq + 1;
-            prev = rec.hash.clone();
+        let line = &bytes[start..end];
+        if line.iter().all(|b| b.is_ascii_whitespace()) {
+            start = end;
+            continue;
+        }
+        let (exp, prv) = match (expect, prev.clone()) {
+            (Some(e), Some(p)) => (e, p),
+            _ => match peek_seq_prev(line) {
+                Some(x) => x,
+                None => {
+                    start = end;
+                    continue;
+                }
+            },
+        };
+        if let Ok(rec) = verify_line(line, exp, &prv) {
+            expect = Some(rec.seq + 1);
+            prev = Some(rec.hash.clone());
             out.push(rec);
         }
         start = end;
@@ -796,5 +848,67 @@ mod tests {
         assert_eq!(crate::clock::now_ms(), 100);
         assert_eq!(crate::clock::now_ms(), 101);
         crate::clock::reset_injected();
+    }
+
+    fn annotated_body() -> std::collections::BTreeMap<String, Value> {
+        let mut b = std::collections::BTreeMap::new();
+        b.insert("instance_id".into(), Value::Str("i".into()));
+        b.insert("request_id".into(), Value::Str("r".into()));
+        b.insert("note".into(), Value::Str("n".into()));
+        b
+    }
+
+    #[test]
+    fn repair_rotated_torn_tail() {
+        let dir = tmp();
+        let mut j = init(&dir).unwrap();
+        j.append(RecordKind::Annotated, Value::Obj(annotated_body()))
+            .unwrap();
+        j.append(RecordKind::Annotated, Value::Obj(annotated_body()))
+            .unwrap();
+        let h2 = j.last_hash.clone();
+        drop(j);
+        let rec3 = seal(
+            3,
+            3,
+            RecordKind::Annotated,
+            Value::Obj(annotated_body()),
+            &h2,
+        );
+        let rec4 = seal(
+            4,
+            4,
+            RecordKind::Annotated,
+            Value::Obj(annotated_body()),
+            &rec3.hash,
+        );
+        let mut data = rec3.to_line();
+        data.extend(rec4.to_line());
+        data.extend(b"{\"seq\":\"5\"");
+        let seg = journal_dir(&dir).join("seg-00000000000000000003.jsonl");
+        fs::write(&seg, &data).unwrap();
+        match classify(&dir) {
+            JournalHealth::TornTail { segment, .. } => {
+                assert!(segment.contains("00000000000000000003"));
+            }
+            h => panic!("{h:?}"),
+        }
+        let r = repair_truncate_torn_tail(&dir).unwrap();
+        assert_eq!(r.truncated_to_seq, 4);
+        assert!(
+            r.quarantined
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .contains("tail-5")
+        );
+        assert!(matches!(classify(&dir), JournalHealth::Ok));
+        let mut again = fs::read(&seg).unwrap();
+        again.extend(b"{\"seq\":\"5\"");
+        fs::write(&seg, again).unwrap();
+        let r2 = repair_truncate_torn_tail(&dir).unwrap();
+        assert_eq!(r2.truncated_to_seq, 4);
+        assert!(r2.quarantined.exists());
+        assert_ne!(r.quarantined, r2.quarantined);
     }
 }

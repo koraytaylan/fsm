@@ -98,7 +98,14 @@ fn chain_and_tamper() {
     body.insert("instance_id".into(), Value::Str("i1".into()));
     body.insert("event".into(), Value::Str("docs_ok".into()));
     body.insert("payload".into(), Value::Obj(BTreeMap::new()));
+    body.insert("request_id".into(), Value::Str("r2".into()));
+    body.insert(
+        "state_hash".into(),
+        Value::Str(format!("sha256:{}", "ab".repeat(32))),
+    );
     body.insert("exited".into(), Value::Arr(vec![Value::Str("nope".into())]));
+    body.insert("entered".into(), Value::Arr(vec![]));
+    body.insert("source_state".into(), Value::Str("intake".into()));
     let tampered = seal(
         3,
         3,

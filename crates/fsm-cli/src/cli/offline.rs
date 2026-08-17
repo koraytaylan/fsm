@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::simulate::{OnReject, simulate};
-use fsm_core::spec::{compile, parse_machine};
+use fsm_core::spec::compile_accepted;
 use fsm_core::tree::Tree;
 
 use crate::args::{Args, CmdSpec, Ctx, read_input_from};
@@ -76,11 +76,7 @@ fn simulate_cmd(ctx: &mut Ctx, args: &Args) -> u8 {
                 Ok(v) => v,
                 Err(e) => return emit_error(ctx, &ErrorObj::new("def/shape", e.message)),
             };
-            let spec = match parse_machine(&v) {
-                Ok(s) => s,
-                Err(fs) => return emit_error(ctx, &ErrorObj::from_findings(fs)),
-            };
-            match compile(spec) {
+            match compile_accepted(&v) {
                 Ok(c) => c,
                 Err(fs) => return emit_error(ctx, &ErrorObj::from_findings(fs)),
             }
@@ -216,6 +212,7 @@ mod tests {
     use super::*;
     use crate::args::Ctx;
     use crate::render::{write_error, write_success};
+    use fsm_core::spec::{compile, parse_machine};
 
     fn case_path() -> String {
         format!(

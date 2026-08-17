@@ -315,7 +315,9 @@ pub fn step(
                  see_evt: bool,
                  budget: &mut Budget|
      -> Result<BlockTrace, Rejection> {
-        apply_block(block, kind, ctx, effects, k, see_evt, &fields, budget)
+        apply_block(
+            block, kind, ctx, effects, k, see_evt, &fields, budget, &m.spec,
+        )
     };
 
     // exit inner → outer
@@ -527,6 +529,19 @@ fn eval_guard(
     }
 }
 
+fn coerce_to_ty(v: Val, ty: &TySpec) -> Result<Val, &'static str> {
+    match (v, ty) {
+        (Val::Dec(d), TySpec::Dec { scale }) if d.scale == *scale => Ok(Val::Dec(d)),
+        (Val::Dec(d), TySpec::Dec { scale }) if d.scale < *scale => d
+            .rescale_up(*scale)
+            .map(Val::Dec)
+            .map_err(|_| "run/overflow"),
+        (Val::Dec(_), TySpec::Dec { .. }) => Err("req/field_scale"),
+        (v, ty) if val_matches(&v, ty) => Ok(v),
+        _ => Err("req/field_type"),
+    }
+}
+
 fn apply_block(
     block: &Block,
     kind: BlockKind,
@@ -536,6 +551,7 @@ fn apply_block(
     see_evt: bool,
     evt: &BTreeMap<String, Val>,
     budget: &mut Budget,
+    spec: &crate::spec::MachineSpec,
 ) -> Result<BlockTrace, Rejection> {
     let snapshot = ctx.clone();
     let mut sets = Vec::new();
@@ -549,6 +565,11 @@ fn apply_block(
             parser::parse(&set.value).map_err(|err| action_err(&kind, err.message, err.hint))?;
         match eval(&e, &b, budget, true) {
             (Ok(v), Some(tn)) => {
+                let v = if let Some(decl) = spec.context.iter().find(|c| c.name == set.target) {
+                    coerce_to_ty(v, &decl.ty).map_err(|c| action_err(&kind, c.into(), c.into()))?
+                } else {
+                    v
+                };
                 let before = ctx
                     .get(&set.target)
                     .map(Val::canonical_string)
@@ -760,6 +781,7 @@ pub fn create(
                     false,
                     &empty_evt,
                     &mut budget,
+                    &m.spec,
                 ) {
                     Ok(bt) => pipeline.push(bt),
                     Err(inner) => {

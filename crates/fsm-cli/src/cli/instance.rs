@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::RecordKind;
 
-use crate::args::{Args, CmdSpec, Ctx, default_request_id, read_input_from};
+use crate::args::{Args, CmdSpec, Ctx, read_input_from};
 use crate::render::{emit_error, emit_success};
 use crate::store::{ErrorObj, Store, coerce_ctx_override};
 
@@ -202,14 +202,16 @@ fn cancel(ctx: &mut Ctx, args: &Args) -> u8 {
             &ErrorObj::new("req/field_missing", "reason is required").hint("pass --reason"),
         );
     };
-    let rid = args
-        .flags
-        .get("request-id")
-        .cloned()
-        .unwrap_or_else(default_request_id);
     let mut store = match open(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
+    };
+    let rid = match args.flags.get("request-id").cloned() {
+        Some(r) => r,
+        None => match store.allocate_request_id() {
+            Ok(r) => r,
+            Err(e) => return emit_error(ctx, &e),
+        },
     };
     match store.cancel_instance_reason(id, &rid, &reason) {
         Ok(v) => {
@@ -228,11 +230,14 @@ fn annotate(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
-    match store.annotate(
-        &args.positionals[0],
-        &default_request_id(),
-        &args.positionals[1],
-    ) {
+    let rid = match args.flags.get("request-id").cloned() {
+        Some(r) => r,
+        None => match store.allocate_request_id() {
+            Ok(r) => r,
+            Err(e) => return emit_error(ctx, &e),
+        },
+    };
+    match store.annotate(&args.positionals[0], &rid, &args.positionals[1]) {
         Ok(v) => {
             emit_success(ctx, &v);
             0
@@ -409,7 +414,7 @@ pub static SPECS: &[CmdSpec] = &[
     CmdSpec {
         path: &["instance", "cancel"],
         positionals: &["instance"],
-        flags: &["reason"],
+        flags: &["reason", "request-id"],
         switches: &[],
         help: "Cancel instance",
         run: cancel,
@@ -417,7 +422,7 @@ pub static SPECS: &[CmdSpec] = &[
     CmdSpec {
         path: &["instance", "annotate"],
         positionals: &["instance", "text"],
-        flags: &[],
+        flags: &["request-id"],
         switches: &[],
         help: "Annotate",
         run: annotate,

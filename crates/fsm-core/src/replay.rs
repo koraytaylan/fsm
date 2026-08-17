@@ -13,14 +13,14 @@ use crate::spec::{TySpec, compile, parse_machine};
 use crate::step::{Outcome, create, step};
 use crate::tree::Tree;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StoredMachine {
     pub def: Value,
     pub compiled: CompiledMachine,
     pub tree: Tree,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StoreState {
     pub machines: BTreeMap<String, StoredMachine>,
     pub instances: BTreeMap<String, InstanceState>,
@@ -248,31 +248,43 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             let mut bud = Budget::new(4096);
             match step(&m.compiled, &m.tree, &inst, ev, &payload, &mut bud) {
                 Outcome::Applied(a) => {
-                    if let Some(want) = rec.body.get("exited").and_then(Value::as_arr) {
-                        let got: Vec<_> = a.exited.iter().map(|s| Value::Str(s.clone())).collect();
-                        if got != *want {
-                            return Err(ReplayError::FieldMismatch {
-                                seq: rec.seq,
-                                field: "exited",
-                            });
-                        }
+                    let want = rec.body.get("exited").and_then(Value::as_arr).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "exited",
+                        },
+                    )?;
+                    let got: Vec<_> = a.exited.iter().map(|s| Value::Str(s.clone())).collect();
+                    if got != *want {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "exited",
+                        });
                     }
-                    if let Some(want) = rec.body.get("entered").and_then(Value::as_arr) {
-                        let got: Vec<_> = a.entered.iter().map(|s| Value::Str(s.clone())).collect();
-                        if got != *want {
-                            return Err(ReplayError::FieldMismatch {
-                                seq: rec.seq,
-                                field: "entered",
-                            });
-                        }
+                    let want = rec.body.get("entered").and_then(Value::as_arr).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "entered",
+                        },
+                    )?;
+                    let got: Vec<_> = a.entered.iter().map(|s| Value::Str(s.clone())).collect();
+                    if got != *want {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "entered",
+                        });
                     }
-                    if let Some(want) = rec.body.get("source_state").and_then(Value::as_str) {
-                        if want != a.source_state {
-                            return Err(ReplayError::FieldMismatch {
-                                seq: rec.seq,
-                                field: "source_state",
-                            });
-                        }
+                    let want = rec.body.get("source_state").and_then(Value::as_str).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "source_state",
+                        },
+                    )?;
+                    if want != a.source_state {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "source_state",
+                        });
                     }
                     let mut pending = inst.pending.clone();
                     pending.extend(
@@ -287,15 +299,19 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                         history: a.history_after,
                         pending,
                     };
-                    if let Some(want) = rec.body.get("state_hash").and_then(Value::as_str) {
-                        let got = state_hash(&mid, iid, rec.seq, &new);
-                        if got != want {
-                            return Err(ReplayError::StateHashMismatch {
-                                seq: rec.seq,
-                                expected: want.into(),
-                                found: got,
-                            });
-                        }
+                    let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "state_hash",
+                        },
+                    )?;
+                    let got = state_hash(&mid, iid, rec.seq, &new);
+                    if got != want {
+                        return Err(ReplayError::StateHashMismatch {
+                            seq: rec.seq,
+                            expected: want.into(),
+                            found: got,
+                        });
                     }
                     st.instances.insert(iid.into(), new);
                 }
@@ -336,27 +352,35 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .instances
                 .get(iid)
                 .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
-            if let Some(want) = rec.body.get("state_hash").and_then(Value::as_str) {
-                let got = state_hash(&mid, iid, rec.seq, inst);
-                if got != want {
-                    return Err(ReplayError::StateHashMismatch {
-                        seq: rec.seq,
-                        expected: want.into(),
-                        found: got,
-                    });
-                }
+            let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
+                ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_hash",
+                },
+            )?;
+            let got = state_hash(&mid, iid, rec.seq, inst);
+            if got != want {
+                return Err(ReplayError::StateHashMismatch {
+                    seq: rec.seq,
+                    expected: want.into(),
+                    found: got,
+                });
             }
             let mut bud = Budget::new(4096);
             let out = step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud);
             match (rec.kind, &out) {
                 (RecordKind::EventRejected, Outcome::Rejected(r)) => {
-                    if let Some(code) = rec.body.get("code").and_then(Value::as_str) {
-                        if code != r.code {
-                            return Err(ReplayError::FieldMismatch {
-                                seq: rec.seq,
-                                field: "code",
-                            });
-                        }
+                    let code = rec.body.get("code").and_then(Value::as_str).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "code",
+                        },
+                    )?;
+                    if code != r.code {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "code",
+                        });
                     }
                 }
                 (RecordKind::EventIgnored, Outcome::Ignored) => {}
@@ -378,16 +402,17 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .get("instance_id")
                 .and_then(Value::as_str)
                 .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
-            let eid = rec
-                .body
-                .get("effect_id")
-                .and_then(Value::as_str)
-                .unwrap_or("");
+            let eid = rec.body.get("effect_id").and_then(Value::as_str).ok_or(
+                ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "effect_id",
+                },
+            )?;
             let inst = st
                 .instances
                 .get_mut(iid)
                 .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
-            if !eid.is_empty() && !inst.pending.iter().any(|p| p == eid) {
+            if !inst.pending.iter().any(|p| p == eid) {
                 return Err(ReplayError::FieldMismatch {
                     seq: rec.seq,
                     field: "effect_id",
@@ -422,11 +447,20 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             Ok(())
         }
         RecordKind::Annotated => {
-            let iid = rec.body.get("instance_id").and_then(Value::as_str);
-            if let Some(iid) = iid {
-                if !st.instances.contains_key(iid) {
-                    return Err(ReplayError::UnknownInstance { seq: rec.seq });
-                }
+            let iid = rec.body.get("instance_id").and_then(Value::as_str).ok_or(
+                ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "instance_id",
+                },
+            )?;
+            if !st.instances.contains_key(iid) {
+                return Err(ReplayError::UnknownInstance { seq: rec.seq });
+            }
+            if rec.body.get("note").and_then(Value::as_str).is_none() {
+                return Err(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "note",
+                });
             }
             if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
                 st.dedup.insert(rid.into(), rec.seq);

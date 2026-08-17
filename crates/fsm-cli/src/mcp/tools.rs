@@ -7,7 +7,7 @@ use fsm_core::canon::canon_bytes;
 use fsm_core::diagram::{dot, mermaid};
 use fsm_core::json::Value;
 use fsm_core::simulate::{OnReject, simulate};
-use fsm_core::spec::{compile, parse_machine};
+use fsm_core::spec::compile_accepted;
 use fsm_core::tree::Tree;
 
 use crate::clock::Clock;
@@ -743,8 +743,7 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
         ));
     }
     let compiled = if let Some(specv) = args.get("spec") {
-        let spec = parse_machine(specv).map_err(ErrorObj::from_findings)?;
-        compile(spec).map_err(ErrorObj::from_findings)?
+        compile_accepted(specv).map_err(ErrorObj::from_findings)?
     } else if let Some(r) = str_arg(args, "machine") {
         store.resolve_machine(r)?.compiled.clone()
     } else {

@@ -263,9 +263,22 @@ pub fn verify_line(line: &[u8], expect_seq: u64, expect_prev: &str) -> Result<Re
     Ok(rec)
 }
 
+fn is_hex64(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 fn is_state_hash(v: Option<&Value>) -> bool {
     v.and_then(Value::as_str)
-        .is_some_and(|s| s.starts_with("sha256:") && s.len() == "sha256:".len() + 64)
+        .and_then(|s| s.strip_prefix("sha256:"))
+        .is_some_and(is_hex64)
+}
+
+fn req_str(body: &Value, k: &str) -> bool {
+    body.get(k).and_then(Value::as_str).is_some()
+}
+
+fn req_arr(body: &Value, k: &str) -> bool {
+    body.get(k).and_then(Value::as_arr).is_some()
 }
 
 fn body_ok(kind: RecordKind, body: &Value) -> bool {
@@ -274,26 +287,53 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
             body.get("format").and_then(Value::as_str) == Some("fsm.journal/1")
                 && body.get("limits").is_some()
         }
-        RecordKind::MachineDefined => body.get("machine_id").is_some() && body.get("def").is_some(),
+        RecordKind::MachineDefined => req_str(body, "machine_id") && body.get("def").is_some(),
         RecordKind::InstanceCreated => {
-            body.get("instance_id").is_some()
-                && body.get("machine_id").is_some()
+            req_str(body, "instance_id")
+                && req_str(body, "machine_id")
+                && req_str(body, "request_id")
+                && req_str(body, "leaf")
                 && is_state_hash(body.get("state_hash"))
         }
-        RecordKind::EventApplied | RecordKind::EventRejected | RecordKind::EventIgnored => {
-            body.get("instance_id").is_some()
-                && body.get("event").and_then(Value::as_str).is_some()
+        RecordKind::EventApplied => {
+            req_str(body, "instance_id")
+                && req_str(body, "event")
+                && body.get("payload").is_some()
+                && req_str(body, "request_id")
+                && is_state_hash(body.get("state_hash"))
+                && req_arr(body, "exited")
+                && req_arr(body, "entered")
+                && req_str(body, "source_state")
+        }
+        RecordKind::EventRejected => {
+            req_str(body, "instance_id")
+                && req_str(body, "request_id")
+                && req_str(body, "event")
+                && body.get("payload").is_some()
+                && is_state_hash(body.get("state_hash"))
+                && req_str(body, "code")
+        }
+        RecordKind::EventIgnored => {
+            req_str(body, "instance_id")
+                && req_str(body, "request_id")
+                && req_str(body, "event")
                 && body.get("payload").is_some()
                 && is_state_hash(body.get("state_hash"))
         }
         RecordKind::EffectAcked => {
-            body.get("instance_id").is_some() && body.get("effect_id").is_some()
+            req_str(body, "instance_id")
+                && req_str(body, "effect_id")
+                && req_str(body, "request_id")
         }
         RecordKind::RequestRejected => {
-            body.get("request_id").is_some() && body.get("code").and_then(Value::as_str).is_some()
+            req_str(body, "request_id") && req_str(body, "instance_id") && req_str(body, "code")
         }
-        RecordKind::InstanceCancelled => body.get("instance_id").is_some(),
-        RecordKind::Annotated => body.get("instance_id").is_some(),
+        RecordKind::InstanceCancelled => {
+            req_str(body, "instance_id") && req_str(body, "request_id")
+        }
+        RecordKind::Annotated => {
+            req_str(body, "instance_id") && req_str(body, "request_id") && req_str(body, "note")
+        }
     }
 }
 
@@ -307,10 +347,11 @@ mod tests {
             1,
             10,
             RecordKind::Annotated,
-            Value::Obj(BTreeMap::from([(
-                "instance_id".into(),
-                Value::Str("i".into()),
-            )])),
+            Value::Obj(BTreeMap::from([
+                ("instance_id".into(), Value::Str("i".into())),
+                ("request_id".into(), Value::Str("r".into())),
+                ("note".into(), Value::Str("n".into())),
+            ])),
             &zeros(),
         );
         let line = rec.to_line();
@@ -378,6 +419,77 @@ mod tests {
         assert!(matches!(
             verify_line(&spaced, 0, &zeros()),
             Err(RecordError::NonCanonical { .. })
+        ));
+    }
+
+    fn hex_hash() -> String {
+        format!("sha256:{}", "ab".repeat(32))
+    }
+
+    fn verify_kind(kind: RecordKind, body: BTreeMap<String, Value>) -> Result<Record, RecordError> {
+        let rec = seal(1, 1, kind, Value::Obj(body), &zeros());
+        verify_line(&rec.to_line(), 1, &zeros())
+    }
+
+    #[test]
+    fn body_schema_requires_typed_fields() {
+        let mut applied = BTreeMap::new();
+        applied.insert("instance_id".into(), Value::Str("i".into()));
+        applied.insert("event".into(), Value::Str("go".into()));
+        applied.insert("payload".into(), Value::Obj(BTreeMap::new()));
+        applied.insert("request_id".into(), Value::Str("r".into()));
+        applied.insert("state_hash".into(), Value::Str(hex_hash()));
+        applied.insert("exited".into(), Value::Arr(vec![]));
+        applied.insert("entered".into(), Value::Arr(vec![]));
+        applied.insert("source_state".into(), Value::Str("s".into()));
+        assert!(verify_kind(RecordKind::EventApplied, applied.clone()).is_ok());
+
+        let mut missing = applied.clone();
+        missing.remove("exited");
+        assert!(matches!(
+            verify_kind(RecordKind::EventApplied, missing),
+            Err(RecordError::BodyInvalid { .. })
+        ));
+
+        let mut bad_hash = applied;
+        bad_hash.insert(
+            "state_hash".into(),
+            Value::Str(
+                "sha256:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz".into(),
+            ),
+        );
+        assert!(matches!(
+            verify_kind(RecordKind::EventApplied, bad_hash),
+            Err(RecordError::BodyInvalid { .. })
+        ));
+
+        let mut ack = BTreeMap::new();
+        ack.insert("instance_id".into(), Value::Str("i".into()));
+        ack.insert("effect_id".into(), Value::Num("7".into()));
+        ack.insert("request_id".into(), Value::Str("r".into()));
+        assert!(matches!(
+            verify_kind(RecordKind::EffectAcked, ack),
+            Err(RecordError::BodyInvalid { .. })
+        ));
+
+        let mut rejected = BTreeMap::new();
+        rejected.insert("instance_id".into(), Value::Str("i".into()));
+        rejected.insert("request_id".into(), Value::Str("r".into()));
+        rejected.insert("event".into(), Value::Str("go".into()));
+        rejected.insert("payload".into(), Value::Obj(BTreeMap::new()));
+        rejected.insert("state_hash".into(), Value::Str(hex_hash()));
+        assert!(matches!(
+            verify_kind(RecordKind::EventRejected, rejected),
+            Err(RecordError::BodyInvalid { .. })
+        ));
+
+        let mut ann = BTreeMap::new();
+        ann.insert("instance_id".into(), Value::Num("1".into()));
+        ann.insert("request_id".into(), Value::Str("r".into()));
+        ann.insert("note".into(), Value::Str("n".into()));
+        assert!(matches!(
+            verify_kind(RecordKind::Annotated, ann),
+            Err(RecordError::BodyInvalid { .. })
         ));
     }
 }

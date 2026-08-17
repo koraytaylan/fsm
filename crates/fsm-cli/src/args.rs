@@ -244,6 +244,8 @@ pub fn parse_with(
             } else {
                 return Err(unknown_flag(spec, name));
             }
+        } else if a == "-" {
+            args.positionals.push(a.clone());
         } else if let Some(name) = a.strip_prefix('-') {
             if spec.flags.contains(&name) && i + 1 < rest.len() {
                 let flag = spec.flags.iter().copied().find(|f| *f == name).unwrap();
@@ -498,6 +500,14 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.message.contains("extra") || err.message.contains("positional"));
+    }
+
+    #[test]
+    fn positional_dash_is_stdin() {
+        let specs = all_specs();
+        let (spec, args) = parse_with(&specs, &["validate".into(), "-".into()]).unwrap();
+        assert_eq!(spec.path, &["validate"]);
+        assert_eq!(args.positionals, ["-"]);
     }
 
     #[test]

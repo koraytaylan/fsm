@@ -20,6 +20,7 @@ pub fn health_exit(h: &JournalHealth) -> u8 {
         JournalHealth::LockIo(_) => 6,
         JournalHealth::ReplayMismatch { .. } => 4,
         JournalHealth::MissingGenesis => 3,
+        JournalHealth::VersionMismatch { .. } => 6,
     }
 }
 
@@ -45,7 +46,18 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(r) => r,
         Err(e) => return emit_error(ctx, &ErrorObj::new("io/read", e)),
     };
-    let to = args.flags.get("to-seq").and_then(|s| s.parse::<u64>().ok());
+    let to = match args.flags.get("to-seq") {
+        None => None,
+        Some(s) => match s.parse::<u64>() {
+            Ok(n) => Some(n),
+            Err(_) => {
+                return emit_error(
+                    ctx,
+                    &ErrorObj::new("args", "to-seq must be a u64").hint("pass an integer sequence"),
+                );
+            }
+        },
+    };
     let recs: Vec<_> = recs
         .into_iter()
         .filter(|r| to.map(|n| r.seq <= n).unwrap_or(true))
@@ -56,10 +68,7 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
                 Ok(s) => s,
                 Err(e) => return emit_error(ctx, &e),
             };
-            let want = to.unwrap_or(live.journal.last_seq);
-            let agreement = folded.last_seq == want
-                && folded.machines.len() == live.state.machines.len()
-                && folded.instances.len() == live.state.instances.len();
+            let agreement = states_agree(&folded, &live.state);
             emit_success(
                 ctx,
                 &Value::Obj(BTreeMap::from([(
@@ -128,11 +137,45 @@ fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
             0
         }
         Err(RepairError::Interior(h)) => {
-            emit_error(ctx, &ErrorObj::new("store/chain_broken", h.message()));
+            let code = match h {
+                JournalHealth::VersionMismatch { .. } => "store/version_mismatch",
+                JournalHealth::TornTail { .. } => "store/torn_tail",
+                _ => "store/chain_broken",
+            };
+            emit_error(ctx, &ErrorObj::new(code, h.message()));
             health_exit(&h)
         }
         Err(e) => emit_error(ctx, &ErrorObj::new("store/torn_tail", format!("{e:?}"))),
     }
+}
+
+fn states_agree(a: &fsm_core::replay::StoreState, b: &fsm_core::replay::StoreState) -> bool {
+    if a.last_seq != b.last_seq || a.last_hash != b.last_hash {
+        return false;
+    }
+    if a.machines.keys().ne(b.machines.keys()) {
+        return false;
+    }
+    if a.instance_machines != b.instance_machines {
+        return false;
+    }
+    if a.instances.len() != b.instances.len() {
+        return false;
+    }
+    for (id, ia) in &a.instances {
+        let Some(ib) = b.instances.get(id) else {
+            return false;
+        };
+        if ia.leaf != ib.leaf
+            || ia.status != ib.status
+            || ia.ctx != ib.ctx
+            || ia.history != ib.history
+            || ia.pending != ib.pending
+        {
+            return false;
+        }
+    }
+    true
 }
 
 pub static SPECS: &[CmdSpec] = &[
@@ -229,6 +272,10 @@ mod tests {
             5
         );
         assert_eq!(health_exit(&JournalHealth::LockIo("x".into())), 6);
+        assert_eq!(
+            health_exit(&JournalHealth::VersionMismatch { found: "1".into() }),
+            6
+        );
     }
 
     #[test]

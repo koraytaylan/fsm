@@ -15,7 +15,7 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{InstanceState, Status};
 use fsm_core::record::{Record, RecordKind};
 use fsm_core::replay::{NopSink, RecordSink, StoreState, StoredMachine, fold_with};
-use fsm_core::spec::{Finding, TySpec, compile, parse_machine};
+use fsm_core::spec::{Finding, TySpec};
 use fsm_core::step::{Outcome, Rejection, create, step, validate_event};
 use fsm_core::tree::Tree;
 
@@ -329,6 +329,17 @@ impl Store {
                                 step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud)
                             {
                                 let mut err = ErrorObj::from_rejection(&r);
+                                if let Ok(view) =
+                                    view_at(&pre, iid, Some(request_id), None, rec.seq)
+                                {
+                                    if let Value::Obj(v) = view {
+                                        if let Some(en) = v.get("enabled_events") {
+                                            if let Value::Obj(d) = &mut err.details {
+                                                d.insert("enabled_events".into(), en.clone());
+                                            }
+                                        }
+                                    }
+                                }
                                 if let Value::Obj(mut d) = err.details {
                                     d.insert("trace".into(), r.trace.to_value());
                                     err.details = Value::Obj(d);
@@ -362,6 +373,52 @@ impl Store {
             }
             return Some(Err(err));
         }
+        if rec.kind == RecordKind::EffectAcked {
+            let mut m = BTreeMap::new();
+            m.insert("ok".into(), Value::Str("true".into()));
+            m.insert("acked".into(), Value::Bool(true));
+            if let Some(v) = rec.body.get("instance_id") {
+                m.insert("instance_id".into(), v.clone());
+            }
+            if let Some(v) = rec.body.get("effect_id") {
+                m.insert("effect_id".into(), v.clone());
+            }
+            if let Some(v) = rec.body.get("outcome") {
+                m.insert("outcome".into(), v.clone());
+            }
+            if let Some(v) = rec.body.get("result") {
+                m.insert("result".into(), v.clone());
+            }
+            m.insert("duplicate".into(), Value::Bool(true));
+            m.insert("seq".into(), Value::Num(rec.seq.to_string()));
+            if let Ok(folded) = fold_prefix(&self.records, rec.seq) {
+                if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                    if let Some(inst) = folded.instances.get(iid) {
+                        m.insert(
+                            "effects_pending".into(),
+                            Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
+                        );
+                    }
+                }
+            }
+            return Some(Ok(Value::Obj(m)));
+        }
+        if rec.kind == RecordKind::Annotated {
+            let mut m = BTreeMap::new();
+            m.insert("ok".into(), Value::Str("true".into()));
+            if let Some(n) = rec.body.get("note") {
+                m.insert("note".into(), n.clone());
+            }
+            m.insert("duplicate".into(), Value::Bool(true));
+            return Some(Ok(Value::Obj(m)));
+        }
+        if rec.kind == RecordKind::EventIgnored {
+            return Some(Ok(Value::Obj(BTreeMap::from([
+                ("ok".into(), Value::Str("true".into())),
+                ("ignored".into(), Value::Str("true".into())),
+                ("duplicate".into(), Value::Bool(true)),
+            ]))));
+        }
         if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
             if rec.kind == RecordKind::EventApplied {
                 if let Ok(pre) = fold_prefix(&self.records, rec.seq.saturating_sub(1)) {
@@ -379,15 +436,6 @@ impl Store {
                         o.insert("duplicate".into(), Value::Bool(true));
                         if rec.kind == RecordKind::EventApplied {
                             o.insert("applied".into(), Value::Bool(true));
-                        }
-                        if rec.kind == RecordKind::EffectAcked {
-                            if let Some(outc) = rec.body.get("outcome") {
-                                o.insert("outcome".into(), outc.clone());
-                            }
-                            if let Some(res) = rec.body.get("result") {
-                                o.insert("result".into(), res.clone());
-                            }
-                            o.insert("acked".into(), Value::Bool(true));
                         }
                     }
                     return Some(Ok(v));
@@ -407,12 +455,37 @@ impl Store {
         let path = self.data_dir.join("alloc");
         let n = fs::read_to_string(&path)
             .ok()
-            .and_then(|s| s.trim().parse::<u64>().ok())
-            .unwrap_or(0);
-        let next = n + 1;
-        fs::write(&path, format!("{next}\n"))
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        Ok(format!("req-{}-{next}", crate::clock::now_ms()))
+            .and_then(|s| {
+                let t = s.trim();
+                if t.is_empty() {
+                    None
+                } else {
+                    t.parse::<u64>().ok()
+                }
+            })
+            .unwrap_or(self.journal.last_seq);
+        let mut next = n
+            .saturating_add(1)
+            .max(self.journal.last_seq.saturating_add(1));
+        loop {
+            let cand = format!("req-{}-{next}", self.journal.last_seq);
+            if !self.state.dedup.contains_key(&cand) {
+                let tmp = self.data_dir.join("alloc.tmp");
+                fs::write(&tmp, format!("{next}\n"))
+                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                let f =
+                    fs::File::open(&tmp).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                f.sync_all()
+                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                fs::rename(&tmp, &path).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                let dirf = fs::File::open(&self.data_dir)
+                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                dirf.sync_all()
+                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                return Ok(cand);
+            }
+            next += 1;
+        }
     }
 
     fn commit_dedup(&mut self, request_id: &str, resp: Value, seq: u64) {
@@ -663,14 +736,6 @@ impl Store {
                 body.insert("code".into(), Value::Str(r.code.into()));
                 body.insert("message".into(), Value::Str(r.message.clone()));
                 body.insert("hint".into(), Value::Str(r.hint.clone()));
-                let rec = self
-                    .journal
-                    .append(RecordKind::EventRejected, Value::Obj(body))
-                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-                self.history
-                    .entry(instance_id.into())
-                    .or_default()
-                    .push(rec.seq);
                 let mut err = ErrorObj::from_rejection(&r);
                 if let Ok(view) = self.instance_view(instance_id, Some(request_id), None) {
                     if let Value::Obj(v) = view {
@@ -688,6 +753,15 @@ impl Store {
                     }
                     other => other,
                 };
+                body.insert("details".into(), err.details.clone());
+                let rec = self
+                    .journal
+                    .append(RecordKind::EventRejected, Value::Obj(body))
+                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                self.history
+                    .entry(instance_id.into())
+                    .or_default()
+                    .push(rec.seq);
                 self.note_record(&rec);
                 self.state.dedup.insert(request_id.into(), rec.seq);
                 self.last_errors.insert(request_id.into(), err.clone());
@@ -1034,12 +1108,6 @@ impl Store {
     }
 }
 
-impl Drop for Store {
-    fn drop(&mut self) {
-        let _ = self.shutdown_snapshot();
-    }
-}
-
 fn reconstruct_applied(
     pre: &StoreState,
     rec: &Record,
@@ -1058,7 +1126,21 @@ fn reconstruct_applied(
     let mut bud = Budget::new(4096);
     match step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud) {
         Outcome::Applied(a) => {
-            let mut v = view_at(pre, iid, Some(request_id), Some(true), rec.seq).ok()?;
+            let mut post_inst = inst.clone();
+            post_inst.status = a.status_after;
+            post_inst.leaf = a.leaf_after.clone();
+            post_inst.ctx = a.ctx_after.clone();
+            post_inst.history = a.history_after.clone();
+            post_inst.pending.extend(
+                a.effects
+                    .iter()
+                    .map(|e| format!("{iid}/{}/{}", rec.seq, e.k)),
+            );
+            let mut post = pre.clone();
+            post.instances.insert(iid.into(), post_inst);
+            post.last_seq = rec.seq;
+            post.last_hash = rec.hash.clone();
+            let mut v = view_at(&post, iid, Some(request_id), Some(true), rec.seq).ok()?;
             if let Value::Obj(o) = &mut v {
                 o.insert("applied".into(), Value::Bool(true));
                 o.insert("ok".into(), Value::Str("true".into()));
@@ -1179,6 +1261,7 @@ fn health_err(h: &JournalHealth) -> ErrorObj {
         JournalHealth::LockIo(_) => "store/lock",
         JournalHealth::ReplayMismatch { .. } => "store/state_hash_mismatch",
         JournalHealth::MissingGenesis => "store/chain_broken",
+        JournalHealth::VersionMismatch { .. } => "store/version_mismatch",
         JournalHealth::Ok => "store/lock",
     };
     ErrorObj::new(code, h.message())
@@ -1332,6 +1415,96 @@ mod tests {
         assert_eq!(s.journal.last_seq, n);
         assert_eq!(r2.get("duplicate").and_then(Value::as_bool), Some(true));
         assert_eq!(r1.get("leaf"), r2.get("leaf"));
+        assert_eq!(r1.get("configuration"), r2.get("configuration"));
+        assert_eq!(r1.get("context"), r2.get("context"));
+        assert_eq!(r1.get("effects_pending"), r2.get("effects_pending"));
+        assert_eq!(r1.get("enabled_events"), r2.get("enabled_events"));
+        assert_eq!(r1.get("state_hash"), r2.get("state_hash"));
+    }
+
+    fn strip_dup(v: &Value) -> Value {
+        let mut c = v.clone();
+        if let Value::Obj(o) = &mut c {
+            o.remove("duplicate");
+        }
+        c
+    }
+
+    #[test]
+    fn reopen_retry_matches_original_bytes() {
+        let dir = tmp();
+        let mut s = Store::open(&dir).unwrap();
+        s.define_machine(case_def(), false, false).unwrap();
+        s.create_instance("case_review", "i1", "c1", None).unwrap();
+        let r1 = s
+            .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+            .unwrap();
+        let _ = s
+            .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "S", None)
+            .unwrap();
+        drop(s);
+        let mut s2 = Store::open(&dir).unwrap();
+        let r2 = s2
+            .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+            .unwrap();
+        assert_eq!(r2.get("duplicate").and_then(Value::as_bool), Some(true));
+        assert_eq!(strip_dup(&r1), strip_dup(&r2));
+        assert_eq!(
+            r2.get("configuration")
+                .and_then(Value::as_arr)
+                .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>()),
+            Some(vec!["in_review", "docs_review"])
+        );
+    }
+
+    #[test]
+    fn allocator_skips_explicit_ids() {
+        let dir = tmp();
+        let mut s = Store::open(&dir).unwrap();
+        s.define_machine(case_def(), false, false).unwrap();
+        let taken = format!("req-{}-1", s.journal.last_seq);
+        s.create_instance("case_review", "i1", &taken, None)
+            .unwrap();
+        let next = s.allocate_request_id().unwrap();
+        assert_ne!(next, taken);
+        assert!(!s.state.dedup.contains_key(&next));
+    }
+
+    #[test]
+    fn ack_and_annotate_retry_keep_shape() {
+        let dir = tmp();
+        let mut s = Store::open(&dir).unwrap();
+        s.define_machine(case_def(), false, false).unwrap();
+        s.create_instance("case_review", "i1", "c1", None).unwrap();
+        s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+            .unwrap();
+        let eid = s
+            .state
+            .instances
+            .get("i1")
+            .unwrap()
+            .pending
+            .first()
+            .cloned()
+            .unwrap();
+        let a1 = s
+            .ack_effect_outcome("i1", &eid, "ack1", "ok", None)
+            .unwrap();
+        let n1 = s.annotate("i1", "n1", "hello").unwrap();
+        drop(s);
+        let mut s2 = Store::open(&dir).unwrap();
+        let a2 = s2
+            .ack_effect_outcome("i1", &eid, "ack1", "ok", None)
+            .unwrap();
+        let n2 = s2.annotate("i1", "n1", "hello").unwrap();
+        assert_eq!(
+            a2.get("effect_id").and_then(Value::as_str),
+            Some(eid.as_str())
+        );
+        assert_eq!(a2.get("acked").and_then(Value::as_bool), Some(true));
+        assert_eq!(strip_dup(&a1), strip_dup(&a2));
+        assert_eq!(n2.get("note").and_then(Value::as_str), Some("hello"));
+        assert_eq!(strip_dup(&n1), strip_dup(&n2));
     }
 
     #[test]

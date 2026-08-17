@@ -177,3 +177,103 @@ fn verify_agrees_with_open_on_override_journal() {
     assert!(matches!(v.health, fsm_cli::journal_io::JournalHealth::Ok));
     assert!(v.instances >= 1);
 }
+
+#[test]
+fn duplicate_event_names_rejected() {
+    let v = parse(
+        br#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[{"name":"v","ty":"bool"}]},{"name":"go","fields":[{"name":"v","ty":"int"}]}],"states":[{"name":"idle"}],"initial":"idle","transitions":[{"from":"idle","on":"go","do":[{"target":"x","value":"evt.v"}]}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let errs = fsm_core::spec::compile_accepted(&v).unwrap_err();
+    assert!(errs.iter().any(|e| e.code == "def/dup_name"));
+}
+
+#[test]
+fn decimal_if_event_assignment_rescales() {
+    let v = parse(
+        br#"{"format":"fsm.machine/1","name":"d","context":[{"name":"amt","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"pay","fields":[{"name":"amount","ty":{"decimal":"2"}}]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"pay","to":"b","do":[{"target":"amt","value":"if false then evt.amount else 1.0"}]}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("decif");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(v, false, false).unwrap();
+    s.create_instance("d", "i1", "c1", None).unwrap();
+    let mut payload = parse(br#"{"amount":"2.50"}"#, &JsonLimits::DEFAULT).unwrap();
+    s.send_event_stamp("i1", "pay", &mut payload, "p1", None, None)
+        .unwrap();
+    let amt = s.state.instances.get("i1").unwrap().ctx.get("amt").unwrap();
+    assert_eq!(amt.canonical_string(), "1.00");
+}
+
+#[test]
+fn replay_prefix_disagrees_with_later_live_state() {
+    let dir = tmp("rpl");
+    let bin = fsm_bin();
+    assert!(bin.exists());
+    Command::new(&bin)
+        .args(["--data-dir", dir.to_str().unwrap(), "machine", "add"])
+        .arg(format!(
+            "@{}/tests/fixtures/machines/case_review.json",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../fsm-core")
+        ))
+        .status()
+        .unwrap();
+    Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "instance",
+            "new",
+            "case_review",
+            "--request-id",
+            "n1",
+        ])
+        .status()
+        .unwrap();
+    Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "instance",
+            "send",
+            "inst-n1",
+            "docs_ok",
+            "--request-id",
+            "s1",
+        ])
+        .status()
+        .unwrap();
+    let out = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "replay",
+            "--to-seq",
+            "2",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("\"agreement\":false") || stdout.contains("agreement\": false"),
+        "{stdout}"
+    );
+    assert_ne!(out.status.code(), Some(0));
+    let bad = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "replay",
+            "--to-seq",
+            "nope",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(bad.status.code(), Some(2));
+}
