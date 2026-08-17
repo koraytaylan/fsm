@@ -130,12 +130,16 @@ fn every_structured_fixture_matches_tool() {
     )
     .unwrap_err();
     let wrapped = tool_error(&err);
-    let sc_err = wrapped
-        .get("structuredContent")
-        .and_then(|s| s.get("error"))
-        .cloned()
-        .unwrap();
+    let sc_err = wrapped.get("structuredContent").cloned().unwrap();
     assert_bytes("send_rejected.json", &sc_err);
+    let text = wrapped
+        .get("content")
+        .and_then(Value::as_arr)
+        .and_then(|a| a.first())
+        .and_then(|i| i.get("text"))
+        .and_then(Value::as_str)
+        .unwrap();
+    assert_eq!(text, fsm_cli::render::render_human(&sc_err));
     seen.insert("send_rejected.json", ());
 
     let v = dispatch(

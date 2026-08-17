@@ -46,7 +46,7 @@ fn storm() {
     let mut reopens = 0;
     for i in 0..200u64 {
         let seed = 0xC0FFEE + i * 17;
-        let k = run_seed(seed);
+        let (k, _log) = run_seed(seed);
         for (name, n) in &k {
             *kinds.entry(*name).or_insert(0) += *n;
         }
@@ -60,25 +60,62 @@ fn storm() {
     assert!(reopens >= 100, "reopens {reopens}");
 }
 
-fn run_seed(seed: u64) -> BTreeMap<&'static str, u32> {
+fn push_result(
+    log: &mut Vec<u8>,
+    kind: &'static str,
+    kinds: &mut BTreeMap<&'static str, u32>,
+    r: Result<Value, fsm_cli::store::ErrorObj>,
+) {
+    *kinds.entry(kind).or_insert(0) += 1;
+    match r {
+        Ok(v) => log.extend(fsm_core::canon::canon_bytes(&v)),
+        Err(e) => log.extend(fsm_core::canon::canon_bytes(&e.to_value())),
+    }
+}
+
+fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     let dir = tmp(seed);
     let mut g = Gen(seed);
     let mut store = Store::open(&dir).unwrap_or_else(|e| panic!("seed {seed} open {e:?}"));
-    let _ = store.define_machine(case(), false, false);
     let mut kinds = BTreeMap::new();
+    let mut log = Vec::new();
+    push_result(
+        &mut log,
+        "define",
+        &mut kinds,
+        store.define_machine(case(), false, false).map(|o| {
+            Value::Obj(BTreeMap::from([(
+                "machine_id".into(),
+                Value::Str(o.machine_id),
+            )]))
+        }),
+    );
     let n = g.range(30, 80);
     let mut iid = 0u32;
     for _ in 0..n {
         match g.range(0, 6) {
             0 => {
-                let _ = store.define_machine(case(), false, false);
-                *kinds.entry("define").or_insert(0) += 1;
+                push_result(
+                    &mut log,
+                    "define",
+                    &mut kinds,
+                    store.define_machine(case(), false, false).map(|o| {
+                        Value::Obj(BTreeMap::from([(
+                            "machine_id".into(),
+                            Value::Str(o.machine_id),
+                        )]))
+                    }),
+                );
             }
             1 => {
                 iid += 1;
                 let id = format!("i{iid}");
-                let _ = store.create_instance("case_review", &id, &format!("c{iid}"), None);
-                *kinds.entry("create").or_insert(0) += 1;
+                push_result(
+                    &mut log,
+                    "create",
+                    &mut kinds,
+                    store.create_instance("case_review", &id, &format!("c{iid}"), None),
+                );
             }
             2 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
@@ -87,24 +124,36 @@ fn run_seed(seed: u64) -> BTreeMap<&'static str, u32> {
                 } else {
                     "docs_ok"
                 };
-                let _ = store.send_event(
-                    &id,
-                    ev,
-                    Value::Obj(BTreeMap::new()),
-                    &format!("s{}", g.next()),
-                    None,
+                push_result(
+                    &mut log,
+                    "send",
+                    &mut kinds,
+                    store.send_event(
+                        &id,
+                        ev,
+                        Value::Obj(BTreeMap::new()),
+                        &format!("s{}", g.next()),
+                        None,
+                    ),
                 );
-                *kinds.entry("send").or_insert(0) += 1;
             }
             3 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
-                let _ = store.ack_effect(&id, "none", &format!("a{}", g.next()));
-                *kinds.entry("ack").or_insert(0) += 1;
+                push_result(
+                    &mut log,
+                    "ack",
+                    &mut kinds,
+                    store.ack_effect(&id, "none", &format!("a{}", g.next())),
+                );
             }
             4 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
-                let _ = store.cancel_instance(&id, &format!("k{}", g.next()));
-                *kinds.entry("cancel").or_insert(0) += 1;
+                push_result(
+                    &mut log,
+                    "cancel",
+                    &mut kinds,
+                    store.cancel_instance(&id, &format!("k{}", g.next())),
+                );
             }
             5 => {
                 drop(store);
@@ -112,14 +161,44 @@ fn run_seed(seed: u64) -> BTreeMap<&'static str, u32> {
                 *kinds.entry("reopen").or_insert(0) += 1;
             }
             _ => {
-                let _ = store.define_machine(
-                    parse(br#"{"format":"fsm.machine/1"}"#, &JsonLimits::DEFAULT).unwrap(),
-                    false,
-                    false,
+                push_result(
+                    &mut log,
+                    "define",
+                    &mut kinds,
+                    store
+                        .define_machine(
+                            parse(br#"{"format":"fsm.machine/1"}"#, &JsonLimits::DEFAULT).unwrap(),
+                            false,
+                            false,
+                        )
+                        .map(|o| {
+                            Value::Obj(BTreeMap::from([(
+                                "machine_id".into(),
+                                Value::Str(o.machine_id),
+                            )]))
+                        }),
                 );
-                *kinds.entry("define").or_insert(0) += 1;
             }
         }
+    }
+    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    let folded = fold_with(recs, &mut NopSink).unwrap_or_else(|e| panic!("seed {seed} fold {e:?}"));
+    assert_eq!(store.state.last_seq, folded.last_seq, "seed {seed} seq");
+    if store.state.last_seq > 0 {
+        assert_eq!(store.state.last_hash, folded.last_hash, "seed {seed} hash");
+    }
+    assert_eq!(store.state.dedup, folded.dedup, "seed {seed} dedup");
+    assert_eq!(
+        store.state.instances.len(),
+        folded.instances.len(),
+        "seed {seed} inst"
+    );
+    for (id, st) in &store.state.instances {
+        let o = folded.instances.get(id).expect(id);
+        assert_eq!(st.leaf, o.leaf, "seed {seed} {id} leaf");
+        assert_eq!(st.ctx, o.ctx, "seed {seed} {id} ctx");
+        assert_eq!(st.history, o.history, "seed {seed} {id} hist");
+        assert_eq!(st.pending, o.pending, "seed {seed} {id} pend");
     }
     drop(store);
     let v = verify(&dir);
@@ -128,14 +207,13 @@ fn run_seed(seed: u64) -> BTreeMap<&'static str, u32> {
         "seed {seed} health {:?}",
         v.health
     );
-    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
-    fold_with(recs, &mut NopSink).unwrap_or_else(|e| panic!("seed {seed} fold {e:?}"));
-    kinds
+    (kinds, log)
 }
 
 #[test]
 fn seed_replay_stable() {
-    let a = format!("{:?}", run_seed(42));
-    let b = format!("{:?}", run_seed(42));
-    assert_eq!(a, b);
+    let (ka, la) = run_seed(42);
+    let (kb, lb) = run_seed(42);
+    assert_eq!(ka, kb);
+    assert_eq!(la, lb);
 }

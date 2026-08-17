@@ -98,10 +98,7 @@ fn error_helpers() {
     let err = ErrorObj::new("run/not_enabled", "no");
     let te = tool_error(&err);
     assert_eq!(te.get("isError").and_then(Value::as_bool), Some(true));
-    let sc = te
-        .get("structuredContent")
-        .and_then(|v| v.get("error"))
-        .unwrap();
+    let sc = te.get("structuredContent").unwrap();
     for k in [
         "code",
         "message",
@@ -129,8 +126,54 @@ fn panic_reexec() {
         .args(["--exact", "eof_after_initialize"])
         .output()
         .unwrap();
-    // child may or may not hit serve depending on harness; accept either abort or skip
-    let _ = out.status.success();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("fsm panic"), "{err}");
+    assert!(
+        err.contains("serve_session") || err.contains("backtrace") || err.contains("fsm-cli"),
+        "{err}"
+    );
+    assert!(!out.status.success());
+}
+
+#[test]
+fn request_after_initialize_before_initialized_warns() {
+    if std::env::var("FSM_MCP_EARLY").ok().as_deref() == Some("1") {
+        let input = concat!(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
+            "\n",
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+            "\n",
+        );
+        let got = run(input);
+        assert!(got.contains("machine_create"), "{got}");
+        return;
+    }
+    let exe = std::env::current_exe().unwrap();
+    let out = Command::new(exe)
+        .env("FSM_MCP_EARLY", "1")
+        .args([
+            "--exact",
+            "request_after_initialize_before_initialized_warns",
+        ])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("before notifications/initialized"), "{err}");
+    assert!(out.status.success(), "{err}");
+}
+
+#[test]
+fn initialized_notification_then_tools() {
+    let input = concat!(
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+        "\n",
+    );
+    let got = run(input);
+    assert!(got.contains("machine_create"), "{got}");
 }
 
 #[test]

@@ -44,14 +44,13 @@ pub fn rpc_error(id: Value, code: i64, message: &str) -> Value {
 }
 
 pub fn tool_error(err: &ErrorObj) -> Value {
+    let structured = err.to_value();
     let mut item = std::collections::BTreeMap::new();
     item.insert("type".into(), Value::Str("text".into()));
-    item.insert("text".into(), Value::Str(render_human(&err.to_value())));
-    let mut sc = std::collections::BTreeMap::new();
-    sc.insert("error".into(), err.to_value());
+    item.insert("text".into(), Value::Str(render_human(&structured)));
     let mut result = std::collections::BTreeMap::new();
     result.insert("content".into(), Value::Arr(vec![Value::Obj(item)]));
-    result.insert("structuredContent".into(), Value::Obj(sc));
+    result.insert("structuredContent".into(), structured);
     result.insert("isError".into(), Value::Bool(true));
     Value::Obj(result)
 }
@@ -66,13 +65,20 @@ pub fn tool_ok(structured: Value) -> Value {
     Value::Obj(result)
 }
 
+pub fn panic_text(info: &std::panic::PanicHookInfo<'_>) -> String {
+    format!(
+        "fsm panic: {info}\n{}",
+        std::backtrace::Backtrace::force_capture()
+    )
+}
+
 fn install_panic_hook() {
     if HOOK
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
         std::panic::set_hook(Box::new(|info| {
-            let _ = writeln!(std::io::stderr(), "fsm panic: {info}");
+            let _ = writeln!(std::io::stderr(), "{}", panic_text(info));
             std::process::abort();
         }));
     }
@@ -120,6 +126,7 @@ pub fn serve_session(
         panic!("deliberate serve panic");
     }
     let mut initialized = false;
+    let mut initialized_notified = false;
     loop {
         match read_capped_line(&mut input, LINE_CAP)? {
             Line::Eof => {
@@ -169,7 +176,9 @@ pub fn serve_session(
                         )?;
                     }
                     Ok(Incoming::Notification { method, .. }) => {
-                        if method == "notifications/cancelled" {
+                        if method == "notifications/initialized" {
+                            initialized_notified = true;
+                        } else if method == "notifications/cancelled" {
                             let _ = writeln!(
                                 std::io::stderr(),
                                 "fsm info: cancelled notification ignored"
@@ -177,6 +186,12 @@ pub fn serve_session(
                         }
                     }
                     Ok(Incoming::Request { id, method, params }) => {
+                        if initialized && !initialized_notified && method != "initialize" {
+                            let _ = writeln!(
+                                std::io::stderr(),
+                                "fsm warn: {method} before notifications/initialized"
+                            );
+                        }
                         handle_request(
                             &mut output,
                             store.as_deref_mut(),

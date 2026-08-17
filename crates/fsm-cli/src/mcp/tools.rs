@@ -43,77 +43,77 @@ pub fn registry() -> Vec<ToolSpec> {
             name: "machine_get",
             description: descriptions::MACHINE_GET,
             input_schema: schema_machine_ref_in,
-            output_schema: schema_open_out,
+            output_schema: schema_machine_get_out,
             run: run_machine_get,
         },
         ToolSpec {
             name: "machine_analyze",
             description: descriptions::MACHINE_ANALYZE,
             input_schema: schema_machine_ref_in,
-            output_schema: schema_open_out,
+            output_schema: schema_machine_analyze_out,
             run: run_machine_analyze,
         },
         ToolSpec {
             name: "machine_diagram",
             description: descriptions::MACHINE_DIAGRAM,
             input_schema: schema_diagram_in,
-            output_schema: schema_open_out,
+            output_schema: schema_machine_diagram_out,
             run: run_machine_diagram,
         },
         ToolSpec {
             name: "instance_create",
             description: descriptions::INSTANCE_CREATE,
             input_schema: schema_instance_create_in,
-            output_schema: schema_open_out,
+            output_schema: schema_instance_view_out,
             run: run_instance_create,
         },
         ToolSpec {
             name: "instance_send",
             description: descriptions::INSTANCE_SEND,
             input_schema: schema_instance_send_in,
-            output_schema: schema_open_out,
+            output_schema: schema_instance_view_out,
             run: run_instance_send,
         },
         ToolSpec {
             name: "effect_ack",
             description: descriptions::EFFECT_ACK,
             input_schema: schema_effect_ack_in,
-            output_schema: schema_open_out,
+            output_schema: schema_effect_ack_out,
             run: run_effect_ack,
         },
         ToolSpec {
             name: "instance_cancel",
             description: descriptions::INSTANCE_CANCEL,
             input_schema: schema_instance_cancel_in,
-            output_schema: schema_open_out,
+            output_schema: schema_instance_view_out,
             run: run_instance_cancel,
         },
         ToolSpec {
             name: "instance_get",
             description: descriptions::INSTANCE_GET,
             input_schema: schema_instance_id_in,
-            output_schema: schema_open_out,
+            output_schema: schema_instance_view_out,
             run: run_instance_get,
         },
         ToolSpec {
             name: "instance_list",
             description: descriptions::INSTANCE_LIST,
             input_schema: schema_instance_list_in,
-            output_schema: schema_open_out,
+            output_schema: schema_instance_list_out,
             run: run_instance_list,
         },
         ToolSpec {
             name: "instance_history",
             description: descriptions::INSTANCE_HISTORY,
             input_schema: schema_instance_history_in,
-            output_schema: schema_open_out,
+            output_schema: schema_instance_history_out,
             run: run_instance_history,
         },
         ToolSpec {
             name: "simulate",
             description: descriptions::SIMULATE,
             input_schema: schema_simulate_in,
-            output_schema: schema_open_out,
+            output_schema: schema_simulate_out,
             run: run_simulate,
         },
     ]
@@ -185,6 +185,69 @@ fn schema_machine_create_out() -> Value {
 fn schema_machine_list_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("machines".into(), ty("array"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_machine_get_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("machine_id".into(), ty("string"));
+    p.insert("name".into(), ty("string"));
+    p.insert("spec".into(), ty("object"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_machine_analyze_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("findings".into(), ty("array"));
+    p.insert("completeness".into(), ty("object"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_machine_diagram_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("format".into(), ty("string"));
+    p.insert("diagram".into(), ty("string"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_instance_view_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("leaf".into(), ty("string"));
+    p.insert("state".into(), ty("string"));
+    p.insert("status".into(), ty("string"));
+    p.insert("context".into(), ty("object"));
+    p.insert("seq".into(), ty("number"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_effect_ack_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("ok".into(), ty("string"));
+    p.insert("effect_id".into(), ty("string"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_instance_list_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instances".into(), ty("array"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_instance_history_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("entries".into(), ty("array"));
+    p.insert("chain_verified".into(), ty("boolean"));
+    schema_obj(p, &[], true)
+}
+
+fn schema_simulate_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("steps".into(), ty("array"));
+    p.insert("final".into(), ty("object"));
     schema_obj(p, &[], true)
 }
 
@@ -289,10 +352,6 @@ fn schema_simulate_in() -> Value {
     p.insert("events".into(), ty("array"));
     p.insert("on_reject".into(), enum_str(&["stop", "continue"]));
     schema_obj(p, &["events"], false)
-}
-
-fn schema_open_out() -> Value {
-    schema_obj(BTreeMap::new(), &[], true)
 }
 
 pub fn validate_args(schema: &Value, args: &Value) -> Result<(), ErrorObj> {
@@ -470,12 +529,25 @@ fn run_machine_list(
     args: &Value,
 ) -> Result<Value, ErrorObj> {
     let filter = str_arg(args, "name_contains");
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_num().and_then(|s| s.parse::<usize>().ok()))
+        .unwrap_or(usize::MAX);
+    let cursor = str_arg(args, "cursor");
     let mut rows = Vec::new();
     for (id, m) in &store.state.machines {
+        if let Some(c) = cursor {
+            if id.as_str() <= c {
+                continue;
+            }
+        }
         if let Some(f) = filter {
             if !m.compiled.spec.name.contains(f) {
                 continue;
             }
+        }
+        if rows.len() >= limit {
+            break;
         }
         let mut row = BTreeMap::new();
         row.insert("machine_id".into(), Value::Str(id.clone()));
@@ -555,10 +627,23 @@ fn run_machine_diagram(
     let r = str_arg(args, "machine").unwrap_or("");
     let fmt = str_arg(args, "format").unwrap_or("mermaid");
     let m = store.resolve_machine(r)?;
-    let text = if fmt == "dot" {
-        dot(&m.compiled, None)
+    let overlay = if let Some(iid) = str_arg(args, "instance") {
+        let inst = store
+            .state
+            .instances
+            .get(iid)
+            .ok_or_else(|| ErrorObj::new("req/instance_not_found", iid))?;
+        Some(fsm_core::diagram::InstanceOverlay {
+            current_leaf: inst.leaf.clone(),
+            visited: std::collections::BTreeSet::from([inst.leaf.clone()]),
+        })
     } else {
-        mermaid(&m.compiled, None)
+        None
+    };
+    let text = if fmt == "dot" {
+        dot(&m.compiled, overlay.as_ref())
+    } else {
+        mermaid(&m.compiled, overlay.as_ref())
     };
     Ok(Value::Obj(BTreeMap::from([
         ("format".into(), Value::Str(fmt.into())),
@@ -587,7 +672,17 @@ fn run_instance_create(
             }
         }
     }
-    store.create_instance_ctx(machine, &iid, rid, None, &overrides)
+    let tags: Vec<String> = args
+        .get("tags")
+        .and_then(Value::as_arr)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    store.create_instance_ctx(machine, &iid, rid, None, &overrides, &tags)
 }
 
 fn run_instance_send(
@@ -615,12 +710,12 @@ fn run_instance_send(
         Value::Str(s) => s.parse().ok(),
         _ => None,
     });
-    let stamp = args
+    let stamps: Vec<&str> = args
         .get("stamp")
         .and_then(Value::as_arr)
-        .and_then(|a| a.first())
-        .and_then(Value::as_str);
-    store.send_event_stamp(iid, &name, &mut payload, rid, expect, stamp)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    store.send_event_stamp(iid, &name, &mut payload, rid, expect, &stamps)
 }
 
 fn run_effect_ack(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<Value, ErrorObj> {
@@ -690,11 +785,11 @@ fn run_instance_list(
             }
         }
         if let Some(tag) = str_arg(args, "tag") {
-            let tagged = inst.pending.iter().any(|p| p.contains(tag))
-                || store.records.iter().any(|r| {
-                    r.body.get("instance_id").and_then(Value::as_str) == Some(id.as_str())
-                        && r.body.get("tag").and_then(Value::as_str) == Some(tag)
-                });
+            let tagged = store
+                .tags
+                .get(id)
+                .map(|ts| ts.iter().any(|t| t == tag))
+                .unwrap_or(false);
             if !tagged {
                 continue;
             }

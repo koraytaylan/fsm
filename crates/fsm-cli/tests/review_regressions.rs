@@ -52,7 +52,7 @@ fn override_survives_reopen() {
     s.define_machine(case(), false, false).unwrap();
     let mut ov = BTreeMap::new();
     ov.insert("visits".into(), Val::Int(2));
-    s.create_instance_ctx("case_review", "i1", "r1", None, &ov)
+    s.create_instance_ctx("case_review", "i1", "r1", None, &ov, &[])
         .unwrap();
     drop(s);
     let s2 = Store::open(&dir).unwrap();
@@ -111,13 +111,13 @@ fn payload_invalid_not_journaled() {
     let before = s.journal.last_seq;
     let mut payload = parse(br#"{"score":"1","extra":"x"}"#, &JsonLimits::DEFAULT).unwrap();
     let err = s
-        .send_event_stamp("i1", "scored", &mut payload, "bad-1", None, None)
+        .send_event_stamp("i1", "scored", &mut payload, "bad-1", None, &[])
         .unwrap_err();
     assert_eq!(err.code, "req/field_unknown");
     assert_eq!(s.journal.last_seq, before);
     let mut okp = parse(br#"{"score":"1"}"#, &JsonLimits::DEFAULT).unwrap();
     // same request id is not consumed
-    let err2 = s.send_event_stamp("i1", "scored", &mut okp, "bad-1", None, None);
+    let err2 = s.send_event_stamp("i1", "scored", &mut okp, "bad-1", None, &[]);
     assert!(
         err2.is_ok()
             || err2
@@ -183,7 +183,7 @@ fn verify_agrees_with_open_on_override_journal() {
     s.define_machine(case(), false, false).unwrap();
     let mut ov = BTreeMap::new();
     ov.insert("visits".into(), Val::Int(2));
-    s.create_instance_ctx("case_review", "i1", "r1", None, &ov)
+    s.create_instance_ctx("case_review", "i1", "r1", None, &ov, &[])
         .unwrap();
     drop(s);
     assert!(Store::open(&dir).is_ok());
@@ -217,7 +217,7 @@ fn decimal_if_event_assignment_rescales() {
     s.define_machine(v, false, false).unwrap();
     s.create_instance("d", "i1", "c1", None).unwrap();
     let mut payload = parse(br#"{"amount":"2.50"}"#, &JsonLimits::DEFAULT).unwrap();
-    s.send_event_stamp("i1", "pay", &mut payload, "p1", None, None)
+    s.send_event_stamp("i1", "pay", &mut payload, "p1", None, &[])
         .unwrap();
     let amt = s.state.instances.get("i1").unwrap().ctx.get("amt").unwrap();
     assert_eq!(amt.canonical_string(), "1.00");
@@ -1246,6 +1246,276 @@ fn serve_uses_ctx_data_dir() {
         dir.join("VERSION").exists(),
         "serve must open the given data dir"
     );
+}
+
+#[test]
+fn tagged_create_is_listed_by_tag() {
+    let _g = gate();
+    let dir = tmp("tags");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    fsm_cli::mcp::tools::dispatch(&mut store, &mut clock, "instance_create", &{
+        let mut o = BTreeMap::new();
+        o.insert("machine".into(), Value::Str("case_review".into()));
+        o.insert("request_id".into(), Value::Str("tagged".into()));
+        o.insert("tags".into(), Value::Arr(vec![Value::Str("vip".into())]));
+        Value::Obj(o)
+    })
+    .unwrap();
+    fsm_cli::mcp::tools::dispatch(&mut store, &mut clock, "instance_create", &{
+        let mut o = BTreeMap::new();
+        o.insert("machine".into(), Value::Str("case_review".into()));
+        o.insert("request_id".into(), Value::Str("plain".into()));
+        Value::Obj(o)
+    })
+    .unwrap();
+    let listed = fsm_cli::mcp::tools::dispatch(&mut store, &mut clock, "instance_list", &{
+        let mut o = BTreeMap::new();
+        o.insert("tag".into(), Value::Str("vip".into()));
+        Value::Obj(o)
+    })
+    .unwrap();
+    let ids: Vec<_> = listed
+        .get("instances")
+        .and_then(Value::as_arr)
+        .unwrap()
+        .iter()
+        .filter_map(|i| i.get("instance_id").and_then(Value::as_str))
+        .collect();
+    assert_eq!(ids, vec!["inst-tagged"]);
+    drop(store);
+    let mut store = Store::open(&dir).unwrap();
+    let listed = fsm_cli::mcp::tools::dispatch(&mut store, &mut clock, "instance_list", &{
+        let mut o = BTreeMap::new();
+        o.insert("tag".into(), Value::Str("vip".into()));
+        Value::Obj(o)
+    })
+    .unwrap();
+    let ids: Vec<_> = listed
+        .get("instances")
+        .and_then(Value::as_arr)
+        .unwrap()
+        .iter()
+        .filter_map(|i| i.get("instance_id").and_then(Value::as_str))
+        .collect();
+    assert_eq!(ids, vec!["inst-tagged"], "tags must survive journal reopen");
+}
+
+#[test]
+fn machine_list_limit_and_cursor() {
+    let _g = gate();
+    let dir = tmp("ml");
+    let mut store = Store::open(&dir).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    for (name, desc) in [("aa", "1"), ("bb", "2")] {
+        let mut spec = case().as_obj().unwrap().clone();
+        spec.insert("name".into(), Value::Str(name.into()));
+        spec.insert("description".into(), Value::Str(desc.into()));
+        fsm_cli::mcp::tools::dispatch(
+            &mut store,
+            &mut clock,
+            "machine_create",
+            &Value::Obj(BTreeMap::from([("spec".into(), Value::Obj(spec))])),
+        )
+        .unwrap();
+    }
+    let first = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::from([("limit".into(), Value::Num("1".into()))])),
+    )
+    .unwrap();
+    let rows = first.get("machines").and_then(Value::as_arr).unwrap();
+    assert_eq!(rows.len(), 1, "{first:?}");
+    let cur = rows[0]
+        .get("machine_id")
+        .and_then(Value::as_str)
+        .unwrap()
+        .to_string();
+    let rest = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::from([
+            ("limit".into(), Value::Num("10".into())),
+            ("cursor".into(), Value::Str(cur.clone())),
+        ])),
+    )
+    .unwrap();
+    let rest_ids: Vec<_> = rest
+        .get("machines")
+        .and_then(Value::as_arr)
+        .unwrap()
+        .iter()
+        .filter_map(|m| m.get("machine_id").and_then(Value::as_str))
+        .collect();
+    assert!(!rest_ids.contains(&cur.as_str()), "{rest:?}");
+    assert!(!rest_ids.is_empty(), "{rest:?}");
+}
+
+#[test]
+fn diagram_instance_overlay_marks_current() {
+    let _g = gate();
+    let dir = tmp("ov");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    let v = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_diagram",
+        &Value::Obj(BTreeMap::from([
+            ("machine".into(), Value::Str("case_review".into())),
+            ("instance".into(), Value::Str("i1".into())),
+        ])),
+    )
+    .unwrap();
+    let d = v.get("diagram").and_then(Value::as_str).unwrap();
+    assert!(d.contains("class intake current"), "{d}");
+}
+
+#[test]
+fn stamp_applies_every_requested_field() {
+    let _g = gate();
+    let dir = tmp("stamp");
+    let mut store = Store::open(&dir).unwrap();
+    let spec = parse(
+        br#"{"format":"fsm.machine/1","name":"ts","context":[],"events":[{"name":"tick","fields":[{"name":"a","ty":"timestamp"},{"name":"b","ty":"timestamp"}]}],"states":[{"name":"x"},{"name":"y"}],"initial":"x","transitions":[{"from":"x","on":"tick","to":"y"}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    store.define_machine(spec, false, false).unwrap();
+    store.create_instance("ts", "t1", "c", None).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(42_000, 1);
+    let v = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_send",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("t1".into())),
+            (
+                "event".into(),
+                Value::Obj(BTreeMap::from([
+                    ("name".into(), Value::Str("tick".into())),
+                    ("payload".into(), Value::Obj(BTreeMap::new())),
+                ])),
+            ),
+            ("request_id".into(), Value::Str("st".into())),
+            (
+                "stamp".into(),
+                Value::Arr(vec![Value::Str("a".into()), Value::Str("b".into())]),
+            ),
+        ])),
+    )
+    .unwrap();
+    assert_eq!(
+        v.get("applied").and_then(Value::as_bool),
+        Some(true),
+        "{v:?}"
+    );
+    let hist = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_history",
+        &Value::Obj(BTreeMap::from([(
+            "instance_id".into(),
+            Value::Str("t1".into()),
+        )])),
+    )
+    .unwrap();
+    let entries = hist.get("entries").and_then(Value::as_arr).unwrap();
+    let payload = entries
+        .iter()
+        .rev()
+        .find_map(|e| e.get("payload").and_then(Value::as_obj));
+    let payload = payload.expect("stamped send payload in history");
+    assert_eq!(payload.get("a").and_then(Value::as_str), Some("42000"));
+    assert_eq!(payload.get("b").and_then(Value::as_str), Some("42000"));
+}
+
+#[test]
+fn output_schemas_are_field_level() {
+    let expect: &[(&str, &[&str])] = &[
+        (
+            "machine_create",
+            &["machine_id", "name", "created", "dry_run", "warnings"],
+        ),
+        ("machine_list", &["machines"]),
+        ("machine_get", &["machine_id", "name", "spec"]),
+        ("machine_analyze", &["findings", "completeness"]),
+        ("machine_diagram", &["format", "diagram"]),
+        (
+            "instance_create",
+            &[
+                "instance_id",
+                "leaf",
+                "state",
+                "status",
+                "context",
+                "seq",
+                "request_id",
+            ],
+        ),
+        (
+            "instance_send",
+            &[
+                "instance_id",
+                "leaf",
+                "state",
+                "status",
+                "context",
+                "seq",
+                "request_id",
+            ],
+        ),
+        ("effect_ack", &["ok", "effect_id", "request_id"]),
+        (
+            "instance_cancel",
+            &[
+                "instance_id",
+                "leaf",
+                "state",
+                "status",
+                "context",
+                "seq",
+                "request_id",
+            ],
+        ),
+        (
+            "instance_get",
+            &[
+                "instance_id",
+                "leaf",
+                "state",
+                "status",
+                "context",
+                "seq",
+                "request_id",
+            ],
+        ),
+        ("instance_list", &["instances"]),
+        (
+            "instance_history",
+            &["instance_id", "entries", "chain_verified"],
+        ),
+        ("simulate", &["steps", "final"]),
+    ];
+    let reg = fsm_cli::mcp::tools::registry();
+    assert_eq!(reg.len(), 13);
+    for (name, fields) in expect {
+        let t = reg.iter().find(|t| t.name == *name).expect(name);
+        let out = (t.output_schema)();
+        let props = out.get("properties").and_then(Value::as_obj).unwrap();
+        for f in *fields {
+            assert!(props.contains_key(*f), "{name} missing output field {f}");
+        }
+        assert!(!props.is_empty(), "{} empty output schema", t.name);
+    }
 }
 
 #[test]

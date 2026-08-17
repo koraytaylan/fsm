@@ -81,7 +81,15 @@ pub fn validate_event(
         .events
         .iter()
         .find(|e| e.name == name)
-        .ok_or_else(|| reject("req/event_unknown", name))?;
+        .ok_or_else(|| {
+            let mut r = reject("req/event_unknown", name);
+            if let Some(s) =
+                crate::ident::suggest(name, m.spec.events.iter().map(|e| e.name.as_str()))
+            {
+                r.hint = format!("did you mean `{s}`?");
+            }
+            r
+        })?;
     let obj = match payload {
         Value::Obj(o) => o.clone(),
         _ => {

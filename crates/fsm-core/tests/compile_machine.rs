@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use fsm_core::json::{JsonLimits, parse};
 use fsm_core::spec::{
     accepted_identity, compile, compile_accepted, load_machine_json, parse_machine,
@@ -10,17 +8,32 @@ fn compile_and_compile_accepted_share_accepted_identity() {
     let bytes = include_bytes!("fixtures/machines/case_review.json");
     let v = parse(bytes, &JsonLimits::DEFAULT).unwrap();
     let from_source = compile_accepted(&v).unwrap();
-    let (canon, mid) = accepted_identity(&v);
-    assert_eq!(from_source.machine_id, mid);
-    assert_eq!(from_source.canonical, canon);
+    let (canon_src, mid_src) = accepted_identity(&v);
+    assert_eq!(from_source.machine_id, mid_src);
+    assert_eq!(from_source.canonical, canon_src);
     let spec = parse_machine(&v).unwrap();
     let from_spec = compile(spec.clone()).unwrap();
-    let (canon2, mid2) = accepted_identity(&spec.to_value());
-    assert_eq!(from_spec.machine_id, mid2);
-    assert_eq!(from_spec.canonical, canon2);
-    let again = compile_accepted(&spec.to_value()).unwrap();
-    assert_eq!(again.machine_id, from_spec.machine_id);
-    assert_eq!(again.canonical, from_spec.canonical);
+    let (canon_spec, mid_spec) = accepted_identity(&spec.to_value());
+    assert_eq!(from_spec.machine_id, mid_spec);
+    assert_eq!(from_spec.canonical, canon_spec);
+}
+
+#[test]
+fn omitted_defaults_share_one_identity_path() {
+    let src = parse(
+        br#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    assert!(src.get("on_unhandled").is_none());
+    assert!(src.get("effects").is_none());
+    let via_accepted = compile_accepted(&src).unwrap();
+    let via_compile = compile(parse_machine(&src).unwrap()).unwrap();
+    assert_eq!(via_accepted.machine_id, via_compile.machine_id);
+    assert_eq!(via_accepted.canonical, via_compile.canonical);
+    let (canon, mid) = accepted_identity(&parse_machine(&src).unwrap().to_value());
+    assert_eq!(via_accepted.machine_id, mid);
+    assert_eq!(via_accepted.canonical, canon);
 }
 
 fn compile_s(s: &str) -> Result<fsm_core::machine::CompiledMachine, Vec<fsm_core::spec::Finding>> {

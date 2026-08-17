@@ -1321,32 +1321,30 @@ impl MachineSpec {
                     .collect(),
             ),
         );
-        m.insert(
-            "effects".into(),
-            Value::Arr(
-                self.effects
-                    .iter()
-                    .map(|e| {
-                        v_obj([
-                            ("name".into(), v_str(e.name.clone())),
-                            (
-                                "fields".into(),
-                                Value::Arr(e.fields.iter().map(field_value).collect()),
-                            ),
-                        ])
-                    })
-                    .collect(),
-            ),
-        );
+        if !self.effects.is_empty() {
+            m.insert(
+                "effects".into(),
+                Value::Arr(
+                    self.effects
+                        .iter()
+                        .map(|e| {
+                            v_obj([
+                                ("name".into(), v_str(e.name.clone())),
+                                (
+                                    "fields".into(),
+                                    Value::Arr(e.fields.iter().map(field_value).collect()),
+                                ),
+                            ])
+                        })
+                        .collect(),
+                ),
+            );
+        }
         m.insert("states".into(), states_value(&self.states));
         m.insert("initial".into(), v_str(self.initial.clone()));
-        m.insert(
-            "on_unhandled".into(),
-            v_str(match self.on_unhandled {
-                Unhandled::Reject => "reject",
-                Unhandled::Ignore => "ignore",
-            }),
-        );
+        if !matches!(self.on_unhandled, Unhandled::Reject) {
+            m.insert("on_unhandled".into(), v_str("ignore"));
+        }
         m.insert(
             "transitions".into(),
             Value::Arr(
@@ -1406,27 +1404,29 @@ impl MachineSpec {
                     .collect(),
             ),
         );
-        m.insert(
-            "invariants".into(),
-            Value::Arr(
-                self.invariants
-                    .iter()
-                    .map(|inv| {
-                        v_obj([
-                            ("name".into(), v_str(inv.name.clone())),
-                            ("expr".into(), v_str(inv.expr.clone())),
-                            (
-                                "mode".into(),
-                                v_str(match inv.mode {
-                                    EnforceMode::Enforce => "enforce",
-                                    EnforceMode::Monitor => "monitor",
-                                }),
-                            ),
-                        ])
-                    })
-                    .collect(),
-            ),
-        );
+        if !self.invariants.is_empty() {
+            m.insert(
+                "invariants".into(),
+                Value::Arr(
+                    self.invariants
+                        .iter()
+                        .map(|inv| {
+                            v_obj([
+                                ("name".into(), v_str(inv.name.clone())),
+                                ("expr".into(), v_str(inv.expr.clone())),
+                                (
+                                    "mode".into(),
+                                    v_str(match inv.mode {
+                                        EnforceMode::Enforce => "enforce",
+                                        EnforceMode::Monitor => "monitor",
+                                    }),
+                                ),
+                            ])
+                        })
+                        .collect(),
+                ),
+            );
+        }
         Value::Obj(m)
     }
 

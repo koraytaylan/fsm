@@ -29,6 +29,7 @@ pub struct Store {
     pub data_dir: PathBuf,
     pub last_responses: BTreeMap<String, Value>,
     pub last_errors: BTreeMap<String, ErrorObj>,
+    pub tags: BTreeMap<String, Vec<String>>,
 }
 
 struct HistSink {
@@ -214,6 +215,7 @@ impl Store {
                 history.entry(iid.into()).or_default().push(rec.seq);
             }
         }
+        let tags = load_tags_from_records(&records);
         Ok(Store {
             journal,
             state,
@@ -222,6 +224,7 @@ impl Store {
             data_dir: data_dir.to_path_buf(),
             last_responses: BTreeMap::new(),
             last_errors: BTreeMap::new(),
+            tags,
         })
     }
 
@@ -513,6 +516,7 @@ impl Store {
             request_id,
             expect_seq,
             &BTreeMap::new(),
+            &[],
         )
     }
 
@@ -523,6 +527,7 @@ impl Store {
         request_id: &str,
         expect_seq: Option<u64>,
         overrides: &BTreeMap<String, Val>,
+        tags: &[String],
     ) -> Result<Value, ErrorObj> {
         if let Some(r) = self.replay_request(request_id) {
             return r;
@@ -574,12 +579,21 @@ impl Store {
         body.insert("state_hash".into(), Value::Str(sh.clone()));
         body.insert("leaf".into(), Value::Str(inst.leaf.clone()));
         body.insert("overrides".into(), Value::Obj(ov));
+        if !tags.is_empty() {
+            body.insert(
+                "tags".into(),
+                Value::Arr(tags.iter().cloned().map(Value::Str).collect()),
+            );
+        }
         let rec = self
             .journal
             .append(RecordKind::InstanceCreated, Value::Obj(body))
             .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
         self.state.instances.insert(instance_id.into(), inst);
         self.state.instance_machines.insert(instance_id.into(), mid);
+        if !tags.is_empty() {
+            self.tags.insert(instance_id.into(), tags.to_vec());
+        }
         self.history
             .entry(instance_id.into())
             .or_default()
@@ -604,7 +618,7 @@ impl Store {
             &mut payload,
             request_id,
             expect_seq,
-            None,
+            &[],
         )
     }
 
@@ -615,7 +629,7 @@ impl Store {
         payload: &mut Value,
         request_id: &str,
         expect_seq: Option<u64>,
-        stamp: Option<&str>,
+        stamps: &[&str],
     ) -> Result<Value, ErrorObj> {
         if let Some(r) = self.replay_request(request_id) {
             return r;
@@ -632,10 +646,13 @@ impl Store {
                 .request_id(request_id));
             }
         }
-        if let Some(field) = stamp {
-            if let Value::Obj(o) = payload {
-                if !o.contains_key(field) {
-                    o.insert(field.into(), Value::Str(crate::clock::now_ms().to_string()));
+        if let Value::Obj(o) = payload {
+            if !stamps.is_empty() {
+                let ts = crate::clock::now_ms().to_string();
+                for field in stamps {
+                    if !o.contains_key(*field) {
+                        o.insert((*field).into(), Value::Str(ts.clone()));
+                    }
                 }
             }
         }
@@ -1248,6 +1265,29 @@ fn reconstruct_applied(
         }
         _ => None,
     }
+}
+
+fn load_tags_from_records(records: &[Record]) -> BTreeMap<String, Vec<String>> {
+    let mut tags = BTreeMap::new();
+    for rec in records {
+        if rec.kind != RecordKind::InstanceCreated {
+            continue;
+        }
+        let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(arr) = rec.body.get("tags").and_then(Value::as_arr) {
+            let v: Vec<String> = arr
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            if !v.is_empty() {
+                tags.insert(iid.into(), v);
+            }
+        }
+    }
+    tags
 }
 
 fn verify_prefix_hashes(records: &[Record]) -> bool {

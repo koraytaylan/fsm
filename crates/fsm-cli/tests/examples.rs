@@ -180,7 +180,7 @@ fn order_lifecycle_paths() {
     s.send_event("o1", "ship", Value::Obj(BTreeMap::new()), "p3", None)
         .unwrap();
     let mut payload = Value::Obj(BTreeMap::new());
-    s.send_event_stamp("o1", "confirmed", &mut payload, "p4", None, Some("at"))
+    s.send_event_stamp("o1", "confirmed", &mut payload, "p4", None, &["at"])
         .unwrap();
     assert_eq!(s.state.instances.get("o1").unwrap().leaf, "closed");
 

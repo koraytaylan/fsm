@@ -75,7 +75,7 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
             Err(e) => return fail(ctx, ErrorObj::new("def/shape", e.message), &rid),
         }
     }
-    match store.create_instance_ctx(mref, &iid, &rid, None, &overrides) {
+    match store.create_instance_ctx(mref, &iid, &rid, None, &overrides, &[]) {
         Ok(v) => {
             emit_success(ctx, &v);
             0
@@ -126,7 +126,8 @@ fn send(ctx: &mut Ctx, args: &Args) -> u8 {
             Err(e) => return emit_error(ctx, &e),
         },
     };
-    match store.send_event_stamp(iid, ev, &mut payload, &rid, expect, stamp) {
+    let stamps: Vec<&str> = stamp.into_iter().collect();
+    match store.send_event_stamp(iid, ev, &mut payload, &rid, expect, &stamps) {
         Ok(v) => {
             emit_success(ctx, &v);
             0
