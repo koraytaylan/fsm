@@ -102,7 +102,20 @@ trace:
             value:    true
           transition_idx: 0
   invariants:
-    -       name:   score_range
+    -       expr:
+        children:
+          -             children:
+            outcome:  value
+            span:     0, 9
+            value:    0
+          -             children:
+            outcome:  value
+            span:     13, 14
+            value:    0
+        outcome:  value
+        span:     0, 14
+        value:    true
+      name:   score_range
       passed: true
   pipeline:
     -       block:     transition
@@ -194,7 +207,20 @@ trace:
             value:    true
           transition_idx: 1
   invariants:
-    -       name:   score_range
+    -       expr:
+        children:
+          -             children:
+            outcome:  value
+            span:     0, 9
+            value:    0
+          -             children:
+            outcome:  value
+            span:     13, 14
+            value:    0
+        outcome:  value
+        span:     0, 14
+        value:    true
+      name:   score_range
       passed: true
   pipeline:
     -       block:     transition

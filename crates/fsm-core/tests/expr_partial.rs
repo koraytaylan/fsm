@@ -220,3 +220,62 @@ fn unknown_if_does_not_charge_branches() {
     );
     assert_eq!(bud.remaining(), 0);
 }
+
+fn evt_int_scope<'a>(
+    ctx_tys: &'a BTreeMap<String, Ty>,
+    enums: &'a BTreeMap<String, Vec<String>>,
+    evt: &'a BTreeMap<String, Ty>,
+) -> Scope<'a> {
+    Scope {
+        kind: ScopeKind::Guard,
+        ctx: ctx_tys,
+        evt: Some(evt),
+        enums,
+    }
+}
+
+#[test]
+fn public_partial_eval_abs_unreachable_event_if() {
+    let e = parse("abs(if true then 1 else evt.x) == 1").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let mut evt = BTreeMap::new();
+    evt.insert("x".into(), Ty::Int);
+    let scope = evt_int_scope(&ctx_tys, &enums, &evt);
+    let mut bud = Budget::new(4096);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::True
+    );
+}
+
+#[test]
+fn public_partial_eval_neg_unreachable_event_if() {
+    let e = parse("-(if true then 1 else evt.x) == -1").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let mut evt = BTreeMap::new();
+    evt.insert("x".into(), Ty::Int);
+    let scope = evt_int_scope(&ctx_tys, &enums, &evt);
+    let mut bud = Budget::new(4096);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::True
+    );
+}
+
+#[test]
+fn public_partial_eval_abs_evt_charges_call_and_ref() {
+    let e = parse("abs(evt.x) > 1").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let mut evt = BTreeMap::new();
+    evt.insert("x".into(), Ty::Int);
+    let scope = evt_int_scope(&ctx_tys, &enums, &evt);
+    let mut bud = Budget::new(10);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::Unknown
+    );
+    assert_eq!(bud.remaining(), 6);
+}

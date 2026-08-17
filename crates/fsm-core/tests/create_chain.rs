@@ -142,3 +142,40 @@ fn create_invariant_eval_error_has_identity() {
         "{node:?}"
     );
 }
+
+fn value_contains(v: &fsm_core::json::Value, want: &str) -> bool {
+    match v {
+        fsm_core::json::Value::Str(s) | fsm_core::json::Value::Num(s) => s.contains(want),
+        fsm_core::json::Value::Arr(a) => a.iter().any(|x| value_contains(x, want)),
+        fsm_core::json::Value::Obj(m) => m.values().any(|x| value_contains(x, want)),
+        fsm_core::json::Value::Bool(_) | fsm_core::json::Value::Null => false,
+    }
+}
+
+#[test]
+fn create_ordinary_false_invariant_renders_expr() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"x","ty":"int","init":"-1"}],"events":[],"transitions":[],"invariants":[{"name":"pos","expr":"ctx.x >= 0","mode":"enforce"}]}"#;
+    let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
+    let m = compile(spec).unwrap();
+    let t = Tree::build(&m.spec.states);
+    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    assert_eq!(e.code, "run/create_failed");
+    let rendered = e.trace.to_value();
+    let invs = rendered
+        .get("invariants")
+        .and_then(fsm_core::json::Value::as_arr)
+        .expect("invariants");
+    let pos = invs
+        .iter()
+        .find(|i| i.get("name").and_then(fsm_core::json::Value::as_str) == Some("pos"))
+        .expect("pos");
+    assert_eq!(
+        pos.get("passed").and_then(fsm_core::json::Value::as_bool),
+        Some(false)
+    );
+    let expr = pos.get("expr").expect("expr node");
+    assert!(
+        value_contains(expr, "-1") || value_contains(expr, "0"),
+        "{expr:?}"
+    );
+}

@@ -222,24 +222,7 @@ fn eval_inner(
         }
         Expr::Neg { inner, span } => {
             let (v, c) = eval_inner(inner, b, budget, trace)?;
-            let out = match v {
-                Val::Int(n) => Val::Int(
-                    n.checked_neg()
-                        .ok_or_else(|| ovf(*span, vec![n.to_string()]))?,
-                ),
-                Val::Dec(d) => Val::Dec(Dec {
-                    mant: d
-                        .mant
-                        .checked_neg()
-                        .ok_or_else(|| ovf(*span, vec![d.format()]))?,
-                    scale: d.scale,
-                }),
-                Val::Dur(n) => Val::Dur(
-                    n.checked_neg()
-                        .ok_or_else(|| ovf(*span, vec![n.to_string()]))?,
-                ),
-                other => return Err(type_err(*span, other)),
-            };
+            let out = neg_val(v, *span)?;
             ok(out, *span, trace, kid(c))
         }
         Expr::And { lhs, rhs, span } => eval_logic(*span, lhs, rhs, b, budget, trace, true),
@@ -379,6 +362,11 @@ fn eval_call(
             Arg::Word { name, .. } => vals.push(Val::Str(name.clone())),
         }
     }
+    let out = apply_builtin(name, &vals, span)?;
+    ok(out, span, trace, children)
+}
+
+pub(crate) fn apply_builtin(name: &str, vals: &[Val], span: Span) -> Result<Val, EvalErr> {
     let need = match name {
         "min" | "max" => 2,
         "abs" => 1,
@@ -399,27 +387,45 @@ fn eval_call(
             Some(err_node(span, "expr/arity", vec![])),
         ));
     }
-    let out = match name {
-        "min" => min_max(true, &vals, span)?,
-        "max" => min_max(false, &vals, span)?,
-        "abs" => abs_val(&vals[0], span)?,
-        "dec" => dec_val(&vals, span)?,
-        "round" => round_val(&vals, span)?,
-        "div" => div_val(&vals, span)?,
-        "dur" => dur_val(&vals, span)?,
-        other => {
-            return Err((
-                ExprError::new(
-                    "expr/unknown_builtin",
-                    span,
-                    format!("unknown {other}"),
-                    "unknown builtin",
-                ),
-                Some(err_node(span, "expr/unknown_builtin", vec![])),
-            ));
-        }
-    };
-    ok(out, span, trace, children)
+    match name {
+        "min" => min_max(true, vals, span),
+        "max" => min_max(false, vals, span),
+        "abs" => abs_val(&vals[0], span),
+        "dec" => dec_val(vals, span),
+        "round" => round_val(vals, span),
+        "div" => div_val(vals, span),
+        "dur" => dur_val(vals, span),
+        other => Err((
+            ExprError::new(
+                "expr/unknown_builtin",
+                span,
+                format!("unknown {other}"),
+                "unknown builtin",
+            ),
+            Some(err_node(span, "expr/unknown_builtin", vec![])),
+        )),
+    }
+}
+
+pub(crate) fn neg_val(v: Val, span: Span) -> Result<Val, EvalErr> {
+    match v {
+        Val::Int(n) => Ok(Val::Int(
+            n.checked_neg()
+                .ok_or_else(|| ovf(span, vec![n.to_string()]))?,
+        )),
+        Val::Dec(d) => Ok(Val::Dec(Dec {
+            mant: d
+                .mant
+                .checked_neg()
+                .ok_or_else(|| ovf(span, vec![d.format()]))?,
+            scale: d.scale,
+        })),
+        Val::Dur(n) => Ok(Val::Dur(
+            n.checked_neg()
+                .ok_or_else(|| ovf(span, vec![n.to_string()]))?,
+        )),
+        other => Err(type_err(span, other)),
+    }
 }
 
 fn min_max(is_min: bool, vals: &[Val], span: Span) -> Result<Val, EvalErr> {

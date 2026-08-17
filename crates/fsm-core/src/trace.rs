@@ -68,6 +68,7 @@ pub struct BlockTrace {
 pub struct InvariantTrace {
     pub name: String,
     pub passed: bool,
+    pub expr: Option<TraceNode>,
     pub error: Option<InvariantEvalError>,
 }
 
@@ -106,6 +107,9 @@ impl DecisionTrace {
                         let mut m = BTreeMap::new();
                         m.insert("name".into(), Value::Str(i.name.clone()));
                         m.insert("passed".into(), Value::Bool(i.passed));
+                        if let Some(n) = &i.expr {
+                            m.insert("expr".into(), trace_to_value(n));
+                        }
                         if let Some(err) = &i.error {
                             m.insert("error".into(), Value::Str(err.code.into()));
                             m.insert("message".into(), Value::Str(err.message.clone()));
@@ -114,9 +118,6 @@ impl DecisionTrace {
                                 sp.insert("start".into(), Value::Num(s.to_string()));
                                 sp.insert("end".into(), Value::Num(e.to_string()));
                                 m.insert("span".into(), Value::Obj(sp));
-                            }
-                            if let Some(n) = &err.expr {
-                                m.insert("expr".into(), trace_to_value(n));
                             }
                         }
                         Value::Obj(m)

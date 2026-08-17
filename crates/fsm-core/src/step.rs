@@ -924,6 +924,7 @@ fn eval_invariants(
                     traces.push(InvariantTrace {
                         name: inv.name.clone(),
                         passed: false,
+                        expr: None,
                         error: None,
                     });
                     continue;
@@ -931,17 +932,19 @@ fn eval_invariants(
             }
         };
         match eval(&e, &b, budget, true) {
-            (Ok(Val::Bool(true)), _) => {
+            (Ok(Val::Bool(true)), tn) => {
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: true,
+                    expr: tn,
                     error: None,
                 });
             }
-            (Ok(Val::Bool(false)), _) => {
+            (Ok(Val::Bool(false)), tn) => {
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: false,
+                    expr: tn,
                     error: None,
                 });
                 match inv.mode {
@@ -953,6 +956,7 @@ fn eval_invariants(
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: false,
+                    expr: tn.clone(),
                     error: Some(crate::trace::InvariantEvalError {
                         code: err.code,
                         message: err.message,
@@ -962,10 +966,11 @@ fn eval_invariants(
                 });
                 ok = false;
             }
-            _ => {
+            (_, tn) => {
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: false,
+                    expr: tn,
                     error: None,
                 });
                 ok = false;

@@ -352,6 +352,44 @@ fn step_invariant_eval_error_has_operands() {
     }
 }
 
+fn value_contains(v: &Value, want: &str) -> bool {
+    match v {
+        Value::Str(s) | Value::Num(s) => s.contains(want),
+        Value::Arr(a) => a.iter().any(|x| value_contains(x, want)),
+        Value::Obj(m) => m.values().any(|x| value_contains(x, want)),
+        Value::Bool(_) | Value::Null => false,
+    }
+}
+
+#[test]
+fn step_ordinary_false_invariant_renders_expr() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"}],"initial":"a","transitions":[{"from":"a","on":"go","do":[{"target":"x","value":"-1"}]}],"invariants":[{"name":"pos","expr":"ctx.x >= 0","mode":"enforce"}]}"#;
+    let (m, t) = compile_src(src);
+    let st = inst(&m, &t);
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/invariant");
+            let rendered = r.trace.to_value();
+            let invs = rendered
+                .get("invariants")
+                .and_then(Value::as_arr)
+                .expect("invariants");
+            let pos = invs
+                .iter()
+                .find(|i| i.get("name").and_then(Value::as_str) == Some("pos"))
+                .expect("pos");
+            assert_eq!(pos.get("passed").and_then(Value::as_bool), Some(false));
+            let expr = pos.get("expr").expect("expr node");
+            assert!(
+                value_contains(expr, "-1") || value_contains(expr, "0"),
+                "{expr:?}"
+            );
+        }
+        o => panic!("{o:?}"),
+    }
+}
+
 #[test]
 fn later_guard_error_keeps_earlier_false_candidate() {
     let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","if":"false","to":"b"},{"from":"a","on":"go","if":"ctx.x + 1 > 0","to":"b"}]}"#;

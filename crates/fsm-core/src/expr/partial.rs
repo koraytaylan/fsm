@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 
 use super::ast::Expr;
-use super::eval::{Bindings, Budget, Val, apply_compiled_dec, bin_vals, cmp_vals, eval};
+use super::eval::{
+    Bindings, Budget, Val, apply_builtin, apply_compiled_dec, bin_vals, cmp_vals, eval, neg_val,
+};
 use super::lexer::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,9 +190,41 @@ fn partial_eval_val(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) 
             if budget.tick(*span).is_err() {
                 return None;
             }
-            let l = partial_eval_val(lhs, ctx, budget)?;
-            let r = partial_eval_val(rhs, ctx, budget)?;
-            bin_vals(*op, l, r, *span).ok()
+            let l = partial_eval_val(lhs, ctx, budget);
+            let r = partial_eval_val(rhs, ctx, budget);
+            match (l, r) {
+                (Some(l), Some(r)) => bin_vals(*op, l, r, *span).ok(),
+                _ => None,
+            }
+        }
+        Expr::Neg { inner, span } => {
+            if budget.tick(*span).is_err() {
+                return None;
+            }
+            let v = partial_eval_val(inner, ctx, budget)?;
+            neg_val(v, *span).ok()
+        }
+        Expr::Call {
+            name, args, span, ..
+        } => {
+            if budget.tick(*span).is_err() {
+                return None;
+            }
+            let mut vals = Vec::new();
+            let mut unknown = false;
+            for a in args {
+                match a {
+                    super::ast::Arg::Expr(inner) => match partial_eval_val(inner, ctx, budget) {
+                        Some(v) => vals.push(v),
+                        None => unknown = true,
+                    },
+                    super::ast::Arg::Word { name, .. } => vals.push(Val::Str(name.clone())),
+                }
+            }
+            if unknown {
+                return None;
+            }
+            apply_builtin(name, &vals, *span).ok()
         }
         _ if has_evt(e) => None,
         _ => {
