@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 use crate::expr::eval::{Bindings, Budget, Val, eval};
 use crate::expr::parser;
+use crate::expr::typeck::{Scope, ScopeKind, Ty, annotate_if_widening};
 use crate::json::Value;
 use crate::machine::{CompiledMachine, EnforceMode, InstanceState, Status};
 use crate::spec::{Block, HistoryKind, MachineSpec, TransitionSpec, TySpec};
@@ -217,7 +218,7 @@ pub fn step(
                 continue;
             }
             let tr = &m.spec.transitions[idx];
-            match eval_guard(tr, &st.ctx, &fields, budget) {
+            match eval_guard(tr, &st.ctx, &fields, budget, &m.spec, event) {
                 Ok((true, gtrace)) => {
                     level.transitions.push(CandidateTrace {
                         transition_idx: idx as u32,
@@ -316,7 +317,7 @@ pub fn step(
                  budget: &mut Budget|
      -> Result<BlockTrace, Rejection> {
         apply_block(
-            block, kind, ctx, effects, k, see_evt, &fields, budget, &m.spec,
+            block, kind, ctx, effects, k, see_evt, &fields, budget, &m.spec, event,
         )
     };
 
@@ -480,6 +481,8 @@ fn eval_guard(
     ctx: &BTreeMap<String, Val>,
     evt: &BTreeMap<String, Val>,
     budget: &mut Budget,
+    spec: &MachineSpec,
+    event_name: &str,
 ) -> Result<(bool, crate::expr::eval::TraceNode), Rejection> {
     match &tr.guard {
         None => {
@@ -499,7 +502,23 @@ fn eval_guard(
             ))
         }
         Some(src) => {
-            let e = parser::parse(src).map_err(|err| Rejection {
+            let ctx_tys: BTreeMap<String, Ty> = spec
+                .context
+                .iter()
+                .map(|c| (c.name.clone(), c.ty.to_ty()))
+                .collect();
+            let evt_tys: BTreeMap<String, Ty> = spec
+                .events
+                .iter()
+                .find(|e| e.name == event_name)
+                .map(|e| {
+                    e.fields
+                        .iter()
+                        .map(|f| (f.name.clone(), f.ty.to_ty()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut e = parser::parse(src).map_err(|err| Rejection {
                 code: "run/guard_error",
                 message: err.message,
                 hint: err.hint,
@@ -508,6 +527,10 @@ fn eval_guard(
                 block: None,
                 trace: DecisionTrace::default(),
             })?;
+            annotate_if_widening(
+                &mut e,
+                &spec_scope(spec, ScopeKind::Guard, &ctx_tys, Some(&evt_tys)),
+            );
             let b = Bindings {
                 ctx,
                 evt: Some(evt),
@@ -542,6 +565,33 @@ fn coerce_to_ty(v: Val, ty: &TySpec) -> Result<Val, &'static str> {
     }
 }
 
+fn spec_scope<'a>(
+    spec: &'a MachineSpec,
+    kind: ScopeKind,
+    ctx_tys: &'a BTreeMap<String, Ty>,
+    evt_tys: Option<&'a BTreeMap<String, Ty>>,
+) -> Scope<'a> {
+    Scope {
+        kind,
+        ctx: ctx_tys,
+        evt: evt_tys,
+        enums: &spec.enums,
+    }
+}
+
+fn parse_and_annotate(
+    src: &str,
+    spec: &MachineSpec,
+    kind: ScopeKind,
+    ctx_tys: &BTreeMap<String, Ty>,
+    evt_tys: Option<&BTreeMap<String, Ty>>,
+    block: &BlockKind,
+) -> Result<crate::expr::ast::Expr, Rejection> {
+    let mut e = parser::parse(src).map_err(|err| action_err(block, err.message, err.hint))?;
+    annotate_if_widening(&mut e, &spec_scope(spec, kind, ctx_tys, evt_tys));
+    Ok(e)
+}
+
 fn apply_block(
     block: &Block,
     kind: BlockKind,
@@ -552,6 +602,7 @@ fn apply_block(
     evt: &BTreeMap<String, Val>,
     budget: &mut Budget,
     spec: &crate::spec::MachineSpec,
+    event_name: &str,
 ) -> Result<BlockTrace, Rejection> {
     let snapshot = ctx.clone();
     let mut sets = Vec::new();
@@ -560,9 +611,32 @@ fn apply_block(
         ctx: &snapshot,
         evt: evt_ref,
     };
+    let ctx_tys: BTreeMap<String, Ty> = spec
+        .context
+        .iter()
+        .map(|c| (c.name.clone(), c.ty.to_ty()))
+        .collect();
+    let evt_tys: Option<BTreeMap<String, Ty>> =
+        spec.events.iter().find(|e| e.name == event_name).map(|e| {
+            e.fields
+                .iter()
+                .map(|f| (f.name.clone(), f.ty.to_ty()))
+                .collect()
+        });
+    let scope_kind = if see_evt {
+        ScopeKind::TransitionAction
+    } else {
+        ScopeKind::Block
+    };
     for set in &block.sets {
-        let e =
-            parser::parse(&set.value).map_err(|err| action_err(&kind, err.message, err.hint))?;
+        let e = parse_and_annotate(
+            &set.value,
+            spec,
+            scope_kind,
+            &ctx_tys,
+            evt_tys.as_ref(),
+            &kind,
+        )?;
         match eval(&e, &b, budget, true) {
             (Ok(v), Some(tn)) => {
                 let v = if let Some(decl) = spec.context.iter().find(|c| c.name == set.target) {
@@ -583,6 +657,17 @@ fn apply_block(
                 ctx.insert(set.target.clone(), v);
             }
             (Err(err), _) => {
+                if err.code == "run/overflow" {
+                    return Err(Rejection {
+                        code: "run/overflow",
+                        message: err.message,
+                        hint: err.hint,
+                        source_state: None,
+                        transition_idx: None,
+                        block: Some(kind.as_label()),
+                        trace: DecisionTrace::default(),
+                    });
+                }
                 return Err(action_err(&kind, err.message, err.hint));
             }
             _ => {
@@ -597,13 +682,34 @@ fn apply_block(
     let mut emits = Vec::new();
     for em in &block.emits {
         let mut args = BTreeMap::new();
+        let fx = spec.effects.iter().find(|e| e.name == em.effect);
         for (name, src) in &em.args {
-            let e = parser::parse(src).map_err(|err| action_err(&kind, err.message, err.hint))?;
+            let e = parse_and_annotate(src, spec, scope_kind, &ctx_tys, evt_tys.as_ref(), &kind)?;
             match eval(&e, &b, budget, false) {
                 (Ok(v), _) => {
+                    let v = if let Some(f) =
+                        fx.and_then(|e| e.fields.iter().find(|f| f.name == *name))
+                    {
+                        coerce_to_ty(v, &f.ty).map_err(|c| action_err(&kind, c.into(), c.into()))?
+                    } else {
+                        v
+                    };
                     args.insert(name.clone(), v);
                 }
-                (Err(err), _) => return Err(action_err(&kind, err.message, err.hint)),
+                (Err(err), _) => {
+                    if err.code == "run/overflow" {
+                        return Err(Rejection {
+                            code: "run/overflow",
+                            message: err.message,
+                            hint: err.hint,
+                            source_state: None,
+                            transition_idx: None,
+                            block: Some(kind.as_label()),
+                            trace: DecisionTrace::default(),
+                        });
+                    }
+                    return Err(action_err(&kind, err.message, err.hint));
+                }
             }
         }
         effects.push(EffectOut {
@@ -646,9 +752,20 @@ fn eval_invariants(
     let mut flags = Vec::new();
     let mut traces = Vec::new();
     let b = Bindings { ctx, evt: None };
+    let ctx_tys: BTreeMap<String, Ty> = spec
+        .context
+        .iter()
+        .map(|c| (c.name.clone(), c.ty.to_ty()))
+        .collect();
     for inv in &spec.invariants {
         let e = match parser::parse(&inv.expr) {
-            Ok(e) => e,
+            Ok(mut e) => {
+                annotate_if_widening(
+                    &mut e,
+                    &spec_scope(spec, ScopeKind::Invariant, &ctx_tys, None),
+                );
+                e
+            }
             Err(_) => {
                 ok = false;
                 traces.push(InvariantTrace {
@@ -782,6 +899,7 @@ pub fn create(
                     &empty_evt,
                     &mut budget,
                     &m.spec,
+                    "",
                 ) {
                     Ok(bt) => pipeline.push(bt),
                     Err(inner) => {

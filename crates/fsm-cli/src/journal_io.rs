@@ -655,10 +655,15 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
                 return Err(RepairError::Io("stale torn-tail offset".into()));
             }
             let tail = data[offset as usize..].to_vec();
+            let recs = load_prefix(&data[..offset as usize]);
+            let mut chain = load_prior_records(dir, &segment).map_err(RepairError::Io)?;
+            chain.extend(recs.iter().cloned());
+            if let Err(e) = fold_with(chain, &mut NopSink) {
+                return Err(RepairError::Interior(replay_health(e)));
+            }
             let qdir = jdir.join("quarantine");
             fs::create_dir_all(&qdir).map_err(|e| RepairError::Io(e.to_string()))?;
             sync_dir(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
-            let recs = load_prefix(&data[..offset as usize]);
             let seg_first = segment
                 .strip_prefix("seg-")
                 .and_then(|s| s.strip_suffix(".jsonl"))
@@ -696,6 +701,14 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
             if offset == 0 && seg_first == 0 {
                 write_genesis_unlocked(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
             }
+            let after = classify(dir);
+            if !matches!(after, JournalHealth::Ok) {
+                return Err(RepairError::Interior(after));
+            }
+            let kept = load_records(dir).map_err(RepairError::Io)?;
+            if let Err(e) = fold_with(kept, &mut NopSink) {
+                return Err(RepairError::Interior(replay_health(e)));
+            }
             Ok(RepairReport {
                 quarantined: qpath,
                 bytes,
@@ -707,6 +720,45 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
         }
         other => Err(RepairError::Interior(other)),
     }
+}
+
+fn load_prior_records(dir: &Path, torn_segment: &str) -> Result<Vec<Record>, String> {
+    let jdir = journal_dir(dir);
+    let mut segs: Vec<_> = fs::read_dir(&jdir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("seg-") && n.ends_with(".jsonl"))
+                .unwrap_or(false)
+        })
+        .collect();
+    segs.sort();
+    let mut out = Vec::new();
+    let mut expect = 0u64;
+    let mut prev = zeros();
+    for path in segs {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if name >= torn_segment {
+            break;
+        }
+        let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+        for line in bytes.split_inclusive(|&b| b == b'\n') {
+            if line.iter().all(|b| b.is_ascii_whitespace()) {
+                continue;
+            }
+            let rec = verify_line(line, expect, &prev).map_err(|e| format!("{e:?}"))?;
+            expect = rec.seq + 1;
+            prev = rec.hash.clone();
+            out.push(rec);
+        }
+    }
+    Ok(out)
 }
 
 fn peek_seq_prev(line: &[u8]) -> Option<(u64, String)> {
@@ -850,43 +902,38 @@ mod tests {
         crate::clock::reset_injected();
     }
 
-    fn annotated_body() -> std::collections::BTreeMap<String, Value> {
-        let mut b = std::collections::BTreeMap::new();
-        b.insert("instance_id".into(), Value::Str("i".into()));
-        b.insert("request_id".into(), Value::Str("r".into()));
-        b.insert("note".into(), Value::Str("n".into()));
-        b
-    }
-
     #[test]
     fn repair_rotated_torn_tail() {
         let dir = tmp();
-        let mut j = init(&dir).unwrap();
-        j.append(RecordKind::Annotated, Value::Obj(annotated_body()))
+        let def = parse(
+            include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let mut s = crate::store::Store::open(&dir).unwrap();
+        s.define_machine(def, false, false).unwrap();
+        s.create_instance("case_review", "i1", "c1", None).unwrap();
+        s.send_event("i1", "docs_ok", Value::Obj(Default::default()), "s1", None)
             .unwrap();
-        j.append(RecordKind::Annotated, Value::Obj(annotated_body()))
+        s.send_event("i1", "docs_ok", Value::Obj(Default::default()), "s2", None)
             .unwrap();
-        let h2 = j.last_hash.clone();
-        drop(j);
-        let rec3 = seal(
-            3,
-            3,
-            RecordKind::Annotated,
-            Value::Obj(annotated_body()),
-            &h2,
-        );
-        let rec4 = seal(
-            4,
-            4,
-            RecordKind::Annotated,
-            Value::Obj(annotated_body()),
-            &rec3.hash,
-        );
-        let mut data = rec3.to_line();
-        data.extend(rec4.to_line());
-        data.extend(b"{\"seq\":\"5\"");
+        drop(s);
+        let first = journal_dir(&dir).join("seg-00000000000000000000.jsonl");
+        let bytes = fs::read(&first).unwrap();
+        let lines: Vec<&[u8]> = bytes.split_inclusive(|&b| b == b'\n').collect();
+        assert!(lines.len() >= 5);
+        let mut keep = Vec::new();
+        for line in &lines[..3] {
+            keep.extend_from_slice(line);
+        }
+        let mut rest = Vec::new();
+        for line in &lines[3..] {
+            rest.extend_from_slice(line);
+        }
+        rest.extend(b"{\"seq\":\"5\"");
+        fs::write(&first, keep).unwrap();
         let seg = journal_dir(&dir).join("seg-00000000000000000003.jsonl");
-        fs::write(&seg, &data).unwrap();
+        fs::write(&seg, &rest).unwrap();
         match classify(&dir) {
             JournalHealth::TornTail { segment, .. } => {
                 assert!(segment.contains("00000000000000000003"));
@@ -902,7 +949,9 @@ mod tests {
                 .to_string_lossy()
                 .contains("tail-5")
         );
-        assert!(matches!(classify(&dir), JournalHealth::Ok));
+        let v = verify(&dir);
+        assert!(matches!(v.health, JournalHealth::Ok), "{:?}", v.health);
+        crate::store::Store::open(&dir).unwrap();
         let mut again = fs::read(&seg).unwrap();
         again.extend(b"{\"seq\":\"5\"");
         fs::write(&seg, again).unwrap();
@@ -910,5 +959,6 @@ mod tests {
         assert_eq!(r2.truncated_to_seq, 4);
         assert!(r2.quarantined.exists());
         assert_ne!(r.quarantined, r2.quarantined);
+        assert!(matches!(verify(&dir).health, JournalHealth::Ok));
     }
 }

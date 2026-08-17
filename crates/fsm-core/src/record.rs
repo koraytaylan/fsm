@@ -286,6 +286,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
         RecordKind::Genesis => {
             body.get("format").and_then(Value::as_str) == Some("fsm.journal/1")
                 && body.get("limits").is_some()
+                && body.get("created_ts").and_then(Value::as_num).is_some()
         }
         RecordKind::MachineDefined => req_str(body, "machine_id") && body.get("def").is_some(),
         RecordKind::InstanceCreated => {
@@ -324,12 +325,21 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
             req_str(body, "instance_id")
                 && req_str(body, "effect_id")
                 && req_str(body, "request_id")
+                && req_str(body, "outcome")
+                && is_state_hash(body.get("state_hash"))
         }
         RecordKind::RequestRejected => {
-            req_str(body, "request_id") && req_str(body, "instance_id") && req_str(body, "code")
+            req_str(body, "request_id")
+                && req_str(body, "instance_id")
+                && req_str(body, "code")
+                && req_str(body, "message")
+                && req_str(body, "hint")
         }
         RecordKind::InstanceCancelled => {
-            req_str(body, "instance_id") && req_str(body, "request_id")
+            req_str(body, "instance_id")
+                && req_str(body, "request_id")
+                && req_str(body, "reason")
+                && is_state_hash(body.get("state_hash"))
         }
         RecordKind::Annotated => {
             req_str(body, "instance_id") && req_str(body, "request_id") && req_str(body, "note")
@@ -398,6 +408,7 @@ mod tests {
             {
                 let mut b = BTreeMap::new();
                 b.insert("format".into(), Value::Str("fsm.journal/1".into()));
+                b.insert("created_ts".into(), Value::Num("0".into()));
                 b.insert("limits".into(), limits_value());
                 Value::Obj(b)
             },

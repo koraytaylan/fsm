@@ -2,11 +2,18 @@
 
 use std::collections::BTreeMap;
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
 
 use fsm_cli::store::Store;
 use fsm_core::expr::eval::Val;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::spec::{compile, parse_machine};
+
+static GATE: Mutex<()> = Mutex::new(());
+
+fn gate() -> MutexGuard<'static, ()> {
+    GATE.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 fn tmp(tag: &str) -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!(
@@ -39,6 +46,7 @@ fn fsm_bin() -> std::path::PathBuf {
 
 #[test]
 fn override_survives_reopen() {
+    let _g = gate();
     let dir = tmp("ov");
     let mut s = Store::open(&dir).unwrap();
     s.define_machine(case(), false, false).unwrap();
@@ -54,6 +62,7 @@ fn override_survives_reopen() {
 
 #[test]
 fn int_str_field_types_differ() {
+    let _g = gate();
     let a = parse(
         br#"{"format":"fsm.machine/1","name":"m","context":[],"events":[{"name":"go","fields":[{"name":"x","ty":"int"}]}],"states":[{"name":"idle"}],"initial":"idle","transitions":[{"from":"idle","on":"go"}]}"#,
         &JsonLimits::DEFAULT,
@@ -71,6 +80,7 @@ fn int_str_field_types_differ() {
 
 #[test]
 fn unknown_transition_key_rejected() {
+    let _g = gate();
     let v = parse(
         br#"{"format":"fsm.machine/1","name":"m","context":[],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","too":"b"}]}"#,
         &JsonLimits::DEFAULT,
@@ -82,6 +92,7 @@ fn unknown_transition_key_rejected() {
 
 #[test]
 fn non_bool_guard_rejected() {
+    let _g = gate();
     let v = parse(
         br#"{"format":"fsm.machine/1","name":"m","context":[],"events":[{"name":"go","fields":[]}],"states":[{"name":"idle"},{"name":"done","terminal":true}],"initial":"idle","transitions":[{"from":"idle","on":"go","if":"1","to":"done"}]}"#,
         &JsonLimits::DEFAULT,
@@ -92,6 +103,7 @@ fn non_bool_guard_rejected() {
 
 #[test]
 fn payload_invalid_not_journaled() {
+    let _g = gate();
     let dir = tmp("nj");
     let mut s = Store::open(&dir).unwrap();
     s.define_machine(case(), false, false).unwrap();
@@ -118,6 +130,7 @@ fn payload_invalid_not_journaled() {
 
 #[test]
 fn expect_seq_garbage_exits_usage() {
+    let _g = gate();
     let dir = tmp("exp");
     let bin = fsm_bin();
     assert!(bin.exists(), "fsm binary missing");
@@ -164,6 +177,7 @@ fn expect_seq_garbage_exits_usage() {
 
 #[test]
 fn verify_agrees_with_open_on_override_journal() {
+    let _g = gate();
     let dir = tmp("ver");
     let mut s = Store::open(&dir).unwrap();
     s.define_machine(case(), false, false).unwrap();
@@ -180,6 +194,7 @@ fn verify_agrees_with_open_on_override_journal() {
 
 #[test]
 fn duplicate_event_names_rejected() {
+    let _g = gate();
     let v = parse(
         br#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[{"name":"v","ty":"bool"}]},{"name":"go","fields":[{"name":"v","ty":"int"}]}],"states":[{"name":"idle"}],"initial":"idle","transitions":[{"from":"idle","on":"go","do":[{"target":"x","value":"evt.v"}]}]}"#,
         &JsonLimits::DEFAULT,
@@ -191,6 +206,7 @@ fn duplicate_event_names_rejected() {
 
 #[test]
 fn decimal_if_event_assignment_rescales() {
+    let _g = gate();
     let v = parse(
         br#"{"format":"fsm.machine/1","name":"d","context":[{"name":"amt","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"pay","fields":[{"name":"amount","ty":{"decimal":"2"}}]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"pay","to":"b","do":[{"target":"amt","value":"if false then evt.amount else 1.0"}]}]}"#,
         &JsonLimits::DEFAULT,
@@ -209,6 +225,7 @@ fn decimal_if_event_assignment_rescales() {
 
 #[test]
 fn replay_prefix_disagrees_with_later_live_state() {
+    let _g = gate();
     let dir = tmp("rpl");
     let bin = fsm_bin();
     assert!(bin.exists());
@@ -276,4 +293,76 @@ fn replay_prefix_disagrees_with_later_live_state() {
         .output()
         .unwrap();
     assert_eq!(bad.status.code(), Some(2));
+    let future = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "replay",
+            "--to-seq",
+            "999999",
+        ])
+        .output()
+        .unwrap();
+    let fut = String::from_utf8_lossy(&future.stdout);
+    assert!(fut.contains("\"agreement\":false"), "{fut}");
+    assert_ne!(future.status.code(), Some(0));
+}
+
+#[test]
+fn enum_if_widening_overflows() {
+    let _g = gate();
+    let v = parse(
+        br#"{"format":"fsm.machine/1","name":"ovf","enums":{"Risk":["low","high"]},"context":[{"name":"r","ty":{"enum":"Risk"},"init":"low"},{"name":"d","ty":{"decimal":"1"},"init":"0.0"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b","do":[{"target":"d","value":"round(if ctx.r == Risk.high then 0.00 else 9999999999999999999999999999999999999.9, 1, down)"}]}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("ovf");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(v, false, false).unwrap();
+    s.create_instance("ovf", "i1", "c1", None).unwrap();
+    let err = s
+        .send_event("i1", "go", Value::Obj(BTreeMap::new()), "g1", None)
+        .unwrap_err();
+    assert_eq!(err.code, "run/overflow");
+    assert_eq!(s.state.instances.get("i1").unwrap().leaf, "a");
+    assert!(err.details.get("request_id").and_then(Value::as_str) == Some("g1"));
+}
+
+#[test]
+fn emit_if_uses_compiled_scale() {
+    let _g = gate();
+    let v = parse(
+        br#"{"format":"fsm.machine/1","name":"em","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"effects":[{"name":"bill","fields":[{"name":"amt","ty":{"decimal":"2"}}]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b","emit":[{"effect":"bill","args":{"amt":"if false then 1.00 else 2.0"}}]}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let compiled = fsm_core::spec::compile_accepted(&v).unwrap();
+    let tree = fsm_core::tree::Tree::build(&compiled.spec.states);
+    let created = fsm_core::step::create(&compiled, &tree, &BTreeMap::new()).unwrap();
+    let inst = fsm_core::machine::InstanceState {
+        status: created.status_after,
+        leaf: created.leaf_after,
+        ctx: created.ctx_after,
+        history: created.history_after,
+        pending: vec![],
+    };
+    let mut bud = fsm_core::expr::eval::Budget::new(4096);
+    match fsm_core::step::step(
+        &compiled,
+        &tree,
+        &inst,
+        "go",
+        &Value::Obj(BTreeMap::new()),
+        &mut bud,
+    ) {
+        fsm_core::step::Outcome::Applied(a) => {
+            assert_eq!(
+                a.effects[0].args.get("amt").unwrap().canonical_string(),
+                "2.00"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
 }

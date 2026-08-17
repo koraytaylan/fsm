@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use super::ExprError;
 use super::ast::{Arg, BinOp, CmpOp, Expr};
 use super::lexer::Span;
-use super::typeck::{Scope, ScopeKind, Ty, typecheck};
+
 use crate::decimal::{Dec, RoundMode};
 use crate::json::Value;
 
@@ -261,6 +261,7 @@ fn eval_inner(
             cond,
             then_branch,
             else_branch,
+            widen,
             span,
         } => {
             let (cv, cc) = eval_inner(cond, b, budget, trace)?;
@@ -270,7 +271,7 @@ fn eval_inner(
             };
             if flag {
                 let (v, tc) = eval_inner(then_branch, b, budget, trace)?;
-                let v = apply_static_dec(v, e, b, *span)?;
+                let v = apply_compiled_dec(v, *widen, *span)?;
                 let mut ch = kid(cc);
                 ch.extend(kid(tc));
                 if trace {
@@ -279,7 +280,7 @@ fn eval_inner(
                 ok(v, *span, trace, ch)
             } else {
                 let (v, ec) = eval_inner(else_branch, b, budget, trace)?;
-                let v = apply_static_dec(v, e, b, *span)?;
+                let v = apply_compiled_dec(v, *widen, *span)?;
                 let mut ch = kid(cc);
                 if trace {
                     ch.push(skipped(then_branch));
@@ -324,57 +325,12 @@ fn eval_logic(
     ok(Val::Bool(rb), span, trace, kids(lc, rc))
 }
 
-fn val_ty(v: &Val) -> Ty {
-    match v {
-        Val::Bool(_) => Ty::Bool,
-        Val::Int(_) => Ty::Int,
-        Val::Dec(d) => Ty::Dec(d.scale),
-        Val::Str(_) => Ty::Str,
-        Val::Enum { ty, .. } => Ty::Enum(ty.clone()),
-        Val::Ts(_) => Ty::Ts,
-        Val::Dur(_) => Ty::Dur,
-    }
-}
-
-fn apply_static_dec(v: Val, e: &Expr, b: &Bindings<'_>, span: Span) -> Result<Val, EvalErr> {
+fn apply_compiled_dec(v: Val, widen: Option<u8>, span: Span) -> Result<Val, EvalErr> {
     let Val::Dec(d) = v else {
         return Ok(v);
     };
-    let ctx_tys: BTreeMap<String, Ty> = b
-        .ctx
-        .iter()
-        .map(|(k, val)| (k.clone(), val_ty(val)))
-        .collect();
-    let evt_owned: Option<BTreeMap<String, Ty>> = b
-        .evt
-        .map(|m| m.iter().map(|(k, val)| (k.clone(), val_ty(val))).collect());
-    let mut enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for val in b
-        .ctx
-        .values()
-        .chain(b.evt.into_iter().flatten().map(|(_, v)| v))
-    {
-        if let Val::Enum { ty, variant } = val {
-            let vs = enums.entry(ty.clone()).or_default();
-            if !vs.iter().any(|x| x == variant) {
-                vs.push(variant.clone());
-            }
-        }
-    }
-    let kind = if b.evt.is_some() {
-        ScopeKind::TransitionAction
-    } else {
-        ScopeKind::Block
-    };
-    let scope = Scope {
-        kind,
-        ctx: &ctx_tys,
-        evt: evt_owned.as_ref(),
-        enums: &enums,
-    };
-    let target = match typecheck(e, &scope) {
-        Ok((Ty::Dec(s), _)) => s,
-        _ => return Ok(Val::Dec(d)),
+    let Some(target) = widen else {
+        return Ok(Val::Dec(d));
     };
     if target == d.scale {
         return Ok(Val::Dec(d));

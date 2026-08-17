@@ -118,6 +118,7 @@ impl Parser {
                 cond: Box::new(cond),
                 then_branch: Box::new(then_branch),
                 else_branch: Box::new(else_branch),
+                widen: None,
                 span,
             });
         }

@@ -19,7 +19,7 @@ All output flows through one frame: a single renderer from structured results to
 
 1. Implement `render_human(&Value) -> String` in `crates/fsm-cli/src/render.rs` — aligned key-value blocks, compact list tables, indented traces — as the only structured-to-human renderer in the system.
 2. Implement `emit_success` (stdout: human, or exact canonical structured bytes under `--json`) and `emit_error` (always stderr: canonical error envelope under `--json`, otherwise code, message, path, caret-marked span excerpt, and hint), with the single exit-code table mapping code namespaces to 0/1/2/3/4/5 per architecture.
-3. Implement configuration resolution: flag > env (`FSM_DATA_DIR`, `FSM_LOG`, `NO_COLOR`) > `default_data_dir()` (std-only XDG/macOS/Windows detection), and `default_request_id()` from `clock::now_ms()` printed with every command that used it.
+3. Implement configuration resolution: flag > env (`FSM_DATA_DIR`, `FSM_LOG`, `NO_COLOR`) > `default_data_dir()` (std-only XDG/macOS/Windows detection). Mutating commands default `--request-id` through `Store::allocate_request_id()` (`req-<last_seq>-<n>`) and print the id they used.
 4. Write the inline test module encoding exactly the inventory under **Tests**.
 
 **Tests:**
@@ -30,6 +30,6 @@ All output flows through one frame: a single renderer from structured results to
 - Stream discipline: `emit_success` writes nothing to stderr; `emit_error` writes nothing to stdout — asserted over capture buffers.
 - Color: with `NO_COLOR` set or `Ctx.color = false`, the human rendering contains no ANSI escape bytes; a fixed sample with color on does (and never under `--json`).
 - Config precedence (env-scoped test): flag beats `FSM_DATA_DIR`; `FSM_DATA_DIR` beats `default_data_dir()`; `default_data_dir()` ends in `fsm` on every platform branch.
-- `default_request_id`: under `FSM_CLOCK_MS`, two calls in one process yield distinct, deterministic ids (`req-<ms>-<pid>-<counter>`), identical across two runs of the test in the same process. Two processes with the same pinned clock must not share an id.
+- Store-allocated request ids: two allocates on one store yield distinct `req-<last_seq>-<n>` values; an explicit id equal to the next candidate is skipped; every success and error outcome from a defaulted command includes `request_id`. The process-local `default_request_id()` helper remains deterministic under `FSM_CLOCK_MS` for tests that do not open a store.
 
 - **Done when:** inline render tests prove the exit-code table, stderr error rendering with hint and span, `--json` byte-exactness, and config precedence, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.

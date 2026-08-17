@@ -122,16 +122,16 @@ Genesis is `seq` 0, `prev` sixty-four `0`s, body `{format: "fsm.journal/1", crea
 |---|---|
 | `genesis` | `format`, `created_ts`, `limits` |
 | `machine_defined` | `machine_id`, `def` |
-| `instance_created` | `instance_id`, `machine_id`, `request_id`, `state_hash`, `leaf` |
+| `instance_created` | `instance_id`, `machine_id`, `request_id`, `state_hash`, `leaf`, `overrides` |
 | `event_applied` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `exited`, `entered`, `source_state` |
-| `event_rejected` | `instance_id`, `request_id`, `state_hash`, `code` |
-| `event_ignored` | `instance_id`, `request_id`, `state_hash` |
-| `effect_acked` | `instance_id`, `effect_id`, `request_id` |
-| `request_rejected` | `request_id`, `instance_id` |
-| `instance_cancelled` | `instance_id`, `request_id` |
+| `event_rejected` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `code`, `message`, `hint` |
+| `event_ignored` | `instance_id`, `event`, `payload`, `request_id`, `state_hash` |
+| `effect_acked` | `instance_id`, `effect_id`, `request_id`, `outcome`, `state_hash` |
+| `request_rejected` | `request_id`, `instance_id`, `code`, `message`, `hint` |
+| `instance_cancelled` | `instance_id`, `request_id`, `reason`, `state_hash` |
 | `annotated` | `instance_id`, `request_id`, `note` |
 
-Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`.
+Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`. Duplicate `request_id` values are a fold error. `effect_acked` and `instance_cancelled` commit the post-operation instance `state_hash`. VERSION remains `2`; new required fields are written by this engine and older VERSION 2 journals that omit them fail `body` verification.
 
 ### Recovery
 

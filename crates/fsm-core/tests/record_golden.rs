@@ -17,6 +17,7 @@ fn chain_and_tamper() {
     let g = {
         let mut b = BTreeMap::new();
         b.insert("format".into(), Value::Str("fsm.journal/1".into()));
+        b.insert("created_ts".into(), Value::Num("0".into()));
         b.insert("limits".into(), fsm_core::record::limits_value());
         seal(0, 0, RecordKind::Genesis, Value::Obj(b), &prev)
     };

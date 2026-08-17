@@ -231,14 +231,16 @@ effects_pending:
 instance_id:     inst-new-1
 ok:              true
 outcome:         ok
+request_id:      ack-1
 seq:             6
 --- stderr ---
 [annotate]
-argv: instance annotate inst-new-1 hello-note
+argv: instance annotate inst-new-1 hello-note --request-id ann-1
 exit: 0
 --- stdout ---
-note: hello-note
-ok:   true
+note:       hello-note
+ok:         true
+request_id: ann-1
 --- stderr ---
 [history]
 argv: instance history inst-new-1

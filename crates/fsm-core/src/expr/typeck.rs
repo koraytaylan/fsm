@@ -75,6 +75,44 @@ pub fn typecheck(e: &Expr, scope: &Scope<'_>) -> Result<(Ty, Vec<TypeWarning>), 
     Ok((ty, warns))
 }
 
+/// Write each `if` node's compile-time decimal result scale onto the AST.
+pub fn annotate_if_widening(e: &mut Expr, scope: &Scope<'_>) {
+    match e {
+        Expr::Not { inner, .. } | Expr::Neg { inner, .. } => annotate_if_widening(inner, scope),
+        Expr::And { lhs, rhs, .. }
+        | Expr::Or { lhs, rhs, .. }
+        | Expr::Cmp { lhs, rhs, .. }
+        | Expr::Bin { lhs, rhs, .. } => {
+            annotate_if_widening(lhs, scope);
+            annotate_if_widening(rhs, scope);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            annotate_if_widening(cond, scope);
+            annotate_if_widening(then_branch, scope);
+            annotate_if_widening(else_branch, scope);
+        }
+        Expr::Call { args, .. } => {
+            for a in args {
+                if let Arg::Expr(inner) = a {
+                    annotate_if_widening(inner, scope);
+                }
+            }
+        }
+        _ => {}
+    }
+    if matches!(e, Expr::If { .. })
+        && let Ok((Ty::Dec(s), _)) = typecheck(e, scope)
+        && let Expr::If { widen, .. } = e
+    {
+        *widen = Some(s);
+    }
+}
+
 fn check(e: &Expr, scope: &Scope<'_>, warns: &mut Vec<TypeWarning>) -> Result<Ty, ExprError> {
     match e {
         Expr::IntLit { .. } => Ok(Ty::Int),
@@ -191,6 +229,7 @@ fn check(e: &Expr, scope: &Scope<'_>, warns: &mut Vec<TypeWarning>) -> Result<Ty
             then_branch,
             else_branch,
             span,
+            ..
         } => {
             let ct = check(cond, scope, warns)?;
             expect_bool(&ct, cond.span())?;

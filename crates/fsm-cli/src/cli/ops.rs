@@ -26,6 +26,12 @@ pub fn health_exit(h: &JournalHealth) -> u8 {
 
 fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
     let r = verify(&ctx.data_dir);
+    if matches!(r.health, JournalHealth::VersionMismatch { .. }) {
+        return emit_error(
+            ctx,
+            &ErrorObj::new("store/version_mismatch", r.health.message()),
+        );
+    }
     let mut m = BTreeMap::new();
     m.insert("records".into(), Value::Num(r.records.to_string()));
     m.insert("machines".into(), Value::Num(r.machines.to_string()));
@@ -58,6 +64,22 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
             }
         },
     };
+    let last = recs.last().map(|r| r.seq).unwrap_or(0);
+    if let Some(n) = to {
+        if n > last {
+            emit_success(
+                ctx,
+                &Value::Obj(BTreeMap::from([
+                    ("agreement".into(), Value::Bool(false)),
+                    (
+                        "first_divergent_seq".into(),
+                        Value::Num((last + 1).to_string()),
+                    ),
+                ])),
+            );
+            return 1;
+        }
+    }
     let recs: Vec<_> = recs
         .into_iter()
         .filter(|r| to.map(|n| r.seq <= n).unwrap_or(true))
@@ -69,13 +91,12 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
                 Err(e) => return emit_error(ctx, &e),
             };
             let agreement = states_agree(&folded, &live.state);
-            emit_success(
-                ctx,
-                &Value::Obj(BTreeMap::from([(
-                    "agreement".into(),
-                    Value::Bool(agreement),
-                )])),
-            );
+            let mut out = BTreeMap::from([("agreement".into(), Value::Bool(agreement))]);
+            if !agreement {
+                let div = folded.last_seq.min(live.state.last_seq).saturating_add(1);
+                out.insert("first_divergent_seq".into(), Value::Num(div.to_string()));
+            }
+            emit_success(ctx, &Value::Obj(out));
             if agreement { 0 } else { 1 }
         }
         Err(e) => emit_error(
@@ -153,7 +174,18 @@ fn states_agree(a: &fsm_core::replay::StoreState, b: &fsm_core::replay::StoreSta
     if a.last_seq != b.last_seq || a.last_hash != b.last_hash {
         return false;
     }
-    if a.machines.keys().ne(b.machines.keys()) {
+    if a.machines.len() != b.machines.len() {
+        return false;
+    }
+    for (id, ma) in &a.machines {
+        let Some(mb) = b.machines.get(id) else {
+            return false;
+        };
+        if ma.def != mb.def || ma.compiled.machine_id != mb.compiled.machine_id {
+            return false;
+        }
+    }
+    if a.dedup != b.dedup {
         return false;
     }
     if a.instance_machines != b.instance_machines {

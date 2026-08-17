@@ -122,6 +122,19 @@ fn overrides_from(
     Some(out)
 }
 
+fn claim_request_id(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
+    if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
+        if st.dedup.contains_key(rid) {
+            return Err(ReplayError::FieldMismatch {
+                seq: rec.seq,
+                field: "request_id",
+            });
+        }
+        st.dedup.insert(rid.into(), rec.seq);
+    }
+    Ok(())
+}
+
 fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
     match rec.kind {
         RecordKind::Genesis => Ok(()),
@@ -214,9 +227,7 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             }
             st.instances.insert(iid.into(), inst);
             st.instance_machines.insert(iid.into(), mid.into());
-            if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                st.dedup.insert(rid.into(), rec.seq);
-            }
+            claim_request_id(st, rec)?;
             Ok(())
         }
         RecordKind::EventApplied => {
@@ -322,9 +333,7 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     });
                 }
             }
-            if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                st.dedup.insert(rid.into(), rec.seq);
-            }
+            claim_request_id(st, rec)?;
             Ok(())
         }
         RecordKind::EventRejected | RecordKind::EventIgnored => {
@@ -391,9 +400,7 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     });
                 }
             }
-            if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                st.dedup.insert(rid.into(), rec.seq);
-            }
+            claim_request_id(st, rec)?;
             Ok(())
         }
         RecordKind::EffectAcked => {
@@ -419,15 +426,34 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 });
             }
             inst.pending.retain(|p| p != eid);
-            if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                st.dedup.insert(rid.into(), rec.seq);
+            let mid = st
+                .instance_machines
+                .get(iid)
+                .cloned()
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let inst = st
+                .instances
+                .get(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
+                ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_hash",
+                },
+            )?;
+            let got = state_hash(&mid, iid, rec.seq, inst);
+            if got != want {
+                return Err(ReplayError::StateHashMismatch {
+                    seq: rec.seq,
+                    expected: want.into(),
+                    found: got,
+                });
             }
+            claim_request_id(st, rec)?;
             Ok(())
         }
         RecordKind::RequestRejected => {
-            if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                st.dedup.insert(rid.into(), rec.seq);
-            }
+            claim_request_id(st, rec)?;
             Ok(())
         }
         RecordKind::InstanceCancelled => {
@@ -441,9 +467,30 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .get_mut(iid)
                 .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
             inst.status = Status::Cancelled;
-            if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                st.dedup.insert(rid.into(), rec.seq);
+            let mid = st
+                .instance_machines
+                .get(iid)
+                .cloned()
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let inst = st
+                .instances
+                .get(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
+                ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_hash",
+                },
+            )?;
+            let got = state_hash(&mid, iid, rec.seq, inst);
+            if got != want {
+                return Err(ReplayError::StateHashMismatch {
+                    seq: rec.seq,
+                    expected: want.into(),
+                    found: got,
+                });
             }
+            claim_request_id(st, rec)?;
             Ok(())
         }
         RecordKind::Annotated => {
@@ -462,9 +509,7 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     field: "note",
                 });
             }
-            if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                st.dedup.insert(rid.into(), rec.seq);
-            }
+            claim_request_id(st, rec)?;
             Ok(())
         }
     }

@@ -117,6 +117,8 @@ pub enum Expr {
         cond: Box<Expr>,
         then_branch: Box<Expr>,
         else_branch: Box<Expr>,
+        /// Decimal scale bound at compile time; `None` until annotated.
+        widen: Option<u8>,
         span: Span,
     },
     Call {

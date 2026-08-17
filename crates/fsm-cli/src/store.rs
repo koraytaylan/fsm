@@ -79,6 +79,13 @@ impl ErrorObj {
         self
     }
 
+    pub fn request_id(mut self, rid: &str) -> Self {
+        if let Value::Obj(d) = &mut self.details {
+            d.insert("request_id".into(), Value::Str(rid.into()));
+        }
+        self
+    }
+
     pub fn path(mut self, path: impl Into<String>) -> Self {
         self.path = path.into();
         self
@@ -386,6 +393,7 @@ impl Store {
             if let Some(v) = rec.body.get("outcome") {
                 m.insert("outcome".into(), v.clone());
             }
+            m.insert("request_id".into(), Value::Str(request_id.into()));
             if let Some(v) = rec.body.get("result") {
                 m.insert("result".into(), v.clone());
             }
@@ -409,6 +417,7 @@ impl Store {
             if let Some(n) = rec.body.get("note") {
                 m.insert("note".into(), n.clone());
             }
+            m.insert("request_id".into(), Value::Str(request_id.into()));
             m.insert("duplicate".into(), Value::Bool(true));
             return Some(Ok(Value::Obj(m)));
         }
@@ -417,6 +426,7 @@ impl Store {
                 ("ok".into(), Value::Str("true".into())),
                 ("ignored".into(), Value::Str("true".into())),
                 ("duplicate".into(), Value::Bool(true)),
+                ("request_id".into(), Value::Str(request_id.into())),
             ]))));
         }
         if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
@@ -753,6 +763,7 @@ impl Store {
                     }
                     other => other,
                 };
+                err = err.request_id(request_id);
                 body.insert("details".into(), err.details.clone());
                 let rec = self
                     .journal
@@ -781,7 +792,11 @@ impl Store {
                     .append(RecordKind::EventIgnored, Value::Obj(body))
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
                 self.records.push(rec.clone());
-                let resp = obj(&[("ok", "true"), ("ignored", "true")]);
+                let resp = Value::Obj(BTreeMap::from([
+                    ("ok".into(), Value::Str("true".into())),
+                    ("ignored".into(), Value::Str("true".into())),
+                    ("request_id".into(), Value::Str(request_id.into())),
+                ]));
                 self.commit_dedup(request_id, resp.clone(), rec.seq);
                 Ok(resp)
             }
@@ -848,7 +863,8 @@ impl Store {
             );
             let err = ErrorObj::new("req/field_unknown", "unknown effect id")
                 .hint("use an id from effects_pending")
-                .details(Value::Obj(details));
+                .details(Value::Obj(details))
+                .request_id(request_id);
             self.last_errors.insert(request_id.into(), err.clone());
             self.state.dedup.insert(request_id.into(), rec.seq);
             return Err(err);
@@ -859,11 +875,21 @@ impl Store {
             .filter(|p| *p != effect_id)
             .cloned()
             .collect();
+        let mid = self
+            .state
+            .instance_machines
+            .get(instance_id)
+            .cloned()
+            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+        let mut post = inst.clone();
+        post.pending.clone_from(&pending);
+        let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &post);
         let mut body = BTreeMap::new();
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
         body.insert("effect_id".into(), Value::Str(effect_id.into()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("outcome".into(), Value::Str(outcome.into()));
+        body.insert("state_hash".into(), Value::Str(sh));
         if let Some(res) = result.clone() {
             body.insert("result".into(), res);
         }
@@ -871,9 +897,7 @@ impl Store {
             .journal
             .append(RecordKind::EffectAcked, Value::Obj(body))
             .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        if let Some(live) = self.state.instances.get_mut(instance_id) {
-            live.pending.clone_from(&pending);
-        }
+        self.state.instances.insert(instance_id.into(), post);
         self.note_record(&rec);
         self.history
             .entry(instance_id.into())
@@ -885,6 +909,7 @@ impl Store {
         m.insert("instance_id".into(), Value::Str(instance_id.into()));
         m.insert("effect_id".into(), Value::Str(effect_id.into()));
         m.insert("outcome".into(), Value::Str(outcome.into()));
+        m.insert("request_id".into(), Value::Str(request_id.into()));
         m.insert("duplicate".into(), Value::Bool(false));
         m.insert("seq".into(), Value::Num(rec.seq.to_string()));
         m.insert(
@@ -919,17 +944,25 @@ impl Store {
         if !self.state.instances.contains_key(instance_id) {
             return Err(ErrorObj::new("req/instance_not_found", instance_id));
         }
+        let mid = self
+            .state
+            .instance_machines
+            .get(instance_id)
+            .cloned()
+            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+        let mut post = self.state.instances.get(instance_id).unwrap().clone();
+        post.status = Status::Cancelled;
+        let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &post);
         let mut body = BTreeMap::new();
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("reason".into(), Value::Str(reason.into()));
+        body.insert("state_hash".into(), Value::Str(sh));
         let rec = self
             .journal
             .append(RecordKind::InstanceCancelled, Value::Obj(body))
             .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        if let Some(inst) = self.state.instances.get_mut(instance_id) {
-            inst.status = Status::Cancelled;
-        }
+        self.state.instances.insert(instance_id.into(), post);
         self.note_record(&rec);
         self.history
             .entry(instance_id.into())
@@ -968,6 +1001,7 @@ impl Store {
         let mut m = BTreeMap::new();
         m.insert("ok".into(), Value::Str("true".into()));
         m.insert("note".into(), Value::Str(note.into()));
+        m.insert("request_id".into(), Value::Str(request_id.into()));
         let resp = Value::Obj(m);
         self.commit_dedup(request_id, resp.clone(), rec.seq);
         Ok(resp)
@@ -1462,12 +1496,20 @@ mod tests {
         let dir = tmp();
         let mut s = Store::open(&dir).unwrap();
         s.define_machine(case_def(), false, false).unwrap();
-        let taken = format!("req-{}-1", s.journal.last_seq);
+        let before = s.journal.last_seq;
+        let taken = format!("req-{}-{}", before + 1, before + 2);
         s.create_instance("case_review", "i1", &taken, None)
             .unwrap();
+        assert_eq!(s.journal.last_seq, before + 1);
         let next = s.allocate_request_id().unwrap();
         assert_ne!(next, taken);
-        assert!(!s.state.dedup.contains_key(&next));
+        assert_eq!(next, format!("req-{}-{}", before + 1, before + 3));
+        fs::write(dir.join("alloc"), "").unwrap();
+        drop(s);
+        let mut s2 = Store::open(&dir).unwrap();
+        let after_torn = s2.allocate_request_id().unwrap();
+        assert!(!s2.state.dedup.contains_key(&after_torn));
+        assert!(after_torn.starts_with("req-"));
     }
 
     #[test]
