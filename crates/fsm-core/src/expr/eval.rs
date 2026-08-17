@@ -269,6 +269,7 @@ fn eval_inner(
             };
             if flag {
                 let (v, tc) = eval_inner(then_branch, b, budget, trace)?;
+                let v = widen_if_dec(v, then_branch, else_branch, b)?;
                 let mut ch = kid(cc);
                 ch.extend(kid(tc));
                 if trace {
@@ -277,6 +278,7 @@ fn eval_inner(
                 ok(v, *span, trace, ch)
             } else {
                 let (v, ec) = eval_inner(else_branch, b, budget, trace)?;
+                let v = widen_if_dec(v, then_branch, else_branch, b)?;
                 let mut ch = kid(cc);
                 if trace {
                     ch.push(skipped(then_branch));
@@ -321,6 +323,61 @@ fn eval_logic(
     ok(Val::Bool(rb), span, trace, kids(lc, rc))
 }
 
+fn dec_scale_hint(e: &Expr, b: &Bindings<'_>) -> Option<u8> {
+    match e {
+        Expr::DecLit { scale, .. } => Some(*scale),
+        Expr::CtxRef { name, .. } => match b.ctx.get(name) {
+            Some(Val::Dec(d)) => Some(d.scale),
+            _ => None,
+        },
+        Expr::EvtRef { name, .. } => match b.evt.and_then(|m| m.get(name)) {
+            Some(Val::Dec(d)) => Some(d.scale),
+            _ => None,
+        },
+        Expr::If {
+            then_branch,
+            else_branch,
+            ..
+        } => match (
+            dec_scale_hint(then_branch, b),
+            dec_scale_hint(else_branch, b),
+        ) {
+            (Some(a), Some(c)) => Some(a.max(c)),
+            (Some(a), None) => Some(a),
+            (None, Some(c)) => Some(c),
+            _ => None,
+        },
+        Expr::Bin { lhs, rhs, .. } => match (dec_scale_hint(lhs, b), dec_scale_hint(rhs, b)) {
+            (Some(a), Some(c)) => Some(a.max(c)),
+            (Some(a), None) => Some(a),
+            (None, Some(c)) => Some(c),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn widen_if_dec(
+    v: Val,
+    then_branch: &Expr,
+    else_branch: &Expr,
+    b: &Bindings<'_>,
+) -> Result<Val, EvalErr> {
+    let Val::Dec(d) = v else {
+        return Ok(v);
+    };
+    let target = dec_scale_hint(then_branch, b)
+        .unwrap_or(d.scale)
+        .max(dec_scale_hint(else_branch, b).unwrap_or(d.scale));
+    if target == d.scale {
+        return Ok(Val::Dec(d));
+    }
+    match d.rescale_up(target) {
+        Ok(w) => Ok(Val::Dec(w)),
+        Err(_) => Ok(Val::Dec(d)),
+    }
+}
+
 fn eval_call(
     name: &str,
     args: &[Arg],
@@ -342,6 +399,26 @@ fn eval_call(
             }
             Arg::Word { name, .. } => vals.push(Val::Str(name.clone())),
         }
+    }
+    let need = match name {
+        "min" | "max" => 2,
+        "abs" => 1,
+        "dec" => 2,
+        "round" => 3,
+        "div" => 4,
+        "dur" => 2,
+        _ => 0,
+    };
+    if need > 0 && vals.len() < need {
+        return Err((
+            ExprError::new(
+                "expr/arity",
+                span,
+                format!("{name} expected {need} arguments, found {}", vals.len()),
+                format!("expected {need}"),
+            ),
+            Some(err_node(span, "expr/arity", vec![])),
+        ));
     }
     let out = match name {
         "min" => min_max(true, &vals, span)?,

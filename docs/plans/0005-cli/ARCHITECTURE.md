@@ -32,7 +32,7 @@ Read this before your first task. The workflow is identical for every task in th
 - `pub fn emit_success(ctx: &Ctx, result: &Value)` — stdout: `render_human` normally, exact canonical bytes of the structured result under `--json`. `pub fn emit_error(ctx: &Ctx, err: &ErrorObj) -> u8` — always stderr (canonical JSON envelope under `--json`, otherwise rendered text showing code, message, path, a caret-marked span excerpt when present, and the hint), returning the mapped exit code.
 - Exit-code map (one function, one table): `0` ok · `1` domain error (`run/*`, `def/*`, `expr/*`, most `req/*`) · `2` usage (`args`) · `3` not found (`req/*_not_found`) · `4` integrity (`store/*` chain and state-hash classes) · `5` internal (`internal/*`, `io/*`).
 - Config precedence: flag > env (`FSM_DATA_DIR`, `FSM_LOG`, `NO_COLOR`) > platform default via `fn default_data_dir() -> PathBuf` (std-only: `$XDG_DATA_HOME/fsm` else `~/.local/share/fsm`; `~/Library/Application Support/fsm` on macOS; `%APPDATA%\fsm` on Windows).
-- `pub fn default_request_id() -> String` — `req-<now_ms>-<counter>` from `clock::now_ms()` (deterministic under `FSM_CLOCK_MS`); every command that accepts `--request-id` defaults through this and prints the id it used, so ad-hoc humans get idempotent retries without ceremony.
+- `pub fn default_request_id() -> String` — `req-<now_ms>-<pid>-<counter>` from `clock::now_ms()`, the process id, and a process-local counter (deterministic under `FSM_CLOCK_MS` within one process). Distinct processes cannot collide. Every command that accepts `--request-id` defaults through this and prints the id it used, so ad-hoc humans get idempotent retries without ceremony. A default id is never reused across operation shapes.
 
 ## 0024 — Offline Commands
 

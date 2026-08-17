@@ -42,7 +42,14 @@ fn scan(source: &str) -> Vec<Violation> {
             });
         }
         if has_allow {
-            continue;
+            if let Some(idx) = line.find("POLICY_ALLOW:") {
+                let reason = line[idx + "POLICY_ALLOW:".len()..].trim();
+                if !reason.is_empty() {
+                    continue;
+                }
+            } else {
+                continue;
+            }
         }
         let code = strip_line_comment(line);
         for tok in BANNED {
@@ -104,6 +111,13 @@ fn scanner_string_literal_is_violation() {
 #[test]
 fn scanner_allow_with_reason_is_clean() {
     assert!(scan("let x: HashMap<u8, u8> = todo!(); // POLICY_ALLOW: test fixture\n").is_empty());
+}
+
+#[test]
+fn scanner_empty_allow_suffix_is_violation() {
+    let v = scan("let x: HashMap<u8, u8> = todo!(); // POLICY_ALLOW:\n");
+    assert_eq!(v.len(), 1);
+    assert_eq!(v[0].token, "HashMap");
 }
 
 #[test]

@@ -11,10 +11,15 @@ use crate::store::ErrorObj;
 pub fn render_human(result: &Value) -> String {
     let mut s = String::new();
     render_val(result, 0, &mut s);
-    if !s.ends_with('\n') {
-        s.push('\n');
+    let mut out = String::new();
+    for (i, line) in s.lines().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push_str(line.trim_end());
     }
-    s
+    out.push('\n');
+    out
 }
 
 fn render_val(v: &Value, indent: usize, s: &mut String) {

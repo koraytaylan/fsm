@@ -4,12 +4,12 @@
 
 use std::collections::BTreeMap;
 
-use crate::expr::eval::Budget;
+use crate::expr::eval::{Budget, Val};
 use crate::hashes::state_hash;
 use crate::json::Value;
 use crate::machine::{CompiledMachine, InstanceState, Status};
 use crate::record::{Record, RecordKind};
-use crate::spec::{compile, parse_machine};
+use crate::spec::{TySpec, compile, parse_machine};
 use crate::step::{Outcome, create, step};
 use crate::tree::Tree;
 
@@ -86,6 +86,42 @@ pub fn fold_with(
     Ok(st)
 }
 
+fn parse_override(ty: &TySpec, raw: &str) -> Option<Val> {
+    match ty {
+        TySpec::Int => raw.parse().ok().map(Val::Int),
+        TySpec::Bool => match raw {
+            "true" => Some(Val::Bool(true)),
+            "false" => Some(Val::Bool(false)),
+            _ => None,
+        },
+        TySpec::Str => Some(Val::Str(raw.into())),
+        TySpec::Ts => raw.parse().ok().map(Val::Ts),
+        TySpec::Dur => raw.parse().ok().map(Val::Dur),
+        TySpec::Dec { scale } => crate::decimal::Dec::parse(raw, *scale).ok().map(Val::Dec),
+        TySpec::Enum { of } => Some(Val::Enum {
+            ty: of.clone(),
+            variant: raw.into(),
+        }),
+    }
+}
+
+fn overrides_from(
+    ctx: &[crate::spec::CtxVar],
+    raw: Option<&Value>,
+) -> Option<BTreeMap<String, Val>> {
+    let Some(v) = raw else {
+        return Some(BTreeMap::new());
+    };
+    let obj = v.as_obj()?;
+    let mut out = BTreeMap::new();
+    for (k, val) in obj {
+        let decl = ctx.iter().find(|c| c.name == *k)?;
+        let s = val.as_str()?;
+        out.insert(k.clone(), parse_override(&decl.ty, s)?);
+    }
+    Some(out)
+}
+
 fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
     match rec.kind {
         RecordKind::Genesis => Ok(()),
@@ -106,6 +142,12 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .and_then(Value::as_str)
                 .unwrap_or(&compiled.machine_id)
                 .to_string();
+            if id != compiled.machine_id {
+                return Err(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "machine_id",
+                });
+            }
             st.machines.insert(
                 id,
                 StoredMachine {
@@ -131,7 +173,16 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .machines
                 .get(mid)
                 .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
-            let overrides = BTreeMap::new();
+            let overrides =
+                match overrides_from(&m.compiled.spec.context, rec.body.get("overrides")) {
+                    Some(o) => o,
+                    None => {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "overrides",
+                        });
+                    }
+                };
             let a = create(&m.compiled, &m.tree, &overrides)
                 .map_err(|_| ReplayError::UnknownInstance { seq: rec.seq })?;
             let inst = InstanceState {
@@ -269,14 +320,50 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .body
                 .get("instance_id")
                 .and_then(Value::as_str)
-                .unwrap_or("");
-            if let (Some(inst), Some(mid)) = (st.instances.get(iid), st.instance_machines.get(iid))
-            {
-                if let Some(want) = rec.body.get("state_hash").and_then(Value::as_str) {
-                    let got = state_hash(mid, iid, rec.seq, inst);
-                    // rejection: unchanged hash relative to pre-state at this seq? compare leaf-stable hash without seq
-                    // architecture: re-verify the recorded unchanged state_hash
-                    let _ = (got, want);
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let ev = rec.body.get("event").and_then(Value::as_str).unwrap_or("");
+            let payload = rec
+                .body
+                .get("payload")
+                .cloned()
+                .unwrap_or(Value::Obj(BTreeMap::new()));
+            let mid = st
+                .instance_machines
+                .get(iid)
+                .cloned()
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let m = st
+                .machines
+                .get(&mid)
+                .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+            let inst = st
+                .instances
+                .get(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            if let Some(want) = rec.body.get("state_hash").and_then(Value::as_str) {
+                if want.starts_with("sha256:") {
+                    let got = state_hash(&mid, iid, rec.seq, inst);
+                    if got != want {
+                        return Err(ReplayError::StateHashMismatch {
+                            seq: rec.seq,
+                            expected: want.into(),
+                            found: got,
+                        });
+                    }
+                }
+            }
+            if !ev.is_empty() {
+                let mut bud = Budget::new(4096);
+                let out = step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud);
+                match (rec.kind, out) {
+                    (RecordKind::EventRejected, Outcome::Rejected(_))
+                    | (RecordKind::EventIgnored, Outcome::Ignored) => {}
+                    _ => {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "outcome",
+                        });
+                    }
                 }
             }
             if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
@@ -289,15 +376,17 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .body
                 .get("instance_id")
                 .and_then(Value::as_str)
-                .unwrap_or("");
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
             let eid = rec
                 .body
                 .get("effect_id")
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            if let Some(inst) = st.instances.get_mut(iid) {
-                inst.pending.retain(|p| p != eid);
-            }
+            let inst = st
+                .instances
+                .get_mut(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            inst.pending.retain(|p| p != eid);
             if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
                 st.dedup.insert(rid.into(), rec.seq);
             }
@@ -314,10 +403,12 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .body
                 .get("instance_id")
                 .and_then(Value::as_str)
-                .unwrap_or("");
-            if let Some(inst) = st.instances.get_mut(iid) {
-                inst.status = Status::Cancelled;
-            }
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let inst = st
+                .instances
+                .get_mut(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            inst.status = Status::Cancelled;
             if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
                 st.dedup.insert(rid.into(), rec.seq);
             }

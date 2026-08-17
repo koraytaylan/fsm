@@ -350,7 +350,8 @@ mod tests {
         .unwrap();
         store.define_machine(def.clone(), false, false).unwrap();
         let stored = store.resolve_machine("case_review").unwrap();
-        assert_eq!(canon_bytes(&stored.def), canon_bytes(&def));
+        let spec = fsm_core::spec::parse_machine(&def).unwrap();
+        assert_eq!(canon_bytes(&stored.def), canon_bytes(&spec.to_value()));
     }
 
     #[test]

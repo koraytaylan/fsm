@@ -382,6 +382,12 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 | context variables | 64 |
 | history nodes | 32 |
 | invariants | 64 |
+| enums | 32 (`MAX_ENUMS`) |
+| variants per enum | 64 (`MAX_VARIANTS`) |
+| transitions per (state, event) | 32 (`MAX_TRANSITIONS_PER_CELL`) |
+| fields per event or effect | 32 (`MAX_FIELDS`) |
+| sets per block | 32 (`MAX_SETS_PER_BLOCK`) |
+| emits per block | 8 (`MAX_EMITS_PER_BLOCK`) |
 
 These match `crates/fsm-core/src/limits.rs`.
 
@@ -394,3 +400,5 @@ These match `crates/fsm-core/src/limits.rs`.
 | `fsm.snapshot/1` | Disposable snapshot caches |
 | `fsm.state/1` | Instance state identity hash payload |
 | `expr/1` | Expression grammar |
+
+On-disk store `VERSION` is `2`. A `VERSION` `1` directory (the pre-repair journal/identity layout) is rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records, machine ids, or snapshots.

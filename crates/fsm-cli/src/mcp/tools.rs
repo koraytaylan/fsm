@@ -131,6 +131,7 @@ pub fn tools_list_result() -> Value {
             tool.insert("name".into(), Value::Str(t.name.into()));
             tool.insert("description".into(), Value::Str(t.description.into()));
             tool.insert("inputSchema".into(), (t.input_schema)());
+            tool.insert("outputSchema".into(), (t.output_schema)());
             Value::Obj(tool)
         })
         .collect();
@@ -602,7 +603,9 @@ fn run_effect_ack(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result
     let iid = str_arg(args, "instance_id").unwrap_or("");
     let eid = str_arg(args, "effect_id").unwrap_or("");
     let rid = str_arg(args, "request_id").unwrap_or("");
-    store.ack_effect(iid, eid, rid)
+    let outcome = str_arg(args, "outcome").unwrap_or("ok");
+    let result = args.get("result").cloned();
+    store.ack_effect_outcome(iid, eid, rid, outcome, result)
 }
 
 fn run_instance_cancel(
@@ -631,12 +634,39 @@ fn run_instance_list(
     args: &Value,
 ) -> Result<Value, ErrorObj> {
     let status = str_arg(args, "status");
+    let machine = str_arg(args, "machine");
+    let state = str_arg(args, "state");
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_num().and_then(|s| s.parse::<usize>().ok()))
+        .unwrap_or(usize::MAX);
     let mut rows = Vec::new();
     for (id, inst) in &store.state.instances {
         if let Some(st) = status {
             if st != "all" && inst.status.as_str() != st {
                 continue;
             }
+        }
+        if let Some(mref) = machine {
+            match store.resolve_machine(mref) {
+                Ok(m) => {
+                    if store.state.instance_machines.get(id) != Some(&m.compiled.machine_id)
+                        && store.state.instance_machines.get(id)
+                            != Some(&fsm_core::hashes::machine_id(&m.def))
+                    {
+                        continue;
+                    }
+                }
+                Err(_) => continue,
+            }
+        }
+        if let Some(st) = state {
+            if inst.leaf != st {
+                continue;
+            }
+        }
+        if rows.len() >= limit {
+            break;
         }
         let mut row = BTreeMap::new();
         row.insert("instance_id".into(), Value::Str(id.clone()));
@@ -704,6 +734,14 @@ fn run_instance_history(
 }
 
 fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<Value, ErrorObj> {
+    let has_spec = args.get("spec").is_some();
+    let has_machine = str_arg(args, "machine").is_some();
+    if has_spec && has_machine {
+        return Err(ErrorObj::new(
+            "req/args_invalid",
+            "provide machine or spec, not both",
+        ));
+    }
     let compiled = if let Some(specv) = args.get("spec") {
         let spec = parse_machine(specv).map_err(ErrorObj::from_findings)?;
         compile(spec).map_err(ErrorObj::from_findings)?
@@ -735,7 +773,22 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
         Some("continue") => OnReject::Continue,
         _ => OnReject::Stop,
     };
-    let report = simulate(&compiled, &tree, &BTreeMap::new(), &events, on);
+    let mut overrides = BTreeMap::new();
+    if let Some(Value::Obj(ctx)) = args.get("context") {
+        for (k, val) in ctx {
+            let raw = match val {
+                Value::Str(s) => s.clone(),
+                Value::Bool(b) => b.to_string(),
+                _ => continue,
+            };
+            if let Some(decl) = compiled.spec.context.iter().find(|c| c.name == *k) {
+                if let Ok(v) = coerce_ctx_override(&decl.ty, k, &raw) {
+                    overrides.insert(k.clone(), v);
+                }
+            }
+        }
+    }
+    let report = simulate(&compiled, &tree, &overrides, &events, on);
     let mut steps = Vec::new();
     for st in &report.steps {
         let mut m = BTreeMap::new();

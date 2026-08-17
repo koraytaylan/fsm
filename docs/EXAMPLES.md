@@ -13,13 +13,13 @@ $ fsm machine add examples/expense_approval.json
 created: true
 $ fsm instance new expense_approval
 leaf: draft
-$ fsm instance send <id> submit --payload '{"amount":"10.00"}'
+$ fsm instance send inst-e1 submit --payload '{"amount":"10.00"}' --request-id e1-submit
 leaf: peer_review
-$ fsm instance send <id> submit --payload '{"amount":"-1.00"}'
+$ fsm instance new expense_approval --request-id e2
+$ fsm instance send inst-e2 submit --payload '{"amount":"-1.00"}' --request-id e2-submit
 # exit 1
 run/invariant
-  hint: …
-$ fsm instance send <id> approve
+$ fsm instance send inst-e1 approve --request-id e1-approve
 leaf: approved
 ```
 

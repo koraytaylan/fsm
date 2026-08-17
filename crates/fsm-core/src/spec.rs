@@ -264,10 +264,18 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
             for (k, val) in map {
                 match val.as_arr() {
                     Some(arr) => {
-                        let vars: Vec<String> = arr
-                            .iter()
-                            .filter_map(|x| x.as_str().map(str::to_string))
-                            .collect();
+                        let mut vars = Vec::new();
+                        for (i, x) in arr.iter().enumerate() {
+                            match x.as_str() {
+                                Some(s) => vars.push(s.to_string()),
+                                None => errs.push(Finding::err(
+                                    "def/shape",
+                                    format!("/enums/{k}/{i}"),
+                                    "enum variant must be a string",
+                                    "use an array of strings",
+                                )),
+                            }
+                        }
                         enums.insert(k.clone(), vars);
                     }
                     None => errs.push(Finding::err(
@@ -314,13 +322,28 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
     let initial = req_str(obj, "initial", "/initial", &mut errs)
         .unwrap_or("")
         .to_string();
-    let on_unhandled = match obj
-        .get("on_unhandled")
-        .and_then(Value::as_str)
-        .unwrap_or("reject")
-    {
-        "ignore" => Unhandled::Ignore,
-        _ => Unhandled::Reject,
+    let on_unhandled = match obj.get("on_unhandled") {
+        None => Unhandled::Reject,
+        Some(Value::Str(s)) if s == "reject" => Unhandled::Reject,
+        Some(Value::Str(s)) if s == "ignore" => Unhandled::Ignore,
+        Some(Value::Str(s)) => {
+            errs.push(Finding::err(
+                "def/shape",
+                "/on_unhandled",
+                format!("unknown on_unhandled {s}"),
+                "use reject or ignore",
+            ));
+            Unhandled::Reject
+        }
+        Some(_) => {
+            errs.push(Finding::err(
+                "def/shape",
+                "/on_unhandled",
+                "on_unhandled must be a string",
+                "use reject or ignore",
+            ));
+            Unhandled::Reject
+        }
     };
     let transitions = parse_transitions(obj.get("transitions"), &mut errs);
     let invariants = parse_invariants(obj.get("invariants"), &mut errs);
@@ -485,6 +508,7 @@ fn parse_ctx(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<CtxVar> {
             ));
             continue;
         };
+        check_keys(obj, &["name", "ty", "init"], &path, errs);
         let name = req_str(obj, "name", &format!("{path}/name"), errs)
             .unwrap_or("")
             .to_string();
@@ -520,16 +544,32 @@ fn parse_ctx(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<CtxVar> {
 }
 
 fn parse_fields(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Vec<FieldDecl> {
-    let Some(arr) = v.and_then(Value::as_arr) else {
+    let Some(v) = v else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            path,
+            "fields must be an array",
+            "use an array of field objects",
+        ));
         return Vec::new();
     };
     let mut out = Vec::new();
     for (i, item) in arr.iter().enumerate() {
         let p = format!("{path}/{i}");
-        let Some(obj) = item.as_obj() else { continue };
-        let name = obj
-            .get("name")
-            .and_then(Value::as_str)
+        let Some(obj) = item.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &p,
+                "field must be an object",
+                "use an object",
+            ));
+            continue;
+        };
+        check_keys(obj, &["name", "ty"], &p, errs);
+        let name = req_str(obj, "name", &format!("{p}/name"), errs)
             .unwrap_or("")
             .to_string();
         if let Some(ty) = obj
@@ -537,124 +577,218 @@ fn parse_fields(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Vec<F
             .and_then(|t| parse_ty_spec(t, &format!("{p}/ty"), errs))
         {
             out.push(FieldDecl { name, ty });
+        } else if obj.get("ty").is_none() {
+            errs.push(Finding::err(
+                "def/shape",
+                format!("{p}/ty"),
+                "ty is required",
+                "declare a type",
+            ));
         }
     }
     out
 }
 
+fn parse_named_list(
+    v: Option<&Value>,
+    path: &str,
+    errs: &mut Vec<Finding>,
+) -> Option<Vec<(String, Vec<FieldDecl>)>> {
+    match v {
+        None => Some(Vec::new()),
+        Some(x) => match x.as_arr() {
+            None => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    path,
+                    format!("{path} must be an array"),
+                    "use an array",
+                ));
+                None
+            }
+            Some(arr) => {
+                let mut out = Vec::new();
+                for (i, item) in arr.iter().enumerate() {
+                    let p = format!("{path}/{i}");
+                    let Some(obj) = item.as_obj() else {
+                        errs.push(Finding::err(
+                            "def/shape",
+                            &p,
+                            "entry must be an object",
+                            "use an object",
+                        ));
+                        continue;
+                    };
+                    check_keys(obj, &["name", "fields"], &p, errs);
+                    let name = req_str(obj, "name", &format!("{p}/name"), errs)
+                        .unwrap_or("")
+                        .to_string();
+                    let fields = parse_fields(obj.get("fields"), &format!("{p}/fields"), errs);
+                    out.push((name, fields));
+                }
+                Some(out)
+            }
+        },
+    }
+}
+
 fn parse_events(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<EventDecl> {
-    let Some(arr) = v.and_then(Value::as_arr) else {
-        return Vec::new();
-    };
-    arr.iter()
-        .enumerate()
-        .filter_map(|(i, item)| {
-            let obj = item.as_obj()?;
-            Some(EventDecl {
-                name: obj
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                fields: parse_fields(obj.get("fields"), &format!("/events/{i}/fields"), errs),
-            })
-        })
+    parse_named_list(v, "/events", errs)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, fields)| EventDecl { name, fields })
         .collect()
 }
 
 fn parse_effects(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<EffectDecl> {
-    let Some(arr) = v.and_then(Value::as_arr) else {
-        return Vec::new();
-    };
-    arr.iter()
-        .enumerate()
-        .filter_map(|(i, item)| {
-            let obj = item.as_obj()?;
-            Some(EffectDecl {
-                name: obj
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                fields: parse_fields(obj.get("fields"), &format!("/effects/{i}/fields"), errs),
-            })
-        })
+    parse_named_list(v, "/effects", errs)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, fields)| EffectDecl { name, fields })
         .collect()
 }
 
 fn parse_block(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Option<Block> {
-    let obj = v?.as_obj()?;
-    let sets = obj
-        .get("do")
-        .and_then(Value::as_arr)
-        .map(|a| {
-            a.iter()
-                .enumerate()
-                .filter_map(|(i, s)| {
-                    let o = s.as_obj()?;
-                    Some(SetSpec {
-                        target: o
-                            .get("target")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .to_string(),
-                        value: match o.get("value") {
-                            Some(Value::Num(_)) => {
+    let v = v?;
+    let Some(obj) = v.as_obj() else {
+        errs.push(Finding::err(
+            "def/shape",
+            path,
+            "block must be an object",
+            "use {do, emit}",
+        ));
+        return None;
+    };
+    check_keys(obj, &["do", "emit"], path, errs);
+    let mut sets = Vec::new();
+    if let Some(do_v) = obj.get("do") {
+        let Some(a) = do_v.as_arr() else {
+            errs.push(Finding::err(
+                "def/shape",
+                format!("{path}/do"),
+                "do must be an array",
+                "use an array",
+            ));
+            return Some(Block {
+                sets,
+                emits: Vec::new(),
+            });
+        };
+        for (i, s) in a.iter().enumerate() {
+            let sp = format!("{path}/do/{i}");
+            let Some(o) = s.as_obj() else {
+                errs.push(Finding::err(
+                    "def/shape",
+                    &sp,
+                    "set must be an object",
+                    "use {target, value}",
+                ));
+                continue;
+            };
+            check_keys(o, &["target", "value"], &sp, errs);
+            sets.push(SetSpec {
+                target: req_str(o, "target", &format!("{sp}/target"), errs)
+                    .unwrap_or("")
+                    .to_string(),
+                value: match o.get("value") {
+                    Some(Value::Num(_)) => {
+                        errs.push(Finding::err(
+                            "req/number_token",
+                            format!("{sp}/value"),
+                            "value must be a string",
+                            "quote the expression",
+                        ));
+                        String::new()
+                    }
+                    Some(Value::Str(s)) => s.clone(),
+                    Some(_) => {
+                        errs.push(Finding::err(
+                            "def/shape",
+                            format!("{sp}/value"),
+                            "value must be a string",
+                            "quote the expression",
+                        ));
+                        String::new()
+                    }
+                    None => {
+                        errs.push(Finding::err(
+                            "def/shape",
+                            format!("{sp}/value"),
+                            "value is required",
+                            "set value",
+                        ));
+                        String::new()
+                    }
+                },
+            });
+        }
+    }
+    let mut emits = Vec::new();
+    if let Some(em_v) = obj.get("emit") {
+        let Some(a) = em_v.as_arr() else {
+            errs.push(Finding::err(
+                "def/shape",
+                format!("{path}/emit"),
+                "emit must be an array",
+                "use an array",
+            ));
+            return Some(Block { sets, emits });
+        };
+        for (i, s) in a.iter().enumerate() {
+            let ep = format!("{path}/emit/{i}");
+            let Some(o) = s.as_obj() else {
+                errs.push(Finding::err(
+                    "def/shape",
+                    &ep,
+                    "emit must be an object",
+                    "use {effect, args}",
+                ));
+                continue;
+            };
+            check_keys(o, &["effect", "args"], &ep, errs);
+            let mut args = BTreeMap::new();
+            if let Some(am) = o.get("args") {
+                if let Some(map) = am.as_obj() {
+                    for (k, val) in map {
+                        match val {
+                            Value::Num(_) => {
                                 errs.push(Finding::err(
                                     "req/number_token",
-                                    format!("{path}/do/{i}/value"),
-                                    "value must be a string",
+                                    format!("{ep}/args/{k}"),
+                                    "argument must be a string",
                                     "quote the expression",
                                 ));
-                                String::new()
                             }
-                            Some(Value::Str(s)) => s.clone(),
-                            _ => String::new(),
-                        },
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let emits = obj
-        .get("emit")
-        .and_then(Value::as_arr)
-        .map(|a| {
-            a.iter()
-                .enumerate()
-                .filter_map(|(i, s)| {
-                    let o = s.as_obj()?;
-                    let mut args = BTreeMap::new();
-                    if let Some(am) = o.get("args").and_then(Value::as_obj) {
-                        for (k, val) in am {
-                            match val {
-                                Value::Num(_) => {
-                                    errs.push(Finding::err(
-                                        "req/number_token",
-                                        format!("{path}/emit/{i}/args/{k}"),
-                                        "argument must be a string",
-                                        "quote the expression",
-                                    ));
-                                }
-                                Value::Str(s) => {
-                                    args.insert(k.clone(), s.clone());
-                                }
-                                _ => {}
+                            Value::Str(s) => {
+                                args.insert(k.clone(), s.clone());
+                            }
+                            _ => {
+                                errs.push(Finding::err(
+                                    "def/shape",
+                                    format!("{ep}/args/{k}"),
+                                    "argument must be a string",
+                                    "quote the expression",
+                                ));
                             }
                         }
                     }
-                    Some(EmitSpec {
-                        effect: o
-                            .get("effect")
-                            .and_then(Value::as_str)
-                            .unwrap_or("")
-                            .to_string(),
-                        args,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+                } else {
+                    errs.push(Finding::err(
+                        "def/shape",
+                        format!("{ep}/args"),
+                        "args must be an object",
+                        "map names to expressions",
+                    ));
+                }
+            }
+            emits.push(EmitSpec {
+                effect: req_str(o, "effect", &format!("{ep}/effect"), errs)
+                    .unwrap_or("")
+                    .to_string(),
+                args,
+            });
+        }
+    }
     Some(Block { sets, emits })
 }
 
@@ -679,31 +813,75 @@ fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -> Vec<State
             &p,
             errs,
         );
-        let name = obj
-            .get("name")
-            .and_then(Value::as_str)
+        let name = req_str(obj, "name", &format!("{p}/name"), errs)
             .unwrap_or("")
             .to_string();
-        let terminal = obj
-            .get("terminal")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let history = match obj.get("history").and_then(Value::as_str) {
-            Some("deep") => Some(HistoryKind::Deep),
-            Some("shallow") => Some(HistoryKind::Shallow),
-            _ => None,
+        let terminal = match obj.get("terminal") {
+            None => false,
+            Some(Value::Bool(b)) => *b,
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/terminal"),
+                    "terminal must be a boolean",
+                    "use true or false",
+                ));
+                false
+            }
         };
-        let initial = obj
-            .get("initial")
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        let history = match obj.get("history") {
+            None => None,
+            Some(Value::Str(s)) if s == "deep" => Some(HistoryKind::Deep),
+            Some(Value::Str(s)) if s == "shallow" => Some(HistoryKind::Shallow),
+            Some(Value::Str(s)) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/history"),
+                    format!("unknown history mode {s}"),
+                    "use deep or shallow",
+                ));
+                None
+            }
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/history"),
+                    "history must be a string",
+                    "use deep or shallow",
+                ));
+                None
+            }
+        };
+        let initial = match obj.get("initial") {
+            None => None,
+            Some(Value::Str(s)) => Some(s.clone()),
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/initial"),
+                    "initial must be a string",
+                    "name a direct child",
+                ));
+                None
+            }
+        };
         let entry = parse_block(obj.get("entry"), &format!("{p}/entry"), errs);
         let exit = parse_block(obj.get("exit"), &format!("{p}/exit"), errs);
-        let states = obj
-            .get("states")
-            .and_then(Value::as_arr)
-            .map(|a| parse_states(a, &format!("{p}/states"), errs))
-            .unwrap_or_default();
+        let states = match obj.get("states") {
+            None => Vec::new(),
+            Some(s) => match s.as_arr() {
+                Some(a) => parse_states(a, &format!("{p}/states"), errs),
+                None => {
+                    errs.push(Finding::err(
+                        "def/shape",
+                        format!("{p}/states"),
+                        "states must be an array",
+                        "use an array",
+                    ));
+                    Vec::new()
+                }
+            },
+        };
         out.push(StateNode {
             name,
             terminal,
@@ -718,13 +896,31 @@ fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -> Vec<State
 }
 
 fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<TransitionSpec> {
-    let Some(arr) = v.and_then(Value::as_arr) else {
+    let Some(v) = v else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            "/transitions",
+            "transitions must be an array",
+            "use an array",
+        ));
         return Vec::new();
     };
     let mut out = Vec::new();
     for (i, item) in arr.iter().enumerate() {
         let p = format!("/transitions/{i}");
-        let Some(obj) = item.as_obj() else { continue };
+        let Some(obj) = item.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &p,
+                "transition must be an object",
+                "use an object",
+            ));
+            continue;
+        };
+        check_keys(obj, &["from", "on", "if", "do", "emit", "to"], &p, errs);
         if obj.get("on").is_none() {
             errs.push(Finding::err(
                 "def/shape",
@@ -733,56 +929,67 @@ fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<Transiti
                 "set on",
             ));
         }
-        let sets = obj
-            .get("do")
-            .and_then(Value::as_arr)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|s| {
-                        let o = s.as_obj()?;
-                        Some(SetSpec {
-                            target: o
-                                .get("target")
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .to_string(),
-                            value: o
-                                .get("value")
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .to_string(),
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let emits = obj
-            .get("emit")
-            .and_then(Value::as_arr)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|s| {
-                        let o = s.as_obj()?;
-                        let mut args = BTreeMap::new();
-                        if let Some(am) = o.get("args").and_then(Value::as_obj) {
-                            for (k, val) in am {
-                                if let Some(s) = val.as_str() {
-                                    args.insert(k.clone(), s.to_string());
-                                }
-                            }
-                        }
-                        Some(EmitSpec {
-                            effect: o
-                                .get("effect")
-                                .and_then(Value::as_str)
-                                .unwrap_or("")
-                                .to_string(),
-                            args,
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        if obj.get("from").is_none() {
+            errs.push(Finding::err(
+                "def/shape",
+                format!("{p}/from"),
+                "transition missing from",
+                "set from",
+            ));
+        }
+        let block = parse_block(
+            Some(&{
+                let mut b = BTreeMap::new();
+                if let Some(d) = obj.get("do") {
+                    b.insert("do".into(), d.clone());
+                }
+                if let Some(e) = obj.get("emit") {
+                    b.insert("emit".into(), e.clone());
+                }
+                Value::Obj(b)
+            }),
+            &p,
+            errs,
+        )
+        .unwrap_or(Block {
+            sets: Vec::new(),
+            emits: Vec::new(),
+        });
+        let guard = match obj.get("if") {
+            None => None,
+            Some(Value::Str(s)) => Some(s.clone()),
+            Some(Value::Num(_)) => {
+                errs.push(Finding::err(
+                    "req/number_token",
+                    format!("{p}/if"),
+                    "guard must be a string",
+                    "quote the expression",
+                ));
+                None
+            }
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/if"),
+                    "guard must be a string",
+                    "quote the expression",
+                ));
+                None
+            }
+        };
+        let to = match obj.get("to") {
+            None => None,
+            Some(Value::Str(s)) => Some(s.clone()),
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/to"),
+                    "to must be a string",
+                    "name a state",
+                ));
+                None
+            }
+        };
         out.push(TransitionSpec {
             from: obj
                 .get("from")
@@ -794,169 +1001,341 @@ fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<Transiti
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string(),
-            guard: obj.get("if").and_then(Value::as_str).map(str::to_string),
-            sets,
-            emits,
-            to: obj.get("to").and_then(Value::as_str).map(str::to_string),
+            guard,
+            sets: block.sets,
+            emits: block.emits,
+            to,
         });
     }
     out
 }
 
-fn parse_invariants(v: Option<&Value>, _errs: &mut Vec<Finding>) -> Vec<InvariantSpec> {
-    let Some(arr) = v.and_then(Value::as_arr) else {
+fn parse_invariants(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<InvariantSpec> {
+    let Some(v) = v else {
         return Vec::new();
     };
-    arr.iter()
-        .filter_map(|item| {
-            let obj = item.as_obj()?;
-            Some(InvariantSpec {
-                name: obj
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                expr: obj
-                    .get("expr")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                mode: match obj.get("mode").and_then(Value::as_str) {
-                    Some("monitor") => EnforceMode::Monitor,
-                    _ => EnforceMode::Enforce,
-                },
+    let Some(arr) = v.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            "/invariants",
+            "invariants must be an array",
+            "use an array",
+        ));
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (i, item) in arr.iter().enumerate() {
+        let p = format!("/invariants/{i}");
+        let Some(obj) = item.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &p,
+                "invariant must be an object",
+                "use an object",
+            ));
+            continue;
+        };
+        check_keys(obj, &["name", "expr", "mode"], &p, errs);
+        let mode = match obj.get("mode") {
+            None => EnforceMode::Enforce,
+            Some(Value::Str(s)) if s == "monitor" => EnforceMode::Monitor,
+            Some(Value::Str(s)) if s == "enforce" => EnforceMode::Enforce,
+            Some(Value::Str(s)) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/mode"),
+                    format!("unknown mode {s}"),
+                    "use enforce or monitor",
+                ));
+                EnforceMode::Enforce
+            }
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/mode"),
+                    "mode must be a string",
+                    "use enforce or monitor",
+                ));
+                EnforceMode::Enforce
+            }
+        };
+        out.push(InvariantSpec {
+            name: req_str(obj, "name", &format!("{p}/name"), errs)
+                .unwrap_or("")
+                .to_string(),
+            expr: req_str(obj, "expr", &format!("{p}/expr"), errs)
+                .unwrap_or("")
+                .to_string(),
+            mode,
+        });
+    }
+    out
+}
+
+fn v_str(s: impl Into<String>) -> Value {
+    Value::Str(s.into())
+}
+
+fn v_obj(pairs: impl IntoIterator<Item = (String, Value)>) -> Value {
+    Value::Obj(pairs.into_iter().collect())
+}
+
+fn ty_spec_value(ty: &TySpec) -> Value {
+    match ty {
+        TySpec::Int => v_str("int"),
+        TySpec::Str => v_str("str"),
+        TySpec::Bool => v_str("bool"),
+        TySpec::Ts => v_str("timestamp"),
+        TySpec::Dur => v_str("duration"),
+        TySpec::Dec { scale } => v_obj([("decimal".into(), v_str(scale.to_string()))]),
+        TySpec::Enum { of } => v_obj([("enum".into(), v_str(of.clone()))]),
+    }
+}
+
+fn field_value(f: &FieldDecl) -> Value {
+    v_obj([
+        ("name".into(), v_str(f.name.clone())),
+        ("ty".into(), ty_spec_value(&f.ty)),
+    ])
+}
+
+fn block_value(b: &Block) -> Value {
+    let mut m = BTreeMap::new();
+    if !b.sets.is_empty() {
+        m.insert(
+            "do".into(),
+            Value::Arr(
+                b.sets
+                    .iter()
+                    .map(|s| {
+                        v_obj([
+                            ("target".into(), v_str(s.target.clone())),
+                            ("value".into(), v_str(s.value.clone())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        );
+    }
+    if !b.emits.is_empty() {
+        m.insert(
+            "emit".into(),
+            Value::Arr(
+                b.emits
+                    .iter()
+                    .map(|e| {
+                        let mut o = BTreeMap::new();
+                        o.insert("effect".into(), v_str(e.effect.clone()));
+                        if !e.args.is_empty() {
+                            o.insert(
+                                "args".into(),
+                                v_obj(e.args.iter().map(|(k, v)| (k.clone(), v_str(v.clone())))),
+                            );
+                        }
+                        Value::Obj(o)
+                    })
+                    .collect(),
+            ),
+        );
+    }
+    Value::Obj(m)
+}
+
+fn states_value(nodes: &[StateNode]) -> Value {
+    Value::Arr(
+        nodes
+            .iter()
+            .map(|n| {
+                let mut m = BTreeMap::new();
+                m.insert("name".into(), v_str(n.name.clone()));
+                if n.terminal {
+                    m.insert("terminal".into(), Value::Bool(true));
+                }
+                if let Some(h) = n.history {
+                    m.insert(
+                        "history".into(),
+                        v_str(match h {
+                            HistoryKind::Deep => "deep",
+                            HistoryKind::Shallow => "shallow",
+                        }),
+                    );
+                }
+                if let Some(init) = &n.initial {
+                    m.insert("initial".into(), v_str(init.clone()));
+                }
+                if !n.states.is_empty() {
+                    m.insert("states".into(), states_value(&n.states));
+                }
+                if let Some(e) = &n.entry {
+                    m.insert("entry".into(), block_value(e));
+                }
+                if let Some(e) = &n.exit {
+                    m.insert("exit".into(), block_value(e));
+                }
+                Value::Obj(m)
             })
-        })
-        .collect()
+            .collect(),
+    )
 }
 
 impl MachineSpec {
     pub fn to_value(&self) -> Value {
-        // Structural round-trip sufficient for parse tests; not byte-canonical.
-        use crate::json::parse;
-        // Rebuild via a small writer
-        let mut s = String::from("{\"format\":\"");
-        s.push_str(&self.format);
-        s.push_str("\",\"name\":\"");
-        s.push_str(&self.name);
-        s.push('"');
+        let mut m = BTreeMap::new();
+        m.insert("format".into(), v_str(self.format.clone()));
+        m.insert("name".into(), v_str(self.name.clone()));
         if let Some(d) = &self.description {
-            s.push_str(",\"description\":\"");
-            s.push_str(d);
-            s.push('"');
+            m.insert("description".into(), v_str(d.clone()));
         }
-        s.push_str(",\"initial\":\"");
-        s.push_str(&self.initial);
-        s.push('"');
-        s.push_str(",\"context\":[");
-        for (i, c) in self.context.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push_str("{\"name\":\"");
-            s.push_str(&c.name);
-            s.push_str("\",\"ty\":\"");
-            s.push_str(match &c.ty {
-                TySpec::Int => "int",
-                TySpec::Str => "str",
-                TySpec::Bool => "bool",
-                TySpec::Ts => "timestamp",
-                TySpec::Dur => "duration",
-                TySpec::Dec { .. } => "int",
-                TySpec::Enum { .. } => "int",
-            });
-            s.push_str("\",\"init\":\"");
-            s.push_str(&c.init);
-            s.push_str("\"}");
+        if !self.enums.is_empty() {
+            m.insert(
+                "enums".into(),
+                v_obj(self.enums.iter().map(|(k, vars)| {
+                    (
+                        k.clone(),
+                        Value::Arr(vars.iter().cloned().map(v_str).collect()),
+                    )
+                })),
+            );
         }
-        s.push_str("],\"events\":[");
-        for (i, e) in self.events.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push_str("{\"name\":\"");
-            s.push_str(&e.name);
-            s.push_str("\",\"fields\":[");
-            for (j, f) in e.fields.iter().enumerate() {
-                if j > 0 {
-                    s.push(',');
-                }
-                s.push_str("{\"name\":\"");
-                s.push_str(&f.name);
-                s.push_str("\",\"ty\":\"int\"}");
-            }
-            s.push_str("]}");
-        }
-        s.push_str("],\"effects\":[");
-        for (i, e) in self.effects.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push_str("{\"name\":\"");
-            s.push_str(&e.name);
-            s.push_str("\",\"fields\":[]}");
-        }
-        s.push_str("],\"states\":");
-        s.push_str(&states_json(&self.states));
-        s.push_str(",\"transitions\":[");
-        for (i, t) in self.transitions.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push_str("{\"from\":\"");
-            s.push_str(&t.from);
-            s.push_str("\",\"on\":\"");
-            s.push_str(&t.on);
-            s.push('"');
-            if let Some(g) = &t.guard {
-                s.push_str(",\"if\":\"");
-                s.push_str(g);
-                s.push('"');
-            }
-            if let Some(to) = &t.to {
-                s.push_str(",\"to\":\"");
-                s.push_str(to);
-                s.push('"');
-            }
-            if !t.sets.is_empty() {
-                s.push_str(",\"do\":[");
-                for (j, set) in t.sets.iter().enumerate() {
-                    if j > 0 {
-                        s.push(',');
-                    }
-                    s.push_str("{\"target\":\"");
-                    s.push_str(&set.target);
-                    s.push_str("\",\"value\":\"");
-                    s.push_str(&set.value);
-                    s.push_str("\"}");
-                }
-                s.push(']');
-            }
-            s.push('}');
-        }
-        s.push_str("],\"invariants\":[");
-        for (i, inv) in self.invariants.iter().enumerate() {
-            if i > 0 {
-                s.push(',');
-            }
-            s.push_str("{\"name\":\"");
-            s.push_str(&inv.name);
-            s.push_str("\",\"expr\":\"");
-            s.push_str(&inv.expr);
-            s.push_str("\",\"mode\":\"");
-            s.push_str(match inv.mode {
-                EnforceMode::Enforce => "enforce",
-                EnforceMode::Monitor => "monitor",
-            });
-            s.push_str("\"}");
-        }
-        s.push_str("],\"on_unhandled\":\"");
-        s.push_str(match self.on_unhandled {
-            Unhandled::Reject => "reject",
-            Unhandled::Ignore => "ignore",
-        });
-        s.push_str("\"}");
-        parse(s.as_bytes(), &crate::json::JsonLimits::DEFAULT).unwrap_or(Value::Null)
+        m.insert(
+            "context".into(),
+            Value::Arr(
+                self.context
+                    .iter()
+                    .map(|c| {
+                        v_obj([
+                            ("name".into(), v_str(c.name.clone())),
+                            ("ty".into(), ty_spec_value(&c.ty)),
+                            ("init".into(), v_str(c.init.clone())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "events".into(),
+            Value::Arr(
+                self.events
+                    .iter()
+                    .map(|e| {
+                        v_obj([
+                            ("name".into(), v_str(e.name.clone())),
+                            (
+                                "fields".into(),
+                                Value::Arr(e.fields.iter().map(field_value).collect()),
+                            ),
+                        ])
+                    })
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "effects".into(),
+            Value::Arr(
+                self.effects
+                    .iter()
+                    .map(|e| {
+                        v_obj([
+                            ("name".into(), v_str(e.name.clone())),
+                            (
+                                "fields".into(),
+                                Value::Arr(e.fields.iter().map(field_value).collect()),
+                            ),
+                        ])
+                    })
+                    .collect(),
+            ),
+        );
+        m.insert("states".into(), states_value(&self.states));
+        m.insert("initial".into(), v_str(self.initial.clone()));
+        m.insert(
+            "on_unhandled".into(),
+            v_str(match self.on_unhandled {
+                Unhandled::Reject => "reject",
+                Unhandled::Ignore => "ignore",
+            }),
+        );
+        m.insert(
+            "transitions".into(),
+            Value::Arr(
+                self.transitions
+                    .iter()
+                    .map(|t| {
+                        let mut o = BTreeMap::new();
+                        o.insert("from".into(), v_str(t.from.clone()));
+                        o.insert("on".into(), v_str(t.on.clone()));
+                        if let Some(g) = &t.guard {
+                            o.insert("if".into(), v_str(g.clone()));
+                        }
+                        if let Some(to) = &t.to {
+                            o.insert("to".into(), v_str(to.clone()));
+                        }
+                        if !t.sets.is_empty() {
+                            o.insert(
+                                "do".into(),
+                                Value::Arr(
+                                    t.sets
+                                        .iter()
+                                        .map(|s| {
+                                            v_obj([
+                                                ("target".into(), v_str(s.target.clone())),
+                                                ("value".into(), v_str(s.value.clone())),
+                                            ])
+                                        })
+                                        .collect(),
+                                ),
+                            );
+                        }
+                        if !t.emits.is_empty() {
+                            o.insert(
+                                "emit".into(),
+                                Value::Arr(
+                                    t.emits
+                                        .iter()
+                                        .map(|e| {
+                                            let mut em = BTreeMap::new();
+                                            em.insert("effect".into(), v_str(e.effect.clone()));
+                                            if !e.args.is_empty() {
+                                                em.insert(
+                                                    "args".into(),
+                                                    v_obj(e.args.iter().map(|(k, v)| {
+                                                        (k.clone(), v_str(v.clone()))
+                                                    })),
+                                                );
+                                            }
+                                            Value::Obj(em)
+                                        })
+                                        .collect(),
+                                ),
+                            );
+                        }
+                        Value::Obj(o)
+                    })
+                    .collect(),
+            ),
+        );
+        m.insert(
+            "invariants".into(),
+            Value::Arr(
+                self.invariants
+                    .iter()
+                    .map(|inv| {
+                        v_obj([
+                            ("name".into(), v_str(inv.name.clone())),
+                            ("expr".into(), v_str(inv.expr.clone())),
+                            (
+                                "mode".into(),
+                                v_str(match inv.mode {
+                                    EnforceMode::Enforce => "enforce",
+                                    EnforceMode::Monitor => "monitor",
+                                }),
+                            ),
+                        ])
+                    })
+                    .collect(),
+            ),
+        );
+        Value::Obj(m)
     }
 
     pub fn walk_states(&self) -> Vec<(&StateNode, Option<&str>)> {
@@ -976,73 +1355,39 @@ impl MachineSpec {
     }
 }
 
-fn states_json(nodes: &[StateNode]) -> String {
-    let mut s = String::from("[");
-    for (i, n) in nodes.iter().enumerate() {
-        if i > 0 {
-            s.push(',');
-        }
-        s.push_str("{\"name\":\"");
-        s.push_str(&n.name);
-        s.push('"');
-        if n.terminal {
-            s.push_str(",\"terminal\":true");
-        }
-        if let Some(h) = n.history {
-            s.push_str(",\"history\":\"");
-            s.push_str(match h {
-                HistoryKind::Deep => "deep",
-                HistoryKind::Shallow => "shallow",
-            });
-            s.push('"');
-        }
-        if let Some(init) = &n.initial {
-            s.push_str(",\"initial\":\"");
-            s.push_str(init);
-            s.push('"');
-        }
-        if !n.states.is_empty() {
-            s.push_str(",\"states\":");
-            s.push_str(&states_json(&n.states));
-        }
-        if let Some(e) = &n.entry {
-            s.push_str(",\"entry\":");
-            s.push_str(&block_json(e));
-        }
-        if let Some(e) = &n.exit {
-            s.push_str(",\"exit\":");
-            s.push_str(&block_json(e));
-        }
-        s.push('}');
+fn check_block_limits(
+    sets: &[SetSpec],
+    emits: &[EmitSpec],
+    effect_names: &BTreeSet<&str>,
+    path: &str,
+    errs: &mut Vec<Finding>,
+) {
+    if sets.len() > limits::MAX_SETS_PER_BLOCK {
+        errs.push(Finding::err(
+            "def/limit_sets",
+            path,
+            "more than 32 sets in one block",
+            "split the block",
+        ));
     }
-    s.push(']');
-    s
-}
-
-fn block_json(b: &Block) -> String {
-    let mut s = String::from("{");
-    s.push_str("\"do\":[");
-    for (i, set) in b.sets.iter().enumerate() {
-        if i > 0 {
-            s.push(',');
-        }
-        s.push_str("{\"target\":\"");
-        s.push_str(&set.target);
-        s.push_str("\",\"value\":\"");
-        s.push_str(&set.value);
-        s.push_str("\"}");
+    if emits.len() > limits::MAX_EMITS_PER_BLOCK {
+        errs.push(Finding::err(
+            "def/limit_emits",
+            path,
+            "more than 8 emits in one block",
+            "split the block",
+        ));
     }
-    s.push_str("],\"emit\":[");
-    for (i, em) in b.emits.iter().enumerate() {
-        if i > 0 {
-            s.push(',');
+    for em in emits {
+        if !effect_names.contains(em.effect.as_str()) {
+            errs.push(Finding::err(
+                "def/unknown_effect",
+                format!("{path}/emit"),
+                format!("unknown effect {}", em.effect),
+                "declare the effect",
+            ));
         }
-        s.push_str("{\"effect\":\"");
-        s.push_str(&em.effect);
-        s.push_str("\",\"args\":{}}");
     }
-    s.push_str("]}");
-    s
 }
 
 pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
@@ -1195,6 +1540,26 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
             "/initial",
             format!("unknown initial {}", spec.initial),
             "name a top-level state",
+        ));
+    } else if !spec.states.iter().any(|s| s.name == spec.initial) {
+        errs.push(Finding::err(
+            "def/initial_not_child",
+            "/initial",
+            "initial is not a top-level state",
+            "name a direct top-level child",
+        ));
+    } else if spec
+        .states
+        .iter()
+        .find(|s| s.name == spec.initial)
+        .and_then(|s| s.history)
+        .is_some()
+    {
+        errs.push(Finding::err(
+            "def/initial_is_history",
+            "/initial",
+            "initial cannot be a history pseudostate",
+            "name a real top-level state",
         ));
     } else {
         // creation chain leaf must not be terminal
@@ -1351,26 +1716,27 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
                 }
             }
         }
-        for em in &t.emits {
-            if !effect_names.contains(em.effect.as_str()) {
-                errs.push(Finding::err(
-                    "def/unknown_effect",
-                    format!("{p}/emit"),
-                    format!("unknown effect {}", em.effect),
-                    "declare the effect",
-                ));
-            }
-        }
-        if t.sets.len() > limits::MAX_SETS_PER_BLOCK {
-            errs.push(Finding::err(
-                "def/limit_sets",
-                p.clone(),
-                "more than 32 sets in one block",
-                "split the block",
-            ));
-        }
+        check_block_limits(&t.sets, &t.emits, &effect_names, &p, &mut errs);
         *cell.entry((t.from.clone(), t.on.clone())).or_insert(0) += 1;
     }
+    fn walk_state_blocks(
+        nodes: &[StateNode],
+        path: &str,
+        effect_names: &BTreeSet<&str>,
+        errs: &mut Vec<Finding>,
+    ) {
+        for (i, n) in nodes.iter().enumerate() {
+            let p = format!("{path}/{i}");
+            if let Some(b) = &n.entry {
+                check_block_limits(&b.sets, &b.emits, effect_names, &format!("{p}/entry"), errs);
+            }
+            if let Some(b) = &n.exit {
+                check_block_limits(&b.sets, &b.emits, effect_names, &format!("{p}/exit"), errs);
+            }
+            walk_state_blocks(&n.states, &format!("{p}/states"), effect_names, errs);
+        }
+    }
+    walk_state_blocks(&spec.states, "/states", &effect_names, &mut errs);
     for ((from, on), n) in cell {
         if n > limits::MAX_TRANSITIONS_PER_CELL {
             errs.push(Finding::err(
@@ -1386,6 +1752,16 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
             errs.push(Finding::err(
                 "def/limit_fields",
                 format!("/events/{}", ev.name),
+                "more than 32 fields",
+                "reduce fields",
+            ));
+        }
+    }
+    for ev in &spec.effects {
+        if ev.fields.len() > limits::MAX_FIELDS {
+            errs.push(Finding::err(
+                "def/limit_fields",
+                format!("/effects/{}", ev.name),
                 "more than 32 fields",
                 "reduce fields",
             ));
@@ -1598,13 +1974,22 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         enums: &enums,
     };
     for inv in &spec.invariants {
-        bind(
+        if let Some(ty) = bind(
             &inv.expr,
             &inv_scope,
             &format!("/invariants/{}", inv.name),
             &mut compiled_exprs,
             &mut errs,
-        );
+        ) {
+            if ty != Ty::Bool {
+                errs.push(Finding::err(
+                    "expr/type_mismatch",
+                    format!("/invariants/{}", inv.name),
+                    format!("invariant has type {ty}, expected bool"),
+                    "write a boolean expression",
+                ));
+            }
+        }
     }
 
     let mut transitions_by: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
@@ -1622,13 +2007,22 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
             enums: &enums,
         };
         if let Some(g) = &t.guard {
-            bind(
+            if let Some(ty) = bind(
                 g,
                 &guard_scope,
                 &format!("/transitions/{i}/if"),
                 &mut compiled_exprs,
                 &mut errs,
-            );
+            ) {
+                if ty != Ty::Bool {
+                    errs.push(Finding::err(
+                        "expr/type_mismatch",
+                        format!("/transitions/{i}/if"),
+                        format!("guard has type {ty}, expected bool"),
+                        "write a boolean expression",
+                    ));
+                }
+            }
         }
         let action_scope = Scope {
             kind: ScopeKind::TransitionAction,
@@ -1653,8 +2047,9 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     if !errs.is_empty() {
         return Err(errs);
     }
-    let canonical = crate::canon::canon_bytes(&spec.to_value());
-    let machine_id = crate::hashes::machine_id(&spec.to_value());
+    let canonical_def = spec.to_value();
+    let canonical = crate::canon::canon_bytes(&canonical_def);
+    let machine_id = crate::hashes::machine_id(&canonical_def);
     Ok(CompiledMachine {
         machine_id,
         spec,

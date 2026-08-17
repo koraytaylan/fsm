@@ -59,6 +59,38 @@ fn has_evt(e: &Expr) -> bool {
     }
 }
 
+fn charge_tree(e: &Expr, budget: &mut Budget) {
+    let _ = budget.tick(e.span());
+    match e {
+        Expr::Not { inner, .. } | Expr::Neg { inner, .. } => charge_tree(inner, budget),
+        Expr::And { lhs, rhs, .. }
+        | Expr::Or { lhs, rhs, .. }
+        | Expr::Cmp { lhs, rhs, .. }
+        | Expr::Bin { lhs, rhs, .. } => {
+            charge_tree(lhs, budget);
+            charge_tree(rhs, budget);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            charge_tree(cond, budget);
+            charge_tree(then_branch, budget);
+            charge_tree(else_branch, budget);
+        }
+        Expr::Call { args, .. } => {
+            for a in args {
+                if let super::ast::Arg::Expr(inner) = a {
+                    charge_tree(inner, budget);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// `EvtRef` is Unknown; concrete subtrees go through `eval`. Errors → Unknown.
 pub fn partial_eval_bool(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) -> Truth {
     match e {
@@ -103,8 +135,14 @@ pub fn partial_eval_bool(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Bud
                 Truth::Unknown => Truth::Unknown,
             }
         }
-        Expr::EvtRef { .. } => Truth::Unknown,
-        _ if has_evt(e) => Truth::Unknown,
+        Expr::EvtRef { .. } => {
+            let _ = budget.tick(e.span());
+            Truth::Unknown
+        }
+        _ if has_evt(e) => {
+            charge_tree(e, budget);
+            Truth::Unknown
+        }
         _ => {
             let b = Bindings { ctx, evt: None };
             match eval(e, &b, budget, false).0 {

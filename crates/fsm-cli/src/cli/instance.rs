@@ -112,10 +112,19 @@ fn send(ctx: &mut Ctx, args: &Args) -> u8 {
         .get("request-id")
         .cloned()
         .unwrap_or_else(default_request_id);
-    let expect = args
-        .flags
-        .get("expect-seq")
-        .and_then(|s| s.parse::<u64>().ok());
+    let expect = match args.flags.get("expect-seq") {
+        None => None,
+        Some(s) => match s.parse::<u64>() {
+            Ok(n) => Some(n),
+            Err(_) => {
+                return emit_error(
+                    ctx,
+                    &ErrorObj::new("req/args_invalid", "expect-seq must be a u64")
+                        .hint("pass an integer sequence"),
+                );
+            }
+        },
+    };
     let stamp = args.flags.get("stamp").map(String::as_str);
     let mut store = match open(ctx) {
         Ok(s) => s,
@@ -143,7 +152,24 @@ fn ack(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
-    match store.ack_effect(&args.positionals[0], &args.positionals[1], &rid) {
+    let outcome = args
+        .flags
+        .get("outcome")
+        .map(String::as_str)
+        .unwrap_or("ok");
+    if outcome != "ok" && outcome != "failed" {
+        return emit_error(
+            ctx,
+            &ErrorObj::new("req/args_invalid", "outcome must be ok or failed"),
+        );
+    }
+    match store.ack_effect_outcome(
+        &args.positionals[0],
+        &args.positionals[1],
+        &rid,
+        outcome,
+        None,
+    ) {
         Ok(v) => {
             emit_success(ctx, &v);
             0
@@ -156,8 +182,17 @@ fn cancel(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(id) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "instance cancel <id>"));
     };
-    let reason = args.flags.get("reason").cloned().unwrap_or_default();
-    let rid = default_request_id();
+    let Some(reason) = args.flags.get("reason").cloned() else {
+        return emit_error(
+            ctx,
+            &ErrorObj::new("req/field_missing", "reason is required").hint("pass --reason"),
+        );
+    };
+    let rid = args
+        .flags
+        .get("request-id")
+        .cloned()
+        .unwrap_or_else(default_request_id);
     let mut store = match open(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
@@ -352,7 +387,7 @@ pub static SPECS: &[CmdSpec] = &[
     CmdSpec {
         path: &["instance", "ack"],
         positionals: &["instance", "effect"],
-        flags: &["outcome", "request-id"],
+        flags: &["outcome", "result", "request-id"],
         switches: &[],
         help: "Ack effect",
         run: ack,

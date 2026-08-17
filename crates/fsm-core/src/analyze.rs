@@ -42,6 +42,12 @@ pub fn enterable(m: &CompiledMachine, t: &Tree) -> BTreeSet<String> {
                     if let Some(owner) = t.history_owner(tid) {
                         add.push(owner);
                         add.extend(t.initial_descent(owner));
+                        if let Some(src) = t.id(&tr.from) {
+                            let dom = t.proper_lca(src, owner);
+                            for n in t.entry_path(dom, owner) {
+                                add.push(n);
+                            }
+                        }
                     }
                 }
                 NodeKind::Compound => {
@@ -233,11 +239,7 @@ pub fn ancestor_shadowed(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
 
 pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     match crate::step::create(m, t, &BTreeMap::new()) {
-        Err(r)
-            if r.code == "run/create_failed"
-                || r.code == "run/action_error"
-                || r.code == "run/overflow" =>
-        {
+        Err(r) if r.code == "run/create_failed" => {
             vec![Finding {
                 severity: Severity::Error,
                 code: "def/create_always_fails",
@@ -352,25 +354,45 @@ pub fn enabled_events(
 
 fn field_reads(src: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let bytes = src.as_bytes();
-    let mut i = 0;
-    while i + 4 < bytes.len() {
-        if src[i..].starts_with("evt.") {
-            i += 4;
-            let start = i;
-            while i < bytes.len()
-                && (bytes[i].is_ascii_lowercase() || bytes[i] == b'_' || bytes[i].is_ascii_digit())
-            {
-                i += 1;
-            }
-            out.push(src[start..i].to_string());
-        } else {
-            i += 1;
-        }
+    if let Ok(e) = parser::parse(src) {
+        collect_evt_refs(&e, &mut out);
     }
     out.sort();
     out.dedup();
     out
+}
+
+fn collect_evt_refs(e: &crate::expr::ast::Expr, out: &mut Vec<String>) {
+    use crate::expr::ast::{Arg, Expr};
+    match e {
+        Expr::EvtRef { name, .. } => out.push(name.clone()),
+        Expr::Not { inner, .. } | Expr::Neg { inner, .. } => collect_evt_refs(inner, out),
+        Expr::And { lhs, rhs, .. }
+        | Expr::Or { lhs, rhs, .. }
+        | Expr::Cmp { lhs, rhs, .. }
+        | Expr::Bin { lhs, rhs, .. } => {
+            collect_evt_refs(lhs, out);
+            collect_evt_refs(rhs, out);
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_evt_refs(cond, out);
+            collect_evt_refs(then_branch, out);
+            collect_evt_refs(else_branch, out);
+        }
+        Expr::Call { args, .. } => {
+            for a in args {
+                if let Arg::Expr(inner) = a {
+                    collect_evt_refs(inner, out);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 pub fn analyze_all(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {

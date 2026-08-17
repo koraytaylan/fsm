@@ -14,9 +14,9 @@ use fsm_core::hashes::{ResolveError, machine_id, resolve_machine_ref, state_hash
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{InstanceState, Status};
 use fsm_core::record::{Record, RecordKind};
-use fsm_core::replay::{RecordSink, StoreState, StoredMachine};
+use fsm_core::replay::{NopSink, RecordSink, StoreState, StoredMachine, fold_with};
 use fsm_core::spec::{Finding, TySpec, compile, parse_machine};
-use fsm_core::step::{Outcome, Rejection, create, step};
+use fsm_core::step::{Outcome, Rejection, create, step, validate_event};
 use fsm_core::tree::Tree;
 
 use crate::journal_io::{self, Journal, JournalHealth, OpenError};
@@ -168,11 +168,22 @@ impl Store {
         let ver = data_dir.join("VERSION");
         if ver.exists() {
             let v = fs::read_to_string(&ver).unwrap_or_default();
-            if v.trim() != "1" {
-                return Err(ErrorObj::new("version_mismatch", format!("VERSION {v}")));
+            let trimmed = v.trim();
+            if trimmed == "1" {
+                return Err(ErrorObj::new(
+                    "store/version_mismatch",
+                    "store format 1 is not compatible with this binary",
+                )
+                .hint("delete the data directory and recreate the store"));
+            }
+            if trimmed != "2" {
+                return Err(ErrorObj::new(
+                    "store/version_mismatch",
+                    format!("VERSION {v}"),
+                ));
             }
         } else {
-            fs::write(&ver, "1\n").map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+            fs::write(&ver, "2\n").map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
             fs::create_dir_all(data_dir.join("snapshots")).ok();
         }
         let mut sink = HistSink {
@@ -201,10 +212,24 @@ impl Store {
         dry_run: bool,
         if_exists_error: bool,
     ) -> Result<DefineOutcome, ErrorObj> {
+        if fsm_core::canon::canon_bytes(&def).len() > fsm_core::limits::MAX_DEF_BYTES {
+            return Err(ErrorObj::new(
+                "def/limit_bytes",
+                "definition exceeds 256 KiB",
+            ));
+        }
         let spec = parse_machine(&def).map_err(ErrorObj::from_findings)?;
         let compiled = compile(spec).map_err(ErrorObj::from_findings)?;
-        let id = machine_id(&def);
+        let canonical = compiled.spec.to_value();
+        let id = compiled.machine_id.clone();
+        if machine_id(&canonical) != id {
+            return Err(ErrorObj::new(
+                "internal/identity",
+                "compiled identity does not match canonical definition",
+            ));
+        }
         let name = compiled.spec.name.clone();
+        let def = canonical;
         let tree = Tree::build(&compiled.spec.states);
         let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
         if self.state.machines.contains_key(&id) {
@@ -305,25 +330,54 @@ impl Store {
                 .get("code")
                 .and_then(Value::as_str)
                 .unwrap_or("run/unhandled");
-            return Some(Err(ErrorObj::new(code, code)));
+            let message = rec
+                .body
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or(code);
+            let hint = rec
+                .body
+                .get("hint")
+                .and_then(Value::as_str)
+                .unwrap_or(message);
+            return Some(Err(ErrorObj::new(code, message).hint(hint)));
         }
         if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
-            if let Ok(mut v) = self.instance_view(iid, Some(request_id), Some(true)) {
-                if let Value::Obj(o) = &mut v {
-                    o.insert("duplicate".into(), Value::Bool(true));
-                    if rec.kind == RecordKind::EventApplied {
-                        o.insert("applied".into(), Value::Bool(true));
+            if let Ok(folded) = fold_prefix(&self.records, rec.seq) {
+                if let Ok(mut v) = view_at(&folded, iid, Some(request_id), Some(true), rec.seq) {
+                    if let Value::Obj(o) = &mut v {
+                        o.insert("duplicate".into(), Value::Bool(true));
+                        if rec.kind == RecordKind::EventApplied {
+                            o.insert("applied".into(), Value::Bool(true));
+                        }
+                        if rec.kind == RecordKind::EffectAcked {
+                            if let Some(outc) = rec.body.get("outcome") {
+                                o.insert("outcome".into(), outc.clone());
+                            }
+                            if let Some(res) = rec.body.get("result") {
+                                o.insert("result".into(), res.clone());
+                            }
+                            o.insert("acked".into(), Value::Bool(true));
+                        }
                     }
+                    return Some(Ok(v));
                 }
-                return Some(Ok(v));
             }
         }
         Some(Ok(obj(&[("ok", "true"), ("duplicate", "true")])))
     }
 
+    fn note_record(&mut self, rec: &Record) {
+        self.records.push(rec.clone());
+        self.state.last_seq = rec.seq;
+        self.state.last_hash = rec.hash.clone();
+    }
+
     fn commit_dedup(&mut self, request_id: &str, resp: Value, seq: u64) {
         self.state.dedup.insert(request_id.into(), seq);
         self.last_responses.insert(request_id.into(), resp);
+        self.state.last_seq = self.journal.last_seq;
+        self.state.last_hash = self.journal.last_hash.clone();
     }
 
     pub fn create_instance(
@@ -388,12 +442,17 @@ impl Store {
             pending: pending.clone(),
         };
         let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &inst);
+        let mut ov = BTreeMap::new();
+        for (k, v) in overrides {
+            ov.insert(k.clone(), Value::Str(v.canonical_string()));
+        }
         let mut body = BTreeMap::new();
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
         body.insert("machine_id".into(), Value::Str(mid.clone()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("state_hash".into(), Value::Str(sh.clone()));
         body.insert("leaf".into(), Value::Str(inst.leaf.clone()));
+        body.insert("overrides".into(), Value::Obj(ov));
         let rec = self
             .journal
             .append(RecordKind::InstanceCreated, Value::Obj(body))
@@ -474,6 +533,9 @@ impl Store {
             .instances
             .get(instance_id)
             .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+        if let Err(r) = validate_event(&m.compiled, event, payload) {
+            return Err(ErrorObj::from_rejection(&r));
+        }
         let mut bud = Budget::new(4096);
         let out = step(&m.compiled, &m.tree, inst, event, payload, &mut bud);
         match out {
@@ -553,8 +615,12 @@ impl Store {
                 let mut body = BTreeMap::new();
                 body.insert("instance_id".into(), Value::Str(instance_id.into()));
                 body.insert("request_id".into(), Value::Str(request_id.into()));
+                body.insert("event".into(), Value::Str(event.into()));
+                body.insert("payload".into(), payload.clone());
                 body.insert("state_hash".into(), Value::Str(sh));
                 body.insert("code".into(), Value::Str(r.code.into()));
+                body.insert("message".into(), Value::Str(r.message.clone()));
+                body.insert("hint".into(), Value::Str(r.hint.clone()));
                 let rec = self
                     .journal
                     .append(RecordKind::EventRejected, Value::Obj(body))
@@ -591,6 +657,8 @@ impl Store {
                 let mut body = BTreeMap::new();
                 body.insert("instance_id".into(), Value::Str(instance_id.into()));
                 body.insert("request_id".into(), Value::Str(request_id.into()));
+                body.insert("event".into(), Value::Str(event.into()));
+                body.insert("payload".into(), payload.clone());
                 body.insert("state_hash".into(), Value::Str(sh));
                 let rec = self
                     .journal
@@ -610,24 +678,43 @@ impl Store {
         effect_id: &str,
         request_id: &str,
     ) -> Result<Value, ErrorObj> {
+        self.ack_effect_outcome(instance_id, effect_id, request_id, "ok", None)
+    }
+
+    pub fn ack_effect_outcome(
+        &mut self,
+        instance_id: &str,
+        effect_id: &str,
+        request_id: &str,
+        outcome: &str,
+        result: Option<Value>,
+    ) -> Result<Value, ErrorObj> {
         if let Some(r) = self.replay_request(request_id) {
             return r;
+        }
+        if outcome != "ok" && outcome != "failed" {
+            return Err(ErrorObj::new(
+                "req/args_invalid",
+                "outcome must be ok or failed",
+            ));
         }
         let inst = self
             .state
             .instances
-            .get_mut(instance_id)
+            .get(instance_id)
             .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
         if !inst.pending.iter().any(|p| p == effect_id) {
             let listed = inst.pending.clone();
             let mut body = BTreeMap::new();
             body.insert("request_id".into(), Value::Str(request_id.into()));
             body.insert("instance_id".into(), Value::Str(instance_id.into()));
+            body.insert("code".into(), Value::Str("req/field_unknown".into()));
+            body.insert("message".into(), Value::Str("unknown effect id".into()));
             let rec = self
                 .journal
                 .append(RecordKind::RequestRejected, Value::Obj(body))
                 .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-            self.records.push(rec.clone());
+            self.note_record(&rec);
             let mut details = BTreeMap::new();
             details.insert(
                 "pending".into(),
@@ -640,17 +727,28 @@ impl Store {
             self.state.dedup.insert(request_id.into(), rec.seq);
             return Err(err);
         }
-        inst.pending.retain(|p| p != effect_id);
-        let pending = inst.pending.clone();
+        let pending: Vec<String> = inst
+            .pending
+            .iter()
+            .filter(|p| *p != effect_id)
+            .cloned()
+            .collect();
         let mut body = BTreeMap::new();
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
         body.insert("effect_id".into(), Value::Str(effect_id.into()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
+        body.insert("outcome".into(), Value::Str(outcome.into()));
+        if let Some(res) = result.clone() {
+            body.insert("result".into(), res);
+        }
         let rec = self
             .journal
             .append(RecordKind::EffectAcked, Value::Obj(body))
             .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        self.records.push(rec.clone());
+        if let Some(live) = self.state.instances.get_mut(instance_id) {
+            live.pending.clone_from(&pending);
+        }
+        self.note_record(&rec);
         self.history
             .entry(instance_id.into())
             .or_default()
@@ -660,12 +758,16 @@ impl Store {
         m.insert("acked".into(), Value::Bool(true));
         m.insert("instance_id".into(), Value::Str(instance_id.into()));
         m.insert("effect_id".into(), Value::Str(effect_id.into()));
+        m.insert("outcome".into(), Value::Str(outcome.into()));
         m.insert("duplicate".into(), Value::Bool(false));
         m.insert("seq".into(), Value::Num(rec.seq.to_string()));
         m.insert(
             "effects_pending".into(),
             Value::Arr(pending.into_iter().map(Value::Str).collect()),
         );
+        if let Some(res) = result {
+            m.insert("result".into(), res);
+        }
         let resp = Value::Obj(m);
         self.commit_dedup(request_id, resp.clone(), rec.seq);
         Ok(resp)
@@ -688,12 +790,9 @@ impl Store {
         if let Some(r) = self.replay_request(request_id) {
             return r;
         }
-        let inst = self
-            .state
-            .instances
-            .get_mut(instance_id)
-            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
-        inst.status = Status::Cancelled;
+        if !self.state.instances.contains_key(instance_id) {
+            return Err(ErrorObj::new("req/instance_not_found", instance_id));
+        }
         let mut body = BTreeMap::new();
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
@@ -702,7 +801,10 @@ impl Store {
             .journal
             .append(RecordKind::InstanceCancelled, Value::Obj(body))
             .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        self.records.push(rec.clone());
+        if let Some(inst) = self.state.instances.get_mut(instance_id) {
+            inst.status = Status::Cancelled;
+        }
+        self.note_record(&rec);
         self.history
             .entry(instance_id.into())
             .or_default()
@@ -817,18 +919,121 @@ impl Store {
 
     pub fn shutdown_snapshot(&self) -> Result<(), ErrorObj> {
         let seq = self.journal.last_seq;
-        let path = self
-            .data_dir
-            .join("snapshots")
-            .join(format!("snap-{seq}.json"));
-        fs::create_dir_all(path.parent().unwrap()).ok();
-        fs::write(
-            &path,
-            format!("{{\"format\":\"fsm.snapshot/1\",\"seq\":{seq}}}\n"),
-        )
-        .ok();
+        let snap_dir = self.data_dir.join("snapshots");
+        fs::create_dir_all(&snap_dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let mut machines = BTreeMap::new();
+        for (id, m) in &self.state.machines {
+            machines.insert(id.clone(), m.def.clone());
+        }
+        let mut instances = BTreeMap::new();
+        for (id, inst) in &self.state.instances {
+            let mut o = BTreeMap::new();
+            o.insert("leaf".into(), Value::Str(inst.leaf.clone()));
+            o.insert("status".into(), Value::Str(inst.status.as_str().into()));
+            o.insert(
+                "machine_id".into(),
+                Value::Str(
+                    self.state
+                        .instance_machines
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
+            );
+            instances.insert(id.clone(), Value::Obj(o));
+        }
+        let mut body = BTreeMap::new();
+        body.insert("format".into(), Value::Str("fsm.snapshot/1".into()));
+        body.insert("seq".into(), Value::Num(seq.to_string()));
+        body.insert(
+            "last_hash".into(),
+            Value::Str(self.journal.last_hash.clone()),
+        );
+        body.insert("machines".into(), Value::Obj(machines));
+        body.insert("instances".into(), Value::Obj(instances));
+        let mut tmp_body = body.clone();
+        tmp_body.insert("snapshot_hash".into(), Value::Str(String::new()));
+        let hex = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+            "fsm:snapshot:1",
+            &Value::Obj(tmp_body.clone()),
+        ));
+        body.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hex}")));
+        let bytes = fsm_core::canon::canon_bytes(&Value::Obj(body));
+        let tmp = snap_dir.join(format!("snap-{seq}-{}.tmp", std::process::id()));
+        fs::write(&tmp, &bytes).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let f = fs::File::open(&tmp).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        f.sync_all()
+            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let final_path = snap_dir.join(format!("snap-{seq}.json"));
+        if final_path.exists() {
+            let alt = snap_dir.join(format!("snap-{seq}-{}.json", std::process::id()));
+            fs::rename(&tmp, &alt).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        } else {
+            fs::rename(&tmp, &final_path).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        }
         Ok(())
     }
+}
+
+fn fold_prefix(records: &[Record], through: u64) -> Result<StoreState, ErrorObj> {
+    let recs: Vec<Record> = records
+        .iter()
+        .filter(|r| r.seq <= through)
+        .cloned()
+        .collect();
+    fold_with(recs, &mut NopSink)
+        .map_err(|e| ErrorObj::new("store/state_hash_mismatch", format!("{e:?}")))
+}
+
+fn view_at(
+    state: &StoreState,
+    instance_id: &str,
+    request_id: Option<&str>,
+    duplicate: Option<bool>,
+    seq: u64,
+) -> Result<Value, ErrorObj> {
+    let inst = state
+        .instances
+        .get(instance_id)
+        .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+    let mid = state
+        .instance_machines
+        .get(instance_id)
+        .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+    let m = state
+        .machines
+        .get(mid)
+        .ok_or_else(|| ErrorObj::new("req/machine_not_found", mid.as_str()))?;
+    let mut bud = Budget::new(4096);
+    let enabled = enabled_events(&m.compiled, &m.tree, inst, &mut bud);
+    let mut ctx = BTreeMap::new();
+    for (k, v) in &inst.ctx {
+        ctx.insert(k.clone(), val_json(v));
+    }
+    let mut mobj = BTreeMap::new();
+    mobj.insert("ok".into(), Value::Str("true".into()));
+    mobj.insert("instance_id".into(), Value::Str(instance_id.into()));
+    mobj.insert("leaf".into(), Value::Str(inst.leaf.clone()));
+    mobj.insert("state".into(), Value::Str(m.tree.dotted_path(&inst.leaf)));
+    mobj.insert("status".into(), Value::Str(inst.status.as_str().into()));
+    mobj.insert("context".into(), Value::Obj(ctx));
+    mobj.insert(
+        "effects_pending".into(),
+        Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
+    );
+    mobj.insert("seq".into(), Value::Num(seq.to_string()));
+    mobj.insert(
+        "state_hash".into(),
+        Value::Str(state_hash(mid, instance_id, seq, inst)),
+    );
+    mobj.insert("enabled_events".into(), enabled_json(&enabled));
+    if let Some(r) = request_id {
+        mobj.insert("request_id".into(), Value::Str(r.into()));
+    }
+    if let Some(d) = duplicate {
+        mobj.insert("duplicate".into(), Value::Bool(d));
+    }
+    Ok(Value::Obj(mobj))
 }
 
 fn health_err(h: &JournalHealth) -> ErrorObj {
@@ -838,6 +1043,8 @@ fn health_err(h: &JournalHealth) -> ErrorObj {
         JournalHealth::StateHashMismatch { .. } => "store/state_hash_mismatch",
         JournalHealth::NonCanonical { .. } => "store/non_canonical",
         JournalHealth::LockIo(_) => "store/lock",
+        JournalHealth::ReplayMismatch { .. } => "store/state_hash_mismatch",
+        JournalHealth::MissingGenesis => "store/chain_broken",
         JournalHealth::Ok => "store/lock",
     };
     ErrorObj::new(code, h.message())

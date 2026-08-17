@@ -4,9 +4,9 @@ exit: 0
 --- stdout ---
 created:    true
 dry_run:    true
-machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
+machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
 name:       case_review
-warnings:   
+warnings:
 --- stderr ---
 [machine_add]
 argv: machine add SPEC
@@ -14,22 +14,22 @@ exit: 0
 --- stdout ---
 created:    true
 dry_run:    false
-machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
+machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
 name:       case_review
-warnings:   
+warnings:
 --- stderr ---
 [instance_new]
 argv: instance new case_review --request-id new-1
 exit: 0
 --- stdout ---
 configuration:   intake
-context:         
+context:
   notes:  0
   score:  0
   visits: 0
 duplicate:       false
-effects_pending: 
-enabled_events:  
+effects_pending:
+enabled_events:
   -     event:  docs_ok
     status: enabled
   -     event:  scored
@@ -44,14 +44,14 @@ enabled_events:
     status: disabled
 instance_id:     inst-new-1
 leaf:            intake
-machine:         
-  machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
+machine:
+  machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
   name:       case_review
 ok:              true
 request_id:      new-1
 seq:             2
 state:           intake
-state_hash:      sha256:bea77fe1466ef20a6286d8876e6d9df098767d144aa7efe83c464ae4dbe6e456
+state_hash:      sha256:3806099aeb03de9e56a1d1717b1f4931bb72de33c2a35df873dc9737ab750a8b
 status:          running
 --- stderr ---
 [send_docs_ok]
@@ -60,13 +60,13 @@ exit: 0
 --- stdout ---
 applied:         true
 configuration:   in_review, docs_review
-context:         
+context:
   notes:  0
   score:  0
   visits: 1
 duplicate:       false
 effects_pending: inst-new-1/3/0
-enabled_events:  
+enabled_events:
   -     event:  docs_ok
     status: enabled
   -     event:  scored
@@ -81,49 +81,49 @@ enabled_events:
     status: disabled
 instance_id:     inst-new-1
 leaf:            docs_review
-machine:         
-  machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
+machine:
+  machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
   name:       case_review
-monitor_flags:   
+monitor_flags:
 ok:              true
 request_id:      send-1
 seq:             3
 state:           in_review.docs_review
-state_hash:      sha256:5e4f307b274c277f1850b62d9a2c3fe60e3f887960cb7b51fbb1e28ad17bf849
+state_hash:      sha256:df262d37956e36d0aa7a9f8a8333d7df47629ba534149a7303512d4f464f8519
 status:          running
-trace:           
-  candidates: 
+trace:
+  candidates:
     -       source_state: intake
-      transitions:  
-        -           guard:          
-            children: 
+      transitions:
+        -           guard:
+            children:
             outcome:  value
             span:     0, 4
             value:    true
           transition_idx: 0
-  invariants: 
+  invariants:
     -       name:   score_range
       passed: true
-  pipeline:   
+  pipeline:
     -       block:     transition
       discarded: false
-      emits:     
-      sets:      
+      emits:
+      sets:
     -       block:     entry(in_review)
       discarded: false
-      emits:     
+      emits:
         -           effect: notify
           k:      0
-      sets:      
+      sets:
         -           after:  1
           before: 0
-          expr:   
-            children: 
-              -                 children: 
+          expr:
+            children:
+              -                 children:
                 outcome:  value
                 span:     0, 10
                 value:    0
-              -                 children: 
+              -                 children:
                 outcome:  value
                 span:     13, 14
                 value:    1
@@ -131,7 +131,7 @@ trace:
             span:     0, 14
             value:    1
           target: visits
-transition:      
+transition:
   entered:        in_review, docs_review
   exited:         intake
   internal:       false
@@ -151,13 +151,13 @@ exit: 0
 --- stdout ---
 applied:         true
 configuration:   in_review, risk_review
-context:         
+context:
   notes:  0
   score:  0
   visits: 1
 duplicate:       false
 effects_pending: inst-new-1/3/0
-enabled_events:  
+enabled_events:
   -     event:  docs_ok
     status: disabled
   -     event:          scored
@@ -173,47 +173,47 @@ enabled_events:
     status: disabled
 instance_id:     inst-new-1
 leaf:            risk_review
-machine:         
-  machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
+machine:
+  machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
   name:       case_review
-monitor_flags:   
+monitor_flags:
 ok:              true
 request_id:      send-2
 seq:             5
 state:           in_review.risk_review
-state_hash:      sha256:f7ccb87cdacff877f6450b79a927abc1ca70599dd8dc0102a1f5cb8b61d92163
+state_hash:      sha256:613cd37f92294d6ef7a333d2802ad8046526e025edbd2fb129319a5ee9d58525
 status:          running
-trace:           
-  candidates: 
+trace:
+  candidates:
     -       source_state: docs_review
-      transitions:  
-        -           guard:          
-            children: 
+      transitions:
+        -           guard:
+            children:
             outcome:  value
             span:     0, 4
             value:    true
           transition_idx: 1
-  invariants: 
+  invariants:
     -       name:   score_range
       passed: true
-  pipeline:   
+  pipeline:
     -       block:     transition
       discarded: false
-      emits:     
-      sets:      
+      emits:
+      sets:
     -       block:     entry(risk_review)
       discarded: false
-      emits:     
-      sets:      
+      emits:
+      sets:
         -           after:  0
           before: 0
-          expr:   
-            children: 
+          expr:
+            children:
             outcome:  value
             span:     0, 1
             value:    0
           target: score
-transition:      
+transition:
   entered:        risk_review
   exited:         docs_review
   internal:       false
@@ -227,9 +227,10 @@ exit: 0
 acked:           true
 duplicate:       false
 effect_id:       inst-new-1/3/0
-effects_pending: 
+effects_pending:
 instance_id:     inst-new-1
 ok:              true
+outcome:         ok
 seq:             6
 --- stderr ---
 [annotate]
@@ -243,18 +244,20 @@ ok:   true
 argv: instance history inst-new-1
 exit: 0
 --- stdout ---
-entries:     
+entries:
   -     kind: InstanceCreated
     seq:  2
   -     event:   docs_ok
     kind:    EventApplied
-    payload: 
+    payload:
     seq:     3
-  -     kind: EventRejected
-    seq:  4
+  -     event:   resume
+    kind:    EventRejected
+    payload:
+    seq:     4
   -     event:   docs_ok
     kind:    EventApplied
-    payload: 
+    payload:
     seq:     5
   -     kind: EffectAcked
     seq:  6

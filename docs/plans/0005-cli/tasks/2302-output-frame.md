@@ -30,6 +30,6 @@ All output flows through one frame: a single renderer from structured results to
 - Stream discipline: `emit_success` writes nothing to stderr; `emit_error` writes nothing to stdout — asserted over capture buffers.
 - Color: with `NO_COLOR` set or `Ctx.color = false`, the human rendering contains no ANSI escape bytes; a fixed sample with color on does (and never under `--json`).
 - Config precedence (env-scoped test): flag beats `FSM_DATA_DIR`; `FSM_DATA_DIR` beats `default_data_dir()`; `default_data_dir()` ends in `fsm` on every platform branch.
-- `default_request_id`: under `FSM_CLOCK_MS`, two calls yield distinct, deterministic ids (`req-<ms>-<counter>`), identical across two runs of the test.
+- `default_request_id`: under `FSM_CLOCK_MS`, two calls in one process yield distinct, deterministic ids (`req-<ms>-<pid>-<counter>`), identical across two runs of the test in the same process. Two processes with the same pinned clock must not share an id.
 
 - **Done when:** inline render tests prove the exit-code table, stderr error rendering with hint and span, `--json` byte-exactness, and config precedence, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.

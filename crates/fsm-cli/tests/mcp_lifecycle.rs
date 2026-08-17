@@ -1,13 +1,35 @@
 use std::io::Cursor;
 use std::process::Command;
 
-use fsm_cli::mcp::serve::{rpc_error, serve, tool_error};
-use fsm_cli::store::ErrorObj;
+use fsm_cli::clock::SystemClock;
+use fsm_cli::mcp::serve::{rpc_error, serve_session, tool_error};
+use fsm_cli::store::{ErrorObj, Store};
 use fsm_core::json::Value;
 
+static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn tmp() -> std::path::PathBuf {
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let p = std::env::temp_dir().join(format!("fsm-life-{}-{}", std::process::id(), n));
+    let _ = std::fs::remove_dir_all(&p);
+    std::fs::create_dir_all(&p).unwrap();
+    p
+}
+
 fn run(input: &str) -> String {
+    let _g = LOCK.lock().unwrap();
+    let dir = tmp();
+    let mut store = Store::open(&dir).unwrap();
+    let mut clock = SystemClock;
     let mut out = Vec::new();
-    serve(Cursor::new(input.as_bytes()), &mut out).unwrap();
+    serve_session(
+        Some(&mut store),
+        &mut clock,
+        Cursor::new(input.as_bytes()),
+        &mut out,
+    )
+    .unwrap();
     String::from_utf8(out).unwrap()
 }
 
@@ -61,9 +83,8 @@ fn gate_batch_cancel_dup_id() {
 #[test]
 fn eof_after_initialize() {
     let input = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#;
-    let mut out = Vec::new();
-    serve(Cursor::new(input.as_bytes()), &mut out).unwrap();
-    assert_eq!(*out.last().unwrap(), b'\n');
+    let out = run(input);
+    assert!(out.ends_with('\n'));
 }
 
 #[test]

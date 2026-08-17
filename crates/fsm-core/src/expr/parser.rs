@@ -32,6 +32,14 @@ pub fn parse(src: &str) -> Result<Expr, ExprError> {
             "split the expression into smaller pieces",
         ));
     }
+    if super::ast::depth(&e) > MAX_DEPTH {
+        return Err(ExprError::new(
+            "expr/too_deep",
+            e.span(),
+            "expression nesting exceeds depth 32",
+            "flatten the expression",
+        ));
+    }
     Ok(e)
 }
 
@@ -374,15 +382,24 @@ impl Parser {
     }
 
     fn expect_dot(&mut self) -> Result<(), ExprError> {
-        match self.bump() {
-            Some((Tok::Dot, _)) => Ok(()),
+        match self.peek() {
+            Some(Tok::Dot) => {
+                self.bump();
+                Ok(())
+            }
             _ => Err(self.expected("`.`")),
         }
     }
 
     fn expect_ident(&mut self) -> Result<(String, Span), ExprError> {
-        match self.bump() {
-            Some((Tok::Ident(name), span)) => Ok((name, span)),
+        match self.peek() {
+            Some(Tok::Ident(_)) => {
+                if let Some((Tok::Ident(name), span)) = self.bump() {
+                    Ok((name, span))
+                } else {
+                    Err(self.expected("identifier"))
+                }
+            }
             _ => Err(ExprError::new(
                 "expr/parse",
                 self.peek_span(),

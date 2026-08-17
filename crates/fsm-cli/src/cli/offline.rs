@@ -35,7 +35,7 @@ fn validate_text(text: &str) -> Result<Value, ErrorObj> {
     let compiled = compile(spec).map_err(ErrorObj::from_findings)?;
     let tree = Tree::build(&compiled.spec.states);
     let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
-    let id = fsm_core::hashes::machine_id(&v);
+    let id = compiled.machine_id.clone();
     Ok(Value::Obj(BTreeMap::from([
         ("machine_id".into(), Value::Str(id)),
         ("name".into(), Value::Str(compiled.spec.name)),
@@ -67,22 +67,33 @@ fn simulate_cmd(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(src) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "simulate <spec>"));
     };
-    let text = match read_input_from(src, ctx.stdin.as_deref()) {
-        Ok(s) => s,
-        Err(e) => return emit_error(ctx, &e),
-    };
-    let v = match parse(text.as_bytes(), &JsonLimits::DEFAULT) {
-        Ok(v) => v,
-        Err(e) => return emit_error(ctx, &ErrorObj::new("def/shape", e.message)),
-    };
-    let spec = match parse_machine(&v) {
-        Ok(s) => s,
-        Err(fs) => return emit_error(ctx, &ErrorObj::from_findings(fs)),
-    };
-    let compiled = match compile(spec) {
-        Ok(c) => c,
-        Err(fs) => return emit_error(ctx, &ErrorObj::from_findings(fs)),
-    };
+    let compiled =
+        if src.ends_with(".json") || src.starts_with('@') || src.starts_with('{') || src == "-" {
+            let text = match read_input_from(src, ctx.stdin.as_deref()) {
+                Ok(s) => s,
+                Err(e) => return emit_error(ctx, &e),
+            };
+            let v = match parse(text.as_bytes(), &JsonLimits::DEFAULT) {
+                Ok(v) => v,
+                Err(e) => return emit_error(ctx, &ErrorObj::new("def/shape", e.message)),
+            };
+            let spec = match parse_machine(&v) {
+                Ok(s) => s,
+                Err(fs) => return emit_error(ctx, &ErrorObj::from_findings(fs)),
+            };
+            match compile(spec) {
+                Ok(c) => c,
+                Err(fs) => return emit_error(ctx, &ErrorObj::from_findings(fs)),
+            }
+        } else {
+            match crate::store::Store::open(&ctx.data_dir) {
+                Ok(store) => match store.resolve_machine(src) {
+                    Ok(m) => m.compiled.clone(),
+                    Err(e) => return emit_error(ctx, &e),
+                },
+                Err(e) => return emit_error(ctx, &e),
+            }
+        };
     let tree = Tree::build(&compiled.spec.states);
     let mut overrides = BTreeMap::new();
     if let Some(pairs) = args.flags.get("context") {

@@ -151,7 +151,7 @@ fn crash_harness() {
         }
         let health = wait_classify(&dir);
         match &health {
-            JournalHealth::Ok => seen_ok = true,
+            JournalHealth::Ok | JournalHealth::MissingGenesis => seen_ok = true,
             JournalHealth::TornTail { .. } => {
                 seen_torn = true;
                 repair_truncate_torn_tail(&dir)

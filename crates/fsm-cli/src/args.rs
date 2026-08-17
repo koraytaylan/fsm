@@ -1,7 +1,7 @@
 //! Table-driven argument parser.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::PathBuf;
 
 use fsm_core::ident::suggest;
@@ -87,8 +87,9 @@ pub fn reset_request_ids() {
 
 pub fn default_request_id() -> String {
     let ms = crate::clock::now_ms();
+    let pid = std::process::id();
     let c = REQ_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    format!("req-{ms}-{c}")
+    format!("req-{ms}-{pid}-{c}")
 }
 
 pub fn read_input(arg: &str) -> Result<String, ErrorObj> {
@@ -340,7 +341,13 @@ pub fn dispatch_specs(specs: &[&'static CmdSpec], argv: Vec<String>) -> u8 {
                 print_help(specs);
                 return 0;
             }
-            let _ = writeln!(std::io::stderr(), "{}", e.message);
+            let err = crate::store::ErrorObj::new("args", e.message.clone());
+            let ctx = Ctx::new(
+                resolve_data_dir(data_flag.as_deref()),
+                json,
+                std::env::var("NO_COLOR").is_err(),
+            );
+            crate::render::emit_error(&ctx, &err);
             2
         }
     }

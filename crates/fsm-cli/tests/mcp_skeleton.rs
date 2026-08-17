@@ -2,11 +2,30 @@
 
 use std::io::Cursor;
 
-use fsm_cli::mcp::serve::serve;
+use fsm_cli::clock::SystemClock;
+use fsm_cli::mcp::serve::serve_session;
+use fsm_cli::store::Store;
 
 fn run(input: &str) -> String {
+    let dir = std::env::temp_dir().join(format!(
+        "fsm-skel-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut store = Store::open(&dir).unwrap();
+    let mut clock = SystemClock;
     let mut out = Vec::new();
-    serve(Cursor::new(input.as_bytes()), &mut out).unwrap();
+    serve_session(
+        Some(&mut store),
+        &mut clock,
+        Cursor::new(input.as_bytes()),
+        &mut out,
+    )
+    .unwrap();
     String::from_utf8(out).unwrap()
 }
 
@@ -50,10 +69,9 @@ fn line_over_cap_names_cap() {
 #[test]
 fn eof_after_initialize_is_ok() {
     let input = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#;
-    let mut out = Vec::new();
-    serve(Cursor::new(input.as_bytes()), &mut out).unwrap();
+    let out = run(input);
     assert!(!out.is_empty());
-    assert_eq!(*out.last().unwrap(), b'\n');
+    assert!(out.ends_with('\n'));
 }
 
 #[test]

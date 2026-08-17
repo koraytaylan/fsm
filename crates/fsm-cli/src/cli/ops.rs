@@ -18,6 +18,8 @@ pub fn health_exit(h: &JournalHealth) -> u8 {
         JournalHealth::StateHashMismatch { .. } => 4,
         JournalHealth::NonCanonical { .. } => 5,
         JournalHealth::LockIo(_) => 6,
+        JournalHealth::ReplayMismatch { .. } => 4,
+        JournalHealth::MissingGenesis => 3,
     }
 }
 

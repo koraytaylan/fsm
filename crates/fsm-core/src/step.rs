@@ -72,7 +72,13 @@ pub fn validate_event(
         .iter()
         .find(|e| e.name == name)
         .ok_or_else(|| reject("req/event_unknown", name))?;
-    let obj = payload.as_obj().cloned().unwrap_or_default();
+    let obj = match payload {
+        Value::Obj(o) => o.clone(),
+        Value::Null if ev.fields.is_empty() => BTreeMap::new(),
+        _ => {
+            return Err(reject("req/field_type", "payload must be an object"));
+        }
+    };
     let mut out = BTreeMap::new();
     for f in &ev.fields {
         let Some(raw) = obj.get(&f.name) else {
@@ -82,6 +88,17 @@ pub fn validate_event(
             return Err(reject("req/number_token", &f.name));
         }
         let v = parse_typed(raw, &f.ty).map_err(|c| reject(c, &f.name))?;
+        if let Val::Enum { ty, variant } = &v {
+            let allowed = m.spec.enums.get(ty).cloned().unwrap_or_default();
+            if !allowed.iter().any(|x| x == variant) {
+                return Err(reject("req/field_type", &f.name));
+            }
+        }
+        if let (Val::Dec(d), TySpec::Dec { scale }) = (&v, &f.ty) {
+            if d.scale != *scale {
+                return Err(reject("req/field_scale", &f.name));
+            }
+        }
         out.insert(f.name.clone(), v);
     }
     for k in obj.keys() {
@@ -621,15 +638,29 @@ fn eval_invariants(
                 continue;
             }
         };
-        let passed = matches!(eval(&e, &b, budget, false).0, Ok(Val::Bool(true)));
-        traces.push(InvariantTrace {
-            name: inv.name.clone(),
-            passed,
-        });
-        if !passed {
-            match inv.mode {
-                EnforceMode::Enforce => ok = false,
-                EnforceMode::Monitor => flags.push(inv.name.clone()),
+        match eval(&e, &b, budget, false).0 {
+            Ok(Val::Bool(true)) => {
+                traces.push(InvariantTrace {
+                    name: inv.name.clone(),
+                    passed: true,
+                });
+            }
+            Ok(Val::Bool(false)) => {
+                traces.push(InvariantTrace {
+                    name: inv.name.clone(),
+                    passed: false,
+                });
+                match inv.mode {
+                    EnforceMode::Enforce => ok = false,
+                    EnforceMode::Monitor => flags.push(inv.name.clone()),
+                }
+            }
+            Ok(_) | Err(_) => {
+                traces.push(InvariantTrace {
+                    name: inv.name.clone(),
+                    passed: false,
+                });
+                ok = false;
             }
         }
     }
@@ -673,14 +704,21 @@ pub fn create(
             return Err(reject("req/field_unknown", k));
         };
         if !val_matches(v, &decl.ty) {
-            return Err(reject(
-                if matches!(decl.ty, TySpec::Dec { .. }) {
-                    "req/field_type"
-                } else {
-                    "req/field_type"
-                },
-                k,
-            ));
+            return Err(reject("req/field_type", k));
+        }
+        if let (Val::Dec(d), TySpec::Dec { scale }) = (v, &decl.ty) {
+            if d.scale != *scale {
+                return Err(reject("req/field_scale", k));
+            }
+        }
+        if let (Val::Enum { ty, variant }, TySpec::Enum { of }) = (v, &decl.ty) {
+            if ty != of {
+                return Err(reject("req/field_type", k));
+            }
+            let allowed = m.spec.enums.get(of).cloned().unwrap_or_default();
+            if !allowed.iter().any(|x| x == variant) {
+                return Err(reject("req/field_type", k));
+            }
         }
     }
     let mut ctx = BTreeMap::new();
@@ -797,16 +835,16 @@ fn parse_init(s: &str, ty: &TySpec) -> Result<Val, &'static str> {
 }
 
 fn val_matches(v: &Val, ty: &TySpec) -> bool {
-    matches!(
-        (v, ty),
+    match (v, ty) {
         (Val::Int(_), TySpec::Int)
-            | (Val::Bool(_), TySpec::Bool)
-            | (Val::Str(_), TySpec::Str)
-            | (Val::Ts(_), TySpec::Ts)
-            | (Val::Dur(_), TySpec::Dur)
-            | (Val::Dec(_), TySpec::Dec { .. })
-            | (Val::Enum { .. }, TySpec::Enum { .. })
-    )
+        | (Val::Bool(_), TySpec::Bool)
+        | (Val::Str(_), TySpec::Str)
+        | (Val::Ts(_), TySpec::Ts)
+        | (Val::Dur(_), TySpec::Dur) => true,
+        (Val::Dec(_), TySpec::Dec { .. }) => true,
+        (Val::Enum { ty: got, .. }, TySpec::Enum { of }) => got == of,
+        _ => false,
+    }
 }
 
 /// Helper used by tests to parse a payload object of string fields.

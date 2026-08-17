@@ -79,6 +79,11 @@ pub enum JournalHealth {
         offset: u64,
     },
     LockIo(String),
+    ReplayMismatch {
+        seq: u64,
+        field: String,
+    },
+    MissingGenesis,
 }
 
 impl JournalHealth {
@@ -114,6 +119,12 @@ impl JournalHealth {
                 format!("non-canonical record seq {seq} in {segment} at {offset}")
             }
             JournalHealth::LockIo(s) => s.clone(),
+            JournalHealth::ReplayMismatch { seq, field } => {
+                format!("replay mismatch at seq {seq} field {field}")
+            }
+            JournalHealth::MissingGenesis => {
+                "journal has no genesis record; delete the data directory and recreate".into()
+            }
         }
     }
 }
@@ -163,9 +174,9 @@ fn acquire_lock(jdir: &Path) -> Result<File, JournalIoError> {
 }
 
 fn sync_dir(dir: &Path) -> Result<(), JournalIoError> {
-    if let Ok(f) = File::open(dir) {
-        let _ = f.sync_all();
-    }
+    let f = File::open(dir).map_err(|e| JournalIoError::Io(e.to_string()))?;
+    f.sync_all()
+        .map_err(|e| JournalIoError::Io(e.to_string()))?;
     Ok(())
 }
 
@@ -285,8 +296,12 @@ pub fn classify(dir: &Path) -> JournalHealth {
         Err(e) => return JournalHealth::LockIo(e.to_string()),
     };
     segs.sort();
+    if segs.is_empty() {
+        return JournalHealth::MissingGenesis;
+    }
     let mut expect_seq = 0u64;
     let mut expect_prev = zeros();
+    let mut saw_record = false;
     for (si, path) in segs.iter().enumerate() {
         let last_seg = si + 1 == segs.len();
         let bytes = match fs::read(path) {
@@ -306,35 +321,29 @@ pub fn classify(dir: &Path) -> JournalHealth {
             let is_last_line = end == bytes.len();
             match verify_line(line, expect_seq, &expect_prev) {
                 Ok(rec) => {
+                    if rec.seq == 0 && rec.kind != RecordKind::Genesis {
+                        return JournalHealth::ChainBroken {
+                            seq: 0,
+                            segment: segn,
+                            offset: start as u64,
+                            expected: "genesis".into(),
+                            found: format!("{:?}", rec.kind),
+                        };
+                    }
                     expect_seq = rec.seq + 1;
                     expect_prev = rec.hash;
                     off = end;
                     start = end;
+                    saw_record = true;
+                }
+                Err(_) if last_seg && is_last_line && !line.ends_with(&[b'\n']) => {
+                    return JournalHealth::TornTail {
+                        segment: segn,
+                        offset: start as u64,
+                        bytes: (bytes.len() - start) as u64,
+                    };
                 }
                 Err(RecordError::NonCanonical { seq, .. }) => {
-                    if last_seg
-                        && is_last_line
-                        && end == bytes.len()
-                        && !bytes[start..].contains(&b'\n')
-                        && start > 0
-                        && bytes.get(start.saturating_sub(1)) != Some(&b'\n')
-                    {
-                        // fallthrough
-                    }
-                    if last_seg && is_last_line && !line.ends_with(&[b'\n']) {
-                        return JournalHealth::TornTail {
-                            segment: segn,
-                            offset: start as u64,
-                            bytes: (bytes.len() - start) as u64,
-                        };
-                    }
-                    if last_seg && is_last_line {
-                        return JournalHealth::TornTail {
-                            segment: segn,
-                            offset: start as u64,
-                            bytes: (bytes.len() - start) as u64,
-                        };
-                    }
                     return JournalHealth::NonCanonical {
                         seq,
                         segment: segn,
@@ -342,13 +351,6 @@ pub fn classify(dir: &Path) -> JournalHealth {
                     };
                 }
                 Err(RecordError::SeqGap { seq, expected }) => {
-                    if last_seg && is_last_line && !line.contains(&b'\n') && line.len() < 20 {
-                        return JournalHealth::TornTail {
-                            segment: segn,
-                            offset: start as u64,
-                            bytes: line.len() as u64,
-                        };
-                    }
                     return JournalHealth::ChainBroken {
                         seq: expected,
                         segment: segn,
@@ -358,24 +360,6 @@ pub fn classify(dir: &Path) -> JournalHealth {
                     };
                 }
                 Err(RecordError::HashMismatch { seq }) => {
-                    if last_seg
-                        && is_last_line
-                        && !bytes[end..].iter().any(|&b| b == b'\n')
-                        && is_last_line
-                    {
-                        // interior if more records? last line hash fail is still interior if well-formed
-                    }
-                    if last_seg
-                        && is_last_line
-                        && verify_line(line, expect_seq, &expect_prev).is_err()
-                        && !line.ends_with(b"\n")
-                    {
-                        return JournalHealth::TornTail {
-                            segment: segn,
-                            offset: start as u64,
-                            bytes: line.len() as u64,
-                        };
-                    }
                     return JournalHealth::ChainBroken {
                         seq,
                         segment: segn,
@@ -387,13 +371,6 @@ pub fn classify(dir: &Path) -> JournalHealth {
                 Err(RecordError::Parse { .. })
                 | Err(RecordError::PrevMismatch { .. })
                 | Err(RecordError::BodyInvalid { .. }) => {
-                    if last_seg && is_last_line {
-                        return JournalHealth::TornTail {
-                            segment: segn,
-                            offset: start as u64,
-                            bytes: (bytes.len() - start) as u64,
-                        };
-                    }
                     return JournalHealth::ChainBroken {
                         seq: expect_seq,
                         segment: segn,
@@ -406,48 +383,76 @@ pub fn classify(dir: &Path) -> JournalHealth {
         }
         let _ = off;
     }
+    if !saw_record {
+        return JournalHealth::MissingGenesis;
+    }
     JournalHealth::Ok
+}
+
+fn replay_health(e: fsm_core::replay::ReplayError) -> JournalHealth {
+    match e {
+        fsm_core::replay::ReplayError::StateHashMismatch { seq, .. } => {
+            JournalHealth::StateHashMismatch { seq }
+        }
+        fsm_core::replay::ReplayError::FieldMismatch { seq, field } => {
+            JournalHealth::ReplayMismatch {
+                seq,
+                field: field.into(),
+            }
+        }
+        fsm_core::replay::ReplayError::UnknownMachine { seq } => JournalHealth::ReplayMismatch {
+            seq,
+            field: "machine".into(),
+        },
+        fsm_core::replay::ReplayError::UnknownInstance { seq } => JournalHealth::ReplayMismatch {
+            seq,
+            field: "instance".into(),
+        },
+    }
+}
+
+fn active_segment_meta(jdir: &Path, recs: &[Record]) -> Result<(String, u64, u64, u32), String> {
+    let mut segs: Vec<_> = fs::read_dir(jdir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("seg-") && n.ends_with(".jsonl"))
+        .collect();
+    segs.sort();
+    let name = segs.pop().unwrap_or_else(|| seg_name(0));
+    let path = jdir.join(&name);
+    let bytes = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    let first = name
+        .strip_prefix("seg-")
+        .and_then(|s| s.strip_suffix(".jsonl"))
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let count = recs.iter().filter(|r| r.seq >= first).count() as u32;
+    Ok((name, first, bytes, count))
 }
 
 pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreState), OpenError> {
     let jdir = journal_dir(dir);
-    if !jdir.exists() {
-        let j = init(dir).map_err(|e| OpenError::Io(e.to_string()))?;
-        let st = StoreState::default();
-        return Ok((j, st));
-    }
-    let health = classify(dir);
-    if !matches!(health, JournalHealth::Ok) {
-        return Err(OpenError::Health(health));
-    }
+    fs::create_dir_all(&jdir).map_err(|e| OpenError::Io(e.to_string()))?;
     let lock = acquire_lock(&jdir).map_err(|e| match e {
         JournalIoError::Locked { pid } => {
             OpenError::Health(JournalHealth::LockIo(format!("locked {pid}")))
         }
         other => OpenError::Io(other.to_string()),
     })?;
+    let health = classify(dir);
+    if matches!(health, JournalHealth::MissingGenesis) {
+        drop(lock);
+        let j = init(dir).map_err(|e| OpenError::Io(e.to_string()))?;
+        return Ok((j, StoreState::default()));
+    }
+    if !matches!(health, JournalHealth::Ok) {
+        return Err(OpenError::Health(health));
+    }
     let recs = load_records(dir).map_err(OpenError::Io)?;
-    let state = fold_with(recs.clone(), sink).map_err(|e| {
-        OpenError::Health(JournalHealth::StateHashMismatch {
-            seq: match e {
-                fsm_core::replay::ReplayError::StateHashMismatch { seq, .. } => seq,
-                _ => 0,
-            },
-        })
-    })?;
+    let state = fold_with(recs.clone(), sink).map_err(|e| OpenError::Health(replay_health(e)))?;
     let last = recs.last();
-    let name = last
-        .map(|_| {
-            let mut segs: Vec<_> = fs::read_dir(&jdir)
-                .unwrap()
-                .filter_map(|e| e.ok())
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .filter(|n| n.starts_with("seg-"))
-                .collect();
-            segs.sort();
-            segs.pop().unwrap_or_else(|| seg_name(0))
-        })
-        .unwrap_or_else(|| seg_name(0));
+    let (name, first, bytes, count) = active_segment_meta(&jdir, &recs).map_err(OpenError::Io)?;
     let path = jdir.join(&name);
     let seg = OpenOptions::new()
         .create(true)
@@ -455,15 +460,14 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
         .read(true)
         .open(&path)
         .map_err(|e| OpenError::Io(e.to_string()))?;
-    let meta = fs::metadata(&path).map_err(|e| OpenError::Io(e.to_string()))?;
     Ok((
         Journal {
             dir: dir.to_path_buf(),
             seg,
             seg_name: name,
-            seg_first_seq: last.map(|r| /* approx */ 0).unwrap_or(0),
-            seg_bytes: meta.len(),
-            seg_records: recs.len() as u32,
+            seg_first_seq: first,
+            seg_bytes: bytes,
+            seg_records: count,
             last_seq: last.map(|r| r.seq).unwrap_or(0),
             last_hash: last.map(|r| r.hash.clone()).unwrap_or_else(zeros),
             poisoned: false,
@@ -515,13 +519,38 @@ pub struct VerifyReport {
 
 pub fn verify(dir: &Path) -> VerifyReport {
     let health = classify(dir);
-    let recs = load_records(dir).unwrap_or_default();
-    let st = fold_with(recs.clone(), &mut NopSink).ok();
-    VerifyReport {
-        health,
-        records: recs.len() as u64,
-        machines: st.as_ref().map(|s| s.machines.len() as u64).unwrap_or(0),
-        instances: st.as_ref().map(|s| s.instances.len() as u64).unwrap_or(0),
+    if !matches!(health, JournalHealth::Ok) {
+        return VerifyReport {
+            health,
+            records: 0,
+            machines: 0,
+            instances: 0,
+        };
+    }
+    let recs = match load_records(dir) {
+        Ok(r) => r,
+        Err(e) => {
+            return VerifyReport {
+                health: JournalHealth::LockIo(e),
+                records: 0,
+                machines: 0,
+                instances: 0,
+            };
+        }
+    };
+    match fold_with(recs.clone(), &mut NopSink) {
+        Ok(st) => VerifyReport {
+            health: JournalHealth::Ok,
+            records: recs.len() as u64,
+            machines: st.machines.len() as u64,
+            instances: st.instances.len() as u64,
+        },
+        Err(e) => VerifyReport {
+            health: replay_health(e),
+            records: recs.len() as u64,
+            machines: 0,
+            instances: 0,
+        },
     }
 }
 
@@ -540,6 +569,8 @@ pub enum RepairError {
 }
 
 pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError> {
+    let jdir = journal_dir(dir);
+    let _lock = acquire_lock(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
     let health = classify(dir);
     match health {
         JournalHealth::Ok => Err(RepairError::NothingToRepair),
@@ -548,17 +579,29 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
             offset,
             bytes,
         } => {
-            let jdir = journal_dir(dir);
-            let _lock = acquire_lock(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
             let path = jdir.join(&segment);
             let data = fs::read(&path).map_err(|e| RepairError::Io(e.to_string()))?;
+            if data.len() < offset as usize {
+                return Err(RepairError::Io("stale torn-tail offset".into()));
+            }
             let tail = data[offset as usize..].to_vec();
             let qdir = jdir.join("quarantine");
             fs::create_dir_all(&qdir).map_err(|e| RepairError::Io(e.to_string()))?;
             let recs = load_prefix(&data[..offset as usize]);
             let first_bad = recs.last().map(|r| r.seq + 1).unwrap_or(0);
             let qpath = qdir.join(format!("{segment}-tail-{first_bad}.bin"));
-            fs::write(&qpath, &tail).map_err(|e| RepairError::Io(e.to_string()))?;
+            let qf = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&qpath)
+                .map_err(|e| RepairError::Io(e.to_string()))?;
+            {
+                let mut qf = qf;
+                qf.write_all(&tail)
+                    .map_err(|e| RepairError::Io(e.to_string()))?;
+                qf.sync_all().map_err(|e| RepairError::Io(e.to_string()))?;
+            }
+            sync_dir(&qdir).map_err(|e| RepairError::Io(e.to_string()))?;
             let mut f = OpenOptions::new()
                 .write(true)
                 .open(&path)
@@ -566,6 +609,7 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
             f.set_len(offset)
                 .map_err(|e| RepairError::Io(e.to_string()))?;
             f.sync_all().map_err(|e| RepairError::Io(e.to_string()))?;
+            sync_dir(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
             Ok(RepairReport {
                 quarantined: qpath,
                 bytes,

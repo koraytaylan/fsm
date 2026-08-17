@@ -87,7 +87,13 @@ pub fn run() -> std::io::Result<()> {
 
 pub fn serve(input: impl BufRead, output: impl Write) -> std::io::Result<()> {
     let dir = resolve_data_dir(None);
-    let mut store = Store::open(&dir).ok();
+    let mut store = match Store::open(&dir) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "fsm store open failed: {}", e.message);
+            return Err(std::io::Error::other(e.message));
+        }
+    };
     let mut clock = SystemClock;
     serve_session(store.as_mut(), &mut clock, input, output)
 }
