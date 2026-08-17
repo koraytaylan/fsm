@@ -773,6 +773,7 @@ fn apply_block(
                 }
                 return Err(action_err_at(
                     &kind,
+                    err.code,
                     err.message,
                     err.hint,
                     Some((err.span.start, err.span.end)),
@@ -822,6 +823,7 @@ fn apply_block(
                     });
                     return Err(action_err_at(
                         &kind,
+                        err.code,
                         err.message,
                         err.hint,
                         Some((err.span.start, err.span.end)),
@@ -869,11 +871,20 @@ fn reject_pipeline(
 }
 
 fn action_err(kind: &BlockKind, message: String, hint: String) -> Rejection {
-    action_err_at(kind, message, hint, None, Vec::new(), Vec::new())
+    action_err_at(
+        kind,
+        "run/action_error",
+        message,
+        hint,
+        None,
+        Vec::new(),
+        Vec::new(),
+    )
 }
 
 fn action_err_at(
     kind: &BlockKind,
+    code: &'static str,
     message: String,
     hint: String,
     span: Option<(u32, u32)>,
@@ -881,7 +892,7 @@ fn action_err_at(
     emits: Vec<EmitTrace>,
 ) -> Rejection {
     Rejection {
-        code: "run/action_error",
+        code,
         message,
         hint,
         source_state: None,

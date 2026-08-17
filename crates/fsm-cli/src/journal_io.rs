@@ -21,9 +21,29 @@ pub fn should_rotate(seg_bytes: u64, seg_records: u32) -> bool {
     seg_records >= ROTATE_RECORDS || seg_bytes >= ROTATE_BYTES
 }
 
+enum Seg {
+    File(File),
+    Memory(Vec<u8>),
+}
+
+impl Seg {
+    fn write_line(&mut self, line: &[u8]) -> std::io::Result<()> {
+        match self {
+            Seg::File(f) => {
+                f.write_all(line)?;
+                f.sync_all()
+            }
+            Seg::Memory(buf) => {
+                buf.extend_from_slice(line);
+                Ok(())
+            }
+        }
+    }
+}
+
 pub struct Journal {
     pub dir: PathBuf,
-    seg: File,
+    seg: Seg,
     pub seg_name: String,
     pub seg_first_seq: u64,
     pub seg_bytes: u64,
@@ -31,7 +51,8 @@ pub struct Journal {
     pub last_seq: u64,
     pub last_hash: String,
     pub poisoned: bool,
-    _lock: File,
+    _lock: Option<File>,
+    mem_records: Option<Vec<Record>>,
 }
 
 #[derive(Debug)]
@@ -308,11 +329,41 @@ pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
 }
 
 impl Journal {
+    pub fn memory() -> Self {
+        let mut body = std::collections::BTreeMap::new();
+        body.insert("format".into(), Value::Str("fsm.journal/1".into()));
+        body.insert("created_ts".into(), Value::Num("0".into()));
+        body.insert("limits".into(), limits_value());
+        let rec = seal(0, 0, RecordKind::Genesis, Value::Obj(body), &zeros());
+        let line = rec.to_line();
+        Journal {
+            dir: PathBuf::from("<memory>"),
+            seg: Seg::Memory(line),
+            seg_name: "mem".into(),
+            seg_first_seq: 0,
+            seg_bytes: 0,
+            seg_records: 1,
+            last_seq: 0,
+            last_hash: rec.hash.clone(),
+            poisoned: false,
+            _lock: None,
+            mem_records: Some(vec![rec]),
+        }
+    }
+
+    pub fn is_memory(&self) -> bool {
+        self.mem_records.is_some()
+    }
+
+    pub fn memory_records(&self) -> Option<&[Record]> {
+        self.mem_records.as_deref()
+    }
+
     pub fn append(&mut self, kind: RecordKind, body: Value) -> Result<Record, JournalIoError> {
         if self.poisoned {
             return Err(JournalIoError::Poisoned);
         }
-        if should_rotate(self.seg_bytes, self.seg_records) {
+        if !self.is_memory() && should_rotate(self.seg_bytes, self.seg_records) {
             if let Err(e) = self.rotate() {
                 self.poisoned = true;
                 return Err(e);
@@ -326,7 +377,7 @@ impl Journal {
             &self.last_hash,
         );
         let line = rec.to_line();
-        if let Err(e) = self.seg.write_all(&line).and_then(|_| self.seg.sync_all()) {
+        if let Err(e) = self.seg.write_line(&line) {
             self.poisoned = true;
             return Err(JournalIoError::Io(e.to_string()));
         }
@@ -334,10 +385,16 @@ impl Journal {
         self.seg_records += 1;
         self.last_seq = rec.seq;
         self.last_hash = rec.hash.clone();
+        if let Some(recs) = &mut self.mem_records {
+            recs.push(rec.clone());
+        }
         Ok(rec)
     }
 
     fn rotate(&mut self) -> Result<(), JournalIoError> {
+        if self.is_memory() {
+            return Ok(());
+        }
         let next = self.last_seq + 1;
         let name = seg_name(next);
         let path = journal_dir(&self.dir).join(&name);
@@ -348,7 +405,7 @@ impl Journal {
             .open(&path)
             .map_err(|e| JournalIoError::Io(e.to_string()))?;
         sync_dir(&journal_dir(&self.dir))?;
-        self.seg = seg;
+        self.seg = Seg::File(seg);
         self.seg_name = name;
         self.seg_first_seq = next;
         self.seg_bytes = 0;
@@ -547,7 +604,7 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
     Ok((
         Journal {
             dir: dir.to_path_buf(),
-            seg,
+            seg: Seg::File(seg),
             seg_name: name,
             seg_first_seq: first,
             seg_bytes: bytes,
@@ -555,7 +612,8 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
             last_seq: last.map(|r| r.seq).unwrap_or(0),
             last_hash: last.map(|r| r.hash.clone()).unwrap_or_else(zeros),
             poisoned: false,
-            _lock: lock,
+            _lock: Some(lock),
+            mem_records: None,
         },
         state,
     ))

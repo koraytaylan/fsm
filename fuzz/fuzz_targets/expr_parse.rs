@@ -12,7 +12,10 @@ fuzz_target!(|data: &[u8]| {
             assert!(fsm_core::expr::ast::depth(&e) <= 32);
         }
         Err(e) => {
-            assert!(e.span.end >= e.span.start);
+            assert!(e.span.start <= e.span.end);
+            assert!(e.span.end <= s.len());
+            assert!(s.is_char_boundary(e.span.start) || e.span.start == s.len());
+            assert!(s.is_char_boundary(e.span.end) || e.span.end == s.len());
             assert!(!e.code.is_empty());
         }
     }

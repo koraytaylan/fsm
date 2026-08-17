@@ -1,9 +1,9 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use fsm_core::hashes::domain_hash;
+use fsm_core::canon::canon_bytes;
 use fsm_core::json::Value;
 use fsm_core::record::{verify_line, zeros};
-use fsm_core::sha256::to_hex;
+use fsm_core::sha256::{sha256, to_hex};
 use std::collections::BTreeMap;
 
 fn independent_record_hash(
@@ -19,7 +19,10 @@ fn independent_record_hash(
     m.insert("kind".into(), Value::Str(kind.as_str().into()));
     m.insert("body".into(), body.clone());
     m.insert("prev".into(), Value::Str(prev.into()));
-    to_hex(&domain_hash("fsm:record:1", &Value::Obj(m)))
+    let mut buf = b"fsm:record:1".to_vec();
+    buf.push(0x0A);
+    buf.extend_from_slice(&canon_bytes(&Value::Obj(m)));
+    to_hex(&sha256(&buf))
 }
 
 fuzz_target!(|data: &[u8]| {

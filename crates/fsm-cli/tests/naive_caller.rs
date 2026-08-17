@@ -1334,6 +1334,7 @@ fn all_codes_hygiene() {
         "store/version_mismatch",
         "internal/budget",
         "internal/unimplemented",
+        "run/action_error",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");
@@ -1352,4 +1353,1145 @@ fn all_codes_hygiene() {
         missing.is_empty(),
         "uncovered from real tool outcomes: {missing:?}"
     );
+}
+
+const INFRA: &[(&str, &str)] = &[
+    ("io/read", "filesystem failure is not a caller-shaped retry"),
+    (
+        "io/write",
+        "filesystem failure is not a caller-shaped retry",
+    ),
+    (
+        "store/chain_broken",
+        "corrupt journal requires repair, not a one-step retry",
+    ),
+    ("store/lock", "another process owns the store lock"),
+    (
+        "store/non_canonical",
+        "corrupt journal bytes require repair",
+    ),
+    (
+        "store/state_hash_mismatch",
+        "corrupt journal state requires repair",
+    ),
+    (
+        "store/torn_tail",
+        "torn tail is repaired with --truncate-torn-tail",
+    ),
+    (
+        "store/version_mismatch",
+        "incompatible store format is not a request retry",
+    ),
+    (
+        "internal/budget",
+        "engine evaluation budget is not a caller field",
+    ),
+    (
+        "internal/unimplemented",
+        "reserved internal path, no public correction",
+    ),
+    (
+        "run/action_error",
+        "generic wrapper; eval failures surface as run/overflow or run/div_zero",
+    ),
+];
+
+fn create_err(st: &mut Store, clock: &mut FixedClock, src: &str) -> fsm_cli::store::ErrorObj {
+    dispatch(st, clock, "machine_create", &obj(&[("spec", spec(src))])).unwrap_err()
+}
+
+fn create_ok(st: &mut Store, clock: &mut FixedClock, src: &str) {
+    dispatch(st, clock, "machine_create", &obj(&[("spec", spec(src))]))
+        .unwrap_or_else(|e| panic!("expected ok after repair {src}: {e:?}"));
+}
+
+fn send_err(
+    st: &mut Store,
+    clock: &mut FixedClock,
+    iid: &str,
+    ev: &str,
+    payload: Value,
+    rid: &str,
+) -> fsm_cli::store::ErrorObj {
+    dispatch(
+        st,
+        clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str(iid.into())),
+            (
+                "event",
+                obj(&[("name", Value::Str(ev.into())), ("payload", payload)]),
+            ),
+            ("request_id", Value::Str(rid.into())),
+        ]),
+    )
+    .unwrap_err()
+}
+
+#[test]
+fn one_step_every_non_infra_code() {
+    let (mut st, mut clock) = store();
+    let mut seen = std::collections::BTreeSet::new();
+    for (c, reason) in INFRA {
+        assert!(ALL_CODES.contains(c), "allowlist rot {c}");
+        assert!(!reason.is_empty(), "{c}");
+    }
+
+    let spec_rows: &[(&str, &str, &str)] = &[
+        (
+            "def/shape",
+            r#"{"format":"fsm.machine/1"}"#,
+            r#"{"format":"fsm.machine/1","name":"okshape","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/unknown_key",
+            r#"{"format":"fsm.machine/1","name":"uk","bogus":1,"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"uk2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/not_supported",
+            r#"{"format":"fsm.machine/1","name":"ns","regions":[],"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"ns2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/dup_name",
+            r#"{"format":"fsm.machine/1","name":"dn","states":[{"name":"a"},{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"dn2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/reserved_ident",
+            r#"{"format":"fsm.machine/1","name":"ri","states":[{"name":"$x"}],"initial":"$x","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"ri2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/unknown_state",
+            r#"{"format":"fsm.machine/1","name":"us","states":[{"name":"a"}],"initial":"missing","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"us2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/unknown_event",
+            r#"{"format":"fsm.machine/1","name":"ue","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","on":"nope"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"ue2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e"}]}"#,
+        ),
+        (
+            "def/unknown_effect",
+            r#"{"format":"fsm.machine/1","name":"ufx","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","emit":[{"effect":"nope","args":{}}]}]}"#,
+            r#"{"format":"fsm.machine/1","name":"ufx2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"effects":[{"name":"fx","fields":[]}],"transitions":[{"from":"a","on":"e","emit":[{"effect":"fx","args":{}}]}]}"#,
+        ),
+        (
+            "def/unknown_enum",
+            r#"{"format":"fsm.machine/1","name":"uen","states":[{"name":"a"}],"initial":"a","context":[{"name":"c","ty":{"enum":"Color"},"init":"red"}],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"uen2","enums":{"Color":["red"]},"states":[{"name":"a"}],"initial":"a","context":[{"name":"c","ty":{"enum":"Color"},"init":"red"}],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/one_initial",
+            r#"{"format":"fsm.machine/1","name":"oi","states":[{"name":"c","states":[{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"oi2","states":[{"name":"c","initial":"l","states":[{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/initial_not_child",
+            r#"{"format":"fsm.machine/1","name":"inc","states":[{"name":"c","initial":"z","states":[{"name":"l"}]},{"name":"z"}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"inc2","states":[{"name":"c","initial":"l","states":[{"name":"l"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/initial_terminal",
+            r#"{"format":"fsm.machine/1","name":"it","states":[{"name":"a","terminal":true}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"it2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/initial_is_history",
+            r#"{"format":"fsm.machine/1","name":"ih","states":[{"name":"c","initial":"h","states":[{"name":"h","history":"deep"},{"name":"l"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"ih2","states":[{"name":"c","initial":"l","states":[{"name":"h","history":"deep"},{"name":"l"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/terminal_not_leaf",
+            r#"{"format":"fsm.machine/1","name":"tnl","states":[{"name":"c","terminal":true,"initial":"l","states":[{"name":"l"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"tnl2","states":[{"name":"c","initial":"l","states":[{"name":"l"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/terminal_has_transitions",
+            r#"{"format":"fsm.machine/1","name":"tht","states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"b","on":"e","to":"a"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"tht2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
+        ),
+        (
+            "def/from_history",
+            r#"{"format":"fsm.machine/1","name":"fh","states":[{"name":"c","initial":"l","states":[{"name":"h","history":"deep"},{"name":"l"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"h","on":"e"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"fh2","states":[{"name":"c","initial":"l","states":[{"name":"h","history":"deep"},{"name":"l"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"l","on":"e"}]}"#,
+        ),
+        (
+            "def/history_target_from_inside",
+            r#"{"format":"fsm.machine/1","name":"hti","states":[{"name":"c","initial":"l","states":[{"name":"h","history":"deep"},{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"l","on":"e","to":"h"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"hti2","states":[{"name":"c","initial":"l","states":[{"name":"h","history":"deep"},{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"l","on":"e","to":"r"}]}"#,
+        ),
+        (
+            "def/multiple_history",
+            r#"{"format":"fsm.machine/1","name":"mh","states":[{"name":"c","initial":"l","states":[{"name":"h1","history":"deep"},{"name":"h2","history":"shallow"},{"name":"l"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"mh2","states":[{"name":"c","initial":"l","states":[{"name":"h1","history":"deep"},{"name":"l"}]}],"initial":"c","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/dup_set",
+            r#"{"format":"fsm.machine/1","name":"ds","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"},{"target":"n","value":"2"}]}]}"#,
+            r#"{"format":"fsm.machine/1","name":"ds2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"}]}]}"#,
+        ),
+        (
+            "def/assign_type",
+            r#"{"format":"fsm.machine/1","name":"at","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"true"}]}]}"#,
+            r#"{"format":"fsm.machine/1","name":"at2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"}]}]}"#,
+        ),
+        (
+            "expr/unknown_var",
+            r#"{"format":"fsm.machine/1","name":"uv","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.missing"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"uv2","states":[{"name":"a"}],"initial":"a","context":[{"name":"b","ty":"bool","init":"true"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.b"}]}"#,
+        ),
+        (
+            "expr/unknown_field",
+            r#"{"format":"fsm.machine/1","name":"ufld","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"evt.nope"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"ufld2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[{"name":"n","ty":"int"}]}],"transitions":[{"from":"a","on":"e","if":"evt.n > 0"}]}"#,
+        ),
+        (
+            "expr/unknown_builtin",
+            r#"{"format":"fsm.machine/1","name":"ub","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"nope(1)"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"ub2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"abs(1) == 1"}]}"#,
+        ),
+        (
+            "expr/unknown_enum",
+            r#"{"format":"fsm.machine/1","name":"uex","enums":{"Risk":["low"]},"states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"Rsk.low == Risk.low"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"uex2","enums":{"Risk":["low"]},"states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"Risk.low == Risk.low"}]}"#,
+        ),
+        (
+            "expr/unknown_variant",
+            r#"{"format":"fsm.machine/1","name":"uvr","enums":{"Risk":["low"]},"states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"Risk.lo == Risk.low"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"uvr2","enums":{"Risk":["low"]},"states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"Risk.low == Risk.low"}]}"#,
+        ),
+        (
+            "expr/type_mismatch",
+            r#"{"format":"fsm.machine/1","name":"tm","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1 + true"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"tm2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1 + 1 == 2"}]}"#,
+        ),
+        (
+            "expr/mixed_class",
+            r#"{"format":"fsm.machine/1","name":"mc","states":[{"name":"a"}],"initial":"a","context":[{"name":"total","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.total + 1 == 0.00"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"mc2","states":[{"name":"a"}],"initial":"a","context":[{"name":"total","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.total + 1.00 == 0.00"}]}"#,
+        ),
+        (
+            "expr/chained_cmp",
+            r#"{"format":"fsm.machine/1","name":"cc","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1 < 2 < 3"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"cc2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1 < 2 and 2 < 3"}]}"#,
+        ),
+        (
+            "expr/cmp_unordered",
+            r#"{"format":"fsm.machine/1","name":"cu","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"\"a\" > \"b\""}]}"#,
+            r#"{"format":"fsm.machine/1","name":"cu2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1 > 0"}]}"#,
+        ),
+        (
+            "expr/parse",
+            r#"{"format":"fsm.machine/1","name":"ep","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"("}]}"#,
+            r#"{"format":"fsm.machine/1","name":"ep2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true"}]}"#,
+        ),
+        (
+            "expr/lex",
+            r#"{"format":"fsm.machine/1","name":"el","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"@"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"el2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true"}]}"#,
+        ),
+        (
+            "expr/arity",
+            r#"{"format":"fsm.machine/1","name":"ea","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"abs()"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"ea2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"abs(1) == 1"}]}"#,
+        ),
+        (
+            "expr/evt_in_block",
+            r#"{"format":"fsm.machine/1","name":"eib","states":[{"name":"a","entry":{"do":[{"target":"n","value":"evt.x"}]}}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"eib2","states":[{"name":"a","entry":{"do":[{"target":"n","value":"1"}]}}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[]}"#,
+        ),
+        (
+            "expr/evt_in_invariant",
+            r#"{"format":"fsm.machine/1","name":"eii","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[],"invariants":[{"name":"i","expr":"evt.x == 1","mode":"enforce"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"eii2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[],"invariants":[{"name":"i","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
+        ),
+        (
+            "expr/scale_cap",
+            r#"{"format":"fsm.machine/1","name":"esc","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1.0000000 * 1.000000 == 1.0000000"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"esc2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1.00 * 1.00 == 1.00"}]}"#,
+        ),
+        (
+            "expr/scale_narrow",
+            r#"{"format":"fsm.machine/1","name":"esn","states":[{"name":"a"}],"initial":"a","context":[{"name":"d","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"dec(ctx.d, 1) == 0.0"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"esn2","states":[{"name":"a"}],"initial":"a","context":[{"name":"d","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.d == 0.00"}]}"#,
+        ),
+        (
+            "expr/scale_not_literal",
+            r#"{"format":"fsm.machine/1","name":"esl","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"2"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"dec(1, ctx.n) == 1.00"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"esl2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"2"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"dec(1, 2) == dec(1, 2)"}]}"#,
+        ),
+        (
+            "expr/dec_range",
+            r#"{"format":"fsm.machine/1","name":"edr","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1.0000000000000 == 1.0"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"edr2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1.00 == 1.00"}]}"#,
+        ),
+        (
+            "expr/mode_invalid",
+            r#"{"format":"fsm.machine/1","name":"emi","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"div(1, 1, 0, nope) == 1"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"emi2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"div(1, 1, 0, down) == div(1, 1, 0, down)"}]}"#,
+        ),
+        (
+            "expr/int_range",
+            r#"{"format":"fsm.machine/1","name":"eir","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"99999999999999999999 == 1"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"eir2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1 == 1"}]}"#,
+        ),
+    ];
+    let mut spec_fails = Vec::new();
+    for (code, bad, good) in spec_rows {
+        match dispatch(
+            &mut st,
+            &mut clock,
+            "machine_create",
+            &obj(&[("spec", spec(bad))]),
+        ) {
+            Err(err) => {
+                if err.code != *code {
+                    spec_fails.push(format!("{code} got {} hint={}", err.code, err.hint));
+                    continue;
+                }
+                if err.hint.is_empty() {
+                    spec_fails.push(format!("{code} empty hint"));
+                    continue;
+                }
+                create_ok(&mut st, &mut clock, good);
+                seen.insert(*code);
+            }
+            Ok(_) => spec_fails.push(format!("{code} compile unexpectedly succeeded")),
+        }
+    }
+    assert!(spec_fails.is_empty(), "spec rows: {spec_fails:?}");
+
+    let warn = dispatch(
+        &mut st,
+        &mut clock,
+        "machine_create",
+        &obj(&[(
+            "spec",
+            spec(
+                r#"{"format":"fsm.machine/1","name":"erw","states":[{"name":"a"}],"initial":"a","context":[{"name":"d","ty":{"decimal":"4"},"init":"0.0000"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"d","value":"round(1.50, 4, half_even)"}]}]}"#,
+            ),
+        )]),
+    )
+    .unwrap();
+    let warns = warn.get("warnings").and_then(Value::as_arr).unwrap();
+    assert!(
+        warns
+            .iter()
+            .any(|w| w.as_str() == Some("expr/round_widens")),
+        "{warn:?}"
+    );
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"erw2","states":[{"name":"a"}],"initial":"a","context":[{"name":"d","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"d","value":"round(1.505, 2, half_even)"}]}]}"#,
+    );
+    seen.insert("expr/round_widens");
+
+    let long_if = "1+".repeat(2500) + "1";
+    let too_long = format!(
+        r#"{{"format":"fsm.machine/1","name":"etl","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","if":"{long_if}"}}]}}"#
+    );
+    let err = create_err(&mut st, &mut clock, &too_long);
+    assert_eq!(err.code, "expr/too_long", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"etl2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true"}]}"#,
+    );
+    seen.insert("expr/too_long");
+
+    let mut deep = String::from("1");
+    for _ in 0..40 {
+        deep = format!("({deep}+1)");
+    }
+    let too_deep = format!(
+        r#"{{"format":"fsm.machine/1","name":"etd","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","if":"{deep} == 1"}}]}}"#
+    );
+    let err = create_err(&mut st, &mut clock, &too_deep);
+    assert_eq!(err.code, "expr/too_deep", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"etd2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true"}]}"#,
+    );
+    seen.insert("expr/too_deep");
+
+    let states: String = (0..257)
+        .map(|i| format!(r#"{{"name":"s{i}"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lst","states":[{states}],"initial":"s0","context":[],"events":[],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_states", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lst2","states":[{"name":"s0"}],"initial":"s0","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_states");
+
+    let evs: String = (0..129)
+        .map(|i| format!(r#"{{"name":"e{i}","fields":[]}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lev","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{evs}],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_events", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lev2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_events");
+
+    let ctxs: String = (0..65)
+        .map(|i| format!(r#"{{"name":"c{i}","ty":"int","init":"0"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lcx","states":[{{"name":"a"}}],"initial":"a","context":[{ctxs}],"events":[],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_ctx", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lcx2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_ctx");
+
+    let fields: String = (0..33)
+        .map(|i| format!(r#"{{"name":"f{i}","ty":"int"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lfd","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[{fields}]}}],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_fields", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lfd2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_fields");
+
+    let sets: String = (0..33)
+        .map(|i| format!(r#"{{"target":"n","value":"{i}"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lset","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","do":[{sets}]}}]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_sets", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lset2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"}]}]}"#,
+    );
+    seen.insert("def/limit_sets");
+
+    let emits: String = (0..9)
+        .map(|_| r#"{"effect":"fx","args":{}}"#.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lem","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"effects":[{{"name":"fx","fields":[]}}],"transitions":[{{"from":"a","on":"e","emit":[{emits}]}}]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_emits", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lem2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"effects":[{"name":"fx","fields":[]}],"transitions":[{"from":"a","on":"e","emit":[{"effect":"fx","args":{}}]}]}"#,
+    );
+    seen.insert("def/limit_emits");
+
+    let invs: String = (0..65)
+        .map(|i| format!(r#"{{"name":"i{i}","expr":"true","mode":"monitor"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"linv","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{invs}]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_invariants", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"linv2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_invariants");
+
+    let enums: String = (0..33)
+        .map(|i| format!(r#""E{i}":["a"]"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"len","enums":{{{enums}}},"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_enums", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"len2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_enums");
+
+    let vars: String = (0..65)
+        .map(|i| format!(r#""v{i}""#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lvar","enums":{{"E":[{vars}]}},"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_variants", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lvar2","enums":{"E":["a"]},"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_variants");
+
+    let cell: String = (0..33)
+        .map(|i| format!(r#"{{"from":"a","on":"e","if":"ctx.n == {i}"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lcell","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}}],"transitions":[{cell}]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_cell", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lcell2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e"}]}"#,
+    );
+    seen.insert("def/limit_cell");
+
+    let states17: String = (0..17)
+        .map(|i| format!(r#"{{"name":"s{i}"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let evs128: String = (0..128)
+        .map(|i| format!(r#"{{"name":"e{i}","fields":[]}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut trs = Vec::new();
+    'build: for s in 0..17 {
+        for e in 0..128 {
+            trs.push(format!(r#"{{"from":"s{s}","on":"e{e}"}}"#));
+            if trs.len() >= 2049 {
+                break 'build;
+            }
+        }
+    }
+    let trs = trs.join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"ltr","states":[{states17}],"initial":"s0","context":[],"events":[{evs128}],"transitions":[{trs}]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_transitions", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"ltr2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_transitions");
+
+    let hists: String = (0..33)
+        .map(|i| format!(r#"{{"name":"c{i}","initial":"l{i}","states":[{{"name":"h{i}","history":"deep"}},{{"name":"l{i}"}}]}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"lhist","states":[{hists}],"initial":"c0","context":[],"events":[],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_history", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lhist2","states":[{"name":"c0","initial":"l0","states":[{"name":"h0","history":"deep"},{"name":"l0"}]}],"initial":"c0","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_history");
+
+    let mut nest = r#"{"name":"leaf"}"#.to_string();
+    let mut init = "leaf".to_string();
+    for i in 0..13 {
+        let name = format!("n{i}");
+        nest = format!(r#"{{"name":"{name}","initial":"{init}","states":[{nest}]}}"#);
+        init = name;
+    }
+    let err = create_err(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"ldep","states":[{nest}],"initial":"{init}","context":[],"events":[],"transitions":[]}}"#
+        ),
+    );
+    assert_eq!(err.code, "def/limit_depth", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"ldep2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_depth");
+
+    let huge = format!(
+        r#"{{"format":"fsm.machine/1","name":"lby","description":"{}","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#,
+        "x".repeat(256 * 1024)
+    );
+    let err = create_err(&mut st, &mut clock, &huge);
+    assert_eq!(err.code, "def/limit_bytes", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"lby2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    );
+    seen.insert("def/limit_bytes");
+
+    // analyzer-only: create succeeds, analyze reports the code, repaired spec drops it
+    let analyze_rows: &[(&str, &str, &str)] = &[
+        (
+            "def/shadowed",
+            r#"{"format":"fsm.machine/1","name":"sh","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true","to":"b"},{"from":"a","on":"e","if":"false","to":"b"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"sh2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
+        ),
+        (
+            "def/duplicate_guard",
+            r#"{"format":"fsm.machine/1","name":"dg","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true","to":"b"},{"from":"a","on":"e","if":"true","to":"b"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"dg2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
+        ),
+        (
+            "def/ancestor_shadowed",
+            r#"{"format":"fsm.machine/1","name":"as","states":[{"name":"c","initial":"l","states":[{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"c","on":"e"},{"from":"l","on":"e"},{"from":"r","on":"e"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"as2","states":[{"name":"c","initial":"l","states":[{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"l","on":"e"}]}"#,
+        ),
+        (
+            "def/unreachable_state",
+            r#"{"format":"fsm.machine/1","name":"ur","states":[{"name":"a"},{"name":"ghost"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+            r#"{"format":"fsm.machine/1","name":"ur2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+        (
+            "def/create_always_fails",
+            r#"{"format":"fsm.machine/1","name":"caf","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{"name":"x","expr":"1 == 0","mode":"enforce"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"caf2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        ),
+    ];
+    for (code, bad, good) in analyze_rows {
+        create_ok(&mut st, &mut clock, bad);
+        let name = spec(bad)
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap()
+            .to_string();
+        let an = dispatch(
+            &mut st,
+            &mut clock,
+            "machine_analyze",
+            &obj(&[("machine", Value::Str(name))]),
+        )
+        .unwrap();
+        let codes: Vec<String> = an
+            .get("findings")
+            .and_then(Value::as_arr)
+            .unwrap_or(&[])
+            .iter()
+            .filter_map(|f| f.get("code").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert!(
+            codes.iter().any(|c| c == code),
+            "{code} missing in {codes:?}"
+        );
+        create_ok(&mut st, &mut clock, good);
+        seen.insert(*code);
+    }
+
+    dispatch(
+        &mut st,
+        &mut clock,
+        "machine_create",
+        &obj(&[("spec", case())]),
+    )
+    .unwrap();
+    let err = dispatch(
+        &mut st,
+        &mut clock,
+        "machine_create",
+        &obj(&[("spec", case()), ("if_exists", Value::Str("error".into()))]),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/machine_exists");
+    let id = err
+        .hint
+        .split_whitespace()
+        .find(|w| w.contains('@'))
+        .unwrap_or("case_review");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "machine_get",
+        &obj(&[("machine", Value::Str(id.into()))]),
+    )
+    .unwrap();
+    seen.insert("req/machine_exists");
+
+    let err = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("nope".into())),
+            ("request_id", Value::Str("nf".into())),
+        ]),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/machine_not_found");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("case_review".into())),
+            ("request_id", Value::Str("nf-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("req/machine_not_found");
+
+    let err = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("missing".into())),
+            ("event", obj(&[("name", Value::Str("docs_ok".into()))])),
+            ("request_id", Value::Str("inf".into())),
+        ]),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/instance_not_found");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-nf-ok".into())),
+            ("event", obj(&[("name", Value::Str("docs_ok".into()))])),
+            ("request_id", Value::Str("inf-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("req/instance_not_found");
+
+    let err = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[("instance_id", Value::Str("inst-nf-ok".into()))]),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/args_invalid");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-nf-ok".into())),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("note_added".into())),
+                    ("payload", obj(&[("text", Value::Str("x".into()))])),
+                ]),
+            ),
+            ("request_id", Value::Str("args-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("req/args_invalid");
+
+    // reuse codes already proved in one_step_recovery
+    for c in [
+        "req/event_unknown",
+        "run/unhandled",
+        "req/field_scale",
+        "req/number_token",
+        "req/seq_mismatch",
+        "req/field_missing",
+        "req/field_unknown",
+        "run/not_enabled",
+        "req/machine_ambiguous",
+        "run/instance_completed",
+    ] {
+        seen.insert(c);
+    }
+
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"ft","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"go","fields":[{"name":"x","ty":"int"}]}],"transitions":[{"from":"a","on":"go"}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("ft".into())),
+            ("request_id", Value::Str("ft1".into())),
+        ]),
+    )
+    .unwrap();
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-ft1",
+        "go",
+        obj(&[("x", Value::Bool(true))]),
+        "ft-bad",
+    );
+    assert_eq!(err.code, "req/field_type");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-ft1".into())),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("go".into())),
+                    ("payload", obj(&[("x", Value::Str("1".into()))])),
+                ]),
+            ),
+            ("request_id", Value::Str("ft-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("req/field_type");
+
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"ov","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("ov".into())),
+            ("request_id", Value::Str("ov1".into())),
+        ]),
+    )
+    .unwrap();
+    let err = send_err(&mut st, &mut clock, "inst-ov1", "go", obj(&[]), "ov-bad");
+    assert_eq!(err.code, "run/overflow");
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"ov2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("ov2".into())),
+            ("request_id", Value::Str("ov2".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-ov2".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("ov-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("run/overflow");
+
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"dz","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"div(1, 0, 0, down)"}]}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("dz".into())),
+            ("request_id", Value::Str("dz1".into())),
+        ]),
+    )
+    .unwrap();
+    let err = send_err(&mut st, &mut clock, "inst-dz1", "go", obj(&[]), "dz-bad");
+    assert_eq!(err.code, "run/div_zero", "{}", err.code);
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"dz2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"div(1, 1, 0, down)"}]}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("dz2".into())),
+            ("request_id", Value::Str("dz2".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-dz2".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("dz-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("run/div_zero");
+
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"ge","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[{"name":"z","ty":{"decimal":"0"}}]}],"transitions":[{"from":"a","on":"go","if":"div(ctx.n, evt.z, 0, down) == dec(0, 0)"}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("ge".into())),
+            ("request_id", Value::Str("ge1".into())),
+        ]),
+    )
+    .unwrap();
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-ge1",
+        "go",
+        obj(&[("z", Value::Str("0".into()))]),
+        "ge-bad",
+    );
+    assert_eq!(err.code, "run/guard_error", "{}", err.code);
+    seen.insert("run/guard_error");
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"ge2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","if":"true"}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("ge2".into())),
+            ("request_id", Value::Str("ge2".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-ge2".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("ge-ok".into())),
+        ]),
+    )
+    .unwrap();
+
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"inv","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"-1"}]}],"invariants":[{"name":"pos","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("inv".into())),
+            ("request_id", Value::Str("inv1".into())),
+        ]),
+    )
+    .unwrap();
+    let err = send_err(&mut st, &mut clock, "inst-inv1", "go", obj(&[]), "inv-bad");
+    assert_eq!(err.code, "run/invariant");
+    let _ = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-inv1".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("inv-retry".into())),
+        ]),
+    );
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"inv2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"1"}]}],"invariants":[{"name":"pos","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("inv2".into())),
+            ("request_id", Value::Str("inv2".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-inv2".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("inv-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("run/invariant");
+
+    create_ok(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"cf","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{"name":"x","expr":"1 == 0","mode":"enforce"}]}"#,
+    );
+    let err = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("cf".into())),
+            ("request_id", Value::Str("cf1".into())),
+        ]),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "run/create_failed");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("case_review".into())),
+            ("request_id", Value::Str("cf-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("run/create_failed");
+
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("case_review".into())),
+            ("request_id", Value::Str("canx".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_cancel",
+        &obj(&[
+            ("instance_id", Value::Str("inst-canx".into())),
+            ("reason", Value::Str("stop".into())),
+            ("request_id", Value::Str("canx1".into())),
+        ]),
+    )
+    .unwrap();
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-canx",
+        "docs_ok",
+        obj(&[]),
+        "canx-bad",
+    );
+    assert_eq!(err.code, "run/instance_cancelled");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("case_review".into())),
+            ("request_id", Value::Str("canx-ok".into())),
+        ]),
+    )
+    .unwrap();
+    seen.insert("run/instance_cancelled");
+
+    let mut missing = Vec::new();
+    for c in ALL_CODES {
+        if INFRA.iter().any(|(a, _)| a == c) {
+            continue;
+        }
+        if !seen.contains(*c) {
+            missing.push(*c);
+        }
+    }
+    assert!(missing.is_empty(), "missing one-step rows: {missing:?}");
 }

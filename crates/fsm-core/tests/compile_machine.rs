@@ -143,3 +143,32 @@ fn scope_ok() {
     let s = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a","entry":{"do":[{"target":"x","value":"ctx.x + 1"}]}}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"n","ty":"int"}]}],"transitions":[{"from":"a","on":"e","if":"evt.n > 0"}],"invariants":[{"name":"i","expr":"ctx.x >= 0","mode":"enforce"}]}"#;
     compile_s(s).unwrap();
 }
+
+#[test]
+fn semantic_mutation_changes_machine_id() {
+    let src = parse(
+        br#"{"format":"fsm.machine/1","name":"m","description":"d","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let base = compile(parse_machine(&src).unwrap()).unwrap().machine_id;
+    let mut spec = parse_machine(&src).unwrap();
+    spec.name = "other".into();
+    assert_ne!(compile(spec).unwrap().machine_id, base, "name");
+    let mut spec = parse_machine(&src).unwrap();
+    spec.description = Some("x".into());
+    assert_ne!(compile(spec).unwrap().machine_id, base, "description");
+    let mut spec = parse_machine(&src).unwrap();
+    spec.transitions[0].to = Some("a".into());
+    assert_ne!(compile(spec).unwrap().machine_id, base, "transition target");
+    let mut spec = parse_machine(&src).unwrap();
+    spec.transitions[0].guard = Some("false".into());
+    assert_ne!(compile(spec).unwrap().machine_id, base, "transition action");
+    let mut spec = parse_machine(&src).unwrap();
+    spec.states.pop();
+    spec.transitions.clear();
+    assert_ne!(compile(spec).unwrap().machine_id, base, "state");
+    let mut spec = parse_machine(&src).unwrap();
+    spec.context[0].name = "m".into();
+    assert_ne!(compile(spec).unwrap().machine_id, base, "context");
+}

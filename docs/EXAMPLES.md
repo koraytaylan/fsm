@@ -13,12 +13,11 @@ $ fsm machine add examples/expense_approval.json
 created: true
 $ fsm instance new expense_approval --request-id e1
 leaf: draft
-$ fsm instance send inst-e1 submit --payload '{"amount":"10.00"}' --request-id e1-submit
-leaf: peer_review
-$ fsm instance new expense_approval --request-id e2
-$ fsm instance send inst-e2 submit --payload '{"amount":"-1.00"}' --request-id e2-submit
+$ fsm instance send inst-e1 submit --payload '{"amount":"-1.00"}' --request-id e1-bad
 # exit 1
 run/invariant
+$ fsm instance send inst-e1 submit --payload '{"amount":"10.00"}' --request-id e1-submit
+leaf: peer_review
 $ fsm instance send inst-e1 approve --request-id e1-approve
 leaf: approved
 ```
@@ -38,9 +37,15 @@ $ fsm instance new order_lifecycle --request-id ol1
 leaf: placed
 $ fsm instance send inst-ol1 place --request-id ol-place
 leaf: picking
+$ fsm instance show inst-ol1
+effects_pending:
+$ fsm instance ack inst-ol1 inst-ol1/3/0 --outcome ok --request-id ol-ack
+effects_pending:
 $ fsm instance send inst-ol1 confirmed --payload '{"at":"1"}' --request-id ol-early
 # exit 1
 run/unhandled
+$ fsm instance send inst-ol1 note_added --payload '{"text":"hold"}' --request-id ol-note
+leaf: picking
 $ fsm instance send inst-ol1 pick --request-id ol-pick
 $ fsm instance send inst-ol1 ship --request-id ol-ship
 $ fsm instance send inst-ol1 confirmed --stamp at --request-id ol-conf

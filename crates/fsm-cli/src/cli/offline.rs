@@ -35,11 +35,41 @@ fn validate_text(text: &str) -> Result<Value, ErrorObj> {
     let tree = Tree::build(&compiled.spec.states);
     let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
     let id = compiled.machine_id.clone();
+    fn count_nodes(nodes: &[fsm_core::spec::StateNode]) -> usize {
+        nodes.iter().map(|n| 1 + count_nodes(&n.states)).sum()
+    }
+    fn terminals(nodes: &[fsm_core::spec::StateNode], out: &mut Vec<Value>) {
+        for n in nodes {
+            if n.terminal {
+                out.push(Value::Str(n.name.clone()));
+            }
+            terminals(&n.states, out);
+        }
+    }
+    let mut terms = Vec::new();
+    terminals(&compiled.spec.states, &mut terms);
+    let summary = Value::Obj(BTreeMap::from([
+        ("initial".into(), Value::Str(compiled.spec.initial.clone())),
+        (
+            "states".into(),
+            Value::Num(count_nodes(&compiled.spec.states).to_string()),
+        ),
+        (
+            "events".into(),
+            Value::Num(compiled.spec.events.len().to_string()),
+        ),
+        (
+            "transitions".into(),
+            Value::Num(compiled.spec.transitions.len().to_string()),
+        ),
+        ("terminal_states".into(), Value::Arr(terms)),
+    ]));
     Ok(Value::Obj(BTreeMap::from([
         ("machine_id".into(), Value::Str(id)),
         ("name".into(), Value::Str(compiled.spec.name)),
         ("created".into(), Value::Bool(true)),
         ("dry_run".into(), Value::Bool(true)),
+        ("summary".into(), summary),
         (
             "warnings".into(),
             Value::Arr(

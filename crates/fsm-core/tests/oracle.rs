@@ -302,8 +302,9 @@ fn apply_block(
     budget: &mut Budget,
     effects: &mut Vec<EffectOut>,
 ) -> Result<(), Rejection> {
+    let snapshot = ctx.clone();
     apply_sets(&block.sets, ctx, evt, see_evt, budget)?;
-    apply_emits(&block.emits, ctx, evt, see_evt, budget, effects)?;
+    apply_emits(&block.emits, &snapshot, evt, see_evt, budget, effects)?;
     Ok(())
 }
 
@@ -759,6 +760,33 @@ mod independence {
                 assert_eq!(y.leaf_after, "b");
                 assert_eq!(x.ctx_after.get("n"), Some(&Val::Int(11)));
                 assert_eq!(y.ctx_after.get("n"), Some(&Val::Int(11)));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn oracle_emit_uses_pre_block_context() {
+        let src = br#"{"format":"fsm.machine/1","name":"em","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"effects":[{"name":"fx","fields":[{"name":"v","ty":"int"}]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"}],"emit":[{"effect":"fx","args":{"v":"ctx.n"}}]}]}"#;
+        let v = parse(src, &JsonLimits::DEFAULT).unwrap();
+        let m = compile(parse_machine(&v).unwrap()).unwrap();
+        let t = Tree::build(&m.spec.states);
+        let created = create(&m, &t, &BTreeMap::new()).unwrap();
+        let st = InstanceState {
+            status: created.status_after,
+            leaf: created.leaf_after,
+            ctx: created.ctx_after,
+            history: created.history_after,
+            pending: vec![],
+        };
+        let mut b1 = Budget::new(4096);
+        let mut b2 = Budget::new(4096);
+        let engine = step(&m, &t, &st, "e", &Value::Obj(BTreeMap::new()), &mut b1);
+        let naive = naive_step(&m, &st, "e", &Value::Obj(BTreeMap::new()), &mut b2);
+        match (&engine, &naive) {
+            (Outcome::Applied(x), Outcome::Applied(y)) => {
+                assert_eq!(x.effects, y.effects);
+                assert_eq!(x.effects[0].args.get("v"), Some(&Val::Int(0)));
             }
             other => panic!("{other:?}"),
         }

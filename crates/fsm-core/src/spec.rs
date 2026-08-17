@@ -182,8 +182,8 @@ pub struct MachineSpec {
     pub on_unhandled: Unhandled,
     pub transitions: Vec<TransitionSpec>,
     pub invariants: Vec<InvariantSpec>,
-    /// Original accepted document when parsed; identity is always this value.
-    pub source: Option<Value>,
+    /// Accepted document when parsed; not part of the public mutation surface.
+    pub(crate) source: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2272,7 +2272,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     if errs.iter().any(|f| f.severity == Severity::Error) {
         return Err(errs);
     }
-    let accepted = spec.source.clone().unwrap_or_else(|| spec.to_value());
+    let accepted = identity_document(&spec);
     let (canonical, machine_id) = accepted_identity(&accepted);
     Ok(CompiledMachine {
         machine_id,
@@ -2282,6 +2282,32 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         compiled_exprs,
         compile_warnings: errs,
     })
+}
+
+fn semantics_eq(a: &MachineSpec, b: &MachineSpec) -> bool {
+    a.format == b.format
+        && a.name == b.name
+        && a.description == b.description
+        && a.enums == b.enums
+        && a.context == b.context
+        && a.events == b.events
+        && a.effects == b.effects
+        && a.states == b.states
+        && a.initial == b.initial
+        && a.on_unhandled == b.on_unhandled
+        && a.transitions == b.transitions
+        && a.invariants == b.invariants
+}
+
+fn identity_document(spec: &MachineSpec) -> Value {
+    if let Some(src) = &spec.source {
+        if let Ok(parsed) = parse_machine(src) {
+            if semantics_eq(&parsed, spec) {
+                return src.clone();
+            }
+        }
+    }
+    spec.to_value()
 }
 
 /// Canonical bytes and machine id from one accepted definition value.

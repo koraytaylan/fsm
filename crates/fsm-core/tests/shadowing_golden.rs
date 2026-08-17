@@ -136,3 +136,31 @@ fn create_always_fails_skips_int_eq_override() {
     );
     assert!(ok.is_ok(), "{ok:?}");
 }
+
+#[test]
+fn create_always_fails_skips_entry_emit_override() {
+    let (m, t) = comp(
+        r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a","entry":{"emit":[{"effect":"fx","args":{"v":"9223372036854775807 + (2 - ctx.n)"}}]}}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"effects":[{"name":"fx","fields":[{"name":"v","ty":"int"}]}],"transitions":[]}"#,
+    );
+    assert!(
+        create_always_fails(&m, &t).is_empty(),
+        "entry emit overflow depends on overridable n"
+    );
+    let ok = fsm_core::step::create(
+        &m,
+        &t,
+        &std::collections::BTreeMap::from([("n".into(), fsm_core::expr::eval::Val::Int(2))]),
+    );
+    assert!(ok.is_ok(), "{ok:?}");
+}
+
+#[test]
+fn create_always_fails_skips_invariant_eval_override() {
+    let (m, t) = comp(
+        r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[],"invariants":[{"name":"mon","expr":"9223372036854775807 + (2 - ctx.n) > 0","mode":"monitor"}]}"#,
+    );
+    assert!(
+        create_always_fails(&m, &t).is_empty(),
+        "monitor invariant eval depends on overridable n"
+    );
+}

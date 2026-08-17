@@ -184,6 +184,18 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
             .get("context")
             .and_then(Value::as_obj)
             .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing context"))?;
+        let declared: std::collections::BTreeSet<&str> = stored
+            .compiled
+            .spec
+            .context
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        for k in cobj.keys() {
+            if !declared.contains(k.as_str()) {
+                return Err(ErrorObj::new("io/read", "snapshot context extra key"));
+            }
+        }
         let mut ctx = BTreeMap::new();
         for decl in &stored.compiled.spec.context {
             let raw = cobj
@@ -203,6 +215,27 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
             let s = raw
                 .as_str()
                 .ok_or_else(|| ErrorObj::new("io/read", "snapshot history binding"))?;
+            let Some(owner) = stored.tree.id(k) else {
+                return Err(ErrorObj::new("io/read", "snapshot history unknown owner"));
+            };
+            let Some(bound) = stored.tree.id(s) else {
+                return Err(ErrorObj::new(
+                    "io/read",
+                    "snapshot history unknown descendant",
+                ));
+            };
+            let mut walk = Some(bound);
+            let mut under = owner == bound;
+            while let Some(n) = walk {
+                if n == owner {
+                    under = true;
+                    break;
+                }
+                walk = stored.tree.parent[n as usize];
+            }
+            if !under {
+                return Err(ErrorObj::new("io/read", "snapshot history not descendant"));
+            }
             history.insert(k.clone(), s.to_string());
         }
         let pending = io
@@ -347,6 +380,7 @@ pub fn prune_old(data_dir: &Path) -> Result<(), ErrorObj> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn journal_ids_at(
     recs: &[fsm_core::record::Record],
     seq: u64,
@@ -374,21 +408,99 @@ fn journal_ids_at(
     (machines, instances)
 }
 
-fn snapshot_matches_prefix(base: &StoreState, recs: &[fsm_core::record::Record]) -> bool {
-    let Some(rec) = recs.iter().find(|r| r.seq == base.last_seq) else {
-        return false;
-    };
-    if rec.hash != base.last_hash {
+fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
+    if a.last_seq != b.last_seq || a.last_hash != b.last_hash {
         return false;
     }
-    let (mids, iids) = journal_ids_at(recs, base.last_seq);
-    if mids != base.machines.keys().cloned().collect() {
+    if a.dedup != b.dedup {
         return false;
     }
-    if iids != base.instances.keys().cloned().collect() {
+    if a.instance_machines != b.instance_machines {
         return false;
+    }
+    if a.machines.len() != b.machines.len() {
+        return false;
+    }
+    for (id, ma) in &a.machines {
+        let Some(mb) = b.machines.get(id) else {
+            return false;
+        };
+        if ma.compiled.machine_id != mb.compiled.machine_id {
+            return false;
+        }
+    }
+    if a.instances.len() != b.instances.len() {
+        return false;
+    }
+    for (id, ia) in &a.instances {
+        let Some(ib) = b.instances.get(id) else {
+            return false;
+        };
+        if ia.leaf != ib.leaf
+            || ia.status != ib.status
+            || ia.ctx != ib.ctx
+            || ia.history != ib.history
+            || ia.pending != ib.pending
+        {
+            return false;
+        }
+        let mid = a.instance_machines.get(id).cloned().unwrap_or_default();
+        if state_hash(&mid, id, a.last_seq, ia) != state_hash(&mid, id, b.last_seq, ib) {
+            return false;
+        }
     }
     true
+}
+
+fn snapshot_matches_prefix(base: &StoreState, recs: &[fsm_core::record::Record]) -> bool {
+    let prefix: Vec<_> = recs
+        .iter()
+        .filter(|r| r.seq <= base.last_seq)
+        .cloned()
+        .collect();
+    let Ok(folded) = fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink) else {
+        return false;
+    };
+    store_states_eq(base, &folded)
+}
+
+pub fn reconstruct_snapshot_plus_tail(
+    data_dir: &Path,
+    recs: &[fsm_core::record::Record],
+    to_seq: u64,
+) -> Result<StoreState, ErrorObj> {
+    let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
+    let want = to_seq.min(journal_last);
+    for (_seq, path) in listed_snaps(data_dir) {
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
+            continue;
+        };
+        let Ok(base) = snapshot_to_state(&v) else {
+            continue;
+        };
+        if base.last_seq > want {
+            continue;
+        }
+        let Some(rec) = recs.iter().find(|r| r.seq == base.last_seq) else {
+            continue;
+        };
+        if rec.hash != base.last_hash {
+            continue;
+        }
+        let tail: Vec<_> = recs
+            .iter()
+            .filter(|r| r.seq > base.last_seq && r.seq <= want)
+            .cloned()
+            .collect();
+        return fold_from(base, tail, &mut fsm_core::replay::NopSink)
+            .map_err(|e| ErrorObj::new("io/read", format!("{e:?}")));
+    }
+    let prefix: Vec<_> = recs.iter().filter(|r| r.seq <= want).cloned().collect();
+    fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink)
+        .map_err(|e| ErrorObj::new("io/read", format!("{e:?}")))
 }
 
 pub fn open_state(

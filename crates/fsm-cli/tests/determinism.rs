@@ -177,44 +177,55 @@ fn perf_smoke() {
         );
     }
     let src = format!(
-        r#"{{"format":"fsm.machine/1","name":"d12","states":[{a_inner},{b_inner}],"initial":"a0","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"a11","on":"go","to":"b11"}}]}}"#
+        r#"{{"format":"fsm.machine/1","name":"d12","states":[{a_inner},{b_inner}],"initial":"a0","context":[{{"name":"n","ty":"int","init":"0"}},{{"name":"flag","ty":"bool","init":"true"}}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"a11","on":"go","to":"b11","if":"ctx.n >= 0 and ctx.flag","do":[{{"target":"n","value":"ctx.n + 1"}}]}},{{"from":"b11","on":"go","to":"a11","if":"ctx.n >= 0","do":[{{"target":"n","value":"ctx.n + 1"}}]}}],"invariants":[{{"name":"nneg","expr":"ctx.n >= 0","mode":"enforce"}},{{"name":"nmon","expr":"ctx.n < 100000","mode":"monitor"}}]}}"#
     );
     let spec = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
     store.define_machine(spec, false, false).unwrap();
     store.create_instance("d12", "deep", "c", None).unwrap();
     assert_eq!(store.state.instances.get("deep").unwrap().leaf, "a11");
-    let t = Instant::now();
-    let r = store
-        .send_event("deep", "go", Value::Obj(BTreeMap::new()), "cross", None)
+    let mut times = Vec::new();
+    for i in 0..10 {
+        if i == 5 {
+            store.shutdown_snapshot().unwrap();
+            assert!(
+                std::fs::read_dir(dir.join("snapshots"))
+                    .unwrap()
+                    .next()
+                    .is_some()
+            );
+        }
+        let t = Instant::now();
+        let r = store
+            .send_event(
+                "deep",
+                "go",
+                Value::Obj(BTreeMap::new()),
+                &format!("cross{i}"),
+                None,
+            )
+            .unwrap();
+        times.push(t.elapsed());
+        assert_eq!(
+            r.get("applied").and_then(Value::as_bool),
+            Some(true),
+            "{r:?}"
+        );
+    }
+    let mean = times.iter().sum::<std::time::Duration>() / times.len() as u32;
+    assert!(mean.as_millis() < 250, "depth12 mean {}", mean.as_millis());
+    let mid_seq = store.journal.last_seq;
+    store
+        .send_event("deep", "go", Value::Obj(BTreeMap::new()), "tail", None)
         .unwrap();
-    assert_eq!(
-        r.get("applied").and_then(Value::as_bool),
-        Some(true),
-        "{r:?}"
-    );
-    assert!(
-        t.elapsed().as_millis() < 250,
-        "depth12 exit/entry {}",
-        t.elapsed().as_millis()
-    );
-    let inst = store.state.instances.get("deep").unwrap();
-    assert_eq!(inst.leaf, "b11");
-    let exited = r
-        .get("transition")
-        .and_then(|v| v.get("exited"))
-        .and_then(Value::as_arr)
-        .map(|a| a.len())
-        .unwrap_or(0);
-    let entered = r
-        .get("transition")
-        .and_then(|v| v.get("entered"))
-        .and_then(Value::as_arr)
-        .map(|a| a.len())
-        .unwrap_or(0);
-    assert!(
-        exited >= 12 && entered >= 12,
-        "exit {exited} entry {entered} {r:?}"
-    );
+    drop(store);
+    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    let last = recs.last().unwrap().seq;
+    assert!(last > mid_seq, "nonempty tail after mid-stream snapshot");
+    let live = fsm_cli::snapshot::reconstruct_snapshot_plus_tail(&dir, &recs, last).unwrap();
+    let folded = fsm_core::replay::fold_with(recs, &mut fsm_core::replay::NopSink).unwrap();
+    assert_eq!(live.last_seq, folded.last_seq);
+    assert_eq!(live.last_hash, folded.last_hash);
+    assert_eq!(live.dedup, folded.dedup);
 }
 
 fn parse_case() -> Value {

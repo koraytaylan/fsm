@@ -3,10 +3,10 @@
 use fsm_cli::clock::{self, FixedClock};
 use fsm_cli::mcp::serve::serve_session;
 use fsm_cli::store::Store;
-use fsm_core::hashes::domain_hash;
+use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::{RecordKind, verify_line, zeros};
-use fsm_core::sha256::to_hex;
+use fsm_core::sha256::{sha256, to_hex};
 use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::path::Path;
@@ -24,20 +24,10 @@ fn independent_record_hash(
     m.insert("kind".into(), Value::Str(kind.as_str().into()));
     m.insert("body".into(), body.clone());
     m.insert("prev".into(), Value::Str(prev.into()));
-    to_hex(&domain_hash("fsm:record:1", &Value::Obj(m)))
-}
-
-fn tmp(tag: &str) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "fsm-ifuzz-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
+    let mut buf = b"fsm:record:1".to_vec();
+    buf.push(0x0A);
+    buf.extend_from_slice(&canon_bytes(&Value::Obj(m)));
+    to_hex(&sha256(&buf))
 }
 
 fn read_target(name: &str) -> String {
@@ -53,8 +43,14 @@ fn isolated_fuzz_targets_driver() {
         "record_line must not reseal with production seal"
     );
     assert!(
-        record_src.contains("domain_hash") && record_src.contains("fsm:record:1"),
-        "record_line must recompute hash independently"
+        record_src.contains("sha256")
+            && record_src.contains("fsm:record:1")
+            && record_src.contains("canon_bytes"),
+        "record_line must recompute hash from domain tag, canonical bytes, and SHA"
+    );
+    assert!(
+        !record_src.contains("domain_hash"),
+        "record_line must not reuse production domain_hash"
     );
     for name in [
         "jsonrpc_loop.rs",
@@ -107,19 +103,20 @@ fn isolated_fuzz_targets_driver() {
                 assert!(fsm_core::expr::ast::depth(&e) <= 32);
             }
             Err(e) => {
-                assert!(e.span.end >= e.span.start);
+                assert!(e.span.start <= e.span.end);
+                assert!(e.span.end as usize <= src.len());
                 assert!(!e.code.is_empty());
             }
         }
     }
 
-    let dir = tmp("rpc");
     clock::reset_injected();
-    let mut store = Store::open(&dir).unwrap();
+    let mut store = Store::open_memory().unwrap();
     let mut clk = FixedClock::new(1, 0);
     let req = br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#;
     let mut out = Vec::new();
     let _ = serve_session(Some(&mut store), &mut clk, Cursor::new(&req[..]), &mut out);
+    drop(store);
     for line in out.split(|&b| b == b'\n') {
         if line.is_empty() {
             continue;
@@ -130,5 +127,4 @@ fn isolated_fuzz_targets_driver() {
             String::from_utf8_lossy(line)
         );
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }

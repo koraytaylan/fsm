@@ -39,6 +39,31 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
     m.insert("health".into(), Value::Str(format!("{:?}", r.health)));
     if args.switches.contains("report") {
         m.insert("report".into(), Value::Bool(true));
+        let hashes: Vec<Value> = r
+            .instance_hashes
+            .iter()
+            .map(|(id, h)| {
+                Value::Obj(BTreeMap::from([
+                    ("instance_id".into(), Value::Str(id.clone())),
+                    ("state_hash".into(), Value::Str(h.clone())),
+                ]))
+            })
+            .collect();
+        m.insert("instance_hashes".into(), Value::Arr(hashes));
+        if let Ok(rd) = std::fs::read_dir(ctx.data_dir.join("journal")) {
+            let mut segs = Vec::new();
+            for ent in rd.flatten() {
+                let name = ent.file_name().to_string_lossy().into_owned();
+                if name.starts_with("seg-") {
+                    let bytes = ent.metadata().map(|md| md.len()).unwrap_or(0);
+                    segs.push(Value::Obj(BTreeMap::from([
+                        ("segment".into(), Value::Str(name)),
+                        ("bytes".into(), Value::Num(bytes.to_string())),
+                    ])));
+                }
+            }
+            m.insert("segments".into(), Value::Arr(segs));
+        }
     }
     emit_success(ctx, &Value::Obj(m));
     health_exit(&r.health)
@@ -86,30 +111,18 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
         .collect();
     match fold_with(recs.clone(), &mut NopSink) {
         Ok(folded) => {
-            let live = match crate::store::Store::open(&ctx.data_dir) {
-                Ok(s) => s,
-                Err(e) => return emit_error(ctx, &e),
-            };
-            let live_at = match fold_with(
-                live.records
-                    .iter()
-                    .filter(|r| r.seq <= folded.last_seq)
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                &mut NopSink,
+            let live_at = match crate::snapshot::reconstruct_snapshot_plus_tail(
+                &ctx.data_dir,
+                &recs,
+                folded.last_seq,
             ) {
                 Ok(s) => s,
-                Err(e) => {
-                    return emit_error(
-                        ctx,
-                        &ErrorObj::new("store/state_hash_mismatch", format!("{e:?}")),
-                    );
-                }
+                Err(e) => return emit_error(ctx, &e),
             };
             let agreement = states_agree(&folded, &live_at);
             let mut out = BTreeMap::from([("agreement".into(), Value::Bool(agreement))]);
             if !agreement {
-                let div = first_divergent_seq(&recs, &live.records)
+                let div = first_divergent_view(&recs, &ctx.data_dir)
                     .unwrap_or_else(|| folded.last_seq.min(live_at.last_seq).saturating_add(1));
                 out.insert("first_divergent_seq".into(), Value::Num(div.to_string()));
             }
@@ -186,6 +199,7 @@ fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 fn first_divergent_seq(
     journal: &[fsm_core::record::Record],
     live_recs: &[fsm_core::record::Record],
@@ -206,6 +220,28 @@ fn first_divergent_seq(
             return Some(seq);
         };
         if !states_agree(&jf, &lf) {
+            return Some(seq);
+        }
+    }
+    None
+}
+
+fn first_divergent_view(
+    journal: &[fsm_core::record::Record],
+    data_dir: &std::path::Path,
+) -> Option<u64> {
+    use fsm_core::replay::{NopSink, fold_with};
+    let max = journal.last().map(|r| r.seq).unwrap_or(0);
+    for seq in 1..=max {
+        let jp: Vec<_> = journal.iter().filter(|r| r.seq <= seq).cloned().collect();
+        let Ok(jf) = fold_with(jp, &mut NopSink) else {
+            return Some(seq);
+        };
+        let Ok(live) = crate::snapshot::reconstruct_snapshot_plus_tail(data_dir, journal, seq)
+        else {
+            return Some(seq);
+        };
+        if !states_agree(&jf, &live) {
             return Some(seq);
         }
     }

@@ -323,9 +323,7 @@ fn find_node<'a>(
 fn create_path_depends_on_override(m: &CompiledMachine, t: &Tree) -> bool {
     let mut srcs = Vec::new();
     for inv in &m.spec.invariants {
-        if inv.mode == crate::machine::EnforceMode::Enforce {
-            srcs.push(inv.expr.as_str());
-        }
+        srcs.push(inv.expr.as_str());
     }
     if let Some(root) = t.id(&m.spec.initial) {
         let mut chain = vec![root];
@@ -336,6 +334,11 @@ fn create_path_depends_on_override(m: &CompiledMachine, t: &Tree) -> bool {
                 if let Some(b) = &node.entry {
                     for s in &b.sets {
                         srcs.push(s.value.as_str());
+                    }
+                    for em in &b.emits {
+                        for src in em.args.values() {
+                            srcs.push(src.as_str());
+                        }
                     }
                 }
             }

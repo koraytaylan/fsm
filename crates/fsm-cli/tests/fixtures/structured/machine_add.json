@@ -1,1 +1,1 @@
-{"created":true,"dry_run":false,"machine_id":"case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c","name":"case_review","warnings":[]}
+{"created":true,"dry_run":false,"machine_id":"case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c","name":"case_review","summary":{"events":6,"initial":"intake","states":8,"terminal_states":["approved","rejected"],"transitions":8},"warnings":[]}

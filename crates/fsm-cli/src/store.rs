@@ -228,6 +228,23 @@ impl Store {
         })
     }
 
+    pub fn open_memory() -> Result<Self, ErrorObj> {
+        let journal = Journal::memory();
+        let records = journal.memory_records().unwrap_or(&[]).to_vec();
+        let state = fold_with(records.clone(), &mut NopSink)
+            .map_err(|e| ErrorObj::new("store/state_hash_mismatch", format!("{e:?}")))?;
+        Ok(Store {
+            journal,
+            state,
+            history: BTreeMap::new(),
+            records,
+            data_dir: PathBuf::from("<memory>"),
+            last_responses: BTreeMap::new(),
+            last_errors: BTreeMap::new(),
+            tags: BTreeMap::new(),
+        })
+    }
+
     pub fn define_machine(
         &mut self,
         def: Value,
@@ -272,6 +289,7 @@ impl Store {
                 name,
             });
         }
+        let _pin = crate::clock::pin(crate::clock::now_ms());
         let mut body = BTreeMap::new();
         body.insert("machine_id".into(), Value::Str(id.clone()));
         body.insert("def".into(), def.clone());
@@ -652,16 +670,6 @@ impl Store {
                 .request_id(request_id));
             }
         }
-        if let Value::Obj(o) = payload {
-            if !stamps.is_empty() {
-                let ts = crate::clock::now_ms().to_string();
-                for field in stamps {
-                    if !o.contains_key(*field) {
-                        o.insert((*field).into(), Value::Str(ts.clone()));
-                    }
-                }
-            }
-        }
         let mid = self
             .state
             .instance_machines
@@ -677,8 +685,26 @@ impl Store {
         let inst = self.state.instances.get(instance_id).ok_or_else(|| {
             ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
         })?;
+        let from_leaf = inst.leaf.clone();
+        if let Value::Obj(o) = payload {
+            for field in stamps {
+                o.entry((*field).into())
+                    .or_insert_with(|| Value::Str("0".into()));
+            }
+        }
         if let Err(r) = validate_event(&m.compiled, event, payload) {
             return Err(ErrorObj::from_rejection(&r).request_id(request_id));
+        }
+        let _pin = crate::clock::pin(crate::clock::now_ms());
+        if let Value::Obj(o) = payload {
+            if !stamps.is_empty() {
+                let ts = crate::clock::now_ms().to_string();
+                for field in stamps {
+                    if o.get(*field).and_then(Value::as_str) == Some("0") {
+                        o.insert((*field).into(), Value::Str(ts.clone()));
+                    }
+                }
+            }
         }
         let mut bud = Budget::new(4096);
         let out = step(&m.compiled, &m.tree, inst, event, payload, &mut bud);
@@ -735,6 +761,8 @@ impl Store {
                         Value::Num(a.transition_idx.to_string()),
                     );
                     tr.insert("internal".into(), Value::Bool(a.internal));
+                    tr.insert("from_leaf".into(), Value::Str(from_leaf.clone()));
+                    tr.insert("to_leaf".into(), Value::Str(a.leaf_after.clone()));
                     tr.insert(
                         "exited".into(),
                         Value::Arr(a.exited.iter().cloned().map(Value::Str).collect()),
@@ -819,11 +847,27 @@ impl Store {
                     .append(RecordKind::EventIgnored, Value::Obj(body))
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
                 self.note_record(&rec);
-                let resp = Value::Obj(BTreeMap::from([
-                    ("ok".into(), Value::Str("true".into())),
-                    ("ignored".into(), Value::Str("true".into())),
-                    ("request_id".into(), Value::Str(request_id.into())),
-                ]));
+                let mut resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
+                if let Value::Obj(o) = &mut resp {
+                    o.insert("ok".into(), Value::Str("true".into()));
+                    o.insert("ignored".into(), Value::Bool(true));
+                    o.insert("applied".into(), Value::Bool(false));
+                    o.insert("seq".into(), Value::Num(rec.seq.to_string()));
+                    o.insert("monitor_flags".into(), Value::Arr(vec![]));
+                    o.insert("trace".into(), Value::Obj(BTreeMap::new()));
+                    o.insert(
+                        "transition".into(),
+                        Value::Obj(BTreeMap::from([
+                            ("source_state".into(), Value::Str(inst.leaf.clone())),
+                            ("transition_idx".into(), Value::Num("-1".into())),
+                            ("internal".into(), Value::Bool(false)),
+                            ("from_leaf".into(), Value::Str(inst.leaf.clone())),
+                            ("to_leaf".into(), Value::Str(inst.leaf.clone())),
+                            ("exited".into(), Value::Arr(vec![])),
+                            ("entered".into(), Value::Arr(vec![])),
+                        ])),
+                    );
+                }
                 self.commit_dedup(request_id, resp.clone(), rec.seq);
                 self.finish_commit();
                 Ok(resp)
@@ -1132,7 +1176,7 @@ impl Store {
     }
 
     pub fn shutdown_snapshot(&self) -> Result<(), ErrorObj> {
-        if self.journal.last_seq == 0 {
+        if self.journal.is_memory() || self.journal.last_seq == 0 {
             return Ok(());
         }
         crate::snapshot::write_snapshot(&self.data_dir, &self.state)?;
@@ -1170,7 +1214,7 @@ impl Store {
                 next_from_seq = Some(rec.seq);
                 break;
             }
-            entries.push(history_entry(self, rec, true)?);
+            entries.push(history_entry(self, rec, include_trace)?);
         }
         let mut out = BTreeMap::from([
             ("instance_id".into(), Value::Str(instance_id.into())),
@@ -1264,6 +1308,8 @@ fn reconstruct_applied(
                     Value::Num(a.transition_idx.to_string()),
                 );
                 tr.insert("internal".into(), Value::Bool(a.internal));
+                tr.insert("from_leaf".into(), Value::Str(inst.leaf.clone()));
+                tr.insert("to_leaf".into(), Value::Str(a.leaf_after.clone()));
                 tr.insert(
                     "exited".into(),
                     Value::Arr(a.exited.iter().cloned().map(Value::Str).collect()),
@@ -1333,67 +1379,60 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
     if let Some(r) = rec.body.get("reason") {
         e.insert("reason".into(), r.clone());
     }
-    if include_trace {
-        e.insert("ts".into(), Value::Num(rec.ts.to_string()));
-        e.insert("hash".into(), Value::Str(rec.hash.clone()));
-        if let Some(rid) = rec.body.get("request_id") {
-            e.insert("request_id".into(), rid.clone());
-        }
-        if rec.seq > 0 {
-            if let Ok(pre) = fold_prefix(&store.records, rec.seq.saturating_sub(1)) {
-                if let Ok(post) = fold_prefix(&store.records, rec.seq) {
-                    if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
-                        if let Some(before) = pre.instances.get(iid) {
-                            e.insert("from_leaf".into(), Value::Str(before.leaf.clone()));
-                            e.insert("before_leaf".into(), Value::Str(before.leaf.clone()));
-                            let mut ctx = BTreeMap::new();
-                            for (k, v) in &before.ctx {
-                                ctx.insert(k.clone(), val_json(v));
-                            }
-                            e.insert("before_context".into(), Value::Obj(ctx));
+    if rec.seq > 0 {
+        if let Ok(pre) = fold_prefix(&store.records, rec.seq.saturating_sub(1)) {
+            if let Ok(post) = fold_prefix(&store.records, rec.seq) {
+                if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                    if let Some(before) = pre.instances.get(iid) {
+                        e.insert("from_leaf".into(), Value::Str(before.leaf.clone()));
+                        e.insert("before_leaf".into(), Value::Str(before.leaf.clone()));
+                        let mut ctx = BTreeMap::new();
+                        for (k, v) in &before.ctx {
+                            ctx.insert(k.clone(), val_json(v));
                         }
-                        if let Some(after) = post.instances.get(iid) {
-                            e.insert("to_leaf".into(), Value::Str(after.leaf.clone()));
-                            e.insert("after_leaf".into(), Value::Str(after.leaf.clone()));
-                            let mut ctx = BTreeMap::new();
-                            for (k, v) in &after.ctx {
-                                ctx.insert(k.clone(), val_json(v));
-                            }
-                            e.insert("context_after".into(), Value::Obj(ctx.clone()));
-                            e.insert("after_context".into(), Value::Obj(ctx));
-                            if !e.contains_key("from_leaf") {
-                                e.insert("from_leaf".into(), Value::Str(after.leaf.clone()));
+                        e.insert("before_context".into(), Value::Obj(ctx));
+                    }
+                    if let Some(after) = post.instances.get(iid) {
+                        e.insert("to_leaf".into(), Value::Str(after.leaf.clone()));
+                        e.insert("after_leaf".into(), Value::Str(after.leaf.clone()));
+                        let mut ctx = BTreeMap::new();
+                        for (k, v) in &after.ctx {
+                            ctx.insert(k.clone(), val_json(v));
+                        }
+                        e.insert("context_after".into(), Value::Obj(ctx.clone()));
+                        e.insert("after_context".into(), Value::Obj(ctx));
+                        if !e.contains_key("from_leaf") {
+                            e.insert("from_leaf".into(), Value::Str(after.leaf.clone()));
+                        }
+                    }
+                }
+            }
+            if include_trace && rec.kind == RecordKind::EventApplied {
+                if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                    if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
+                        if let Some(v) = reconstruct_applied(&pre, rec, iid, rid) {
+                            if let Some(tr) = v.get("trace") {
+                                e.insert("trace".into(), tr.clone());
                             }
                         }
                     }
                 }
-                if rec.kind == RecordKind::EventApplied {
-                    if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
-                        if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                            if let Some(v) = reconstruct_applied(&pre, rec, iid, rid) {
-                                if let Some(tr) = v.get("trace") {
-                                    e.insert("trace".into(), tr.clone());
-                                }
-                            }
-                        }
-                    }
-                } else if rec.kind == RecordKind::EventRejected {
-                    if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
-                        if let Some(ev) = rec.body.get("event").and_then(Value::as_str) {
-                            if let Some(mid) = pre.instance_machines.get(iid) {
-                                if let Some(m) = pre.machines.get(mid) {
-                                    if let Some(inst) = pre.instances.get(iid) {
-                                        let payload = rec
-                                            .body
-                                            .get("payload")
-                                            .cloned()
-                                            .unwrap_or(Value::Obj(BTreeMap::new()));
-                                        let mut bud = Budget::new(4096);
-                                        if let Outcome::Rejected(r) =
-                                            step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud)
-                                        {
-                                            e.insert("trace".into(), r.trace.to_value());
-                                        }
+            } else if include_trace && rec.kind == RecordKind::EventRejected {
+                if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                    if let Some(ev) = rec.body.get("event").and_then(Value::as_str) {
+                        if let Some(mid) = pre.instance_machines.get(iid) {
+                            if let Some(m) = pre.machines.get(mid) {
+                                if let Some(inst) = pre.instances.get(iid) {
+                                    let payload = rec
+                                        .body
+                                        .get("payload")
+                                        .cloned()
+                                        .unwrap_or(Value::Obj(BTreeMap::new()));
+                                    let mut bud = Budget::new(4096);
+                                    if let Outcome::Rejected(r) =
+                                        step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud)
+                                    {
+                                        e.insert("trace".into(), r.trace.to_value());
                                     }
                                 }
                             }

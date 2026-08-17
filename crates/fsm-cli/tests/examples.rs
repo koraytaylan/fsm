@@ -97,6 +97,19 @@ fn expense_approval_paths() {
         .unwrap_err();
     assert_eq!(err.code, "run/invariant");
     assert!(!err.hint.is_empty());
+    let ok = s
+        .send_event(
+            "neg",
+            "submit",
+            Value::Obj(BTreeMap::from([(
+                "amount".into(),
+                Value::Str("10.00".into()),
+            )])),
+            "n2",
+            None,
+        )
+        .unwrap();
+    assert_eq!(ok.get("leaf").and_then(Value::as_str), Some("peer_review"));
 }
 
 fn fsm() -> &'static str {
@@ -253,6 +266,7 @@ fn readme_and_examples_commands_run() {
     let mut saw_order = false;
     let mut saw_invoice = false;
     let mut saw_order_ack_path = false;
+    let mut saw_hint = false;
     for block in all_blocks {
         let dir = tmp();
         for cmd in block {
@@ -273,7 +287,7 @@ fn readme_and_examples_commands_run() {
             if args.iter().any(|a| a.contains("invoice_matching")) {
                 saw_invoice = true;
             }
-            if args.iter().any(|a| a == "confirmed" || a == "--stamp") {
+            if args.iter().any(|a| a == "ack") {
                 saw_order_ack_path = true;
             }
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -284,6 +298,13 @@ fn readme_and_examples_commands_run() {
                     assert!(
                         err.contains(code) || out.contains(code),
                         "missing {code} in {out}{err}"
+                    );
+                }
+                if !err.is_empty() || out.contains("hint") {
+                    saw_hint = true;
+                    assert!(
+                        err.contains("hint") || out.contains("hint") || !err.is_empty(),
+                        "missing rendered hint {out}{err}"
                     );
                 }
             } else {
@@ -311,16 +332,15 @@ fn readme_and_examples_commands_run() {
         saw_expense && saw_order && saw_invoice,
         "missing example walkthrough"
     );
-    assert!(
-        saw_order_ack_path,
-        "order confirmed/stamp walkthrough unused"
-    );
+    assert!(saw_order_ack_path, "documented instance ack unused");
+    assert!(saw_hint, "documented errors must render a hint");
 }
 
 #[test]
 fn order_lifecycle_paths() {
     clock::reset_injected();
     clock::force_ms(9_000);
+    clock::set_step(0);
     let dir = tmp();
     let mut s = Store::open(&dir).unwrap();
     s.define_machine(load("order_lifecycle"), false, false)
@@ -332,14 +352,37 @@ fn order_lifecycle_paths() {
     let pending = s.state.instances.get("o1").unwrap().pending.clone();
     assert!(!pending.is_empty());
     s.ack_effect("o1", &pending[0], "a1").unwrap();
+    assert!(s.state.instances.get("o1").unwrap().pending.is_empty());
+    let leaf = s.state.instances.get("o1").unwrap().leaf.clone();
+    s.send_event(
+        "o1",
+        "note_added",
+        Value::Obj(BTreeMap::from([("text".into(), Value::Str("x".into()))])),
+        "note",
+        None,
+    )
+    .unwrap();
+    assert_eq!(s.state.instances.get("o1").unwrap().leaf, leaf);
     s.send_event("o1", "pick", Value::Obj(BTreeMap::new()), "p2", None)
         .unwrap();
     s.send_event("o1", "ship", Value::Obj(BTreeMap::new()), "p3", None)
         .unwrap();
+    clock::reset_injected();
+    clock::force_ms(9_000);
     let mut payload = Value::Obj(BTreeMap::new());
     s.send_event_stamp("o1", "confirmed", &mut payload, "p4", None, &["at"])
         .unwrap();
+    assert_eq!(payload.get("at").and_then(Value::as_str), Some("9000"));
     assert_eq!(s.state.instances.get("o1").unwrap().leaf, "closed");
+
+    s.create_instance("order_lifecycle", "o-noack", "c-noack", None)
+        .unwrap();
+    s.send_event("o-noack", "place", Value::Obj(BTreeMap::new()), "np", None)
+        .unwrap();
+    assert!(
+        !s.state.instances.get("o-noack").unwrap().pending.is_empty(),
+        "no-ack retains pending"
+    );
 
     s.create_instance("order_lifecycle", "o2", "c2", None)
         .unwrap();
@@ -428,4 +471,12 @@ fn invoice_matching_paths() {
         .send_event("i2", "match", Value::Obj(BTreeMap::new()), "x2", None)
         .unwrap_err();
     assert_eq!(err.code, "run/not_enabled");
+    assert!(!err.hint.is_empty());
+    let hist = s.history_page("i2", 0, 20, true, true).unwrap();
+    let entries = hist.get("entries").and_then(Value::as_arr).unwrap();
+    let rejected = entries
+        .iter()
+        .find(|e| e.get("kind").and_then(Value::as_str) == Some("EventRejected"))
+        .unwrap();
+    assert!(rejected.get("trace").is_some(), "{rejected:?}");
 }

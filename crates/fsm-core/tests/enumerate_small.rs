@@ -33,8 +33,9 @@ fn enumerate_small_differential() {
         r#"[{"name":"c","initial":"l","states":[{"name":"l"}]}]"#,
         r#"[{"name":"c","initial":"l","states":[{"name":"h","history":"deep"},{"name":"l"},{"name":"r"}]}]"#,
         r#"[{"name":"c","initial":"x","states":[{"name":"x","initial":"y","states":[{"name":"y"}]}]}]"#,
+        r#"[{"name":"root","initial":"left","states":[{"name":"hist","history":"shallow"},{"name":"left"},{"name":"right"}]}]"#,
     ];
-    let inits = ["a", "a", "c", "c", "c"];
+    let inits = ["a", "a", "c", "c", "c", "root"];
     let guards = ["", "true", "false", "ctx.b", "not ctx.b"];
     for (top, init) in tops.iter().zip(inits) {
         for g in guards {
@@ -44,11 +45,14 @@ fn enumerate_small_differential() {
                 format!(r#","if":"{g}""#)
             };
             let src = format!(
-                r#"{{"format":"fsm.machine/1","name":"g","states":{top},"initial":"{init}","context":[{{"name":"b","ty":"bool","init":"true"}},{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}},{{"name":"f","fields":[]}}],"transitions":[{{"from":"{init}","on":"e"{ifg},"do":[{{"target":"n","value":"ctx.n + 1"}}]}}]}}"#
+                r#"{{"format":"fsm.machine/1","name":"g","states":{top},"initial":"{init}","context":[{{"name":"b","ty":"bool","init":"true"}},{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}},{{"name":"f","fields":[]}}],"transitions":[{{"from":"{init}","on":"e"{ifg},"do":[{{"target":"n","value":"ctx.n + 1"}}]}}],"invariants":[{{"name":"nneg","expr":"ctx.n >= 0","mode":"enforce"}}]}}"#
             );
             machines.push(src);
         }
     }
+    machines.push(
+        r#"{"format":"fsm.machine/1","name":"hist","states":[{"name":"c","initial":"l","states":[{"name":"h","history":"deep"},{"name":"l"},{"name":"r"}]}],"initial":"c","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]},{"name":"back","fields":[]}],"transitions":[{"from":"l","on":"go","to":"r"},{"from":"c","on":"back","to":"h"}]}"#.into(),
+    );
     for src in &machines {
         let Some((m, t)) = compile_src(src) else {
             continue;
@@ -104,9 +108,9 @@ fn enumerate_small_differential() {
                         assert_eq!(a.ctx_after, b.ctx_after);
                         assert_eq!(a.history_after, b.history_after);
                         assert_eq!(a.status_after, b.status_after);
-                        assert_eq!(a.effects.len(), b.effects.len());
+                        assert_eq!(a.effects, b.effects);
                         assert_eq!(a.monitor_flags, b.monitor_flags);
-                        assert!(b1.remaining() <= 4096 && b2.remaining() <= 4096);
+                        assert!(b1.remaining() < 4096 && b2.remaining() < 4096);
                         st.leaf = a.leaf_after.clone();
                         st.ctx = a.ctx_after.clone();
                         st.history = a.history_after.clone();
@@ -118,6 +122,7 @@ fn enumerate_small_differential() {
                     }
                     (Outcome::Rejected(r1), Outcome::Rejected(r2)) => {
                         assert_eq!(r1.code, r2.code, "{src} {seq:?}");
+                        assert_eq!(r1.source_state, r2.source_state);
                     }
                     (Outcome::Ignored, Outcome::Ignored) => {}
                     _ => panic!("kind mismatch {src} {seq:?} {o1:?} {o2:?}"),
@@ -125,6 +130,34 @@ fn enumerate_small_differential() {
             }
         }
     }
+    let emit_src = r#"{"format":"fsm.machine/1","name":"g","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"effects":[{"name":"fx","fields":[{"name":"v","ty":"int"}]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"}],"emit":[{"effect":"fx","args":{"v":"ctx.n"}}]}]}"#;
+    let (m, t) = compile_src(emit_src).unwrap();
+    let enter_e = fsm_core::analyze::enterable(&m, &t);
+    let enter_n = oracle::brute_enterable(&m);
+    assert!(!enter_e.is_empty() && !enter_n.is_empty());
+    let c = fsm_core::step::create(&m, &t, &BTreeMap::new()).unwrap();
+    let st = fsm_core::machine::InstanceState {
+        status: c.status_after,
+        leaf: c.leaf_after,
+        ctx: c.ctx_after,
+        history: c.history_after,
+        pending: vec![],
+    };
+    let mut b1 = Budget::new(4096);
+    let mut b2 = Budget::new(4096);
+    match (
+        fsm_core::step::step(&m, &t, &st, "e", &payload(), &mut b1),
+        oracle::naive_step(&m, &st, "e", &payload(), &mut b2),
+    ) {
+        (Outcome::Applied(a), Outcome::Applied(b)) => {
+            assert_eq!(a.effects, b.effects);
+            assert_eq!(a.effects[0].args.get("v"), Some(&Val::Int(0)));
+        }
+        other => panic!("{other:?}"),
+    }
+    let mut tiny = Budget::new(1);
+    let exhausted = fsm_core::step::step(&m, &t, &st, "e", &payload(), &mut tiny);
+    assert!(matches!(exhausted, Outcome::Rejected(_)));
     eprintln!("enumerate_small count={count}");
     assert!(count > 100, "generator shrank: {count}");
 }

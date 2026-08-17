@@ -6,6 +6,12 @@ created:    true
 dry_run:    true
 machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 name:       case_review
+summary:
+  events:          6
+  initial:         intake
+  states:          8
+  terminal_states: approved, rejected
+  transitions:     8
 warnings:
 --- stderr ---
 [machine_add]
@@ -16,6 +22,12 @@ created:    true
 dry_run:    false
 machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 name:       case_review
+summary:
+  events:          6
+  initial:         intake
+  states:          8
+  terminal_states: approved, rejected
+  transitions:     8
 warnings:
 --- stderr ---
 [instance_new]
@@ -147,8 +159,10 @@ trace:
 transition:
   entered:        in_review, docs_review
   exited:         intake
+  from_leaf:      intake
   internal:       false
   source_state:   intake
+  to_leaf:        docs_review
   transition_idx: 0
 --- stderr ---
 [send_rejected]
@@ -242,8 +256,10 @@ trace:
 transition:
   entered:        risk_review
   exited:         docs_review
+  from_leaf:      docs_review
   internal:       false
   source_state:   docs_review
+  to_leaf:        risk_review
   transition_idx: 1
 --- stderr ---
 [ack]
@@ -312,59 +328,6 @@ entries:
     request_id:     send-1
     seq:            3
     to_leaf:        docs_review
-    trace:
-      candidates:
-        -           source_state: intake
-          transitions:
-            -               guard:
-                children:
-                outcome:  value
-                span:     0, 4
-                value:    true
-              transition_idx: 0
-      invariants:
-        -           expr:
-            children:
-              -                 children:
-                outcome:  value
-                span:     0, 9
-                value:    0
-              -                 children:
-                outcome:  value
-                span:     13, 14
-                value:    0
-            outcome:  value
-            span:     0, 14
-            value:    true
-          name:   score_range
-          passed: true
-      pipeline:
-        -           block:     transition
-          discarded: false
-          emits:
-          sets:
-        -           block:     entry(in_review)
-          discarded: false
-          emits:
-            -               effect: notify
-              k:      0
-          sets:
-            -               after:  1
-              before: 0
-              expr:
-                children:
-                  -                     children:
-                    outcome:  value
-                    span:     0, 10
-                    value:    0
-                  -                     children:
-                    outcome:  value
-                    span:     13, 14
-                    value:    1
-                outcome:  value
-                span:     0, 14
-                value:    1
-              target: visits
     ts:             5001
   -     after_context:
       notes:  0
@@ -388,10 +351,6 @@ entries:
     request_id:     send-bad
     seq:            4
     to_leaf:        docs_review
-    trace:
-      candidates:
-      invariants:
-      pipeline:
     ts:             5001
   -     after_context:
       notes:  0
@@ -415,49 +374,6 @@ entries:
     request_id:     send-2
     seq:            5
     to_leaf:        risk_review
-    trace:
-      candidates:
-        -           source_state: docs_review
-          transitions:
-            -               guard:
-                children:
-                outcome:  value
-                span:     0, 4
-                value:    true
-              transition_idx: 1
-      invariants:
-        -           expr:
-            children:
-              -                 children:
-                outcome:  value
-                span:     0, 9
-                value:    0
-              -                 children:
-                outcome:  value
-                span:     13, 14
-                value:    0
-            outcome:  value
-            span:     0, 14
-            value:    true
-          name:   score_range
-          passed: true
-      pipeline:
-        -           block:     transition
-          discarded: false
-          emits:
-          sets:
-        -           block:     entry(risk_review)
-          discarded: false
-          emits:
-          sets:
-            -               after:  0
-              before: 0
-              expr:
-                children:
-                outcome:  value
-                span:     0, 1
-                value:    0
-              target: score
     ts:             5001
   -     after_context:
       notes:  0

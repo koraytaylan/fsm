@@ -30,7 +30,7 @@ fn add(ctx: &mut Ctx, args: &Args) -> u8 {
     match store.define_machine(def, false, strict) {
         Ok(o) => {
             let mut m = BTreeMap::new();
-            m.insert("machine_id".into(), Value::Str(o.machine_id));
+            m.insert("machine_id".into(), Value::Str(o.machine_id.clone()));
             m.insert("created".into(), Value::Bool(o.created));
             m.insert("name".into(), Value::Str(o.name));
             m.insert("dry_run".into(), Value::Bool(false));
@@ -43,6 +43,12 @@ fn add(ctx: &mut Ctx, args: &Args) -> u8 {
                         .collect(),
                 ),
             );
+            if let Ok(stored) = store.resolve_machine(&o.machine_id) {
+                m.insert(
+                    "summary".into(),
+                    crate::mcp::tools::machine_summary(&stored.compiled),
+                );
+            }
             emit_success(ctx, &Value::Obj(m));
             0
         }
