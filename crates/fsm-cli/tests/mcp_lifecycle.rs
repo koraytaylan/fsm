@@ -108,11 +108,13 @@ fn error_helpers() {
         "path",
         "hint",
         "retryable",
+        "duplicate",
         "details",
         "docs",
     ] {
         assert!(sc.get(k).is_some(), "missing {k}");
     }
+    assert_eq!(sc.get("duplicate").and_then(Value::as_bool), Some(false));
 }
 
 #[test]

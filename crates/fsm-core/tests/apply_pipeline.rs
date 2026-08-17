@@ -234,7 +234,7 @@ fn block_overflow_is_action_error() {
 
 #[test]
 fn pipeline_ordering_snapshot_and_effects() {
-    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"a","ty":"int","init":"1"},{"name":"b","ty":"int","init":"2"},{"name":"x","ty":"int","init":"0"},{"name":"seen","ty":"int","init":"0"}],"events":[{"name":"go","fields":[{"name":"y","ty":"int"}]}],"effects":[{"name":"ping","fields":[]}],"states":[{"name":"p","exit":{"emit":[{"effect":"ping","args":{}}]}},{"name":"q","entry":{"do":[{"target":"seen","value":"ctx.x"}],"emit":[{"effect":"ping","args":{}}]}}],"initial":"p","transitions":[{"from":"p","on":"go","to":"q","do":[{"target":"x","value":"evt.y"},{"target":"a","value":"ctx.b"},{"target":"b","value":"ctx.a"}],"emit":[{"effect":"ping","args":{}}]}]}"#;
+    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"a","ty":"int","init":"1"},{"name":"b","ty":"int","init":"2"},{"name":"x","ty":"int","init":"0"},{"name":"seen","ty":"int","init":"0"},{"name":"seen_exit","ty":"int","init":"9"}],"events":[{"name":"go","fields":[{"name":"y","ty":"int"}]}],"effects":[{"name":"exit_fx","fields":[]},{"name":"trans_fx","fields":[]},{"name":"entry_fx","fields":[]}],"states":[{"name":"p","exit":{"do":[{"target":"seen_exit","value":"ctx.x"}],"emit":[{"effect":"exit_fx","args":{}}]}},{"name":"q","entry":{"do":[{"target":"seen","value":"ctx.x"}],"emit":[{"effect":"entry_fx","args":{}}]}}],"initial":"p","transitions":[{"from":"p","on":"go","to":"q","do":[{"target":"x","value":"evt.y"},{"target":"a","value":"ctx.b"},{"target":"b","value":"ctx.a"}],"emit":[{"effect":"trans_fx","args":{}}]}]}"#;
     let (m, t) = compile_src(src);
     let mut st = inst(&m, &t);
     let a = apply(&m, &t, &mut st, "go", &{
@@ -244,11 +244,23 @@ fn pipeline_ordering_snapshot_and_effects() {
     });
     assert_eq!(st.ctx.get("x").unwrap().canonical_string(), "9");
     assert_eq!(st.ctx.get("seen").unwrap().canonical_string(), "9");
+    assert_eq!(st.ctx.get("seen_exit").unwrap().canonical_string(), "0");
     assert_eq!(st.ctx.get("a").unwrap().canonical_string(), "2");
     assert_eq!(st.ctx.get("b").unwrap().canonical_string(), "1");
     assert_eq!(
-        a.effects.iter().map(|e| e.k).collect::<Vec<_>>(),
-        vec![0, 1, 2]
+        a.effects
+            .iter()
+            .map(|e| (e.name.as_str(), e.k))
+            .collect::<Vec<_>>(),
+        vec![("exit_fx", 0), ("trans_fx", 1), ("entry_fx", 2)]
+    );
+    assert_eq!(
+        a.trace
+            .pipeline
+            .iter()
+            .map(|p| p.block.as_label())
+            .collect::<Vec<_>>(),
+        vec!["exit(p)", "transition", "entry(q)"]
     );
 }
 
@@ -260,7 +272,17 @@ fn guard_and_invariant_atomicity() {
     let pre = st.clone();
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), &mut b) {
-        Outcome::Rejected(r) => assert_eq!(r.code, "run/guard_error"),
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/guard_error");
+            assert_eq!(r.source_state.as_deref(), Some("a"));
+            assert_eq!(r.transition_idx, Some(0));
+            assert!(r.span.is_some());
+            assert!(!r.trace.candidates.is_empty());
+            assert!(matches!(
+                r.trace.candidates[0].transitions[0].guard,
+                fsm_core::trace::GuardTrace::Evaluated(_)
+            ));
+        }
         o => panic!("{o:?}"),
     }
     assert_eq!(st.ctx, pre.ctx);
@@ -291,6 +313,30 @@ fn guard_and_invariant_atomicity() {
     assert_eq!(st.ctx, pre.ctx);
     assert_eq!(st.leaf, pre.leaf);
     assert_eq!(st.history, pre.history);
+}
+
+#[test]
+fn failing_emit_keeps_pipeline_trace() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"effects":[{"name":"bill","fields":[{"name":"amt","ty":"int"}]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b","emit":[{"effect":"bill","args":{"amt":"9223372036854775807 + 1"}}]}]}"#;
+    let (m, t) = compile_src(src);
+    let st = inst(&m, &t);
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.block.as_deref(), Some("transition"));
+            let tr = r
+                .trace
+                .pipeline
+                .iter()
+                .find(|p| matches!(p.block, fsm_core::trace::BlockKind::Transition))
+                .expect("transition");
+            assert!(tr.discarded);
+            assert_eq!(tr.emits[0].effect, "bill");
+            assert!(tr.emits[0].expr.is_some());
+        }
+        o => panic!("{o:?}"),
+    }
 }
 
 #[test]

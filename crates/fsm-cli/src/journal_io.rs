@@ -40,6 +40,7 @@ pub enum JournalIoError {
     Io(String),
     Poisoned,
     Record(RecordError),
+    VersionMismatch { found: String },
 }
 
 impl std::fmt::Display for JournalIoError {
@@ -51,6 +52,9 @@ impl std::fmt::Display for JournalIoError {
             JournalIoError::Io(s) => write!(f, "{s}"),
             JournalIoError::Poisoned => write!(f, "journal is poisoned"),
             JournalIoError::Record(_) => write!(f, "record error"),
+            JournalIoError::VersionMismatch { found } => {
+                write!(f, "store/version_mismatch: found {found}")
+            }
         }
     }
 }
@@ -237,8 +241,18 @@ fn classify_has_genesis(jdir: &Path) -> bool {
     matches!(classify(dir), JournalHealth::Ok)
 }
 
-pub fn write_store_version(dir: &Path) -> Result<(), String> {
+pub(crate) fn write_store_version(dir: &Path) -> Result<(), String> {
+    if let Err(h) = require_store_format(dir) {
+        return Err(format!("store/version_mismatch: {}", h.message()));
+    }
     write_version_durable(dir).map_err(|e| e.to_string())
+}
+
+fn from_health(h: JournalHealth) -> JournalIoError {
+    match h {
+        JournalHealth::VersionMismatch { found } => JournalIoError::VersionMismatch { found },
+        other => JournalIoError::Io(other.message()),
+    }
 }
 
 fn write_version_durable(dir: &Path) -> Result<(), JournalIoError> {
@@ -247,23 +261,43 @@ fn write_version_durable(dir: &Path) -> Result<(), JournalIoError> {
     if ver.exists() {
         return Ok(());
     }
-    let tmp = dir.join("VERSION.tmp");
-    fs::write(&tmp, "4\n").map_err(|e| JournalIoError::Io(e.to_string()))?;
+    let tmp = dir.join(format!(
+        "VERSION.{}.{}.tmp",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    fs::write(&tmp, "5\n").map_err(|e| JournalIoError::Io(e.to_string()))?;
     let f = File::open(&tmp).map_err(|e| JournalIoError::Io(e.to_string()))?;
     f.sync_all()
         .map_err(|e| JournalIoError::Io(e.to_string()))?;
-    fs::rename(&tmp, &ver).map_err(|e| JournalIoError::Io(e.to_string()))?;
+    match fs::rename(&tmp, &ver) {
+        Ok(()) => {}
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            if ver.exists() {
+                return Ok(());
+            }
+            return Err(JournalIoError::Io(e.to_string()));
+        }
+    }
     sync_dir(dir)
 }
 
 pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
     if let Err(h) = require_store_format(dir) {
-        return Err(JournalIoError::Io(h.message()));
+        return Err(from_health(h));
     }
     let jdir = journal_dir(dir);
     fs::create_dir_all(&jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
-    write_version_durable(dir)?;
     let lock = acquire_lock(&jdir)?;
+    if let Err(h) = require_store_format(dir) {
+        drop(lock);
+        return Err(from_health(h));
+    }
+    write_version_durable(dir)?;
     write_genesis_unlocked(&jdir)?;
     drop(lock);
     let mut sink = fsm_core::replay::NopSink;
@@ -478,7 +512,6 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
     if let Err(h) = require_store_format(dir) {
         return Err(OpenError::Health(h));
     }
-    write_version_durable(dir).map_err(|e| OpenError::Io(e.to_string()))?;
     let jdir = journal_dir(dir);
     fs::create_dir_all(&jdir).map_err(|e| OpenError::Io(e.to_string()))?;
     let lock = acquire_lock(&jdir).map_err(|e| match e {
@@ -487,6 +520,10 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
         }
         other => OpenError::Io(other.to_string()),
     })?;
+    if let Err(h) = require_store_format(dir) {
+        return Err(OpenError::Health(h));
+    }
+    write_version_durable(dir).map_err(|e| OpenError::Io(e.to_string()))?;
     let health = classify(dir);
     if matches!(health, JournalHealth::MissingGenesis) {
         write_genesis_unlocked(&jdir).map_err(|e| OpenError::Io(e.to_string()))?;
@@ -576,10 +613,10 @@ pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
     if ver.exists() {
         let v = fs::read_to_string(&ver).unwrap_or_default();
         let t = v.trim();
-        if t == "1" || t == "2" || t == "3" {
+        if t == "1" || t == "2" || t == "3" || t == "4" {
             return Err(JournalHealth::VersionMismatch { found: t.into() });
         }
-        if t != "4" {
+        if t != "5" {
             return Err(JournalHealth::VersionMismatch {
                 found: t.to_string(),
             });
@@ -915,7 +952,7 @@ mod tests {
         let dir = tmp();
         let j = init(&dir).unwrap();
         drop(j);
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "4");
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "5");
         fs::write(dir.join("VERSION"), "3\n").unwrap();
         assert!(matches!(
             require_store_format(&dir),
@@ -927,7 +964,20 @@ mod tests {
             require_store_format(&dir),
             Err(JournalHealth::VersionMismatch { .. })
         ));
-        assert!(init(&dir).is_err());
+        assert!(matches!(
+            init(&dir),
+            Err(JournalIoError::VersionMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn write_store_version_refuses_missing_marker_with_journal() {
+        let dir = tmp();
+        let j = init(&dir).unwrap();
+        drop(j);
+        fs::remove_file(dir.join("VERSION")).unwrap();
+        let err = write_store_version(&dir).unwrap_err();
+        assert!(err.contains("store/version_mismatch"), "{err}");
     }
 
     #[test]

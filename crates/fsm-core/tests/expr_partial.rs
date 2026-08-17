@@ -57,3 +57,13 @@ fn partial_jsonl() {
         assert_eq!(got, want, "line {} src={src}", idx + 1);
     }
 }
+
+#[test]
+fn public_partial_eval_types_decimal_if() {
+    let e = parse("(if true then 1.00 else 2.0) == 1.00").unwrap();
+    let mut bud = Budget::new(4096);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &mut bud),
+        Truth::True
+    );
+}

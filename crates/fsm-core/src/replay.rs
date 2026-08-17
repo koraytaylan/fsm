@@ -415,11 +415,80 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                             field: "hint",
                         });
                     }
-                    if rec.body.get("details").and_then(Value::as_obj).is_none() {
-                        return Err(ReplayError::FieldMismatch {
+                    let details = rec.body.get("details").and_then(Value::as_obj).ok_or(
+                        ReplayError::FieldMismatch {
                             seq: rec.seq,
                             field: "details",
+                        },
+                    )?;
+                    if let Some(want) = &r.block {
+                        if details.get("block").and_then(Value::as_str) != Some(want.as_str()) {
+                            return Err(ReplayError::FieldMismatch {
+                                seq: rec.seq,
+                                field: "details.block",
+                            });
+                        }
+                    }
+                    if let Some(want) = &r.source_state {
+                        if details.get("source_state").and_then(Value::as_str)
+                            != Some(want.as_str())
+                        {
+                            return Err(ReplayError::FieldMismatch {
+                                seq: rec.seq,
+                                field: "details.source_state",
+                            });
+                        }
+                    }
+                    if let Some(idx) = r.transition_idx {
+                        if details.get("transition_idx").and_then(Value::as_num)
+                            != Some(&idx.to_string())
+                        {
+                            return Err(ReplayError::FieldMismatch {
+                                seq: rec.seq,
+                                field: "details.transition_idx",
+                            });
+                        }
+                    }
+                    if details.get("trace") != Some(&r.trace.to_value()) {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "details.trace",
                         });
+                    }
+                    let rid = rec.body.get("request_id").and_then(Value::as_str);
+                    if details.get("request_id").and_then(Value::as_str) != rid {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "details.request_id",
+                        });
+                    }
+                    let mut bud2 = Budget::new(4096);
+                    let evs = crate::analyze::enabled_events(&m.compiled, &m.tree, inst, &mut bud2);
+                    let want_en = enabled_reports_value(&evs);
+                    if details.get("enabled_events") != Some(&want_en) {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "details.enabled_events",
+                        });
+                    }
+                    match (rec.body.get("span"), r.span) {
+                        (None, None) => {}
+                        (Some(Value::Obj(o)), Some((s, e))) => {
+                            if o.get("start").and_then(Value::as_num) != Some(&s.to_string())
+                                || o.get("end").and_then(Value::as_num) != Some(&e.to_string())
+                            {
+                                return Err(ReplayError::FieldMismatch {
+                                    seq: rec.seq,
+                                    field: "span",
+                                });
+                            }
+                        }
+                        _ => {
+                            return Err(ReplayError::FieldMismatch {
+                                seq: rec.seq,
+                                field: "span",
+                            });
+                        }
                     }
                 }
                 (RecordKind::EventIgnored, Outcome::Ignored) => {}
@@ -531,6 +600,42 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                             field: "code",
                         });
                     }
+                    if rec.body.get("message").and_then(Value::as_str) != Some("unknown effect id")
+                    {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "message",
+                        });
+                    }
+                    if rec.body.get("hint").and_then(Value::as_str)
+                        != Some("use an id from effects_pending")
+                    {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "hint",
+                        });
+                    }
+                    let details = rec.body.get("details").and_then(Value::as_obj).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "details",
+                        },
+                    )?;
+                    let rid = rec.body.get("request_id").and_then(Value::as_str);
+                    if details.get("request_id").and_then(Value::as_str) != rid {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "details.request_id",
+                        });
+                    }
+                    let pending =
+                        Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect());
+                    if details.get("pending") != Some(&pending) {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "details.pending",
+                        });
+                    }
                 }
                 _ => {
                     return Err(ReplayError::FieldMismatch {
@@ -599,6 +704,37 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             Ok(())
         }
     }
+}
+
+fn enabled_reports_value(evs: &[crate::analyze::EventReport]) -> Value {
+    Value::Arr(
+        evs.iter()
+            .map(|e| {
+                let mut m = BTreeMap::new();
+                m.insert("event".into(), Value::Str(e.event.clone()));
+                m.insert(
+                    "status".into(),
+                    Value::Str(
+                        match e.status {
+                            crate::analyze::EventStatus::Enabled => "enabled",
+                            crate::analyze::EventStatus::Disabled => "disabled",
+                            crate::analyze::EventStatus::DependsOnPayload => "depends_on_payload",
+                            crate::analyze::EventStatus::Preempted => "preempted",
+                            crate::analyze::EventStatus::PreemptedMaybe => "preempted_maybe",
+                        }
+                        .into(),
+                    ),
+                );
+                if !e.payload_fields.is_empty() {
+                    m.insert(
+                        "payload_fields".into(),
+                        Value::Arr(e.payload_fields.iter().cloned().map(Value::Str).collect()),
+                    );
+                }
+                Value::Obj(m)
+            })
+            .collect(),
+    )
 }
 
 #[cfg(test)]

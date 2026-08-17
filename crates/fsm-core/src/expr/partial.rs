@@ -91,34 +91,68 @@ fn charge_tree(e: &Expr, budget: &mut Budget) {
     }
 }
 
+fn tys_from_ctx(ctx: &BTreeMap<String, Val>) -> BTreeMap<String, super::typeck::Ty> {
+    ctx.iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                match v {
+                    Val::Bool(_) => super::typeck::Ty::Bool,
+                    Val::Int(_) => super::typeck::Ty::Int,
+                    Val::Dec(d) => super::typeck::Ty::Dec(d.scale),
+                    Val::Str(_) => super::typeck::Ty::Str,
+                    Val::Enum { ty, .. } => super::typeck::Ty::Enum(ty.clone()),
+                    Val::Ts(_) => super::typeck::Ty::Ts,
+                    Val::Dur(_) => super::typeck::Ty::Dur,
+                },
+            )
+        })
+        .collect()
+}
+
 /// `EvtRef` is Unknown; concrete subtrees go through `eval`. Errors → Unknown.
+/// Decimal `if` nodes are annotated from the supplied context types before evaluation.
 pub fn partial_eval_bool(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) -> Truth {
+    let ctx_tys = tys_from_ctx(ctx);
+    let enums = BTreeMap::new();
+    let scope = super::typeck::Scope {
+        kind: super::typeck::ScopeKind::Guard,
+        ctx: &ctx_tys,
+        evt: None,
+        enums: &enums,
+    };
+    let mut annotated = e.clone();
+    super::typeck::annotate_if_widening(&mut annotated, &scope);
+    partial_eval_bool_inner(&annotated, ctx, budget)
+}
+
+fn partial_eval_bool_inner(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) -> Truth {
     match e {
         Expr::And { lhs, rhs, .. } => {
             if budget.tick(e.span()).is_err() {
                 return Truth::Unknown;
             }
-            let l = partial_eval_bool(lhs, ctx, budget);
+            let l = partial_eval_bool_inner(lhs, ctx, budget);
             if l == Truth::False {
                 return Truth::False;
             }
-            kleene_and(l, partial_eval_bool(rhs, ctx, budget))
+            kleene_and(l, partial_eval_bool_inner(rhs, ctx, budget))
         }
         Expr::Or { lhs, rhs, .. } => {
             if budget.tick(e.span()).is_err() {
                 return Truth::Unknown;
             }
-            let l = partial_eval_bool(lhs, ctx, budget);
+            let l = partial_eval_bool_inner(lhs, ctx, budget);
             if l == Truth::True {
                 return Truth::True;
             }
-            kleene_or(l, partial_eval_bool(rhs, ctx, budget))
+            kleene_or(l, partial_eval_bool_inner(rhs, ctx, budget))
         }
         Expr::Not { inner, .. } => {
             if budget.tick(e.span()).is_err() {
                 return Truth::Unknown;
             }
-            kleene_not(partial_eval_bool(inner, ctx, budget))
+            kleene_not(partial_eval_bool_inner(inner, ctx, budget))
         }
         Expr::If {
             cond,
@@ -129,9 +163,9 @@ pub fn partial_eval_bool(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Bud
             if budget.tick(e.span()).is_err() {
                 return Truth::Unknown;
             }
-            match partial_eval_bool(cond, ctx, budget) {
-                Truth::True => partial_eval_bool(then_branch, ctx, budget),
-                Truth::False => partial_eval_bool(else_branch, ctx, budget),
+            match partial_eval_bool_inner(cond, ctx, budget) {
+                Truth::True => partial_eval_bool_inner(then_branch, ctx, budget),
+                Truth::False => partial_eval_bool_inner(else_branch, ctx, budget),
                 Truth::Unknown => Truth::Unknown,
             }
         }

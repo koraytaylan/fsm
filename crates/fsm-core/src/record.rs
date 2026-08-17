@@ -281,6 +281,17 @@ fn req_arr(body: &Value, k: &str) -> bool {
     body.get(k).and_then(Value::as_arr).is_some()
 }
 
+fn span_ok(v: Option<&Value>) -> bool {
+    match v {
+        None => true,
+        Some(Value::Obj(o)) => {
+            o.get("start").and_then(Value::as_num).is_some()
+                && o.get("end").and_then(Value::as_num).is_some()
+        }
+        Some(_) => false,
+    }
+}
+
 fn body_ok(kind: RecordKind, body: &Value) -> bool {
     match kind {
         RecordKind::Genesis => {
@@ -317,6 +328,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "message")
                 && req_str(body, "hint")
                 && body.get("details").and_then(Value::as_obj).is_some()
+                && span_ok(body.get("span"))
         }
         RecordKind::EventIgnored => {
             req_str(body, "instance_id")
@@ -344,6 +356,8 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && body.get("details").and_then(Value::as_obj).is_some()
                 && req_str(body, "operation")
                 && is_state_hash(body.get("state_hash"))
+                && (body.get("operation").and_then(Value::as_str) != Some("ack")
+                    || req_str(body, "effect_id"))
         }
         RecordKind::InstanceCancelled => {
             req_str(body, "instance_id")

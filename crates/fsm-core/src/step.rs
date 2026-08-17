@@ -252,9 +252,14 @@ pub fn step(
                     });
                 }
                 Err(mut r) => {
-                    r.source_state = Some(sname);
+                    r.source_state = Some(sname.clone());
                     r.transition_idx = Some(idx as u32);
-                    r.trace = trace;
+                    if let Some(lvl) = r.trace.candidates.first_mut() {
+                        lvl.source_state = sname;
+                    }
+                    let mut prev = trace;
+                    prev.candidates.append(&mut r.trace.candidates);
+                    r.trace.candidates = prev.candidates;
                     return Outcome::Rejected(r);
                 }
             }
@@ -567,15 +572,33 @@ fn eval_guard(
             };
             match eval(&e, &b, budget, true) {
                 (Ok(Val::Bool(v)), t) => Ok((v, t.unwrap())),
-                (Err(err), _t) => Err(Rejection {
+                (Err(err), t) => Err(Rejection {
                     code: "run/guard_error",
                     message: err.message,
                     hint: err.hint,
                     source_state: None,
-                    transition_idx: None,
+                    transition_idx: Some(tidx as u32),
                     block: None,
                     span: Some((err.span.start, err.span.end)),
-                    trace: DecisionTrace::default(),
+                    trace: DecisionTrace {
+                        candidates: vec![LevelTrace {
+                            source_state: String::new(),
+                            transitions: vec![CandidateTrace {
+                                transition_idx: tidx as u32,
+                                guard: GuardTrace::Evaluated(t.unwrap_or(
+                                    crate::expr::eval::TraceNode {
+                                        span: err.span,
+                                        outcome: crate::expr::eval::TraceOutcome::Error {
+                                            code: err.code,
+                                            inputs: Vec::new(),
+                                        },
+                                        children: vec![],
+                                    },
+                                )),
+                            }],
+                        }],
+                        ..DecisionTrace::default()
+                    },
                 }),
                 _ => Err(reject("run/guard_error", "guard not bool")),
             }
@@ -757,7 +780,7 @@ fn apply_block(
                 evt_tys.as_ref(),
                 &kind,
             )?;
-            match eval(&e, &b, budget, false) {
+            match eval(&e, &b, budget, true) {
                 (Ok(v), _) => {
                     let v = if let Some(f) =
                         fx.and_then(|e| e.fields.iter().find(|f| f.name == *name))
@@ -768,7 +791,12 @@ fn apply_block(
                     };
                     args.insert(name.clone(), v);
                 }
-                (Err(err), _) => {
+                (Err(err), tn) => {
+                    emits.push(EmitTrace {
+                        effect: em.effect.clone(),
+                        k: *k,
+                        expr: tn,
+                    });
                     return Err(action_err_at(
                         &kind,
                         err.message,
@@ -788,6 +816,7 @@ fn apply_block(
         emits.push(EmitTrace {
             effect: em.effect.clone(),
             k: *k,
+            expr: None,
         });
         *k += 1;
     }
@@ -1015,19 +1044,9 @@ pub fn create(
                 ) {
                     Ok(bt) => pipeline.push(bt),
                     Err(inner) => {
-                        return Err(Rejection {
-                            code: "run/create_failed",
-                            message: inner.message,
-                            hint: inner.hint,
-                            source_state: None,
-                            transition_idx: None,
-                            block: inner.block,
-                            span: inner.span,
-                            trace: DecisionTrace {
-                                pipeline,
-                                ..DecisionTrace::default()
-                            },
-                        });
+                        let mut r = reject_pipeline(inner, pipeline, &DecisionTrace::default());
+                        r.code = "run/create_failed";
+                        return Err(r);
                     }
                 }
             }
@@ -1035,6 +1054,9 @@ pub fn create(
     }
     let (ok_inv, flags, inv_trace) = eval_invariants(&m.spec, &m.compiled_exprs, &ctx, &mut budget);
     if !ok_inv {
+        for p in &mut pipeline {
+            p.discarded = true;
+        }
         return Err(Rejection {
             code: "run/create_failed",
             message: "invariant failed at create".into(),

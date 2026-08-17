@@ -542,16 +542,21 @@ fn run_instance_create(
     let iid = format!("inst-{rid}");
     let mut overrides = BTreeMap::new();
     if let Some(Value::Obj(ctx)) = args.get("context") {
-        let m = store.resolve_machine(machine)?;
+        let m = store
+            .resolve_machine(machine)
+            .map_err(|e| e.request_id(rid))?;
         for (k, val) in ctx {
             let raw = match val {
                 Value::Str(s) => s.clone(),
                 Value::Num(_) => {
                     return Err(ErrorObj::new("req/number_token", k.clone())
-                        .hint(format!("send {k} as a JSON string")));
+                        .hint(format!("send {k} as a JSON string"))
+                        .request_id(rid));
                 }
                 Value::Bool(b) => b.to_string(),
-                _ => return Err(ErrorObj::new("req/field_type", k.clone())),
+                _ => {
+                    return Err(ErrorObj::new("req/field_type", k.clone()).request_id(rid));
+                }
             };
             let decl = m
                 .compiled
@@ -559,8 +564,11 @@ fn run_instance_create(
                 .context
                 .iter()
                 .find(|c| c.name == *k)
-                .ok_or_else(|| ErrorObj::new("req/field_unknown", k.clone()))?;
-            overrides.insert(k.clone(), coerce_ctx_override(&decl.ty, k, &raw)?);
+                .ok_or_else(|| ErrorObj::new("req/field_unknown", k.clone()).request_id(rid))?;
+            overrides.insert(
+                k.clone(),
+                coerce_ctx_override(&decl.ty, k, &raw).map_err(|e| e.request_id(rid))?,
+            );
         }
     }
     store.create_instance_ctx(machine, &iid, rid, None, &overrides)

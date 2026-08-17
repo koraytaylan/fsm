@@ -140,16 +140,15 @@ impl ErrorObj {
     pub fn from_rejection(r: &Rejection) -> Self {
         let mut e = Self::new(r.code, r.message.clone()).hint(r.hint.clone());
         e.span = r.span;
-        if let Some(b) = &r.block {
-            if let Value::Obj(d) = &mut e.details {
+        if let Value::Obj(d) = &mut e.details {
+            if let Some(b) = &r.block {
                 d.insert("block".into(), Value::Str(b.clone()));
             }
-        }
-        if let (Some(s), Some(idx)) = (r.source_state.as_ref(), r.transition_idx) {
-            if let Value::Obj(d) = &mut e.details {
+            if let (Some(s), Some(idx)) = (r.source_state.as_ref(), r.transition_idx) {
                 d.insert("source_state".into(), Value::Str(s.clone()));
                 d.insert("transition_idx".into(), Value::Num(idx.to_string()));
             }
+            d.insert("trace".into(), r.trace.to_value());
         }
         e
     }
@@ -359,6 +358,18 @@ impl Store {
             if let Some(d) = rec.body.get("details") {
                 err.details = d.clone();
             }
+            if let Some(sp) = rec.body.get("span").and_then(Value::as_obj) {
+                if let (Some(s), Some(e)) = (
+                    sp.get("start")
+                        .and_then(Value::as_num)
+                        .and_then(|n| n.parse().ok()),
+                    sp.get("end")
+                        .and_then(Value::as_num)
+                        .and_then(|n| n.parse().ok()),
+                ) {
+                    err.span = Some((s, e));
+                }
+            }
             return Some(Err(err.request_id(request_id).mark_duplicate()));
         }
         if rec.kind == RecordKind::EffectAcked {
@@ -525,7 +536,9 @@ impl Store {
             }
         }
         let mid = {
-            let m = self.resolve_machine(machine_ref)?;
+            let m = self
+                .resolve_machine(machine_ref)
+                .map_err(|e| e.request_id(request_id))?;
             machine_id(&m.def)
         };
         let m = self.state.machines.get(&mid).ok_or_else(|| {
@@ -744,6 +757,12 @@ impl Store {
                 };
                 err = err.request_id(request_id);
                 body.insert("details".into(), err.details.clone());
+                if let Some((s, e)) = err.span {
+                    let mut sp = BTreeMap::new();
+                    sp.insert("start".into(), Value::Num(s.to_string()));
+                    sp.insert("end".into(), Value::Num(e.to_string()));
+                    body.insert("span".into(), Value::Obj(sp));
+                }
                 let rec = self
                     .journal
                     .append(RecordKind::EventRejected, Value::Obj(body))

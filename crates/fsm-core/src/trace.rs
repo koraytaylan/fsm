@@ -53,6 +53,7 @@ pub struct SetTrace {
 pub struct EmitTrace {
     pub effect: String,
     pub k: u32,
+    pub expr: Option<TraceNode>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,6 +165,9 @@ fn block_value(b: &BlockTrace) -> Value {
                     let mut em = BTreeMap::new();
                     em.insert("effect".into(), Value::Str(e.effect.clone()));
                     em.insert("k".into(), Value::Num(e.k.to_string()));
+                    if let Some(t) = &e.expr {
+                        em.insert("expr".into(), trace_to_value(t));
+                    }
                     Value::Obj(em)
                 })
                 .collect(),

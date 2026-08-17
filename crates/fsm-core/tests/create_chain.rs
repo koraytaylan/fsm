@@ -64,3 +64,44 @@ fn create_failed_pure() {
     assert_eq!(e1.code, e2.code);
     assert_eq!(e1.message, e2.message);
 }
+
+#[test]
+fn create_inner_failure_keeps_discarded_outer_trace() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"c","initial":"leaf","entry":{"do":[{"target":"y","value":"1"}]},"states":[{"name":"leaf","entry":{"do":[{"target":"x","value":"ctx.x + 1"}]}}]}],"initial":"c","context":[{"name":"x","ty":"int","init":"9223372036854775807"},{"name":"y","ty":"int","init":"0"}],"events":[],"transitions":[]}"#;
+    let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
+    let m = compile(spec).unwrap();
+    let t = Tree::build(&m.spec.states);
+    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    assert_eq!(e.code, "run/create_failed");
+    assert_eq!(e.block.as_deref(), Some("entry(leaf)"));
+    assert!(e.span.is_some());
+    assert!(e.trace.pipeline.iter().all(|p| p.discarded));
+    let outer = e
+        .trace
+        .pipeline
+        .iter()
+        .find(|p| matches!(p.block, fsm_core::trace::BlockKind::Entry(ref n) if n == "c"))
+        .expect("outer entry");
+    assert_eq!(outer.sets[0].target, "y");
+    assert_eq!(outer.sets[0].after, "1");
+    assert!(
+        e.trace
+            .pipeline
+            .iter()
+            .any(|p| matches!(p.block, fsm_core::trace::BlockKind::Entry(ref n) if n == "leaf"))
+    );
+}
+
+#[test]
+fn create_first_block_failure_has_failing_trace() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"c","initial":"leaf","entry":{"do":[{"target":"n","value":"9223372036854775807 + 1"}]},"states":[{"name":"leaf"}]}],"initial":"c","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#;
+    let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
+    let m = compile(spec).unwrap();
+    let t = Tree::build(&m.spec.states);
+    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    assert_eq!(e.code, "run/create_failed");
+    assert_eq!(e.block.as_deref(), Some("entry(c)"));
+    assert_eq!(e.trace.pipeline.len(), 1);
+    assert!(e.trace.pipeline[0].discarded);
+    assert!(!e.trace.pipeline[0].sets.is_empty());
+}

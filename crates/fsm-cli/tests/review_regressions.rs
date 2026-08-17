@@ -547,11 +547,278 @@ fn version3_and_missing_marker_are_mismatch() {
         Err(e) => e,
     };
     assert_eq!(err.code, "store/version_mismatch");
+    std::fs::write(dir.join("VERSION"), "4\n").unwrap();
+    let err = match Store::open(&dir) {
+        Ok(_) => panic!("VERSION 4 opened"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code, "store/version_mismatch");
     std::fs::remove_file(dir.join("VERSION")).unwrap();
     let err = match Store::open(&dir) {
         Ok(_) => panic!("missing VERSION opened"),
         Err(e) => e,
     };
     assert_eq!(err.code, "store/version_mismatch");
-    assert!(fsm_cli::journal_io::init(&dir).is_err());
+    match fsm_cli::journal_io::init(&dir) {
+        Err(fsm_cli::journal_io::JournalIoError::VersionMismatch { .. }) => {}
+        Err(_) => panic!("expected version mismatch"),
+        Ok(_) => panic!("init succeeded on refused VERSION"),
+    }
+}
+
+#[test]
+fn span_bearing_rejected_retry_keeps_span() {
+    let _g = gate();
+    let v = parse(
+        br#"{"format":"fsm.machine/1","name":"ov","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"}],"initial":"a","transitions":[{"from":"a","on":"go","do":[{"target":"x","value":"ctx.x + 1"}]}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("span");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(v, false, false).unwrap();
+    s.create_instance("ov", "i1", "c1", None).unwrap();
+    let e1 = s
+        .send_event("i1", "go", Value::Obj(BTreeMap::new()), "ov1", None)
+        .unwrap_err();
+    assert_eq!(e1.code, "run/action_error");
+    assert_eq!(e1.span, Some((0, 9)));
+    assert!(!e1.duplicate);
+    let e_same = s
+        .send_event("i1", "go", Value::Obj(BTreeMap::new()), "ov1", None)
+        .unwrap_err();
+    assert!(e_same.duplicate);
+    assert_eq!(e_same.span, e1.span);
+    drop(s);
+    let mut s2 = Store::open(&dir).unwrap();
+    let e2 = s2
+        .send_event("i1", "go", Value::Obj(BTreeMap::new()), "ov1", None)
+        .unwrap_err();
+    assert!(e2.duplicate);
+    assert_eq!(e2.span, e1.span);
+    assert_eq!(
+        e2.details.get("block").and_then(Value::as_str),
+        Some("transition")
+    );
+}
+
+#[test]
+fn altered_rejection_details_fail_replay() {
+    let _g = gate();
+    let dir = tmp("alt");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.create_instance("case_review", "i1", "c1", None).unwrap();
+    s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+        .unwrap();
+    s.send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+        .unwrap_err();
+    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    let last = recs.last().unwrap().clone();
+    assert_eq!(last.kind, fsm_core::record::RecordKind::EventRejected);
+    let prev = recs[recs.len() - 2].hash.clone();
+    let mut body = last.body.as_obj().cloned().unwrap();
+    body.insert("details".into(), Value::Obj(BTreeMap::new()));
+    let forged = fsm_core::record::seal(last.seq, last.ts, last.kind, Value::Obj(body), &prev);
+    let jdir = dir.join("journal");
+    let seg = std::fs::read_dir(&jdir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().starts_with("seg-"))
+                .unwrap_or(false)
+        })
+        .unwrap();
+    let mut lines: Vec<Vec<u8>> = std::fs::read(&seg)
+        .unwrap()
+        .split_inclusive(|&b| b == b'\n')
+        .map(|l| l.to_vec())
+        .filter(|l| l.iter().any(|b| !b.is_ascii_whitespace()))
+        .collect();
+    lines.pop();
+    let mut out = Vec::new();
+    for l in &lines {
+        out.extend_from_slice(l);
+        if !l.ends_with(&[b'\n']) {
+            out.push(b'\n');
+        }
+    }
+    out.extend_from_slice(&forged.to_line());
+    out.push(b'\n');
+    std::fs::write(&seg, out).unwrap();
+    drop(s);
+    let report = fsm_cli::journal_io::verify(&dir);
+    assert!(
+        !matches!(report.health, fsm_cli::journal_io::JournalHealth::Ok),
+        "{:?}",
+        report.health
+    );
+}
+
+#[test]
+fn create_request_id_cli_mcp_parity() {
+    let _g = gate();
+    let dir = tmp("rid");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    let store_err = s
+        .create_instance("missing", "ghost", "rid-1", None)
+        .unwrap_err();
+    assert_eq!(store_err.code, "req/machine_not_found");
+    assert_eq!(
+        store_err.details.get("request_id").and_then(Value::as_str),
+        Some("rid-1")
+    );
+    drop(s);
+
+    let mut clock = fsm_cli::clock::FixedClock::new(5_000, 1);
+    let mut s = Store::open(&dir).unwrap();
+    let mcp_err = fsm_cli::mcp::tools::dispatch(&mut s, &mut clock, "instance_create", &{
+        let mut m = BTreeMap::new();
+        m.insert("machine".into(), Value::Str("missing".into()));
+        m.insert("request_id".into(), Value::Str("rid-2".into()));
+        Value::Obj(m)
+    })
+    .unwrap_err();
+    assert_eq!(mcp_err.code, "req/machine_not_found");
+    assert_eq!(
+        mcp_err.details.get("request_id").and_then(Value::as_str),
+        Some("rid-2")
+    );
+    let mut ctx = BTreeMap::new();
+    ctx.insert("visits".into(), Value::Num("2".into()));
+    let mut args = BTreeMap::new();
+    args.insert("machine".into(), Value::Str("case_review".into()));
+    args.insert("request_id".into(), Value::Str("rid-3".into()));
+    args.insert("context".into(), Value::Obj(ctx));
+    let mcp_num =
+        fsm_cli::mcp::tools::dispatch(&mut s, &mut clock, "instance_create", &Value::Obj(args))
+            .unwrap_err();
+    assert_eq!(mcp_num.code, "req/number_token");
+    assert_eq!(
+        mcp_num.details.get("request_id").and_then(Value::as_str),
+        Some("rid-3")
+    );
+    drop(s);
+
+    let bin = fsm_bin();
+    let out = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "instance",
+            "new",
+            "missing",
+            "--request-id",
+            "rid-4",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stderr);
+    assert!(text.contains("req/machine_not_found"), "{text}");
+    assert!(text.contains("rid-4"), "{text}");
+    let out = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "instance",
+            "new",
+            "case_review",
+            "--request-id",
+            "rid-5",
+            "--context-json",
+            r#"{"visits":2}"#,
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        text.contains("req/number_token") || text.contains("rid-5"),
+        "{text}"
+    );
+    assert!(text.contains("rid-5"), "{text}");
+}
+
+#[test]
+fn create_failure_exposes_discarded_trace() {
+    let _g = gate();
+    let v = parse(
+        br#"{"format":"fsm.machine/1","name":"cf","context":[{"name":"x","ty":"int","init":"9223372036854775807"},{"name":"y","ty":"int","init":"0"}],"events":[],"states":[{"name":"c","initial":"leaf","entry":{"do":[{"target":"y","value":"1"}]},"states":[{"name":"leaf","entry":{"do":[{"target":"x","value":"ctx.x + 1"}]}}]}],"initial":"c","transitions":[]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("cf");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(v, false, false).unwrap();
+    let err = s.create_instance("cf", "i1", "cf1", None).unwrap_err();
+    assert_eq!(err.code, "run/create_failed");
+    assert_eq!(
+        err.details.get("block").and_then(Value::as_str),
+        Some("entry(leaf)")
+    );
+    let trace = err
+        .details
+        .get("trace")
+        .and_then(Value::as_obj)
+        .expect("trace");
+    let pipe = trace
+        .get("pipeline")
+        .and_then(Value::as_arr)
+        .expect("pipeline");
+    assert!(pipe.iter().any(|p| {
+        p.get("block").and_then(Value::as_str) == Some("entry(c)")
+            && p.get("discarded").and_then(Value::as_bool) == Some(true)
+    }));
+    assert!(pipe.iter().any(|p| {
+        p.get("block").and_then(Value::as_str) == Some("entry(leaf)")
+            && p.get("discarded").and_then(Value::as_bool) == Some(true)
+    }));
+}
+
+#[test]
+fn mcp_rejected_retry_marks_duplicate() {
+    let _g = gate();
+    let dir = tmp("mcpdup");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.create_instance("case_review", "i1", "c1", None).unwrap();
+    s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+        .unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(5_000, 1);
+    let mut args = BTreeMap::new();
+    args.insert("instance_id".into(), Value::Str("i1".into()));
+    args.insert("request_id".into(), Value::Str("bad".into()));
+    let mut ev = BTreeMap::new();
+    ev.insert("name".into(), Value::Str("resume".into()));
+    args.insert("event".into(), Value::Obj(ev));
+    let first = fsm_cli::mcp::tools::dispatch(
+        &mut s,
+        &mut clock,
+        "instance_send",
+        &Value::Obj(args.clone()),
+    )
+    .unwrap_err();
+    assert!(!first.duplicate);
+    let again =
+        fsm_cli::mcp::tools::dispatch(&mut s, &mut clock, "instance_send", &Value::Obj(args))
+            .unwrap_err();
+    assert!(again.duplicate);
+    drop(s);
+    let mut s2 = Store::open(&dir).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(5_000, 1);
+    let mut args = BTreeMap::new();
+    args.insert("instance_id".into(), Value::Str("i1".into()));
+    args.insert("request_id".into(), Value::Str("bad".into()));
+    let mut ev = BTreeMap::new();
+    ev.insert("name".into(), Value::Str("resume".into()));
+    args.insert("event".into(), Value::Obj(ev));
+    let reopened =
+        fsm_cli::mcp::tools::dispatch(&mut s2, &mut clock, "instance_send", &Value::Obj(args))
+            .unwrap_err();
+    assert!(reopened.duplicate);
+    assert_eq!(first.code, reopened.code);
 }

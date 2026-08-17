@@ -136,6 +136,18 @@ pub fn render_error(err: &ErrorObj, color: bool) -> String {
         s.push_str(&err.path);
         s.push('\n');
     }
+    if let Some(b) = err.details.get("block").and_then(Value::as_str) {
+        s.push_str("  block: ");
+        s.push_str(b);
+        s.push('\n');
+    }
+    if err.source.is_none() {
+        if let Some((start, end)) = err.span {
+            s.push_str("  span: ");
+            s.push_str(&format!("{start}..{end}"));
+            s.push('\n');
+        }
+    }
     if let (Some(src), Some((start, end))) = (&err.source, err.span) {
         s.push_str(src);
         if !src.ends_with('\n') {
@@ -219,6 +231,15 @@ ctx.score >= x
   hint: declare x or use a literal
 ";
         assert_eq!(text, expected);
+        let mut act = ErrorObj::new("run/action_error", "arithmetic overflow");
+        if let Value::Obj(d) = &mut act.details {
+            d.insert("block".into(), Value::Str("transition".into()));
+        }
+        act.span = Some((0, 9));
+        act.hint = "check the operands".into();
+        let text = render_error(&act, false);
+        assert!(text.contains("  block: transition\n"), "{text}");
+        assert!(text.contains("  span: 0..9\n"), "{text}");
     }
 
     #[test]

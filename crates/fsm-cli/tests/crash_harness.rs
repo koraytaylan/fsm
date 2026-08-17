@@ -4,7 +4,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use fsm_cli::journal_io::{JournalHealth, classify, load_records, repair_truncate_torn_tail};
 use fsm_cli::store::Store;
@@ -13,6 +13,38 @@ use fsm_core::replay::{NopSink, StoreState, fold_with};
 
 fn child_mode() -> bool {
     std::env::var("FSM_CRASH_CHILD").is_ok()
+}
+
+fn crash_run_root() -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "fsm-crash-run-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ))
+}
+
+#[test]
+fn crash_temp_root_is_invocation_unique() {
+    let a = crash_run_root();
+    std::thread::sleep(Duration::from_millis(1));
+    let b = crash_run_root();
+    assert_ne!(a, b);
+    let prefix = format!("fsm-crash-run-{}-", std::process::id());
+    assert!(
+        a.file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with(&prefix)
+    );
+    assert!(
+        b.file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with(&prefix)
+    );
 }
 
 fn case_def() -> Value {
@@ -108,11 +140,13 @@ fn crash_harness() {
     let mut seen_torn = false;
     let mut seed = 0xF00D_u64;
     let script = script_rids();
+    let run_root = crash_run_root();
+    fs::create_dir_all(&run_root).unwrap();
     for it in 0..want {
         seed ^= seed << 13;
         seed ^= seed >> 7;
         seed ^= seed << 17;
-        let dir = std::env::temp_dir().join(format!("fsm-crash-{it}-{seed}"));
+        let dir = run_root.join(format!("{it}-{seed}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let mut child = Command::new(std::env::current_exe().unwrap())
@@ -188,4 +222,5 @@ fn crash_harness() {
     }
     assert!(seen_ok, "no Ok classification across {want} kills");
     assert!(seen_torn, "no TornTail classification across {want} kills");
+    let _ = fs::remove_dir_all(&run_root);
 }
