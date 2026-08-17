@@ -599,6 +599,7 @@ pub struct VerifyReport {
     pub records: u64,
     pub machines: u64,
     pub instances: u64,
+    pub instance_hashes: std::collections::BTreeMap<String, String>,
 }
 
 pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
@@ -637,6 +638,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
             records: 0,
             machines: 0,
             instances: 0,
+            instance_hashes: Default::default(),
         };
     }
     let health = classify(dir);
@@ -646,6 +648,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
             records: 0,
             machines: 0,
             instances: 0,
+            instance_hashes: Default::default(),
         };
     }
     let recs = match load_records(dir) {
@@ -656,21 +659,34 @@ pub fn verify(dir: &Path) -> VerifyReport {
                 records: 0,
                 machines: 0,
                 instances: 0,
+                instance_hashes: Default::default(),
             };
         }
     };
     match fold_with(recs.clone(), &mut NopSink) {
-        Ok(st) => VerifyReport {
-            health: JournalHealth::Ok,
-            records: recs.len() as u64,
-            machines: st.machines.len() as u64,
-            instances: st.instances.len() as u64,
-        },
+        Ok(st) => {
+            let mut instance_hashes = std::collections::BTreeMap::new();
+            for (id, inst) in &st.instances {
+                let mid = st.instance_machines.get(id).cloned().unwrap_or_default();
+                instance_hashes.insert(
+                    id.clone(),
+                    fsm_core::hashes::state_hash(&mid, id, st.last_seq, inst),
+                );
+            }
+            VerifyReport {
+                health: JournalHealth::Ok,
+                records: recs.len() as u64,
+                machines: st.machines.len() as u64,
+                instances: st.instances.len() as u64,
+                instance_hashes,
+            }
+        }
         Err(e) => VerifyReport {
             health: replay_health(e),
             records: recs.len() as u64,
             machines: 0,
             instances: 0,
+            instance_hashes: Default::default(),
         },
     }
 }

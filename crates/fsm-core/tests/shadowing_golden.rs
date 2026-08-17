@@ -102,3 +102,20 @@ fn create_always_fails_skips_overrideable_init() {
         "declared MAX init overflows but default override 0 succeeds"
     );
 }
+
+#[test]
+fn create_always_fails_skips_boolean_override() {
+    let (m, t) = comp(
+        r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"b","ty":"bool","init":"false"}],"events":[],"transitions":[],"invariants":[{"name":"need","expr":"ctx.b","mode":"enforce"}]}"#,
+    );
+    assert!(
+        create_always_fails(&m, &t).is_empty(),
+        "ctx.b=false fails declared create but b=true succeeds"
+    );
+    let ok = fsm_core::step::create(
+        &m,
+        &t,
+        &std::collections::BTreeMap::from([("b".into(), fsm_core::expr::eval::Val::Bool(true))]),
+    );
+    assert!(ok.is_ok(), "{ok:?}");
+}

@@ -102,14 +102,28 @@ fn three_way_refold() {
 
 #[test]
 fn generator_twice_byte_identical() {
-    let mut a = proputil::Gen(7);
-    let mut b = proputil::Gen(7);
-    let ma = proputil::gen_machine(&mut a, 4);
-    let mb = proputil::gen_machine(&mut b, 4);
-    assert_eq!(
-        fsm_core::canon::canon_bytes(&ma),
-        fsm_core::canon::canon_bytes(&mb)
-    );
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = root.join("tools/gen_decimal_vectors.py");
+    let committed = root.join("crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl");
+    let a = std::env::temp_dir().join(format!("dec-a-{}", std::process::id()));
+    let b = std::env::temp_dir().join(format!("dec-b-{}", std::process::id()));
+    for dest in [&a, &b] {
+        let out = std::process::Command::new("python3")
+            .arg(&script)
+            .output()
+            .expect("python3 tools/gen_decimal_vectors.py");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        std::fs::copy(&committed, dest).unwrap();
+    }
+    let ca = std::fs::read(&committed).unwrap();
+    let ba = std::fs::read(&a).unwrap();
+    let bb = std::fs::read(&b).unwrap();
+    assert_eq!(ca, ba);
+    assert_eq!(ca, bb);
 }
 
 #[test]
@@ -139,18 +153,16 @@ fn perf_smoke() {
 
     let dir = tmp(12);
     let mut store = Store::open(&dir).unwrap();
-    let mut states = String::from(r#"[{"name":"s0"}"#);
-    let mut trans = String::new();
-    for i in 1..=12 {
-        states.push_str(&format!(r#",{{"name":"s{i}"}}"#));
-        if i > 1 {
-            trans.push(',');
-        }
-        trans.push_str(&format!(r#"{{"from":"s{}","on":"go","to":"s{i}"}}"#, i - 1));
+    let mut inner =
+        String::from(r#"{"name":"s11","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]}}"#);
+    for i in (0..11).rev() {
+        inner = format!(
+            r#"{{"name":"s{i}","initial":"s{}","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}},"states":[{inner}]}}"#,
+            i + 1
+        );
     }
-    states.push(']');
     let src = format!(
-        r#"{{"format":"fsm.machine/1","name":"d12","states":{states},"initial":"s0","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{trans}]}}"#
+        r#"{{"format":"fsm.machine/1","name":"d12","states":[{inner}],"initial":"s0","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"s11","on":"go","do":[{{"target":"n","value":"ctx.n + 1"}}]}}]}}"#
     );
     let spec = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
     store.define_machine(spec, false, false).unwrap();
@@ -177,7 +189,12 @@ fn perf_smoke() {
         "depth12 {}",
         t.elapsed().as_millis()
     );
-    assert_eq!(store.state.instances.get("deep").unwrap().leaf, "s12");
+    let inst = store.state.instances.get("deep").unwrap();
+    assert_eq!(inst.leaf, "s11");
+    assert_eq!(
+        inst.ctx.get("n").map(|v| v.canonical_string()).as_deref(),
+        Some("24")
+    );
 }
 
 fn parse_case() -> Value {

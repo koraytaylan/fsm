@@ -2,7 +2,26 @@
 
 #![allow(clippy::collapsible_if)]
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicI64, Ordering};
+
+thread_local! {
+    static PINNED: Cell<Option<i64>> = const { Cell::new(None) };
+}
+
+pub struct PinGuard;
+
+impl Drop for PinGuard {
+    fn drop(&mut self) {
+        PINNED.with(|c| c.set(None));
+    }
+}
+
+/// Pin the timestamp used by `now_ms` for the duration of a mutating call.
+pub fn pin(ts: i64) -> PinGuard {
+    PINNED.with(|c| c.set(Some(ts)));
+    PinGuard
+}
 
 const UNSET: i64 = i64::MIN;
 static FORCE: AtomicI64 = AtomicI64::new(UNSET);
@@ -17,7 +36,7 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now_ms(&mut self) -> i64 {
-        now_ms()
+        wall_ms()
     }
 }
 
@@ -36,7 +55,6 @@ impl Clock for FixedClock {
     fn now_ms(&mut self) -> i64 {
         let t = self.now;
         self.now = self.now.saturating_add(self.step);
-        force_ms(self.now);
         t
     }
 }
@@ -56,7 +74,17 @@ pub fn reset_injected() {
     STEP.store(1, Ordering::SeqCst);
 }
 
+fn wall_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
 pub fn now_ms() -> i64 {
+    if let Some(ts) = PINNED.with(|c| c.get()) {
+        return ts;
+    }
     let forced = FORCE.load(Ordering::SeqCst);
     let step = STEP.load(Ordering::SeqCst).max(1);
     if forced != UNSET {
@@ -67,8 +95,5 @@ pub fn now_ms() -> i64 {
             return start + NEXT.fetch_add(step, Ordering::SeqCst);
         }
     }
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    wall_ms()
 }

@@ -89,6 +89,15 @@ pub fn state_to_snapshot(state: &StoreState) -> Value {
     Value::Obj(body)
 }
 
+fn req_obj<'a>(
+    obj: &'a BTreeMap<String, Value>,
+    k: &str,
+) -> Result<&'a BTreeMap<String, Value>, ErrorObj> {
+    obj.get(k)
+        .and_then(Value::as_obj)
+        .ok_or_else(|| ErrorObj::new("io/read", format!("snapshot missing object {k}")))
+}
+
 pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
     let obj = v
         .as_obj()
@@ -100,116 +109,130 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
     let got = obj
         .get("snapshot_hash")
         .and_then(Value::as_str)
-        .unwrap_or("");
+        .ok_or_else(|| ErrorObj::new("io/read", "snapshot missing snapshot_hash"))?;
     if got != want {
         return Err(ErrorObj::new("io/read", "snapshot hash mismatch"));
     }
-    let seq = obj
+    let seq: u64 = obj
         .get("seq")
         .and_then(Value::as_num)
         .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
+        .ok_or_else(|| ErrorObj::new("io/read", "snapshot missing seq"))?;
     let last_hash = obj
         .get("last_hash")
         .and_then(Value::as_str)
-        .unwrap_or("")
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ErrorObj::new("io/read", "snapshot missing last_hash"))?
         .to_string();
     let mut st = StoreState {
         last_seq: seq,
         last_hash,
         ..StoreState::default()
     };
-    if let Some(ms) = obj.get("machines").and_then(Value::as_obj) {
-        for (id, def) in ms {
-            let compiled = compile_accepted(def).map_err(ErrorObj::from_findings)?;
-            let tree = Tree::build(&compiled.spec.states);
-            st.machines.insert(
-                id.clone(),
-                StoredMachine {
-                    def: def.clone(),
-                    compiled,
-                    tree,
-                },
-            );
+    for (id, def) in req_obj(obj, "machines")? {
+        let compiled = compile_accepted(def).map_err(ErrorObj::from_findings)?;
+        if compiled.machine_id != *id {
+            return Err(ErrorObj::new("io/read", "snapshot machine id mismatch"));
         }
+        let tree = Tree::build(&compiled.spec.states);
+        st.machines.insert(
+            id.clone(),
+            StoredMachine {
+                def: def.clone(),
+                compiled,
+                tree,
+            },
+        );
     }
-    if let Some(ds) = obj.get("dedup").and_then(Value::as_obj) {
-        for (rid, seqv) in ds {
-            if let Some(n) = seqv.as_num().and_then(|s| s.parse().ok()) {
-                st.dedup.insert(rid.clone(), n);
-            }
+    for (rid, seqv) in req_obj(obj, "dedup")? {
+        let n: u64 = seqv
+            .as_num()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot dedup seq"))?;
+        if n == 0 || n > seq {
+            return Err(ErrorObj::new("io/read", "snapshot dedup out of bounds"));
         }
+        st.dedup.insert(rid.clone(), n);
     }
-    if let Some(ins) = obj.get("instances").and_then(Value::as_obj) {
-        for (id, iv) in ins {
-            let Some(io) = iv.as_obj() else {
-                continue;
-            };
-            let mid = io
-                .get("machine_id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let Some(stored) = st.machines.get(&mid) else {
-                continue;
-            };
-            let leaf = io
-                .get("leaf")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let status = io
-                .get("status")
-                .and_then(Value::as_str)
-                .and_then(status_from)
-                .unwrap_or(Status::Running);
-            let mut ctx = BTreeMap::new();
-            if let Some(cobj) = io.get("context").and_then(Value::as_obj) {
-                for (k, raw) in cobj {
-                    let Some(s) = raw.as_str() else {
-                        continue;
-                    };
-                    if let Some(decl) = stored.compiled.spec.context.iter().find(|c| c.name == *k) {
-                        if let Some(val) = parse_ctx_val(&decl.ty, s) {
-                            ctx.insert(k.clone(), val);
-                        }
-                    }
-                }
-            }
-            let mut history = BTreeMap::new();
-            if let Some(hobj) = io.get("history").and_then(Value::as_obj) {
-                for (k, raw) in hobj {
-                    if let Some(s) = raw.as_str() {
-                        history.insert(k.clone(), s.to_string());
-                    }
-                }
-            }
-            let pending = io
-                .get("pending")
-                .and_then(Value::as_arr)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect()
-                })
-                .unwrap_or_default();
-            let inst = InstanceState {
-                status,
-                leaf,
-                ctx,
-                history,
-                pending,
-            };
-            if let Some(want_h) = io.get("state_hash").and_then(Value::as_str) {
-                let have = state_hash(&mid, id, seq, &inst);
-                if have != want_h {
-                    return Err(ErrorObj::new("io/read", "snapshot state hash mismatch"));
-                }
-            }
-            st.instance_machines.insert(id.clone(), mid);
-            st.instances.insert(id.clone(), inst);
+    for (id, iv) in req_obj(obj, "instances")? {
+        let io = iv
+            .as_obj()
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance not object"))?;
+        let mid = io
+            .get("machine_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing machine_id"))?
+            .to_string();
+        let stored = st
+            .machines
+            .get(&mid)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance unknown machine"))?;
+        let leaf = io
+            .get("leaf")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing leaf"))?
+            .to_string();
+        if stored.tree.id(&leaf).is_none() {
+            return Err(ErrorObj::new("io/read", "snapshot instance unknown leaf"));
         }
+        let status = io
+            .get("status")
+            .and_then(Value::as_str)
+            .and_then(status_from)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing status"))?;
+        let cobj = io
+            .get("context")
+            .and_then(Value::as_obj)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing context"))?;
+        let mut ctx = BTreeMap::new();
+        for decl in &stored.compiled.spec.context {
+            let raw = cobj
+                .get(&decl.name)
+                .and_then(Value::as_str)
+                .ok_or_else(|| ErrorObj::new("io/read", "snapshot context incomplete"))?;
+            let val = parse_ctx_val(&decl.ty, raw)
+                .ok_or_else(|| ErrorObj::new("io/read", "snapshot context type"))?;
+            ctx.insert(decl.name.clone(), val);
+        }
+        let hobj = io
+            .get("history")
+            .and_then(Value::as_obj)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing history"))?;
+        let mut history = BTreeMap::new();
+        for (k, raw) in hobj {
+            let s = raw
+                .as_str()
+                .ok_or_else(|| ErrorObj::new("io/read", "snapshot history binding"))?;
+            history.insert(k.clone(), s.to_string());
+        }
+        let pending = io
+            .get("pending")
+            .and_then(Value::as_arr)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing pending"))?
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| ErrorObj::new("io/read", "snapshot pending id"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let inst = InstanceState {
+            status,
+            leaf,
+            ctx,
+            history,
+            pending,
+        };
+        let want_h = io
+            .get("state_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing state_hash"))?;
+        let have = state_hash(&mid, id, seq, &inst);
+        if have != want_h {
+            return Err(ErrorObj::new("io/read", "snapshot state hash mismatch"));
+        }
+        st.instance_machines.insert(id.clone(), mid);
+        st.instances.insert(id.clone(), inst);
     }
     Ok(st)
 }
@@ -284,9 +307,9 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
         dest
     };
     fs::rename(&tmp, &final_path).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    if let Ok(df) = fs::File::open(&dir) {
-        let _ = df.sync_all();
-    }
+    let df = fs::File::open(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    df.sync_all()
+        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let back = fs::read(&final_path).map_err(|e| ErrorObj::new("io/read", e.to_string()))?;
     let parsed =
         parse(&back, &JsonLimits::DEFAULT).map_err(|e| ErrorObj::new("io/read", e.message))?;
@@ -306,15 +329,66 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
             return Err(ErrorObj::new("io/read", "snapshot instance hash mismatch"));
         }
     }
-    prune_old(data_dir);
+    prune_old(data_dir)?;
     Ok(final_path)
 }
 
-pub fn prune_old(data_dir: &Path) {
+pub fn prune_old(data_dir: &Path) -> Result<(), ErrorObj> {
     let snaps = listed_snaps(data_dir);
     for (_, p) in snaps.into_iter().skip(3) {
-        let _ = fs::remove_file(p);
+        fs::remove_file(&p).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     }
+    let dir = snap_dir(data_dir);
+    if dir.exists() {
+        let df = fs::File::open(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        df.sync_all()
+            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    }
+    Ok(())
+}
+
+fn journal_ids_at(
+    recs: &[fsm_core::record::Record],
+    seq: u64,
+) -> (
+    std::collections::BTreeSet<String>,
+    std::collections::BTreeSet<String>,
+) {
+    let mut machines = std::collections::BTreeSet::new();
+    let mut instances = std::collections::BTreeSet::new();
+    for rec in recs.iter().filter(|r| r.seq <= seq) {
+        match rec.kind {
+            fsm_core::record::RecordKind::MachineDefined => {
+                if let Some(id) = rec.body.get("machine_id").and_then(Value::as_str) {
+                    machines.insert(id.into());
+                }
+            }
+            fsm_core::record::RecordKind::InstanceCreated => {
+                if let Some(id) = rec.body.get("instance_id").and_then(Value::as_str) {
+                    instances.insert(id.into());
+                }
+            }
+            _ => {}
+        }
+    }
+    (machines, instances)
+}
+
+fn snapshot_matches_prefix(base: &StoreState, recs: &[fsm_core::record::Record]) -> bool {
+    let Some(rec) = recs.iter().find(|r| r.seq == base.last_seq) else {
+        return false;
+    };
+    if rec.hash != base.last_hash {
+        return false;
+    }
+    let (mids, iids) = journal_ids_at(recs, base.last_seq);
+    if mids != base.machines.keys().cloned().collect() {
+        return false;
+    }
+    if iids != base.instances.keys().cloned().collect() {
+        return false;
+    }
+    true
 }
 
 pub fn open_state(
@@ -323,11 +397,24 @@ pub fn open_state(
     sink: &mut impl fsm_core::replay::RecordSink,
 ) -> Result<StoreState, fsm_core::replay::ReplayError> {
     let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
-    if let Some((seq, base)) = load_newest_valid(data_dir) {
-        if seq <= journal_last {
-            let tail: Vec<_> = recs.into_iter().filter(|r| r.seq > seq).collect();
-            return fold_from(base, tail, sink);
+    for (_seq, path) in listed_snaps(data_dir) {
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
+            continue;
+        };
+        let Ok(base) = snapshot_to_state(&v) else {
+            continue;
+        };
+        if base.last_seq > journal_last {
+            continue;
         }
+        if !snapshot_matches_prefix(&base, &recs) {
+            continue;
+        }
+        let tail: Vec<_> = recs.into_iter().filter(|r| r.seq > base.last_seq).collect();
+        return fold_from(base, tail, sink);
     }
     fsm_core::replay::fold_with(recs, sink)
 }

@@ -50,11 +50,13 @@ fn input_schemas_strict() {
             _ => {}
         }
         let out = (t.output_schema)();
-        assert_eq!(
-            out.get("additionalProperties").and_then(Value::as_bool),
-            Some(true)
+        let req = out.get("required").and_then(Value::as_arr).unwrap();
+        assert!(!req.is_empty(), "{} output required empty", t.name);
+        assert!(
+            validate_args(&out, &Value::Obj(BTreeMap::new())).is_err(),
+            "{} empty object must fail required output fields",
+            t.name
         );
-        assert!(validate_args(&out, &Value::Obj(BTreeMap::new())).is_ok());
     }
 }
 

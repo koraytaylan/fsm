@@ -13,9 +13,11 @@ fn compile_and_compile_accepted_share_accepted_identity() {
     assert_eq!(from_source.canonical, canon_src);
     let spec = parse_machine(&v).unwrap();
     let from_spec = compile(spec.clone()).unwrap();
-    let (canon_spec, mid_spec) = accepted_identity(&spec.to_value());
-    assert_eq!(from_spec.machine_id, mid_spec);
-    assert_eq!(from_spec.canonical, canon_spec);
+    assert_eq!(from_spec.machine_id, from_source.machine_id);
+    assert_eq!(from_spec.canonical, from_source.canonical);
+    let (canon_src, mid_src2) = accepted_identity(&v);
+    assert_eq!(from_spec.machine_id, mid_src2);
+    assert_eq!(from_spec.canonical, canon_src);
 }
 
 #[test]
@@ -34,6 +36,24 @@ fn omitted_defaults_share_one_identity_path() {
     let (canon, mid) = accepted_identity(&parse_machine(&src).unwrap().to_value());
     assert_eq!(via_accepted.machine_id, mid);
     assert_eq!(via_accepted.canonical, canon);
+}
+
+#[test]
+fn explicit_defaults_share_one_identity_path() {
+    let src = parse(
+        br#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a","terminal":false}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[],"on_unhandled":"reject","effects":[],"invariants":[]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(
+        src.get("on_unhandled")
+            .and_then(fsm_core::json::Value::as_str),
+        Some("reject")
+    );
+    let via_accepted = compile_accepted(&src).unwrap();
+    let via_compile = compile(parse_machine(&src).unwrap()).unwrap();
+    assert_eq!(via_accepted.machine_id, via_compile.machine_id);
+    assert_eq!(via_accepted.canonical, via_compile.canonical);
 }
 
 fn compile_s(s: &str) -> Result<fsm_core::machine::CompiledMachine, Vec<fsm_core::spec::Finding>> {

@@ -613,27 +613,23 @@ fn all_codes_hygiene() {
     for c in ALL_CODES {
         assert!(seen.insert(*c), "dup {c}");
     }
-    const ALLOW: &[(&str, &str)] = &[
-        ("io/read", "infrastructure"),
-        ("io/write", "infrastructure"),
-        ("store/chain_broken", "recovery class"),
-        ("store/lock", "recovery class"),
-        ("store/non_canonical", "recovery class"),
-        ("store/state_hash_mismatch", "recovery class"),
-        ("store/torn_tail", "recovery class"),
-        ("store/version_mismatch", "recovery class"),
-        ("internal/budget", "engine invariant"),
-        ("internal/unimplemented", "stub leftover"),
-        ("req/args_invalid", "schema validation"),
-        ("req/field_type", "payload type"),
-        ("req/instance_not_found", "lookup"),
-        ("req/machine_exists", "define if_exists"),
-        ("req/machine_not_found", "lookup"),
+    const ALLOW: &[&str] = &[
+        "io/read",
+        "io/write",
+        "store/chain_broken",
+        "store/lock",
+        "store/non_canonical",
+        "store/state_hash_mismatch",
+        "store/torn_tail",
+        "store/version_mismatch",
+        "internal/budget",
+        "internal/unimplemented",
     ];
-    for (c, _) in ALLOW {
+    for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");
     }
-    let exercised = [
+    let mut exercised = std::collections::BTreeSet::new();
+    for c in [
         "req/event_unknown",
         "run/unhandled",
         "req/field_scale",
@@ -644,13 +640,49 @@ fn all_codes_hygiene() {
         "run/not_enabled",
         "req/machine_ambiguous",
         "run/instance_completed",
-    ];
+        "req/args_invalid",
+        "req/field_type",
+        "req/instance_not_found",
+        "req/machine_exists",
+        "req/machine_not_found",
+    ] {
+        exercised.insert(c);
+    }
+    for root in [
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests"),
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fsm-core/tests"),
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs"),
+    ] {
+        collect_codes(&root, &mut exercised);
+    }
     for c in ALL_CODES {
-        let ok = exercised.contains(c)
-            || ALLOW.iter().any(|(a, _)| a == c)
-            || c.starts_with("def/")
-            || c.starts_with("expr/")
-            || c.starts_with("run/");
-        assert!(ok, "uncovered {c}");
+        if ALLOW.contains(c) {
+            continue;
+        }
+        assert!(
+            exercised.contains(c),
+            "uncovered {c} (not in scripted rows or golden transcripts)"
+        );
+    }
+}
+
+fn collect_codes(root: &std::path::Path, out: &mut std::collections::BTreeSet<&str>) {
+    let Ok(rd) = std::fs::read_dir(root) else {
+        return;
+    };
+    for ent in rd.flatten() {
+        let p = ent.path();
+        if p.is_dir() {
+            collect_codes(&p, out);
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        for code in ALL_CODES {
+            if text.contains(code) {
+                out.insert(*code);
+            }
+        }
     }
 }

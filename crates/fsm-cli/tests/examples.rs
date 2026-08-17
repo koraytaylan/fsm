@@ -121,6 +121,23 @@ fn run_fsm(dir: &std::path::Path, args: &[&str]) -> (i32, String, String) {
 #[test]
 fn readme_and_examples_commands_run() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut cmds = Vec::new();
+    for name in ["README.md", "docs/EXAMPLES.md"] {
+        let text = std::fs::read_to_string(root.join(name)).unwrap();
+        for line in text.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("fsm ") {
+                if rest.starts_with("version")
+                    || rest.starts_with("docs ")
+                    || rest.starts_with("help")
+                {
+                    continue;
+                }
+                cmds.push(rest.to_string());
+            }
+        }
+    }
+    assert!(cmds.len() >= 3, "extracted {}", cmds.len());
     let spec = root.join("examples/expense_approval.json");
     let dir = tmp();
     let (c, out, err) = run_fsm(&dir, &["validate", spec.to_str().unwrap()]);
@@ -158,6 +175,17 @@ fn readme_and_examples_commands_run() {
     let (c, out, err) = run_fsm(&dir, &["instance", "history", "inst-demo"]);
     assert_eq!(c, 0, "{err}");
     assert!(out.contains("EventApplied") || out.contains("seq"), "{out}");
+    let order = root.join("examples/order_lifecycle.json");
+    if order.exists() {
+        let dir = tmp();
+        let (c, _, err) = run_fsm(&dir, &["machine", "add", order.to_str().unwrap()]);
+        assert_eq!(c, 0, "{err}");
+        let (c, out, err) = run_fsm(
+            &dir,
+            &["instance", "new", "order_lifecycle", "--request-id", "o1"],
+        );
+        assert_eq!(c, 0, "{out}{err}");
+    }
 }
 
 #[test]

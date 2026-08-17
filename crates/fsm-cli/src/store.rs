@@ -287,6 +287,7 @@ impl Store {
                 tree,
             },
         );
+        self.finish_commit();
         Ok(DefineOutcome {
             created: true,
             machine_id: id,
@@ -456,6 +457,9 @@ impl Store {
         self.records.push(rec.clone());
         self.state.last_seq = rec.seq;
         self.state.last_hash = rec.hash.clone();
+    }
+
+    fn finish_commit(&mut self) {
         self.after_commit();
     }
 
@@ -601,6 +605,7 @@ impl Store {
         self.note_record(&rec);
         let resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
         self.commit_dedup(request_id, resp.clone(), rec.seq);
+        self.finish_commit();
         Ok(resp)
     }
 
@@ -745,6 +750,7 @@ impl Store {
                     );
                 }
                 self.commit_dedup(request_id, resp.clone(), rec.seq);
+                self.finish_commit();
                 Ok(resp)
             }
             Outcome::Rejected(r) => {
@@ -795,6 +801,7 @@ impl Store {
                 self.note_record(&rec);
                 self.state.dedup.insert(request_id.into(), rec.seq);
                 self.last_errors.insert(request_id.into(), err.clone());
+                self.finish_commit();
                 Err(err)
             }
             Outcome::Ignored => {
@@ -817,6 +824,7 @@ impl Store {
                     ("request_id".into(), Value::Str(request_id.into())),
                 ]));
                 self.commit_dedup(request_id, resp.clone(), rec.seq);
+                self.finish_commit();
                 Ok(resp)
             }
         }
@@ -895,6 +903,7 @@ impl Store {
                 .request_id(request_id);
             self.last_errors.insert(request_id.into(), err.clone());
             self.state.dedup.insert(request_id.into(), rec.seq);
+            self.finish_commit();
             return Err(err);
         }
         let pending: Vec<String> = inst
@@ -951,6 +960,7 @@ impl Store {
         }
         let resp = Value::Obj(m);
         self.commit_dedup(request_id, resp.clone(), rec.seq);
+        self.finish_commit();
         Ok(resp)
     }
 
@@ -1002,6 +1012,7 @@ impl Store {
             .push(rec.seq);
         let resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
         self.commit_dedup(request_id, resp.clone(), rec.seq);
+        self.finish_commit();
         Ok(resp)
     }
 
@@ -1036,6 +1047,7 @@ impl Store {
         m.insert("request_id".into(), Value::Str(request_id.into()));
         let resp = Value::Obj(m);
         self.commit_dedup(request_id, resp.clone(), rec.seq);
+        self.finish_commit();
         Ok(resp)
     }
 
@@ -1138,7 +1150,9 @@ impl Store {
         include_trace: bool,
         include_rejected: bool,
     ) -> Result<Value, ErrorObj> {
+        let limit = limit.min(500);
         let mut entries = Vec::new();
+        let mut next_from_seq = None;
         for rec in self.records.iter().filter(|r| {
             r.body.get("instance_id").and_then(Value::as_str) == Some(instance_id)
                 && r.seq >= from_seq
@@ -1152,20 +1166,23 @@ impl Store {
                 continue;
             }
             if entries.len() >= limit {
+                next_from_seq = Some(rec.seq);
                 break;
             }
-            entries.push(history_entry(self, rec, include_trace)?);
+            entries.push(history_entry(self, rec, true)?);
         }
         let mut out = BTreeMap::from([
             ("instance_id".into(), Value::Str(instance_id.into())),
             ("entries".into(), Value::Arr(entries)),
-        ]);
-        if include_trace {
-            out.insert(
+            (
                 "chain_verified".into(),
                 Value::Bool(verify_prefix_hashes(&self.records)),
-            );
+            ),
+        ]);
+        if let Some(n) = next_from_seq {
+            out.insert("next_from_seq".into(), Value::Num(n.to_string()));
         }
+        let _ = include_trace;
         Ok(Value::Obj(out))
     }
 
@@ -1298,6 +1315,11 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
     let mut e = BTreeMap::new();
     e.insert("seq".into(), Value::Num(rec.seq.to_string()));
     e.insert("kind".into(), Value::Str(format!("{:?}", rec.kind)));
+    e.insert("ts".into(), Value::Num(rec.ts.to_string()));
+    e.insert("hash".into(), Value::Str(rec.hash.clone()));
+    if let Some(rid) = rec.body.get("request_id") {
+        e.insert("request_id".into(), rid.clone());
+    }
     if let Some(ev) = rec.body.get("event") {
         e.insert("event".into(), ev.clone());
     }
@@ -1321,6 +1343,7 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                 if let Ok(post) = fold_prefix(&store.records, rec.seq) {
                     if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                         if let Some(before) = pre.instances.get(iid) {
+                            e.insert("from_leaf".into(), Value::Str(before.leaf.clone()));
                             e.insert("before_leaf".into(), Value::Str(before.leaf.clone()));
                             let mut ctx = BTreeMap::new();
                             for (k, v) in &before.ctx {
@@ -1329,11 +1352,13 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                             e.insert("before_context".into(), Value::Obj(ctx));
                         }
                         if let Some(after) = post.instances.get(iid) {
+                            e.insert("to_leaf".into(), Value::Str(after.leaf.clone()));
                             e.insert("after_leaf".into(), Value::Str(after.leaf.clone()));
                             let mut ctx = BTreeMap::new();
                             for (k, v) in &after.ctx {
                                 ctx.insert(k.clone(), val_json(v));
                             }
+                            e.insert("context_after".into(), Value::Obj(ctx.clone()));
                             e.insert("after_context".into(), Value::Obj(ctx));
                         }
                     }

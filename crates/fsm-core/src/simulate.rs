@@ -79,7 +79,7 @@ pub fn simulate(
                     outcome: out,
                 });
             }
-            Outcome::Rejected(_) | Outcome::Ignored => {
+            Outcome::Rejected(_) => {
                 steps.push(SimStep {
                     index: i,
                     event: ev.clone(),
@@ -92,6 +92,16 @@ pub fn simulate(
                     stopped_at = Some(i);
                     break;
                 }
+            }
+            Outcome::Ignored => {
+                steps.push(SimStep {
+                    index: i,
+                    event: ev.clone(),
+                    leaf_after: st.leaf.clone(),
+                    ctx_after: st.ctx.clone(),
+                    effects: Vec::new(),
+                    outcome: out,
+                });
             }
         }
     }

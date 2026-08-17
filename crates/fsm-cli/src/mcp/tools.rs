@@ -154,6 +154,22 @@ fn ty(t: &str) -> Value {
     Value::Obj(BTreeMap::from([("type".into(), Value::Str(t.into()))]))
 }
 
+fn ty_num(min: i64, max: i64) -> Value {
+    Value::Obj(BTreeMap::from([
+        ("type".into(), Value::Str("number".into())),
+        ("minimum".into(), Value::Num(min.to_string())),
+        ("maximum".into(), Value::Num(max.to_string())),
+    ]))
+}
+
+fn ty_str_array(max_items: usize) -> Value {
+    Value::Obj(BTreeMap::from([
+        ("type".into(), Value::Str("array".into())),
+        ("items".into(), ty("string")),
+        ("maxItems".into(), Value::Num(max_items.to_string())),
+    ]))
+}
+
 fn enum_str(vals: &[&str]) -> Value {
     let mut m = BTreeMap::new();
     m.insert("type".into(), Value::Str("string".into()));
@@ -179,13 +195,18 @@ fn schema_machine_create_out() -> Value {
     p.insert("created".into(), ty("boolean"));
     p.insert("dry_run".into(), ty("boolean"));
     p.insert("warnings".into(), ty("array"));
-    schema_obj(p, &[], true)
+    schema_obj(
+        p,
+        &["machine_id", "name", "created", "dry_run", "warnings"],
+        true,
+    )
 }
 
 fn schema_machine_list_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("machines".into(), ty("array"));
-    schema_obj(p, &[], true)
+    p.insert("next_cursor".into(), ty("string"));
+    schema_obj(p, &["machines"], true)
 }
 
 fn schema_machine_get_out() -> Value {
@@ -193,21 +214,23 @@ fn schema_machine_get_out() -> Value {
     p.insert("machine_id".into(), ty("string"));
     p.insert("name".into(), ty("string"));
     p.insert("spec".into(), ty("object"));
-    schema_obj(p, &[], true)
+    schema_obj(p, &["machine_id", "name", "spec"], true)
 }
 
 fn schema_machine_analyze_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("findings".into(), ty("array"));
     p.insert("completeness".into(), ty("object"));
-    schema_obj(p, &[], true)
+    p.insert("reachability".into(), ty("object"));
+    p.insert("shadowing".into(), ty("array"));
+    schema_obj(p, &["findings", "completeness"], true)
 }
 
 fn schema_machine_diagram_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("format".into(), ty("string"));
     p.insert("diagram".into(), ty("string"));
-    schema_obj(p, &[], true)
+    schema_obj(p, &["format", "diagram"], true)
 }
 
 fn schema_instance_view_out() -> Value {
@@ -219,7 +242,19 @@ fn schema_instance_view_out() -> Value {
     p.insert("context".into(), ty("object"));
     p.insert("seq".into(), ty("number"));
     p.insert("request_id".into(), ty("string"));
-    schema_obj(p, &[], true)
+    schema_obj(
+        p,
+        &[
+            "instance_id",
+            "leaf",
+            "state",
+            "status",
+            "context",
+            "seq",
+            "request_id",
+        ],
+        true,
+    )
 }
 
 fn schema_effect_ack_out() -> Value {
@@ -227,13 +262,14 @@ fn schema_effect_ack_out() -> Value {
     p.insert("ok".into(), ty("string"));
     p.insert("effect_id".into(), ty("string"));
     p.insert("request_id".into(), ty("string"));
-    schema_obj(p, &[], true)
+    schema_obj(p, &["ok", "effect_id", "request_id"], true)
 }
 
 fn schema_instance_list_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instances".into(), ty("array"));
-    schema_obj(p, &[], true)
+    p.insert("next_cursor".into(), ty("string"));
+    schema_obj(p, &["instances"], true)
 }
 
 fn schema_instance_history_out() -> Value {
@@ -241,20 +277,23 @@ fn schema_instance_history_out() -> Value {
     p.insert("instance_id".into(), ty("string"));
     p.insert("entries".into(), ty("array"));
     p.insert("chain_verified".into(), ty("boolean"));
-    schema_obj(p, &[], true)
+    p.insert("next_from_seq".into(), ty("number"));
+    schema_obj(p, &["instance_id", "entries", "chain_verified"], true)
 }
 
 fn schema_simulate_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("steps".into(), ty("array"));
     p.insert("final".into(), ty("object"));
-    schema_obj(p, &[], true)
+    p.insert("initial".into(), ty("object"));
+    p.insert("stopped_at".into(), ty("number"));
+    schema_obj(p, &["steps", "final"], true)
 }
 
 fn schema_machine_list_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("name_contains".into(), ty("string"));
-    p.insert("limit".into(), ty("number"));
+    p.insert("limit".into(), ty_num(1, 1000));
     p.insert("cursor".into(), ty("string"));
     schema_obj(p, &[], false)
 }
@@ -276,9 +315,9 @@ fn schema_diagram_in() -> Value {
 fn schema_instance_create_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("machine".into(), ty("string"));
-    p.insert("context".into(), ty("object"));
+    p.insert("context".into(), Value::Obj(BTreeMap::new()));
     p.insert("request_id".into(), ty("string"));
-    p.insert("tags".into(), ty("array"));
+    p.insert("tags".into(), ty_str_array(32));
     schema_obj(p, &["machine", "request_id"], false)
 }
 
@@ -287,7 +326,7 @@ fn schema_instance_send_in() -> Value {
     p.insert("instance_id".into(), ty("string"));
     p.insert("event".into(), ty("object"));
     p.insert("request_id".into(), ty("string"));
-    p.insert("stamp".into(), ty("array"));
+    p.insert("stamp".into(), ty_str_array(32));
     p.insert("expect_seq".into(), ty("number"));
     schema_obj(p, &["instance_id", "event", "request_id"], false)
 }
@@ -329,7 +368,7 @@ fn schema_instance_list_in() -> Value {
         enum_str(&["running", "completed", "cancelled", "all"]),
     );
     p.insert("tag".into(), ty("string"));
-    p.insert("limit".into(), ty("number"));
+    p.insert("limit".into(), ty_num(1, 1000));
     p.insert("cursor".into(), ty("string"));
     schema_obj(p, &[], false)
 }
@@ -338,7 +377,7 @@ fn schema_instance_history_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));
     p.insert("from_seq".into(), ty("number"));
-    p.insert("limit".into(), ty("number"));
+    p.insert("limit".into(), ty_num(1, 500));
     p.insert("include_trace".into(), ty("boolean"));
     p.insert("include_rejected".into(), ty("boolean"));
     schema_obj(p, &["instance_id"], false)
@@ -355,7 +394,7 @@ fn schema_simulate_in() -> Value {
 }
 
 pub fn validate_args(schema: &Value, args: &Value) -> Result<(), ErrorObj> {
-    let Some(obj) = args.as_obj() else {
+    let Some(_obj) = args.as_obj() else {
         return Err(invalid(
             "arguments must be an object",
             "arguments",
@@ -363,55 +402,34 @@ pub fn validate_args(schema: &Value, args: &Value) -> Result<(), ErrorObj> {
             "not-object",
         ));
     };
-    let props = schema.get("properties").and_then(Value::as_obj);
-    let required = schema
-        .get("required")
-        .and_then(Value::as_arr)
-        .unwrap_or(&[]);
-    for req in required {
-        let name = req.as_str().unwrap_or("");
-        if !obj.contains_key(name) {
-            return Err(invalid(
-                &format!("missing {name}"),
-                name,
-                "present",
-                "missing",
-            ));
-        }
+    let mut violations = Vec::new();
+    collect_violations("", schema, args, &mut violations);
+    if violations.is_empty() {
+        return Ok(());
     }
-    let additional = schema
-        .get("additionalProperties")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
-    for (k, v) in obj {
-        let Some(ps) = props else { continue };
-        match ps.get(k) {
-            None if !additional => {
-                return Err(invalid(
-                    &format!("unknown field {k}"),
-                    k,
-                    "declared",
-                    "extra",
-                ));
-            }
-            None => {}
-            Some(pschema) => check_type(k, pschema, v)?,
-        }
-    }
-    Ok(())
+    let mut details = BTreeMap::new();
+    let fields: Vec<Value> = violations.iter().map(|v| Value::Str(v.0.clone())).collect();
+    details.insert("fields".into(), Value::Arr(fields));
+    details.insert("field".into(), Value::Str(violations[0].0.clone()));
+    details.insert("expected".into(), Value::Str(violations[0].1.clone()));
+    details.insert("got".into(), Value::Str(violations[0].2.clone()));
+    Err(ErrorObj::new("req/args_invalid", "invalid arguments")
+        .hint(format!("fix {}", violations[0].0))
+        .details(Value::Obj(details)))
 }
 
-fn check_type(field: &str, schema: &Value, got: &Value) -> Result<(), ErrorObj> {
+fn collect_violations(
+    path: &str,
+    schema: &Value,
+    got: &Value,
+    out: &mut Vec<(String, String, String)>,
+) {
     if let Some(arr) = schema.get("enum").and_then(Value::as_arr) {
         let s = got.as_str().unwrap_or("");
         if !arr.iter().any(|x| x.as_str() == Some(s)) {
             let listed: Vec<&str> = arr.iter().filter_map(Value::as_str).collect();
-            return Err(invalid(
-                &format!("invalid enum {s}"),
-                field,
-                &listed.join("|"),
-                s,
-            ));
+            out.push((path.into(), listed.join("|"), s.into()));
+            return;
         }
     }
     let want = schema.get("type").and_then(Value::as_str).unwrap_or("");
@@ -419,26 +437,108 @@ fn check_type(field: &str, schema: &Value, got: &Value) -> Result<(), ErrorObj> 
         "object" => got.is_obj(),
         "string" => got.is_str(),
         "boolean" => got.is_bool(),
-        "number" => {
-            got.is_num()
-                || got
-                    .as_str()
-                    .map(|s| s.parse::<i64>().is_ok())
-                    .unwrap_or(false)
-        }
+        "number" => got.is_num(),
         "array" => got.is_arr(),
         "" => true,
         _ => true,
     };
-    if !ok {
-        return Err(invalid(
-            &format!("expected {want}"),
-            field,
-            want,
-            type_name(got),
-        ));
+    if !ok && !want.is_empty() {
+        out.push((path.into(), want.into(), type_name(got).into()));
+        return;
     }
-    Ok(())
+    if want == "number" {
+        if let Some(max) = schema
+            .get("maximum")
+            .and_then(Value::as_num)
+            .and_then(|s| s.parse::<i64>().ok())
+        {
+            if let Some(n) = got.as_num().and_then(|s| s.parse::<i64>().ok()) {
+                if n > max {
+                    out.push((path.into(), format!("<= {max}"), n.to_string()));
+                }
+            }
+        }
+        if let Some(min) = schema
+            .get("minimum")
+            .and_then(Value::as_num)
+            .and_then(|s| s.parse::<i64>().ok())
+        {
+            if let Some(n) = got.as_num().and_then(|s| s.parse::<i64>().ok()) {
+                if n < min {
+                    out.push((path.into(), format!(">= {min}"), n.to_string()));
+                }
+            }
+        }
+    }
+    if want == "object" {
+        if let Some(obj) = got.as_obj() {
+            let props = schema.get("properties").and_then(Value::as_obj);
+            let required = schema
+                .get("required")
+                .and_then(Value::as_arr)
+                .unwrap_or(&[]);
+            for req in required {
+                let name = req.as_str().unwrap_or("");
+                if !obj.contains_key(name) {
+                    let p = if path.is_empty() {
+                        name.into()
+                    } else {
+                        format!("{path}.{name}")
+                    };
+                    out.push((p, "present".into(), "missing".into()));
+                }
+            }
+            let additional = schema
+                .get("additionalProperties")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            if let Some(ps) = props {
+                for (k, v) in obj {
+                    match ps.get(k) {
+                        None if !additional => {
+                            let p = if path.is_empty() {
+                                k.clone()
+                            } else {
+                                format!("{path}.{k}")
+                            };
+                            out.push((p, "declared".into(), "extra".into()));
+                        }
+                        Some(pschema) => {
+                            let p = if path.is_empty() {
+                                k.clone()
+                            } else {
+                                format!("{path}.{k}")
+                            };
+                            collect_violations(&p, pschema, v, out);
+                        }
+                        None => {}
+                    }
+                }
+            }
+        }
+    }
+    if want == "array" {
+        if let Some(arr) = got.as_arr() {
+            if let Some(max) = schema
+                .get("maxItems")
+                .and_then(Value::as_num)
+                .and_then(|s| s.parse::<usize>().ok())
+            {
+                if arr.len() > max {
+                    out.push((
+                        path.into(),
+                        format!("maxItems {max}"),
+                        arr.len().to_string(),
+                    ));
+                }
+            }
+            if let Some(item) = schema.get("items") {
+                for (i, v) in arr.iter().enumerate() {
+                    collect_violations(&format!("{path}[{i}]"), item, v, out);
+                }
+            }
+        }
+    }
 }
 
 fn type_name(v: &Value) -> &'static str {
@@ -475,9 +575,16 @@ pub fn dispatch(
     if let Err(e) = validate_args(&(spec.input_schema)(), args) {
         return Err(attach_request_id(e, args));
     }
-    let t = clock.now_ms();
-    crate::clock::force_ms(t);
-    (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))
+    let mutating = matches!(
+        name,
+        "machine_create" | "instance_create" | "instance_send" | "effect_ack" | "instance_cancel"
+    );
+    if mutating {
+        let _pin = crate::clock::pin(clock.now_ms());
+        (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))
+    } else {
+        (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))
+    }
 }
 
 fn attach_request_id(e: ErrorObj, args: &Value) -> ErrorObj {
@@ -532,9 +639,11 @@ fn run_machine_list(
     let limit = args
         .get("limit")
         .and_then(|v| v.as_num().and_then(|s| s.parse::<usize>().ok()))
-        .unwrap_or(usize::MAX);
+        .unwrap_or(50)
+        .clamp(1, 1000);
     let cursor = str_arg(args, "cursor");
     let mut rows = Vec::new();
+    let mut next_cursor = None;
     for (id, m) in &store.state.machines {
         if let Some(c) = cursor {
             if id.as_str() <= c {
@@ -547,32 +656,61 @@ fn run_machine_list(
             }
         }
         if rows.len() >= limit {
+            next_cursor = Some(id.clone());
             break;
         }
         let mut row = BTreeMap::new();
         row.insert("machine_id".into(), Value::Str(id.clone()));
         row.insert("name".into(), Value::Str(m.compiled.spec.name.clone()));
-        let count = store
+        let insts: Vec<_> = store
             .state
             .instance_machines
-            .values()
-            .filter(|mid| *mid == id)
-            .count();
-        row.insert("instance_count".into(), Value::Num(count.to_string()));
+            .iter()
+            .filter(|(_, mid)| *mid == id)
+            .map(|(iid, _)| iid)
+            .collect();
+        row.insert("instance_count".into(), Value::Num(insts.len().to_string()));
+        let mut running = 0u32;
+        let mut completed = 0u32;
+        let mut cancelled = 0u32;
+        for iid in &insts {
+            if let Some(inst) = store.state.instances.get(*iid) {
+                match inst.status {
+                    fsm_core::machine::Status::Running => running += 1,
+                    fsm_core::machine::Status::Completed => completed += 1,
+                    fsm_core::machine::Status::Cancelled => cancelled += 1,
+                }
+            }
+        }
+        row.insert("running".into(), Value::Num(running.to_string()));
+        row.insert("completed".into(), Value::Num(completed.to_string()));
+        row.insert("cancelled".into(), Value::Num(cancelled.to_string()));
         row.insert(
             "state_count".into(),
-            Value::Num(m.compiled.spec.states.len().to_string()),
+            Value::Num(count_nodes(&m.compiled.spec.states).to_string()),
         );
         row.insert(
             "event_count".into(),
             Value::Num(m.compiled.spec.events.len().to_string()),
         );
+        let defined_seq = store
+            .records
+            .iter()
+            .find(|r| r.body.get("machine_id").and_then(Value::as_str) == Some(id.as_str()))
+            .map(|r| r.seq)
+            .unwrap_or(0);
+        row.insert("defined_seq".into(), Value::Num(defined_seq.to_string()));
         rows.push(Value::Obj(row));
     }
-    Ok(Value::Obj(BTreeMap::from([(
-        "machines".into(),
-        Value::Arr(rows),
-    )])))
+    let mut out = BTreeMap::from([("machines".into(), Value::Arr(rows))]);
+    if let Some(c) = next_cursor {
+        out.insert("next_cursor".into(), Value::Str(c));
+    }
+    Ok(Value::Obj(out))
+}
+
+fn count_nodes(nodes: &[fsm_core::spec::StateNode]) -> usize {
+    nodes.iter().map(|n| 1 + count_nodes(&n.states)).sum()
 }
 
 fn run_machine_get(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<Value, ErrorObj> {
@@ -758,8 +896,13 @@ fn run_instance_list(
     let limit = args
         .get("limit")
         .and_then(|v| v.as_num().and_then(|s| s.parse::<usize>().ok()))
-        .unwrap_or(usize::MAX);
+        .unwrap_or(50)
+        .clamp(1, 1000);
+    if let Some(mref) = machine {
+        store.resolve_machine(mref)?;
+    }
     let mut rows = Vec::new();
+    let mut next_cursor = None;
     for (id, inst) in &store.state.instances {
         if let Some(st) = status {
             if st != "all" && inst.status.as_str() != st {
@@ -767,16 +910,12 @@ fn run_instance_list(
             }
         }
         if let Some(mref) = machine {
-            match store.resolve_machine(mref) {
-                Ok(m) => {
-                    if store.state.instance_machines.get(id) != Some(&m.compiled.machine_id)
-                        && store.state.instance_machines.get(id)
-                            != Some(&fsm_core::hashes::machine_id(&m.def))
-                    {
-                        continue;
-                    }
-                }
-                Err(_) => continue,
+            let m = store.resolve_machine(mref)?;
+            if store.state.instance_machines.get(id) != Some(&m.compiled.machine_id)
+                && store.state.instance_machines.get(id)
+                    != Some(&fsm_core::hashes::machine_id(&m.def))
+            {
+                continue;
             }
         }
         if let Some(st) = state {
@@ -800,18 +939,48 @@ fn run_instance_list(
             }
         }
         if rows.len() >= limit {
+            next_cursor = Some(id.clone());
             break;
         }
         let mut row = BTreeMap::new();
         row.insert("instance_id".into(), Value::Str(id.clone()));
         row.insert("state".into(), Value::Str(inst.leaf.clone()));
         row.insert("status".into(), Value::Str(inst.status.as_str().into()));
+        let mid = store
+            .state
+            .instance_machines
+            .get(id)
+            .cloned()
+            .unwrap_or_default();
+        let machine_name = store
+            .state
+            .machines
+            .get(&mid)
+            .map(|m| m.compiled.spec.name.clone())
+            .unwrap_or_default();
+        row.insert("machine_name".into(), Value::Str(machine_name));
+        let seq = store
+            .history
+            .get(id)
+            .and_then(|h| h.last().copied())
+            .unwrap_or(0);
+        row.insert("seq".into(), Value::Num(seq.to_string()));
+        let tags = store
+            .tags
+            .get(id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(Value::Str)
+            .collect();
+        row.insert("tags".into(), Value::Arr(tags));
         rows.push(Value::Obj(row));
     }
-    Ok(Value::Obj(BTreeMap::from([(
-        "instances".into(),
-        Value::Arr(rows),
-    )])))
+    let mut out = BTreeMap::from([("instances".into(), Value::Arr(rows))]);
+    if let Some(c) = next_cursor {
+        out.insert("next_cursor".into(), Value::Str(c));
+    }
+    Ok(Value::Obj(out))
 }
 
 fn run_instance_history(
@@ -827,7 +996,8 @@ fn run_instance_history(
     let limit = args
         .get("limit")
         .and_then(|v| v.as_num().and_then(|s| s.parse().ok()))
-        .unwrap_or(50usize);
+        .unwrap_or(50usize)
+        .min(500);
     let include_trace = args
         .get("include_trace")
         .and_then(Value::as_bool)
@@ -879,26 +1049,47 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
         _ => OnReject::Stop,
     };
     let mut overrides = BTreeMap::new();
-    if let Some(Value::Obj(ctx)) = args.get("context") {
-        for (k, val) in ctx {
+    if let Some(ctx) = args.get("context") {
+        let Value::Obj(obj) = ctx else {
+            return Err(ErrorObj::new(
+                "req/args_invalid",
+                "context must be an object",
+            ));
+        };
+        for (k, val) in obj {
+            let decl = compiled
+                .spec
+                .context
+                .iter()
+                .find(|c| c.name == *k)
+                .ok_or_else(|| ErrorObj::new("req/field_unknown", k.clone()))?;
             let raw = match val {
                 Value::Str(s) => s.clone(),
                 Value::Bool(b) => b.to_string(),
-                _ => continue,
-            };
-            if let Some(decl) = compiled.spec.context.iter().find(|c| c.name == *k) {
-                if let Ok(v) = coerce_ctx_override(&decl.ty, k, &raw) {
-                    overrides.insert(k.clone(), v);
+                Value::Num(_) => {
+                    return Err(ErrorObj::new("req/number_token", k.clone()));
                 }
-            }
+                _ => return Err(ErrorObj::new("req/field_type", k.clone())),
+            };
+            let v = coerce_ctx_override(&decl.ty, k, &raw)?;
+            overrides.insert(k.clone(), v);
         }
     }
     let report = simulate(&compiled, &tree, &overrides, &events, on);
+    let initial_leaf = {
+        let created = fsm_core::step::create(&compiled, &tree, &overrides).ok();
+        created
+            .as_ref()
+            .map(|a| a.leaf_after.clone())
+            .unwrap_or_else(|| compiled.spec.initial.clone())
+    };
+    let mut from_leaf = initial_leaf.clone();
     let mut steps = Vec::new();
     for st in &report.steps {
         let mut m = BTreeMap::new();
         m.insert("index".into(), Value::Num(st.index.to_string()));
         m.insert("event".into(), Value::Str(st.event.clone()));
+        m.insert("from_leaf".into(), Value::Str(from_leaf.clone()));
         m.insert(
             "applied".into(),
             Value::Bool(matches!(st.outcome, fsm_core::step::Outcome::Applied(_))),
@@ -918,6 +1109,11 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
                         let mut em = BTreeMap::new();
                         em.insert("effect".into(), Value::Str(ef.name.clone()));
                         em.insert("k".into(), Value::Num(ef.k.to_string()));
+                        let mut args = BTreeMap::new();
+                        for (k, v) in &ef.args {
+                            args.insert(k.clone(), crate::store::val_json(v));
+                        }
+                        em.insert("args".into(), Value::Obj(args));
                         Value::Obj(em)
                     })
                     .collect(),
@@ -928,21 +1124,46 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
                 m.insert("trace".into(), a.trace.to_value());
             }
             fsm_core::step::Outcome::Rejected(r) => {
-                m.insert("error".into(), Value::Str(r.code.into()));
+                let mut err = BTreeMap::new();
+                err.insert("code".into(), Value::Str(r.code.into()));
+                err.insert("message".into(), Value::Str(r.message.clone()));
+                err.insert("hint".into(), Value::Str(r.hint.clone()));
+                m.insert("error".into(), Value::Obj(err));
                 m.insert("trace".into(), r.trace.to_value());
             }
-            _ => {}
+            fsm_core::step::Outcome::Ignored => {
+                m.insert("ignored".into(), Value::Bool(true));
+            }
         }
+        from_leaf = st.leaf_after.clone();
         steps.push(Value::Obj(m));
     }
+    let mut final_ctx = BTreeMap::new();
+    if let Some(last) = report.steps.last() {
+        for (k, v) in &last.ctx_after {
+            final_ctx.insert(k.clone(), crate::store::val_json(v));
+        }
+    }
     Ok(Value::Obj(BTreeMap::from([
+        (
+            "initial".into(),
+            Value::Obj(BTreeMap::from([("leaf".into(), Value::Str(initial_leaf))])),
+        ),
         ("steps".into(), Value::Arr(steps)),
         (
             "final".into(),
             Value::Obj(BTreeMap::from([
                 ("state".into(), Value::Str(report.final_leaf)),
                 ("terminal".into(), Value::Bool(report.terminal)),
+                ("context".into(), Value::Obj(final_ctx)),
             ])),
+        ),
+        (
+            "stopped_at".into(),
+            report
+                .stopped_at
+                .map(|n| Value::Num(n.to_string()))
+                .unwrap_or(Value::Null),
         ),
     ])))
 }

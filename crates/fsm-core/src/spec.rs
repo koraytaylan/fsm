@@ -182,6 +182,8 @@ pub struct MachineSpec {
     pub on_unhandled: Unhandled,
     pub transitions: Vec<TransitionSpec>,
     pub invariants: Vec<InvariantSpec>,
+    /// Original accepted document when parsed; identity is always this value.
+    pub source: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -396,6 +398,7 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
         on_unhandled,
         transitions,
         invariants,
+        source: Some(v.clone()),
     })
 }
 
@@ -1496,15 +1499,15 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
         errs: &mut Vec<Finding>,
         depth: u32,
     ) {
-        if depth > limits::MAX_NESTING {
-            errs.push(Finding::err(
-                "def/limit_depth",
-                "/states",
-                "nesting exceeds 12",
-                "flatten the tree",
-            ));
-        }
         for n in nodes {
+            if depth > limits::MAX_NESTING {
+                errs.push(Finding::err(
+                    "def/limit_depth",
+                    "/states",
+                    "nesting exceeds 12",
+                    "flatten the tree",
+                ));
+            }
             if !names.insert(n.name.clone()) {
                 errs.push(Finding::err(
                     "def/dup_name",
@@ -2266,7 +2269,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     if !errs.is_empty() {
         return Err(errs);
     }
-    let accepted = spec.to_value();
+    let accepted = spec.source.clone().unwrap_or_else(|| spec.to_value());
     let (canonical, machine_id) = accepted_identity(&accepted);
     Ok(CompiledMachine {
         machine_id,
@@ -2296,11 +2299,7 @@ pub fn compile_accepted(source: &Value) -> Result<CompiledMachine, Vec<Finding>>
         )]);
     }
     let spec = parse_machine(source)?;
-    let mut compiled = compile(spec)?;
-    let (canonical, machine_id) = accepted_identity(source);
-    compiled.canonical = canonical;
-    compiled.machine_id = machine_id;
-    Ok(compiled)
+    compile(spec)
 }
 
 pub fn load_machine_json(bytes: &[u8]) -> Result<MachineSpec, Vec<Finding>> {

@@ -276,10 +276,10 @@ fn replay_prefix_disagrees_with_later_live_state() {
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("\"agreement\":false") || stdout.contains("agreement\": false"),
+        stdout.contains("\"agreement\":true") || stdout.contains("agreement\": true"),
         "{stdout}"
     );
-    assert_ne!(out.status.code(), Some(0));
+    assert_eq!(out.status.code(), Some(0));
     let bad = Command::new(&bin)
         .args([
             "--data-dir",
@@ -1515,7 +1515,109 @@ fn output_schemas_are_field_level() {
             assert!(props.contains_key(*f), "{name} missing output field {f}");
         }
         assert!(!props.is_empty(), "{} empty output schema", t.name);
+        let req = out.get("required").and_then(Value::as_arr).unwrap();
+        assert!(!req.is_empty(), "{name} output required empty");
     }
+}
+
+#[test]
+fn history_default_wire_has_audit_metadata() {
+    let _g = gate();
+    let dir = tmp("hist");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    let v = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_history",
+        &Value::Obj(BTreeMap::from([(
+            "instance_id".into(),
+            Value::Str("i1".into()),
+        )])),
+    )
+    .unwrap();
+    assert_eq!(v.get("chain_verified").and_then(Value::as_bool), Some(true));
+    let e = &v.get("entries").and_then(Value::as_arr).unwrap()[0];
+    assert!(e.get("ts").is_some(), "{e:?}");
+    assert!(e.get("hash").is_some(), "{e:?}");
+    assert!(e.get("request_id").is_some(), "{e:?}");
+}
+
+#[test]
+fn dispatch_reads_do_not_force_ms() {
+    fsm_cli::clock::reset_injected();
+    let dir = tmp("clk");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(9_000, 1);
+    fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::new()),
+    )
+    .unwrap();
+    assert_eq!(clock.now, 9_000, "read must not consume the injected clock");
+}
+
+#[test]
+fn verify_report_has_state_hashes() {
+    let _g = gate();
+    let dir = tmp("vr");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    drop(store);
+    let v = fsm_cli::journal_io::verify(&dir);
+    assert!(!v.instance_hashes.is_empty(), "{:?}", v.instance_hashes);
+}
+
+#[test]
+fn validate_aggregates_fields() {
+    let send = fsm_cli::mcp::tools::registry()
+        .into_iter()
+        .find(|t| t.name == "instance_send")
+        .unwrap();
+    let err =
+        fsm_cli::mcp::tools::validate_args(&(send.input_schema)(), &Value::Obj(BTreeMap::new()))
+            .unwrap_err();
+    let fields = err.details.get("fields").and_then(Value::as_arr).unwrap();
+    assert!(fields.len() >= 2, "{err:?}");
+}
+
+#[test]
+fn journal_replay_prefix_agrees() {
+    let _g = gate();
+    let dir = tmp("jrp");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store.shutdown_snapshot().unwrap();
+    drop(store);
+    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    let n = recs[recs.len() / 2].seq;
+    let prefix: Vec<_> = recs.into_iter().filter(|r| r.seq <= n).collect();
+    let folded = fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink).unwrap();
+    let live = Store::open(&dir).unwrap();
+    let live_at = fsm_core::replay::fold_with(
+        live.records
+            .iter()
+            .filter(|r| r.seq <= n)
+            .cloned()
+            .collect::<Vec<_>>(),
+        &mut fsm_core::replay::NopSink,
+    )
+    .unwrap();
+    assert_eq!(folded.last_seq, live_at.last_seq);
+    assert_eq!(folded.last_hash, live_at.last_hash);
 }
 
 #[test]

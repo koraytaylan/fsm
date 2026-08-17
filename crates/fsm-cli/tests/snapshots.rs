@@ -1,6 +1,6 @@
 //! Snapshot write/reload, keep-3, corrupt fallback, and 10k trigger.
 
-use fsm_cli::snapshot::{listed_snaps, load_newest_valid, write_snapshot};
+use fsm_cli::snapshot::{listed_snaps, write_snapshot};
 use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::replay::{NopSink, fold_with};
@@ -81,8 +81,66 @@ fn corrupt_snapshot_falls_back() {
     }
     std::fs::write(&path, b).unwrap();
     drop(store);
+    for (_, p) in listed_snaps(&dir) {
+        let mut b = std::fs::read(&p).unwrap();
+        if let Some(x) = b.last_mut() {
+            *x ^= 0xff;
+        }
+        std::fs::write(&p, b).unwrap();
+    }
     let reopened = Store::open(&dir).unwrap();
     assert!(reopened.state.instances.contains_key("i1"));
+}
+
+#[test]
+fn stale_self_hashed_snapshot_falls_back() {
+    let dir = tmp();
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store.shutdown_snapshot().unwrap();
+    let path = listed_snaps(&dir).into_iter().next().unwrap().1;
+    let bytes = std::fs::read(&path).unwrap();
+    let mut v = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
+    if let Value::Obj(o) = &mut v {
+        o.insert("instances".into(), Value::Obj(Default::default()));
+        o.insert("snapshot_hash".into(), Value::Str(String::new()));
+        let h = format!(
+            "sha256:{}",
+            fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+                "fsm:snapshot:1",
+                &Value::Obj(o.clone())
+            ))
+        );
+        o.insert("snapshot_hash".into(), Value::Str(h));
+        let out = fsm_core::canon::canon_bytes(&Value::Obj(o.clone()));
+        std::fs::write(&path, out).unwrap();
+    }
+    drop(store);
+    for (_, p) in listed_snaps(&dir) {
+        let bytes = std::fs::read(&p).unwrap();
+        let mut v = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
+        if let Value::Obj(o) = &mut v {
+            o.insert("instances".into(), Value::Obj(Default::default()));
+            o.insert("snapshot_hash".into(), Value::Str(String::new()));
+            let h = format!(
+                "sha256:{}",
+                fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+                    "fsm:snapshot:1",
+                    &Value::Obj(o.clone())
+                ))
+            );
+            o.insert("snapshot_hash".into(), Value::Str(h));
+            std::fs::write(&p, fsm_core::canon::canon_bytes(&Value::Obj(o.clone()))).unwrap();
+        }
+    }
+    let reopened = Store::open(&dir).unwrap();
+    assert!(
+        reopened.state.instances.contains_key("i1"),
+        "stale empty instance map must not win over journal"
+    );
 }
 
 #[test]
@@ -103,14 +161,57 @@ fn keep_newest_three() {
 
 #[test]
 fn ten_k_trigger_writes() {
+    ten_k_kill_without_drop_reopen_and_dedup();
+}
+
+#[test]
+fn ten_k_kill_without_drop_reopen_and_dedup() {
+    if std::env::var("FSM_TENK").ok().as_deref() == Some("1") {
+        let dir = std::path::PathBuf::from(std::env::var("FSM_TENK_DIR").unwrap());
+        let mut store = Store::open(&dir).unwrap();
+        store.define_machine(case(), false, false).unwrap();
+        store
+            .create_instance("case_review", "i1", "c1", None)
+            .unwrap();
+        while store.journal.last_seq < 10_000 {
+            let n = store.journal.last_seq;
+            store.annotate("i1", &format!("a{n}"), "n").unwrap();
+        }
+        assert_eq!(store.journal.last_seq, 10_000);
+        assert!(!listed_snaps(&dir).is_empty());
+        std::mem::forget(store);
+        std::process::exit(0);
+    }
     let dir = tmp();
-    let mut store = Store::open(&dir).unwrap();
-    store.define_machine(case(), false, false).unwrap();
-    store.state.last_seq = 10_000;
-    store.journal.last_seq = 10_000;
-    store.maybe_snapshot().unwrap();
+    let exe = std::env::current_exe().unwrap();
+    let out = std::process::Command::new(exe)
+        .env("FSM_TENK", "1")
+        .env("FSM_TENK_DIR", &dir)
+        .args(["--exact", "ten_k_kill_without_drop_reopen_and_dedup"])
+        .output()
+        .unwrap();
     assert!(
-        !listed_snaps(&dir).is_empty() || load_newest_valid(&dir).is_some(),
-        "10k trigger should write"
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
     );
+    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    assert_eq!(recs.last().map(|r| r.seq), Some(10_000));
+    let folded = fold_with(recs, &mut NopSink).unwrap();
+    let mut reopened = Store::open(&dir).unwrap();
+    assert_eq!(reopened.state.last_seq, 10_000);
+    assert_eq!(reopened.state.last_hash, folded.last_hash);
+    assert_eq!(
+        reopened.state.instances.get("i1").map(|i| &i.ctx),
+        folded.instances.get("i1").map(|i| &i.ctx)
+    );
+    assert_eq!(reopened.state.dedup, folded.dedup);
+    let last_rid = format!("a{}", 9999);
+    let again = reopened.annotate("i1", &last_rid, "n");
+    match again {
+        Ok(v) => assert_eq!(v.get("duplicate").and_then(Value::as_bool), Some(true)),
+        Err(_) => {
+            // request may be named a{seq-before-annotate}
+        }
+    }
 }

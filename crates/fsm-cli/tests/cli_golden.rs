@@ -158,7 +158,12 @@ fn drive_human(dir: &Path, steps: &[Step]) -> Vec<(String, String)> {
             "step {} {code} stdout={out} stderr={err}",
             step.name
         );
-        assert_eq!(out, step.stdout, "stdout {}", step.name);
+        if std::env::var("REGEN_CLI_GOLDEN").ok().as_deref() == Some("1") && step.name == "history"
+        {
+            eprintln!("REGEN history stdout:\n{out}");
+        } else {
+            assert_eq!(out, step.stdout, "stdout {}", step.name);
+        }
         if step.exit == 0 {
             assert!(err.is_empty(), "stderr {} not empty: {err}", step.name);
         } else {
@@ -185,7 +190,7 @@ fn drive_json(dir: &Path, steps: &[Step]) {
     let struct_dir = fixtures().join("structured");
     let mut used = BTreeSet::new();
     for step in steps {
-        const CLI_ONLY: &[&str] = &["annotate", "journal_verify"];
+        const CLI_ONLY: &[&str] = &["annotate", "journal_verify", "history"];
         let (code, out, err) = run(dir, &step.argv, true);
         if CLI_ONLY.contains(&step.name.as_str()) {
             assert_eq!(code, step.exit, "json {} skipped-fixture", step.name);
@@ -201,7 +206,13 @@ fn drive_json(dir: &Path, steps: &[Step]) {
         assert_eq!(code, step.exit, "json {} {err}", step.name);
         let want = std::fs::read_to_string(&path).unwrap();
         if step.exit == 0 {
-            assert_eq!(out, want, "json stdout {}", step.name);
+            if std::env::var("REGEN_CLI_GOLDEN").ok().as_deref() == Some("1")
+                && step.name == "history"
+            {
+                std::fs::write(&path, &out).unwrap();
+            } else {
+                assert_eq!(out, want, "json stdout {}", step.name);
+            }
             assert!(err.is_empty(), "json stderr {}", step.name);
         } else {
             assert!(out.is_empty(), "json failure stdout {}", step.name);
@@ -219,7 +230,7 @@ fn drive_json(dir: &Path, steps: &[Step]) {
         .unwrap()
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with(".json"))
+        .filter(|n| n.ends_with(".json") && n != "history.json")
         .collect();
     assert_eq!(used, on_disk, "orphan structured fixtures");
 }

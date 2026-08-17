@@ -26,7 +26,7 @@ Every line is a runnable command or is tagged `manual:`.
 
 ## Regeneration checks
 
-- `python3 tools/gen_decimal_vectors.py`
+- `python3 tools/gen_decimal_vectors.py && python3 tools/gen_decimal_vectors.py && git diff --exit-code crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl`
 - `cargo test -p fsm-cli --test mcp_full`
 - `cargo metadata --manifest-path fuzz/Cargo.toml --format-version 1`
 - `manual:` replay `docs/EXAMPLES.md` transcripts under `FSM_CLOCK_MS` and compare output.

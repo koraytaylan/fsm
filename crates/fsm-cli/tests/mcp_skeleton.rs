@@ -45,7 +45,13 @@ fn skeleton_transcript() {
     let input = include_str!("fixtures/transcripts/skeleton.in.jsonl");
     let expected = include_str!("fixtures/transcripts/skeleton.out.jsonl");
     let got = run(input);
-    assert_eq!(got, expected);
+    if std::env::var("REGEN_SKELETON").ok().as_deref() == Some("1") {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/transcripts/skeleton.out.jsonl");
+        std::fs::write(p, &got).unwrap();
+    } else {
+        assert_eq!(got, expected);
+    }
     assert_hygiene(&got);
 }
 
@@ -54,7 +60,13 @@ fn skeleton_echo_transcript() {
     let input = include_str!("fixtures/transcripts/skeleton_echo.in.jsonl");
     let expected = include_str!("fixtures/transcripts/skeleton_echo.out.jsonl");
     let got = run(input);
-    assert_eq!(got, expected);
+    if std::env::var("REGEN_SKELETON").ok().as_deref() == Some("1") {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/transcripts/skeleton_echo.out.jsonl");
+        std::fs::write(p, &got).unwrap();
+    } else {
+        assert_eq!(got, expected);
+    }
     assert_hygiene(&got);
 }
 

@@ -6,8 +6,14 @@ use fsm_core::expr::parser;
 fuzz_target!(|data: &[u8]| {
     let s = String::from_utf8_lossy(data);
     let _ = lexer::lex(&s);
-    if let Ok(e) = parser::parse(&s) {
-        assert!(fsm_core::expr::ast::node_count(&e) <= 512);
-        assert!(fsm_core::expr::ast::depth(&e) <= 32);
+    match parser::parse(&s) {
+        Ok(e) => {
+            assert!(fsm_core::expr::ast::node_count(&e) <= 512);
+            assert!(fsm_core::expr::ast::depth(&e) <= 32);
+        }
+        Err(e) => {
+            assert!(e.span.end >= e.span.start);
+            assert!(!e.code.is_empty());
+        }
     }
 });

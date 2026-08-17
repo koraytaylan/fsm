@@ -259,6 +259,29 @@ fn type_default(ty: &crate::spec::TySpec, enums: &BTreeMap<String, Vec<String>>)
     })
 }
 
+fn type_alt(ty: &crate::spec::TySpec, enums: &BTreeMap<String, Vec<String>>) -> Option<Val> {
+    use crate::spec::TySpec;
+    Some(match ty {
+        TySpec::Int => Val::Int(1),
+        TySpec::Bool => Val::Bool(true),
+        TySpec::Str => Val::Str("x".into()),
+        TySpec::Ts => Val::Ts(1),
+        TySpec::Dur => Val::Dur(1),
+        TySpec::Dec { scale } => Val::Dec(crate::decimal::Dec {
+            mant: 1,
+            scale: *scale,
+        }),
+        TySpec::Enum { of } => {
+            let vars = enums.get(of)?;
+            let v = vars.get(1).or_else(|| vars.first())?.clone();
+            Val::Enum {
+                ty: of.clone(),
+                variant: v,
+            }
+        }
+    })
+}
+
 pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     let declared = crate::step::create(m, t, &BTreeMap::new());
     let Err(r) = declared else {
@@ -275,6 +298,24 @@ pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     }
     if crate::step::create(m, t, &defaults).is_ok() {
         return Vec::new();
+    }
+    let mut alts = BTreeMap::new();
+    for c in &m.spec.context {
+        if let Some(v) = type_alt(&c.ty, &m.spec.enums) {
+            alts.insert(c.name.clone(), v);
+        }
+    }
+    if crate::step::create(m, t, &alts).is_ok() {
+        return Vec::new();
+    }
+    for c in &m.spec.context {
+        if let Some(v) = type_alt(&c.ty, &m.spec.enums) {
+            let mut one = BTreeMap::new();
+            one.insert(c.name.clone(), v);
+            if crate::step::create(m, t, &one).is_ok() {
+                return Vec::new();
+            }
+        }
     }
     vec![Finding {
         severity: Severity::Error,

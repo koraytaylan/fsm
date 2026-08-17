@@ -71,17 +71,28 @@ fn enumerate_small_differential() {
         };
         for seq in seqs {
             count += 1;
-            let Ok(c) = create(&m, &t, &BTreeMap::new()) else {
+            let Ok(c_engine) = create(&m, &t, &BTreeMap::new()) else {
                 continue;
             };
+            let Ok(c_naive) = oracle::naive_create(&m, &BTreeMap::new()) else {
+                continue;
+            };
+            assert_eq!(c_engine.leaf_after, c_naive.leaf_after, "create leaf {src}");
+            assert_eq!(c_engine.ctx_after, c_naive.ctx_after, "create ctx {src}");
             let mut st = fsm_core::machine::InstanceState {
-                status: c.status_after,
-                leaf: c.leaf_after,
-                ctx: c.ctx_after,
-                history: c.history_after,
+                status: c_engine.status_after,
+                leaf: c_engine.leaf_after,
+                ctx: c_engine.ctx_after,
+                history: c_engine.history_after,
                 pending: vec![],
             };
-            let mut st2 = st.clone();
+            let mut st2 = fsm_core::machine::InstanceState {
+                status: c_naive.status_after,
+                leaf: c_naive.leaf_after,
+                ctx: c_naive.ctx_after,
+                history: c_naive.history_after,
+                pending: vec![],
+            };
             for ev in &seq {
                 let mut b1 = Budget::new(4096);
                 let mut b2 = Budget::new(4096);
@@ -92,7 +103,10 @@ fn enumerate_small_differential() {
                         assert_eq!(a.leaf_after, b.leaf_after, "{src} {seq:?}");
                         assert_eq!(a.ctx_after, b.ctx_after);
                         assert_eq!(a.history_after, b.history_after);
+                        assert_eq!(a.status_after, b.status_after);
                         assert_eq!(a.effects.len(), b.effects.len());
+                        assert_eq!(a.monitor_flags, b.monitor_flags);
+                        assert!(b1.remaining() <= 4096 && b2.remaining() <= 4096);
                         st.leaf = a.leaf_after.clone();
                         st.ctx = a.ctx_after.clone();
                         st.history = a.history_after.clone();
@@ -104,7 +118,6 @@ fn enumerate_small_differential() {
                     }
                     (Outcome::Rejected(r1), Outcome::Rejected(r2)) => {
                         assert_eq!(r1.code, r2.code, "{src} {seq:?}");
-                        // rejected leaves state
                     }
                     (Outcome::Ignored, Outcome::Ignored) => {}
                     _ => panic!("kind mismatch {src} {seq:?} {o1:?} {o2:?}"),

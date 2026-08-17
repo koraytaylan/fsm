@@ -17,8 +17,15 @@ pub fn list(store: Option<&Store>) -> Value {
     ];
     if let Some(st) = store {
         let mut machines: Vec<_> = st.state.machines.iter().collect();
-        machines.sort_by_key(|(id, _)| *id);
-        machines.reverse();
+        machines.sort_by_key(|(id, _)| {
+            let seq = st
+                .records
+                .iter()
+                .find(|r| r.body.get("machine_id").and_then(Value::as_str) == Some(id.as_str()))
+                .map(|r| r.seq)
+                .unwrap_or(0);
+            std::cmp::Reverse(seq)
+        });
         for (id, m) in machines.into_iter().take(50) {
             items.push(resource(
                 &format!("fsm://machine/{id}"),

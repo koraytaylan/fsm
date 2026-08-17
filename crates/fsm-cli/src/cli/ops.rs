@@ -90,11 +90,27 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
                 Ok(s) => s,
                 Err(e) => return emit_error(ctx, &e),
             };
-            let agreement = states_agree(&folded, &live.state);
+            let live_at = match fold_with(
+                live.records
+                    .iter()
+                    .filter(|r| r.seq <= folded.last_seq)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                &mut NopSink,
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    return emit_error(
+                        ctx,
+                        &ErrorObj::new("store/state_hash_mismatch", format!("{e:?}")),
+                    );
+                }
+            };
+            let agreement = states_agree(&folded, &live_at);
             let mut out = BTreeMap::from([("agreement".into(), Value::Bool(agreement))]);
             if !agreement {
-                let div = first_divergent_seq(&recs, &live.state)
-                    .unwrap_or_else(|| folded.last_seq.min(live.state.last_seq).saturating_add(1));
+                let div = first_divergent_seq(&recs, &live.records)
+                    .unwrap_or_else(|| folded.last_seq.min(live_at.last_seq).saturating_add(1));
                 out.insert("first_divergent_seq".into(), Value::Num(div.to_string()));
             }
             emit_success(ctx, &Value::Obj(out));
@@ -171,25 +187,27 @@ fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
 }
 
 fn first_divergent_seq(
-    recs: &[fsm_core::record::Record],
-    live: &fsm_core::replay::StoreState,
+    journal: &[fsm_core::record::Record],
+    live_recs: &[fsm_core::record::Record],
 ) -> Option<u64> {
     use fsm_core::replay::{NopSink, fold_with};
-    for i in 0..recs.len() {
-        let prefix: Vec<_> = recs[..=i].to_vec();
-        let seq = recs[i].seq;
-        let Ok(folded) = fold_with(prefix, &mut NopSink) else {
+    let max = journal
+        .last()
+        .map(|r| r.seq)
+        .unwrap_or(0)
+        .max(live_recs.last().map(|r| r.seq).unwrap_or(0));
+    for seq in 1..=max {
+        let jp: Vec<_> = journal.iter().filter(|r| r.seq <= seq).cloned().collect();
+        let lp: Vec<_> = live_recs.iter().filter(|r| r.seq <= seq).cloned().collect();
+        let Ok(jf) = fold_with(jp, &mut NopSink) else {
             return Some(seq);
         };
-        if folded.last_seq == live.last_seq && !states_agree(&folded, live) {
+        let Ok(lf) = fold_with(lp, &mut NopSink) else {
+            return Some(seq);
+        };
+        if !states_agree(&jf, &lf) {
             return Some(seq);
         }
-        if folded.last_hash != recs[i].hash {
-            return Some(seq);
-        }
-    }
-    if recs.last().map(|r| r.seq) != Some(live.last_seq) {
-        return Some(live.last_seq.max(recs.last().map(|r| r.seq).unwrap_or(0)));
     }
     None
 }
@@ -447,5 +465,35 @@ mod tests {
             },
         );
         assert_ne!(code, 0);
+    }
+
+    #[test]
+    fn first_divergent_early_middle_final() {
+        let dir = tmp();
+        let _ = crate::journal_io::init(&dir);
+        let mut store = crate::store::Store::open(&dir).unwrap();
+        let spec = fsm_core::json::parse(
+            include_bytes!("../../../fsm-core/tests/fixtures/machines/case_review.json"),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        store.define_machine(spec, false, false).unwrap();
+        store
+            .create_instance("case_review", "i1", "c1", None)
+            .unwrap();
+        store
+            .send_event("i1", "docs_ok", Value::Obj(Default::default()), "s1", None)
+            .unwrap();
+        let recs = store.records.clone();
+        drop(store);
+        assert_eq!(first_divergent_seq(&recs, &recs), None);
+        let early = recs[1].seq;
+        let mid = recs[recs.len() / 2].seq;
+        let last = recs.last().unwrap().seq;
+        for cut in [early, mid, last] {
+            let live: Vec<_> = recs.iter().filter(|r| r.seq < cut).cloned().collect();
+            let d = first_divergent_seq(&recs, &live).expect("div");
+            assert_eq!(d, cut, "cut {cut}");
+        }
     }
 }

@@ -44,13 +44,16 @@ pub fn rpc_error(id: Value, code: i64, message: &str) -> Value {
 }
 
 pub fn tool_error(err: &ErrorObj) -> Value {
-    let structured = err.to_value();
+    let wrapped = Value::Obj(std::collections::BTreeMap::from([(
+        "error".into(),
+        err.to_value(),
+    )]));
     let mut item = std::collections::BTreeMap::new();
     item.insert("type".into(), Value::Str("text".into()));
-    item.insert("text".into(), Value::Str(render_human(&structured)));
+    item.insert("text".into(), Value::Str(render_human(&wrapped)));
     let mut result = std::collections::BTreeMap::new();
     result.insert("content".into(), Value::Arr(vec![Value::Obj(item)]));
-    result.insert("structuredContent".into(), structured);
+    result.insert("structuredContent".into(), wrapped);
     result.insert("isError".into(), Value::Bool(true));
     Value::Obj(result)
 }

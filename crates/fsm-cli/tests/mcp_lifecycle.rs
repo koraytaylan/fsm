@@ -99,6 +99,7 @@ fn error_helpers() {
     let te = tool_error(&err);
     assert_eq!(te.get("isError").and_then(Value::as_bool), Some(true));
     let sc = te.get("structuredContent").unwrap();
+    let err = sc.get("error").expect("structuredContent.error envelope");
     for k in [
         "code",
         "message",
@@ -109,9 +110,17 @@ fn error_helpers() {
         "details",
         "docs",
     ] {
-        assert!(sc.get(k).is_some(), "missing {k}");
+        assert!(err.get(k).is_some(), "missing {k}");
     }
-    assert_eq!(sc.get("duplicate").and_then(Value::as_bool), Some(false));
+    assert_eq!(err.get("duplicate").and_then(Value::as_bool), Some(false));
+    let text = te
+        .get("content")
+        .and_then(Value::as_arr)
+        .and_then(|a| a.first())
+        .and_then(|i| i.get("text"))
+        .and_then(Value::as_str)
+        .unwrap();
+    assert_eq!(text, fsm_cli::render::render_human(sc));
 }
 
 #[test]

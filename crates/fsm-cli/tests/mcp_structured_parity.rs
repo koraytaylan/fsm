@@ -40,6 +40,13 @@ fn fixture(name: &str) -> Vec<u8> {
 fn assert_bytes(name: &str, got: &Value) {
     let want = fixture(name);
     let have = canon_bytes(got);
+    if std::env::var("REGEN_STRUCTURED").ok().as_deref() == Some("1") {
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/structured")
+            .join(name);
+        std::fs::write(p, have).unwrap();
+        return;
+    }
     assert_eq!(
         have,
         want,
@@ -131,7 +138,8 @@ fn every_structured_fixture_matches_tool() {
     .unwrap_err();
     let wrapped = tool_error(&err);
     let sc_err = wrapped.get("structuredContent").cloned().unwrap();
-    assert_bytes("send_rejected.json", &sc_err);
+    assert!(sc_err.get("error").is_some(), "{sc_err:?}");
+    assert_bytes("send_rejected.json", sc_err.get("error").unwrap());
     let text = wrapped
         .get("content")
         .and_then(Value::as_arr)
