@@ -144,7 +144,7 @@ pub fn eval(
 }
 
 type EvalOk = (Val, Option<TraceNode>);
-type EvalErr = (ExprError, Option<TraceNode>);
+pub(crate) type EvalErr = (ExprError, Option<TraceNode>);
 
 fn eval_inner(
     e: &Expr,
@@ -325,7 +325,7 @@ fn eval_logic(
     ok(Val::Bool(rb), span, trace, kids(lc, rc))
 }
 
-fn apply_compiled_dec(v: Val, widen: Option<u8>, span: Span) -> Result<Val, EvalErr> {
+pub(crate) fn apply_compiled_dec(v: Val, widen: Option<u8>, span: Span) -> Result<Val, EvalErr> {
     let Val::Dec(d) = v else {
         return Ok(v);
     };
@@ -577,7 +577,7 @@ fn mode_of(v: &Val, span: Span) -> Result<RoundMode, EvalErr> {
     }
 }
 
-fn bin_vals(op: BinOp, lv: Val, rv: Val, span: Span) -> Result<Val, EvalErr> {
+pub(crate) fn bin_vals(op: BinOp, lv: Val, rv: Val, span: Span) -> Result<Val, EvalErr> {
     match (op, lv, rv) {
         (BinOp::Add, Val::Int(a), Val::Int(b)) => {
             Ok(Val::Int(a.checked_add(b).ok_or_else(|| {
@@ -665,7 +665,7 @@ impl IntoEval for ExprError {
     }
 }
 
-fn cmp_vals(op: CmpOp, lv: &Val, rv: &Val) -> Result<bool, ExprError> {
+pub(crate) fn cmp_vals(op: CmpOp, lv: &Val, rv: &Val) -> Result<bool, ExprError> {
     let dummy = Span::new(0, 0);
     let ord = match (lv, rv) {
         (Val::Int(a), Val::Int(b)) => a.cmp(b),

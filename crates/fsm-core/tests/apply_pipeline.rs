@@ -316,6 +316,43 @@ fn guard_and_invariant_atomicity() {
 }
 
 #[test]
+fn step_invariant_eval_error_has_operands() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775806"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"}],"initial":"a","transitions":[{"from":"a","on":"go","do":[{"target":"x","value":"ctx.x + 1"}]}],"invariants":[{"name":"pos","expr":"ctx.x + 1 > 0","mode":"enforce"}]}"#;
+    let (m, t) = compile_src(src);
+    let st = inst(&m, &t);
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/invariant");
+            let inv = r
+                .trace
+                .invariants
+                .iter()
+                .find(|i| i.name == "pos")
+                .expect("pos");
+            let err = inv.error.as_ref().expect("eval error");
+            assert_eq!(err.code, "run/overflow");
+            let node = err.expr.as_ref().expect("expr node");
+            fn has_input(n: &fsm_core::expr::eval::TraceNode, want: &str) -> bool {
+                let here = match &n.outcome {
+                    fsm_core::expr::eval::TraceOutcome::Error { inputs, .. } => {
+                        inputs.iter().any(|s| s.contains(want))
+                    }
+                    fsm_core::expr::eval::TraceOutcome::Value(v) => v.contains(want),
+                    _ => false,
+                };
+                here || n.children.iter().any(|c| has_input(c, want))
+            }
+            assert!(
+                has_input(node, "9223372036854775807") || has_input(node, "1"),
+                "{node:?}"
+            );
+        }
+        o => panic!("{o:?}"),
+    }
+}
+
+#[test]
 fn later_guard_error_keeps_earlier_false_candidate() {
     let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","if":"false","to":"b"},{"from":"a","on":"go","if":"ctx.x + 1 > 0","to":"b"}]}"#;
     let (m, t) = compile_src(src);

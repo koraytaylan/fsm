@@ -33,15 +33,6 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
         },
     };
     let iid = format!("inst-{rid}");
-    let expect = match args.flags.get("expect-seq") {
-        None => None,
-        Some(s) => match s.parse::<u64>() {
-            Ok(n) => Some(n),
-            Err(_) => {
-                return fail(ctx, ErrorObj::new("args", "expect-seq must be a u64"), &rid);
-            }
-        },
-    };
     let mut overrides = BTreeMap::new();
     if let Some(pairs) = args.flags.get("context") {
         let m = match store.resolve_machine(mref) {
@@ -83,7 +74,7 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
             Err(e) => return fail(ctx, ErrorObj::new("def/shape", e.message), &rid),
         }
     }
-    match store.create_instance_ctx(mref, &iid, &rid, expect, &overrides) {
+    match store.create_instance_ctx(mref, &iid, &rid, None, &overrides) {
         Ok(v) => {
             emit_success(ctx, &v);
             0
@@ -390,7 +381,7 @@ pub static SPECS: &[CmdSpec] = &[
     CmdSpec {
         path: &["instance", "new"],
         positionals: &["machine"],
-        flags: &["request-id", "context", "context-json", "expect-seq"],
+        flags: &["request-id", "context", "context-json"],
         switches: &[],
         help: "Create instance",
         run: new_inst,

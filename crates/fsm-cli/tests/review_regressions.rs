@@ -1116,17 +1116,76 @@ fn create_cli_mcp_errors_are_byte_equal() {
     let co_mcp = mcp_create_err(&mut s, Value::Obj(args));
     drop(s);
     assert_eq!(co_cli, co_mcp, "coercion");
+}
 
-    let seq_cli = cli_json_err(
+fn cli_send_json_err(dir: &std::path::Path, extra: &[&str]) -> Value {
+    let bin = fsm_bin();
+    let mut args = vec![
+        "--data-dir",
+        dir.to_str().unwrap(),
+        "--json",
+        "instance",
+        "send",
+    ];
+    args.extend_from_slice(extra);
+    let out = Command::new(&bin).args(&args).output().unwrap();
+    parse(&out.stderr, &JsonLimits::DEFAULT).unwrap_or_else(|_| {
+        panic!(
+            "cli send stderr not json: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    })
+}
+
+#[test]
+fn send_stale_expect_seq_cli_mcp_equal() {
+    let _g = gate();
+    let dir = tmp("seq");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.create_instance("case_review", "inst-e0", "e0", None)
+        .unwrap();
+    drop(s);
+    let seq_cli = cli_send_json_err(
         &dir,
-        &["case_review", "--request-id", "e6", "--expect-seq", "999"],
+        &[
+            "inst-e0",
+            "docs_ok",
+            "--request-id",
+            "s1",
+            "--expect-seq",
+            "0",
+        ],
     );
     let mut s = Store::open(&dir).unwrap();
+    let mut ev = BTreeMap::new();
+    ev.insert("name".into(), Value::Str("docs_ok".into()));
     let mut args = BTreeMap::new();
-    args.insert("machine".into(), Value::Str("case_review".into()));
-    args.insert("request_id".into(), Value::Str("e6".into()));
-    args.insert("expect_seq".into(), Value::Num("999".into()));
-    let seq_mcp = mcp_create_err(&mut s, Value::Obj(args));
-    drop(s);
-    assert_eq!(seq_cli, seq_mcp, "expect_seq");
+    args.insert("instance_id".into(), Value::Str("inst-e0".into()));
+    args.insert("event".into(), Value::Obj(ev));
+    args.insert("request_id".into(), Value::Str("s1".into()));
+    args.insert("expect_seq".into(), Value::Num("0".into()));
+    let mut clock = fsm_cli::clock::FixedClock::new(5_000, 1);
+    let seq_mcp =
+        fsm_cli::mcp::tools::dispatch(&mut s, &mut clock, "instance_send", &Value::Obj(args))
+            .unwrap_err()
+            .to_value();
+    assert_eq!(seq_cli, seq_mcp, "send stale expect_seq");
+    assert_eq!(
+        seq_cli.get("code").and_then(Value::as_str),
+        Some("req/seq_mismatch")
+    );
+    let create = fsm_cli::mcp::tools::registry()
+        .into_iter()
+        .find(|t| t.name == "instance_create")
+        .unwrap();
+    let props = (create.input_schema)()
+        .get("properties")
+        .and_then(Value::as_obj)
+        .cloned()
+        .unwrap();
+    assert!(
+        !props.contains_key("expect_seq"),
+        "instance_create must not advertise expect_seq"
+    );
 }

@@ -124,6 +124,21 @@ fn create_invariant_eval_error_has_identity() {
         .find(|i| i.name == "pos")
         .expect("pos");
     assert!(!inv.passed);
-    assert!(inv.error.is_some());
-    assert_eq!(inv.error.as_ref().unwrap().code, "run/overflow");
+    let err = inv.error.as_ref().unwrap();
+    assert_eq!(err.code, "run/overflow");
+    let node = err.expr.as_ref().expect("invariant eval node");
+    fn has_input(n: &fsm_core::expr::eval::TraceNode, want: &str) -> bool {
+        let here = match &n.outcome {
+            fsm_core::expr::eval::TraceOutcome::Error { inputs, .. } => {
+                inputs.iter().any(|s| s.contains(want))
+            }
+            fsm_core::expr::eval::TraceOutcome::Value(v) => v.contains(want),
+            _ => false,
+        };
+        here || n.children.iter().any(|c| has_input(c, want))
+    }
+    assert!(
+        has_input(node, "9223372036854775807") || has_input(node, "1"),
+        "{node:?}"
+    );
 }

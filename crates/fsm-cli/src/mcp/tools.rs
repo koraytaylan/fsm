@@ -207,7 +207,6 @@ fn schema_instance_create_in() -> Value {
     p.insert("machine".into(), ty("string"));
     p.insert("context".into(), ty("object"));
     p.insert("request_id".into(), ty("string"));
-    p.insert("expect_seq".into(), ty("number"));
     p.insert("tags".into(), ty("array"));
     schema_obj(p, &["machine", "request_id"], false)
 }
@@ -550,10 +549,6 @@ fn run_instance_create(
     let machine = str_arg(args, "machine").unwrap_or("");
     let rid = str_arg(args, "request_id").unwrap_or("");
     let iid = format!("inst-{rid}");
-    let expect = args.get("expect_seq").and_then(|v| match v {
-        Value::Num(s) | Value::Str(s) => s.parse().ok(),
-        _ => None,
-    });
     let mut overrides = BTreeMap::new();
     if let Some(ctx) = args.get("context") {
         match ctx {
@@ -567,7 +562,7 @@ fn run_instance_create(
             }
         }
     }
-    store.create_instance_ctx(machine, &iid, rid, expect, &overrides)
+    store.create_instance_ctx(machine, &iid, rid, None, &overrides)
 }
 
 fn run_instance_send(

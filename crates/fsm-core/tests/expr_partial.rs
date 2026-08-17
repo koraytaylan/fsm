@@ -129,3 +129,94 @@ fn public_partial_eval_unreachable_event_if() {
         Truth::True
     );
 }
+
+fn empty_scope<'a>(
+    ctx_tys: &'a BTreeMap<String, Ty>,
+    enums: &'a BTreeMap<String, Vec<String>>,
+) -> Scope<'a> {
+    Scope {
+        kind: ScopeKind::Guard,
+        ctx: ctx_tys,
+        evt: None,
+        enums,
+    }
+}
+
+#[test]
+fn public_partial_eval_selected_narrow_if_overflows() {
+    let e = parse(
+        "(if false then 0.00 else 9999999999999999999999999999999999999.9) == 9999999999999999999999999999999999999.9",
+    )
+    .unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let scope = empty_scope(&ctx_tys, &enums);
+    let mut bud = Budget::new(4096);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::Unknown
+    );
+}
+
+#[test]
+fn short_circuit_or_does_not_charge_right() {
+    let e = parse("true or (if true then false else false)").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let scope = empty_scope(&ctx_tys, &enums);
+    let mut bud = Budget::new(2);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::True
+    );
+    assert_eq!(bud.remaining(), 0);
+}
+
+#[test]
+fn short_circuit_and_does_not_charge_right() {
+    let e = parse("false and (if true then true else true)").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let scope = empty_scope(&ctx_tys, &enums);
+    let mut bud = Budget::new(2);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::False
+    );
+    assert_eq!(bud.remaining(), 0);
+}
+
+#[test]
+fn selected_if_does_not_charge_other_branch() {
+    let e = parse("if true then true else false").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let scope = empty_scope(&ctx_tys, &enums);
+    let mut bud = Budget::new(3);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::True
+    );
+    assert_eq!(bud.remaining(), 0);
+}
+
+#[test]
+fn unknown_if_does_not_charge_branches() {
+    let e = parse("if evt.x then true else false").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let mut evt = BTreeMap::new();
+    evt.insert("x".into(), Ty::Bool);
+    let scope = Scope {
+        kind: ScopeKind::Guard,
+        ctx: &ctx_tys,
+        evt: Some(&evt),
+        enums: &enums,
+    };
+    let mut bud = Budget::new(2);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::Unknown
+    );
+    assert_eq!(bud.remaining(), 0);
+}

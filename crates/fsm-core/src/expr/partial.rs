@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use super::ast::Expr;
-use super::eval::{Bindings, Budget, Val, eval};
+use super::eval::{Bindings, Budget, Val, apply_compiled_dec, bin_vals, cmp_vals, eval};
 use super::lexer::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,124 +59,17 @@ fn has_evt(e: &Expr) -> bool {
     }
 }
 
-fn charge_tree(e: &Expr, budget: &mut Budget) {
-    let _ = budget.tick(e.span());
-    match e {
-        Expr::Not { inner, .. } | Expr::Neg { inner, .. } => charge_tree(inner, budget),
-        Expr::And { lhs, rhs, .. }
-        | Expr::Or { lhs, rhs, .. }
-        | Expr::Cmp { lhs, rhs, .. }
-        | Expr::Bin { lhs, rhs, .. } => {
-            charge_tree(lhs, budget);
-            charge_tree(rhs, budget);
-        }
-        Expr::If {
-            cond,
-            then_branch,
-            else_branch,
-            ..
-        } => {
-            charge_tree(cond, budget);
-            charge_tree(then_branch, budget);
-            charge_tree(else_branch, budget);
-        }
-        Expr::Call { args, .. } => {
-            for a in args {
-                if let super::ast::Arg::Expr(inner) = a {
-                    charge_tree(inner, budget);
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-fn reduce_lazy(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) -> Expr {
-    match e {
-        Expr::Not { inner, span } => Expr::Not {
-            inner: Box::new(reduce_lazy(inner, ctx, budget)),
-            span: *span,
-        },
-        Expr::Neg { inner, span } => Expr::Neg {
-            inner: Box::new(reduce_lazy(inner, ctx, budget)),
-            span: *span,
-        },
-        Expr::And { lhs, rhs, span } => Expr::And {
-            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
-            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
-            span: *span,
-        },
-        Expr::Or { lhs, rhs, span } => Expr::Or {
-            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
-            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
-            span: *span,
-        },
-        Expr::Cmp { op, lhs, rhs, span } => Expr::Cmp {
-            op: *op,
-            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
-            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
-            span: *span,
-        },
-        Expr::Bin { op, lhs, rhs, span } => Expr::Bin {
-            op: *op,
-            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
-            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
-            span: *span,
-        },
-        Expr::If {
-            cond,
-            then_branch,
-            else_branch,
-            widen,
-            span,
-        } => {
-            let cond = reduce_lazy(cond, ctx, budget);
-            match partial_eval_bool_inner(&cond, ctx, budget) {
-                Truth::True => reduce_lazy(then_branch, ctx, budget),
-                Truth::False => reduce_lazy(else_branch, ctx, budget),
-                Truth::Unknown => Expr::If {
-                    cond: Box::new(cond),
-                    then_branch: Box::new(reduce_lazy(then_branch, ctx, budget)),
-                    else_branch: Box::new(reduce_lazy(else_branch, ctx, budget)),
-                    widen: *widen,
-                    span: *span,
-                },
-            }
-        }
-        Expr::Call {
-            name,
-            name_span,
-            args,
-            span,
-        } => Expr::Call {
-            name: name.clone(),
-            name_span: *name_span,
-            args: args
-                .iter()
-                .map(|a| match a {
-                    super::ast::Arg::Expr(inner) => {
-                        super::ast::Arg::Expr(reduce_lazy(inner, ctx, budget))
-                    }
-                    other => other.clone(),
-                })
-                .collect(),
-            span: *span,
-        },
-        other => other.clone(),
-    }
-}
-
 /// `EvtRef` is Unknown; concrete subtrees go through `eval`. Errors → Unknown.
 /// `scope` supplies declared enums and event-field types so annotation is sound.
-/// Lazy `if` reduces unreachable branches before `evt` dependence is decided.
+/// Lazy `and`/`or`/`if` is applied in this walk after annotation, so decimal
+/// `if` widening is kept on the selected branch and unvisited operands are not charged.
 pub fn partial_eval_bool(
     e: &Expr,
     ctx: &BTreeMap<String, Val>,
     scope: &super::typeck::Scope<'_>,
     budget: &mut Budget,
 ) -> Truth {
-    let reduced = reduce_lazy(e, ctx, budget);
-    let mut annotated = reduced;
+    let mut annotated = e.clone();
     super::typeck::annotate_if_widening(&mut annotated, scope);
     partial_eval_bool_inner(&annotated, ctx, budget)
 }
@@ -228,20 +121,81 @@ fn partial_eval_bool_inner(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut B
             let _ = budget.tick(e.span());
             Truth::Unknown
         }
-        _ if has_evt(e) => {
-            charge_tree(e, budget);
-            Truth::Unknown
-        }
-        _ => {
-            let b = Bindings { ctx, evt: None };
-            match eval(e, &b, budget, false).0 {
-                Ok(Val::Bool(true)) => Truth::True,
-                Ok(Val::Bool(false)) => Truth::False,
-                // Conservative-error rule (SPEC.md): a concrete sub-evaluation
-                // error — including budget exhaustion — yields Unknown, never
-                // a loud failure. The authoritative error happens at send time.
+        Expr::Cmp { op, lhs, rhs, span } => {
+            if budget.tick(*span).is_err() {
+                return Truth::Unknown;
+            }
+            match (
+                partial_eval_val(lhs, ctx, budget),
+                partial_eval_val(rhs, ctx, budget),
+            ) {
+                (Some(l), Some(r)) => match cmp_vals(*op, &l, &r) {
+                    Ok(true) => Truth::True,
+                    Ok(false) => Truth::False,
+                    Err(_) => Truth::Unknown,
+                },
                 _ => Truth::Unknown,
             }
+        }
+        _ => match partial_eval_val(e, ctx, budget) {
+            Some(Val::Bool(true)) => Truth::True,
+            Some(Val::Bool(false)) => Truth::False,
+            _ => Truth::Unknown,
+        },
+    }
+}
+
+fn partial_eval_val(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) -> Option<Val> {
+    match e {
+        Expr::EvtRef { .. } => {
+            let _ = budget.tick(e.span());
+            None
+        }
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            widen,
+            span,
+        } => {
+            if budget.tick(*span).is_err() {
+                return None;
+            }
+            let flag = match partial_eval_val(cond, ctx, budget)? {
+                Val::Bool(b) => b,
+                _ => return None,
+            };
+            let selected = if flag { then_branch } else { else_branch };
+            let v = partial_eval_val(selected, ctx, budget)?;
+            apply_compiled_dec(v, *widen, *span).ok()
+        }
+        Expr::And { .. } | Expr::Or { .. } | Expr::Not { .. } => {
+            match partial_eval_bool_inner(e, ctx, budget) {
+                Truth::True => Some(Val::Bool(true)),
+                Truth::False => Some(Val::Bool(false)),
+                Truth::Unknown => None,
+            }
+        }
+        Expr::Cmp { op, lhs, rhs, span } => {
+            if budget.tick(*span).is_err() {
+                return None;
+            }
+            let l = partial_eval_val(lhs, ctx, budget)?;
+            let r = partial_eval_val(rhs, ctx, budget)?;
+            cmp_vals(*op, &l, &r).ok().map(Val::Bool)
+        }
+        Expr::Bin { op, lhs, rhs, span } => {
+            if budget.tick(*span).is_err() {
+                return None;
+            }
+            let l = partial_eval_val(lhs, ctx, budget)?;
+            let r = partial_eval_val(rhs, ctx, budget)?;
+            bin_vals(*op, l, r, *span).ok()
+        }
+        _ if has_evt(e) => None,
+        _ => {
+            let b = Bindings { ctx, evt: None };
+            eval(e, &b, budget, false).0.ok()
         }
     }
 }

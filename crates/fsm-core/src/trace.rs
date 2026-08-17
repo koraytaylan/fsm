@@ -76,6 +76,7 @@ pub struct InvariantEvalError {
     pub code: &'static str,
     pub message: String,
     pub span: Option<(u32, u32)>,
+    pub expr: Option<TraceNode>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -113,6 +114,9 @@ impl DecisionTrace {
                                 sp.insert("start".into(), Value::Num(s.to_string()));
                                 sp.insert("end".into(), Value::Num(e.to_string()));
                                 m.insert("span".into(), Value::Obj(sp));
+                            }
+                            if let Some(n) = &err.expr {
+                                m.insert("expr".into(), trace_to_value(n));
                             }
                         }
                         Value::Obj(m)

@@ -949,7 +949,7 @@ fn eval_invariants(
                     EnforceMode::Monitor => flags.push(inv.name.clone()),
                 }
             }
-            (Err(err), _) => {
+            (Err(err), tn) => {
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: false,
@@ -957,6 +957,7 @@ fn eval_invariants(
                         code: err.code,
                         message: err.message,
                         span: Some((err.span.start, err.span.end)),
+                        expr: tn,
                     }),
                 });
                 ok = false;
