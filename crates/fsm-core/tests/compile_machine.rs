@@ -1,7 +1,27 @@
 use std::collections::BTreeMap;
 
 use fsm_core::json::{JsonLimits, parse};
-use fsm_core::spec::{compile, load_machine_json, parse_machine};
+use fsm_core::spec::{
+    accepted_identity, compile, compile_accepted, load_machine_json, parse_machine,
+};
+
+#[test]
+fn compile_and_compile_accepted_share_accepted_identity() {
+    let bytes = include_bytes!("fixtures/machines/case_review.json");
+    let v = parse(bytes, &JsonLimits::DEFAULT).unwrap();
+    let from_source = compile_accepted(&v).unwrap();
+    let (canon, mid) = accepted_identity(&v);
+    assert_eq!(from_source.machine_id, mid);
+    assert_eq!(from_source.canonical, canon);
+    let spec = parse_machine(&v).unwrap();
+    let from_spec = compile(spec.clone()).unwrap();
+    let (canon2, mid2) = accepted_identity(&spec.to_value());
+    assert_eq!(from_spec.machine_id, mid2);
+    assert_eq!(from_spec.canonical, canon2);
+    let again = compile_accepted(&spec.to_value()).unwrap();
+    assert_eq!(again.machine_id, from_spec.machine_id);
+    assert_eq!(again.canonical, from_spec.canonical);
+}
 
 fn compile_s(s: &str) -> Result<fsm_core::machine::CompiledMachine, Vec<fsm_core::spec::Finding>> {
     let v = parse(s.as_bytes(), &JsonLimits::DEFAULT).unwrap();

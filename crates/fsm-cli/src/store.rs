@@ -207,11 +207,18 @@ impl Store {
             Err(OpenError::Io(s)) => return Err(ErrorObj::new("io/read", s)),
         };
         fs::create_dir_all(data_dir.join("snapshots")).ok();
+        let records = journal_io::load_records(data_dir).unwrap_or(sink.records);
+        let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+        for rec in &records {
+            if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                history.entry(iid.into()).or_default().push(rec.seq);
+            }
+        }
         Ok(Store {
             journal,
             state,
-            history: sink.history,
-            records: sink.records,
+            history,
+            records,
             data_dir: data_dir.to_path_buf(),
             last_responses: BTreeMap::new(),
             last_errors: BTreeMap::new(),
@@ -446,6 +453,7 @@ impl Store {
         self.records.push(rec.clone());
         self.state.last_seq = rec.seq;
         self.state.last_hash = rec.hash.clone();
+        self.after_commit();
     }
 
     pub fn allocate_request_id(&mut self) -> Result<String, ErrorObj> {
@@ -576,7 +584,7 @@ impl Store {
             .entry(instance_id.into())
             .or_default()
             .push(rec.seq);
-        self.records.push(rec.clone());
+        self.note_record(&rec);
         let resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
         self.commit_dedup(request_id, resp.clone(), rec.seq);
         Ok(resp)
@@ -691,7 +699,7 @@ impl Store {
                     .entry(instance_id.into())
                     .or_default()
                     .push(rec.seq);
-                self.records.push(rec.clone());
+                self.note_record(&rec);
                 let mut resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
                 if let Value::Obj(o) = &mut resp {
                     o.insert("applied".into(), Value::Bool(true));
@@ -785,7 +793,7 @@ impl Store {
                     .journal
                     .append(RecordKind::EventIgnored, Value::Obj(body))
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-                self.records.push(rec.clone());
+                self.note_record(&rec);
                 let resp = Value::Obj(BTreeMap::from([
                     ("ok".into(), Value::Str("true".into())),
                     ("ignored".into(), Value::Str("true".into())),
@@ -1000,7 +1008,7 @@ impl Store {
             .journal
             .append(RecordKind::Annotated, Value::Obj(body))
             .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        self.records.push(rec.clone());
+        self.note_record(&rec);
         self.history
             .entry(instance_id.into())
             .or_default()
@@ -1094,60 +1102,82 @@ impl Store {
     }
 
     pub fn shutdown_snapshot(&self) -> Result<(), ErrorObj> {
-        let seq = self.journal.last_seq;
-        let snap_dir = self.data_dir.join("snapshots");
-        fs::create_dir_all(&snap_dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        let mut machines = BTreeMap::new();
-        for (id, m) in &self.state.machines {
-            machines.insert(id.clone(), m.def.clone());
+        if self.journal.last_seq == 0 {
+            return Ok(());
         }
-        let mut instances = BTreeMap::new();
-        for (id, inst) in &self.state.instances {
-            let mut o = BTreeMap::new();
-            o.insert("leaf".into(), Value::Str(inst.leaf.clone()));
-            o.insert("status".into(), Value::Str(inst.status.as_str().into()));
-            o.insert(
-                "machine_id".into(),
-                Value::Str(
-                    self.state
-                        .instance_machines
-                        .get(id)
-                        .cloned()
-                        .unwrap_or_default(),
-                ),
-            );
-            instances.insert(id.clone(), Value::Obj(o));
-        }
-        let mut body = BTreeMap::new();
-        body.insert("format".into(), Value::Str("fsm.snapshot/1".into()));
-        body.insert("seq".into(), Value::Num(seq.to_string()));
-        body.insert(
-            "last_hash".into(),
-            Value::Str(self.journal.last_hash.clone()),
-        );
-        body.insert("machines".into(), Value::Obj(machines));
-        body.insert("instances".into(), Value::Obj(instances));
-        let mut tmp_body = body.clone();
-        tmp_body.insert("snapshot_hash".into(), Value::Str(String::new()));
-        let hex = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-            "fsm:snapshot:1",
-            &Value::Obj(tmp_body.clone()),
-        ));
-        body.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hex}")));
-        let bytes = fsm_core::canon::canon_bytes(&Value::Obj(body));
-        let tmp = snap_dir.join(format!("snap-{seq}-{}.tmp", std::process::id()));
-        fs::write(&tmp, &bytes).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        let f = fs::File::open(&tmp).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        f.sync_all()
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        let final_path = snap_dir.join(format!("snap-{seq}.json"));
-        if final_path.exists() {
-            let alt = snap_dir.join(format!("snap-{seq}-{}.json", std::process::id()));
-            fs::rename(&tmp, &alt).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        } else {
-            fs::rename(&tmp, &final_path).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        }
+        crate::snapshot::write_snapshot(&self.data_dir, &self.state)?;
         Ok(())
+    }
+
+    fn after_commit(&mut self) {
+        let _ = self.maybe_snapshot();
+    }
+
+    pub fn history_page(
+        &self,
+        instance_id: &str,
+        from_seq: u64,
+        limit: usize,
+        include_trace: bool,
+        include_rejected: bool,
+    ) -> Result<Value, ErrorObj> {
+        let mut entries = Vec::new();
+        for rec in self.records.iter().filter(|r| {
+            r.body.get("instance_id").and_then(Value::as_str) == Some(instance_id)
+                && r.seq >= from_seq
+        }) {
+            if !include_rejected
+                && matches!(
+                    rec.kind,
+                    RecordKind::EventRejected | RecordKind::RequestRejected
+                )
+            {
+                continue;
+            }
+            if entries.len() >= limit {
+                break;
+            }
+            entries.push(history_entry(self, rec, include_trace)?);
+        }
+        let mut out = BTreeMap::from([
+            ("instance_id".into(), Value::Str(instance_id.into())),
+            ("entries".into(), Value::Arr(entries)),
+        ]);
+        if include_trace {
+            out.insert(
+                "chain_verified".into(),
+                Value::Bool(verify_prefix_hashes(&self.records)),
+            );
+        }
+        Ok(Value::Obj(out))
+    }
+
+    pub fn explain_seq(&self, instance_id: &str, seq: u64) -> Result<Value, ErrorObj> {
+        let rec = self
+            .records
+            .iter()
+            .find(|r| r.seq == seq)
+            .ok_or_else(|| ErrorObj::new("req/field_missing", "seq"))?;
+        if rec.body.get("instance_id").and_then(Value::as_str) != Some(instance_id)
+            && rec.kind != RecordKind::Genesis
+            && rec.kind != RecordKind::MachineDefined
+        {
+            return Err(ErrorObj::new("req/instance_not_found", instance_id));
+        }
+        let mut e = history_entry(self, rec, true)?;
+        if let Value::Obj(o) = &mut e {
+            o.insert(
+                "chain_verified".into(),
+                Value::Bool(verify_prefix_hashes(&self.records)),
+            );
+        }
+        Ok(e)
+    }
+}
+
+impl Drop for Store {
+    fn drop(&mut self) {
+        let _ = self.shutdown_snapshot();
     }
 }
 
@@ -1218,6 +1248,93 @@ fn reconstruct_applied(
         }
         _ => None,
     }
+}
+
+fn verify_prefix_hashes(records: &[Record]) -> bool {
+    records.windows(2).all(|w| w[1].prev == w[0].hash)
+}
+
+fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Value, ErrorObj> {
+    let mut e = BTreeMap::new();
+    e.insert("seq".into(), Value::Num(rec.seq.to_string()));
+    e.insert("kind".into(), Value::Str(format!("{:?}", rec.kind)));
+    if let Some(ev) = rec.body.get("event") {
+        e.insert("event".into(), ev.clone());
+    }
+    if let Some(p) = rec.body.get("payload") {
+        e.insert("payload".into(), p.clone());
+    }
+    if let Some(n) = rec.body.get("note") {
+        e.insert("note".into(), n.clone());
+    }
+    if let Some(r) = rec.body.get("reason") {
+        e.insert("reason".into(), r.clone());
+    }
+    if include_trace {
+        e.insert("ts".into(), Value::Num(rec.ts.to_string()));
+        e.insert("hash".into(), Value::Str(rec.hash.clone()));
+        if let Some(rid) = rec.body.get("request_id") {
+            e.insert("request_id".into(), rid.clone());
+        }
+        if rec.seq > 0 {
+            if let Ok(pre) = fold_prefix(&store.records, rec.seq.saturating_sub(1)) {
+                if let Ok(post) = fold_prefix(&store.records, rec.seq) {
+                    if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                        if let Some(before) = pre.instances.get(iid) {
+                            e.insert("before_leaf".into(), Value::Str(before.leaf.clone()));
+                            let mut ctx = BTreeMap::new();
+                            for (k, v) in &before.ctx {
+                                ctx.insert(k.clone(), val_json(v));
+                            }
+                            e.insert("before_context".into(), Value::Obj(ctx));
+                        }
+                        if let Some(after) = post.instances.get(iid) {
+                            e.insert("after_leaf".into(), Value::Str(after.leaf.clone()));
+                            let mut ctx = BTreeMap::new();
+                            for (k, v) in &after.ctx {
+                                ctx.insert(k.clone(), val_json(v));
+                            }
+                            e.insert("after_context".into(), Value::Obj(ctx));
+                        }
+                    }
+                }
+                if rec.kind == RecordKind::EventApplied {
+                    if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                        if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
+                            if let Some(v) = reconstruct_applied(&pre, rec, iid, rid) {
+                                if let Some(tr) = v.get("trace") {
+                                    e.insert("trace".into(), tr.clone());
+                                }
+                            }
+                        }
+                    }
+                } else if rec.kind == RecordKind::EventRejected {
+                    if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                        if let Some(ev) = rec.body.get("event").and_then(Value::as_str) {
+                            if let Some(mid) = pre.instance_machines.get(iid) {
+                                if let Some(m) = pre.machines.get(mid) {
+                                    if let Some(inst) = pre.instances.get(iid) {
+                                        let payload = rec
+                                            .body
+                                            .get("payload")
+                                            .cloned()
+                                            .unwrap_or(Value::Obj(BTreeMap::new()));
+                                        let mut bud = Budget::new(4096);
+                                        if let Outcome::Rejected(r) =
+                                            step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud)
+                                        {
+                                            e.insert("trace".into(), r.trace.to_value());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(Value::Obj(e))
 }
 
 fn fold_prefix(records: &[Record], through: u64) -> Result<StoreState, ErrorObj> {

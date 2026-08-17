@@ -279,3 +279,19 @@ fn public_partial_eval_abs_evt_charges_call_and_ref() {
     );
     assert_eq!(bud.remaining(), 6);
 }
+
+#[test]
+fn public_partial_eval_nested_cmp_visits_both_operands() {
+    let e = parse("abs(if evt.x > (1 + 2) then 1 else 2) > 0").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums = BTreeMap::new();
+    let mut evt = BTreeMap::new();
+    evt.insert("x".into(), Ty::Int);
+    let scope = evt_int_scope(&ctx_tys, &enums, &evt);
+    let mut bud = Budget::new(10);
+    assert_eq!(
+        partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
+        Truth::Unknown
+    );
+    assert_eq!(bud.remaining(), 1);
+}

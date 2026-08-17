@@ -79,15 +79,26 @@ fn install_panic_hook() {
 }
 
 pub fn run() -> std::io::Result<()> {
+    run_with_dir(&resolve_data_dir(None))
+}
+
+pub fn run_with_dir(dir: &std::path::Path) -> std::io::Result<()> {
     install_panic_hook();
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
-    serve(stdin.lock(), stdout.lock())
+    serve_dir(dir, stdin.lock(), stdout.lock())
 }
 
 pub fn serve(input: impl BufRead, output: impl Write) -> std::io::Result<()> {
-    let dir = resolve_data_dir(None);
-    let mut store = match Store::open(&dir) {
+    serve_dir(&resolve_data_dir(None), input, output)
+}
+
+pub fn serve_dir(
+    dir: &std::path::Path,
+    input: impl BufRead,
+    output: impl Write,
+) -> std::io::Result<()> {
+    let mut store = match Store::open(dir) {
         Ok(s) => Some(s),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "fsm store open failed: {}", e.message);
@@ -244,11 +255,14 @@ fn handle_request(
                 .and_then(|p| p.get("name"))
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            let args = params
-                .as_ref()
-                .and_then(|p| p.get("arguments"))
-                .cloned()
-                .unwrap_or(Value::Obj(Default::default()));
+            let raw_args = params.as_ref().and_then(|p| p.get("arguments"));
+            if raw_args.is_some() && raw_args.and_then(Value::as_obj).is_none() {
+                return send_line(
+                    output,
+                    &rpc_error(id, INVALID_PARAMS, "arguments must be an object"),
+                );
+            }
+            let args = raw_args.cloned().unwrap_or(Value::Obj(Default::default()));
             if name == "fsm_ping" {
                 send_line(output, &result_response(id, fsm_ping_result()))
             } else if !tools::names().contains(&name) {

@@ -1189,3 +1189,80 @@ fn send_stale_expect_seq_cli_mcp_equal() {
         "instance_create must not advertise expect_seq"
     );
 }
+
+#[test]
+fn history_and_explain_reconstruct_trace() {
+    let _g = gate();
+    let dir = tmp("hist");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    let hist = store.history_page("i1", 0, 50, true, true).unwrap();
+    let entries = hist.get("entries").and_then(Value::as_arr).unwrap();
+    let applied = entries
+        .iter()
+        .find(|e| e.get("kind").and_then(Value::as_str) == Some("EventApplied"))
+        .unwrap();
+    assert!(applied.get("trace").is_some(), "{applied:?}");
+    assert!(applied.get("before_leaf").is_some(), "{applied:?}");
+    assert!(applied.get("after_leaf").is_some(), "{applied:?}");
+    assert!(applied.get("ts").is_some(), "{applied:?}");
+    assert_eq!(
+        hist.get("chain_verified").and_then(Value::as_bool),
+        Some(true)
+    );
+    let seq = applied
+        .get("seq")
+        .and_then(Value::as_num)
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
+    let explained = store.explain_seq("i1", seq).unwrap();
+    assert!(explained.get("trace").is_some(), "{explained:?}");
+    let hidden = store.history_page("i1", 0, 50, false, false).unwrap();
+    let kinds: Vec<_> = hidden
+        .get("entries")
+        .and_then(Value::as_arr)
+        .unwrap()
+        .iter()
+        .filter_map(|e| e.get("kind").and_then(Value::as_str))
+        .collect();
+    assert!(!kinds.iter().any(|k| *k == "EventRejected"));
+}
+
+#[test]
+fn serve_uses_ctx_data_dir() {
+    let _g = gate();
+    let dir = tmp("serve");
+    let input = std::io::Cursor::new(Vec::<u8>::new());
+    let mut out = Vec::new();
+    let _ = fsm_cli::mcp::serve::serve_dir(&dir, input, &mut out);
+    assert!(
+        dir.join("VERSION").exists(),
+        "serve must open the given data dir"
+    );
+}
+
+#[test]
+fn journal_replay_agrees_with_live_after_snapshot() {
+    let _g = gate();
+    let dir = tmp("replay");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store.shutdown_snapshot().unwrap();
+    drop(store);
+    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    let folded = fsm_core::replay::fold_with(recs, &mut fsm_core::replay::NopSink).unwrap();
+    let live = Store::open(&dir).unwrap();
+    assert_eq!(folded.last_seq, live.state.last_seq);
+    assert_eq!(folded.last_hash, live.state.last_hash);
+    assert_eq!(folded.instances.len(), live.state.instances.len());
+}

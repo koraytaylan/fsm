@@ -91,3 +91,14 @@ fn create_always_fails_overflow() {
             .any(|f| f.code == "def/create_always_fails")
     );
 }
+
+#[test]
+fn create_always_fails_skips_overrideable_init() {
+    let (m, t) = comp(
+        r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"c","initial":"l","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]},"states":[{"name":"l"}]}],"initial":"c","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[],"transitions":[]}"#,
+    );
+    assert!(
+        create_always_fails(&m, &t).is_empty(),
+        "declared MAX init overflows but default override 0 succeeds"
+    );
+}

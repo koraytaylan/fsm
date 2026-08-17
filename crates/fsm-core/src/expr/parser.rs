@@ -76,7 +76,10 @@ impl Parser {
     }
 
     fn expected(&self, set: &str) -> ExprError {
-        let span = self.peek_span();
+        self.expected_at(set, self.peek_span())
+    }
+
+    fn expected_at(&self, set: &str, span: Span) -> ExprError {
         ExprError::new(
             "expr/parse",
             span,
@@ -105,12 +108,14 @@ impl Parser {
             let cond = self.parse_or(depth + 1)?;
             match self.bump() {
                 Some((Tok::KwThen, _)) => {}
-                _ => return Err(self.expected("`then`")),
+                Some((_, span)) => return Err(self.expected_at("`then`", span)),
+                None => return Err(self.expected_at("`then`", self.eof_span())),
             }
             let then_branch = self.parse_if(depth + 1)?;
             match self.bump() {
                 Some((Tok::KwElse, _)) => {}
-                _ => return Err(self.expected("`else`")),
+                Some((_, span)) => return Err(self.expected_at("`else`", span)),
+                None => return Err(self.expected_at("`else`", self.eof_span())),
             }
             let else_branch = self.parse_if(depth + 1)?;
             let span = Span::new(start.start as usize, else_branch.span().end as usize);
@@ -331,7 +336,8 @@ impl Parser {
                     }
                     let end = match self.bump() {
                         Some((Tok::RParen, s)) => s,
-                        _ => return Err(self.expected("`)`")),
+                        Some((_, span)) => return Err(self.expected_at("`)`", span)),
+                        None => return Err(self.expected_at("`)`", self.eof_span())),
                     };
                     Ok(Expr::Call {
                         name,
@@ -352,7 +358,8 @@ impl Parser {
                 let inner = self.parse_if(depth + 1)?;
                 match self.bump() {
                     Some((Tok::RParen, _)) => Ok(inner),
-                    _ => Err(self.expected("`)`")),
+                    Some((_, span)) => Err(self.expected_at("`)`", span)),
+                    None => Err(self.expected_at("`)`", self.eof_span())),
                 }
             }
             Some((_, span)) => Err(ExprError::new(

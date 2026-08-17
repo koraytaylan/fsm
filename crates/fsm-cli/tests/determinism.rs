@@ -101,6 +101,18 @@ fn three_way_refold() {
 }
 
 #[test]
+fn generator_twice_byte_identical() {
+    let mut a = proputil::Gen(7);
+    let mut b = proputil::Gen(7);
+    let ma = proputil::gen_machine(&mut a, 4);
+    let mb = proputil::gen_machine(&mut b, 4);
+    assert_eq!(
+        fsm_core::canon::canon_bytes(&ma),
+        fsm_core::canon::canon_bytes(&mb)
+    );
+}
+
+#[test]
 fn perf_smoke() {
     clock::reset_injected();
     let dir = tmp(99);
@@ -124,6 +136,48 @@ fn perf_smoke() {
     }
     let mean = times.iter().sum::<std::time::Duration>() / times.len() as u32;
     assert!(mean.as_millis() < 250, "mean {}ms", mean.as_millis());
+
+    let dir = tmp(12);
+    let mut store = Store::open(&dir).unwrap();
+    let mut states = String::from(r#"[{"name":"s0"}"#);
+    let mut trans = String::new();
+    for i in 1..=12 {
+        states.push_str(&format!(r#",{{"name":"s{i}"}}"#));
+        if i > 1 {
+            trans.push(',');
+        }
+        trans.push_str(&format!(r#"{{"from":"s{}","on":"go","to":"s{i}"}}"#, i - 1));
+    }
+    states.push(']');
+    let src = format!(
+        r#"{{"format":"fsm.machine/1","name":"d12","states":{states},"initial":"s0","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{trans}]}}"#
+    );
+    let spec = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+    store.define_machine(spec, false, false).unwrap();
+    store.create_instance("d12", "deep", "c", None).unwrap();
+    let t = Instant::now();
+    for i in 0..12 {
+        let r = store
+            .send_event(
+                "deep",
+                "go",
+                Value::Obj(BTreeMap::new()),
+                &format!("g{i}"),
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            r.get("applied").and_then(Value::as_bool),
+            Some(true),
+            "{r:?}"
+        );
+    }
+    assert!(
+        t.elapsed().as_millis() < 250,
+        "depth12 {}",
+        t.elapsed().as_millis()
+    );
+    assert_eq!(store.state.instances.get("deep").unwrap().leaf, "s12");
 }
 
 fn parse_case() -> Value {

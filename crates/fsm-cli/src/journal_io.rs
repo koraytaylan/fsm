@@ -533,7 +533,8 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
         return Err(OpenError::Health(health));
     }
     let recs = load_records(dir).map_err(OpenError::Io)?;
-    let state = fold_with(recs.clone(), sink).map_err(|e| OpenError::Health(replay_health(e)))?;
+    let state = crate::snapshot::open_state(dir, recs.clone(), sink)
+        .map_err(|e| OpenError::Health(replay_health(e)))?;
     let last = recs.last();
     let (name, first, bytes, count) = active_segment_meta(&jdir, &recs).map_err(OpenError::Io)?;
     let path = jdir.join(&name);

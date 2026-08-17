@@ -237,23 +237,55 @@ pub fn ancestor_shadowed(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     out
 }
 
-pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
-    match crate::step::create(m, t, &BTreeMap::new()) {
-        Err(r)
-            if r.code == "run/create_failed"
-                && !r.message.contains("invariant failed at create") =>
-        {
-            vec![Finding {
-                severity: Severity::Error,
-                code: "def/create_always_fails",
-                message: r.message,
-                path: "/".into(),
-                span: None,
-                hint: "creation fails on declared inits".into(),
-            }]
+fn type_default(ty: &crate::spec::TySpec, enums: &BTreeMap<String, Vec<String>>) -> Option<Val> {
+    use crate::spec::TySpec;
+    Some(match ty {
+        TySpec::Int => Val::Int(0),
+        TySpec::Bool => Val::Bool(false),
+        TySpec::Str => Val::Str(String::new()),
+        TySpec::Ts => Val::Ts(0),
+        TySpec::Dur => Val::Dur(0),
+        TySpec::Dec { scale } => Val::Dec(crate::decimal::Dec {
+            mant: 0,
+            scale: *scale,
+        }),
+        TySpec::Enum { of } => {
+            let v = enums.get(of).and_then(|vs| vs.first()).cloned()?;
+            Val::Enum {
+                ty: of.clone(),
+                variant: v,
+            }
         }
-        _ => Vec::new(),
+    })
+}
+
+pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
+    let declared = crate::step::create(m, t, &BTreeMap::new());
+    let Err(r) = declared else {
+        return Vec::new();
+    };
+    if r.code != "run/create_failed" {
+        return Vec::new();
     }
+    let mut defaults = BTreeMap::new();
+    for c in &m.spec.context {
+        if let Some(v) = type_default(&c.ty, &m.spec.enums) {
+            defaults.insert(c.name.clone(), v);
+        }
+    }
+    if crate::step::create(m, t, &defaults).is_ok() {
+        return Vec::new();
+    }
+    vec![Finding {
+        severity: Severity::Error,
+        code: "def/create_always_fails",
+        message: r.message,
+        path: "/".into(),
+        span: r
+            .span
+            .map(|(s, e)| crate::expr::lexer::Span::new(s as usize, e as usize)),
+        hint: "creation fails on declared inits".into(),
+    }]
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

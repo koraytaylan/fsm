@@ -191,6 +191,17 @@ fn one_step_recovery() {
     .unwrap_err();
     assert_eq!(err.code, "req/seq_mismatch");
     assert!(err.retryable);
+
+    let exercised = [
+        "req/event_unknown",
+        "run/unhandled",
+        "req/field_scale",
+        "req/number_token",
+        "req/seq_mismatch",
+    ];
+    for c in exercised {
+        assert!(ALL_CODES.contains(&c), "{c} missing from ALL_CODES");
+    }
 }
 
 #[test]

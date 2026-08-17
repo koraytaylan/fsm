@@ -99,6 +99,67 @@ fn expense_approval_paths() {
     assert!(!err.hint.is_empty());
 }
 
+fn fsm() -> &'static str {
+    env!("CARGO_BIN_EXE_fsm")
+}
+
+fn run_fsm(dir: &std::path::Path, args: &[&str]) -> (i32, String, String) {
+    let out = std::process::Command::new(fsm())
+        .args(args)
+        .arg(format!("--data-dir={}", dir.display()))
+        .env("FSM_CLOCK_MS", "5000")
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    (
+        out.status.code().unwrap_or(255),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn readme_and_examples_commands_run() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let spec = root.join("examples/expense_approval.json");
+    let dir = tmp();
+    let (c, out, err) = run_fsm(&dir, &["validate", spec.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    assert!(out.contains("case_review") || out.contains("expense") || out.contains("created"));
+    let (c, _, err) = run_fsm(&dir, &["machine", "add", spec.to_str().unwrap()]);
+    assert_eq!(c, 0, "{err}");
+    let (c, out, err) = run_fsm(
+        &dir,
+        &[
+            "instance",
+            "new",
+            "expense_approval",
+            "--request-id",
+            "demo",
+        ],
+    );
+    assert_eq!(c, 0, "{out}{err}");
+    assert!(out.contains("draft") || out.contains("inst-demo"));
+    let (c, out, err) = run_fsm(
+        &dir,
+        &[
+            "instance",
+            "send",
+            "inst-demo",
+            "submit",
+            "--payload",
+            r#"{"amount":"10.00"}"#,
+            "--request-id",
+            "demo-submit",
+        ],
+    );
+    assert_eq!(c, 0, "{out}{err}");
+    assert!(out.contains("peer_review"), "{out}");
+    let (c, out, err) = run_fsm(&dir, &["instance", "history", "inst-demo"]);
+    assert_eq!(c, 0, "{err}");
+    assert!(out.contains("EventApplied") || out.contains("seq"), "{out}");
+}
+
 #[test]
 fn order_lifecycle_paths() {
     clock::reset_injected();

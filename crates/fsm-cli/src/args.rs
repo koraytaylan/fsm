@@ -128,8 +128,8 @@ pub fn all_specs() -> Vec<&'static CmdSpec> {
     v
 }
 
-fn serve_run(_ctx: &mut Ctx, _args: &Args) -> u8 {
-    match crate::mcp::serve::run() {
+fn serve_run(ctx: &mut Ctx, _args: &Args) -> u8 {
+    match crate::mcp::serve::run_with_dir(&ctx.data_dir) {
         Ok(()) => 0,
         Err(_) => 1,
     }

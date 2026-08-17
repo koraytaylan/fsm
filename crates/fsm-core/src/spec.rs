@@ -2266,9 +2266,8 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     if !errs.is_empty() {
         return Err(errs);
     }
-    let canonical_def = spec.to_value();
-    let canonical = crate::canon::canon_bytes(&canonical_def);
-    let machine_id = crate::hashes::machine_id(&canonical_def);
+    let accepted = spec.to_value();
+    let (canonical, machine_id) = accepted_identity(&accepted);
     Ok(CompiledMachine {
         machine_id,
         spec,
@@ -2276,6 +2275,14 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         transitions_by,
         compiled_exprs,
     })
+}
+
+/// Canonical bytes and machine id from one accepted definition value.
+pub fn accepted_identity(def: &Value) -> (Vec<u8>, String) {
+    (
+        crate::canon::canon_bytes(def),
+        crate::hashes::machine_id(def),
+    )
 }
 
 /// Compile a definition using the accepted source document as the identity input.
@@ -2290,8 +2297,9 @@ pub fn compile_accepted(source: &Value) -> Result<CompiledMachine, Vec<Finding>>
     }
     let spec = parse_machine(source)?;
     let mut compiled = compile(spec)?;
-    compiled.canonical = crate::canon::canon_bytes(source);
-    compiled.machine_id = crate::hashes::machine_id(source);
+    let (canonical, machine_id) = accepted_identity(source);
+    compiled.canonical = canonical;
+    compiled.machine_id = machine_id;
     Ok(compiled)
 }
 

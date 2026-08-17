@@ -8,9 +8,9 @@
 cargo install --path crates/fsm-cli --locked
 fsm validate examples/expense_approval.json
 fsm machine add examples/expense_approval.json
-fsm instance new expense_approval
-fsm instance send <instance> submit --payload '{"amount":"10.00"}'
-fsm instance history <instance>
+fsm instance new expense_approval --request-id demo
+fsm instance send inst-demo submit --payload '{"amount":"10.00"}' --request-id demo-submit
+fsm instance history inst-demo
 ```
 
 ## Install

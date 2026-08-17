@@ -182,9 +182,12 @@ fn partial_eval_val(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) 
             if budget.tick(*span).is_err() {
                 return None;
             }
-            let l = partial_eval_val(lhs, ctx, budget)?;
-            let r = partial_eval_val(rhs, ctx, budget)?;
-            cmp_vals(*op, &l, &r).ok().map(Val::Bool)
+            let l = partial_eval_val(lhs, ctx, budget);
+            let r = partial_eval_val(rhs, ctx, budget);
+            match (l, r) {
+                (Some(l), Some(r)) => cmp_vals(*op, &l, &r).ok().map(Val::Bool),
+                _ => None,
+            }
         }
         Expr::Bin { op, lhs, rhs, span } => {
             if budget.tick(*span).is_err() {

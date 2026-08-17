@@ -62,3 +62,13 @@ fn parse_jsonl() {
     }
     assert!(n > 0);
 }
+
+#[test]
+fn expected_token_span_is_the_consumed_offender() {
+    let err = parse("if true foo 1 else 0").unwrap_err();
+    assert_eq!(err.code, "expr/parse");
+    let src = "if true foo 1 else 0";
+    let foo_at = src.find("foo").unwrap() as u32;
+    assert_eq!(err.span.start, foo_at, "{err:?}");
+    assert_eq!(err.span.end, foo_at + 3, "{err:?}");
+}

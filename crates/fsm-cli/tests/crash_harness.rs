@@ -115,15 +115,53 @@ fn prefix_of(script: &[String], journaled: &[String]) -> bool {
 }
 
 fn states_match(a: &StoreState, b: &StoreState) -> bool {
-    a.machines.len() == b.machines.len()
-        && a.instances.len() == b.instances.len()
-        && a.instance_machines == b.instance_machines
-        && a.instances.iter().all(|(id, st)| {
-            b.instances
-                .get(id)
-                .map(|o| o.leaf == st.leaf && o.status == st.status)
-                == Some(true)
-        })
+    states_diff(a, b).is_none()
+}
+
+fn states_diff(a: &StoreState, b: &StoreState) -> Option<String> {
+    if a.last_seq != b.last_seq {
+        return Some(format!("seq {} vs {}", a.last_seq, b.last_seq));
+    }
+    if a.last_seq > 0 && a.last_hash != b.last_hash {
+        return Some(format!("hash {} vs {}", a.last_hash, b.last_hash));
+    }
+    if a.dedup != b.dedup {
+        return Some(format!("dedup {:?} vs {:?}", a.dedup, b.dedup));
+    }
+    if a.instance_machines != b.instance_machines {
+        return Some("instance_machines".into());
+    }
+    if a.machines.len() != b.machines.len() {
+        return Some("machines len".into());
+    }
+    for (id, ma) in &a.machines {
+        let Some(mb) = b.machines.get(id) else {
+            return Some(format!("missing machine {id}"));
+        };
+        if ma.def != mb.def || ma.compiled.machine_id != mb.compiled.machine_id {
+            return Some(format!("machine {id}"));
+        }
+    }
+    if a.instances.len() != b.instances.len() {
+        return Some("instances len".into());
+    }
+    for (id, st) in &a.instances {
+        let Some(o) = b.instances.get(id) else {
+            return Some(format!("missing inst {id}"));
+        };
+        if o.leaf != st.leaf
+            || o.status != st.status
+            || o.ctx != st.ctx
+            || o.history != st.history
+            || o.pending != st.pending
+        {
+            return Some(format!(
+                "inst {id} leaf {}/{} pend {:?}/{:?}",
+                st.leaf, o.leaf, st.pending, o.pending
+            ));
+        }
+    }
+    None
 }
 
 #[test]
@@ -213,10 +251,10 @@ fn crash_harness() {
         let folded = fold_with(recs, &mut NopSink)
             .unwrap_or_else(|e| panic!("iter {it} seed {seed} fold {e:?}"));
         if let Ok(live) = Store::open(&dir) {
-            assert!(
-                states_match(&live.state, &folded),
-                "iter {it} seed {seed} live state != prefix fold"
-            );
+            if let Some(diff) = states_diff(&live.state, &folded) {
+                panic!("iter {it} seed {seed} live != fold: {diff}");
+            }
+            let _ = states_match(&live.state, &folded);
         }
         let _ = fs::remove_dir_all(&dir);
     }

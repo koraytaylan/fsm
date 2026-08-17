@@ -76,7 +76,14 @@ pub fn fold_with(
     records: impl IntoIterator<Item = Record>,
     sink: &mut impl RecordSink,
 ) -> Result<StoreState, ReplayError> {
-    let mut st = StoreState::default();
+    fold_from(StoreState::default(), records, sink)
+}
+
+pub fn fold_from(
+    mut st: StoreState,
+    records: impl IntoIterator<Item = Record>,
+    sink: &mut impl RecordSink,
+) -> Result<StoreState, ReplayError> {
     for rec in records {
         apply(&mut st, &rec)?;
         st.last_seq = rec.seq;
@@ -84,6 +91,10 @@ pub fn fold_with(
         sink.on_record(&rec, &st);
     }
     Ok(st)
+}
+
+pub fn parse_ctx_val(ty: &TySpec, raw: &str) -> Option<Val> {
+    parse_override(ty, raw)
 }
 
 fn parse_override(ty: &TySpec, raw: &str) -> Option<Val> {

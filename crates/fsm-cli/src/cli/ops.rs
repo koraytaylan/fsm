@@ -84,7 +84,7 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
         .into_iter()
         .filter(|r| to.map(|n| r.seq <= n).unwrap_or(true))
         .collect();
-    match fold_with(recs, &mut NopSink) {
+    match fold_with(recs.clone(), &mut NopSink) {
         Ok(folded) => {
             let live = match crate::store::Store::open(&ctx.data_dir) {
                 Ok(s) => s,
@@ -93,7 +93,8 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
             let agreement = states_agree(&folded, &live.state);
             let mut out = BTreeMap::from([("agreement".into(), Value::Bool(agreement))]);
             if !agreement {
-                let div = folded.last_seq.min(live.state.last_seq).saturating_add(1);
+                let div = first_divergent_seq(&recs, &live.state)
+                    .unwrap_or_else(|| folded.last_seq.min(live.state.last_seq).saturating_add(1));
                 out.insert("first_divergent_seq".into(), Value::Num(div.to_string()));
             }
             emit_success(ctx, &Value::Obj(out));
@@ -167,6 +168,30 @@ fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
         }
         Err(e) => emit_error(ctx, &ErrorObj::new("store/torn_tail", format!("{e:?}"))),
     }
+}
+
+fn first_divergent_seq(
+    recs: &[fsm_core::record::Record],
+    live: &fsm_core::replay::StoreState,
+) -> Option<u64> {
+    use fsm_core::replay::{NopSink, fold_with};
+    for i in 0..recs.len() {
+        let prefix: Vec<_> = recs[..=i].to_vec();
+        let seq = recs[i].seq;
+        let Ok(folded) = fold_with(prefix, &mut NopSink) else {
+            return Some(seq);
+        };
+        if folded.last_seq == live.last_seq && !states_agree(&folded, live) {
+            return Some(seq);
+        }
+        if folded.last_hash != recs[i].hash {
+            return Some(seq);
+        }
+    }
+    if recs.last().map(|r| r.seq) != Some(live.last_seq) {
+        return Some(live.last_seq.max(recs.last().map(|r| r.seq).unwrap_or(0)));
+    }
+    None
 }
 
 fn states_agree(a: &fsm_core::replay::StoreState, b: &fsm_core::replay::StoreState) -> bool {

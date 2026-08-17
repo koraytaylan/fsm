@@ -11,7 +11,7 @@ $ fsm validate examples/expense_approval.json
 ok: true
 $ fsm machine add examples/expense_approval.json
 created: true
-$ fsm instance new expense_approval
+$ fsm instance new expense_approval --request-id e1
 leaf: draft
 $ fsm instance send inst-e1 submit --payload '{"amount":"10.00"}' --request-id e1-submit
 leaf: peer_review
@@ -34,17 +34,16 @@ $ fsm validate examples/order_lifecycle.json
 ok: true
 $ fsm machine add examples/order_lifecycle.json
 created: true
-$ fsm instance new order_lifecycle
+$ fsm instance new order_lifecycle --request-id ol1
 leaf: placed
-$ fsm instance send <id> place
+$ fsm instance send inst-ol1 place --request-id ol-place
 leaf: picking
-$ fsm instance send <id> confirmed --payload '{"at":"1"}'
+$ fsm instance send inst-ol1 confirmed --payload '{"at":"1"}' --request-id ol-early
 # exit 1
 run/unhandled
-  hint: …
-$ fsm instance send <id> pick
-$ fsm instance send <id> ship
-$ fsm instance send <id> confirmed --stamp at
+$ fsm instance send inst-ol1 pick --request-id ol-pick
+$ fsm instance send inst-ol1 ship --request-id ol-ship
+$ fsm instance send inst-ol1 confirmed --stamp at --request-id ol-conf
 leaf: closed
 ```
 
@@ -57,14 +56,13 @@ $ fsm validate examples/invoice_matching.json
 ok: true
 $ fsm machine add examples/invoice_matching.json
 created: true
-$ fsm instance new invoice_matching
+$ fsm instance new invoice_matching --request-id inv1
 leaf: open
-$ fsm instance send <id> receive --payload '{"amount":"40.00"}'
-$ fsm instance send <id> match
+$ fsm instance send inst-inv1 receive --payload '{"amount":"40.00"}' --request-id inv-r1
+$ fsm instance send inst-inv1 match --request-id inv-m1
 # exit 1
 run/not_enabled
-  hint: …
-$ fsm instance send <id> receive --payload '{"amount":"60.00"}'
-$ fsm instance send <id> match
+$ fsm instance send inst-inv1 receive --payload '{"amount":"60.00"}' --request-id inv-r2
+$ fsm instance send inst-inv1 match --request-id inv-m2
 leaf: matched
 ```

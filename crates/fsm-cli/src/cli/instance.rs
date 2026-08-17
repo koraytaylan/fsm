@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use fsm_core::json::{JsonLimits, Value, parse};
+#[cfg(test)]
 use fsm_core::record::RecordKind;
 
 use crate::args::{Args, CmdSpec, Ctx, read_input_from};
@@ -312,43 +313,14 @@ fn history(ctx: &mut Ctx, args: &Args) -> u8 {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(50);
     let want_trace = args.switches.contains("trace");
-    let mut entries = Vec::new();
-    for rec in store
-        .records
-        .iter()
-        .filter(|r| {
-            r.body.get("instance_id").and_then(Value::as_str) == Some(id.as_str()) && r.seq >= from
-        })
-        .take(limit)
-    {
-        let mut e = BTreeMap::new();
-        e.insert("seq".into(), Value::Num(rec.seq.to_string()));
-        e.insert("kind".into(), Value::Str(format!("{:?}", rec.kind)));
-        if let Some(ev) = rec.body.get("event") {
-            e.insert("event".into(), ev.clone());
+    let include_rejected = !args.switches.contains("hide-rejected");
+    match store.history_page(id, from, limit, want_trace, include_rejected) {
+        Ok(v) => {
+            emit_success(ctx, &v);
+            0
         }
-        if let Some(p) = rec.body.get("payload") {
-            e.insert("payload".into(), p.clone());
-        }
-        if let Some(n) = rec.body.get("note") {
-            e.insert("note".into(), n.clone());
-        }
-        if let Some(r) = rec.body.get("reason") {
-            e.insert("reason".into(), r.clone());
-        }
-        if want_trace {
-            e.insert("trace".into(), Value::Str("recomputed".into()));
-        }
-        entries.push(Value::Obj(e));
+        Err(e) => emit_error(ctx, &e),
     }
-    emit_success(
-        ctx,
-        &Value::Obj(BTreeMap::from([
-            ("instance_id".into(), Value::Str(id.clone())),
-            ("entries".into(), Value::Arr(entries)),
-        ])),
-    );
-    0
 }
 
 fn explain(ctx: &mut Ctx, args: &Args) -> u8 {
@@ -362,19 +334,13 @@ fn explain(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
-    let rec = store.records.iter().find(|r| r.seq == seq);
-    let Some(rec) = rec else {
-        return emit_error(ctx, &ErrorObj::new("req/field_missing", "seq"));
-    };
-    let _ = id;
-    let mut m = BTreeMap::new();
-    m.insert("seq".into(), Value::Num(seq.to_string()));
-    m.insert("kind".into(), Value::Str(format!("{:?}", rec.kind)));
-    if rec.kind == RecordKind::EventApplied {
-        m.insert("trace".into(), Value::Str("recomputed".into()));
+    match store.explain_seq(id, seq) {
+        Ok(v) => {
+            emit_success(ctx, &v);
+            0
+        }
+        Err(e) => emit_error(ctx, &e),
     }
-    emit_success(ctx, &Value::Obj(m));
-    0
 }
 
 pub static SPECS: &[CmdSpec] = &[
@@ -438,7 +404,7 @@ pub static SPECS: &[CmdSpec] = &[
         path: &["instance", "history"],
         positionals: &["instance"],
         flags: &["from-seq", "limit"],
-        switches: &["trace"],
+        switches: &["trace", "hide-rejected"],
         help: "Instance history",
         run: history,
     },
