@@ -97,7 +97,8 @@ fn builtins_jsonl_and_coverage() {
                     evt: evt_r,
                 };
                 let mut bud = Budget::new(4096);
-                eval(&e, &b, &mut bud, false).0.err()
+                let expr = typed.as_ref().ok().map(|t| &t.1).unwrap_or(&e);
+                eval(expr, &b, &mut bud, false).0.err()
             });
             let err = err.unwrap_or_else(|| panic!("line {} expected err {code}", idx + 1));
             assert_eq!(
@@ -113,7 +114,7 @@ fn builtins_jsonl_and_coverage() {
             }
             continue;
         }
-        let (ty, ws) =
+        let (ty, annotated, ws) =
             typed.unwrap_or_else(|e| panic!("line {} type {}: {}", idx + 1, e.code, e.hint));
         if let Some(want) = s(&rec, "ty") {
             assert_eq!(ty.to_string(), want, "line {}", idx + 1);
@@ -141,7 +142,7 @@ fn builtins_jsonl_and_coverage() {
                 evt: evt_r,
             };
             let mut bud = Budget::new(4096);
-            let v = eval(&e, &b, &mut bud, false).0.unwrap();
+            let v = eval(&annotated, &b, &mut bud, false).0.unwrap();
             assert_eq!(v.canonical_string(), want, "line {} src={src}", idx + 1);
         }
     }

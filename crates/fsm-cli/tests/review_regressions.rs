@@ -325,7 +325,7 @@ fn enum_if_widening_overflows() {
     let err = s
         .send_event("i1", "go", Value::Obj(BTreeMap::new()), "g1", None)
         .unwrap_err();
-    assert_eq!(err.code, "run/overflow");
+    assert_eq!(err.code, "run/action_error");
     assert_eq!(s.state.instances.get("i1").unwrap().leaf, "a");
     assert!(err.details.get("request_id").and_then(Value::as_str) == Some("g1"));
 }
@@ -365,4 +365,39 @@ fn emit_if_uses_compiled_scale() {
         }
         other => panic!("{other:?}"),
     }
+}
+
+#[test]
+fn rejected_reopen_keeps_request_id() {
+    let _g = gate();
+    let dir = tmp("rej");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.create_instance("case_review", "i1", "c1", None).unwrap();
+    s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+        .unwrap();
+    let e1 = s
+        .send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+        .unwrap_err();
+    let a1 = s
+        .ack_effect_outcome("i1", "missing", "ar", "ok", None)
+        .unwrap_err();
+    drop(s);
+    let mut s2 = Store::open(&dir).unwrap();
+    let e2 = s2
+        .send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+        .unwrap_err();
+    let a2 = s2
+        .ack_effect_outcome("i1", "missing", "ar", "ok", None)
+        .unwrap_err();
+    assert_eq!(e1.to_value(), e2.to_value());
+    assert_eq!(a1.to_value(), a2.to_value());
+    assert_eq!(
+        e2.details.get("request_id").and_then(Value::as_str),
+        Some("r")
+    );
+    assert_eq!(
+        a2.details.get("request_id").and_then(Value::as_str),
+        Some("ar")
+    );
 }

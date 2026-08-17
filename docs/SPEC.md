@@ -126,12 +126,12 @@ Genesis is `seq` 0, `prev` sixty-four `0`s, body `{format: "fsm.journal/1", crea
 | `event_applied` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `exited`, `entered`, `source_state` |
 | `event_rejected` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `code`, `message`, `hint` |
 | `event_ignored` | `instance_id`, `event`, `payload`, `request_id`, `state_hash` |
-| `effect_acked` | `instance_id`, `effect_id`, `request_id`, `outcome`, `state_hash` |
-| `request_rejected` | `request_id`, `instance_id`, `code`, `message`, `hint` |
+| `effect_acked` | `instance_id`, `effect_id`, `request_id`, `outcome` (`ok` or `failed`), `state_hash`, optional `result` |
+| `request_rejected` | `request_id`, `instance_id`, `code`, `message`, `hint`, `details` |
 | `instance_cancelled` | `instance_id`, `request_id`, `reason`, `state_hash` |
 | `annotated` | `instance_id`, `request_id`, `note` |
 
-Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`. Duplicate `request_id` values are a fold error. `effect_acked` and `instance_cancelled` commit the post-operation instance `state_hash`. VERSION remains `2`; new required fields are written by this engine and older VERSION 2 journals that omit them fail `body` verification.
+Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`. Duplicate `request_id` values are a fold error. `effect_acked` and `instance_cancelled` commit the post-operation instance `state_hash`. On-disk store `VERSION` is `3`. `VERSION` `1` and `2` directories are rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records.
 
 ### Recovery
 
@@ -368,7 +368,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed
 - `store/torn_tail` — truncated final record
-- `store/version_mismatch` — data directory VERSION is not 2
+- `store/version_mismatch` — data directory VERSION is not 3
 
 ## Appendix B — Limits
 
@@ -402,4 +402,4 @@ These match `crates/fsm-core/src/limits.rs`.
 | `fsm.state/1` | Instance state identity hash payload |
 | `expr/1` | Expression grammar |
 
-On-disk store `VERSION` is `2`. A `VERSION` `1` directory (the pre-repair journal/identity layout) is rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records, machine ids, or snapshots.
+On-disk store `VERSION` is `3`. A `VERSION` `1` or `2` directory is rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records, machine ids, or snapshots.

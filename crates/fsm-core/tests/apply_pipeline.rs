@@ -150,3 +150,64 @@ fn monitor_does_not_block() {
     let a = apply(&m, &t, &mut st, "e", &empty());
     assert_eq!(a.monitor_flags, ["pos"]);
 }
+
+fn compile_src(src: &str) -> (fsm_core::machine::CompiledMachine, Tree) {
+    let v = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+    let m = fsm_core::spec::compile_accepted(&v).unwrap();
+    let t = Tree::build(&m.spec.states);
+    (m, t)
+}
+
+fn inst(m: &fsm_core::machine::CompiledMachine, t: &Tree) -> InstanceState {
+    let c = create(m, t, &BTreeMap::new()).unwrap();
+    InstanceState {
+        status: c.status_after,
+        leaf: c.leaf_after,
+        ctx: c.ctx_after,
+        history: c.history_after,
+        pending: vec![],
+    }
+}
+
+#[test]
+fn block_overflow_is_action_error() {
+    let exit = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a","exit":{"do":[{"target":"x","value":"ctx.x + 1"}]}},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b"}]}"#;
+    let (m, t) = compile_src(exit);
+    let st = inst(&m, &t);
+    let pre = st.clone();
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.block.as_deref(), Some("exit(a)"));
+        }
+        o => panic!("{o:?}"),
+    }
+    assert_eq!(st.ctx, pre.ctx);
+    assert_eq!(st.leaf, pre.leaf);
+
+    let trans = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b","do":[{"target":"x","value":"ctx.x + 1"}]}]}"#;
+    let (m, t) = compile_src(trans);
+    let st = inst(&m, &t);
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.block.as_deref(), Some("transition"));
+        }
+        o => panic!("{o:?}"),
+    }
+
+    let entry = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true,"entry":{"do":[{"target":"x","value":"ctx.x + 1"}]}}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b"}]}"#;
+    let (m, t) = compile_src(entry);
+    let st = inst(&m, &t);
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.block.as_deref(), Some("entry(b)"));
+            assert!(r.trace.pipeline.iter().any(|p| p.discarded));
+        }
+        o => panic!("{o:?}"),
+    }
+}

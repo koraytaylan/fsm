@@ -163,8 +163,7 @@ fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
                 JournalHealth::TornTail { .. } => "store/torn_tail",
                 _ => "store/chain_broken",
             };
-            emit_error(ctx, &ErrorObj::new(code, h.message()));
-            health_exit(&h)
+            emit_error(ctx, &ErrorObj::new(code, h.message()))
         }
         Err(e) => emit_error(ctx, &ErrorObj::new("store/torn_tail", format!("{e:?}"))),
     }

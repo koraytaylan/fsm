@@ -242,7 +242,7 @@ pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
     fs::create_dir_all(&jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
     let ver = dir.join("VERSION");
     if !ver.exists() {
-        fs::write(&ver, "2\n").map_err(|e| JournalIoError::Io(e.to_string()))?;
+        fs::write(&ver, "3\n").map_err(|e| JournalIoError::Io(e.to_string()))?;
     }
     let lock = acquire_lock(&jdir)?;
     write_genesis_unlocked(&jdir)?;
@@ -461,7 +461,7 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
     }
     let ver = dir.join("VERSION");
     if !ver.exists() {
-        fs::write(&ver, "2\n").map_err(|e| OpenError::Io(e.to_string()))?;
+        fs::write(&ver, "3\n").map_err(|e| OpenError::Io(e.to_string()))?;
     }
     let jdir = journal_dir(dir);
     fs::create_dir_all(&jdir).map_err(|e| OpenError::Io(e.to_string()))?;
@@ -560,10 +560,10 @@ pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
     if ver.exists() {
         let v = fs::read_to_string(&ver).unwrap_or_default();
         let t = v.trim();
-        if t == "1" {
-            return Err(JournalHealth::VersionMismatch { found: "1".into() });
+        if t == "1" || t == "2" {
+            return Err(JournalHealth::VersionMismatch { found: t.into() });
         }
-        if t != "2" {
+        if t != "3" {
             return Err(JournalHealth::VersionMismatch {
                 found: t.to_string(),
             });

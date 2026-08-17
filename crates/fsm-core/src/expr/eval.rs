@@ -330,7 +330,15 @@ fn apply_compiled_dec(v: Val, widen: Option<u8>, span: Span) -> Result<Val, Eval
         return Ok(v);
     };
     let Some(target) = widen else {
-        return Ok(Val::Dec(d));
+        return Err((
+            ExprError::new(
+                "internal/untyped_if",
+                span,
+                "decimal if was evaluated without a compile-time result type",
+                "typecheck the expression before eval",
+            ),
+            Some(err_node(span, "internal/untyped_if", vec![])),
+        ));
     };
     if target == d.scale {
         return Ok(Val::Dec(d));

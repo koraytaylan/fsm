@@ -60,7 +60,6 @@ fn eval_jsonl() {
             .unwrap_or_else(|e| panic!("line {}: {e:?}", idx + 1));
         let src = s(&rec, "src").unwrap();
         let e = parse(src).unwrap();
-        let ctx = map_vals(rec.get("ctx"));
         let evt = map_vals(rec.get("evt"));
         let evt_ref = if rec.get("evt").is_some() {
             Some(&evt)
@@ -127,4 +126,29 @@ fn trace_golden() {
     let mut bud = Budget::new(64);
     let (_, tr) = eval(&e, &b, &mut bud, false);
     assert!(tr.is_none());
+}
+
+#[test]
+fn public_typecheck_eval_widens_decimal_if() {
+    use fsm_core::expr::typeck::{Scope, ScopeKind, Ty, typecheck};
+    let e = parse("if false then 2.50 else 1.0").unwrap();
+    let ctx_tys = BTreeMap::new();
+    let enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let scope = Scope {
+        kind: ScopeKind::Block,
+        ctx: &ctx_tys,
+        evt: None,
+        enums: &enums,
+    };
+    let (ty, typed, _) = typecheck(&e, &scope).unwrap();
+    assert_eq!(ty, Ty::Dec(2));
+    let vals = BTreeMap::new();
+    let b = Bindings {
+        ctx: &vals,
+        evt: None,
+    };
+    let (v, _) = eval(&typed, &b, &mut Budget::new(64), false);
+    assert_eq!(v.unwrap().canonical_string(), "1.00");
+    let raw = eval(&e, &b, &mut Budget::new(64), false).0.unwrap_err();
+    assert_eq!(raw.code, "internal/untyped_if");
 }

@@ -295,6 +295,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "request_id")
                 && req_str(body, "leaf")
                 && is_state_hash(body.get("state_hash"))
+                && body.get("overrides").and_then(Value::as_obj).is_some()
         }
         RecordKind::EventApplied => {
             req_str(body, "instance_id")
@@ -313,6 +314,8 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && body.get("payload").is_some()
                 && is_state_hash(body.get("state_hash"))
                 && req_str(body, "code")
+                && req_str(body, "message")
+                && req_str(body, "hint")
         }
         RecordKind::EventIgnored => {
             req_str(body, "instance_id")
@@ -325,7 +328,10 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
             req_str(body, "instance_id")
                 && req_str(body, "effect_id")
                 && req_str(body, "request_id")
-                && req_str(body, "outcome")
+                && matches!(
+                    body.get("outcome").and_then(Value::as_str),
+                    Some("ok") | Some("failed")
+                )
                 && is_state_hash(body.get("state_hash"))
         }
         RecordKind::RequestRejected => {
@@ -334,6 +340,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "code")
                 && req_str(body, "message")
                 && req_str(body, "hint")
+                && body.get("details").and_then(Value::as_obj).is_some()
         }
         RecordKind::InstanceCancelled => {
             req_str(body, "instance_id")

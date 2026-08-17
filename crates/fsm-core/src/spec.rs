@@ -2008,10 +2008,11 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
      -> Option<Ty> {
         match parser::parse(src) {
             Ok(e) => match typecheck(&e, scope) {
-                Ok((ty, _)) => {
+                Ok((ty, annotated, _)) => {
                     compiled_exprs.push(CompiledExpr {
                         source: src.to_string(),
                         ty: ty.clone(),
+                        expr: annotated,
                     });
                     Some(ty)
                 }

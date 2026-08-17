@@ -90,7 +90,7 @@ fn typeck_jsonl() {
             enums: &enums,
         };
         match typecheck(&e, &scope) {
-            Ok((ty, _)) => {
+            Ok((ty, _, _)) => {
                 let want = s(&rec, "ty").unwrap_or_else(|| panic!("line {} expected ty", idx + 1));
                 assert_eq!(ty.to_string(), want, "line {} src={src}", idx + 1);
             }

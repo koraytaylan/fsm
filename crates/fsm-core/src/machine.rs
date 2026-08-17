@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::expr::ast::Expr;
 use crate::expr::typeck::Ty;
 use crate::spec::MachineSpec;
 
@@ -41,6 +42,7 @@ pub struct InstanceState {
 pub struct CompiledExpr {
     pub source: String,
     pub ty: Ty,
+    pub expr: Expr,
 }
 
 #[derive(Debug, Clone)]

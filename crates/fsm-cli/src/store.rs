@@ -178,7 +178,7 @@ impl Store {
                 .hint("delete the data directory and recreate the store"));
         }
         if !ver.exists() {
-            fs::write(&ver, "2\n").map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+            fs::write(&ver, "3\n").map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
             fs::create_dir_all(data_dir.join("snapshots")).ok();
         }
         let mut sink = HistSink {
@@ -316,48 +316,6 @@ impl Store {
             .iter()
             .rev()
             .find(|r| r.body.get("request_id").and_then(Value::as_str) == Some(request_id))?;
-        if rec.kind == RecordKind::EventRejected {
-            if let (Some(iid), Some(ev)) = (
-                rec.body.get("instance_id").and_then(Value::as_str),
-                rec.body.get("event").and_then(Value::as_str),
-            ) {
-                if let Ok(pre) = fold_prefix(&self.records, rec.seq.saturating_sub(1)) {
-                    if let (Some(mid), Some(inst)) =
-                        (pre.instance_machines.get(iid), pre.instances.get(iid))
-                    {
-                        if let Some(m) = pre.machines.get(mid) {
-                            let payload = rec
-                                .body
-                                .get("payload")
-                                .cloned()
-                                .unwrap_or(Value::Obj(BTreeMap::new()));
-                            let mut bud = Budget::new(4096);
-                            if let Outcome::Rejected(r) =
-                                step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud)
-                            {
-                                let mut err = ErrorObj::from_rejection(&r);
-                                if let Ok(view) =
-                                    view_at(&pre, iid, Some(request_id), None, rec.seq)
-                                {
-                                    if let Value::Obj(v) = view {
-                                        if let Some(en) = v.get("enabled_events") {
-                                            if let Value::Obj(d) = &mut err.details {
-                                                d.insert("enabled_events".into(), en.clone());
-                                            }
-                                        }
-                                    }
-                                }
-                                if let Value::Obj(mut d) = err.details {
-                                    d.insert("trace".into(), r.trace.to_value());
-                                    err.details = Value::Obj(d);
-                                }
-                                return Some(Err(err));
-                            }
-                        }
-                    }
-                }
-            }
-        }
         if rec.kind == RecordKind::EventRejected || rec.kind == RecordKind::RequestRejected {
             let code = rec
                 .body
@@ -378,7 +336,7 @@ impl Store {
             if let Some(d) = rec.body.get("details") {
                 err.details = d.clone();
             }
-            return Some(Err(err));
+            return Some(Err(err.request_id(request_id)));
         }
         if rec.kind == RecordKind::EffectAcked {
             let mut m = BTreeMap::new();
@@ -632,7 +590,8 @@ impl Store {
                 )
                 .hint(
                     "re-read the instance, then retry with the same request_id and the current seq",
-                ));
+                )
+                .request_id(request_id));
             }
         }
         if let Some(field) = stamp {
@@ -647,19 +606,18 @@ impl Store {
             .instance_machines
             .get(instance_id)
             .cloned()
-            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
-        let m = self
-            .state
-            .machines
-            .get(&mid)
-            .ok_or_else(|| ErrorObj::new("req/machine_not_found", &mid))?;
-        let inst = self
-            .state
-            .instances
-            .get(instance_id)
-            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+            .ok_or_else(|| {
+                ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+            })?;
+        let m =
+            self.state.machines.get(&mid).ok_or_else(|| {
+                ErrorObj::new("req/machine_not_found", &mid).request_id(request_id)
+            })?;
+        let inst = self.state.instances.get(instance_id).ok_or_else(|| {
+            ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+        })?;
         if let Err(r) = validate_event(&m.compiled, event, payload) {
-            return Err(ErrorObj::from_rejection(&r));
+            return Err(ErrorObj::from_rejection(&r).request_id(request_id));
         }
         let mut bud = Budget::new(4096);
         let out = step(&m.compiled, &m.tree, inst, event, payload, &mut bud);
@@ -850,6 +808,7 @@ impl Store {
                 "pending".into(),
                 Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
             );
+            det.insert("request_id".into(), Value::Str(request_id.into()));
             body.insert("details".into(), Value::Obj(det));
             let rec = self
                 .journal
@@ -1509,6 +1468,7 @@ mod tests {
         let mut s2 = Store::open(&dir).unwrap();
         let after_torn = s2.allocate_request_id().unwrap();
         assert!(!s2.state.dedup.contains_key(&after_torn));
+        assert_ne!(after_torn, taken);
         assert!(after_torn.starts_with("req-"));
     }
 
@@ -1575,5 +1535,41 @@ mod tests {
             Some(n),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn rejected_retry_keeps_request_id() {
+        let dir = tmp();
+        let mut s = Store::open(&dir).unwrap();
+        s.define_machine(case_def(), false, false).unwrap();
+        s.create_instance("case_review", "i1", "c1", None).unwrap();
+        s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+            .unwrap();
+        let e1 = s
+            .send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+            .unwrap_err();
+        assert_eq!(
+            e1.details.get("request_id").and_then(Value::as_str),
+            Some("r")
+        );
+        let pending = s.state.instances.get("i1").unwrap().pending.clone();
+        let ae1 = s
+            .ack_effect_outcome("i1", "nope", "ar", "ok", None)
+            .unwrap_err();
+        assert_eq!(
+            ae1.details.get("request_id").and_then(Value::as_str),
+            Some("ar")
+        );
+        assert!(!pending.is_empty());
+        drop(s);
+        let mut s2 = Store::open(&dir).unwrap();
+        let e2 = s2
+            .send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+            .unwrap_err();
+        assert_eq!(e1.to_value(), e2.to_value());
+        let ae2 = s2
+            .ack_effect_outcome("i1", "nope", "ar", "ok", None)
+            .unwrap_err();
+        assert_eq!(ae1.to_value(), ae2.to_value());
     }
 }

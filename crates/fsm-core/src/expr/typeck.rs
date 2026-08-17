@@ -69,10 +69,12 @@ pub struct TypeWarning {
     pub message: String,
 }
 
-pub fn typecheck(e: &Expr, scope: &Scope<'_>) -> Result<(Ty, Vec<TypeWarning>), ExprError> {
+pub fn typecheck(e: &Expr, scope: &Scope<'_>) -> Result<(Ty, Expr, Vec<TypeWarning>), ExprError> {
+    let mut e = e.clone();
+    annotate_if_widening(&mut e, scope);
     let mut warns = Vec::new();
-    let ty = check(e, scope, &mut warns)?;
-    Ok((ty, warns))
+    let ty = check(&e, scope, &mut warns)?;
+    Ok((ty, e, warns))
 }
 
 /// Write each `if` node's compile-time decimal result scale onto the AST.
@@ -106,7 +108,7 @@ pub fn annotate_if_widening(e: &mut Expr, scope: &Scope<'_>) {
         _ => {}
     }
     if matches!(e, Expr::If { .. })
-        && let Ok((Ty::Dec(s), _)) = typecheck(e, scope)
+        && let Ok(Ty::Dec(s)) = check(e, scope, &mut Vec::new())
         && let Expr::If { widen, .. } = e
     {
         *widen = Some(s);

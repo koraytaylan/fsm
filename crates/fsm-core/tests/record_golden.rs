@@ -51,6 +51,7 @@ fn chain_and_tamper() {
         b.insert("request_id".into(), Value::Str("r1".into()));
         b.insert("leaf".into(), Value::Str("intake".into()));
         b.insert("state_hash".into(), Value::Str(created_hash));
+        b.insert("overrides".into(), Value::Obj(BTreeMap::new()));
         seal(2, 2, RecordKind::InstanceCreated, Value::Obj(b), &prev)
     };
     prev = created.hash.clone();

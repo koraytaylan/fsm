@@ -317,7 +317,17 @@ pub fn step(
                  budget: &mut Budget|
      -> Result<BlockTrace, Rejection> {
         apply_block(
-            block, kind, ctx, effects, k, see_evt, &fields, budget, &m.spec, event,
+            block,
+            kind,
+            ctx,
+            effects,
+            k,
+            see_evt,
+            &fields,
+            budget,
+            &m.spec,
+            event,
+            &m.compiled_exprs,
         )
     };
 
@@ -579,14 +589,18 @@ fn spec_scope<'a>(
     }
 }
 
-fn parse_and_annotate(
+fn compiled_or_annotate(
     src: &str,
+    compiled: &[crate::machine::CompiledExpr],
     spec: &MachineSpec,
     kind: ScopeKind,
     ctx_tys: &BTreeMap<String, Ty>,
     evt_tys: Option<&BTreeMap<String, Ty>>,
     block: &BlockKind,
 ) -> Result<crate::expr::ast::Expr, Rejection> {
+    if let Some(c) = compiled.iter().find(|c| c.source == src) {
+        return Ok(c.expr.clone());
+    }
     let mut e = parser::parse(src).map_err(|err| action_err(block, err.message, err.hint))?;
     annotate_if_widening(&mut e, &spec_scope(spec, kind, ctx_tys, evt_tys));
     Ok(e)
@@ -603,6 +617,7 @@ fn apply_block(
     budget: &mut Budget,
     spec: &crate::spec::MachineSpec,
     event_name: &str,
+    compiled: &[crate::machine::CompiledExpr],
 ) -> Result<BlockTrace, Rejection> {
     let snapshot = ctx.clone();
     let mut sets = Vec::new();
@@ -629,8 +644,9 @@ fn apply_block(
         ScopeKind::Block
     };
     for set in &block.sets {
-        let e = parse_and_annotate(
+        let e = compiled_or_annotate(
             &set.value,
+            compiled,
             spec,
             scope_kind,
             &ctx_tys,
@@ -657,17 +673,6 @@ fn apply_block(
                 ctx.insert(set.target.clone(), v);
             }
             (Err(err), _) => {
-                if err.code == "run/overflow" {
-                    return Err(Rejection {
-                        code: "run/overflow",
-                        message: err.message,
-                        hint: err.hint,
-                        source_state: None,
-                        transition_idx: None,
-                        block: Some(kind.as_label()),
-                        trace: DecisionTrace::default(),
-                    });
-                }
                 return Err(action_err(&kind, err.message, err.hint));
             }
             _ => {
@@ -684,7 +689,15 @@ fn apply_block(
         let mut args = BTreeMap::new();
         let fx = spec.effects.iter().find(|e| e.name == em.effect);
         for (name, src) in &em.args {
-            let e = parse_and_annotate(src, spec, scope_kind, &ctx_tys, evt_tys.as_ref(), &kind)?;
+            let e = compiled_or_annotate(
+                src,
+                compiled,
+                spec,
+                scope_kind,
+                &ctx_tys,
+                evt_tys.as_ref(),
+                &kind,
+            )?;
             match eval(&e, &b, budget, false) {
                 (Ok(v), _) => {
                     let v = if let Some(f) =
@@ -696,20 +709,7 @@ fn apply_block(
                     };
                     args.insert(name.clone(), v);
                 }
-                (Err(err), _) => {
-                    if err.code == "run/overflow" {
-                        return Err(Rejection {
-                            code: "run/overflow",
-                            message: err.message,
-                            hint: err.hint,
-                            source_state: None,
-                            transition_idx: None,
-                            block: Some(kind.as_label()),
-                            trace: DecisionTrace::default(),
-                        });
-                    }
-                    return Err(action_err(&kind, err.message, err.hint));
-                }
+                (Err(err), _) => return Err(action_err(&kind, err.message, err.hint)),
             }
         }
         effects.push(EffectOut {
@@ -900,6 +900,7 @@ pub fn create(
                     &mut budget,
                     &m.spec,
                     "",
+                    &m.compiled_exprs,
                 ) {
                     Ok(bt) => pipeline.push(bt),
                     Err(inner) => {

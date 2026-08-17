@@ -11,6 +11,10 @@ fn open(ctx: &Ctx) -> Result<Store, ErrorObj> {
     Store::open(&ctx.data_dir)
 }
 
+fn fail(ctx: &Ctx, e: ErrorObj, rid: &str) -> u8 {
+    emit_error(ctx, &e.request_id(rid))
+}
+
 fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(mref) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "instance new <machine>"));
@@ -31,18 +35,18 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
     if let Some(pairs) = args.flags.get("context") {
         let m = match store.resolve_machine(mref) {
             Ok(m) => m,
-            Err(e) => return emit_error(ctx, &e),
+            Err(e) => return fail(ctx, e, &rid),
         };
         for part in pairs.split(',') {
             if let Some((k, val)) = part.split_once('=') {
                 let Some(decl) = m.compiled.spec.context.iter().find(|c| c.name == k) else {
-                    return emit_error(ctx, &ErrorObj::new("req/field_unknown", k));
+                    return fail(ctx, ErrorObj::new("req/field_unknown", k), &rid);
                 };
                 match coerce_ctx_override(&decl.ty, k, val) {
                     Ok(v) => {
                         overrides.insert(k.to_string(), v);
                     }
-                    Err(e) => return emit_error(ctx, &e),
+                    Err(e) => return fail(ctx, e, &rid),
                 }
             }
         }
@@ -50,37 +54,37 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
     if let Some(j) = args.flags.get("context-json") {
         let text = match read_input_from(j, ctx.stdin.as_deref()) {
             Ok(s) => s,
-            Err(e) => return emit_error(ctx, &e),
+            Err(e) => return fail(ctx, e, &rid),
         };
         match parse(text.as_bytes(), &JsonLimits::DEFAULT) {
             Ok(Value::Obj(o)) => {
                 let m = match store.resolve_machine(mref) {
                     Ok(m) => m,
-                    Err(e) => return emit_error(ctx, &e),
+                    Err(e) => return fail(ctx, e, &rid),
                 };
                 for (k, val) in o {
                     let raw = match val {
                         Value::Str(s) => s,
                         Value::Num(_n) => {
-                            return emit_error(ctx, &ErrorObj::new("req/number_token", k));
+                            return fail(ctx, ErrorObj::new("req/number_token", k), &rid);
                         }
                         Value::Bool(b) => b.to_string(),
                         _ => {
-                            return emit_error(ctx, &ErrorObj::new("req/field_type", k));
+                            return fail(ctx, ErrorObj::new("req/field_type", k), &rid);
                         }
                     };
                     let Some(decl) = m.compiled.spec.context.iter().find(|c| c.name == k) else {
-                        return emit_error(ctx, &ErrorObj::new("req/field_unknown", &k));
+                        return fail(ctx, ErrorObj::new("req/field_unknown", &k), &rid);
                     };
                     match coerce_ctx_override(&decl.ty, &k, &raw) {
                         Ok(v) => {
                             overrides.insert(k, v);
                         }
-                        Err(e) => return emit_error(ctx, &e),
+                        Err(e) => return fail(ctx, e, &rid),
                     }
                 }
             }
-            _ => return emit_error(ctx, &ErrorObj::new("req/args_invalid", "context-json")),
+            _ => return fail(ctx, ErrorObj::new("req/args_invalid", "context-json"), &rid),
         }
     }
     match store.create_instance_ctx(mref, &iid, &rid, None, &overrides) {
@@ -88,7 +92,7 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
             emit_success(ctx, &v);
             0
         }
-        Err(e) => emit_error(ctx, &e),
+        Err(e) => fail(ctx, e, &rid),
     }
 }
 
@@ -139,7 +143,7 @@ fn send(ctx: &mut Ctx, args: &Args) -> u8 {
             emit_success(ctx, &v);
             0
         }
-        Err(e) => emit_error(ctx, &e),
+        Err(e) => fail(ctx, e, &rid),
     }
 }
 
@@ -147,17 +151,6 @@ fn ack(ctx: &mut Ctx, args: &Args) -> u8 {
     if args.positionals.len() < 2 {
         return emit_error(ctx, &ErrorObj::new("args", "instance ack <id> <effect>"));
     }
-    let mut store = match open(ctx) {
-        Ok(s) => s,
-        Err(e) => return emit_error(ctx, &e),
-    };
-    let rid = match args.flags.get("request-id").cloned() {
-        Some(r) => r,
-        None => match store.allocate_request_id() {
-            Ok(r) => r,
-            Err(e) => return emit_error(ctx, &e),
-        },
-    };
     let Some(outcome) = args.flags.get("outcome").map(String::as_str) else {
         return emit_error(
             ctx,
@@ -177,6 +170,17 @@ fn ack(ctx: &mut Ctx, args: &Args) -> u8 {
             Err(e) => return emit_error(ctx, &e),
         },
     };
+    let mut store = match open(ctx) {
+        Ok(s) => s,
+        Err(e) => return emit_error(ctx, &e),
+    };
+    let rid = match args.flags.get("request-id").cloned() {
+        Some(r) => r,
+        None => match store.allocate_request_id() {
+            Ok(r) => r,
+            Err(e) => return emit_error(ctx, &e),
+        },
+    };
     match store.ack_effect_outcome(
         &args.positionals[0],
         &args.positionals[1],
@@ -188,7 +192,7 @@ fn ack(ctx: &mut Ctx, args: &Args) -> u8 {
             emit_success(ctx, &v);
             0
         }
-        Err(e) => emit_error(ctx, &e),
+        Err(e) => fail(ctx, e, &rid),
     }
 }
 
@@ -218,7 +222,7 @@ fn cancel(ctx: &mut Ctx, args: &Args) -> u8 {
             emit_success(ctx, &v);
             0
         }
-        Err(e) => emit_error(ctx, &e),
+        Err(e) => fail(ctx, e, &rid),
     }
 }
 
@@ -242,7 +246,7 @@ fn annotate(ctx: &mut Ctx, args: &Args) -> u8 {
             emit_success(ctx, &v);
             0
         }
-        Err(e) => emit_error(ctx, &e),
+        Err(e) => fail(ctx, e, &rid),
     }
 }
 
