@@ -142,6 +142,7 @@ fn eval_bool(
                 source_state: None,
                 transition_idx: None,
                 block: None,
+                span: Some((err.span.start, err.span.end)),
                 trace: Default::default(),
             })?;
             let b = Bindings {
@@ -157,6 +158,7 @@ fn eval_bool(
                     source_state: None,
                     transition_idx: None,
                     block: None,
+                    span: Some((err.span.start, err.span.end)),
                     trace: Default::default(),
                 }),
                 _ => Ok(false),
@@ -233,6 +235,7 @@ pub fn naive_step(
                     source_state: None,
                     transition_idx: None,
                     block: None,
+                    span: None,
                     trace: Default::default(),
                 }),
             };
@@ -244,6 +247,7 @@ pub fn naive_step(
             source_state: None,
             transition_idx: None,
             block: None,
+            span: None,
             trace: Default::default(),
         });
     };

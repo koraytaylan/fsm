@@ -122,3 +122,37 @@ fn chain_and_tamper() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn genesis_limits_must_match_table() {
+    let mut b = BTreeMap::new();
+    b.insert("format".into(), Value::Str("fsm.journal/1".into()));
+    b.insert("created_ts".into(), Value::Num("0".into()));
+    b.insert("limits".into(), Value::Null);
+    let g = seal(0, 0, RecordKind::Genesis, Value::Obj(b), &zeros());
+    assert!(matches!(
+        verify_line(&g.to_line(), 0, &zeros()),
+        Err(RecordError::BodyInvalid { .. })
+    ));
+}
+
+#[test]
+fn event_rejected_requires_details() {
+    let mut b = BTreeMap::new();
+    b.insert("instance_id".into(), Value::Str("i1".into()));
+    b.insert("request_id".into(), Value::Str("r".into()));
+    b.insert("event".into(), Value::Str("go".into()));
+    b.insert("payload".into(), Value::Obj(BTreeMap::new()));
+    b.insert(
+        "state_hash".into(),
+        Value::Str(format!("sha256:{}", "ab".repeat(32))),
+    );
+    b.insert("code".into(), Value::Str("run/unhandled".into()));
+    b.insert("message".into(), Value::Str("no".into()));
+    b.insert("hint".into(), Value::Str("h".into()));
+    let rec = seal(1, 1, RecordKind::EventRejected, Value::Obj(b), &zeros());
+    assert!(matches!(
+        verify_line(&rec.to_line(), 1, &zeros()),
+        Err(RecordError::BodyInvalid { .. })
+    ));
+}

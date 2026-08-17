@@ -38,6 +38,18 @@ pub struct InstanceState {
     pub pending: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ExprSlot {
+    TransitionGuard(usize),
+    TransitionSet(usize, usize),
+    TransitionEmitArg(usize, usize, String),
+    StateEntrySet(String, usize),
+    StateExitSet(String, usize),
+    StateEntryEmitArg(String, usize, String),
+    StateExitEmitArg(String, usize, String),
+    Invariant(usize),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompiledExpr {
     pub source: String,
@@ -51,7 +63,7 @@ pub struct CompiledMachine {
     pub spec: MachineSpec,
     pub canonical: Vec<u8>,
     pub transitions_by: BTreeMap<(String, String), Vec<usize>>,
-    pub compiled_exprs: Vec<CompiledExpr>,
+    pub compiled_exprs: BTreeMap<ExprSlot, CompiledExpr>,
 }
 
 #[cfg(test)]

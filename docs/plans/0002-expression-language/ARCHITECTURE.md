@@ -74,7 +74,7 @@ Fixtures land first: `crates/fsm-core/tests/fixtures/expr/parse.jsonl` — lines
 - `pub enum ScopeKind { Guard, TransitionAction, Invariant, Block }` — `Invariant` and `Block` have no event; an `EvtRef` there is `expr/evt_in_invariant` / `expr/evt_in_block`.
 - `pub struct Scope<'a> { pub kind: ScopeKind, pub ctx: &'a BTreeMap<String, Ty>, pub evt: Option<&'a BTreeMap<String, Ty>>, pub enums: &'a BTreeMap<String, Vec<String>> }`.
 - `pub struct TypeWarning { pub code: &'static str, pub span: Span, pub message: String }` — one code in this plan: `expr/round_widens` (a `round` whose target scale is ≥ the operand's; the mode is dead — use `dec`). Emitted by task `0902`.
-- `pub fn typecheck(e: &Expr, scope: &Scope) -> Result<(Ty, Vec<TypeWarning>), ExprError>`.
+- `pub fn typecheck(e: &Expr, scope: &Scope) -> Result<(Ty, Expr, Vec<TypeWarning>), ExprError>` — the returned `Expr` is annotated with compile-time decimal `if` scales and is the value `eval` must receive for decimal branches.
 
 The typing rules, exactly (each violation names its code):
 

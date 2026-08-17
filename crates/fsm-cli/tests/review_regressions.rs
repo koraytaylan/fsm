@@ -382,6 +382,14 @@ fn rejected_reopen_keeps_request_id() {
     let a1 = s
         .ack_effect_outcome("i1", "missing", "ar", "ok", None)
         .unwrap_err();
+    let e_same = s
+        .send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+        .unwrap_err();
+    let a_same = s
+        .ack_effect_outcome("i1", "missing", "ar", "ok", None)
+        .unwrap_err();
+    assert!(!e1.duplicate && !a1.duplicate);
+    assert!(e_same.duplicate && a_same.duplicate);
     drop(s);
     let mut s2 = Store::open(&dir).unwrap();
     let e2 = s2
@@ -390,8 +398,16 @@ fn rejected_reopen_keeps_request_id() {
     let a2 = s2
         .ack_effect_outcome("i1", "missing", "ar", "ok", None)
         .unwrap_err();
-    assert_eq!(e1.to_value(), e2.to_value());
-    assert_eq!(a1.to_value(), a2.to_value());
+    fn strip_dup(e: &fsm_cli::store::ErrorObj) -> fsm_cli::store::ErrorObj {
+        let mut c = e.clone();
+        c.duplicate = false;
+        c
+    }
+    assert!(e2.duplicate && a2.duplicate);
+    assert_eq!(strip_dup(&e1).to_value(), strip_dup(&e_same).to_value());
+    assert_eq!(strip_dup(&e1).to_value(), strip_dup(&e2).to_value());
+    assert_eq!(strip_dup(&a1).to_value(), strip_dup(&a_same).to_value());
+    assert_eq!(strip_dup(&a1).to_value(), strip_dup(&a2).to_value());
     assert_eq!(
         e2.details.get("request_id").and_then(Value::as_str),
         Some("r")
@@ -400,4 +416,142 @@ fn rejected_reopen_keeps_request_id() {
         a2.details.get("request_id").and_then(Value::as_str),
         Some("ar")
     );
+}
+
+fn scale_machine(narrow_first: bool) -> Value {
+    let src =
+        r#"round(if false then evt.amount else 9999999999999999999999999999999999999.9, 1, down)"#;
+    let n = format!(r#"{{"from":"a","on":"narrow","do":[{{"target":"d","value":"{src}"}}]}}"#);
+    let w = format!(r#"{{"from":"a","on":"wide","do":[{{"target":"d","value":"{src}"}}]}}"#);
+    let trans = if narrow_first {
+        format!("{n},{w}")
+    } else {
+        format!("{w},{n}")
+    };
+    parse(
+        format!(
+            r#"{{"format":"fsm.machine/1","name":"sc","context":[{{"name":"d","ty":{{"decimal":"1"}},"init":"0.0"}}],"events":[{{"name":"narrow","fields":[{{"name":"amount","ty":{{"decimal":"1"}}}}]}},{{"name":"wide","fields":[{{"name":"amount","ty":{{"decimal":"2"}}}}]}}],"states":[{{"name":"a"}}],"initial":"a","transitions":[{trans}]}}"#
+        )
+        .as_bytes(),
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap()
+}
+
+fn payload_amt(s: &str) -> Value {
+    let mut m = BTreeMap::new();
+    m.insert("amount".into(), Value::Str(s.into()));
+    Value::Obj(m)
+}
+
+fn run_scale_slots(narrow_first: bool) {
+    let dir = tmp(if narrow_first { "slot-n" } else { "slot-w" });
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(scale_machine(narrow_first), false, false)
+        .unwrap();
+    s.create_instance("sc", "i1", "c1", None).unwrap();
+    let ok = s
+        .send_event("i1", "narrow", payload_amt("1.0"), "n1", None)
+        .unwrap();
+    assert_eq!(ok.get("applied").and_then(Value::as_bool), Some(true));
+    let err = s
+        .send_event("i1", "wide", payload_amt("1.00"), "w1", None)
+        .unwrap_err();
+    assert_eq!(err.code, "run/action_error");
+    assert_eq!(
+        s.state
+            .instances
+            .get("i1")
+            .unwrap()
+            .ctx
+            .get("d")
+            .map(Val::canonical_string)
+            .as_deref(),
+        Some("9999999999999999999999999999999999999.9")
+    );
+    drop(s);
+    let s2 = Store::open(&dir).unwrap();
+    assert_eq!(
+        s2.state
+            .instances
+            .get("i1")
+            .unwrap()
+            .ctx
+            .get("d")
+            .map(Val::canonical_string)
+            .as_deref(),
+        Some("9999999999999999999999999999999999999.9")
+    );
+    let report = fsm_cli::journal_io::verify(&dir);
+    assert!(
+        matches!(report.health, fsm_cli::journal_io::JournalHealth::Ok),
+        "{:?}",
+        report.health
+    );
+}
+
+#[test]
+fn compiled_slots_independent_of_declaration_order() {
+    let _g = gate();
+    run_scale_slots(true);
+    run_scale_slots(false);
+}
+
+#[test]
+fn enabled_events_uses_compiled_decimal_if() {
+    let _g = gate();
+    let v = parse(
+        br#"{"format":"fsm.machine/1","name":"en","context":[],"events":[{"name":"go","fields":[]},{"name":"pay","fields":[{"name":"n","ty":"int"}]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","if":"(if true then 1.00 else 2.0) == 1.00","to":"b"},{"from":"a","on":"pay","if":"(if true then 1.00 else 2.0) == 1.00 and evt.n > 0","to":"b"}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("enif");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(v, false, false).unwrap();
+    let created = s.create_instance("en", "i1", "c1", None).unwrap();
+    let evs = created
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .map(|a| a.to_vec())
+        .unwrap_or_default();
+    let status = |name: &str| {
+        evs.iter()
+            .find_map(|e| {
+                let o = e.as_obj()?;
+                if o.get("event").and_then(Value::as_str) == Some(name) {
+                    o.get("status").and_then(Value::as_str)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("missing")
+            .to_string()
+    };
+    assert_eq!(status("go"), "enabled");
+    assert_eq!(status("pay"), "depends_on_payload");
+    s.send_event("i1", "go", Value::Obj(BTreeMap::new()), "g1", None)
+        .unwrap();
+    assert_eq!(s.state.instances.get("i1").unwrap().leaf, "b");
+}
+
+#[test]
+fn version3_and_missing_marker_are_mismatch() {
+    let _g = gate();
+    let dir = tmp("ver");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    drop(s);
+    std::fs::write(dir.join("VERSION"), "3\n").unwrap();
+    let err = match Store::open(&dir) {
+        Ok(_) => panic!("VERSION 3 opened"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code, "store/version_mismatch");
+    std::fs::remove_file(dir.join("VERSION")).unwrap();
+    let err = match Store::open(&dir) {
+        Ok(_) => panic!("missing VERSION opened"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code, "store/version_mismatch");
+    assert!(fsm_cli::journal_io::init(&dir).is_err());
 }

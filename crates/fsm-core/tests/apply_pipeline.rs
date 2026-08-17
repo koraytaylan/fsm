@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use fsm_core::expr::eval::{Budget, Val};
+use fsm_core::expr::eval::Budget;
 use fsm_core::json::Value;
 use fsm_core::machine::{InstanceState, Status};
 use fsm_core::spec::{compile, load_machine_json};
@@ -180,34 +180,127 @@ fn block_overflow_is_action_error() {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/action_error");
             assert_eq!(r.block.as_deref(), Some("exit(a)"));
+            assert!(r.span.is_some());
         }
         o => panic!("{o:?}"),
     }
     assert_eq!(st.ctx, pre.ctx);
     assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.history, pre.history);
+    assert!(st.pending.is_empty());
 
     let trans = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b","do":[{"target":"x","value":"ctx.x + 1"}]}]}"#;
     let (m, t) = compile_src(trans);
     let st = inst(&m, &t);
+    let pre = st.clone();
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/action_error");
             assert_eq!(r.block.as_deref(), Some("transition"));
+            assert!(r.span.is_some());
         }
         o => panic!("{o:?}"),
     }
+    assert_eq!(st.ctx, pre.ctx);
+    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.history, pre.history);
 
-    let entry = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true,"entry":{"do":[{"target":"x","value":"ctx.x + 1"}]}}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b"}]}"#;
+    let entry = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"},{"name":"y","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a","exit":{"do":[{"target":"y","value":"ctx.x + 1"}]}},{"name":"b","terminal":true,"entry":{"do":[{"target":"x","value":"9223372036854775807 + 1"}]}}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b"}]}"#;
     let (m, t) = compile_src(entry);
     let st = inst(&m, &t);
+    let pre = st.clone();
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/action_error");
             assert_eq!(r.block.as_deref(), Some("entry(b)"));
-            assert!(r.trace.pipeline.iter().any(|p| p.discarded));
+            assert!(r.span.is_some());
+            let exit = r
+                .trace
+                .pipeline
+                .iter()
+                .find(|p| matches!(p.block, fsm_core::trace::BlockKind::Exit(_)))
+                .expect("completed exit");
+            assert!(exit.discarded);
+            assert_eq!(exit.sets[0].target, "y");
+            assert_eq!(exit.sets[0].after, "1");
         }
         o => panic!("{o:?}"),
     }
+    assert_eq!(st.ctx, pre.ctx);
+    assert_eq!(st.leaf, pre.leaf);
+}
+
+#[test]
+fn pipeline_ordering_snapshot_and_effects() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"a","ty":"int","init":"1"},{"name":"b","ty":"int","init":"2"},{"name":"x","ty":"int","init":"0"},{"name":"seen","ty":"int","init":"0"}],"events":[{"name":"go","fields":[{"name":"y","ty":"int"}]}],"effects":[{"name":"ping","fields":[]}],"states":[{"name":"p","exit":{"emit":[{"effect":"ping","args":{}}]}},{"name":"q","entry":{"do":[{"target":"seen","value":"ctx.x"}],"emit":[{"effect":"ping","args":{}}]}}],"initial":"p","transitions":[{"from":"p","on":"go","to":"q","do":[{"target":"x","value":"evt.y"},{"target":"a","value":"ctx.b"},{"target":"b","value":"ctx.a"}],"emit":[{"effect":"ping","args":{}}]}]}"#;
+    let (m, t) = compile_src(src);
+    let mut st = inst(&m, &t);
+    let a = apply(&m, &t, &mut st, "go", &{
+        let mut p = BTreeMap::new();
+        p.insert("y".into(), Value::Str("9".into()));
+        Value::Obj(p)
+    });
+    assert_eq!(st.ctx.get("x").unwrap().canonical_string(), "9");
+    assert_eq!(st.ctx.get("seen").unwrap().canonical_string(), "9");
+    assert_eq!(st.ctx.get("a").unwrap().canonical_string(), "2");
+    assert_eq!(st.ctx.get("b").unwrap().canonical_string(), "1");
+    assert_eq!(
+        a.effects.iter().map(|e| e.k).collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+}
+
+#[test]
+fn guard_and_invariant_atomicity() {
+    let guard = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","if":"ctx.x + 1 > 0","to":"b"}]}"#;
+    let (m, t) = compile_src(guard);
+    let st = inst(&m, &t);
+    let pre = st.clone();
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => assert_eq!(r.code, "run/guard_error"),
+        o => panic!("{o:?}"),
+    }
+    assert_eq!(st.ctx, pre.ctx);
+    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.history, pre.history);
+
+    let inv = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"p","initial":"a","states":[{"name":"h","history":"deep"},{"name":"a"},{"name":"b"}]},{"name":"out","terminal":true}],"initial":"p","transitions":[{"from":"a","on":"go","to":"out","do":[{"target":"x","value":"-1"}]}],"invariants":[{"name":"pos","expr":"ctx.x >= 0","mode":"enforce"},{"name":"zero","expr":"ctx.x == 0","mode":"enforce"}]}"#;
+    let (m, t) = compile_src(inv);
+    let st = inst(&m, &t);
+    let pre = st.clone();
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/invariant");
+            let failed: Vec<_> = r
+                .trace
+                .invariants
+                .iter()
+                .filter(|i| !i.passed)
+                .map(|i| i.name.as_str())
+                .collect();
+            assert!(failed.contains(&"pos"));
+            assert!(failed.contains(&"zero"));
+            assert!(r.trace.pipeline.iter().all(|p| p.discarded));
+        }
+        o => panic!("{o:?}"),
+    }
+    assert_eq!(st.ctx, pre.ctx);
+    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.history, pre.history);
+}
+
+#[test]
+fn external_self_reenters() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"tick","fields":[]}],"states":[{"name":"x","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]}}],"initial":"x","transitions":[{"from":"x","on":"tick","to":"x"}]}"#;
+    let (m, t) = compile_src(src);
+    let mut st = inst(&m, &t);
+    assert_eq!(st.ctx.get("n").unwrap().canonical_string(), "1");
+    let a = apply(&m, &t, &mut st, "tick", &empty());
+    assert_eq!(a.exited, ["x"]);
+    assert_eq!(a.entered, ["x"]);
+    assert_eq!(st.ctx.get("n").unwrap().canonical_string(), "2");
 }

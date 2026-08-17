@@ -21,7 +21,7 @@ Static typing is where "no implicit rounding" and "no mixed-class arithmetic" ar
 **Steps:**
 
 1. Author `crates/fsm-core/tests/fixtures/expr/typeck.jsonl` and `crates/fsm-core/tests/expr_typeck.rs` first, encoding exactly the inventory under **Tests** (each line declares its scope inline and maps a source to either a type rendering or an error code).
-2. Implement `Ty`, `ScopeKind`, `Scope`, `TypeWarning`, and `typecheck(e, scope) -> Result<(Ty, Vec<TypeWarning>), ExprError>` in `crates/fsm-core/src/expr/typeck.rs` following the architecture typing table exactly, including exact `Dec` scale arithmetic, `Ts`/`Dur` algebra, enum equality-only comparison, `if`-branch unification with exact `Dec` widening, and builtin calls uniformly rejected as `expr/unknown_builtin` (listing the seven legal names) until the builtins task lands signatures.
+2. Implement `Ty`, `ScopeKind`, `Scope`, `TypeWarning`, and `typecheck(e, scope) -> Result<(Ty, Expr, Vec<TypeWarning>), ExprError>` in `crates/fsm-core/src/expr/typeck.rs` following the architecture typing table exactly, including exact `Dec` scale arithmetic, `Ts`/`Dur` algebra, enum equality-only comparison, `if`-branch unification with exact `Dec` widening, and builtin calls uniformly rejected as `expr/unknown_builtin` (listing the seven legal names) until the builtins task lands signatures. The returned `Expr` is annotated with compile-time decimal `if` scales.
 3. Implement `suggest(name, candidates)` (Levenshtein distance ≤ 2) in `crates/fsm-core/src/ident.rs` and wire it into the unknown-identifier hints together with the full legal list.
 
 **Tests:**

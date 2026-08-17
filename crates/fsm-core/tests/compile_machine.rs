@@ -33,7 +33,7 @@ fn case_review_index() {
     }
     assert!(
         m.compiled_exprs
-            .iter()
+            .values()
             .any(|e| e.source == "evt.score >= 700" && e.ty.to_string() == "bool")
     );
 }

@@ -307,17 +307,24 @@ pub fn enabled_events(
                 } else {
                     match &m.spec.transitions[idx].guard {
                         None => EventStatus::Enabled,
-                        Some(src) => match parser::parse(src) {
-                            Ok(e) => match partial_eval_bool(&e, &st.ctx, budget) {
-                                Truth::True => EventStatus::Enabled,
-                                Truth::False => EventStatus::Disabled,
-                                Truth::Unknown => {
-                                    fields = field_reads(src);
-                                    EventStatus::DependsOnPayload
-                                }
-                            },
-                            Err(_) => EventStatus::DependsOnPayload,
-                        },
+                        Some(src) => {
+                            let e = m
+                                .compiled_exprs
+                                .get(&crate::machine::ExprSlot::TransitionGuard(idx))
+                                .map(|c| c.expr.clone())
+                                .or_else(|| parser::parse(src).ok());
+                            match e {
+                                Some(e) => match partial_eval_bool(&e, &st.ctx, budget) {
+                                    Truth::True => EventStatus::Enabled,
+                                    Truth::False => EventStatus::Disabled,
+                                    Truth::Unknown => {
+                                        fields = field_reads(src);
+                                        EventStatus::DependsOnPayload
+                                    }
+                                },
+                                None => EventStatus::DependsOnPayload,
+                            }
+                        }
                     }
                 };
                 if preempt.is_none() {

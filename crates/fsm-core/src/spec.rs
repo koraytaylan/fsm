@@ -14,7 +14,7 @@ use crate::expr::parser;
 use crate::expr::typeck::{Scope, ScopeKind, Ty, typecheck};
 use crate::json::Value;
 use crate::limits;
-use crate::machine::{CompiledExpr, CompiledMachine, EnforceMode};
+use crate::machine::{CompiledExpr, CompiledMachine, EnforceMode, ExprSlot};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -1966,7 +1966,7 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
 pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     validate(&spec)?;
     let mut errs = Vec::new();
-    let mut compiled_exprs = Vec::new();
+    let mut compiled_exprs = BTreeMap::new();
     let ctx_tys: BTreeMap<String, Ty> = spec
         .context
         .iter()
@@ -2003,17 +2003,21 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     let bind = |src: &str,
                 scope: &Scope<'_>,
                 path: &str,
-                compiled_exprs: &mut Vec<CompiledExpr>,
+                slot: ExprSlot,
+                compiled_exprs: &mut BTreeMap<ExprSlot, CompiledExpr>,
                 errs: &mut Vec<Finding>|
      -> Option<Ty> {
         match parser::parse(src) {
             Ok(e) => match typecheck(&e, scope) {
                 Ok((ty, annotated, _)) => {
-                    compiled_exprs.push(CompiledExpr {
-                        source: src.to_string(),
-                        ty: ty.clone(),
-                        expr: annotated,
-                    });
+                    compiled_exprs.insert(
+                        slot,
+                        CompiledExpr {
+                            source: src.to_string(),
+                            ty: ty.clone(),
+                            expr: annotated,
+                        },
+                    );
                     Some(ty)
                 }
                 Err(err) => {
@@ -2032,10 +2036,30 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         }
     };
 
+    enum BlockOwner {
+        Transition(usize),
+        Entry(String),
+        Exit(String),
+    }
+    let set_slot = |owner: &BlockOwner, i: usize| -> ExprSlot {
+        match owner {
+            BlockOwner::Transition(t) => ExprSlot::TransitionSet(*t, i),
+            BlockOwner::Entry(n) => ExprSlot::StateEntrySet(n.clone(), i),
+            BlockOwner::Exit(n) => ExprSlot::StateExitSet(n.clone(), i),
+        }
+    };
+    let emit_slot = |owner: &BlockOwner, i: usize, arg: &str| -> ExprSlot {
+        match owner {
+            BlockOwner::Transition(t) => ExprSlot::TransitionEmitArg(*t, i, arg.into()),
+            BlockOwner::Entry(n) => ExprSlot::StateEntryEmitArg(n.clone(), i, arg.into()),
+            BlockOwner::Exit(n) => ExprSlot::StateExitEmitArg(n.clone(), i, arg.into()),
+        }
+    };
     let check_block = |block: &Block,
                        scope: &Scope<'_>,
                        path: &str,
-                       compiled_exprs: &mut Vec<CompiledExpr>,
+                       owner: &BlockOwner,
+                       compiled_exprs: &mut BTreeMap<ExprSlot, CompiledExpr>,
                        errs: &mut Vec<Finding>| {
         let mut seen = BTreeSet::new();
         for (i, set) in block.sets.iter().enumerate() {
@@ -2051,6 +2075,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
                 &set.value,
                 scope,
                 &format!("{path}/do/{i}/value"),
+                set_slot(owner, i),
                 compiled_exprs,
                 errs,
             ) else {
@@ -2083,6 +2108,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
                     src,
                     scope,
                     &format!("{path}/emit/{i}/args/{k}"),
+                    emit_slot(owner, i, k),
                     compiled_exprs,
                     errs,
                 ) else {
@@ -2107,9 +2133,16 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     // entry/exit blocks
     fn walk_blocks(
         nodes: &[StateNode],
-        check_block: &dyn Fn(&Block, &Scope<'_>, &str, &mut Vec<CompiledExpr>, &mut Vec<Finding>),
+        check_block: &dyn Fn(
+            &Block,
+            &Scope<'_>,
+            &str,
+            &BlockOwner,
+            &mut BTreeMap<ExprSlot, CompiledExpr>,
+            &mut Vec<Finding>,
+        ),
         scope: &Scope<'_>,
-        compiled_exprs: &mut Vec<CompiledExpr>,
+        compiled_exprs: &mut BTreeMap<ExprSlot, CompiledExpr>,
         errs: &mut Vec<Finding>,
     ) {
         for n in nodes {
@@ -2118,6 +2151,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
                     b,
                     scope,
                     &format!("/states/{}/entry", n.name),
+                    &BlockOwner::Entry(n.name.clone()),
                     compiled_exprs,
                     errs,
                 );
@@ -2127,6 +2161,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
                     b,
                     scope,
                     &format!("/states/{}/exit", n.name),
+                    &BlockOwner::Exit(n.name.clone()),
                     compiled_exprs,
                     errs,
                 );
@@ -2154,11 +2189,12 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         evt: None,
         enums: &enums,
     };
-    for inv in &spec.invariants {
+    for (i, inv) in spec.invariants.iter().enumerate() {
         if let Some(ty) = bind(
             &inv.expr,
             &inv_scope,
             &format!("/invariants/{}", inv.name),
+            ExprSlot::Invariant(i),
             &mut compiled_exprs,
             &mut errs,
         ) {
@@ -2192,6 +2228,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
                 g,
                 &guard_scope,
                 &format!("/transitions/{i}/if"),
+                ExprSlot::TransitionGuard(i),
                 &mut compiled_exprs,
                 &mut errs,
             ) {
@@ -2219,6 +2256,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
             &block,
             &action_scope,
             &format!("/transitions/{i}"),
+            &BlockOwner::Transition(i),
             &mut compiled_exprs,
             &mut errs,
         );

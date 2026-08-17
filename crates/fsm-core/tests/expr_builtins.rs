@@ -84,6 +84,7 @@ fn builtins_jsonl_and_coverage() {
         };
         let typed = typecheck(&e, &scope);
         if let Some(code) = s(&rec, "err") {
+            let annotated = typed.as_ref().ok().map(|t| t.1.clone());
             let err = typed.err().or_else(|| {
                 let ctx = map_vals(rec.get("ctx"));
                 let evt = map_vals(rec.get("evt"));
@@ -97,7 +98,7 @@ fn builtins_jsonl_and_coverage() {
                     evt: evt_r,
                 };
                 let mut bud = Budget::new(4096);
-                let expr = typed.as_ref().ok().map(|t| &t.1).unwrap_or(&e);
+                let expr = annotated.as_ref().unwrap_or(&e);
                 eval(expr, &b, &mut bud, false).0.err()
             });
             let err = err.unwrap_or_else(|| panic!("line {} expected err {code}", idx + 1));

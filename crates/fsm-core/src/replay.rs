@@ -391,6 +391,36 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                             field: "code",
                         });
                     }
+                    let msg = rec.body.get("message").and_then(Value::as_str).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "message",
+                        },
+                    )?;
+                    if msg != r.message {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "message",
+                        });
+                    }
+                    let hint = rec.body.get("hint").and_then(Value::as_str).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "hint",
+                        },
+                    )?;
+                    if hint != r.hint {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "hint",
+                        });
+                    }
+                    if rec.body.get("details").and_then(Value::as_obj).is_none() {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "details",
+                        });
+                    }
                 }
                 (RecordKind::EventIgnored, Outcome::Ignored) => {}
                 _ => {
@@ -453,6 +483,62 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             Ok(())
         }
         RecordKind::RequestRejected => {
+            let iid = rec
+                .body
+                .get("instance_id")
+                .and_then(Value::as_str)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let inst = st
+                .instances
+                .get(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let mid = st
+                .instance_machines
+                .get(iid)
+                .cloned()
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
+                ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_hash",
+                },
+            )?;
+            let got = state_hash(&mid, iid, rec.seq, inst);
+            if got != want {
+                return Err(ReplayError::StateHashMismatch {
+                    seq: rec.seq,
+                    expected: want.into(),
+                    found: got,
+                });
+            }
+            match rec.body.get("operation").and_then(Value::as_str) {
+                Some("ack") => {
+                    let eid = rec.body.get("effect_id").and_then(Value::as_str).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "effect_id",
+                        },
+                    )?;
+                    if inst.pending.iter().any(|p| p == eid) {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "effect_id",
+                        });
+                    }
+                    if rec.body.get("code").and_then(Value::as_str) != Some("req/field_unknown") {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "code",
+                        });
+                    }
+                }
+                _ => {
+                    return Err(ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "operation",
+                    });
+                }
+            }
             claim_request_id(st, rec)?;
             Ok(())
         }

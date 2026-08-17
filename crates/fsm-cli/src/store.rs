@@ -56,6 +56,7 @@ pub struct ErrorObj {
     pub retryable: bool,
     pub details: Value,
     pub docs: String,
+    pub duplicate: bool,
 }
 
 impl ErrorObj {
@@ -71,7 +72,13 @@ impl ErrorObj {
             retryable: retryable(code),
             details: Value::Obj(BTreeMap::new()),
             docs: format!("fsm://docs/spec#{code}"),
+            duplicate: false,
         }
+    }
+
+    pub fn mark_duplicate(mut self) -> Self {
+        self.duplicate = true;
+        self
     }
 
     pub fn hint(mut self, hint: impl Into<String>) -> Self {
@@ -109,6 +116,7 @@ impl ErrorObj {
         }
         m.insert("hint".into(), Value::Str(self.hint.clone()));
         m.insert("retryable".into(), Value::Bool(self.retryable));
+        m.insert("duplicate".into(), Value::Bool(self.duplicate));
         m.insert("details".into(), self.details.clone());
         m.insert("docs".into(), Value::Str(self.docs.clone()));
         Value::Obj(m)
@@ -125,11 +133,25 @@ impl ErrorObj {
             retryable: e.retryable,
             details: e.details,
             docs: e.docs,
+            duplicate: false,
         }
     }
 
     pub fn from_rejection(r: &Rejection) -> Self {
-        Self::new(r.code, r.message.clone()).hint(r.hint.clone())
+        let mut e = Self::new(r.code, r.message.clone()).hint(r.hint.clone());
+        e.span = r.span;
+        if let Some(b) = &r.block {
+            if let Value::Obj(d) = &mut e.details {
+                d.insert("block".into(), Value::Str(b.clone()));
+            }
+        }
+        if let (Some(s), Some(idx)) = (r.source_state.as_ref(), r.transition_idx) {
+            if let Value::Obj(d) = &mut e.details {
+                d.insert("source_state".into(), Value::Str(s.clone()));
+                d.insert("transition_idx".into(), Value::Num(idx.to_string()));
+            }
+        }
+        e
     }
 
     pub fn from_findings(fs: Vec<Finding>) -> Self {
@@ -178,7 +200,8 @@ impl Store {
                 .hint("delete the data directory and recreate the store"));
         }
         if !ver.exists() {
-            fs::write(&ver, "3\n").map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+            crate::journal_io::write_store_version(data_dir)
+                .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
             fs::create_dir_all(data_dir.join("snapshots")).ok();
         }
         let mut sink = HistSink {
@@ -306,7 +329,7 @@ impl Store {
             return Some(Ok(r));
         }
         if let Some(e) = self.last_errors.get(request_id) {
-            return Some(Err(e.clone()));
+            return Some(Err(e.clone().mark_duplicate()));
         }
         if !self.state.dedup.contains_key(request_id) {
             return None;
@@ -336,7 +359,7 @@ impl Store {
             if let Some(d) = rec.body.get("details") {
                 err.details = d.clone();
             }
-            return Some(Err(err.request_id(request_id)));
+            return Some(Err(err.request_id(request_id).mark_duplicate()));
         }
         if rec.kind == RecordKind::EffectAcked {
             let mut m = BTreeMap::new();
@@ -505,13 +528,11 @@ impl Store {
             let m = self.resolve_machine(machine_ref)?;
             machine_id(&m.def)
         };
-        let m = self
-            .state
-            .machines
-            .get(&mid)
-            .ok_or_else(|| ErrorObj::new("req/machine_not_found", machine_ref))?;
-        let a =
-            create(&m.compiled, &m.tree, overrides).map_err(|r| ErrorObj::from_rejection(&r))?;
+        let m = self.state.machines.get(&mid).ok_or_else(|| {
+            ErrorObj::new("req/machine_not_found", machine_ref).request_id(request_id)
+        })?;
+        let a = create(&m.compiled, &m.tree, overrides)
+            .map_err(|r| ErrorObj::from_rejection(&r).request_id(request_id))?;
         let pending: Vec<String> = a
             .effects
             .iter()
@@ -787,11 +808,9 @@ impl Store {
                 "outcome must be ok or failed",
             ));
         }
-        let inst = self
-            .state
-            .instances
-            .get(instance_id)
-            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+        let inst = self.state.instances.get(instance_id).ok_or_else(|| {
+            ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+        })?;
         if !inst.pending.iter().any(|p| p == effect_id) {
             let listed = inst.pending.clone();
             let mut body = BTreeMap::new();
@@ -810,6 +829,16 @@ impl Store {
             );
             det.insert("request_id".into(), Value::Str(request_id.into()));
             body.insert("details".into(), Value::Obj(det));
+            body.insert("operation".into(), Value::Str("ack".into()));
+            body.insert("effect_id".into(), Value::Str(effect_id.into()));
+            let mid = self
+                .state
+                .instance_machines
+                .get(instance_id)
+                .cloned()
+                .unwrap_or_default();
+            let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, inst);
+            body.insert("state_hash".into(), Value::Str(sh));
             let rec = self
                 .journal
                 .append(RecordKind::RequestRejected, Value::Obj(body))
@@ -839,7 +868,9 @@ impl Store {
             .instance_machines
             .get(instance_id)
             .cloned()
-            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+            .ok_or_else(|| {
+                ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+            })?;
         let mut post = inst.clone();
         post.pending.clone_from(&pending);
         let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &post);
@@ -901,14 +932,16 @@ impl Store {
             return r;
         }
         if !self.state.instances.contains_key(instance_id) {
-            return Err(ErrorObj::new("req/instance_not_found", instance_id));
+            return Err(ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id));
         }
         let mid = self
             .state
             .instance_machines
             .get(instance_id)
             .cloned()
-            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+            .ok_or_else(|| {
+                ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+            })?;
         let mut post = self.state.instances.get(instance_id).unwrap().clone();
         post.status = Status::Cancelled;
         let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &post);
@@ -942,7 +975,7 @@ impl Store {
             return r;
         }
         if !self.state.instances.contains_key(instance_id) {
-            return Err(ErrorObj::new("req/instance_not_found", instance_id));
+            return Err(ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id));
         }
         let mut body = BTreeMap::new();
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
@@ -972,11 +1005,13 @@ impl Store {
         request_id: Option<&str>,
         duplicate: Option<bool>,
     ) -> Result<Value, ErrorObj> {
-        let inst = self
-            .state
-            .instances
-            .get(instance_id)
-            .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+        let inst = self.state.instances.get(instance_id).ok_or_else(|| {
+            let e = ErrorObj::new("req/instance_not_found", instance_id);
+            match request_id {
+                Some(rid) => e.request_id(rid),
+                None => e,
+            }
+        })?;
         let mid = self
             .state
             .instance_machines
@@ -1566,10 +1601,22 @@ mod tests {
         let e2 = s2
             .send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
             .unwrap_err();
-        assert_eq!(e1.to_value(), e2.to_value());
+        assert!(!e1.duplicate);
+        assert!(e2.duplicate);
+        let mut e1b = e1.clone();
+        let mut e2b = e2.clone();
+        e1b.duplicate = false;
+        e2b.duplicate = false;
+        assert_eq!(e1b.to_value(), e2b.to_value());
         let ae2 = s2
             .ack_effect_outcome("i1", "nope", "ar", "ok", None)
             .unwrap_err();
-        assert_eq!(ae1.to_value(), ae2.to_value());
+        assert!(!ae1.duplicate);
+        assert!(ae2.duplicate);
+        let mut a1b = ae1.clone();
+        let mut a2b = ae2.clone();
+        a1b.duplicate = false;
+        a2b.duplicate = false;
+        assert_eq!(a1b.to_value(), a2b.to_value());
     }
 }

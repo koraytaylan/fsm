@@ -285,7 +285,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
     match kind {
         RecordKind::Genesis => {
             body.get("format").and_then(Value::as_str) == Some("fsm.journal/1")
-                && body.get("limits").is_some()
+                && body.get("limits") == Some(&limits_value())
                 && body.get("created_ts").and_then(Value::as_num).is_some()
         }
         RecordKind::MachineDefined => req_str(body, "machine_id") && body.get("def").is_some(),
@@ -316,6 +316,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "code")
                 && req_str(body, "message")
                 && req_str(body, "hint")
+                && body.get("details").and_then(Value::as_obj).is_some()
         }
         RecordKind::EventIgnored => {
             req_str(body, "instance_id")
@@ -341,6 +342,8 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "message")
                 && req_str(body, "hint")
                 && body.get("details").and_then(Value::as_obj).is_some()
+                && req_str(body, "operation")
+                && is_state_hash(body.get("state_hash"))
         }
         RecordKind::InstanceCancelled => {
             req_str(body, "instance_id")

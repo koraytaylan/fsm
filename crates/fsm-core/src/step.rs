@@ -13,8 +13,16 @@ use crate::expr::eval::{Bindings, Budget, Val, eval};
 use crate::expr::parser;
 use crate::expr::typeck::{Scope, ScopeKind, Ty, annotate_if_widening};
 use crate::json::Value;
+use crate::machine::ExprSlot;
 use crate::machine::{CompiledMachine, EnforceMode, InstanceState, Status};
 use crate::spec::{Block, HistoryKind, MachineSpec, TransitionSpec, TySpec};
+
+#[derive(Clone)]
+enum ExprSlotOwner {
+    Transition(usize),
+    Entry(String),
+    Exit(String),
+}
 use crate::trace::{
     BlockKind, BlockTrace, CandidateTrace, DecisionTrace, EmitTrace, GuardTrace, InvariantTrace,
     LevelTrace, SetTrace,
@@ -52,6 +60,7 @@ pub struct Rejection {
     pub source_state: Option<String>,
     pub transition_idx: Option<u32>,
     pub block: Option<String>,
+    pub span: Option<(u32, u32)>,
     pub trace: DecisionTrace,
 }
 
@@ -117,6 +126,7 @@ fn reject(code: &'static str, what: &str) -> Rejection {
         source_state: None,
         transition_idx: None,
         block: None,
+        span: None,
         trace: DecisionTrace::default(),
     }
 }
@@ -218,7 +228,16 @@ pub fn step(
                 continue;
             }
             let tr = &m.spec.transitions[idx];
-            match eval_guard(tr, &st.ctx, &fields, budget, &m.spec, event) {
+            match eval_guard(
+                tr,
+                &st.ctx,
+                &fields,
+                budget,
+                &m.spec,
+                event,
+                idx,
+                &m.compiled_exprs,
+            ) {
                 Ok((true, gtrace)) => {
                     level.transitions.push(CandidateTrace {
                         transition_idx: idx as u32,
@@ -254,6 +273,7 @@ pub fn step(
                     source_state: None,
                     transition_idx: None,
                     block: None,
+                    span: None,
                     trace,
                 }),
             };
@@ -265,6 +285,7 @@ pub fn step(
             source_state: None,
             transition_idx: None,
             block: None,
+            span: None,
             trace,
         });
     };
@@ -314,6 +335,7 @@ pub fn step(
                  effects: &mut Vec<EffectOut>,
                  k: &mut u32,
                  see_evt: bool,
+                 owner: ExprSlotOwner,
                  budget: &mut Budget|
      -> Result<BlockTrace, Rejection> {
         apply_block(
@@ -328,6 +350,7 @@ pub fn step(
             &m.spec,
             event,
             &m.compiled_exprs,
+            owner,
         )
     };
 
@@ -343,16 +366,12 @@ pub fn step(
                     &mut effects,
                     &mut k,
                     false,
+                    ExprSlotOwner::Exit(name.clone()),
                     budget,
                 ) {
                     Ok(bt) => pipeline.push(bt),
-                    Err(mut r) => {
-                        for p in &mut pipeline {
-                            p.discarded = true;
-                        }
-                        r.trace.pipeline = pipeline;
-                        r.trace.candidates = trace.candidates.clone();
-                        return Outcome::Rejected(r);
+                    Err(r) => {
+                        return Outcome::Rejected(reject_pipeline(r, pipeline, &trace));
                     }
                 }
             }
@@ -370,16 +389,12 @@ pub fn step(
         &mut effects,
         &mut k,
         true,
+        ExprSlotOwner::Transition(tidx),
         budget,
     ) {
         Ok(bt) => pipeline.push(bt),
-        Err(mut r) => {
-            for p in &mut pipeline {
-                p.discarded = true;
-            }
-            r.trace.pipeline = pipeline;
-            r.trace.candidates = trace.candidates.clone();
-            return Outcome::Rejected(r);
+        Err(r) => {
+            return Outcome::Rejected(reject_pipeline(r, pipeline, &trace));
         }
     }
     // entry outer → inner
@@ -394,16 +409,12 @@ pub fn step(
                     &mut effects,
                     &mut k,
                     false,
+                    ExprSlotOwner::Entry(name.clone()),
                     budget,
                 ) {
                     Ok(bt) => pipeline.push(bt),
-                    Err(mut r) => {
-                        for p in &mut pipeline {
-                            p.discarded = true;
-                        }
-                        r.trace.pipeline = pipeline;
-                        r.trace.candidates = trace.candidates.clone();
-                        return Outcome::Rejected(r);
+                    Err(r) => {
+                        return Outcome::Rejected(reject_pipeline(r, pipeline, &trace));
                     }
                 }
             }
@@ -435,7 +446,7 @@ pub fn step(
     }
 
     // invariants
-    let (ok_inv, flags, inv_trace) = eval_invariants(&m.spec, &ctx, budget);
+    let (ok_inv, flags, inv_trace) = eval_invariants(&m.spec, &m.compiled_exprs, &ctx, budget);
     if !ok_inv {
         for p in &mut pipeline {
             p.discarded = true;
@@ -450,6 +461,7 @@ pub fn step(
             source_state: Some(t.names[src as usize].clone()),
             transition_idx: Some(tidx as u32),
             block: None,
+            span: None,
             trace: trc,
         });
     }
@@ -493,6 +505,8 @@ fn eval_guard(
     budget: &mut Budget,
     spec: &MachineSpec,
     event_name: &str,
+    tidx: usize,
+    compiled: &BTreeMap<ExprSlot, crate::machine::CompiledExpr>,
 ) -> Result<(bool, crate::expr::eval::TraceNode), Rejection> {
     match &tr.guard {
         None => {
@@ -512,35 +526,41 @@ fn eval_guard(
             ))
         }
         Some(src) => {
-            let ctx_tys: BTreeMap<String, Ty> = spec
-                .context
-                .iter()
-                .map(|c| (c.name.clone(), c.ty.to_ty()))
-                .collect();
-            let evt_tys: BTreeMap<String, Ty> = spec
-                .events
-                .iter()
-                .find(|e| e.name == event_name)
-                .map(|e| {
-                    e.fields
-                        .iter()
-                        .map(|f| (f.name.clone(), f.ty.to_ty()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let mut e = parser::parse(src).map_err(|err| Rejection {
-                code: "run/guard_error",
-                message: err.message,
-                hint: err.hint,
-                source_state: None,
-                transition_idx: None,
-                block: None,
-                trace: DecisionTrace::default(),
-            })?;
-            annotate_if_widening(
-                &mut e,
-                &spec_scope(spec, ScopeKind::Guard, &ctx_tys, Some(&evt_tys)),
-            );
+            let e = if let Some(c) = compiled.get(&ExprSlot::TransitionGuard(tidx)) {
+                c.expr.clone()
+            } else {
+                let ctx_tys: BTreeMap<String, Ty> = spec
+                    .context
+                    .iter()
+                    .map(|c| (c.name.clone(), c.ty.to_ty()))
+                    .collect();
+                let evt_tys: BTreeMap<String, Ty> = spec
+                    .events
+                    .iter()
+                    .find(|e| e.name == event_name)
+                    .map(|e| {
+                        e.fields
+                            .iter()
+                            .map(|f| (f.name.clone(), f.ty.to_ty()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mut e = parser::parse(src).map_err(|err| Rejection {
+                    code: "run/guard_error",
+                    message: err.message,
+                    hint: err.hint,
+                    source_state: None,
+                    transition_idx: None,
+                    block: None,
+                    span: Some((err.span.start, err.span.end)),
+                    trace: DecisionTrace::default(),
+                })?;
+                annotate_if_widening(
+                    &mut e,
+                    &spec_scope(spec, ScopeKind::Guard, &ctx_tys, Some(&evt_tys)),
+                );
+                e
+            };
             let b = Bindings {
                 ctx,
                 evt: Some(evt),
@@ -554,6 +574,7 @@ fn eval_guard(
                     source_state: None,
                     transition_idx: None,
                     block: None,
+                    span: Some((err.span.start, err.span.end)),
                     trace: DecisionTrace::default(),
                 }),
                 _ => Err(reject("run/guard_error", "guard not bool")),
@@ -591,19 +612,36 @@ fn spec_scope<'a>(
 
 fn compiled_or_annotate(
     src: &str,
-    compiled: &[crate::machine::CompiledExpr],
+    slot: &ExprSlot,
+    compiled: &BTreeMap<ExprSlot, crate::machine::CompiledExpr>,
     spec: &MachineSpec,
     kind: ScopeKind,
     ctx_tys: &BTreeMap<String, Ty>,
     evt_tys: Option<&BTreeMap<String, Ty>>,
     block: &BlockKind,
 ) -> Result<crate::expr::ast::Expr, Rejection> {
-    if let Some(c) = compiled.iter().find(|c| c.source == src) {
+    if let Some(c) = compiled.get(slot) {
         return Ok(c.expr.clone());
     }
     let mut e = parser::parse(src).map_err(|err| action_err(block, err.message, err.hint))?;
     annotate_if_widening(&mut e, &spec_scope(spec, kind, ctx_tys, evt_tys));
     Ok(e)
+}
+
+fn owner_set_slot(owner: &ExprSlotOwner, i: usize) -> ExprSlot {
+    match owner {
+        ExprSlotOwner::Transition(t) => ExprSlot::TransitionSet(*t, i),
+        ExprSlotOwner::Entry(n) => ExprSlot::StateEntrySet(n.clone(), i),
+        ExprSlotOwner::Exit(n) => ExprSlot::StateExitSet(n.clone(), i),
+    }
+}
+
+fn owner_emit_slot(owner: &ExprSlotOwner, i: usize, arg: &str) -> ExprSlot {
+    match owner {
+        ExprSlotOwner::Transition(t) => ExprSlot::TransitionEmitArg(*t, i, arg.into()),
+        ExprSlotOwner::Entry(n) => ExprSlot::StateEntryEmitArg(n.clone(), i, arg.into()),
+        ExprSlotOwner::Exit(n) => ExprSlot::StateExitEmitArg(n.clone(), i, arg.into()),
+    }
 }
 
 fn apply_block(
@@ -617,10 +655,12 @@ fn apply_block(
     budget: &mut Budget,
     spec: &crate::spec::MachineSpec,
     event_name: &str,
-    compiled: &[crate::machine::CompiledExpr],
+    compiled: &BTreeMap<ExprSlot, crate::machine::CompiledExpr>,
+    owner: ExprSlotOwner,
 ) -> Result<BlockTrace, Rejection> {
     let snapshot = ctx.clone();
     let mut sets = Vec::new();
+    let mut emits = Vec::new();
     let evt_ref = if see_evt { Some(evt) } else { None };
     let b = Bindings {
         ctx: &snapshot,
@@ -643,9 +683,10 @@ fn apply_block(
     } else {
         ScopeKind::Block
     };
-    for set in &block.sets {
+    for (i, set) in block.sets.iter().enumerate() {
         let e = compiled_or_annotate(
             &set.value,
+            &owner_set_slot(&owner, i),
             compiled,
             spec,
             scope_kind,
@@ -672,8 +713,26 @@ fn apply_block(
                 });
                 ctx.insert(set.target.clone(), v);
             }
-            (Err(err), _) => {
-                return Err(action_err(&kind, err.message, err.hint));
+            (Err(err), tn) => {
+                if let Some(tn) = tn {
+                    sets.push(SetTrace {
+                        target: set.target.clone(),
+                        before: ctx
+                            .get(&set.target)
+                            .map(Val::canonical_string)
+                            .unwrap_or_default(),
+                        after: String::new(),
+                        expr: tn,
+                    });
+                }
+                return Err(action_err_at(
+                    &kind,
+                    err.message,
+                    err.hint,
+                    Some((err.span.start, err.span.end)),
+                    sets,
+                    emits,
+                ));
             }
             _ => {
                 return Err(action_err(
@@ -684,13 +743,13 @@ fn apply_block(
             }
         }
     }
-    let mut emits = Vec::new();
-    for em in &block.emits {
+    for (ei, em) in block.emits.iter().enumerate() {
         let mut args = BTreeMap::new();
         let fx = spec.effects.iter().find(|e| e.name == em.effect);
         for (name, src) in &em.args {
             let e = compiled_or_annotate(
                 src,
+                &owner_emit_slot(&owner, ei, name),
                 compiled,
                 spec,
                 scope_kind,
@@ -709,7 +768,16 @@ fn apply_block(
                     };
                     args.insert(name.clone(), v);
                 }
-                (Err(err), _) => return Err(action_err(&kind, err.message, err.hint)),
+                (Err(err), _) => {
+                    return Err(action_err_at(
+                        &kind,
+                        err.message,
+                        err.hint,
+                        Some((err.span.start, err.span.end)),
+                        sets,
+                        emits,
+                    ));
+                }
             }
         }
         effects.push(EffectOut {
@@ -731,7 +799,35 @@ fn apply_block(
     })
 }
 
+fn reject_pipeline(
+    mut r: Rejection,
+    mut done: Vec<BlockTrace>,
+    trace: &DecisionTrace,
+) -> Rejection {
+    for p in &mut done {
+        p.discarded = true;
+    }
+    for p in &mut r.trace.pipeline {
+        p.discarded = true;
+    }
+    done.append(&mut r.trace.pipeline);
+    r.trace.pipeline = done;
+    r.trace.candidates = trace.candidates.clone();
+    r
+}
+
 fn action_err(kind: &BlockKind, message: String, hint: String) -> Rejection {
+    action_err_at(kind, message, hint, None, Vec::new(), Vec::new())
+}
+
+fn action_err_at(
+    kind: &BlockKind,
+    message: String,
+    hint: String,
+    span: Option<(u32, u32)>,
+    sets: Vec<SetTrace>,
+    emits: Vec<EmitTrace>,
+) -> Rejection {
     Rejection {
         code: "run/action_error",
         message,
@@ -739,12 +835,22 @@ fn action_err(kind: &BlockKind, message: String, hint: String) -> Rejection {
         source_state: None,
         transition_idx: None,
         block: Some(kind.as_label()),
-        trace: DecisionTrace::default(),
+        span,
+        trace: DecisionTrace {
+            pipeline: vec![BlockTrace {
+                block: kind.clone(),
+                sets,
+                emits,
+                discarded: true,
+            }],
+            ..DecisionTrace::default()
+        },
     }
 }
 
 fn eval_invariants(
     spec: &MachineSpec,
+    compiled: &BTreeMap<ExprSlot, crate::machine::CompiledExpr>,
     ctx: &BTreeMap<String, Val>,
     budget: &mut Budget,
 ) -> (bool, Vec<String>, Vec<InvariantTrace>) {
@@ -757,22 +863,26 @@ fn eval_invariants(
         .iter()
         .map(|c| (c.name.clone(), c.ty.to_ty()))
         .collect();
-    for inv in &spec.invariants {
-        let e = match parser::parse(&inv.expr) {
-            Ok(mut e) => {
-                annotate_if_widening(
-                    &mut e,
-                    &spec_scope(spec, ScopeKind::Invariant, &ctx_tys, None),
-                );
-                e
-            }
-            Err(_) => {
-                ok = false;
-                traces.push(InvariantTrace {
-                    name: inv.name.clone(),
-                    passed: false,
-                });
-                continue;
+    for (i, inv) in spec.invariants.iter().enumerate() {
+        let e = if let Some(c) = compiled.get(&ExprSlot::Invariant(i)) {
+            c.expr.clone()
+        } else {
+            match parser::parse(&inv.expr) {
+                Ok(mut e) => {
+                    annotate_if_widening(
+                        &mut e,
+                        &spec_scope(spec, ScopeKind::Invariant, &ctx_tys, None),
+                    );
+                    e
+                }
+                Err(_) => {
+                    ok = false;
+                    traces.push(InvariantTrace {
+                        name: inv.name.clone(),
+                        passed: false,
+                    });
+                    continue;
+                }
             }
         };
         match eval(&e, &b, budget, false).0 {
@@ -901,6 +1011,7 @@ pub fn create(
                     &m.spec,
                     "",
                     &m.compiled_exprs,
+                    ExprSlotOwner::Entry(name.clone()),
                 ) {
                     Ok(bt) => pipeline.push(bt),
                     Err(inner) => {
@@ -911,6 +1022,7 @@ pub fn create(
                             source_state: None,
                             transition_idx: None,
                             block: inner.block,
+                            span: inner.span,
                             trace: DecisionTrace {
                                 pipeline,
                                 ..DecisionTrace::default()
@@ -921,7 +1033,7 @@ pub fn create(
             }
         }
     }
-    let (ok_inv, flags, inv_trace) = eval_invariants(&m.spec, &ctx, &mut budget);
+    let (ok_inv, flags, inv_trace) = eval_invariants(&m.spec, &m.compiled_exprs, &ctx, &mut budget);
     if !ok_inv {
         return Err(Rejection {
             code: "run/create_failed",
@@ -930,6 +1042,7 @@ pub fn create(
             source_state: None,
             transition_idx: None,
             block: None,
+            span: None,
             trace: DecisionTrace {
                 pipeline,
                 invariants: inv_trace,

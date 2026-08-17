@@ -60,6 +60,7 @@ fn eval_jsonl() {
             .unwrap_or_else(|e| panic!("line {}: {e:?}", idx + 1));
         let src = s(&rec, "src").unwrap();
         let e = parse(src).unwrap();
+        let ctx = map_vals(rec.get("ctx"));
         let evt = map_vals(rec.get("evt"));
         let evt_ref = if rec.get("evt").is_some() {
             Some(&evt)
