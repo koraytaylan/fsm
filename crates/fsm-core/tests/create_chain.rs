@@ -105,3 +105,25 @@ fn create_first_block_failure_has_failing_trace() {
     assert!(e.trace.pipeline[0].discarded);
     assert!(!e.trace.pipeline[0].sets.is_empty());
 }
+
+#[test]
+fn create_invariant_eval_error_has_identity() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[],"transitions":[],"invariants":[{"name":"pos","expr":"ctx.x + 1 > 0","mode":"enforce"}]}"#;
+    let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
+    let m = compile(spec).unwrap();
+    let t = Tree::build(&m.spec.states);
+    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    assert_eq!(e.code, "run/create_failed");
+    assert_eq!(e.block.as_deref(), Some("invariant(pos)"));
+    assert!(e.span.is_some());
+    assert!(e.message.contains("pos"));
+    let inv = e
+        .trace
+        .invariants
+        .iter()
+        .find(|i| i.name == "pos")
+        .expect("pos");
+    assert!(!inv.passed);
+    assert!(inv.error.is_some());
+    assert_eq!(inv.error.as_ref().unwrap().code, "run/overflow");
+}

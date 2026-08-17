@@ -822,3 +822,311 @@ fn mcp_rejected_retry_marks_duplicate() {
     assert!(reopened.duplicate);
     assert_eq!(first.code, reopened.code);
 }
+
+fn rewrite_last_record(dir: &std::path::Path, mut edit: impl FnMut(&mut BTreeMap<String, Value>)) {
+    let recs = fsm_cli::journal_io::load_records(dir).unwrap();
+    let last = recs.last().unwrap().clone();
+    let prev = recs[recs.len() - 2].hash.clone();
+    let mut body = last.body.as_obj().cloned().unwrap();
+    edit(&mut body);
+    let forged = fsm_core::record::seal(last.seq, last.ts, last.kind, Value::Obj(body), &prev);
+    let jdir = dir.join("journal");
+    let seg = std::fs::read_dir(&jdir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().starts_with("seg-"))
+                .unwrap_or(false)
+        })
+        .unwrap();
+    let mut lines: Vec<Vec<u8>> = std::fs::read(&seg)
+        .unwrap()
+        .split_inclusive(|&b| b == b'\n')
+        .map(|l| l.to_vec())
+        .filter(|l| l.iter().any(|b| !b.is_ascii_whitespace()))
+        .collect();
+    lines.pop();
+    let mut out = Vec::new();
+    for l in &lines {
+        out.extend_from_slice(l);
+        if !l.ends_with(&[b'\n']) {
+            out.push(b'\n');
+        }
+    }
+    out.extend_from_slice(&forged.to_line());
+    out.push(b'\n');
+    std::fs::write(&seg, out).unwrap();
+}
+
+fn verify_not_ok(dir: &std::path::Path) {
+    let report = fsm_cli::journal_io::verify(dir);
+    assert!(
+        !matches!(report.health, fsm_cli::journal_io::JournalHealth::Ok),
+        "{:?}",
+        report.health
+    );
+}
+
+#[test]
+fn extra_key_event_rejected_fails_replay() {
+    let _g = gate();
+    let dir = tmp("xkey");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.create_instance("case_review", "i1", "c1", None).unwrap();
+    s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+        .unwrap();
+    s.send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+        .unwrap_err();
+    drop(s);
+    rewrite_last_record(&dir, |body| {
+        let mut d = body
+            .get("details")
+            .and_then(Value::as_obj)
+            .cloned()
+            .unwrap_or_default();
+        d.insert("fabricated".into(), Value::Str("accepted".into()));
+        body.insert("details".into(), Value::Obj(d));
+    });
+    verify_not_ok(&dir);
+}
+
+#[test]
+fn unexpected_block_event_rejected_fails_replay() {
+    let _g = gate();
+    let dir = tmp("xblk");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.create_instance("case_review", "i1", "c1", None).unwrap();
+    s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+        .unwrap();
+    s.send_event("i1", "resume", Value::Obj(BTreeMap::new()), "r", None)
+        .unwrap_err();
+    drop(s);
+    rewrite_last_record(&dir, |body| {
+        let mut d = body
+            .get("details")
+            .and_then(Value::as_obj)
+            .cloned()
+            .unwrap_or_default();
+        d.insert("block".into(), Value::Str("nope".into()));
+        body.insert("details".into(), Value::Obj(d));
+    });
+    verify_not_ok(&dir);
+}
+
+#[test]
+fn extra_key_and_span_request_rejected_fails_replay() {
+    let _g = gate();
+    let dir = tmp("xrr");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.create_instance("case_review", "i1", "c1", None).unwrap();
+    s.send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "R", None)
+        .unwrap();
+    s.ack_effect_outcome("i1", "missing", "ar", "ok", None)
+        .unwrap_err();
+    drop(s);
+    rewrite_last_record(&dir, |body| {
+        let mut d = body
+            .get("details")
+            .and_then(Value::as_obj)
+            .cloned()
+            .unwrap_or_default();
+        d.insert("fabricated".into(), Value::Str("accepted".into()));
+        body.insert("details".into(), Value::Obj(d));
+        let mut sp = BTreeMap::new();
+        sp.insert("start".into(), Value::Num("1".into()));
+        sp.insert("end".into(), Value::Num("2".into()));
+        body.insert("span".into(), Value::Obj(sp));
+    });
+    verify_not_ok(&dir);
+}
+
+#[test]
+fn lock_held_store_open_writes_no_version() {
+    let _g = gate();
+    let dir = tmp("lockv");
+    std::fs::create_dir_all(dir.join("journal")).unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(dir.join("journal/LOCK"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    let err = match Store::open(&dir) {
+        Ok(_) => panic!("open succeeded while locked"),
+        Err(e) => e,
+    };
+    assert!(
+        err.code.contains("lock") || err.message.contains("lock"),
+        "{err:?}"
+    );
+    assert!(!dir.join("VERSION").exists());
+}
+
+#[test]
+fn concurrent_first_open_installs_one_version() {
+    let _g = gate();
+    let dir = tmp("conc");
+    let a = dir.clone();
+    let b = dir.clone();
+    let t1 = std::thread::spawn(move || Store::open(&a));
+    let t2 = std::thread::spawn(move || Store::open(&b));
+    let r1 = t1.join().unwrap();
+    let r2 = t2.join().unwrap();
+    assert!(r1.is_ok() || r2.is_ok(), "both first opens failed");
+    drop(r1);
+    drop(r2);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("VERSION"))
+            .unwrap_or_default()
+            .trim(),
+        "5"
+    );
+}
+
+fn cli_json_err(dir: &std::path::Path, extra: &[&str]) -> Value {
+    let bin = fsm_bin();
+    let mut args = vec![
+        "--data-dir",
+        dir.to_str().unwrap(),
+        "--json",
+        "instance",
+        "new",
+    ];
+    args.extend_from_slice(extra);
+    let out = Command::new(&bin).args(&args).output().unwrap();
+    parse(&out.stderr, &JsonLimits::DEFAULT).unwrap_or_else(|_| {
+        panic!(
+            "cli stderr not json: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )
+    })
+}
+
+fn mcp_create_err(store: &mut Store, args: Value) -> Value {
+    let mut clock = fsm_cli::clock::FixedClock::new(5_000, 1);
+    fsm_cli::mcp::tools::dispatch(store, &mut clock, "instance_create", &args)
+        .unwrap_err()
+        .to_value()
+}
+
+fn obj_str(pairs: &[(&str, &str)]) -> Value {
+    Value::Obj(
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).into(), Value::Str((*v).into())))
+            .collect(),
+    )
+}
+
+#[test]
+fn create_cli_mcp_errors_are_byte_equal() {
+    let _g = gate();
+    let dir = tmp("eq");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    drop(s);
+
+    let miss_cli = cli_json_err(&dir, &["missing", "--request-id", "e1"]);
+    let mut s = Store::open(&dir).unwrap();
+    let miss_mcp = mcp_create_err(
+        &mut s,
+        obj_str(&[("machine", "missing"), ("request_id", "e1")]),
+    );
+    drop(s);
+    assert_eq!(miss_cli, miss_mcp, "missing machine");
+
+    let wrong_cli = cli_json_err(
+        &dir,
+        &["case_review", "--request-id", "e2", "--context-json", "[]"],
+    );
+    let mut s = Store::open(&dir).unwrap();
+    let mut args = BTreeMap::new();
+    args.insert("machine".into(), Value::Str("case_review".into()));
+    args.insert("request_id".into(), Value::Str("e2".into()));
+    args.insert("context".into(), Value::Arr(vec![]));
+    let wrong_mcp = mcp_create_err(&mut s, Value::Obj(args));
+    drop(s);
+    assert_eq!(wrong_cli, wrong_mcp, "wrong container");
+
+    let num_cli = cli_json_err(
+        &dir,
+        &[
+            "case_review",
+            "--request-id",
+            "e3",
+            "--context-json",
+            r#"{"visits":2}"#,
+        ],
+    );
+    let mut s = Store::open(&dir).unwrap();
+    let mut ctx = BTreeMap::new();
+    ctx.insert("visits".into(), Value::Num("2".into()));
+    let mut args = BTreeMap::new();
+    args.insert("machine".into(), Value::Str("case_review".into()));
+    args.insert("request_id".into(), Value::Str("e3".into()));
+    args.insert("context".into(), Value::Obj(ctx));
+    let num_mcp = mcp_create_err(&mut s, Value::Obj(args));
+    drop(s);
+    assert_eq!(num_cli, num_mcp, "raw number");
+
+    let unk_cli = cli_json_err(
+        &dir,
+        &[
+            "case_review",
+            "--request-id",
+            "e4",
+            "--context-json",
+            r#"{"nope":"1"}"#,
+        ],
+    );
+    let mut s = Store::open(&dir).unwrap();
+    let mut ctx = BTreeMap::new();
+    ctx.insert("nope".into(), Value::Str("1".into()));
+    let mut args = BTreeMap::new();
+    args.insert("machine".into(), Value::Str("case_review".into()));
+    args.insert("request_id".into(), Value::Str("e4".into()));
+    args.insert("context".into(), Value::Obj(ctx));
+    let unk_mcp = mcp_create_err(&mut s, Value::Obj(args));
+    drop(s);
+    assert_eq!(unk_cli, unk_mcp, "unknown field");
+
+    let co_cli = cli_json_err(
+        &dir,
+        &[
+            "case_review",
+            "--request-id",
+            "e5",
+            "--context-json",
+            r#"{"visits":"nope"}"#,
+        ],
+    );
+    let mut s = Store::open(&dir).unwrap();
+    let mut ctx = BTreeMap::new();
+    ctx.insert("visits".into(), Value::Str("nope".into()));
+    let mut args = BTreeMap::new();
+    args.insert("machine".into(), Value::Str("case_review".into()));
+    args.insert("request_id".into(), Value::Str("e5".into()));
+    args.insert("context".into(), Value::Obj(ctx));
+    let co_mcp = mcp_create_err(&mut s, Value::Obj(args));
+    drop(s);
+    assert_eq!(co_cli, co_mcp, "coercion");
+
+    let seq_cli = cli_json_err(
+        &dir,
+        &["case_review", "--request-id", "e6", "--expect-seq", "999"],
+    );
+    let mut s = Store::open(&dir).unwrap();
+    let mut args = BTreeMap::new();
+    args.insert("machine".into(), Value::Str("case_review".into()));
+    args.insert("request_id".into(), Value::Str("e6".into()));
+    args.insert("expect_seq".into(), Value::Num("999".into()));
+    let seq_mcp = mcp_create_err(&mut s, Value::Obj(args));
+    drop(s);
+    assert_eq!(seq_cli, seq_mcp, "expect_seq");
+}

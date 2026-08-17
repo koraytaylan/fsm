@@ -231,14 +231,17 @@ module (`Overflow` → `run/overflow`).
 ### Partial evaluation
 
 `partial_eval_bool` answers “could this guard pass?” when the next event payload
-is unknown. `EvtRef` is Kleene `Unknown`. `and`/`or`/`not` follow the Kleene
-tables (`False and _ = False`, `True or _ = True`, `not Unknown = Unknown`).
-Comparisons and arithmetic containing an `Unknown` operand are `Unknown`.
-Fully-`ctx` subtrees evaluate concretely. A concrete sub-evaluation error —
-including budget exhaustion — yields `Unknown`. This is deliberately
-conservative: an erroring guard is neither definitely enabled nor definitely
-disabled; the authoritative loud failure (`run/guard_error`) happens at send
-time.
+is unknown. Callers supply a `Scope` with declared enums and event-field types.
+Lazy `if` reduces a concrete-true or concrete-false condition to the selected
+branch before payload dependence is decided, so an unreachable `evt.*` branch
+does not make a context-concrete guard `Unknown`. Remaining `EvtRef` is Kleene
+`Unknown`. `and`/`or`/`not` follow the Kleene tables (`False and _ = False`,
+`True or _ = True`, `not Unknown = Unknown`). Comparisons and arithmetic
+containing an `Unknown` operand are `Unknown`. Fully-`ctx` subtrees evaluate
+concretely. A concrete sub-evaluation error — including budget exhaustion —
+yields `Unknown`. This is deliberately conservative: an erroring guard is
+neither definitely enabled nor definitely disabled; the authoritative loud
+failure (`run/guard_error`) happens at send time.
 
 ### Expression error catalogue
 

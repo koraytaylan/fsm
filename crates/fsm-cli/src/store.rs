@@ -15,7 +15,7 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{InstanceState, Status};
 use fsm_core::record::{Record, RecordKind};
 use fsm_core::replay::{NopSink, RecordSink, StoreState, StoredMachine, fold_with};
-use fsm_core::spec::{Finding, TySpec};
+use fsm_core::spec::{Finding, MachineSpec, TySpec};
 use fsm_core::step::{Outcome, Rejection, create, step, validate_event};
 use fsm_core::tree::Tree;
 
@@ -193,15 +193,9 @@ pub struct DefineOutcome {
 impl Store {
     pub fn open(data_dir: &Path) -> Result<Self, ErrorObj> {
         fs::create_dir_all(data_dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        let ver = data_dir.join("VERSION");
         if let Err(h) = journal_io::require_store_format(data_dir) {
             return Err(ErrorObj::new("store/version_mismatch", h.message())
                 .hint("delete the data directory and recreate the store"));
-        }
-        if !ver.exists() {
-            crate::journal_io::write_store_version(data_dir)
-                .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-            fs::create_dir_all(data_dir.join("snapshots")).ok();
         }
         let mut sink = HistSink {
             history: BTreeMap::new(),
@@ -212,6 +206,7 @@ impl Store {
             Err(OpenError::Health(h)) => return Err(health_err(&h)),
             Err(OpenError::Io(s)) => return Err(ErrorObj::new("io/read", s)),
         };
+        fs::create_dir_all(data_dir.join("snapshots")).ok();
         Ok(Store {
             journal,
             state,
@@ -532,7 +527,8 @@ impl Store {
                 )
                 .hint(
                     "re-read the instance, then retry with the same request_id and the current seq",
-                ));
+                )
+                .request_id(request_id));
             }
         }
         let mid = {
@@ -822,10 +818,10 @@ impl Store {
             return r;
         }
         if outcome != "ok" && outcome != "failed" {
-            return Err(ErrorObj::new(
-                "req/args_invalid",
-                "outcome must be ok or failed",
-            ));
+            return Err(
+                ErrorObj::new("req/args_invalid", "outcome must be ok or failed")
+                    .request_id(request_id),
+            );
         }
         let inst = self.state.instances.get(instance_id).ok_or_else(|| {
             ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
@@ -1350,6 +1346,42 @@ pub fn enabled_json(evs: &[fsm_core::analyze::EventReport]) -> Value {
             })
             .collect(),
     )
+}
+
+pub fn context_not_object(got: &str) -> ErrorObj {
+    let mut details = BTreeMap::new();
+    details.insert("field".into(), Value::Str("context".into()));
+    details.insert("expected".into(), Value::Str("object".into()));
+    details.insert("got".into(), Value::Str(got.into()));
+    ErrorObj::new("req/args_invalid", "expected object")
+        .hint("set context to object")
+        .details(Value::Obj(details))
+}
+
+pub fn number_token_error(field: &str) -> ErrorObj {
+    ErrorObj::new("req/number_token", field).hint(format!("send {field} as a JSON string"))
+}
+
+pub fn apply_context_overrides(
+    spec: &MachineSpec,
+    ctx: &BTreeMap<String, Value>,
+) -> Result<BTreeMap<String, Val>, ErrorObj> {
+    let mut overrides = BTreeMap::new();
+    for (k, val) in ctx {
+        let raw = match val {
+            Value::Str(s) => s.clone(),
+            Value::Num(_) => return Err(number_token_error(k)),
+            Value::Bool(b) => b.to_string(),
+            _ => return Err(ErrorObj::new("req/field_type", k.clone())),
+        };
+        let decl = spec
+            .context
+            .iter()
+            .find(|c| c.name == *k)
+            .ok_or_else(|| ErrorObj::new("req/field_unknown", k.clone()))?;
+        overrides.insert(k.clone(), coerce_ctx_override(&decl.ty, k, &raw)?);
+    }
+    Ok(overrides)
 }
 
 pub fn coerce_ctx_override(ty: &TySpec, key: &str, raw: &str) -> Result<Val, ErrorObj> {

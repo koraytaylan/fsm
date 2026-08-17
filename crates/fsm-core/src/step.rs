@@ -255,7 +255,16 @@ pub fn step(
                     r.source_state = Some(sname.clone());
                     r.transition_idx = Some(idx as u32);
                     if let Some(lvl) = r.trace.candidates.first_mut() {
-                        lvl.source_state = sname;
+                        lvl.source_state = sname.clone();
+                    }
+                    if !level.transitions.is_empty() {
+                        if let Some(fail) = r.trace.candidates.first_mut() {
+                            let mut merged = level.transitions;
+                            merged.append(&mut fail.transitions);
+                            fail.transitions = merged;
+                        } else {
+                            r.trace.candidates.insert(0, level);
+                        }
                     }
                     let mut prev = trace;
                     prev.candidates.append(&mut r.trace.candidates);
@@ -459,14 +468,20 @@ pub fn step(
         let mut trc = trace;
         trc.pipeline = pipeline;
         trc.invariants = inv_trace;
+        let eval_err = trc
+            .invariants
+            .iter()
+            .find_map(|i| i.error.as_ref().map(|e| (i.name.as_str(), e)));
         return Outcome::Rejected(Rejection {
             code: "run/invariant",
-            message: "enforce invariant failed".into(),
+            message: eval_err
+                .map(|(n, e)| format!("invariant {n}: {}", e.message))
+                .unwrap_or_else(|| "enforce invariant failed".into()),
             hint: "adjust the action or the invariant".into(),
             source_state: Some(t.names[src as usize].clone()),
             transition_idx: Some(tidx as u32),
-            block: None,
-            span: None,
+            block: eval_err.map(|(n, _)| format!("invariant({n})")),
+            span: eval_err.and_then(|(_, e)| e.span),
             trace: trc,
         });
     }
@@ -909,32 +924,48 @@ fn eval_invariants(
                     traces.push(InvariantTrace {
                         name: inv.name.clone(),
                         passed: false,
+                        error: None,
                     });
                     continue;
                 }
             }
         };
-        match eval(&e, &b, budget, false).0 {
-            Ok(Val::Bool(true)) => {
+        match eval(&e, &b, budget, true) {
+            (Ok(Val::Bool(true)), _) => {
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: true,
+                    error: None,
                 });
             }
-            Ok(Val::Bool(false)) => {
+            (Ok(Val::Bool(false)), _) => {
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: false,
+                    error: None,
                 });
                 match inv.mode {
                     EnforceMode::Enforce => ok = false,
                     EnforceMode::Monitor => flags.push(inv.name.clone()),
                 }
             }
-            Ok(_) | Err(_) => {
+            (Err(err), _) => {
                 traces.push(InvariantTrace {
                     name: inv.name.clone(),
                     passed: false,
+                    error: Some(crate::trace::InvariantEvalError {
+                        code: err.code,
+                        message: err.message,
+                        span: Some((err.span.start, err.span.end)),
+                    }),
+                });
+                ok = false;
+            }
+            _ => {
+                traces.push(InvariantTrace {
+                    name: inv.name.clone(),
+                    passed: false,
+                    error: None,
                 });
                 ok = false;
             }
@@ -1057,14 +1088,19 @@ pub fn create(
         for p in &mut pipeline {
             p.discarded = true;
         }
+        let eval_err = inv_trace
+            .iter()
+            .find_map(|i| i.error.as_ref().map(|e| (i.name.as_str(), e)));
         return Err(Rejection {
             code: "run/create_failed",
-            message: "invariant failed at create".into(),
+            message: eval_err
+                .map(|(n, e)| format!("invariant {n}: {}", e.message))
+                .unwrap_or_else(|| "invariant failed at create".into()),
             hint: "fix inits or the invariant".into(),
             source_state: None,
             transition_idx: None,
-            block: None,
-            span: None,
+            block: eval_err.map(|(n, _)| format!("invariant({n})")),
+            span: eval_err.and_then(|(_, e)| e.span),
             trace: DecisionTrace {
                 pipeline,
                 invariants: inv_trace,

@@ -316,6 +316,27 @@ fn guard_and_invariant_atomicity() {
 }
 
 #[test]
+fn later_guard_error_keeps_earlier_false_candidate() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","if":"false","to":"b"},{"from":"a","on":"go","if":"ctx.x + 1 > 0","to":"b"}]}"#;
+    let (m, t) = compile_src(src);
+    let st = inst(&m, &t);
+    let mut b = Budget::new(4096);
+    match step(&m, &t, &st, "go", &empty(), &mut b) {
+        Outcome::Rejected(r) => {
+            assert_eq!(r.code, "run/guard_error");
+            let idxs: Vec<u32> = r
+                .trace
+                .candidates
+                .iter()
+                .flat_map(|c| c.transitions.iter().map(|t| t.transition_idx))
+                .collect();
+            assert_eq!(idxs, vec![0, 1]);
+        }
+        o => panic!("{o:?}"),
+    }
+}
+
+#[test]
 fn failing_emit_keeps_pipeline_trace() {
     let src = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"effects":[{"name":"bill","fields":[{"name":"amt","ty":"int"}]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b","emit":[{"effect":"bill","args":{"amt":"9223372036854775807 + 1"}}]}]}"#;
     let (m, t) = compile_src(src);

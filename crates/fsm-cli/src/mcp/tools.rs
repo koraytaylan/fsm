@@ -207,6 +207,7 @@ fn schema_instance_create_in() -> Value {
     p.insert("machine".into(), ty("string"));
     p.insert("context".into(), ty("object"));
     p.insert("request_id".into(), ty("string"));
+    p.insert("expect_seq".into(), ty("number"));
     p.insert("tags".into(), ty("array"));
     schema_obj(p, &["machine", "request_id"], false)
 }
@@ -405,8 +406,17 @@ pub fn dispatch(
         .into_iter()
         .find(|t| t.name == name)
         .ok_or_else(|| ErrorObj::new("req/args_invalid", format!("unknown tool {name}")))?;
-    validate_args(&(spec.input_schema)(), args)?;
-    (spec.run)(store, clock, args)
+    if let Err(e) = validate_args(&(spec.input_schema)(), args) {
+        return Err(attach_request_id(e, args));
+    }
+    (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))
+}
+
+fn attach_request_id(e: ErrorObj, args: &Value) -> ErrorObj {
+    match args.get("request_id").and_then(Value::as_str) {
+        Some(rid) if !rid.is_empty() => e.request_id(rid),
+        _ => e,
+    }
 }
 
 fn str_arg<'a>(args: &'a Value, k: &str) -> Option<&'a str> {
@@ -540,38 +550,24 @@ fn run_instance_create(
     let machine = str_arg(args, "machine").unwrap_or("");
     let rid = str_arg(args, "request_id").unwrap_or("");
     let iid = format!("inst-{rid}");
+    let expect = args.get("expect_seq").and_then(|v| match v {
+        Value::Num(s) | Value::Str(s) => s.parse().ok(),
+        _ => None,
+    });
     let mut overrides = BTreeMap::new();
-    if let Some(Value::Obj(ctx)) = args.get("context") {
-        let m = store
-            .resolve_machine(machine)
-            .map_err(|e| e.request_id(rid))?;
-        for (k, val) in ctx {
-            let raw = match val {
-                Value::Str(s) => s.clone(),
-                Value::Num(_) => {
-                    return Err(ErrorObj::new("req/number_token", k.clone())
-                        .hint(format!("send {k} as a JSON string"))
-                        .request_id(rid));
-                }
-                Value::Bool(b) => b.to_string(),
-                _ => {
-                    return Err(ErrorObj::new("req/field_type", k.clone()).request_id(rid));
-                }
-            };
-            let decl = m
-                .compiled
-                .spec
-                .context
-                .iter()
-                .find(|c| c.name == *k)
-                .ok_or_else(|| ErrorObj::new("req/field_unknown", k.clone()).request_id(rid))?;
-            overrides.insert(
-                k.clone(),
-                coerce_ctx_override(&decl.ty, k, &raw).map_err(|e| e.request_id(rid))?,
-            );
+    if let Some(ctx) = args.get("context") {
+        match ctx {
+            Value::Obj(o) => {
+                let m = store.resolve_machine(machine)?;
+                overrides = crate::store::apply_context_overrides(&m.compiled.spec, o)?;
+            }
+            Value::Arr(_) => return Err(crate::store::context_not_object("array")),
+            other => {
+                return Err(crate::store::context_not_object(type_name(other)));
+            }
         }
     }
-    store.create_instance_ctx(machine, &iid, rid, None, &overrides)
+    store.create_instance_ctx(machine, &iid, rid, expect, &overrides)
 }
 
 fn run_instance_send(

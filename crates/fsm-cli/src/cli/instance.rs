@@ -5,7 +5,9 @@ use fsm_core::record::RecordKind;
 
 use crate::args::{Args, CmdSpec, Ctx, read_input_from};
 use crate::render::{emit_error, emit_success};
-use crate::store::{ErrorObj, Store, coerce_ctx_override};
+use crate::store::{
+    ErrorObj, Store, apply_context_overrides, coerce_ctx_override, context_not_object,
+};
 
 fn open(ctx: &Ctx) -> Result<Store, ErrorObj> {
     Store::open(&ctx.data_dir)
@@ -31,6 +33,15 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
         },
     };
     let iid = format!("inst-{rid}");
+    let expect = match args.flags.get("expect-seq") {
+        None => None,
+        Some(s) => match s.parse::<u64>() {
+            Ok(n) => Some(n),
+            Err(_) => {
+                return fail(ctx, ErrorObj::new("args", "expect-seq must be a u64"), &rid);
+            }
+        },
+    };
     let mut overrides = BTreeMap::new();
     if let Some(pairs) = args.flags.get("context") {
         let m = match store.resolve_machine(mref) {
@@ -62,32 +73,17 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
                     Ok(m) => m,
                     Err(e) => return fail(ctx, e, &rid),
                 };
-                for (k, val) in o {
-                    let raw = match val {
-                        Value::Str(s) => s,
-                        Value::Num(_n) => {
-                            return fail(ctx, ErrorObj::new("req/number_token", k), &rid);
-                        }
-                        Value::Bool(b) => b.to_string(),
-                        _ => {
-                            return fail(ctx, ErrorObj::new("req/field_type", k), &rid);
-                        }
-                    };
-                    let Some(decl) = m.compiled.spec.context.iter().find(|c| c.name == k) else {
-                        return fail(ctx, ErrorObj::new("req/field_unknown", &k), &rid);
-                    };
-                    match coerce_ctx_override(&decl.ty, &k, &raw) {
-                        Ok(v) => {
-                            overrides.insert(k, v);
-                        }
-                        Err(e) => return fail(ctx, e, &rid),
-                    }
+                match apply_context_overrides(&m.compiled.spec, &o) {
+                    Ok(part) => overrides.extend(part),
+                    Err(e) => return fail(ctx, e, &rid),
                 }
             }
-            _ => return fail(ctx, ErrorObj::new("req/args_invalid", "context-json"), &rid),
+            Ok(Value::Arr(_)) => return fail(ctx, context_not_object("array"), &rid),
+            Ok(_) => return fail(ctx, context_not_object("not-object"), &rid),
+            Err(e) => return fail(ctx, ErrorObj::new("def/shape", e.message), &rid),
         }
     }
-    match store.create_instance_ctx(mref, &iid, &rid, None, &overrides) {
+    match store.create_instance_ctx(mref, &iid, &rid, expect, &overrides) {
         Ok(v) => {
             emit_success(ctx, &v);
             0
@@ -394,7 +390,7 @@ pub static SPECS: &[CmdSpec] = &[
     CmdSpec {
         path: &["instance", "new"],
         positionals: &["machine"],
-        flags: &["request-id", "context", "context-json"],
+        flags: &["request-id", "context", "context-json", "expect-seq"],
         switches: &[],
         help: "Create instance",
         run: new_inst,

@@ -20,7 +20,7 @@ The enabled-events report needs to answer "could this guard pass?" for a live in
 **Steps:**
 
 1. Author `crates/fsm-core/tests/fixtures/expr/partial.jsonl` and `crates/fsm-core/tests/expr_partial.rs` first, encoding exactly the inventory under **Tests**.
-2. Implement `Truth { True, False, Unknown }` and `partial_eval_bool(e, ctx, budget) -> Truth` in `crates/fsm-core/src/expr/partial.rs` per architecture, reusing `eval` for concrete subtrees under the shared budget.
+2. Implement `Truth { True, False, Unknown }` and `partial_eval_bool(e, ctx, scope, budget) -> Truth` in `crates/fsm-core/src/expr/partial.rs` per architecture, reusing `eval` for concrete subtrees under the shared budget. `scope` carries declared enums and event types; lazy `if` drops unreachable branches before payload dependence is decided.
 
 **Tests:**
 

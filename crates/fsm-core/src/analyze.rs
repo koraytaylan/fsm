@@ -288,8 +288,19 @@ pub fn enabled_events(
 ) -> Vec<EventReport> {
     let leaf = t.id(&st.leaf).unwrap();
     let chain = t.chain(leaf);
+    let ctx_tys: BTreeMap<String, crate::expr::typeck::Ty> = m
+        .spec
+        .context
+        .iter()
+        .map(|c| (c.name.clone(), c.ty.to_ty()))
+        .collect();
     let mut reports = Vec::new();
     for ev in &m.spec.events {
+        let evt_tys: BTreeMap<String, crate::expr::typeck::Ty> = ev
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.ty.to_ty()))
+            .collect();
         let mut cands = Vec::new();
         let mut summary = EventStatus::Disabled;
         let mut fields = Vec::new();
@@ -314,7 +325,17 @@ pub fn enabled_events(
                                 .map(|c| c.expr.clone())
                                 .or_else(|| parser::parse(src).ok());
                             match e {
-                                Some(e) => match partial_eval_bool(&e, &st.ctx, budget) {
+                                Some(e) => match partial_eval_bool(
+                                    &e,
+                                    &st.ctx,
+                                    &crate::expr::typeck::Scope {
+                                        kind: crate::expr::typeck::ScopeKind::Guard,
+                                        ctx: &ctx_tys,
+                                        evt: Some(&evt_tys),
+                                        enums: &m.spec.enums,
+                                    },
+                                    budget,
+                                ) {
                                     Truth::True => EventStatus::Enabled,
                                     Truth::False => EventStatus::Disabled,
                                     Truth::Unknown => {

@@ -421,54 +421,14 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                             field: "details",
                         },
                     )?;
-                    if let Some(want) = &r.block {
-                        if details.get("block").and_then(Value::as_str) != Some(want.as_str()) {
-                            return Err(ReplayError::FieldMismatch {
-                                seq: rec.seq,
-                                field: "details.block",
-                            });
-                        }
-                    }
-                    if let Some(want) = &r.source_state {
-                        if details.get("source_state").and_then(Value::as_str)
-                            != Some(want.as_str())
-                        {
-                            return Err(ReplayError::FieldMismatch {
-                                seq: rec.seq,
-                                field: "details.source_state",
-                            });
-                        }
-                    }
-                    if let Some(idx) = r.transition_idx {
-                        if details.get("transition_idx").and_then(Value::as_num)
-                            != Some(&idx.to_string())
-                        {
-                            return Err(ReplayError::FieldMismatch {
-                                seq: rec.seq,
-                                field: "details.transition_idx",
-                            });
-                        }
-                    }
-                    if details.get("trace") != Some(&r.trace.to_value()) {
-                        return Err(ReplayError::FieldMismatch {
-                            seq: rec.seq,
-                            field: "details.trace",
-                        });
-                    }
-                    let rid = rec.body.get("request_id").and_then(Value::as_str);
-                    if details.get("request_id").and_then(Value::as_str) != rid {
-                        return Err(ReplayError::FieldMismatch {
-                            seq: rec.seq,
-                            field: "details.request_id",
-                        });
-                    }
                     let mut bud2 = Budget::new(4096);
                     let evs = crate::analyze::enabled_events(&m.compiled, &m.tree, inst, &mut bud2);
-                    let want_en = enabled_reports_value(&evs);
-                    if details.get("enabled_events") != Some(&want_en) {
+                    let rid = rec.body.get("request_id").and_then(Value::as_str);
+                    let want = expected_event_rejected_details(r, rid, enabled_reports_value(&evs));
+                    if details != &want {
                         return Err(ReplayError::FieldMismatch {
                             seq: rec.seq,
-                            field: "details.enabled_events",
+                            field: "details",
                         });
                     }
                     match (rec.body.get("span"), r.span) {
@@ -615,6 +575,12 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                             field: "hint",
                         });
                     }
+                    if rec.body.get("span").is_some() {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "span",
+                        });
+                    }
                     let details = rec.body.get("details").and_then(Value::as_obj).ok_or(
                         ReplayError::FieldMismatch {
                             seq: rec.seq,
@@ -622,18 +588,11 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                         },
                     )?;
                     let rid = rec.body.get("request_id").and_then(Value::as_str);
-                    if details.get("request_id").and_then(Value::as_str) != rid {
+                    let want = expected_request_rejected_details(rid, &inst.pending);
+                    if details != &want {
                         return Err(ReplayError::FieldMismatch {
                             seq: rec.seq,
-                            field: "details.request_id",
-                        });
-                    }
-                    let pending =
-                        Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect());
-                    if details.get("pending") != Some(&pending) {
-                        return Err(ReplayError::FieldMismatch {
-                            seq: rec.seq,
-                            field: "details.pending",
+                            field: "details",
                         });
                     }
                 }
@@ -704,6 +663,44 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             Ok(())
         }
     }
+}
+
+fn expected_event_rejected_details(
+    r: &crate::step::Rejection,
+    rid: Option<&str>,
+    enabled: Value,
+) -> BTreeMap<String, Value> {
+    let mut d = BTreeMap::new();
+    if let Some(b) = &r.block {
+        d.insert("block".into(), Value::Str(b.clone()));
+    }
+    if let Some(s) = &r.source_state {
+        d.insert("source_state".into(), Value::Str(s.clone()));
+    }
+    if let Some(idx) = r.transition_idx {
+        d.insert("transition_idx".into(), Value::Num(idx.to_string()));
+    }
+    d.insert("trace".into(), r.trace.to_value());
+    if let Some(rid) = rid {
+        d.insert("request_id".into(), Value::Str(rid.into()));
+    }
+    d.insert("enabled_events".into(), enabled);
+    d
+}
+
+fn expected_request_rejected_details(
+    rid: Option<&str>,
+    pending: &[String],
+) -> BTreeMap<String, Value> {
+    let mut d = BTreeMap::new();
+    d.insert(
+        "pending".into(),
+        Value::Arr(pending.iter().cloned().map(Value::Str).collect()),
+    );
+    if let Some(rid) = rid {
+        d.insert("request_id".into(), Value::Str(rid.into()));
+    }
+    d
 }
 
 fn enabled_reports_value(evs: &[crate::analyze::EventReport]) -> Value {

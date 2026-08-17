@@ -91,38 +91,93 @@ fn charge_tree(e: &Expr, budget: &mut Budget) {
     }
 }
 
-fn tys_from_ctx(ctx: &BTreeMap<String, Val>) -> BTreeMap<String, super::typeck::Ty> {
-    ctx.iter()
-        .map(|(k, v)| {
-            (
-                k.clone(),
-                match v {
-                    Val::Bool(_) => super::typeck::Ty::Bool,
-                    Val::Int(_) => super::typeck::Ty::Int,
-                    Val::Dec(d) => super::typeck::Ty::Dec(d.scale),
-                    Val::Str(_) => super::typeck::Ty::Str,
-                    Val::Enum { ty, .. } => super::typeck::Ty::Enum(ty.clone()),
-                    Val::Ts(_) => super::typeck::Ty::Ts,
-                    Val::Dur(_) => super::typeck::Ty::Dur,
+fn reduce_lazy(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) -> Expr {
+    match e {
+        Expr::Not { inner, span } => Expr::Not {
+            inner: Box::new(reduce_lazy(inner, ctx, budget)),
+            span: *span,
+        },
+        Expr::Neg { inner, span } => Expr::Neg {
+            inner: Box::new(reduce_lazy(inner, ctx, budget)),
+            span: *span,
+        },
+        Expr::And { lhs, rhs, span } => Expr::And {
+            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
+            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
+            span: *span,
+        },
+        Expr::Or { lhs, rhs, span } => Expr::Or {
+            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
+            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
+            span: *span,
+        },
+        Expr::Cmp { op, lhs, rhs, span } => Expr::Cmp {
+            op: *op,
+            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
+            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
+            span: *span,
+        },
+        Expr::Bin { op, lhs, rhs, span } => Expr::Bin {
+            op: *op,
+            lhs: Box::new(reduce_lazy(lhs, ctx, budget)),
+            rhs: Box::new(reduce_lazy(rhs, ctx, budget)),
+            span: *span,
+        },
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            widen,
+            span,
+        } => {
+            let cond = reduce_lazy(cond, ctx, budget);
+            match partial_eval_bool_inner(&cond, ctx, budget) {
+                Truth::True => reduce_lazy(then_branch, ctx, budget),
+                Truth::False => reduce_lazy(else_branch, ctx, budget),
+                Truth::Unknown => Expr::If {
+                    cond: Box::new(cond),
+                    then_branch: Box::new(reduce_lazy(then_branch, ctx, budget)),
+                    else_branch: Box::new(reduce_lazy(else_branch, ctx, budget)),
+                    widen: *widen,
+                    span: *span,
                 },
-            )
-        })
-        .collect()
+            }
+        }
+        Expr::Call {
+            name,
+            name_span,
+            args,
+            span,
+        } => Expr::Call {
+            name: name.clone(),
+            name_span: *name_span,
+            args: args
+                .iter()
+                .map(|a| match a {
+                    super::ast::Arg::Expr(inner) => {
+                        super::ast::Arg::Expr(reduce_lazy(inner, ctx, budget))
+                    }
+                    other => other.clone(),
+                })
+                .collect(),
+            span: *span,
+        },
+        other => other.clone(),
+    }
 }
 
 /// `EvtRef` is Unknown; concrete subtrees go through `eval`. Errors → Unknown.
-/// Decimal `if` nodes are annotated from the supplied context types before evaluation.
-pub fn partial_eval_bool(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) -> Truth {
-    let ctx_tys = tys_from_ctx(ctx);
-    let enums = BTreeMap::new();
-    let scope = super::typeck::Scope {
-        kind: super::typeck::ScopeKind::Guard,
-        ctx: &ctx_tys,
-        evt: None,
-        enums: &enums,
-    };
-    let mut annotated = e.clone();
-    super::typeck::annotate_if_widening(&mut annotated, &scope);
+/// `scope` supplies declared enums and event-field types so annotation is sound.
+/// Lazy `if` reduces unreachable branches before `evt` dependence is decided.
+pub fn partial_eval_bool(
+    e: &Expr,
+    ctx: &BTreeMap<String, Val>,
+    scope: &super::typeck::Scope<'_>,
+    budget: &mut Budget,
+) -> Truth {
+    let reduced = reduce_lazy(e, ctx, budget);
+    let mut annotated = reduced;
+    super::typeck::annotate_if_widening(&mut annotated, scope);
     partial_eval_bool_inner(&annotated, ctx, budget)
 }
 
@@ -199,6 +254,19 @@ fn unused_span() -> Span {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::expr::typeck::{Scope, ScopeKind, Ty};
+
+    fn pe(e: &Expr, ctx: &BTreeMap<String, Val>, bud: &mut Budget) -> Truth {
+        let ctx_tys: BTreeMap<String, Ty> = BTreeMap::new();
+        let enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let scope = Scope {
+            kind: ScopeKind::Guard,
+            ctx: &ctx_tys,
+            evt: None,
+            enums: &enums,
+        };
+        partial_eval_bool(e, ctx, &scope, bud)
+    }
 
     #[test]
     fn kleene_tables() {
@@ -236,7 +304,7 @@ mod tests {
         let e = parse("9223372036854775807 + 1 > 0").unwrap();
         let ctx = BTreeMap::new();
         let mut bud = Budget::new(64);
-        assert_eq!(partial_eval_bool(&e, &ctx, &mut bud), Truth::Unknown);
+        assert_eq!(pe(&e, &ctx, &mut bud), Truth::Unknown);
     }
 
     #[test]
@@ -245,7 +313,7 @@ mod tests {
         let e = parse("1 + 2 > 0").unwrap();
         let ctx = BTreeMap::new();
         let mut bud = Budget::new(1);
-        assert_eq!(partial_eval_bool(&e, &ctx, &mut bud), Truth::Unknown);
+        assert_eq!(pe(&e, &ctx, &mut bud), Truth::Unknown);
     }
 
     #[test]
@@ -254,7 +322,7 @@ mod tests {
         let e = parse("true").unwrap();
         let ctx = BTreeMap::new();
         let mut bud = Budget::new(2);
-        assert_eq!(partial_eval_bool(&e, &ctx, &mut bud), Truth::True);
+        assert_eq!(pe(&e, &ctx, &mut bud), Truth::True);
         let b = Bindings {
             ctx: &ctx,
             evt: None,
