@@ -55,24 +55,24 @@ fn override_survives_reopen() {
 #[test]
 fn int_str_field_types_differ() {
     let a = parse(
-        br#"{"format":"fsm.machine/1","name":"m","events":[{"name":"go","fields":[{"name":"x","ty":"int"}]}],"states":[{"name":"idle"}],"initial":"idle","transitions":[{"from":"idle","on":"go"}]}"#,
+        br#"{"format":"fsm.machine/1","name":"m","context":[],"events":[{"name":"go","fields":[{"name":"x","ty":"int"}]}],"states":[{"name":"idle"}],"initial":"idle","transitions":[{"from":"idle","on":"go"}]}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
     let b = parse(
-        br#"{"format":"fsm.machine/1","name":"m","events":[{"name":"go","fields":[{"name":"x","ty":"str"}]}],"states":[{"name":"idle"}],"initial":"idle","transitions":[{"from":"idle","on":"go"}]}"#,
+        br#"{"format":"fsm.machine/1","name":"m","context":[],"events":[{"name":"go","fields":[{"name":"x","ty":"str"}]}],"states":[{"name":"idle"}],"initial":"idle","transitions":[{"from":"idle","on":"go"}]}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
-    let ca = compile(parse_machine(&a).unwrap()).unwrap();
-    let cb = compile(parse_machine(&b).unwrap()).unwrap();
+    let ca = fsm_core::spec::compile_accepted(&a).unwrap();
+    let cb = fsm_core::spec::compile_accepted(&b).unwrap();
     assert_ne!(ca.machine_id, cb.machine_id);
 }
 
 #[test]
 fn unknown_transition_key_rejected() {
     let v = parse(
-        br#"{"format":"fsm.machine/1","name":"m","events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","too":"b"}]}"#,
+        br#"{"format":"fsm.machine/1","name":"m","context":[],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","transitions":[{"from":"a","on":"go","too":"b"}]}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
@@ -83,7 +83,7 @@ fn unknown_transition_key_rejected() {
 #[test]
 fn non_bool_guard_rejected() {
     let v = parse(
-        br#"{"format":"fsm.machine/1","name":"m","events":[{"name":"go","fields":[]}],"states":[{"name":"idle"},{"name":"done","terminal":true}],"initial":"idle","transitions":[{"from":"idle","on":"go","if":"1","to":"done"}]}"#,
+        br#"{"format":"fsm.machine/1","name":"m","context":[],"events":[{"name":"go","fields":[]}],"states":[{"name":"idle"},{"name":"done","terminal":true}],"initial":"idle","transitions":[{"from":"idle","on":"go","if":"1","to":"done"}]}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
@@ -120,9 +120,7 @@ fn payload_invalid_not_journaled() {
 fn expect_seq_garbage_exits_usage() {
     let dir = tmp("exp");
     let bin = fsm_bin();
-    if !bin.exists() {
-        return;
-    }
+    assert!(bin.exists(), "fsm binary missing");
     Command::new(&bin)
         .args(["--data-dir", dir.to_str().unwrap(), "machine", "add"])
         .arg(format!(
@@ -160,7 +158,8 @@ fn expect_seq_garbage_exits_usage() {
         ])
         .output()
         .unwrap();
-    assert!(!out.status.success());
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
 }
 
 #[test]

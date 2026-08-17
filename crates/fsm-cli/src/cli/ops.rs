@@ -38,6 +38,9 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
 }
 
 fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
+    if let Err(h) = crate::journal_io::require_store_format(&ctx.data_dir) {
+        return emit_error(ctx, &ErrorObj::new("store/version_mismatch", h.message()));
+    }
     let recs = match load_records(&ctx.data_dir) {
         Ok(r) => r,
         Err(e) => return emit_error(ctx, &ErrorObj::new("io/read", e)),
@@ -48,12 +51,23 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
         .filter(|r| to.map(|n| r.seq <= n).unwrap_or(true))
         .collect();
     match fold_with(recs, &mut NopSink) {
-        Ok(_) => {
+        Ok(folded) => {
+            let live = match crate::store::Store::open(&ctx.data_dir) {
+                Ok(s) => s,
+                Err(e) => return emit_error(ctx, &e),
+            };
+            let want = to.unwrap_or(live.journal.last_seq);
+            let agreement = folded.last_seq == want
+                && folded.machines.len() == live.state.machines.len()
+                && folded.instances.len() == live.state.instances.len();
             emit_success(
                 ctx,
-                &Value::Obj(BTreeMap::from([("agreement".into(), Value::Bool(true))])),
+                &Value::Obj(BTreeMap::from([(
+                    "agreement".into(),
+                    Value::Bool(agreement),
+                )])),
             );
-            0
+            if agreement { 0 } else { 1 }
         }
         Err(e) => emit_error(
             ctx,
@@ -180,10 +194,7 @@ mod tests {
 
     fn clean() -> std::path::PathBuf {
         let dir = tmp();
-        let mut j = init(&dir).unwrap();
-        let mut b = BTreeMap::new();
-        b.insert("instance_id".into(), Value::Str("i".into()));
-        j.append(RecordKind::Annotated, Value::Obj(b)).unwrap();
+        let _j = init(&dir).unwrap();
         dir
     }
 

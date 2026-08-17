@@ -254,10 +254,43 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
     let name = req_str(obj, "name", "/name", &mut errs)
         .unwrap_or("")
         .to_string();
-    let description = obj
-        .get("description")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let description = match obj.get("description") {
+        None => None,
+        Some(Value::Str(s)) => Some(s.clone()),
+        Some(_) => {
+            errs.push(Finding::err(
+                "def/shape",
+                "/description",
+                "description must be a string",
+                "use a string",
+            ));
+            None
+        }
+    };
+    if obj.get("context").is_none() {
+        errs.push(Finding::err(
+            "def/shape",
+            "/context",
+            "context is required",
+            "declare a context array",
+        ));
+    }
+    if obj.get("events").is_none() {
+        errs.push(Finding::err(
+            "def/shape",
+            "/events",
+            "events is required",
+            "declare an events array",
+        ));
+    }
+    if obj.get("transitions").is_none() {
+        errs.push(Finding::err(
+            "def/shape",
+            "/transitions",
+            "transitions is required",
+            "declare a transitions array",
+        ));
+    }
     let mut enums = BTreeMap::new();
     if let Some(en) = obj.get("enums") {
         if let Some(map) = en.as_obj() {
@@ -447,6 +480,7 @@ fn parse_ty_spec(v: &Value, path: &str, errs: &mut Vec<Finding>) -> Option<TySpe
         };
     }
     if let Some(obj) = v.as_obj() {
+        check_keys(obj, &["decimal", "enum"], path, errs);
         if let Some(n) = obj.get("decimal") {
             if n.as_num().is_some() {
                 errs.push(Finding::err(
@@ -458,12 +492,39 @@ fn parse_ty_spec(v: &Value, path: &str, errs: &mut Vec<Finding>) -> Option<TySpe
                 return None;
             }
             if let Some(s) = n.as_str() {
-                let scale: u8 = s.parse().unwrap_or(99);
-                return Some(TySpec::Dec { scale });
+                match s.parse::<u8>() {
+                    Ok(scale) if scale <= crate::decimal::MAX_SCALE => {
+                        return Some(TySpec::Dec { scale });
+                    }
+                    _ => {
+                        errs.push(Finding::err(
+                            "def/shape",
+                            format!("{path}/decimal"),
+                            "decimal scale must be 0-12",
+                            "use a scale of at most 12",
+                        ));
+                        return None;
+                    }
+                }
             }
         }
-        if let Some(e) = obj.get("enum").and_then(Value::as_str) {
-            return Some(TySpec::Enum { of: e.to_string() });
+        if let Some(e) = obj.get("enum") {
+            match e.as_str() {
+                Some(name) => {
+                    return Some(TySpec::Enum {
+                        of: name.to_string(),
+                    });
+                }
+                None => {
+                    errs.push(Finding::err(
+                        "def/shape",
+                        format!("{path}/enum"),
+                        "enum name must be a string",
+                        "quote the enum name",
+                    ));
+                    return None;
+                }
+            }
         }
     }
     if v.as_num().is_some() {
@@ -536,6 +597,14 @@ fn parse_ctx(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<CtxVar> {
                 String::new()
             }
         };
+        if name.starts_with('$') {
+            errs.push(Finding::err(
+                "def/reserved_ident",
+                format!("{path}/name"),
+                "$-prefixed identifiers are reserved",
+                "remove the $ prefix",
+            ));
+        }
         if let Some(ty) = ty {
             out.push(CtxVar { name, ty, init });
         }
@@ -623,7 +692,25 @@ fn parse_named_list(
                     let name = req_str(obj, "name", &format!("{p}/name"), errs)
                         .unwrap_or("")
                         .to_string();
+                    if name.starts_with('$') {
+                        errs.push(Finding::err(
+                            "def/reserved_ident",
+                            format!("{p}/name"),
+                            "$-prefixed identifiers are reserved",
+                            "remove the $ prefix",
+                        ));
+                    }
                     let fields = parse_fields(obj.get("fields"), &format!("{p}/fields"), errs);
+                    for f in &fields {
+                        if f.name.starts_with('$') {
+                            errs.push(Finding::err(
+                                "def/reserved_ident",
+                                format!("{p}/fields"),
+                                "$-prefixed identifiers are reserved",
+                                "remove the $ prefix",
+                            ));
+                        }
+                    }
                     out.push((name, fields));
                 }
                 Some(out)
@@ -991,14 +1078,10 @@ fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<Transiti
             }
         };
         out.push(TransitionSpec {
-            from: obj
-                .get("from")
-                .and_then(Value::as_str)
+            from: req_str(obj, "from", &format!("{p}/from"), errs)
                 .unwrap_or("")
                 .to_string(),
-            on: obj
-                .get("on")
-                .and_then(Value::as_str)
+            on: req_str(obj, "on", &format!("{p}/on"), errs)
                 .unwrap_or("")
                 .to_string(),
             guard,
@@ -1780,6 +1863,34 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
             }
         }
     }
+    for ev in &spec.events {
+        for f in &ev.fields {
+            if let TySpec::Enum { of } = &f.ty {
+                if !spec.enums.contains_key(of) {
+                    errs.push(Finding::err(
+                        "def/unknown_enum",
+                        format!("/events/{}/fields/{}", ev.name, f.name),
+                        format!("unknown enum {of}"),
+                        "declare the enum",
+                    ));
+                }
+            }
+        }
+    }
+    for ev in &spec.effects {
+        for f in &ev.fields {
+            if let TySpec::Enum { of } = &f.ty {
+                if !spec.enums.contains_key(of) {
+                    errs.push(Finding::err(
+                        "def/unknown_enum",
+                        format!("/effects/{}/fields/{}", ev.name, f.name),
+                        format!("unknown enum {of}"),
+                        "declare the enum",
+                    ));
+                }
+            }
+        }
+    }
     if errs.is_empty() { Ok(()) } else { Err(errs) }
 }
 
@@ -2057,6 +2168,15 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         transitions_by,
         compiled_exprs,
     })
+}
+
+/// Compile a definition using the accepted source document as the identity input.
+pub fn compile_accepted(source: &Value) -> Result<CompiledMachine, Vec<Finding>> {
+    let spec = parse_machine(source)?;
+    let mut compiled = compile(spec)?;
+    compiled.canonical = crate::canon::canon_bytes(source);
+    compiled.machine_id = crate::hashes::machine_id(source);
+    Ok(compiled)
 }
 
 pub fn load_machine_json(bytes: &[u8]) -> Result<MachineSpec, Vec<Finding>> {

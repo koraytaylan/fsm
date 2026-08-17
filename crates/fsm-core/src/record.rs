@@ -263,6 +263,11 @@ pub fn verify_line(line: &[u8], expect_seq: u64, expect_prev: &str) -> Result<Re
     Ok(rec)
 }
 
+fn is_state_hash(v: Option<&Value>) -> bool {
+    v.and_then(Value::as_str)
+        .is_some_and(|s| s.starts_with("sha256:") && s.len() == "sha256:".len() + 64)
+}
+
 fn body_ok(kind: RecordKind, body: &Value) -> bool {
     match kind {
         RecordKind::Genesis => {
@@ -271,18 +276,22 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
         }
         RecordKind::MachineDefined => body.get("machine_id").is_some() && body.get("def").is_some(),
         RecordKind::InstanceCreated => {
-            body.get("instance_id").is_some() && body.get("machine_id").is_some()
+            body.get("instance_id").is_some()
+                && body.get("machine_id").is_some()
+                && is_state_hash(body.get("state_hash"))
         }
-        RecordKind::EventApplied => {
-            body.get("instance_id").is_some() && body.get("state_hash").is_some()
-        }
-        RecordKind::EventRejected | RecordKind::EventIgnored => {
-            body.get("instance_id").is_some() && body.get("state_hash").is_some()
+        RecordKind::EventApplied | RecordKind::EventRejected | RecordKind::EventIgnored => {
+            body.get("instance_id").is_some()
+                && body.get("event").and_then(Value::as_str).is_some()
+                && body.get("payload").is_some()
+                && is_state_hash(body.get("state_hash"))
         }
         RecordKind::EffectAcked => {
             body.get("instance_id").is_some() && body.get("effect_id").is_some()
         }
-        RecordKind::RequestRejected => body.get("request_id").is_some(),
+        RecordKind::RequestRejected => {
+            body.get("request_id").is_some() && body.get("code").and_then(Value::as_str).is_some()
+        }
         RecordKind::InstanceCancelled => body.get("instance_id").is_some(),
         RecordKind::Annotated => body.get("instance_id").is_some(),
     }

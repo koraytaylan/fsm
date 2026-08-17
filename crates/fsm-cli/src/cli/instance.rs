@@ -15,16 +15,18 @@ fn new_inst(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(mref) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "instance new <machine>"));
     };
-    let rid = args
-        .flags
-        .get("request-id")
-        .cloned()
-        .unwrap_or_else(default_request_id);
-    let iid = format!("inst-{rid}");
     let mut store = match open(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
+    let rid = match args.flags.get("request-id").cloned() {
+        Some(r) => r,
+        None => match store.allocate_request_id() {
+            Ok(r) => r,
+            Err(e) => return emit_error(ctx, &e),
+        },
+    };
+    let iid = format!("inst-{rid}");
     let mut overrides = BTreeMap::new();
     if let Some(pairs) = args.flags.get("context") {
         let m = match store.resolve_machine(mref) {
@@ -107,11 +109,6 @@ fn send(ctx: &mut Ctx, args: &Args) -> u8 {
     } else {
         Value::Obj(BTreeMap::new())
     };
-    let rid = args
-        .flags
-        .get("request-id")
-        .cloned()
-        .unwrap_or_else(default_request_id);
     let expect = match args.flags.get("expect-seq") {
         None => None,
         Some(s) => match s.parse::<u64>() {
@@ -119,7 +116,7 @@ fn send(ctx: &mut Ctx, args: &Args) -> u8 {
             Err(_) => {
                 return emit_error(
                     ctx,
-                    &ErrorObj::new("req/args_invalid", "expect-seq must be a u64")
+                    &ErrorObj::new("args", "expect-seq must be a u64")
                         .hint("pass an integer sequence"),
                 );
             }
@@ -129,6 +126,13 @@ fn send(ctx: &mut Ctx, args: &Args) -> u8 {
     let mut store = match open(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
+    };
+    let rid = match args.flags.get("request-id").cloned() {
+        Some(r) => r,
+        None => match store.allocate_request_id() {
+            Ok(r) => r,
+            Err(e) => return emit_error(ctx, &e),
+        },
     };
     match store.send_event_stamp(iid, ev, &mut payload, &rid, expect, stamp) {
         Ok(v) => {
@@ -143,32 +147,42 @@ fn ack(ctx: &mut Ctx, args: &Args) -> u8 {
     if args.positionals.len() < 2 {
         return emit_error(ctx, &ErrorObj::new("args", "instance ack <id> <effect>"));
     }
-    let rid = args
-        .flags
-        .get("request-id")
-        .cloned()
-        .unwrap_or_else(default_request_id);
     let mut store = match open(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
-    let outcome = args
-        .flags
-        .get("outcome")
-        .map(String::as_str)
-        .unwrap_or("ok");
-    if outcome != "ok" && outcome != "failed" {
+    let rid = match args.flags.get("request-id").cloned() {
+        Some(r) => r,
+        None => match store.allocate_request_id() {
+            Ok(r) => r,
+            Err(e) => return emit_error(ctx, &e),
+        },
+    };
+    let Some(outcome) = args.flags.get("outcome").map(String::as_str) else {
         return emit_error(
             ctx,
-            &ErrorObj::new("req/args_invalid", "outcome must be ok or failed"),
+            &ErrorObj::new("args", "outcome is required").hint("pass --outcome ok|failed"),
         );
+    };
+    if outcome != "ok" && outcome != "failed" {
+        return emit_error(ctx, &ErrorObj::new("args", "outcome must be ok or failed"));
     }
+    let result = match args.flags.get("result") {
+        None => None,
+        Some(src) => match read_input_from(src, ctx.stdin.as_deref()).and_then(|s| {
+            parse(s.as_bytes(), &JsonLimits::DEFAULT)
+                .map_err(|e| ErrorObj::new("def/shape", e.message))
+        }) {
+            Ok(v) => Some(v),
+            Err(e) => return emit_error(ctx, &e),
+        },
+    };
     match store.ack_effect_outcome(
         &args.positionals[0],
         &args.positionals[1],
         &rid,
         outcome,
-        None,
+        result,
     ) {
         Ok(v) => {
             emit_success(ctx, &v);
@@ -671,7 +685,7 @@ mod tests {
                     &mut c,
                     &Args {
                         positionals: vec![iid.clone(), eid.clone()],
-                        flags: BTreeMap::new(),
+                        flags: BTreeMap::from([("outcome".into(), "ok".into())]),
                         switches: Default::default()
                     }
                 ),
@@ -683,7 +697,7 @@ mod tests {
                 &mut c,
                 &Args {
                     positionals: vec![iid.clone(), "nope".into()],
-                    flags: BTreeMap::new(),
+                    flags: BTreeMap::from([("outcome".into(), "ok".into())]),
                     switches: Default::default()
                 }
             ),
@@ -758,7 +772,7 @@ mod tests {
             ),
             1
         );
-        let recs = Store::open(&dir2).unwrap().records;
+        let recs = Store::open(&dir2).unwrap().records.clone();
         if let Some(r) = recs.iter().find(|r| r.kind == RecordKind::EventApplied) {
             assert_eq!(
                 explain(

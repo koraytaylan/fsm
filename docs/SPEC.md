@@ -368,6 +368,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed
 - `store/torn_tail` — truncated final record
+- `store/version_mismatch` — data directory VERSION is not 2
 
 ## Appendix B — Limits
 

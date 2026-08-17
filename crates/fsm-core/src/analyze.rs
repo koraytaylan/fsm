@@ -239,7 +239,10 @@ pub fn ancestor_shadowed(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
 
 pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     match crate::step::create(m, t, &BTreeMap::new()) {
-        Err(r) if r.code == "run/create_failed" => {
+        Err(r)
+            if r.code == "run/create_failed"
+                && !r.message.contains("invariant failed at create") =>
+        {
             vec![Finding {
                 severity: Severity::Error,
                 code: "def/create_always_fails",

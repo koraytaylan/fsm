@@ -31,8 +31,7 @@ fn validate(ctx: &mut Ctx, args: &Args) -> u8 {
 fn validate_text(text: &str) -> Result<Value, ErrorObj> {
     let v = parse(text.as_bytes(), &JsonLimits::DEFAULT)
         .map_err(|e| ErrorObj::new("def/shape", e.message))?;
-    let spec = parse_machine(&v).map_err(ErrorObj::from_findings)?;
-    let compiled = compile(spec).map_err(ErrorObj::from_findings)?;
+    let compiled = fsm_core::spec::compile_accepted(&v).map_err(ErrorObj::from_findings)?;
     let tree = Tree::build(&compiled.spec.states);
     let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
     let id = compiled.machine_id.clone();

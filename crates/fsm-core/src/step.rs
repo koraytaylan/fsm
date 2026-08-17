@@ -74,7 +74,6 @@ pub fn validate_event(
         .ok_or_else(|| reject("req/event_unknown", name))?;
     let obj = match payload {
         Value::Obj(o) => o.clone(),
-        Value::Null if ev.fields.is_empty() => BTreeMap::new(),
         _ => {
             return Err(reject("req/field_type", "payload must be an object"));
         }
@@ -728,6 +727,14 @@ pub fn create(
         } else {
             parse_init(&c.init, &c.ty).map_err(|code| reject(code, &c.name))?
         };
+        if let TySpec::Enum { of } = &c.ty {
+            if let Val::Enum { variant, .. } = &v {
+                let allowed = m.spec.enums.get(of).cloned().unwrap_or_default();
+                if !allowed.iter().any(|x| x == variant) {
+                    return Err(reject("req/field_type", &c.name));
+                }
+            }
+        }
         ctx.insert(c.name.clone(), v);
     }
     let root_init = t

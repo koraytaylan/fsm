@@ -4,7 +4,7 @@ exit: 0
 --- stdout ---
 created:    true
 dry_run:    true
-machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
+machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 name:       case_review
 warnings:
 --- stderr ---
@@ -14,7 +14,7 @@ exit: 0
 --- stdout ---
 created:    true
 dry_run:    false
-machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
+machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 name:       case_review
 warnings:
 --- stderr ---
@@ -45,13 +45,13 @@ enabled_events:
 instance_id:     inst-new-1
 leaf:            intake
 machine:
-  machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
+  machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
 ok:              true
 request_id:      new-1
 seq:             2
 state:           intake
-state_hash:      sha256:3806099aeb03de9e56a1d1717b1f4931bb72de33c2a35df873dc9737ab750a8b
+state_hash:      sha256:bea77fe1466ef20a6286d8876e6d9df098767d144aa7efe83c464ae4dbe6e456
 status:          running
 --- stderr ---
 [send_docs_ok]
@@ -82,14 +82,14 @@ enabled_events:
 instance_id:     inst-new-1
 leaf:            docs_review
 machine:
-  machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
+  machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
 monitor_flags:
 ok:              true
 request_id:      send-1
 seq:             3
 state:           in_review.docs_review
-state_hash:      sha256:df262d37956e36d0aa7a9f8a8333d7df47629ba534149a7303512d4f464f8519
+state_hash:      sha256:5e4f307b274c277f1850b62d9a2c3fe60e3f887960cb7b51fbb1e28ad17bf849
 status:          running
 trace:
   candidates:
@@ -174,14 +174,14 @@ enabled_events:
 instance_id:     inst-new-1
 leaf:            risk_review
 machine:
-  machine_id: case_review@sha256:b0dfe769415755e92fc295f055c7d8ff26f0469f4fed759453922abc49b65449
+  machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
 monitor_flags:
 ok:              true
 request_id:      send-2
 seq:             5
 state:           in_review.risk_review
-state_hash:      sha256:613cd37f92294d6ef7a333d2802ad8046526e025edbd2fb129319a5ee9d58525
+state_hash:      sha256:f7ccb87cdacff877f6450b79a927abc1ca70599dd8dc0102a1f5cb8b61d92163
 status:          running
 trace:
   candidates:
@@ -221,7 +221,7 @@ transition:
   transition_idx: 1
 --- stderr ---
 [ack]
-argv: instance ack inst-new-1 inst-new-1/3/0 --request-id ack-1
+argv: instance ack inst-new-1 inst-new-1/3/0 --outcome ok --request-id ack-1
 exit: 0
 --- stdout ---
 acked:           true

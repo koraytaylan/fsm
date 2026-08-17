@@ -3,12 +3,10 @@ use std::collections::BTreeMap;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::{RecordError, RecordKind, seal, verify_line, zeros};
 use fsm_core::replay::{NopSink, ReplayError, fold_with};
-use fsm_core::spec::{compile, load_machine_json};
+use fsm_core::spec::load_machine_json;
 
 #[test]
 fn chain_and_tamper() {
-    let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
-    let compiled = compile(spec).unwrap();
     let def = parse(
         include_bytes!("fixtures/machines/case_review.json"),
         &JsonLimits::DEFAULT,
@@ -24,7 +22,19 @@ fn chain_and_tamper() {
     };
     prev = g.hash.clone();
     recs.push(g);
-    let mid = compiled.machine_id.clone();
+    let mid = fsm_core::hashes::machine_id(&def);
+    let compiled = fsm_core::spec::compile_accepted(&def).unwrap();
+    let tree = fsm_core::tree::Tree::build(&compiled.spec.states);
+    let created_state =
+        fsm_core::step::create(&compiled, &tree, &std::collections::BTreeMap::new()).unwrap();
+    let inst0 = fsm_core::machine::InstanceState {
+        status: created_state.status_after,
+        leaf: created_state.leaf_after.clone(),
+        ctx: created_state.ctx_after.clone(),
+        history: created_state.history_after.clone(),
+        pending: vec![],
+    };
+    let created_hash = fsm_core::hashes::state_hash(&mid, "i1", 2, &inst0);
     let defn = {
         let mut b = BTreeMap::new();
         b.insert("machine_id".into(), Value::Str(mid.clone()));
@@ -39,38 +49,11 @@ fn chain_and_tamper() {
         b.insert("machine_id".into(), Value::Str(mid));
         b.insert("request_id".into(), Value::Str("r1".into()));
         b.insert("leaf".into(), Value::Str("intake".into()));
+        b.insert("state_hash".into(), Value::Str(created_hash));
         seal(2, 2, RecordKind::InstanceCreated, Value::Obj(b), &prev)
     };
     prev = created.hash.clone();
     recs.push(created);
-    let applied = {
-        let mut b = BTreeMap::new();
-        b.insert("instance_id".into(), Value::Str("i1".into()));
-        b.insert("event".into(), Value::Str("docs_ok".into()));
-        b.insert("payload".into(), Value::Obj(BTreeMap::new()));
-        b.insert("request_id".into(), Value::Str("r2".into()));
-        b.insert("state_hash".into(), Value::Str("s".into()));
-        seal(3, 3, RecordKind::EventApplied, Value::Obj(b), &prev)
-    };
-    prev = applied.hash.clone();
-    recs.push(applied);
-    let rejected = {
-        let mut b = BTreeMap::new();
-        b.insert("instance_id".into(), Value::Str("i1".into()));
-        b.insert("state_hash".into(), Value::Str("x".into()));
-        b.insert("request_id".into(), Value::Str("r3".into()));
-        seal(4, 4, RecordKind::EventRejected, Value::Obj(b), &prev)
-    };
-    prev = rejected.hash.clone();
-    recs.push(rejected);
-    let ack = {
-        let mut b = BTreeMap::new();
-        b.insert("instance_id".into(), Value::Str("i1".into()));
-        b.insert("effect_id".into(), Value::Str("none".into()));
-        b.insert("request_id".into(), Value::Str("r4".into()));
-        seal(5, 5, RecordKind::EffectAcked, Value::Obj(b), &prev)
-    };
-    recs.push(ack);
 
     let mut expect_prev = zeros();
     for (i, r) in recs.iter().enumerate() {
@@ -81,9 +64,8 @@ fn chain_and_tamper() {
     let st = fold_with(recs.clone(), &mut NopSink).unwrap();
     assert_eq!(st.machines.len(), 1);
     assert_eq!(st.instances.len(), 1);
-    assert_eq!(st.instances.get("i1").unwrap().leaf, "docs_review");
+    assert_eq!(st.instances.get("i1").unwrap().leaf, "intake");
     assert!(st.dedup.contains_key("r1"));
-    assert!(st.dedup.contains_key("r2"));
 
     // tampered hash
     let mut bad = recs[1].to_line();

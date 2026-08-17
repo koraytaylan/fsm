@@ -18,10 +18,7 @@ fn tmp() -> PathBuf {
 
 fn clean_journal() -> PathBuf {
     let dir = tmp();
-    let mut j = init(&dir).unwrap();
-    let mut b = std::collections::BTreeMap::new();
-    b.insert("instance_id".into(), Value::Str("i".into()));
-    j.append(RecordKind::Annotated, Value::Obj(b)).unwrap();
+    let _j = init(&dir).unwrap();
     dir
 }
 

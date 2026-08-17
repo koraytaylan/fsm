@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use super::ExprError;
 use super::ast::{Arg, BinOp, CmpOp, Expr};
 use super::lexer::Span;
+use super::typeck::{Scope, ScopeKind, Ty, typecheck};
 use crate::decimal::{Dec, RoundMode};
 use crate::json::Value;
 
@@ -269,7 +270,7 @@ fn eval_inner(
             };
             if flag {
                 let (v, tc) = eval_inner(then_branch, b, budget, trace)?;
-                let v = widen_if_dec(v, then_branch, else_branch, b)?;
+                let v = apply_static_dec(v, e, b, *span)?;
                 let mut ch = kid(cc);
                 ch.extend(kid(tc));
                 if trace {
@@ -278,7 +279,7 @@ fn eval_inner(
                 ok(v, *span, trace, ch)
             } else {
                 let (v, ec) = eval_inner(else_branch, b, budget, trace)?;
-                let v = widen_if_dec(v, then_branch, else_branch, b)?;
+                let v = apply_static_dec(v, e, b, *span)?;
                 let mut ch = kid(cc);
                 if trace {
                     ch.push(skipped(then_branch));
@@ -323,58 +324,54 @@ fn eval_logic(
     ok(Val::Bool(rb), span, trace, kids(lc, rc))
 }
 
-fn dec_scale_hint(e: &Expr, b: &Bindings<'_>) -> Option<u8> {
-    match e {
-        Expr::DecLit { scale, .. } => Some(*scale),
-        Expr::CtxRef { name, .. } => match b.ctx.get(name) {
-            Some(Val::Dec(d)) => Some(d.scale),
-            _ => None,
-        },
-        Expr::EvtRef { name, .. } => match b.evt.and_then(|m| m.get(name)) {
-            Some(Val::Dec(d)) => Some(d.scale),
-            _ => None,
-        },
-        Expr::If {
-            then_branch,
-            else_branch,
-            ..
-        } => match (
-            dec_scale_hint(then_branch, b),
-            dec_scale_hint(else_branch, b),
-        ) {
-            (Some(a), Some(c)) => Some(a.max(c)),
-            (Some(a), None) => Some(a),
-            (None, Some(c)) => Some(c),
-            _ => None,
-        },
-        Expr::Bin { lhs, rhs, .. } => match (dec_scale_hint(lhs, b), dec_scale_hint(rhs, b)) {
-            (Some(a), Some(c)) => Some(a.max(c)),
-            (Some(a), None) => Some(a),
-            (None, Some(c)) => Some(c),
-            _ => None,
-        },
-        _ => None,
+fn val_ty(v: &Val) -> Ty {
+    match v {
+        Val::Bool(_) => Ty::Bool,
+        Val::Int(_) => Ty::Int,
+        Val::Dec(d) => Ty::Dec(d.scale),
+        Val::Str(_) => Ty::Str,
+        Val::Enum { ty, .. } => Ty::Enum(ty.clone()),
+        Val::Ts(_) => Ty::Ts,
+        Val::Dur(_) => Ty::Dur,
     }
 }
 
-fn widen_if_dec(
-    v: Val,
-    then_branch: &Expr,
-    else_branch: &Expr,
-    b: &Bindings<'_>,
-) -> Result<Val, EvalErr> {
+fn apply_static_dec(v: Val, e: &Expr, b: &Bindings<'_>, span: Span) -> Result<Val, EvalErr> {
     let Val::Dec(d) = v else {
         return Ok(v);
     };
-    let target = dec_scale_hint(then_branch, b)
-        .unwrap_or(d.scale)
-        .max(dec_scale_hint(else_branch, b).unwrap_or(d.scale));
+    let ctx_tys: BTreeMap<String, Ty> = b
+        .ctx
+        .iter()
+        .map(|(k, val)| (k.clone(), val_ty(val)))
+        .collect();
+    let evt_owned: Option<BTreeMap<String, Ty>> = b
+        .evt
+        .map(|m| m.iter().map(|(k, val)| (k.clone(), val_ty(val))).collect());
+    let scope = Scope {
+        kind: ScopeKind::Block,
+        ctx: &ctx_tys,
+        evt: evt_owned.as_ref(),
+        enums: &BTreeMap::new(),
+    };
+    let target = match typecheck(e, &scope) {
+        Ok((Ty::Dec(s), _)) => s,
+        _ => return Ok(Val::Dec(d)),
+    };
     if target == d.scale {
         return Ok(Val::Dec(d));
     }
     match d.rescale_up(target) {
         Ok(w) => Ok(Val::Dec(w)),
-        Err(_) => Ok(Val::Dec(d)),
+        Err(_) => Err((
+            ExprError::new(
+                "run/overflow",
+                span,
+                "decimal rescale overflow",
+                "use a smaller magnitude",
+            ),
+            Some(err_node(span, "run/overflow", vec![])),
+        )),
     }
 }
 
@@ -409,7 +406,7 @@ fn eval_call(
         "dur" => 2,
         _ => 0,
     };
-    if need > 0 && vals.len() < need {
+    if need > 0 && vals.len() != need {
         return Err((
             ExprError::new(
                 "expr/arity",

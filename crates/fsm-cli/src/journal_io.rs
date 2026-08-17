@@ -184,10 +184,11 @@ fn seg_name(first: u64) -> String {
     format!("seg-{first:020}.jsonl")
 }
 
-pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
-    let jdir = journal_dir(dir);
-    fs::create_dir_all(&jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
-    let lock = acquire_lock(&jdir)?;
+fn write_genesis_unlocked(jdir: &Path) -> Result<(), JournalIoError> {
+    fs::create_dir_all(jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
+    if classify_has_genesis(jdir) {
+        return Ok(());
+    }
     let name = seg_name(0);
     let path = jdir.join(&name);
     let mut seg = OpenOptions::new()
@@ -211,22 +212,37 @@ pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
         &zeros(),
     );
     let line = rec.to_line();
+    let existing = fs::read(&path).unwrap_or_default();
+    if !existing.is_empty() {
+        return Ok(());
+    }
     seg.write_all(&line)
         .map_err(|e| JournalIoError::Io(e.to_string()))?;
     seg.sync_all()
         .map_err(|e| JournalIoError::Io(e.to_string()))?;
-    sync_dir(&jdir)?;
-    Ok(Journal {
-        dir: dir.to_path_buf(),
-        seg,
-        seg_name: name,
-        seg_first_seq: 0,
-        seg_bytes: line.len() as u64,
-        seg_records: 1,
-        last_seq: 0,
-        last_hash: rec.hash,
-        poisoned: false,
-        _lock: lock,
+    sync_dir(jdir)?;
+    Ok(())
+}
+
+fn classify_has_genesis(jdir: &Path) -> bool {
+    let dir = jdir.parent().unwrap_or(jdir);
+    matches!(classify(dir), JournalHealth::Ok)
+}
+
+pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
+    let jdir = journal_dir(dir);
+    fs::create_dir_all(&jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
+    let ver = dir.join("VERSION");
+    if !ver.exists() {
+        fs::write(&ver, "2\n").map_err(|e| JournalIoError::Io(e.to_string()))?;
+    }
+    let lock = acquire_lock(&jdir)?;
+    write_genesis_unlocked(&jdir)?;
+    drop(lock);
+    let mut sink = fsm_core::replay::NopSink;
+    open(dir, &mut sink).map(|(j, _)| j).map_err(|e| match e {
+        OpenError::Io(s) => JournalIoError::Io(s),
+        OpenError::Health(h) => JournalIoError::Io(h.message()),
     })
 }
 
@@ -442,10 +458,9 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
     })?;
     let health = classify(dir);
     if matches!(health, JournalHealth::MissingGenesis) {
-        drop(lock);
-        let j = init(dir).map_err(|e| OpenError::Io(e.to_string()))?;
-        return Ok((j, StoreState::default()));
+        write_genesis_unlocked(&jdir).map_err(|e| OpenError::Io(e.to_string()))?;
     }
+    let health = classify(dir);
     if !matches!(health, JournalHealth::Ok) {
         return Err(OpenError::Health(health));
     }
@@ -517,7 +532,46 @@ pub struct VerifyReport {
     pub instances: u64,
 }
 
+pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
+    let ver = dir.join("VERSION");
+    let jdir = journal_dir(dir);
+    let has_journal = jdir.exists()
+        && fs::read_dir(&jdir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .any(|e| e.file_name().to_string_lossy().starts_with("seg-"))
+            })
+            .unwrap_or(false);
+    if ver.exists() {
+        let v = fs::read_to_string(&ver).unwrap_or_default();
+        let t = v.trim();
+        if t == "1" {
+            return Err(JournalHealth::LockIo(
+                "store format 1 is not compatible; delete the data directory".into(),
+            ));
+        }
+        if t != "2" {
+            return Err(JournalHealth::LockIo(format!("VERSION {v}")));
+        }
+        return Ok(());
+    }
+    if has_journal {
+        return Err(JournalHealth::LockIo(
+            "store format 1 is not compatible; delete the data directory".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn verify(dir: &Path) -> VerifyReport {
+    if let Err(h) = require_store_format(dir) {
+        return VerifyReport {
+            health: h,
+            records: 0,
+            machines: 0,
+            instances: 0,
+        };
+    }
     let health = classify(dir);
     if !matches!(health, JournalHealth::Ok) {
         return VerifyReport {
@@ -569,6 +623,9 @@ pub enum RepairError {
 }
 
 pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError> {
+    if let Err(h) = require_store_format(dir) {
+        return Err(RepairError::Io(h.message()));
+    }
     let jdir = journal_dir(dir);
     let _lock = acquire_lock(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
     let health = classify(dir);
@@ -610,6 +667,9 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
                 .map_err(|e| RepairError::Io(e.to_string()))?;
             f.sync_all().map_err(|e| RepairError::Io(e.to_string()))?;
             sync_dir(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
+            if offset == 0 {
+                write_genesis_unlocked(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
+            }
             Ok(RepairReport {
                 quarantined: qpath,
                 bytes,

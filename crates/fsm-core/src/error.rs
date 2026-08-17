@@ -98,6 +98,7 @@ pub const ALL_CODES: &[&str] = &[
     "store/non_canonical",
     "store/state_hash_mismatch",
     "store/torn_tail",
+    "store/version_mismatch",
 ];
 
 /// Retryable solely from the code namespace. `req/seq_mismatch` is the
