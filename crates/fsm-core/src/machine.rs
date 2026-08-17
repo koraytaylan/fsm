@@ -64,6 +64,7 @@ pub struct CompiledMachine {
     pub canonical: Vec<u8>,
     pub transitions_by: BTreeMap<(String, String), Vec<usize>>,
     pub compiled_exprs: BTreeMap<ExprSlot, CompiledExpr>,
+    pub compile_warnings: Vec<crate::spec::Finding>,
 }
 
 #[cfg(test)]

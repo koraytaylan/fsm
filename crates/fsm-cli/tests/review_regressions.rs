@@ -1529,6 +1529,10 @@ fn history_default_wire_has_audit_metadata() {
     store
         .create_instance("case_review", "i1", "c1", None)
         .unwrap();
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    let _ = store.send_event("i1", "resume", Value::Obj(BTreeMap::new()), "bad", None);
     let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
     let v = fsm_cli::mcp::tools::dispatch(
         &mut store,
@@ -1541,10 +1545,88 @@ fn history_default_wire_has_audit_metadata() {
     )
     .unwrap();
     assert_eq!(v.get("chain_verified").and_then(Value::as_bool), Some(true));
-    let e = &v.get("entries").and_then(Value::as_arr).unwrap()[0];
-    assert!(e.get("ts").is_some(), "{e:?}");
-    assert!(e.get("hash").is_some(), "{e:?}");
-    assert!(e.get("request_id").is_some(), "{e:?}");
+    let entries = v.get("entries").and_then(Value::as_arr).unwrap();
+    assert!(entries.len() >= 2, "{v:?}");
+    for e in entries {
+        assert!(e.get("ts").is_some(), "{e:?}");
+        assert!(e.get("hash").is_some(), "{e:?}");
+        assert!(e.get("request_id").is_some(), "{e:?}");
+        assert!(e.get("from_leaf").is_some(), "{e:?}");
+        assert!(e.get("to_leaf").is_some(), "{e:?}");
+        assert!(e.get("context_after").is_some(), "{e:?}");
+    }
+    let hidden = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_history",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("i1".into())),
+            ("include_rejected".into(), Value::Bool(false)),
+        ])),
+    )
+    .unwrap();
+    let hid = hidden.get("entries").and_then(Value::as_arr).unwrap();
+    assert!(
+        hid.iter()
+            .all(|e| e.get("kind").and_then(Value::as_str) != Some("EventRejected")),
+        "{hidden:?}"
+    );
+    assert!(
+        hid.len() < entries.len(),
+        "rejected filter did not drop rows"
+    );
+    for i in 0..501 {
+        let _ = store.send_event(
+            "i1",
+            "note_added",
+            Value::Obj(BTreeMap::from([("text".into(), Value::Str("n".into()))])),
+            &format!("n{i}"),
+            None,
+        );
+    }
+    let capped = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_history",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("i1".into())),
+            ("limit".into(), Value::Num("500".into())),
+        ])),
+    )
+    .unwrap();
+    let cap_entries = capped.get("entries").and_then(Value::as_arr).unwrap();
+    assert_eq!(cap_entries.len(), 500, "500-row cap");
+    assert!(capped.get("next_from_seq").is_some(), "{capped:?}");
+    let apply_seq = store
+        .records
+        .iter()
+        .find(|r| r.body.get("request_id").and_then(Value::as_str) == Some("s1"))
+        .map(|r| r.seq)
+        .unwrap();
+    drop(store);
+    let bin = fsm_bin();
+    let exp = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "explain",
+            "i1",
+            "--seq",
+            &apply_seq.to_string(),
+        ])
+        .output()
+        .unwrap();
+    let exp_out = String::from_utf8_lossy(&exp.stdout);
+    assert_eq!(exp.status.code(), Some(0), "{exp_out}");
+    assert!(
+        exp_out.contains("from_leaf") && exp_out.contains("to_leaf"),
+        "{exp_out}"
+    );
+    assert!(
+        exp_out.contains("context_after") || exp_out.contains("after_context"),
+        "{exp_out}"
+    );
 }
 
 #[test]
@@ -1595,29 +1677,60 @@ fn validate_aggregates_fields() {
 fn journal_replay_prefix_agrees() {
     let _g = gate();
     let dir = tmp("jrp");
-    let mut store = Store::open(&dir).unwrap();
-    store.define_machine(case(), false, false).unwrap();
-    store
-        .create_instance("case_review", "i1", "c1", None)
+    let bin = fsm_bin();
+    Command::new(&bin)
+        .args(["--data-dir", dir.to_str().unwrap(), "machine", "add"])
+        .arg(format!(
+            "@{}/tests/fixtures/machines/case_review.json",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../fsm-core")
+        ))
+        .status()
         .unwrap();
-    store.shutdown_snapshot().unwrap();
-    drop(store);
+    Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "instance",
+            "new",
+            "case_review",
+            "--request-id",
+            "c1",
+        ])
+        .status()
+        .unwrap();
+    Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "instance",
+            "send",
+            "inst-c1",
+            "docs_ok",
+            "--request-id",
+            "s1",
+        ])
+        .status()
+        .unwrap();
     let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
     let n = recs[recs.len() / 2].seq;
-    let prefix: Vec<_> = recs.into_iter().filter(|r| r.seq <= n).collect();
-    let folded = fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink).unwrap();
-    let live = Store::open(&dir).unwrap();
-    let live_at = fsm_core::replay::fold_with(
-        live.records
-            .iter()
-            .filter(|r| r.seq <= n)
-            .cloned()
-            .collect::<Vec<_>>(),
-        &mut fsm_core::replay::NopSink,
-    )
-    .unwrap();
-    assert_eq!(folded.last_seq, live_at.last_seq);
-    assert_eq!(folded.last_hash, live_at.last_hash);
+    let out = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "replay",
+            "--to-seq",
+            &n.to_string(),
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{stdout}");
+    assert!(
+        stdout.contains("\"agreement\":true") || stdout.contains("agreement\": true"),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -1637,4 +1750,341 @@ fn journal_replay_agrees_with_live_after_snapshot() {
     assert_eq!(folded.last_seq, live.state.last_seq);
     assert_eq!(folded.last_hash, live.state.last_hash);
     assert_eq!(folded.instances.len(), live.state.instances.len());
+}
+
+fn required_fields(schema: &Value) -> Vec<String> {
+    schema
+        .get("required")
+        .and_then(Value::as_arr)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn output_schemas_required_nested() {
+    let reg = fsm_cli::mcp::tools::registry();
+    let send = reg.iter().find(|t| t.name == "instance_send").unwrap();
+    let ev = (send.input_schema)()
+        .get("properties")
+        .and_then(|p| p.get("event"))
+        .cloned()
+        .unwrap();
+    let ev_req = required_fields(&ev);
+    assert!(ev_req.iter().any(|s| s == "name"), "{ev:?}");
+    let list = reg.iter().find(|t| t.name == "machine_list").unwrap();
+    let items = (list.output_schema)()
+        .get("properties")
+        .and_then(|p| p.get("machines"))
+        .and_then(|a| a.get("items"))
+        .cloned()
+        .unwrap();
+    for f in [
+        "machine_id",
+        "name",
+        "instance_count",
+        "running",
+        "completed",
+        "cancelled",
+        "defined_seq",
+        "state_count",
+        "event_count",
+    ] {
+        assert!(
+            required_fields(&items).iter().any(|s| s == f),
+            "missing {f}"
+        );
+    }
+    let il = reg.iter().find(|t| t.name == "instance_list").unwrap();
+    let iitems = (il.output_schema)()
+        .get("properties")
+        .and_then(|p| p.get("instances"))
+        .and_then(|a| a.get("items"))
+        .cloned()
+        .unwrap();
+    for f in [
+        "instance_id",
+        "state",
+        "status",
+        "machine_name",
+        "seq",
+        "tags",
+    ] {
+        assert!(
+            required_fields(&iitems).iter().any(|s| s == f),
+            "missing {f}"
+        );
+    }
+    let hist = reg.iter().find(|t| t.name == "instance_history").unwrap();
+    let hitems = (hist.output_schema)()
+        .get("properties")
+        .and_then(|p| p.get("entries"))
+        .and_then(|a| a.get("items"))
+        .cloned()
+        .unwrap();
+    for f in [
+        "ts",
+        "hash",
+        "request_id",
+        "from_leaf",
+        "to_leaf",
+        "context_after",
+    ] {
+        assert!(
+            required_fields(&hitems).iter().any(|s| s == f),
+            "missing {f}"
+        );
+    }
+    let sim = reg.iter().find(|t| t.name == "simulate").unwrap();
+    let sout = (sim.output_schema)();
+    let initial = sout
+        .get("properties")
+        .and_then(|p| p.get("initial"))
+        .unwrap();
+    assert!(required_fields(initial).iter().any(|s| s == "leaf"));
+    let final_s = sout.get("properties").and_then(|p| p.get("final")).unwrap();
+    assert!(required_fields(final_s).iter().any(|s| s == "context"));
+    let steps = sout
+        .get("properties")
+        .and_then(|p| p.get("steps"))
+        .and_then(|a| a.get("items"))
+        .unwrap();
+    for f in [
+        "from_leaf",
+        "to_leaf",
+        "applied",
+        "context",
+        "index",
+        "event",
+    ] {
+        assert!(required_fields(steps).iter().any(|s| s == f), "missing {f}");
+    }
+}
+
+#[test]
+fn machine_list_defaults_and_cursor() {
+    let _g = gate();
+    let dir = tmp("mlist");
+    let mut store = Store::open(&dir).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    for i in 0..51u32 {
+        let src = format!(
+            r#"{{"format":"fsm.machine/1","name":"ml{i}","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
+        );
+        let spec = parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+        store.define_machine(spec, false, false).unwrap();
+    }
+    let def = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::new()),
+    )
+    .unwrap();
+    let rows = def.get("machines").and_then(Value::as_arr).unwrap();
+    assert_eq!(rows.len(), 50, "default limit 50");
+    assert!(def.get("next_cursor").is_some(), "{def:?}");
+    let cur = def.get("next_cursor").and_then(Value::as_str).unwrap();
+    let page2 = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::from([("cursor".into(), Value::Str(cur.into()))])),
+    )
+    .unwrap();
+    let rows2 = page2.get("machines").and_then(Value::as_arr).unwrap();
+    assert!(!rows2.is_empty(), "{page2:?}");
+    let one = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::from([("limit".into(), Value::Num("1".into()))])),
+    )
+    .unwrap();
+    assert_eq!(
+        one.get("machines").and_then(Value::as_arr).unwrap().len(),
+        1
+    );
+}
+
+#[test]
+fn instance_list_row_shape() {
+    let _g = gate();
+    let dir = tmp("ilist");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance_ctx(
+            "case_review",
+            "vip1",
+            "v1",
+            None,
+            &BTreeMap::new(),
+            &["vip".into()],
+        )
+        .unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    let v = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_list",
+        &Value::Obj(BTreeMap::new()),
+    )
+    .unwrap();
+    let row = &v.get("instances").and_then(Value::as_arr).unwrap()[0];
+    for f in [
+        "instance_id",
+        "state",
+        "status",
+        "machine_name",
+        "seq",
+        "tags",
+    ] {
+        assert!(row.get(f).is_some(), "missing {f} in {row:?}");
+    }
+    assert_eq!(
+        row.get("machine_name").and_then(Value::as_str),
+        Some("case_review")
+    );
+    let tagged = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_list",
+        &Value::Obj(BTreeMap::from([("tag".into(), Value::Str("vip".into()))])),
+    )
+    .unwrap();
+    assert_eq!(
+        tagged
+            .get("instances")
+            .and_then(Value::as_arr)
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn simulate_complete_report() {
+    let _g = gate();
+    let dir = tmp("sim");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    let v = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "simulate",
+        &Value::Obj(BTreeMap::from([
+            ("machine".into(), Value::Str("case_review".into())),
+            (
+                "events".into(),
+                Value::Arr(vec![
+                    Value::Obj(BTreeMap::from([(
+                        "name".into(),
+                        Value::Str("docs_ok".into()),
+                    )])),
+                    Value::Obj(BTreeMap::from([(
+                        "name".into(),
+                        Value::Str("resume".into()),
+                    )])),
+                ]),
+            ),
+        ])),
+    )
+    .unwrap();
+    assert!(
+        v.get("initial").and_then(|i| i.get("leaf")).is_some(),
+        "{v:?}"
+    );
+    assert!(
+        v.get("final").and_then(|f| f.get("context")).is_some(),
+        "{v:?}"
+    );
+    assert!(v.get("stopped_at").is_some(), "{v:?}");
+    let steps = v.get("steps").and_then(Value::as_arr).unwrap();
+    assert!(!steps.is_empty(), "{v:?}");
+    let first = &steps[0];
+    assert!(first.get("from_leaf").is_some(), "{first:?}");
+    assert!(first.get("args").is_some(), "{first:?}");
+    assert_eq!(first.get("applied").and_then(Value::as_bool), Some(true));
+    let ign_spec = parse(
+        br#"{"format":"fsm.machine/1","name":"ig","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"go","fields":[]},{"name":"skip","fields":[]}],"transitions":[{"from":"a","on":"go"}],"on_unhandled":"ignore"}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let ign = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "simulate",
+        &Value::Obj(BTreeMap::from([
+            ("spec".into(), ign_spec),
+            (
+                "events".into(),
+                Value::Arr(vec![Value::Obj(BTreeMap::from([(
+                    "name".into(),
+                    Value::Str("skip".into()),
+                )]))]),
+            ),
+        ])),
+    )
+    .unwrap();
+    let istep = &ign.get("steps").and_then(Value::as_arr).unwrap()[0];
+    assert_eq!(istep.get("ignored").and_then(Value::as_bool), Some(true));
+    assert!(
+        istep.get("error").is_none(),
+        "ignored must not be rejected {istep:?}"
+    );
+}
+
+#[test]
+fn resources_newest_first() {
+    let _g = gate();
+    let dir = tmp("res");
+    let mut store = Store::open(&dir).unwrap();
+    let a = parse(
+        br#"{"format":"fsm.machine/1","name":"oldm","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let b = parse(
+        br#"{"format":"fsm.machine/1","name":"newm","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    store.define_machine(a, false, false).unwrap();
+    store.define_machine(b, false, false).unwrap();
+    let listed = fsm_cli::mcp::resources::list(Some(&store));
+    let items = listed.get("resources").and_then(Value::as_arr).unwrap();
+    let machines: Vec<&str> = items
+        .iter()
+        .filter_map(|i| i.get("uri").and_then(Value::as_str))
+        .filter(|u| u.starts_with("fsm://machine/"))
+        .collect();
+    assert!(machines.len() >= 2, "{listed:?}");
+    assert!(
+        machines[0].contains("newm") && machines[1].contains("oldm"),
+        "{machines:?}"
+    );
+}
+
+#[test]
+fn write_snapshot_propagates_dir_sync() {
+    let _g = gate();
+    let dir = tmp("wsnp");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    let state = store.state.clone();
+    drop(store);
+    let snap = dir.join("snapshots");
+    let _ = std::fs::remove_dir_all(&snap);
+    std::fs::write(&snap, b"not-a-directory").unwrap();
+    let err = fsm_cli::snapshot::write_snapshot(&dir, &state).unwrap_err();
+    assert_eq!(err.code, "io/write", "{err:?}");
 }

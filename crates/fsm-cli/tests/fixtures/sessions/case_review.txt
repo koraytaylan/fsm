@@ -283,6 +283,7 @@ entries:
       notes:  0
       score:  0
       visits: 0
+    from_leaf:     intake
     hash:          13401d566b7f2092619f7e075bd6d6e073c74d61d60c124cc89479de854611cb
     kind:          InstanceCreated
     request_id:    new-1

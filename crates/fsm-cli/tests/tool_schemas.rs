@@ -84,7 +84,15 @@ fn validate_accept_and_reject() {
                 en.clone()
             } else {
                 match ty {
-                    "object" => Value::Obj(BTreeMap::new()),
+                    "object" => {
+                        let mut inner = BTreeMap::new();
+                        for nr in prop.get("required").and_then(Value::as_arr).unwrap_or(&[]) {
+                            if let Some(n) = nr.as_str() {
+                                inner.insert(n.into(), Value::Str("x".into()));
+                            }
+                        }
+                        Value::Obj(inner)
+                    }
                     "boolean" => Value::Bool(false),
                     "number" => Value::Num("1".into()),
                     "array" => Value::Arr(vec![]),
@@ -112,7 +120,14 @@ fn validate_accept_and_reject() {
     )
     .unwrap_err();
     assert_eq!(err.code, "req/args_invalid");
-    assert!(err.details.get("field").and_then(Value::as_str) == Some("request_id"));
+    let fields = err.details.get("fields").and_then(Value::as_arr).unwrap();
+    let names: Vec<&str> = fields.iter().filter_map(Value::as_str).collect();
+    assert!(
+        names
+            .iter()
+            .any(|n| *n == "request_id" || *n == "event.name"),
+        "{err:?}"
+    );
 
     let list = registry()
         .into_iter()

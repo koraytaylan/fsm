@@ -250,7 +250,8 @@ impl Store {
         }
         let name = compiled.spec.name.clone();
         let tree = Tree::build(&compiled.spec.states);
-        let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
+        let mut warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
+        warnings.extend(compiled.compile_warnings.clone());
         if self.state.machines.contains_key(&id) {
             if if_exists_error {
                 return Err(ErrorObj::new("req/machine_exists", id.clone())
@@ -1360,6 +1361,9 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                             }
                             e.insert("context_after".into(), Value::Obj(ctx.clone()));
                             e.insert("after_context".into(), Value::Obj(ctx));
+                            if !e.contains_key("from_leaf") {
+                                e.insert("from_leaf".into(), Value::Str(after.leaf.clone()));
+                            }
                         }
                     }
                 }

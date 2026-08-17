@@ -282,6 +282,72 @@ fn type_alt(ty: &crate::spec::TySpec, enums: &BTreeMap<String, Vec<String>>) -> 
     })
 }
 
+fn expr_reads_ctx(e: &crate::expr::ast::Expr) -> bool {
+    use crate::expr::ast::{Arg, Expr};
+    match e {
+        Expr::CtxRef { .. } => true,
+        Expr::Not { inner, .. } | Expr::Neg { inner, .. } => expr_reads_ctx(inner),
+        Expr::And { lhs, rhs, .. }
+        | Expr::Or { lhs, rhs, .. }
+        | Expr::Cmp { lhs, rhs, .. }
+        | Expr::Bin { lhs, rhs, .. } => expr_reads_ctx(lhs) || expr_reads_ctx(rhs),
+        Expr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => expr_reads_ctx(cond) || expr_reads_ctx(then_branch) || expr_reads_ctx(else_branch),
+        Expr::Call { args, .. } => args.iter().any(|a| match a {
+            Arg::Expr(inner) => expr_reads_ctx(inner),
+            Arg::Word { .. } => false,
+        }),
+        _ => false,
+    }
+}
+
+fn find_node<'a>(
+    nodes: &'a [crate::spec::StateNode],
+    name: &str,
+) -> Option<&'a crate::spec::StateNode> {
+    for n in nodes {
+        if n.name == name {
+            return Some(n);
+        }
+        if let Some(hit) = find_node(&n.states, name) {
+            return Some(hit);
+        }
+    }
+    None
+}
+
+fn create_path_depends_on_override(m: &CompiledMachine, t: &Tree) -> bool {
+    let mut srcs = Vec::new();
+    for inv in &m.spec.invariants {
+        if inv.mode == crate::machine::EnforceMode::Enforce {
+            srcs.push(inv.expr.as_str());
+        }
+    }
+    if let Some(root) = t.id(&m.spec.initial) {
+        let mut chain = vec![root];
+        chain.extend(t.initial_descent(root));
+        for id in chain {
+            let name = &t.names[id as usize];
+            if let Some(node) = find_node(&m.spec.states, name) {
+                if let Some(b) = &node.entry {
+                    for s in &b.sets {
+                        srcs.push(s.value.as_str());
+                    }
+                }
+            }
+        }
+    }
+    srcs.iter().any(|src| {
+        parser::parse(src)
+            .map(|e| expr_reads_ctx(&e))
+            .unwrap_or(false)
+    })
+}
+
 pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     let declared = crate::step::create(m, t, &BTreeMap::new());
     let Err(r) = declared else {
@@ -316,6 +382,9 @@ pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
                 return Vec::new();
             }
         }
+    }
+    if create_path_depends_on_override(m, t) {
+        return Vec::new();
     }
     vec![Finding {
         severity: Severity::Error,

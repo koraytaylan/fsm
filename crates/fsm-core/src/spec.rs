@@ -2012,7 +2012,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
      -> Option<Ty> {
         match parser::parse(src) {
             Ok(e) => match typecheck(&e, scope) {
-                Ok((ty, annotated, _)) => {
+                Ok((ty, annotated, twarns)) => {
                     compiled_exprs.insert(
                         slot,
                         CompiledExpr {
@@ -2021,6 +2021,9 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
                             expr: annotated,
                         },
                     );
+                    for w in twarns {
+                        errs.push(Finding::warn(w.code, path, w.message, ""));
+                    }
                     Some(ty)
                 }
                 Err(err) => {
@@ -2266,7 +2269,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         let _ = empty;
     }
 
-    if !errs.is_empty() {
+    if errs.iter().any(|f| f.severity == Severity::Error) {
         return Err(errs);
     }
     let accepted = spec.source.clone().unwrap_or_else(|| spec.to_value());
@@ -2277,6 +2280,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         canonical,
         transitions_by,
         compiled_exprs,
+        compile_warnings: errs,
     })
 }
 

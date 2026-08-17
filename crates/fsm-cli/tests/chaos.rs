@@ -54,7 +54,17 @@ fn storm() {
             reopens += 1;
         }
     }
-    for need in ["define", "create", "send", "ack", "cancel"] {
+    for need in [
+        "define",
+        "create",
+        "send",
+        "ack",
+        "cancel",
+        "typed",
+        "dup",
+        "expect_seq",
+        "ack_ok",
+    ] {
         assert!(kinds.get(need).copied().unwrap_or(0) > 0, "missing {need}");
     }
     assert!(reopens >= 100, "reopens {reopens}");
@@ -90,10 +100,11 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             )]))
         }),
     );
-    let n = g.range(30, 80);
+    let n = g.range(40, 90);
     let mut iid = 0u32;
+    let mut last_rid = String::from("seed");
     for _ in 0..n {
-        match g.range(0, 6) {
+        match g.range(0, 10) {
             0 => {
                 push_result(
                     &mut log,
@@ -124,27 +135,36 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                 } else {
                     "docs_ok"
                 };
+                last_rid = format!("s{}", g.next());
                 push_result(
                     &mut log,
                     "send",
                     &mut kinds,
-                    store.send_event(
-                        &id,
-                        ev,
-                        Value::Obj(BTreeMap::new()),
-                        &format!("s{}", g.next()),
-                        None,
-                    ),
+                    store.send_event(&id, ev, Value::Obj(BTreeMap::new()), &last_rid, None),
                 );
             }
             3 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
-                push_result(
-                    &mut log,
-                    "ack",
-                    &mut kinds,
-                    store.ack_effect(&id, "none", &format!("a{}", g.next())),
-                );
+                let pending = store
+                    .state
+                    .instances
+                    .get(&id)
+                    .and_then(|st| st.pending.first().cloned());
+                if let Some(eid) = pending {
+                    push_result(
+                        &mut log,
+                        "ack_ok",
+                        &mut kinds,
+                        store.ack_effect(&id, &eid, &format!("a{}", g.next())),
+                    );
+                } else {
+                    push_result(
+                        &mut log,
+                        "ack",
+                        &mut kinds,
+                        store.ack_effect(&id, "none", &format!("a{}", g.next())),
+                    );
+                }
             }
             4 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
@@ -159,6 +179,47 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                 drop(store);
                 store = Store::open(&dir).unwrap_or_else(|e| panic!("seed {seed} reopen {e:?}"));
                 *kinds.entry("reopen").or_insert(0) += 1;
+            }
+            6 => {
+                let id = format!("i{}", g.range(1, iid.max(1)));
+                last_rid = format!("t{}", g.next());
+                push_result(
+                    &mut log,
+                    "typed",
+                    &mut kinds,
+                    store.send_event(
+                        &id,
+                        "scored",
+                        Value::Obj(BTreeMap::from([("score".into(), Value::Bool(true))])),
+                        &last_rid,
+                        None,
+                    ),
+                );
+            }
+            7 => {
+                let id = format!("i{}", g.range(1, iid.max(1)));
+                push_result(
+                    &mut log,
+                    "dup",
+                    &mut kinds,
+                    store.send_event(&id, "docs_ok", Value::Obj(BTreeMap::new()), &last_rid, None),
+                );
+            }
+            8 => {
+                let id = format!("i{}", g.range(1, iid.max(1)));
+                last_rid = format!("e{}", g.next());
+                push_result(
+                    &mut log,
+                    "expect_seq",
+                    &mut kinds,
+                    store.send_event(
+                        &id,
+                        "docs_ok",
+                        Value::Obj(BTreeMap::new()),
+                        &last_rid,
+                        Some(0),
+                    ),
+                );
             }
             _ => {
                 push_result(
@@ -189,6 +250,22 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     }
     assert_eq!(store.state.dedup, folded.dedup, "seed {seed} dedup");
     assert_eq!(
+        store.state.machines.len(),
+        folded.machines.len(),
+        "seed {seed} machines"
+    );
+    for (id, m) in &store.state.machines {
+        let o = folded.machines.get(id).expect(id);
+        assert_eq!(
+            m.compiled.machine_id, o.compiled.machine_id,
+            "seed {seed} machine {id}"
+        );
+    }
+    assert_eq!(
+        store.state.instance_machines, folded.instance_machines,
+        "seed {seed} instance_machines"
+    );
+    assert_eq!(
         store.state.instances.len(),
         folded.instances.len(),
         "seed {seed} inst"
@@ -196,6 +273,7 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     for (id, st) in &store.state.instances {
         let o = folded.instances.get(id).expect(id);
         assert_eq!(st.leaf, o.leaf, "seed {seed} {id} leaf");
+        assert_eq!(st.status, o.status, "seed {seed} {id} status");
         assert_eq!(st.ctx, o.ctx, "seed {seed} {id} ctx");
         assert_eq!(st.history, o.history, "seed {seed} {id} hist");
         assert_eq!(st.pending, o.pending, "seed {seed} {id} pend");

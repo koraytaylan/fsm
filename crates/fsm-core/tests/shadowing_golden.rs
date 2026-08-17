@@ -119,3 +119,20 @@ fn create_always_fails_skips_boolean_override() {
     );
     assert!(ok.is_ok(), "{ok:?}");
 }
+
+#[test]
+fn create_always_fails_skips_int_eq_override() {
+    let (m, t) = comp(
+        r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[],"invariants":[{"name":"need","expr":"ctx.n == 7","mode":"enforce"}]}"#,
+    );
+    assert!(
+        create_always_fails(&m, &t).is_empty(),
+        "ctx.n==7 fails empty/default/alt but n=7 succeeds"
+    );
+    let ok = fsm_core::step::create(
+        &m,
+        &t,
+        &std::collections::BTreeMap::from([("n".into(), fsm_core::expr::eval::Val::Int(7))]),
+    );
+    assert!(ok.is_ok(), "{ok:?}");
+}

@@ -118,74 +118,203 @@ fn run_fsm(dir: &std::path::Path, args: &[&str]) -> (i32, String, String) {
     )
 }
 
-#[test]
-fn readme_and_examples_commands_run() {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let mut cmds = Vec::new();
-    for name in ["README.md", "docs/EXAMPLES.md"] {
-        let text = std::fs::read_to_string(root.join(name)).unwrap();
-        for line in text.lines() {
-            let t = line.trim();
-            if let Some(rest) = t.strip_prefix("fsm ") {
-                if rest.starts_with("version")
-                    || rest.starts_with("docs ")
-                    || rest.starts_with("help")
-                {
-                    continue;
+fn extract_fsm_line(line: &str) -> Option<String> {
+    let t = line.trim();
+    let rest = t
+        .strip_prefix("$ fsm ")
+        .or_else(|| t.strip_prefix("fsm "))?;
+    if rest.starts_with("version") || rest.starts_with("docs ") || rest.starts_with("help") {
+        return None;
+    }
+    Some(rest.to_string())
+}
+
+fn split_cmd(rest: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote = None::<char>;
+    for c in rest.chars() {
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            } else {
+                cur.push(c);
+            }
+        } else if c == '\'' || c == '"' {
+            quote = Some(c);
+        } else if c.is_whitespace() {
+            if !cur.is_empty() {
+                out.push(std::mem::take(&mut cur));
+            }
+        } else {
+            cur.push(c);
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+struct DocCmd {
+    args: Vec<String>,
+    expect_fail: bool,
+    expect_code: Option<String>,
+    expect_leaf: Option<String>,
+    expect_ok: bool,
+    expect_created: bool,
+}
+
+fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
+    let mut blocks: Vec<Vec<DocCmd>> = Vec::new();
+    let mut cur: Vec<DocCmd> = Vec::new();
+    let mut in_fence = false;
+    let mut pending: Option<DocCmd> = None;
+    let flush_pending = |cur: &mut Vec<DocCmd>, pending: &mut Option<DocCmd>| {
+        if let Some(c) = pending.take() {
+            cur.push(c);
+        }
+    };
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with("```") {
+            if in_fence {
+                flush_pending(&mut cur, &mut pending);
+                if !cur.is_empty() {
+                    blocks.push(std::mem::take(&mut cur));
                 }
-                cmds.push(rest.to_string());
+            }
+            in_fence = !in_fence;
+            continue;
+        }
+        if !in_fence {
+            if let Some(rest) = extract_fsm_line(t) {
+                flush_pending(&mut cur, &mut pending);
+                if !cur.is_empty() {
+                    blocks.push(std::mem::take(&mut cur));
+                }
+                pending = Some(DocCmd {
+                    args: split_cmd(&rest),
+                    expect_fail: false,
+                    expect_code: None,
+                    expect_leaf: None,
+                    expect_ok: false,
+                    expect_created: false,
+                });
+            }
+            continue;
+        }
+        if let Some(rest) = extract_fsm_line(t) {
+            flush_pending(&mut cur, &mut pending);
+            pending = Some(DocCmd {
+                args: split_cmd(&rest),
+                expect_fail: false,
+                expect_code: None,
+                expect_leaf: None,
+                expect_ok: false,
+                expect_created: false,
+            });
+            continue;
+        }
+        if let Some(cmd) = pending.as_mut() {
+            if t == "# exit 1" {
+                cmd.expect_fail = true;
+            } else if t.starts_with("leaf:") {
+                cmd.expect_leaf = Some(t.trim_start_matches("leaf:").trim().to_string());
+            } else if t == "ok: true" {
+                cmd.expect_ok = true;
+            } else if t == "created: true" {
+                cmd.expect_created = true;
+            } else if t.contains('/') && !t.starts_with('#') && !t.is_empty() {
+                cmd.expect_code = Some(t.to_string());
             }
         }
     }
-    assert!(cmds.len() >= 3, "extracted {}", cmds.len());
-    let spec = root.join("examples/expense_approval.json");
-    let dir = tmp();
-    let (c, out, err) = run_fsm(&dir, &["validate", spec.to_str().unwrap()]);
-    assert_eq!(c, 0, "{err}");
-    assert!(out.contains("case_review") || out.contains("expense") || out.contains("created"));
-    let (c, _, err) = run_fsm(&dir, &["machine", "add", spec.to_str().unwrap()]);
-    assert_eq!(c, 0, "{err}");
-    let (c, out, err) = run_fsm(
-        &dir,
-        &[
-            "instance",
-            "new",
-            "expense_approval",
-            "--request-id",
-            "demo",
-        ],
-    );
-    assert_eq!(c, 0, "{out}{err}");
-    assert!(out.contains("draft") || out.contains("inst-demo"));
-    let (c, out, err) = run_fsm(
-        &dir,
-        &[
-            "instance",
-            "send",
-            "inst-demo",
-            "submit",
-            "--payload",
-            r#"{"amount":"10.00"}"#,
-            "--request-id",
-            "demo-submit",
-        ],
-    );
-    assert_eq!(c, 0, "{out}{err}");
-    assert!(out.contains("peer_review"), "{out}");
-    let (c, out, err) = run_fsm(&dir, &["instance", "history", "inst-demo"]);
-    assert_eq!(c, 0, "{err}");
-    assert!(out.contains("EventApplied") || out.contains("seq"), "{out}");
-    let order = root.join("examples/order_lifecycle.json");
-    if order.exists() {
-        let dir = tmp();
-        let (c, _, err) = run_fsm(&dir, &["machine", "add", order.to_str().unwrap()]);
-        assert_eq!(c, 0, "{err}");
-        let (c, out, err) = run_fsm(
-            &dir,
-            &["instance", "new", "order_lifecycle", "--request-id", "o1"],
-        );
-        assert_eq!(c, 0, "{out}{err}");
+    flush_pending(&mut cur, &mut pending);
+    if !cur.is_empty() {
+        blocks.push(cur);
     }
+    blocks
+}
+
+#[test]
+fn readme_and_examples_commands_run() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut all_blocks = Vec::new();
+    for name in ["README.md", "docs/EXAMPLES.md"] {
+        let text = std::fs::read_to_string(root.join(name)).unwrap();
+        let blocks = parse_doc_commands(&text);
+        assert!(!blocks.is_empty(), "{name} extracted no fsm command blocks");
+        all_blocks.extend(blocks);
+    }
+    let ncmd: usize = all_blocks.iter().map(|b| b.len()).sum();
+    assert!(ncmd >= 20, "extracted {ncmd} documented commands");
+    let mut saw_expense = false;
+    let mut saw_order = false;
+    let mut saw_invoice = false;
+    let mut saw_order_ack_path = false;
+    for block in all_blocks {
+        let dir = tmp();
+        for cmd in block {
+            let mut args: Vec<String> = Vec::new();
+            for a in &cmd.args {
+                if a.starts_with("examples/") {
+                    args.push(root.join(a).to_string_lossy().into_owned());
+                } else {
+                    args.push(a.clone());
+                }
+            }
+            if args.iter().any(|a| a.contains("expense_approval")) {
+                saw_expense = true;
+            }
+            if args.iter().any(|a| a.contains("order_lifecycle")) {
+                saw_order = true;
+            }
+            if args.iter().any(|a| a.contains("invoice_matching")) {
+                saw_invoice = true;
+            }
+            if args.iter().any(|a| a == "confirmed" || a == "--stamp") {
+                saw_order_ack_path = true;
+            }
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let (c, out, err) = run_fsm(&dir, &arg_refs);
+            if cmd.expect_fail {
+                assert_ne!(c, 0, "expected failure for {args:?}\n{out}{err}");
+                if let Some(code) = &cmd.expect_code {
+                    assert!(
+                        err.contains(code) || out.contains(code),
+                        "missing {code} in {out}{err}"
+                    );
+                }
+            } else {
+                assert_eq!(c, 0, "cmd {args:?} failed\n{out}{err}");
+            }
+            if let Some(leaf) = &cmd.expect_leaf {
+                assert!(
+                    out.contains(leaf) || out.contains(&format!("leaf: {leaf}")),
+                    "leaf {leaf} missing in {out}"
+                );
+            }
+            if cmd.expect_ok {
+                assert!(
+                    (out.contains("ok") && out.contains("true"))
+                        || (out.contains("created") && out.contains("true")),
+                    "documented ok:true missing in {out}"
+                );
+            }
+            if cmd.expect_created {
+                assert!(out.contains("created") && out.contains("true"), "{out}");
+            }
+        }
+    }
+    assert!(
+        saw_expense && saw_order && saw_invoice,
+        "missing example walkthrough"
+    );
+    assert!(
+        saw_order_ack_path,
+        "order confirmed/stamp walkthrough unused"
+    );
 }
 
 #[test]

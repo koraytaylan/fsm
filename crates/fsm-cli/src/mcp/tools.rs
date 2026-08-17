@@ -170,6 +170,143 @@ fn ty_str_array(max_items: usize) -> Value {
     ]))
 }
 
+fn ty_array_of(item: Value) -> Value {
+    Value::Obj(BTreeMap::from([
+        ("type".into(), Value::Str("array".into())),
+        ("items".into(), item),
+    ]))
+}
+
+fn event_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("name".into(), ty("string"));
+    p.insert("payload".into(), ty("object"));
+    schema_obj(p, &["name"], true)
+}
+
+fn machine_row() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("machine_id".into(), ty("string"));
+    p.insert("name".into(), ty("string"));
+    p.insert("instance_count".into(), ty("number"));
+    p.insert("running".into(), ty("number"));
+    p.insert("completed".into(), ty("number"));
+    p.insert("cancelled".into(), ty("number"));
+    p.insert("defined_seq".into(), ty("number"));
+    p.insert("state_count".into(), ty("number"));
+    p.insert("event_count".into(), ty("number"));
+    schema_obj(
+        p,
+        &[
+            "machine_id",
+            "name",
+            "instance_count",
+            "running",
+            "completed",
+            "cancelled",
+            "defined_seq",
+            "state_count",
+            "event_count",
+        ],
+        true,
+    )
+}
+
+fn instance_row() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("state".into(), ty("string"));
+    p.insert("status".into(), ty("string"));
+    p.insert("machine_name".into(), ty("string"));
+    p.insert("seq".into(), ty("number"));
+    p.insert("tags".into(), ty_str_array(32));
+    schema_obj(
+        p,
+        &[
+            "instance_id",
+            "state",
+            "status",
+            "machine_name",
+            "seq",
+            "tags",
+        ],
+        true,
+    )
+}
+
+fn history_entry_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("seq".into(), ty("number"));
+    p.insert("kind".into(), ty("string"));
+    p.insert("ts".into(), ty("number"));
+    p.insert("hash".into(), ty("string"));
+    p.insert("request_id".into(), ty("string"));
+    p.insert("from_leaf".into(), ty("string"));
+    p.insert("to_leaf".into(), ty("string"));
+    p.insert("context_after".into(), ty("object"));
+    schema_obj(
+        p,
+        &[
+            "ts",
+            "hash",
+            "request_id",
+            "from_leaf",
+            "to_leaf",
+            "context_after",
+        ],
+        true,
+    )
+}
+
+fn simulate_step_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("index".into(), ty("number"));
+    p.insert("event".into(), ty("string"));
+    p.insert("from_leaf".into(), ty("string"));
+    p.insert("to_leaf".into(), ty("string"));
+    p.insert("applied".into(), ty("boolean"));
+    p.insert("context".into(), ty("object"));
+    p.insert("args".into(), ty("object"));
+    p.insert("effects".into(), ty("array"));
+    p.insert("error".into(), ty("object"));
+    p.insert("ignored".into(), ty("boolean"));
+    schema_obj(
+        p,
+        &[
+            "index",
+            "event",
+            "from_leaf",
+            "to_leaf",
+            "applied",
+            "context",
+        ],
+        true,
+    )
+}
+
+fn simulate_initial_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("leaf".into(), ty("string"));
+    schema_obj(p, &["leaf"], true)
+}
+
+fn simulate_final_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("state".into(), ty("string"));
+    p.insert("terminal".into(), ty("boolean"));
+    p.insert("context".into(), ty("object"));
+    schema_obj(p, &["state", "context"], true)
+}
+
+fn finding_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("code".into(), ty("string"));
+    p.insert("message".into(), ty("string"));
+    p.insert("path".into(), ty("string"));
+    p.insert("hint".into(), ty("string"));
+    schema_obj(p, &["code"], true)
+}
+
 fn enum_str(vals: &[&str]) -> Value {
     let mut m = BTreeMap::new();
     m.insert("type".into(), Value::Str("string".into()));
@@ -194,7 +331,7 @@ fn schema_machine_create_out() -> Value {
     p.insert("name".into(), ty("string"));
     p.insert("created".into(), ty("boolean"));
     p.insert("dry_run".into(), ty("boolean"));
-    p.insert("warnings".into(), ty("array"));
+    p.insert("warnings".into(), ty_array_of(ty("string")));
     schema_obj(
         p,
         &["machine_id", "name", "created", "dry_run", "warnings"],
@@ -204,7 +341,7 @@ fn schema_machine_create_out() -> Value {
 
 fn schema_machine_list_out() -> Value {
     let mut p = BTreeMap::new();
-    p.insert("machines".into(), ty("array"));
+    p.insert("machines".into(), ty_array_of(machine_row()));
     p.insert("next_cursor".into(), ty("string"));
     schema_obj(p, &["machines"], true)
 }
@@ -219,7 +356,7 @@ fn schema_machine_get_out() -> Value {
 
 fn schema_machine_analyze_out() -> Value {
     let mut p = BTreeMap::new();
-    p.insert("findings".into(), ty("array"));
+    p.insert("findings".into(), ty_array_of(finding_obj()));
     p.insert("completeness".into(), ty("object"));
     p.insert("reachability".into(), ty("object"));
     p.insert("shadowing".into(), ty("array"));
@@ -267,7 +404,7 @@ fn schema_effect_ack_out() -> Value {
 
 fn schema_instance_list_out() -> Value {
     let mut p = BTreeMap::new();
-    p.insert("instances".into(), ty("array"));
+    p.insert("instances".into(), ty_array_of(instance_row()));
     p.insert("next_cursor".into(), ty("string"));
     schema_obj(p, &["instances"], true)
 }
@@ -275,7 +412,7 @@ fn schema_instance_list_out() -> Value {
 fn schema_instance_history_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));
-    p.insert("entries".into(), ty("array"));
+    p.insert("entries".into(), ty_array_of(history_entry_obj()));
     p.insert("chain_verified".into(), ty("boolean"));
     p.insert("next_from_seq".into(), ty("number"));
     schema_obj(p, &["instance_id", "entries", "chain_verified"], true)
@@ -283,11 +420,11 @@ fn schema_instance_history_out() -> Value {
 
 fn schema_simulate_out() -> Value {
     let mut p = BTreeMap::new();
-    p.insert("steps".into(), ty("array"));
-    p.insert("final".into(), ty("object"));
-    p.insert("initial".into(), ty("object"));
+    p.insert("steps".into(), ty_array_of(simulate_step_obj()));
+    p.insert("final".into(), simulate_final_obj());
+    p.insert("initial".into(), simulate_initial_obj());
     p.insert("stopped_at".into(), ty("number"));
-    schema_obj(p, &["steps", "final"], true)
+    schema_obj(p, &["steps", "final", "initial"], true)
 }
 
 fn schema_machine_list_in() -> Value {
@@ -324,7 +461,7 @@ fn schema_instance_create_in() -> Value {
 fn schema_instance_send_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));
-    p.insert("event".into(), ty("object"));
+    p.insert("event".into(), event_obj());
     p.insert("request_id".into(), ty("string"));
     p.insert("stamp".into(), ty_str_array(32));
     p.insert("expect_seq".into(), ty("number"));
@@ -388,7 +525,7 @@ fn schema_simulate_in() -> Value {
     p.insert("machine".into(), ty("string"));
     p.insert("spec".into(), ty("object"));
     p.insert("context".into(), ty("object"));
-    p.insert("events".into(), ty("array"));
+    p.insert("events".into(), ty_array_of(event_obj()));
     p.insert("on_reject".into(), enum_str(&["stop", "continue"]));
     schema_obj(p, &["events"], false)
 }
@@ -656,7 +793,11 @@ fn run_machine_list(
             }
         }
         if rows.len() >= limit {
-            next_cursor = Some(id.clone());
+            next_cursor = rows.last().and_then(|r: &Value| {
+                r.get("machine_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            });
             break;
         }
         let mut row = BTreeMap::new();
@@ -939,7 +1080,11 @@ fn run_instance_list(
             }
         }
         if rows.len() >= limit {
-            next_cursor = Some(id.clone());
+            next_cursor = rows.last().and_then(|r: &Value| {
+                r.get("instance_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            });
             break;
         }
         let mut row = BTreeMap::new();
@@ -1090,6 +1235,11 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
         m.insert("index".into(), Value::Num(st.index.to_string()));
         m.insert("event".into(), Value::Str(st.event.clone()));
         m.insert("from_leaf".into(), Value::Str(from_leaf.clone()));
+        let args = events
+            .get(st.index)
+            .map(|(_, p)| p.clone())
+            .unwrap_or(Value::Obj(BTreeMap::new()));
+        m.insert("args".into(), args);
         m.insert(
             "applied".into(),
             Value::Bool(matches!(st.outcome, fsm_core::step::Outcome::Applied(_))),
