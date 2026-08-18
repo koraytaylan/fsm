@@ -300,13 +300,12 @@ fn readme_and_examples_commands_run() {
                         "missing {code} in {out}{err}"
                     );
                 }
-                if !err.is_empty() || out.contains("hint") {
-                    saw_hint = true;
-                    assert!(
-                        err.contains("hint") || out.contains("hint") || !err.is_empty(),
-                        "missing rendered hint {out}{err}"
-                    );
-                }
+                let rendered = format!("{out}{err}");
+                assert!(
+                    rendered.contains("hint:"),
+                    "documented rejection must render hint: {rendered}"
+                );
+                saw_hint = true;
             } else {
                 assert_eq!(c, 0, "cmd {args:?} failed\n{out}{err}");
             }
@@ -354,6 +353,7 @@ fn order_lifecycle_paths() {
     s.ack_effect("o1", &pending[0], "a1").unwrap();
     assert!(s.state.instances.get("o1").unwrap().pending.is_empty());
     let leaf = s.state.instances.get("o1").unwrap().leaf.clone();
+    let pending_before_note = s.state.instances.get("o1").unwrap().pending.clone();
     s.send_event(
         "o1",
         "note_added",
@@ -363,6 +363,11 @@ fn order_lifecycle_paths() {
     )
     .unwrap();
     assert_eq!(s.state.instances.get("o1").unwrap().leaf, leaf);
+    assert_eq!(
+        s.state.instances.get("o1").unwrap().pending,
+        pending_before_note,
+        "internal note_added must not re-run entry emits"
+    );
     s.send_event("o1", "pick", Value::Obj(BTreeMap::new()), "p2", None)
         .unwrap();
     s.send_event("o1", "ship", Value::Obj(BTreeMap::new()), "p3", None)
@@ -383,6 +388,18 @@ fn order_lifecycle_paths() {
         !s.state.instances.get("o-noack").unwrap().pending.is_empty(),
         "no-ack retains pending"
     );
+    s.send_event("o-noack", "pick", Value::Obj(BTreeMap::new()), "np2", None)
+        .unwrap();
+    s.send_event("o-noack", "ship", Value::Obj(BTreeMap::new()), "np3", None)
+        .unwrap();
+    let mut payload = Value::Obj(BTreeMap::new());
+    s.send_event_stamp("o-noack", "confirmed", &mut payload, "np4", None, &["at"])
+        .unwrap();
+    assert_eq!(s.state.instances.get("o-noack").unwrap().leaf, "closed");
+    assert!(
+        !s.state.instances.get("o-noack").unwrap().pending.is_empty(),
+        "terminal no-ack still retains pending"
+    );
 
     s.create_instance("order_lifecycle", "o2", "c2", None)
         .unwrap();
@@ -397,6 +414,17 @@ fn order_lifecycle_paths() {
         .unwrap_err();
     assert_eq!(err.code, "run/unhandled");
     assert!(!err.hint.is_empty());
+    let enabled = err
+        .details
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .expect("enabled_events on order rejection");
+    assert!(
+        enabled
+            .iter()
+            .any(|e| e.get("event").and_then(Value::as_str) == Some("place")),
+        "{enabled:?}"
+    );
     let _ = FixedClock::new(1, 1);
 }
 
@@ -479,4 +507,11 @@ fn invoice_matching_paths() {
         .find(|e| e.get("kind").and_then(Value::as_str) == Some("EventRejected"))
         .unwrap();
     assert!(rejected.get("trace").is_some(), "{rejected:?}");
+    let tr = rejected.get("trace").unwrap();
+    let rendered = fsm_core::canon::canon_bytes(tr);
+    let bytes = String::from_utf8_lossy(&rendered);
+    assert!(
+        bytes.contains("90.00") && bytes.contains("0.50") && bytes.contains("100.00"),
+        "invoice abs(...) guard bindings missing: {bytes}"
+    );
 }

@@ -685,6 +685,9 @@ fn expected_event_rejected_details(
     if let Some(b) = &r.block {
         d.insert("block".into(), Value::Str(b.clone()));
     }
+    if let Some(c) = r.cause {
+        d.insert("cause".into(), Value::Str(c.into()));
+    }
     if let Some(s) = &r.source_state {
         d.insert("source_state".into(), Value::Str(s.clone()));
     }

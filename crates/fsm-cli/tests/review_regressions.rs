@@ -325,7 +325,11 @@ fn enum_if_widening_overflows() {
     let err = s
         .send_event("i1", "go", Value::Obj(BTreeMap::new()), "g1", None)
         .unwrap_err();
-    assert_eq!(err.code, "run/overflow");
+    assert_eq!(err.code, "run/action_error");
+    assert_eq!(
+        err.details.get("cause").and_then(Value::as_str),
+        Some("run/overflow")
+    );
     assert_eq!(s.state.instances.get("i1").unwrap().leaf, "a");
     assert!(err.details.get("request_id").and_then(Value::as_str) == Some("g1"));
 }
@@ -457,7 +461,11 @@ fn run_scale_slots(narrow_first: bool) {
     let err = s
         .send_event("i1", "wide", payload_amt("1.00"), "w1", None)
         .unwrap_err();
-    assert_eq!(err.code, "run/overflow");
+    assert_eq!(err.code, "run/action_error");
+    assert_eq!(
+        err.details.get("cause").and_then(Value::as_str),
+        Some("run/overflow")
+    );
     assert_eq!(
         s.state
             .instances
@@ -581,7 +589,11 @@ fn span_bearing_rejected_retry_keeps_span() {
     let e1 = s
         .send_event("i1", "go", Value::Obj(BTreeMap::new()), "ov1", None)
         .unwrap_err();
-    assert_eq!(e1.code, "run/overflow");
+    assert_eq!(e1.code, "run/action_error");
+    assert_eq!(
+        e1.details.get("cause").and_then(Value::as_str),
+        Some("run/overflow")
+    );
     assert_eq!(e1.span, Some((0, 9)));
     assert!(!e1.duplicate);
     let e_same = s
@@ -2119,7 +2131,7 @@ fn rewrite_snap_strip_dedup(dir: &std::path::Path, rid: &str) {
     let h = format!(
         "sha256:{}",
         fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-            "fsm:snapshot:1",
+            "fsm:snapshot:2",
             &Value::Obj(o.clone())
         ))
     );
@@ -2222,7 +2234,15 @@ fn numeric_tokens_reject_non_integers() {
         .unwrap();
     let seq = store.journal.last_seq;
     let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
-    for bad in ["-1", "1.5", "1e2", "1.0", "999999999999999999999"] {
+    for bad in [
+        "-1",
+        "1.5",
+        "1e2",
+        "1.0",
+        "999999999999999999999",
+        "9223372036854775808",
+        "18446744073709551615",
+    ] {
         let err = fsm_cli::mcp::tools::dispatch(
             &mut store,
             &mut clock,
@@ -2271,6 +2291,26 @@ fn numeric_tokens_reject_non_integers() {
         .unwrap_err();
         assert_eq!(err.code, "req/args_invalid", "cursor {bad}");
     }
+    let err = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::from([("limit".into(), Value::Num("201".into()))])),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/args_invalid", "limit+1 list");
+    let err = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_history",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("i1".into())),
+            ("limit".into(), Value::Num("501".into())),
+        ])),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/args_invalid", "limit+1 hist");
+    assert_eq!(store.journal.last_seq, seq);
 }
 
 #[test]
@@ -2380,9 +2420,8 @@ fn dispatch_results_match_advertised_output_schemas() {
             ("request_id".into(), Value::Str("ack1".into())),
         ])),
     );
-    if let Ok(v) = ack {
-        fsm_cli::mcp::tools::validate_args(&schema("effect_ack"), &v).unwrap();
-    }
+    let ack = ack.expect("effect_ack must succeed on a pending id");
+    fsm_cli::mcp::tools::validate_args(&schema("effect_ack"), &ack).unwrap();
     let hist = fsm_cli::mcp::tools::dispatch(
         &mut store,
         &mut clock,
@@ -2416,6 +2455,84 @@ fn dispatch_results_match_advertised_output_schemas() {
     )
     .unwrap();
     fsm_cli::mcp::tools::validate_args(&schema("simulate"), &sim).unwrap();
+    let listed_i = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_list",
+        &Value::Obj(BTreeMap::from([("limit".into(), Value::Num("1".into()))])),
+    )
+    .unwrap();
+    fsm_cli::mcp::tools::validate_args(&schema("instance_list"), &listed_i).unwrap();
+    let cancel = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_cancel",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("inst-c1".into())),
+            ("reason".into(), Value::Str("done".into())),
+            ("request_id".into(), Value::Str("k1".into())),
+        ])),
+    )
+    .unwrap();
+    fsm_cli::mcp::tools::validate_args(&schema("instance_cancel"), &cancel).unwrap();
+    let ign_spec = parse(
+        br#"{"format":"fsm.machine/1","name":"ig","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"go","fields":[]},{"name":"skip","fields":[]}],"transitions":[{"from":"a","on":"go"}],"on_unhandled":"ignore"}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_create",
+        &Value::Obj(BTreeMap::from([("spec".into(), ign_spec)])),
+    )
+    .unwrap();
+    fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_create",
+        &Value::Obj(BTreeMap::from([
+            ("machine".into(), Value::Str("ig".into())),
+            ("request_id".into(), Value::Str("igc".into())),
+        ])),
+    )
+    .unwrap();
+    let ignored = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_send",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("inst-igc".into())),
+            (
+                "event".into(),
+                Value::Obj(BTreeMap::from([("name".into(), Value::Str("skip".into()))])),
+            ),
+            ("request_id".into(), Value::Str("igs".into())),
+        ])),
+    )
+    .unwrap();
+    fsm_cli::mcp::tools::validate_args(&schema("instance_send"), &ignored).unwrap();
+    assert_eq!(ignored.get("ignored").and_then(Value::as_bool), Some(true));
+    drop(store);
+    let mut store = Store::open(&dir).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(2000, 1);
+    let dup = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_send",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("inst-igc".into())),
+            (
+                "event".into(),
+                Value::Obj(BTreeMap::from([("name".into(), Value::Str("skip".into()))])),
+            ),
+            ("request_id".into(), Value::Str("igs".into())),
+        ])),
+    )
+    .unwrap();
+    fsm_cli::mcp::tools::validate_args(&schema("instance_send"), &dup).unwrap();
+    assert_eq!(dup.get("duplicate").and_then(Value::as_bool), Some(true));
+    assert_eq!(dup.get("ignored").and_then(Value::as_bool), Some(true));
 }
 
 #[test]
@@ -2561,11 +2678,9 @@ fn journal_verify_report_prints_hashes() {
 #[test]
 fn clock_ticks_only_on_journal_append() {
     fsm_cli::clock::reset_injected();
-    fsm_cli::clock::force_ms(5_000);
-    fsm_cli::clock::set_step(1_000);
     let dir = tmp("clk2");
     let mut store = Store::open(&dir).unwrap();
-    let mut clock = fsm_cli::clock::FixedClock::new(9_000, 1);
+    let mut clock = fsm_cli::clock::FixedClock::new(9_000, 1_000);
     let before = store.journal.last_seq;
     fsm_cli::mcp::tools::dispatch(
         &mut store,
@@ -2635,5 +2750,522 @@ fn clock_ticks_only_on_journal_append() {
     .unwrap();
     let t2 = store.records.last().map(|r| r.ts).unwrap();
     assert_eq!(t2, t1, "duplicate must not tick");
-    assert_eq!(clock.now, 9_000, "dispatch must not consume FixedClock");
+    assert_eq!(clock.now, 11_000, "two appends consume two 1000ms steps");
+}
+
+#[test]
+fn ignored_send_reopen_preserves_schema_and_fields() {
+    let _g = gate();
+    let spec = parse(
+        br#"{"format":"fsm.machine/1","name":"ig","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"go","fields":[]},{"name":"skip","fields":[]}],"transitions":[{"from":"a","on":"go"}],"on_unhandled":"ignore"}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("igre");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(spec, false, false).unwrap();
+    store.create_instance("ig", "i1", "c1", None).unwrap();
+    let first = store
+        .send_event("i1", "skip", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    let schema = (fsm_cli::mcp::tools::registry()
+        .iter()
+        .find(|t| t.name == "instance_send")
+        .unwrap()
+        .output_schema)();
+    fsm_cli::mcp::tools::validate_args(&schema, &first).unwrap();
+    drop(store);
+    let mut store = Store::open(&dir).unwrap();
+    let retry = store
+        .send_event("i1", "skip", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    fsm_cli::mcp::tools::validate_args(&schema, &retry).unwrap();
+    let fo = first.as_obj().unwrap();
+    let ro = retry.as_obj().unwrap();
+    for (k, v) in fo {
+        if k == "duplicate" {
+            continue;
+        }
+        assert_eq!(ro.get(k), Some(v), "field {k}");
+    }
+    assert_eq!(retry.get("duplicate").and_then(Value::as_bool), Some(true));
+    assert_eq!(retry.get("ignored").and_then(Value::as_bool), Some(true));
+}
+
+#[test]
+fn stamp_preserves_explicit_zero() {
+    let _g = gate();
+    let spec = parse(
+        br#"{"format":"fsm.machine/1","name":"st","states":[{"name":"a"},{"name":"b","terminal":true}],"initial":"a","context":[],"events":[{"name":"go","fields":[{"name":"when","ty":"timestamp"},{"name":"also","ty":"timestamp"}]}],"transitions":[{"from":"a","on":"go","to":"b"}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("st0");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(spec, false, false).unwrap();
+    store.create_instance("st", "i1", "c1", None).unwrap();
+    let mut payload = Value::Obj(BTreeMap::from([("when".into(), Value::Str("0".into()))]));
+    let mut clock = fsm_cli::clock::FixedClock::new(42_000, 1);
+    let resp = store
+        .send_event_stamp_on(
+            &mut clock,
+            "i1",
+            "go",
+            &mut payload,
+            "s1",
+            None,
+            &["when", "also"],
+        )
+        .unwrap();
+    let p = payload.as_obj().unwrap();
+    assert_eq!(p.get("when").and_then(Value::as_str), Some("0"));
+    assert_eq!(p.get("also").and_then(Value::as_str), Some("42000"));
+    let rec = store
+        .records
+        .iter()
+        .rev()
+        .find(|r| r.body.get("request_id").and_then(Value::as_str) == Some("s1"))
+        .unwrap();
+    let jp = rec.body.get("payload").and_then(Value::as_obj).unwrap();
+    assert_eq!(jp.get("when").and_then(Value::as_str), Some("0"));
+    assert_eq!(jp.get("also").and_then(Value::as_str), Some("42000"));
+    assert_eq!(rec.ts, 42_000);
+    let _ = resp;
+}
+
+#[test]
+fn integer_schema_is_standard_and_rejects_u64_max() {
+    let _g = gate();
+    let dir = tmp("u64m");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    let schema = (fsm_cli::mcp::tools::registry()
+        .iter()
+        .find(|t| t.name == "machine_list")
+        .unwrap()
+        .input_schema)();
+    let lim = schema
+        .get("properties")
+        .and_then(|p| p.get("limit"))
+        .and_then(Value::as_obj)
+        .unwrap();
+    assert_eq!(lim.get("type").and_then(Value::as_str), Some("integer"));
+    assert!(lim.get("integer").is_none());
+    let err = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::from([(
+            "limit".into(),
+            Value::Num("18446744073709551615".into()),
+        )])),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/args_invalid");
+    let err = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::from([(
+            "limit".into(),
+            Value::Num("9223372036854775808".into()),
+        )])),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "req/args_invalid");
+}
+
+#[test]
+fn action_error_is_public_block_code() {
+    let _g = gate();
+    let spec = parse(
+        br#"{"format":"fsm.machine/1","name":"ov","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a"}],"initial":"a","transitions":[{"from":"a","on":"go","do":[{"target":"x","value":"ctx.x + 1"}]}]}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let dir = tmp("acterr");
+    let mut store = Store::open(&dir).unwrap();
+    let mut clock = fsm_cli::clock::FixedClock::new(1000, 1);
+    fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_create",
+        &Value::Obj(BTreeMap::from([("spec".into(), spec)])),
+    )
+    .unwrap();
+    fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_create",
+        &Value::Obj(BTreeMap::from([
+            ("machine".into(), Value::Str("ov".into())),
+            ("request_id".into(), Value::Str("c1".into())),
+        ])),
+    )
+    .unwrap();
+    let err = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_send",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str("inst-c1".into())),
+            (
+                "event".into(),
+                Value::Obj(BTreeMap::from([("name".into(), Value::Str("go".into()))])),
+            ),
+            ("request_id".into(), Value::Str("s1".into())),
+        ])),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "run/action_error");
+    assert_eq!(
+        err.details.get("cause").and_then(Value::as_str),
+        Some("run/overflow")
+    );
+    assert_eq!(
+        err.details.get("block").and_then(Value::as_str),
+        Some("transition")
+    );
+    assert!(err.span.is_some());
+    assert!(err.details.get("trace").is_some());
+}
+
+#[test]
+fn snapshot_binding_skips_prefix_replay() {
+    let _g = gate();
+    let dir = tmp("fastp");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    store.shutdown_snapshot().unwrap();
+    let mid = store.journal.last_seq;
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s2", None)
+        .unwrap();
+    let last = store.journal.last_seq;
+    drop(store);
+    for (seq, path) in fsm_cli::snapshot::listed_snaps(&dir) {
+        if seq != mid {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    let store = Store::open(&dir).unwrap();
+    assert!(store.opened_from_snapshot, "expected snapshot fast path");
+    assert_eq!(store.opened_snapshot_seq, Some(mid));
+    assert_eq!(store.replayed_records, (last - mid) as usize);
+    assert!(store.replayed_records > 0);
+    assert!(store.replayed_records < store.records.len());
+}
+
+#[test]
+fn journal_replay_disagrees_on_context_divergent_snapshot() {
+    let _g = gate();
+    let dir = tmp("ctxdiv");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store.shutdown_snapshot().unwrap();
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    drop(store);
+    rewrite_snap_context(&dir);
+    let bin = fsm_bin();
+    let out = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "replay",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("\"agreement\":false"), "{stdout}");
+    assert!(stdout.contains("first_divergent_seq"), "{stdout}");
+    assert_ne!(out.status.code(), Some(0));
+}
+
+fn rewrite_snap_context(dir: &std::path::Path) {
+    let snap_dir = dir.join("snapshots");
+    let path = std::fs::read_dir(&snap_dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|s| s.to_str()) == Some("json"))
+        .unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    let v = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
+    let mut o = v.as_obj().unwrap().clone();
+    let seq: u64 = o
+        .get("seq")
+        .and_then(Value::as_num)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if let Some(Value::Obj(insts)) = o.get_mut("instances") {
+        let keys: Vec<String> = insts.keys().cloned().collect();
+        for id in keys {
+            let Some(Value::Obj(inst)) = insts.get_mut(&id) else {
+                continue;
+            };
+            let mid = inst
+                .get("machine_id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let leaf = inst
+                .get("leaf")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let status = match inst.get("status").and_then(Value::as_str) {
+                Some("completed") => fsm_core::machine::Status::Completed,
+                Some("cancelled") => fsm_core::machine::Status::Cancelled,
+                _ => fsm_core::machine::Status::Running,
+            };
+            if let Some(Value::Obj(ctx)) = inst.get_mut("context") {
+                ctx.insert("visits".into(), Value::Str("99".into()));
+            }
+            let mut ctx = BTreeMap::new();
+            if let Some(c) = inst.get("context").and_then(Value::as_obj) {
+                for (k, val) in c {
+                    if let Some(s) = val.as_str() {
+                        if let Ok(n) = s.parse::<i64>() {
+                            ctx.insert(k.clone(), Val::Int(n));
+                        }
+                    }
+                }
+            }
+            let mut history = BTreeMap::new();
+            if let Some(h) = inst.get("history").and_then(Value::as_obj) {
+                for (k, val) in h {
+                    if let Some(s) = val.as_str() {
+                        history.insert(k.clone(), s.to_string());
+                    }
+                }
+            }
+            let pending = inst
+                .get("pending")
+                .and_then(Value::as_arr)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let st = fsm_core::machine::InstanceState {
+                status,
+                leaf,
+                ctx,
+                history,
+                pending,
+            };
+            inst.insert(
+                "state_hash".into(),
+                Value::Str(fsm_core::hashes::state_hash(&mid, &id, seq, &st)),
+            );
+        }
+    }
+    o.insert("snapshot_hash".into(), Value::Str(String::new()));
+    let h = format!(
+        "sha256:{}",
+        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+            "fsm:snapshot:2",
+            &Value::Obj(o.clone())
+        ))
+    );
+    o.insert("snapshot_hash".into(), Value::Str(h));
+    std::fs::write(&path, fsm_core::canon::canon_bytes(&Value::Obj(o))).unwrap();
+}
+
+#[test]
+fn verify_report_ordered_segment_progress() {
+    let _g = gate();
+    let dir = tmp("segs");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    for i in 0..3 {
+        store
+            .create_instance("case_review", &format!("i{i}"), &format!("c{i}"), None)
+            .unwrap();
+    }
+    drop(store);
+    let r = fsm_cli::journal_io::verify(&dir);
+    assert!(!r.segments.is_empty());
+    let names: Vec<_> = r.segments.iter().map(|s| s.segment.as_str()).collect();
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(names, sorted, "segments must be ordered");
+    assert!(r.segments.iter().any(|s| s.status == "ok" && s.records > 0));
+    let bin = fsm_bin();
+    let out = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "verify",
+            "--report",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("\"records\""), "{stdout}");
+    assert!(stdout.contains("\"status\""), "{stdout}");
+}
+
+#[test]
+fn journal_replay_disagrees_on_pending_and_history_divergent_snapshots() {
+    let _g = gate();
+    for kind in ["pending", "history"] {
+        let dir = tmp(kind);
+        let mut store = Store::open(&dir).unwrap();
+        store.define_machine(case(), false, false).unwrap();
+        store
+            .create_instance("case_review", "i1", "c1", None)
+            .unwrap();
+        store.shutdown_snapshot().unwrap();
+        store
+            .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+            .unwrap();
+        drop(store);
+        rewrite_snap_field(&dir, kind);
+        let bin = fsm_bin();
+        let out = Command::new(&bin)
+            .args([
+                "--data-dir",
+                dir.to_str().unwrap(),
+                "--json",
+                "journal",
+                "replay",
+            ])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("\"agreement\":false"), "{kind} {stdout}");
+        assert!(stdout.contains("first_divergent_seq"), "{kind} {stdout}");
+        assert_ne!(out.status.code(), Some(0), "{kind}");
+    }
+}
+
+fn rewrite_snap_field(dir: &std::path::Path, kind: &str) {
+    let snaps = fsm_cli::snapshot::listed_snaps(dir);
+    let path = snaps.first().map(|(_, p)| p.clone()).unwrap();
+    for (_, p) in snaps.iter().skip(1) {
+        let _ = std::fs::remove_file(p);
+    }
+    let bytes = std::fs::read(&path).unwrap();
+    let v = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
+    let mut o = v.as_obj().unwrap().clone();
+    let seq: u64 = o
+        .get("seq")
+        .and_then(Value::as_num)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    if let Some(Value::Obj(insts)) = o.get_mut("instances") {
+        let keys: Vec<String> = insts.keys().cloned().collect();
+        for id in keys {
+            let Some(Value::Obj(inst)) = insts.get_mut(&id) else {
+                continue;
+            };
+            let mid = inst
+                .get("machine_id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let leaf = inst
+                .get("leaf")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let status = match inst.get("status").and_then(Value::as_str) {
+                Some("completed") => fsm_core::machine::Status::Completed,
+                Some("cancelled") => fsm_core::machine::Status::Cancelled,
+                _ => fsm_core::machine::Status::Running,
+            };
+            if kind == "pending" {
+                inst.insert(
+                    "pending".into(),
+                    Value::Arr(vec![Value::Str("ghost/1/0".into())]),
+                );
+            }
+            if kind == "history" {
+                inst.insert(
+                    "history".into(),
+                    Value::Obj(BTreeMap::from([(
+                        "in_review".into(),
+                        Value::Str("docs_review".into()),
+                    )])),
+                );
+            }
+            let mut ctx = BTreeMap::new();
+            if let Some(c) = inst.get("context").and_then(Value::as_obj) {
+                for (k, val) in c {
+                    if let Some(s) = val.as_str() {
+                        if let Ok(n) = s.parse::<i64>() {
+                            ctx.insert(k.clone(), Val::Int(n));
+                        }
+                    }
+                }
+            }
+            let mut history = BTreeMap::new();
+            if let Some(h) = inst.get("history").and_then(Value::as_obj) {
+                for (k, val) in h {
+                    if let Some(s) = val.as_str() {
+                        history.insert(k.clone(), s.to_string());
+                    }
+                }
+            }
+            let pending = inst
+                .get("pending")
+                .and_then(Value::as_arr)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let st = fsm_core::machine::InstanceState {
+                status,
+                leaf,
+                ctx,
+                history,
+                pending,
+            };
+            inst.insert(
+                "state_hash".into(),
+                Value::Str(fsm_core::hashes::state_hash(&mid, &id, seq, &st)),
+            );
+        }
+    }
+    o.insert("snapshot_hash".into(), Value::Str(String::new()));
+    let h = format!(
+        "sha256:{}",
+        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+            "fsm:snapshot:2",
+            &Value::Obj(o.clone())
+        ))
+    );
+    o.insert("snapshot_hash".into(), Value::Str(h));
+    std::fs::write(&path, fsm_core::canon::canon_bytes(&Value::Obj(o))).unwrap();
+}
+
+#[test]
+fn old_snapshot_format_rejected() {
+    let v = Value::Obj(BTreeMap::from([
+        ("format".into(), Value::Str("fsm.snapshot/1".into())),
+        ("seq".into(), Value::Num("1".into())),
+    ]));
+    assert!(fsm_cli::snapshot::snapshot_to_state(&v).is_err());
 }

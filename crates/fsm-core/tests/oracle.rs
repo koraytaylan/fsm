@@ -144,6 +144,7 @@ fn eval_bool(
                 block: None,
                 span: Some((err.span.start, err.span.end)),
                 trace: Default::default(),
+                cause: None,
             })?;
             let b = Bindings {
                 ctx,
@@ -160,6 +161,7 @@ fn eval_bool(
                     block: None,
                     span: Some((err.span.start, err.span.end)),
                     trace: Default::default(),
+                    cause: None,
                 }),
                 _ => Ok(false),
             }
@@ -178,6 +180,7 @@ fn parse_init(s: &str, ty: &fsm_core::spec::TySpec) -> Result<Val, Rejection> {
         block: None,
         span: None,
         trace: Default::default(),
+        cause: None,
     };
     match ty {
         TySpec::Int => s
@@ -228,6 +231,7 @@ fn apply_sets(
             block: None,
             span: Some((err.span.start, err.span.end)),
             trace: Default::default(),
+            cause: Some(err.code),
         })?;
         let (v, _) = eval(&e, &b, budget, false);
         let v = v.map_err(|err| Rejection {
@@ -239,6 +243,7 @@ fn apply_sets(
             block: None,
             span: Some((err.span.start, err.span.end)),
             trace: Default::default(),
+            cause: Some(err.code),
         })?;
         next.insert(s.target.clone(), v);
     }
@@ -270,6 +275,7 @@ fn apply_emits(
                 block: None,
                 span: Some((err.span.start, err.span.end)),
                 trace: Default::default(),
+                cause: Some(err.code),
             })?;
             let (v, _) = eval(&e, &b, budget, false);
             let v = v.map_err(|err| Rejection {
@@ -281,6 +287,7 @@ fn apply_emits(
                 block: None,
                 span: Some((err.span.start, err.span.end)),
                 trace: Default::default(),
+                cause: Some(err.code),
             })?;
             args.insert(k.clone(), v);
         }
@@ -331,6 +338,17 @@ fn naive_validate(
             return Err(reject("req/number_token", &f.name));
         }
         let v = parse_typed(raw, &f.ty).map_err(|c| reject(c, &f.name))?;
+        if let Val::Enum { ty, variant } = &v {
+            let allowed = spec.enums.get(ty).cloned().unwrap_or_default();
+            if !allowed.iter().any(|x| x == variant) {
+                return Err(reject("req/field_type", &f.name));
+            }
+        }
+        if let (Val::Dec(d), fsm_core::spec::TySpec::Dec { scale }) = (&v, &f.ty) {
+            if d.scale != *scale {
+                return Err(reject("req/field_scale", &f.name));
+            }
+        }
         out.insert(f.name.clone(), v);
     }
     for k in obj.keys() {
@@ -364,11 +382,22 @@ fn parse_typed(raw: &Value, ty: &fsm_core::spec::TySpec) -> Result<Val, &'static
             .and_then(|s| s.parse().ok())
             .map(Val::Dur)
             .ok_or("req/field_type"),
-        TySpec::Dec { scale } => raw
-            .as_str()
-            .and_then(|s| fsm_core::decimal::Dec::parse(s, *scale).ok())
-            .map(Val::Dec)
-            .ok_or("req/field_type"),
+        TySpec::Dec { scale } => {
+            let s = raw.as_str().ok_or("req/field_type")?;
+            match fsm_core::decimal::Dec::parse(s, *scale) {
+                Ok(d) => Ok(Val::Dec(d)),
+                Err(fsm_core::decimal::DecError::Parse) => {
+                    if s.contains('.')
+                        && s.split('.').nth(1).map(|f| f.len()).unwrap_or(0) > *scale as usize
+                    {
+                        Err("req/field_scale")
+                    } else {
+                        Err("req/field_type")
+                    }
+                }
+                Err(_) => Err("req/field_type"),
+            }
+        }
         TySpec::Enum { of } => raw
             .as_str()
             .map(|s| Val::Enum {
@@ -389,6 +418,7 @@ fn reject(code: &'static str, what: &str) -> Rejection {
         block: None,
         span: None,
         trace: Default::default(),
+        cause: None,
     }
 }
 
@@ -413,6 +443,7 @@ fn eval_invariants(
                         block: None,
                         span: None,
                         trace: Default::default(),
+                        cause: None,
                     });
                 }
             },
@@ -533,6 +564,7 @@ pub fn naive_step(
             block: None,
             span: None,
             trace: Default::default(),
+            cause: None,
         });
     }
     let fields = match naive_validate(&m.spec, event, payload) {
@@ -581,6 +613,7 @@ pub fn naive_step(
                     block: None,
                     span: None,
                     trace: Default::default(),
+                    cause: None,
                 }),
             };
         }
@@ -593,6 +626,7 @@ pub fn naive_step(
             block: None,
             span: None,
             trace: Default::default(),
+            cause: None,
         });
     };
     let tr = &m.spec.transitions[tidx];
@@ -700,21 +734,51 @@ pub fn naive_step(
 }
 
 pub fn brute_enterable(m: &CompiledMachine) -> std::collections::BTreeSet<String> {
+    let nodes = &m.spec.states;
     let mut out = std::collections::BTreeSet::new();
     fn walk(nodes: &[StateNode], name: &str, out: &mut std::collections::BTreeSet<String>) {
         if !out.insert(name.into()) {
             return;
         }
         if let Some(n) = find(nodes, name) {
+            if n.history.is_some() {
+                return;
+            }
             if let Some(init) = &n.initial {
                 walk(nodes, init, out);
             }
+            for ch in &n.states {
+                if ch.history.is_none() {
+                    // configuration includes the compound itself
+                }
+            }
         }
     }
-    walk(&m.spec.states, &m.spec.initial, &mut out);
-    for tr in &m.spec.transitions {
-        if let Some(to) = &tr.to {
-            walk(&m.spec.states, to, &mut out);
+    fn is_desc_or_self(nodes: &[StateNode], anc: &str, name: &str) -> bool {
+        if anc == name {
+            return true;
+        }
+        let ch = chain(nodes, name);
+        ch.iter().any(|s| s == anc)
+    }
+    walk(nodes, &m.spec.initial, &mut out);
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for tr in &m.spec.transitions {
+            let source_live = out
+                .iter()
+                .any(|reached| is_desc_or_self(nodes, &tr.from, reached));
+            if !source_live {
+                continue;
+            }
+            if let Some(to) = &tr.to {
+                let before = out.len();
+                walk(nodes, to, &mut out);
+                if out.len() != before {
+                    changed = true;
+                }
+            }
         }
     }
     out

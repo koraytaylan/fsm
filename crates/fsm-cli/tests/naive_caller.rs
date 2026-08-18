@@ -1,5 +1,7 @@
 //! Following an error hint should make the next call succeed.
 
+use std::collections::BTreeMap;
+
 use fsm_cli::clock::FixedClock;
 use fsm_cli::mcp::tools::dispatch;
 use fsm_cli::store::Store;
@@ -34,6 +36,433 @@ fn obj(pairs: &[(&str, Value)]) -> Value {
             .map(|(k, v)| ((*k).into(), v.clone()))
             .collect(),
     )
+}
+
+fn finding_path(err: &fsm_cli::store::ErrorObj) -> String {
+    if !err.path.is_empty() {
+        return err.path.clone();
+    }
+    err.details
+        .get("findings")
+        .and_then(Value::as_arr)
+        .and_then(|a| a.first())
+        .and_then(|f| f.get("path"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
+}
+
+fn finding_hint(err: &fsm_cli::store::ErrorObj) -> String {
+    if !err.hint.is_empty() {
+        return err.hint.clone();
+    }
+    err.details
+        .get("findings")
+        .and_then(Value::as_arr)
+        .and_then(|a| a.first())
+        .and_then(|f| f.get("hint"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
+}
+
+fn delete_pointer(v: &mut Value, path: &str) {
+    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if segs.is_empty() {
+        return;
+    }
+    let (last, rest) = segs.split_last().unwrap();
+    let mut cur = v;
+    for s in rest {
+        match cur {
+            Value::Obj(o) => {
+                if let Some(n) = o.get_mut(*s) {
+                    cur = n;
+                } else {
+                    return;
+                }
+            }
+            Value::Arr(a) => {
+                if let Ok(i) = s.parse::<usize>() {
+                    if let Some(n) = a.get_mut(i) {
+                        cur = n;
+                    } else {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
+            _ => return,
+        }
+    }
+    match cur {
+        Value::Obj(o) => {
+            o.remove(*last);
+        }
+        Value::Arr(a) => {
+            if let Ok(i) = last.parse::<usize>() {
+                if i < a.len() {
+                    a.remove(i);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn set_pointer(v: &mut Value, path: &str, val: Value) {
+    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if segs.is_empty() {
+        *v = val;
+        return;
+    }
+    let (last, rest) = segs.split_last().unwrap();
+    let mut cur = v;
+    for s in rest {
+        match cur {
+            Value::Obj(o) => {
+                cur = o.entry((*s).into()).or_insert(Value::Obj(BTreeMap::new()));
+            }
+            Value::Arr(a) => {
+                if let Ok(i) = s.parse::<usize>() {
+                    if i < a.len() {
+                        cur = &mut a[i];
+                    } else {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
+            _ => return,
+        }
+    }
+    match cur {
+        Value::Obj(o) => {
+            o.insert((*last).into(), val);
+        }
+        Value::Arr(a) => {
+            if let Ok(i) = last.parse::<usize>() {
+                if i < a.len() {
+                    a[i] = val;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn first_state_name(v: &Value) -> Option<String> {
+    v.get("states")
+        .and_then(Value::as_arr)
+        .and_then(|a| a.first())
+        .and_then(|s| s.get("name"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn truncate_array(v: &mut Value, path: &str, keep: usize) {
+    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let mut cur = v;
+    for s in &segs {
+        match cur {
+            Value::Obj(o) => {
+                if let Some(n) = o.get_mut(*s) {
+                    cur = n;
+                } else {
+                    return;
+                }
+            }
+            Value::Arr(a) => {
+                if let Ok(i) = s.parse::<usize>() {
+                    if let Some(n) = a.get_mut(i) {
+                        cur = n;
+                    } else {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
+            _ => return,
+        }
+    }
+    if let Value::Arr(a) = cur {
+        a.truncate(keep);
+    } else if let Value::Obj(o) = cur {
+        o.clear();
+    }
+}
+
+fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
+    let mut v = bad.clone();
+    let path = finding_path(err);
+    let hint = finding_hint(err);
+    if let Value::Obj(o) = &mut v {
+        if let Some(n) = o
+            .get_mut("name")
+            .and_then(|n| if let Value::Str(s) = n { Some(s) } else { None })
+        {
+            if !n.ends_with("_fix") {
+                n.push_str("_fix");
+            }
+        }
+    }
+    match err.code.as_str() {
+        "def/unknown_key" | "def/not_supported" => delete_pointer(&mut v, &path),
+        "def/shape" => {
+            if v.get("name").is_none() {
+                set_pointer(&mut v, "/name", Value::Str("fixed".into()));
+            }
+            if v.get("states").is_none() {
+                set_pointer(
+                    &mut v,
+                    "/states",
+                    Value::Arr(vec![obj(&[("name", Value::Str("a".into()))])]),
+                );
+            }
+            if v.get("initial").is_none() {
+                if let Some(n) = first_state_name(&v) {
+                    set_pointer(&mut v, "/initial", Value::Str(n));
+                } else {
+                    set_pointer(&mut v, "/initial", Value::Str("a".into()));
+                }
+            }
+            if v.get("events").is_none() {
+                set_pointer(&mut v, "/events", Value::Arr(vec![]));
+            }
+            if v.get("transitions").is_none() {
+                set_pointer(&mut v, "/transitions", Value::Arr(vec![]));
+            }
+            if v.get("context").is_none() {
+                set_pointer(&mut v, "/context", Value::Arr(vec![]));
+            }
+            let _ = (&path, &hint);
+        }
+        "def/dup_name" => {
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
+                if st.len() > 1 {
+                    if let Some(Value::Obj(o)) = st.last_mut() {
+                        o.insert("name".into(), Value::Str("b".into()));
+                    }
+                }
+            }
+        }
+        "def/reserved_ident" => {
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
+                if let Some(Value::Obj(o)) = st.first_mut() {
+                    o.insert("name".into(), Value::Str("a".into()));
+                }
+            }
+            set_pointer(&mut v, "/initial", Value::Str("a".into()));
+        }
+        "def/unknown_state" | "def/initial_not_child" | "def/initial_is_history" => {
+            if let Some(n) = first_state_name(&v) {
+                if path.contains("initial") || path.is_empty() {
+                    let child = v
+                        .get("states")
+                        .and_then(Value::as_arr)
+                        .and_then(|st| st.first())
+                        .and_then(|c| c.get("states"))
+                        .and_then(Value::as_arr)
+                        .and_then(|a| a.iter().find(|x| x.get("history").is_none()))
+                        .and_then(|x| x.get("name"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                    if let Some(ch) = child {
+                        set_pointer(&mut v, "/states/0/initial", Value::Str(ch));
+                    }
+                    set_pointer(&mut v, "/initial", Value::Str(n));
+                }
+            }
+        }
+        "def/one_initial" => {
+            let child = v
+                .get("states")
+                .and_then(Value::as_arr)
+                .and_then(|a| a.first())
+                .and_then(|c| c.get("states"))
+                .and_then(Value::as_arr)
+                .and_then(|a| a.first())
+                .and_then(|s| s.get("name"))
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            if let Some(ch) = child {
+                set_pointer(&mut v, "/states/0/initial", Value::Str(ch));
+            }
+        }
+        "def/initial_terminal" | "def/terminal_not_leaf" => {
+            delete_pointer(&mut v, "/states/0/terminal");
+        }
+        "def/terminal_has_transitions" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                if let Some(Value::Obj(t)) = tr.first_mut() {
+                    t.insert("from".into(), Value::Str("a".into()));
+                }
+            }
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
+                if let Some(Value::Obj(o)) = st.get_mut(1) {
+                    o.remove("terminal");
+                }
+            }
+        }
+        "def/from_history" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                if let Some(Value::Obj(t)) = tr.first_mut() {
+                    t.insert("from".into(), Value::Str("l".into()));
+                }
+            }
+        }
+        "def/history_target_from_inside" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                if let Some(Value::Obj(t)) = tr.first_mut() {
+                    t.insert("to".into(), Value::Str("r".into()));
+                }
+            }
+        }
+        "def/multiple_history" => {
+            if let Some(Value::Arr(top)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
+                if let Some(Value::Obj(c)) = top.first_mut() {
+                    if let Some(Value::Arr(ch)) = c.get_mut("states") {
+                        let mut seen = false;
+                        ch.retain(|n| {
+                            if n.get("history").is_some() {
+                                if seen {
+                                    return false;
+                                }
+                                seen = true;
+                            }
+                            true
+                        });
+                    }
+                }
+            }
+        }
+        "def/unknown_event" => {
+            set_pointer(
+                &mut v,
+                "/events",
+                Value::Arr(vec![obj(&[
+                    ("name", Value::Str("nope".into())),
+                    ("fields", Value::Arr(vec![])),
+                ])]),
+            );
+        }
+        "def/unknown_effect" => {
+            set_pointer(
+                &mut v,
+                "/effects",
+                Value::Arr(vec![obj(&[
+                    ("name", Value::Str("nope".into())),
+                    ("fields", Value::Arr(vec![])),
+                ])]),
+            );
+        }
+        "def/unknown_enum" => {
+            set_pointer(
+                &mut v,
+                "/enums",
+                Value::Obj(BTreeMap::from([(
+                    "Color".into(),
+                    Value::Arr(vec![Value::Str("red".into())]),
+                )])),
+            );
+        }
+        "def/dup_set" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                if let Some(Value::Obj(t)) = tr.first_mut() {
+                    if let Some(Value::Arr(d)) = t.get_mut("do") {
+                        d.truncate(1);
+                    }
+                }
+            }
+        }
+        "def/assign_type" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                if let Some(Value::Obj(t)) = tr.first_mut() {
+                    if let Some(Value::Arr(d)) = t.get_mut("do") {
+                        if let Some(Value::Obj(s)) = d.first_mut() {
+                            s.insert("value".into(), Value::Str("1".into()));
+                        }
+                    }
+                }
+            }
+        }
+        c if c.starts_with("expr/") => {
+            if path.contains("/if") || hint.contains("if") {
+                set_pointer(&mut v, "/transitions/0/if", Value::Str("true".into()));
+            } else if path.contains("entry") {
+                set_pointer(&mut v, "/states/0/entry/do/0/value", Value::Str("1".into()));
+            } else if path.contains("invariant") {
+                set_pointer(&mut v, "/invariants", Value::Arr(vec![]));
+            } else {
+                set_pointer(&mut v, "/transitions/0/if", Value::Str("true".into()));
+            }
+        }
+        c if c.starts_with("def/limit_") => {
+            let p = if path.is_empty() {
+                match c {
+                    "def/limit_states" => "/states",
+                    "def/limit_events" => "/events",
+                    "def/limit_ctx" => "/context",
+                    "def/limit_fields" => "/events/0/fields",
+                    "def/limit_sets" => "/transitions/0/do",
+                    "def/limit_emits" => "/transitions/0/emit",
+                    "def/limit_invariants" => "/invariants",
+                    "def/limit_enums" => "/enums",
+                    "def/limit_variants" => "/enums/E",
+                    "def/limit_cell" | "def/limit_transitions" => "/transitions",
+                    "def/limit_history" => "/states",
+                    "def/limit_depth" => "/states",
+                    "def/limit_bytes" => "/description",
+                    _ => "/states",
+                }
+            } else {
+                path.as_str()
+            };
+            if c == "def/limit_bytes" {
+                set_pointer(&mut v, "/description", Value::Str("x".into()));
+            } else if c == "def/limit_depth" {
+                set_pointer(
+                    &mut v,
+                    "/states",
+                    Value::Arr(vec![obj(&[("name", Value::Str("a".into()))])]),
+                );
+                set_pointer(&mut v, "/initial", Value::Str("a".into()));
+            } else {
+                truncate_array(&mut v, p, 1);
+            }
+        }
+        "def/shadowed" | "def/duplicate_guard" | "def/ancestor_shadowed" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                tr.truncate(1);
+            }
+        }
+        "def/unreachable_state" => {
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
+                st.truncate(1);
+            }
+        }
+        "def/create_always_fails" => {
+            set_pointer(&mut v, "/invariants", Value::Arr(vec![]));
+        }
+        _ => {}
+    }
+    v
+}
+
+trait AsObjMut {
+    fn as_obj_mut(&mut self) -> Option<&mut BTreeMap<String, Value>>;
+}
+
+impl AsObjMut for Value {
+    fn as_obj_mut(&mut self) -> Option<&mut BTreeMap<String, Value>> {
+        match self {
+            Value::Obj(o) => Some(o),
+            _ => None,
+        }
+    }
 }
 
 #[test]
@@ -1310,6 +1739,39 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         Ok(v) => note_ok(&v, &mut out),
         Err(e) => note_err(&e, &mut out),
     }
+    let _ = dispatch(
+        &mut st,
+        &mut clock,
+        "machine_create",
+        &obj(&[(
+            "spec",
+            spec(
+                r#"{"format":"fsm.machine/1","name":"actov","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
+            ),
+        )]),
+    );
+    let _ = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("actov".into())),
+            ("request_id", Value::Str("actc".into())),
+        ]),
+    );
+    match dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-actc".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("acts".into())),
+        ]),
+    ) {
+        Ok(v) => note_ok(&v, &mut out),
+        Err(e) => note_err(&e, &mut out),
+    }
     out
 }
 
@@ -1334,7 +1796,6 @@ fn all_codes_hygiene() {
         "store/version_mismatch",
         "internal/budget",
         "internal/unimplemented",
-        "run/action_error",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");
@@ -1391,8 +1852,12 @@ const INFRA: &[(&str, &str)] = &[
         "reserved internal path, no public correction",
     ),
     (
-        "run/action_error",
-        "generic wrapper; eval failures surface as run/overflow or run/div_zero",
+        "run/overflow",
+        "evaluator cause; public block-evaluation code is run/action_error",
+    ),
+    (
+        "run/div_zero",
+        "evaluator cause; public block-evaluation code is run/action_error",
     ),
 ];
 
@@ -1403,6 +1868,18 @@ fn create_err(st: &mut Store, clock: &mut FixedClock, src: &str) -> fsm_cli::sto
 fn create_ok(st: &mut Store, clock: &mut FixedClock, src: &str) {
     dispatch(st, clock, "machine_create", &obj(&[("spec", spec(src))]))
         .unwrap_or_else(|e| panic!("expected ok after repair {src}: {e:?}"));
+}
+
+#[allow(dead_code)]
+fn create_repaired(
+    st: &mut Store,
+    clock: &mut FixedClock,
+    bad: &str,
+    err: &fsm_cli::store::ErrorObj,
+) {
+    let fixed = repair_spec(&spec(bad), err);
+    dispatch(st, clock, "machine_create", &obj(&[("spec", fixed)]))
+        .unwrap_or_else(|e| panic!("repair of {} failed: {} {}", err.code, e.code, e.hint));
 }
 
 fn send_err(
@@ -1657,7 +2134,17 @@ fn one_step_every_non_infra_code() {
                     spec_fails.push(format!("{code} empty hint"));
                     continue;
                 }
-                create_ok(&mut st, &mut clock, good);
+                let fixed = repair_spec(&spec(bad), &err);
+                if let Err(e2) = dispatch(
+                    &mut st,
+                    &mut clock,
+                    "machine_create",
+                    &obj(&[("spec", fixed)]),
+                ) {
+                    spec_fails.push(format!("{code} repair failed: {} {}", e2.code, e2.hint));
+                    continue;
+                }
+                let _ = good;
                 seen.insert(*code);
             }
             Ok(_) => spec_fails.push(format!("{code} compile unexpectedly succeeded")),
@@ -2233,34 +2720,78 @@ fn one_step_every_non_infra_code() {
     )
     .unwrap();
     let err = send_err(&mut st, &mut clock, "inst-ov1", "go", obj(&[]), "ov-bad");
-    assert_eq!(err.code, "run/overflow");
+    assert_eq!(err.code, "run/action_error");
+    assert_eq!(
+        err.details.get("cause").and_then(Value::as_str),
+        Some("run/overflow")
+    );
+    let ev = err
+        .details
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .and_then(|a| {
+            a.iter().find_map(|e| {
+                let name = e.get("event").and_then(Value::as_str)?;
+                if name != "go" {
+                    Some(name.to_string())
+                } else {
+                    None
+                }
+            })
+        });
+    let _ = ev;
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ov2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
+        r#"{"format":"fsm.machine/1","name":"ovok","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"ok","fields":[]},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"ok","do":[{"target":"n","value":"0"}]},{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
     );
     dispatch(
         &mut st,
         &mut clock,
         "instance_create",
         &obj(&[
-            ("machine", Value::Str("ov2".into())),
-            ("request_id", Value::Str("ov2".into())),
+            ("machine", Value::Str("ovok".into())),
+            ("request_id", Value::Str("ovokc".into())),
         ]),
     )
     .unwrap();
+    let err2 = send_err(
+        &mut st,
+        &mut clock,
+        "inst-ovokc",
+        "go",
+        obj(&[]),
+        "ovok-bad",
+    );
+    assert_eq!(err2.code, "run/action_error");
+    let next = err2
+        .details
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .into_iter()
+        .flatten()
+        .find_map(|e| {
+            let name = e.get("event").and_then(Value::as_str)?;
+            let st = e.get("status").and_then(Value::as_str)?;
+            if st == "enabled" && name != "go" {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+        .expect("enabled non-overflow event");
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
-            ("instance_id", Value::Str("inst-ov2".into())),
-            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("instance_id", Value::Str("inst-ovokc".into())),
+            ("event", obj(&[("name", Value::Str(next))])),
             ("request_id", Value::Str("ov-ok".into())),
         ]),
     )
     .unwrap();
-    seen.insert("run/overflow");
+    seen.insert("run/action_error");
 
     create_ok(
         &mut st,
@@ -2278,7 +2809,11 @@ fn one_step_every_non_infra_code() {
     )
     .unwrap();
     let err = send_err(&mut st, &mut clock, "inst-dz1", "go", obj(&[]), "dz-bad");
-    assert_eq!(err.code, "run/div_zero", "{}", err.code);
+    assert_eq!(err.code, "run/action_error", "{}", err.code);
+    assert_eq!(
+        err.details.get("cause").and_then(Value::as_str),
+        Some("run/div_zero")
+    );
     create_ok(
         &mut st,
         &mut clock,

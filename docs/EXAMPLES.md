@@ -16,6 +16,7 @@ leaf: draft
 $ fsm instance send inst-e1 submit --payload '{"amount":"-1.00"}' --request-id e1-bad
 # exit 1
 run/invariant
+hint: adjust the action or the invariant
 $ fsm instance send inst-e1 submit --payload '{"amount":"10.00"}' --request-id e1-submit
 leaf: peer_review
 $ fsm instance send inst-e1 approve --request-id e1-approve
@@ -44,6 +45,7 @@ effects_pending:
 $ fsm instance send inst-ol1 confirmed --payload '{"at":"1"}' --request-id ol-early
 # exit 1
 run/unhandled
+hint: add a transition or send a handled event
 $ fsm instance send inst-ol1 note_added --payload '{"text":"hold"}' --request-id ol-note
 leaf: picking
 $ fsm instance send inst-ol1 pick --request-id ol-pick
@@ -67,6 +69,7 @@ $ fsm instance send inst-inv1 receive --payload '{"amount":"40.00"}' --request-i
 $ fsm instance send inst-inv1 match --request-id inv-m1
 # exit 1
 run/not_enabled
+hint: adjust the payload or add a child override
 $ fsm instance send inst-inv1 receive --payload '{"amount":"60.00"}' --request-id inv-r2
 $ fsm instance send inst-inv1 match --request-id inv-m2
 leaf: matched

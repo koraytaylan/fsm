@@ -50,20 +50,25 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
             })
             .collect();
         m.insert("instance_hashes".into(), Value::Arr(hashes));
-        if let Ok(rd) = std::fs::read_dir(ctx.data_dir.join("journal")) {
-            let mut segs = Vec::new();
-            for ent in rd.flatten() {
-                let name = ent.file_name().to_string_lossy().into_owned();
-                if name.starts_with("seg-") {
-                    let bytes = ent.metadata().map(|md| md.len()).unwrap_or(0);
-                    segs.push(Value::Obj(BTreeMap::from([
-                        ("segment".into(), Value::Str(name)),
-                        ("bytes".into(), Value::Num(bytes.to_string())),
-                    ])));
+        let segs: Vec<Value> = r
+            .segments
+            .iter()
+            .map(|s| {
+                let mut o = BTreeMap::from([
+                    ("segment".into(), Value::Str(s.segment.clone())),
+                    ("records".into(), Value::Num(s.records.to_string())),
+                    ("status".into(), Value::Str(s.status.clone())),
+                ]);
+                if let Some(n) = s.first_seq {
+                    o.insert("first_seq".into(), Value::Num(n.to_string()));
                 }
-            }
-            m.insert("segments".into(), Value::Arr(segs));
-        }
+                if let Some(n) = s.last_seq {
+                    o.insert("last_seq".into(), Value::Num(n.to_string()));
+                }
+                Value::Obj(o)
+            })
+            .collect();
+        m.insert("segments".into(), Value::Arr(segs));
     }
     emit_success(ctx, &Value::Obj(m));
     health_exit(&r.health)
@@ -117,7 +122,17 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
                 folded.last_seq,
             ) {
                 Ok(s) => s,
-                Err(e) => return emit_error(ctx, &e),
+                Err(_) => {
+                    let div = first_divergent_view(&recs, &ctx.data_dir).unwrap_or(folded.last_seq);
+                    emit_success(
+                        ctx,
+                        &Value::Obj(BTreeMap::from([
+                            ("agreement".into(), Value::Bool(false)),
+                            ("first_divergent_seq".into(), Value::Num(div.to_string())),
+                        ])),
+                    );
+                    return 1;
+                }
             };
             let agreement = states_agree(&folded, &live_at);
             let mut out = BTreeMap::from([("agreement".into(), Value::Bool(agreement))]);

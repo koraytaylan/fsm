@@ -24,7 +24,7 @@ fn hash_body(body: &BTreeMap<String, Value>) -> String {
     tmp.insert("snapshot_hash".into(), Value::Str(String::new()));
     format!(
         "sha256:{}",
-        to_hex(&domain_hash("fsm:snapshot:1", &Value::Obj(tmp)))
+        to_hex(&domain_hash("fsm:snapshot:2", &Value::Obj(tmp)))
     )
 }
 
@@ -63,7 +63,7 @@ fn instance_value(id: &str, inst: &InstanceState, mid: &str, seq: u64) -> Value 
     Value::Obj(o)
 }
 
-pub fn state_to_snapshot(state: &StoreState) -> Value {
+fn snapshot_material(state: &StoreState) -> BTreeMap<String, Value> {
     let mut machines = BTreeMap::new();
     for (id, m) in &state.machines {
         machines.insert(id.clone(), m.def.clone());
@@ -78,12 +78,21 @@ pub fn state_to_snapshot(state: &StoreState) -> Value {
         dedup.insert(rid.clone(), Value::Num(seq.to_string()));
     }
     let mut body = BTreeMap::new();
-    body.insert("format".into(), Value::Str("fsm.snapshot/1".into()));
     body.insert("seq".into(), Value::Num(state.last_seq.to_string()));
     body.insert("last_hash".into(), Value::Str(state.last_hash.clone()));
     body.insert("machines".into(), Value::Obj(machines));
     body.insert("instances".into(), Value::Obj(instances));
     body.insert("dedup".into(), Value::Obj(dedup));
+    body
+}
+
+pub fn state_to_snapshot(state: &StoreState) -> Value {
+    let mut body = snapshot_material(state);
+    body.insert("format".into(), Value::Str("fsm.snapshot/2".into()));
+    body.insert(
+        "state_root".into(),
+        Value::Str(materialize_state_root(state)),
+    );
     let h = hash_body(&body);
     body.insert("snapshot_hash".into(), Value::Str(h));
     Value::Obj(body)
@@ -102,7 +111,7 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
     let obj = v
         .as_obj()
         .ok_or_else(|| ErrorObj::new("io/read", "snapshot not an object"))?;
-    if obj.get("format").and_then(Value::as_str) != Some("fsm.snapshot/1") {
+    if obj.get("format").and_then(Value::as_str) != Some("fsm.snapshot/2") {
         return Err(ErrorObj::new("io/read", "bad snapshot format"));
     }
     let want = hash_body(obj);
@@ -268,6 +277,54 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
         st.instances.insert(id.clone(), inst);
     }
     Ok(st)
+}
+
+/// Canonical hash of the complete materialized store state.
+pub fn materialize_state_root(state: &StoreState) -> String {
+    format!(
+        "sha256:{}",
+        to_hex(&domain_hash(
+            "fsm:state-root:1",
+            &Value::Obj(snapshot_material(state))
+        ))
+    )
+}
+
+pub fn commit_state_root(data_dir: &Path, seq: u64, root: &str) -> Result<(), ErrorObj> {
+    if data_dir.as_os_str() == "<memory>" {
+        return Ok(());
+    }
+    let jdir = data_dir.join("journal");
+    fs::create_dir_all(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    let dest = jdir.join(format!("root-{seq:020}"));
+    let tmp = jdir.join(format!("root-{seq:020}.tmp"));
+    fs::write(&tmp, format!("{root}\n")).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    let f = fs::File::open(&tmp).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    f.sync_all()
+        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    fs::rename(&tmp, &dest).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    let df = fs::File::open(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    df.sync_all()
+        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    Ok(())
+}
+
+pub fn load_state_root(data_dir: &Path, seq: u64) -> Option<String> {
+    let p = data_dir.join("journal").join(format!("root-{seq:020}"));
+    let s = fs::read_to_string(p).ok()?;
+    let t = s.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+fn snapshot_bound(data_dir: &Path, base: &StoreState) -> bool {
+    match load_state_root(data_dir, base.last_seq) {
+        Some(root) => root == materialize_state_root(base),
+        None => false,
+    }
 }
 
 pub fn listed_snaps(data_dir: &Path) -> Vec<(u64, PathBuf)> {
@@ -464,6 +521,13 @@ fn snapshot_matches_prefix(base: &StoreState, recs: &[fsm_core::record::Record])
     store_states_eq(base, &folded)
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct OpenPath {
+    pub replayed_records: usize,
+    pub used_snapshot: bool,
+    pub snapshot_seq: Option<u64>,
+}
+
 pub fn reconstruct_snapshot_plus_tail(
     data_dir: &Path,
     recs: &[fsm_core::record::Record],
@@ -507,7 +571,7 @@ pub fn open_state(
     data_dir: &Path,
     recs: Vec<fsm_core::record::Record>,
     sink: &mut impl fsm_core::replay::RecordSink,
-) -> Result<StoreState, fsm_core::replay::ReplayError> {
+) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
     let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
     for (_seq, path) in listed_snaps(data_dir) {
         let Ok(bytes) = fs::read(&path) else {
@@ -522,11 +586,41 @@ pub fn open_state(
         if base.last_seq > journal_last {
             continue;
         }
-        if !snapshot_matches_prefix(&base, &recs) {
+        let Some(rec) = recs.iter().find(|r| r.seq == base.last_seq) else {
+            continue;
+        };
+        if rec.hash != base.last_hash {
             continue;
         }
-        let tail: Vec<_> = recs.into_iter().filter(|r| r.seq > base.last_seq).collect();
-        return fold_from(base, tail, sink);
+        let bound = snapshot_bound(data_dir, &base);
+        if !bound && !snapshot_matches_prefix(&base, &recs) {
+            continue;
+        }
+        let snap_seq = base.last_seq;
+        let tail: Vec<_> = recs
+            .iter()
+            .filter(|r| r.seq > base.last_seq)
+            .cloned()
+            .collect();
+        let replayed = tail.len();
+        let state = fold_from(base, tail, sink)?;
+        return Ok((
+            state,
+            OpenPath {
+                replayed_records: replayed,
+                used_snapshot: true,
+                snapshot_seq: Some(snap_seq),
+            },
+        ));
     }
-    fsm_core::replay::fold_with(recs, sink)
+    let n = recs.len();
+    let state = fsm_core::replay::fold_with(recs, sink)?;
+    Ok((
+        state,
+        OpenPath {
+            replayed_records: n,
+            used_snapshot: false,
+            snapshot_seq: None,
+        },
+    ))
 }

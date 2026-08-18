@@ -30,6 +30,9 @@ pub struct Store {
     pub last_responses: BTreeMap<String, Value>,
     pub last_errors: BTreeMap<String, ErrorObj>,
     pub tags: BTreeMap<String, Vec<String>>,
+    pub replayed_records: usize,
+    pub opened_from_snapshot: bool,
+    pub opened_snapshot_seq: Option<u64>,
 }
 
 struct HistSink {
@@ -145,6 +148,9 @@ impl ErrorObj {
             if let Some(b) = &r.block {
                 d.insert("block".into(), Value::Str(b.clone()));
             }
+            if let Some(c) = r.cause {
+                d.insert("cause".into(), Value::Str(c.into()));
+            }
             if let (Some(s), Some(idx)) = (r.source_state.as_ref(), r.transition_idx) {
                 d.insert("source_state".into(), Value::Str(s.clone()));
                 d.insert("transition_idx".into(), Value::Num(idx.to_string()));
@@ -202,7 +208,7 @@ impl Store {
             history: BTreeMap::new(),
             records: Vec::new(),
         };
-        let (journal, state) = match journal_io::open(data_dir, &mut sink) {
+        let (journal, state, open_path) = match journal_io::open(data_dir, &mut sink) {
             Ok(x) => x,
             Err(OpenError::Health(h)) => return Err(health_err(&h)),
             Err(OpenError::Io(s)) => return Err(ErrorObj::new("io/read", s)),
@@ -225,12 +231,16 @@ impl Store {
             last_responses: BTreeMap::new(),
             last_errors: BTreeMap::new(),
             tags,
+            replayed_records: open_path.replayed_records,
+            opened_from_snapshot: open_path.used_snapshot,
+            opened_snapshot_seq: open_path.snapshot_seq,
         })
     }
 
     pub fn open_memory() -> Result<Self, ErrorObj> {
         let journal = Journal::memory();
         let records = journal.memory_records().unwrap_or(&[]).to_vec();
+        let replayed_records = records.len();
         let state = fold_with(records.clone(), &mut NopSink)
             .map_err(|e| ErrorObj::new("store/state_hash_mismatch", format!("{e:?}")))?;
         Ok(Store {
@@ -242,11 +252,29 @@ impl Store {
             last_responses: BTreeMap::new(),
             last_errors: BTreeMap::new(),
             tags: BTreeMap::new(),
+            replayed_records,
+            opened_from_snapshot: false,
+            opened_snapshot_seq: None,
         })
     }
 
     pub fn define_machine(
         &mut self,
+        def: Value,
+        dry_run: bool,
+        if_exists_error: bool,
+    ) -> Result<DefineOutcome, ErrorObj> {
+        self.define_machine_on(
+            &mut crate::clock::GlobalClock,
+            def,
+            dry_run,
+            if_exists_error,
+        )
+    }
+
+    pub fn define_machine_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
         def: Value,
         dry_run: bool,
         if_exists_error: bool,
@@ -289,14 +317,10 @@ impl Store {
                 name,
             });
         }
-        let _pin = crate::clock::pin(crate::clock::now_ms());
         let mut body = BTreeMap::new();
         body.insert("machine_id".into(), Value::Str(id.clone()));
         body.insert("def".into(), def.clone());
-        let rec = self
-            .journal
-            .append(RecordKind::MachineDefined, Value::Obj(body))
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let rec = self.append_rec(RecordKind::MachineDefined, Value::Obj(body), clock)?;
         self.note_record(&rec);
         self.state.machines.insert(
             id.clone(),
@@ -439,12 +463,16 @@ impl Store {
             return Some(Ok(Value::Obj(m)));
         }
         if rec.kind == RecordKind::EventIgnored {
-            return Some(Ok(Value::Obj(BTreeMap::from([
-                ("ok".into(), Value::Str("true".into())),
-                ("ignored".into(), Value::Str("true".into())),
-                ("duplicate".into(), Value::Bool(true)),
-                ("request_id".into(), Value::Str(request_id.into())),
-            ]))));
+            if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                if let Ok(folded) = fold_prefix(&self.records, rec.seq) {
+                    if let Some(mut v) = reconstruct_ignored(&folded, rec, iid, request_id) {
+                        if let Value::Obj(o) = &mut v {
+                            o.insert("duplicate".into(), Value::Bool(true));
+                        }
+                        return Some(Ok(v));
+                    }
+                }
+            }
         }
         if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
             if rec.kind == RecordKind::EventApplied {
@@ -479,7 +507,23 @@ impl Store {
     }
 
     fn finish_commit(&mut self) {
+        if !self.journal.is_memory() {
+            let root = crate::snapshot::materialize_state_root(&self.state);
+            let _ = crate::snapshot::commit_state_root(&self.data_dir, self.state.last_seq, &root);
+        }
         self.after_commit();
+    }
+
+    fn append_rec(
+        &mut self,
+        kind: RecordKind,
+        body: Value,
+        clock: &mut dyn crate::clock::Clock,
+    ) -> Result<Record, ErrorObj> {
+        let ts = clock.now_ms();
+        self.journal
+            .append_at(kind, body, ts)
+            .map_err(|e| ErrorObj::new("io/write", e.to_string()))
     }
 
     pub fn allocate_request_id(&mut self) -> Result<String, ErrorObj> {
@@ -552,6 +596,28 @@ impl Store {
         overrides: &BTreeMap<String, Val>,
         tags: &[String],
     ) -> Result<Value, ErrorObj> {
+        self.create_instance_ctx_on(
+            &mut crate::clock::GlobalClock,
+            machine_ref,
+            instance_id,
+            request_id,
+            expect_seq,
+            overrides,
+            tags,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_instance_ctx_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
+        machine_ref: &str,
+        instance_id: &str,
+        request_id: &str,
+        expect_seq: Option<u64>,
+        overrides: &BTreeMap<String, Val>,
+        tags: &[String],
+    ) -> Result<Value, ErrorObj> {
         if let Some(r) = self.replay_request(request_id) {
             return r;
         }
@@ -608,10 +674,7 @@ impl Store {
                 Value::Arr(tags.iter().cloned().map(Value::Str).collect()),
             );
         }
-        let rec = self
-            .journal
-            .append(RecordKind::InstanceCreated, Value::Obj(body))
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let rec = self.append_rec(RecordKind::InstanceCreated, Value::Obj(body), clock)?;
         self.state.instances.insert(instance_id.into(), inst);
         self.state.instance_machines.insert(instance_id.into(), mid);
         if !tags.is_empty() {
@@ -655,6 +718,28 @@ impl Store {
         expect_seq: Option<u64>,
         stamps: &[&str],
     ) -> Result<Value, ErrorObj> {
+        self.send_event_stamp_on(
+            &mut crate::clock::GlobalClock,
+            instance_id,
+            event,
+            payload,
+            request_id,
+            expect_seq,
+            stamps,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_event_stamp_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
+        instance_id: &str,
+        event: &str,
+        payload: &mut Value,
+        request_id: &str,
+        expect_seq: Option<u64>,
+        stamps: &[&str],
+    ) -> Result<Value, ErrorObj> {
         if let Some(r) = self.replay_request(request_id) {
             return r;
         }
@@ -686,23 +771,24 @@ impl Store {
             ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
         })?;
         let from_leaf = inst.leaf.clone();
+        let mut absent_stamps: Vec<String> = Vec::new();
         if let Value::Obj(o) = payload {
             for field in stamps {
-                o.entry((*field).into())
-                    .or_insert_with(|| Value::Str("0".into()));
+                if !o.contains_key(*field) {
+                    absent_stamps.push((*field).into());
+                    o.insert((*field).into(), Value::Str("0".into()));
+                }
             }
         }
         if let Err(r) = validate_event(&m.compiled, event, payload) {
             return Err(ErrorObj::from_rejection(&r).request_id(request_id));
         }
-        let _pin = crate::clock::pin(crate::clock::now_ms());
+        let commit_ts = clock.now_ms();
         if let Value::Obj(o) = payload {
-            if !stamps.is_empty() {
-                let ts = crate::clock::now_ms().to_string();
-                for field in stamps {
-                    if o.get(*field).and_then(Value::as_str) == Some("0") {
-                        o.insert((*field).into(), Value::Str(ts.clone()));
-                    }
+            if !absent_stamps.is_empty() {
+                let ts = commit_ts.to_string();
+                for field in &absent_stamps {
+                    o.insert(field.clone(), Value::Str(ts.clone()));
                 }
             }
         }
@@ -741,7 +827,7 @@ impl Store {
                 );
                 let rec = self
                     .journal
-                    .append(RecordKind::EventApplied, Value::Obj(body))
+                    .append_at(RecordKind::EventApplied, Value::Obj(body), commit_ts)
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
                 self.state.instances.insert(instance_id.into(), new);
                 self.history
@@ -821,7 +907,7 @@ impl Store {
                 }
                 let rec = self
                     .journal
-                    .append(RecordKind::EventRejected, Value::Obj(body))
+                    .append_at(RecordKind::EventRejected, Value::Obj(body), commit_ts)
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
                 self.history
                     .entry(instance_id.into())
@@ -844,7 +930,7 @@ impl Store {
                 body.insert("state_hash".into(), Value::Str(sh));
                 let rec = self
                     .journal
-                    .append(RecordKind::EventIgnored, Value::Obj(body))
+                    .append_at(RecordKind::EventIgnored, Value::Obj(body), commit_ts)
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
                 self.note_record(&rec);
                 let mut resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
@@ -892,6 +978,25 @@ impl Store {
         outcome: &str,
         result: Option<Value>,
     ) -> Result<Value, ErrorObj> {
+        self.ack_effect_outcome_on(
+            &mut crate::clock::GlobalClock,
+            instance_id,
+            effect_id,
+            request_id,
+            outcome,
+            result,
+        )
+    }
+
+    pub fn ack_effect_outcome_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
+        instance_id: &str,
+        effect_id: &str,
+        request_id: &str,
+        outcome: &str,
+        result: Option<Value>,
+    ) -> Result<Value, ErrorObj> {
         if let Some(r) = self.replay_request(request_id) {
             return r;
         }
@@ -932,10 +1037,7 @@ impl Store {
                 .unwrap_or_default();
             let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, inst);
             body.insert("state_hash".into(), Value::Str(sh));
-            let rec = self
-                .journal
-                .append(RecordKind::RequestRejected, Value::Obj(body))
-                .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+            let rec = self.append_rec(RecordKind::RequestRejected, Value::Obj(body), clock)?;
             self.note_record(&rec);
             let mut details = BTreeMap::new();
             details.insert(
@@ -977,10 +1079,7 @@ impl Store {
         if let Some(res) = result.clone() {
             body.insert("result".into(), res);
         }
-        let rec = self
-            .journal
-            .append(RecordKind::EffectAcked, Value::Obj(body))
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let rec = self.append_rec(RecordKind::EffectAcked, Value::Obj(body), clock)?;
         self.state.instances.insert(instance_id.into(), post);
         self.note_record(&rec);
         self.history
@@ -1023,6 +1122,21 @@ impl Store {
         request_id: &str,
         reason: &str,
     ) -> Result<Value, ErrorObj> {
+        self.cancel_instance_reason_on(
+            &mut crate::clock::GlobalClock,
+            instance_id,
+            request_id,
+            reason,
+        )
+    }
+
+    pub fn cancel_instance_reason_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
+        instance_id: &str,
+        request_id: &str,
+        reason: &str,
+    ) -> Result<Value, ErrorObj> {
         if let Some(r) = self.replay_request(request_id) {
             return r;
         }
@@ -1045,10 +1159,7 @@ impl Store {
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("reason".into(), Value::Str(reason.into()));
         body.insert("state_hash".into(), Value::Str(sh));
-        let rec = self
-            .journal
-            .append(RecordKind::InstanceCancelled, Value::Obj(body))
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let rec = self.append_rec(RecordKind::InstanceCancelled, Value::Obj(body), clock)?;
         self.state.instances.insert(instance_id.into(), post);
         self.note_record(&rec);
         self.history
@@ -1077,10 +1188,11 @@ impl Store {
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("note".into(), Value::Str(note.into()));
-        let rec = self
-            .journal
-            .append(RecordKind::Annotated, Value::Obj(body))
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let rec = self.append_rec(
+            RecordKind::Annotated,
+            Value::Obj(body),
+            &mut crate::clock::GlobalClock,
+        )?;
         self.note_record(&rec);
         self.history
             .entry(instance_id.into())
@@ -1329,6 +1441,40 @@ fn reconstruct_applied(
         }
         _ => None,
     }
+}
+
+fn reconstruct_ignored(
+    folded: &StoreState,
+    rec: &Record,
+    iid: &str,
+    request_id: &str,
+) -> Option<Value> {
+    let inst = folded.instances.get(iid)?;
+    let mid = folded.instance_machines.get(iid)?;
+    let m = folded.machines.get(mid)?;
+    let mut v = view_at(folded, iid, Some(request_id), Some(true), rec.seq).ok()?;
+    if let Value::Obj(o) = &mut v {
+        o.insert("ok".into(), Value::Str("true".into()));
+        o.insert("ignored".into(), Value::Bool(true));
+        o.insert("applied".into(), Value::Bool(false));
+        o.insert("seq".into(), Value::Num(rec.seq.to_string()));
+        o.insert("monitor_flags".into(), Value::Arr(vec![]));
+        o.insert("trace".into(), Value::Obj(BTreeMap::new()));
+        o.insert(
+            "transition".into(),
+            Value::Obj(BTreeMap::from([
+                ("source_state".into(), Value::Str(inst.leaf.clone())),
+                ("transition_idx".into(), Value::Num("-1".into())),
+                ("internal".into(), Value::Bool(false)),
+                ("from_leaf".into(), Value::Str(inst.leaf.clone())),
+                ("to_leaf".into(), Value::Str(inst.leaf.clone())),
+                ("exited".into(), Value::Arr(vec![])),
+                ("entered".into(), Value::Arr(vec![])),
+            ])),
+        );
+        o.insert("state".into(), Value::Str(m.tree.dotted_path(&inst.leaf)));
+    }
+    Some(v)
 }
 
 fn load_tags_from_records(records: &[Record]) -> BTreeMap<String, Vec<String>> {

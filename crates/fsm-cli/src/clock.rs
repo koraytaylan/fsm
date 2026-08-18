@@ -3,10 +3,12 @@
 #![allow(clippy::collapsible_if)]
 
 use std::cell::Cell;
-use std::sync::atomic::{AtomicI64, Ordering};
 
 thread_local! {
     static PINNED: Cell<Option<i64>> = const { Cell::new(None) };
+    static FORCE: Cell<i64> = const { Cell::new(UNSET) };
+    static NEXT: Cell<i64> = const { Cell::new(0) };
+    static STEP: Cell<i64> = const { Cell::new(1) };
 }
 
 pub struct PinGuard;
@@ -24,12 +26,18 @@ pub fn pin(ts: i64) -> PinGuard {
 }
 
 const UNSET: i64 = i64::MIN;
-static FORCE: AtomicI64 = AtomicI64::new(UNSET);
-static NEXT: AtomicI64 = AtomicI64::new(0);
-static STEP: AtomicI64 = AtomicI64::new(1);
 
 pub trait Clock {
     fn now_ms(&mut self) -> i64;
+}
+
+/// Wall / `FSM_CLOCK_MS` / test `force_ms` clock used by CLI store paths.
+pub struct GlobalClock;
+
+impl Clock for GlobalClock {
+    fn now_ms(&mut self) -> i64 {
+        now_ms()
+    }
 }
 
 pub struct SystemClock;
@@ -60,18 +68,18 @@ impl Clock for FixedClock {
 }
 
 pub fn force_ms(start: i64) {
-    FORCE.store(start, Ordering::SeqCst);
-    NEXT.store(0, Ordering::SeqCst);
+    FORCE.with(|c| c.set(start));
+    NEXT.with(|c| c.set(0));
 }
 
 pub fn set_step(step: i64) {
-    STEP.store(step.max(1), Ordering::SeqCst);
+    STEP.with(|c| c.set(step.max(1)));
 }
 
 pub fn reset_injected() {
-    FORCE.store(UNSET, Ordering::SeqCst);
-    NEXT.store(0, Ordering::SeqCst);
-    STEP.store(1, Ordering::SeqCst);
+    FORCE.with(|c| c.set(UNSET));
+    NEXT.with(|c| c.set(0));
+    STEP.with(|c| c.set(1));
 }
 
 fn wall_ms() -> i64 {
@@ -85,14 +93,24 @@ pub fn now_ms() -> i64 {
     if let Some(ts) = PINNED.with(|c| c.get()) {
         return ts;
     }
-    let forced = FORCE.load(Ordering::SeqCst);
-    let step = STEP.load(Ordering::SeqCst).max(1);
+    let forced = FORCE.with(|c| c.get());
+    let step = STEP.with(|c| c.get()).max(1);
     if forced != UNSET {
-        return forced + NEXT.fetch_add(step, Ordering::SeqCst);
+        let n = NEXT.with(|c| {
+            let v = c.get();
+            c.set(v.saturating_add(step));
+            v
+        });
+        return forced + n;
     }
     if let Ok(s) = std::env::var("FSM_CLOCK_MS") {
         if let Ok(start) = s.parse::<i64>() {
-            return start + NEXT.fetch_add(step, Ordering::SeqCst);
+            let n = NEXT.with(|c| {
+                let v = c.get();
+                c.set(v.saturating_add(step));
+                v
+            });
+            return start + n;
         }
     }
     wall_ms()

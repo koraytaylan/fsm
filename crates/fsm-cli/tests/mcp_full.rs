@@ -22,9 +22,12 @@ fn drive(input: &str) -> String {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     clock::reset_injected();
+    // Genesis/lock timestamps are not MCP-dispatched; pin only the open path so
+    // two sessions stay byte-identical. Tool appends use `clk` below.
     clock::force_ms(1_000);
     clock::set_step(1);
     let mut store = Store::open(&dir).unwrap();
+    clock::reset_injected();
     let mut clk = FixedClock::new(1_000, 1);
     let mut out = Vec::new();
     serve_session(

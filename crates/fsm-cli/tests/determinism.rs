@@ -160,24 +160,30 @@ fn perf_smoke() {
 
     let dir = tmp(12);
     let mut store = Store::open(&dir).unwrap();
-    let mut a_inner =
-        String::from(r#"{"name":"a11","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]}}"#);
+    let mut a_inner = String::from(
+        r#"{"name":"a11","entry":{"do":[{"target":"n","value":"ctx.n + 1"}],"emit":[{"effect":"tick","args":{"k":"ctx.n"}}]},"exit":{"do":[{"target":"x","value":"ctx.x + 1"}]}}"#,
+    );
     for i in (0..11).rev() {
         a_inner = format!(
-            r#"{{"name":"a{i}","initial":"a{}","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}},"states":[{a_inner}]}}"#,
+            r#"{{"name":"a{i}","initial":"a{}","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}},"exit":{{"do":[{{"target":"x","value":"ctx.x + 1"}}]}},"states":[{a_inner}]}}"#,
             i + 1
         );
     }
-    let mut b_inner =
-        String::from(r#"{"name":"b11","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]}}"#);
+    let mut b_inner = String::from(
+        r#"{"name":"b11","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]},"exit":{"do":[{"target":"x","value":"ctx.x + 1"}]}}"#,
+    );
     for i in (0..11).rev() {
         b_inner = format!(
-            r#"{{"name":"b{i}","initial":"b{}","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}},"states":[{b_inner}]}}"#,
+            r#"{{"name":"b{i}","initial":"b{}","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}},"exit":{{"do":[{{"target":"x","value":"ctx.x + 1"}}]}},"states":[{b_inner}]}}"#,
             i + 1
         );
     }
+    let invs: String = (0..16)
+        .map(|i| format!(r#"{{"name":"i{i}","expr":"ctx.n >= 0","mode":"monitor"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
     let src = format!(
-        r#"{{"format":"fsm.machine/1","name":"d12","states":[{a_inner},{b_inner}],"initial":"a0","context":[{{"name":"n","ty":"int","init":"0"}},{{"name":"flag","ty":"bool","init":"true"}}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"a11","on":"go","to":"b11","if":"ctx.n >= 0 and ctx.flag","do":[{{"target":"n","value":"ctx.n + 1"}}]}},{{"from":"b11","on":"go","to":"a11","if":"ctx.n >= 0","do":[{{"target":"n","value":"ctx.n + 1"}}]}}],"invariants":[{{"name":"nneg","expr":"ctx.n >= 0","mode":"enforce"}},{{"name":"nmon","expr":"ctx.n < 100000","mode":"monitor"}}]}}"#
+        r#"{{"format":"fsm.machine/1","name":"d12","states":[{a_inner},{b_inner}],"initial":"a0","context":[{{"name":"n","ty":"int","init":"0"}},{{"name":"x","ty":"int","init":"0"}},{{"name":"flag","ty":"bool","init":"true"}}],"events":[{{"name":"go","fields":[]}}],"effects":[{{"name":"tick","fields":[{{"name":"k","ty":"int"}}]}}],"transitions":[{{"from":"a11","on":"go","to":"b11","if":"ctx.n >= 0 and ctx.flag","do":[{{"target":"n","value":"ctx.n + 1"}}]}},{{"from":"b11","on":"go","to":"a11","if":"ctx.n >= 0","do":[{{"target":"n","value":"ctx.n + 1"}}]}}],"invariants":[{{"name":"nneg","expr":"ctx.n >= 0","mode":"enforce"}},{invs}]}}"#
     );
     let spec = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
     store.define_machine(spec, false, false).unwrap();
@@ -213,19 +219,33 @@ fn perf_smoke() {
     }
     let mean = times.iter().sum::<std::time::Duration>() / times.len() as u32;
     assert!(mean.as_millis() < 250, "depth12 mean {}", mean.as_millis());
-    let mid_seq = store.journal.last_seq;
+    let mid_seq = {
+        let snaps = fsm_cli::snapshot::listed_snaps(&dir);
+        assert!(!snaps.is_empty(), "midstream snapshot written");
+        snaps[0].0
+    };
     store
         .send_event("deep", "go", Value::Obj(BTreeMap::new()), "tail", None)
         .unwrap();
-    drop(store);
-    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    let recs = store.records.clone();
     let last = recs.last().unwrap().seq;
     assert!(last > mid_seq, "nonempty tail after mid-stream snapshot");
     let live = fsm_cli::snapshot::reconstruct_snapshot_plus_tail(&dir, &recs, last).unwrap();
-    let folded = fsm_core::replay::fold_with(recs, &mut fsm_core::replay::NopSink).unwrap();
+    let folded = fsm_core::replay::fold_with(recs.clone(), &mut fsm_core::replay::NopSink).unwrap();
     assert_eq!(live.last_seq, folded.last_seq);
     assert_eq!(live.last_hash, folded.last_hash);
     assert_eq!(live.dedup, folded.dedup);
+    assert_eq!(live.instance_machines, folded.instance_machines);
+    assert_eq!(live.instances.len(), folded.instances.len());
+    for (id, a) in &live.instances {
+        let b = folded.instances.get(id).unwrap();
+        assert_eq!(a.leaf, b.leaf);
+        assert_eq!(a.status, b.status);
+        assert_eq!(a.ctx, b.ctx);
+        assert_eq!(a.history, b.history);
+        assert_eq!(a.pending, b.pending);
+    }
+    drop(store);
 }
 
 fn parse_case() -> Value {

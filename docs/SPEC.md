@@ -144,7 +144,7 @@ Verification: the stored line MUST equal its canonical re-serialization; seq is 
 | `NonCanonical` | refuse; no repair |
 | `LockIo` | refuse |
 
-Interior history is never rewritten. Snapshots (`fsm.snapshot/1`) are disposable caches, never authoritative, never part of the chain.
+Interior history is never rewritten. Snapshots (`fsm.snapshot/2`) are disposable caches, never authoritative, never part of the chain. Each snapshot carries a `state_root` bound to a journal-committed `journal/root-<seq>` file written at the same sequence; a matching binding reconstructs without replaying the prefix. `fsm.snapshot/1` caches are rejected, never reinterpreted.
 
 ## Expressions
 
@@ -401,7 +401,8 @@ These match `crates/fsm-core/src/limits.rs`.
 |---|---|
 | `fsm.machine/1` | Machine definition documents |
 | `fsm.journal/1` | Journal record envelopes |
-| `fsm.snapshot/1` | Disposable snapshot caches |
+| `fsm.snapshot/2` | Disposable snapshot caches bound by journal-committed `state_root` |
+| `fsm.snapshot/1` | Rejected (never reinterpreted) |
 | `fsm.state/1` | Instance state identity hash payload |
 | `expr/1` | Expression grammar |
 

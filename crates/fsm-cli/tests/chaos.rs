@@ -60,7 +60,9 @@ fn storm() {
         "send",
         "ack",
         "cancel",
-        "typed",
+        "typed_err",
+        "stale",
+        "unknown_ack",
         "dup",
         "expect_seq",
         "ack_ok",
@@ -84,6 +86,7 @@ fn push_result(
         }
         Err(e) => {
             *kinds.entry("err").or_insert(0) += 1;
+            *kinds.entry(kind).or_insert(0) += 1;
             assert!(!e.hint.is_empty(), "error {} missing hint", e.code);
             log.extend(fsm_core::canon::canon_bytes(&e.to_value()));
             false
@@ -131,8 +134,70 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
         ),
     );
     let mut last_rid = String::from("typed-d1");
-    let mut last_ok_send = Some((tid.clone(), last_rid.clone()));
+    #[derive(Clone)]
+    struct SendTuple {
+        id: String,
+        event: String,
+        payload: Value,
+        rid: String,
+        expect_seq: Option<u64>,
+    }
+    let mut last_ok_send = Some(SendTuple {
+        id: tid.clone(),
+        event: "docs_ok".into(),
+        payload: Value::Obj(BTreeMap::new()),
+        rid: last_rid.clone(),
+        expect_seq: None,
+    });
+    let mut tuples: Vec<String> = Vec::new();
     ledger.push((last_rid.clone(), true));
+    let typed_err = store.send_event(
+        &tid,
+        "scored",
+        Value::Obj(BTreeMap::from([("score".into(), Value::Bool(true))])),
+        "typed-bad",
+        None,
+    );
+    assert_eq!(
+        typed_err.as_ref().err().map(|e| e.code.as_str()),
+        Some("req/field_type")
+    );
+    push_result(&mut log, "typed_err", &mut kinds, typed_err);
+    tuples.push("typed_err scored bool".into());
+    let stale = store.send_event(
+        &tid,
+        "docs_ok",
+        Value::Obj(BTreeMap::new()),
+        "stale-1",
+        Some(0),
+    );
+    assert_eq!(
+        stale.as_ref().err().map(|e| e.code.as_str()),
+        Some("req/seq_mismatch")
+    );
+    push_result(&mut log, "stale", &mut kinds, stale);
+    tuples.push("stale expect_seq=0".into());
+    let unk = store.ack_effect(&tid, "none", "ack-unknown");
+    assert_eq!(
+        unk.as_ref().err().map(|e| e.code.as_str()),
+        Some("req/field_unknown")
+    );
+    push_result(&mut log, "unknown_ack", &mut kinds, unk);
+    tuples.push("unknown_ack none".into());
+    let dup0 = store.send_event(
+        &tid,
+        "docs_ok",
+        Value::Obj(BTreeMap::new()),
+        "typed-d1",
+        None,
+    );
+    assert_eq!(
+        dup0.as_ref()
+            .ok()
+            .and_then(|v| v.get("duplicate").and_then(Value::as_bool)),
+        Some(true)
+    );
+    push_result(&mut log, "dup", &mut kinds, dup0);
     push_result(
         &mut log,
         "expect_seq",
@@ -210,7 +275,13 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                 );
                 ledger.push((last_rid.clone(), ok));
                 if ok {
-                    last_ok_send = Some((id, last_rid.clone()));
+                    last_ok_send = Some(SendTuple {
+                        id: id.clone(),
+                        event: ev.into(),
+                        payload: Value::Obj(BTreeMap::new()),
+                        rid: last_rid.clone(),
+                        expect_seq: None,
+                    });
                 }
             }
             3 => {
@@ -293,7 +364,13 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                 );
                 ledger.push((last_rid.clone(), ok));
                 if ok {
-                    last_ok_send = Some((id, last_rid.clone()));
+                    last_ok_send = Some(SendTuple {
+                        id: id.clone(),
+                        event: "docs_ok".into(),
+                        payload: Value::Obj(BTreeMap::new()),
+                        rid: last_rid.clone(),
+                        expect_seq: exp,
+                    });
                 }
             }
             _ => {
@@ -317,12 +394,13 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             }
         }
     }
-    if let Some((id, rid)) = last_ok_send {
-        let again = store.send_event(&id, "docs_ok", Value::Obj(BTreeMap::new()), &rid, None);
+    if let Some(t) = last_ok_send {
+        let again = store.send_event(&t.id, &t.event, t.payload.clone(), &t.rid, t.expect_seq);
         assert!(again.is_ok(), "identical accepted retry {again:?}");
         let v = again.unwrap();
         assert_eq!(v.get("duplicate").and_then(Value::as_bool), Some(true));
     }
+    assert!(!tuples.is_empty());
     if kinds.get("ack_ok").copied().unwrap_or(0) == 0 {
         for (id, inst) in store.state.instances.clone() {
             if let Some(eid) = inst.pending.first().cloned() {

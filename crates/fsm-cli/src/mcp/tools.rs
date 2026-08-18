@@ -156,10 +156,9 @@ fn ty(t: &str) -> Value {
 
 fn ty_num(min: i64, max: i64) -> Value {
     Value::Obj(BTreeMap::from([
-        ("type".into(), Value::Str("number".into())),
+        ("type".into(), Value::Str("integer".into())),
         ("minimum".into(), Value::Num(min.to_string())),
         ("maximum".into(), Value::Num(max.to_string())),
-        ("integer".into(), Value::Bool(true)),
     ]))
 }
 
@@ -256,7 +255,7 @@ fn simulate_step_obj() -> Value {
     p.insert("applied".into(), ty("boolean"));
     p.insert("context".into(), ty("object"));
     p.insert("args".into(), ty("object"));
-    p.insert("effects".into(), ty("array"));
+    p.insert("effects".into(), ty_array_of(effect_out_obj()));
     p.insert("error".into(), ty("object"));
     p.insert("ignored".into(), ty("boolean"));
     p.insert("trace".into(), ty("object"));
@@ -288,7 +287,7 @@ fn simulate_final_obj() -> Value {
     p.insert("state".into(), ty("string"));
     p.insert("terminal".into(), ty("boolean"));
     p.insert("context".into(), ty("object"));
-    schema_obj(p, &["state", "context"], true)
+    schema_obj(p, &["state", "context", "terminal"], true)
 }
 
 fn finding_obj() -> Value {
@@ -381,9 +380,9 @@ fn schema_machine_analyze_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("machine_id".into(), ty("string"));
     p.insert("findings".into(), ty_array_of(finding_obj()));
-    p.insert("completeness".into(), ty("object"));
-    p.insert("reachability".into(), ty("object"));
-    p.insert("shadowing".into(), ty("array"));
+    p.insert("completeness".into(), completeness_obj());
+    p.insert("reachability".into(), reachability_obj());
+    p.insert("shadowing".into(), ty_array_of(ty("string")));
     schema_obj(
         p,
         &[
@@ -431,7 +430,7 @@ fn schema_instance_send_out() -> Value {
     p.insert("duplicate".into(), ty("boolean"));
     p.insert("ignored".into(), ty("boolean"));
     p.insert("request_id".into(), ty("string"));
-    p.insert("transition".into(), ty("object"));
+    p.insert("transition".into(), transition_obj());
     p.insert("monitor_flags".into(), ty_array_of(ty("string")));
     p.insert("trace".into(), ty("object"));
     schema_obj(
@@ -500,6 +499,64 @@ fn schema_instance_cancel_out() -> Value {
     )
 }
 
+fn machine_ref_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("machine_id".into(), ty("string"));
+    p.insert("name".into(), ty("string"));
+    schema_obj(p, &["machine_id", "name"], true)
+}
+
+fn enabled_event_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("event".into(), ty("string"));
+    p.insert("status".into(), ty("string"));
+    schema_obj(p, &["event", "status"], true)
+}
+
+fn transition_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("source_state".into(), ty("string"));
+    p.insert("transition_idx".into(), ty("number"));
+    p.insert("internal".into(), ty("boolean"));
+    p.insert("from_leaf".into(), ty("string"));
+    p.insert("to_leaf".into(), ty("string"));
+    p.insert("exited".into(), ty_array_of(ty("string")));
+    p.insert("entered".into(), ty_array_of(ty("string")));
+    schema_obj(
+        p,
+        &[
+            "source_state",
+            "transition_idx",
+            "internal",
+            "from_leaf",
+            "to_leaf",
+            "exited",
+            "entered",
+        ],
+        true,
+    )
+}
+
+fn effect_out_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("effect".into(), ty("string"));
+    p.insert("args".into(), ty("object"));
+    p.insert("k".into(), ty("number"));
+    schema_obj(p, &["effect", "args", "k"], true)
+}
+
+fn completeness_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("by_leaf".into(), ty("object"));
+    schema_obj(p, &["by_leaf"], true)
+}
+
+fn reachability_obj() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("unenterable".into(), ty_array_of(ty("string")));
+    schema_obj(p, &["unenterable"], true)
+}
+
 fn instance_core_props() -> BTreeMap<String, Value> {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));
@@ -508,10 +565,10 @@ fn instance_core_props() -> BTreeMap<String, Value> {
     p.insert("status".into(), ty("string"));
     p.insert("context".into(), ty("object"));
     p.insert("seq".into(), ty("number"));
-    p.insert("machine".into(), ty("object"));
+    p.insert("machine".into(), machine_ref_obj());
     p.insert("configuration".into(), ty_array_of(ty("string")));
     p.insert("effects_pending".into(), ty_array_of(ty("string")));
-    p.insert("enabled_events".into(), ty("array"));
+    p.insert("enabled_events".into(), ty_array_of(enabled_event_obj()));
     p.insert("state_hash".into(), ty("string"));
     p
 }
@@ -712,6 +769,7 @@ fn collect_violations(
         "string" => got.is_str(),
         "boolean" => got.is_bool(),
         "number" => got.is_num(),
+        "integer" => got.is_num(),
         "array" => got.is_arr(),
         "" => true,
         _ => true,
@@ -720,17 +778,42 @@ fn collect_violations(
         out.push((path.into(), want.into(), type_name(got).into()));
         return;
     }
-    if want == "number" {
-        if schema.get("integer").and_then(Value::as_bool) == Some(true) {
-            let raw = got.as_num().unwrap_or("");
-            if raw.is_empty()
-                || !raw.bytes().all(|b| b.is_ascii_digit())
-                || raw.parse::<u64>().is_err()
-            {
+    if want == "integer"
+        || (want == "number" && schema.get("integer").and_then(Value::as_bool) == Some(true))
+    {
+        let raw = got.as_num().unwrap_or("");
+        if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
+            out.push((path.into(), "integer".into(), raw.into()));
+            return;
+        }
+        let n = match raw.parse::<u64>() {
+            Ok(n) => n,
+            Err(_) => {
                 out.push((path.into(), "integer".into(), raw.into()));
                 return;
             }
+        };
+        if let Some(max_s) = schema.get("maximum").and_then(Value::as_num) {
+            if let Ok(max) = max_s.parse::<u64>() {
+                if n > max {
+                    out.push((path.into(), format!("<= {max}"), n.to_string()));
+                }
+            } else if let Ok(max) = max_s.parse::<i64>() {
+                if max >= 0 && n > max as u64 {
+                    out.push((path.into(), format!("<= {max}"), n.to_string()));
+                }
+            }
         }
+        if let Some(min_s) = schema.get("minimum").and_then(Value::as_num) {
+            if let Ok(min) = min_s.parse::<u64>() {
+                if n < min {
+                    out.push((path.into(), format!(">= {min}"), n.to_string()));
+                }
+            }
+        }
+        return;
+    }
+    if want == "number" {
         if let Some(max) = schema
             .get("maximum")
             .and_then(Value::as_num)
@@ -869,7 +952,6 @@ pub fn dispatch(
     if let Err(e) = validate_args(&(spec.input_schema)(), args) {
         return Err(attach_request_id(e, args));
     }
-    let _ = clock;
     (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))
 }
 
@@ -886,7 +968,7 @@ fn str_arg<'a>(args: &'a Value, k: &str) -> Option<&'a str> {
 
 fn run_machine_create(
     store: &mut Store,
-    _c: &mut dyn Clock,
+    clock: &mut dyn Clock,
     args: &Value,
 ) -> Result<Value, ErrorObj> {
     let spec = args
@@ -898,7 +980,7 @@ fn run_machine_create(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let strict = str_arg(args, "if_exists") == Some("error");
-    let o = store.define_machine(spec, dry, strict)?;
+    let o = store.define_machine_on(clock, spec, dry, strict)?;
     let mut m = BTreeMap::new();
     m.insert("machine_id".into(), Value::Str(o.machine_id.clone()));
     m.insert("name".into(), Value::Str(o.name));
@@ -958,8 +1040,7 @@ fn run_machine_list(
     let limit = args
         .get("limit")
         .and_then(|v| v.as_num().and_then(|s| s.parse::<usize>().ok()))
-        .unwrap_or(50)
-        .clamp(1, 200);
+        .unwrap_or(50);
     let cursor = str_arg(args, "cursor");
     let mut rows = Vec::new();
     let mut next_cursor = None;
@@ -1165,7 +1246,7 @@ fn run_machine_diagram(
 
 fn run_instance_create(
     store: &mut Store,
-    _c: &mut dyn Clock,
+    clock: &mut dyn Clock,
     args: &Value,
 ) -> Result<Value, ErrorObj> {
     let machine = str_arg(args, "machine").unwrap_or("");
@@ -1194,12 +1275,12 @@ fn run_instance_create(
                 .collect()
         })
         .unwrap_or_default();
-    store.create_instance_ctx(machine, &iid, rid, None, &overrides, &tags)
+    store.create_instance_ctx_on(clock, machine, &iid, rid, None, &overrides, &tags)
 }
 
 fn run_instance_send(
     store: &mut Store,
-    _c: &mut dyn Clock,
+    clock: &mut dyn Clock,
     args: &Value,
 ) -> Result<Value, ErrorObj> {
     let iid = str_arg(args, "instance_id").unwrap_or("");
@@ -1227,27 +1308,31 @@ fn run_instance_send(
         .and_then(Value::as_arr)
         .map(|a| a.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
-    store.send_event_stamp(iid, &name, &mut payload, rid, expect, &stamps)
+    store.send_event_stamp_on(clock, iid, &name, &mut payload, rid, expect, &stamps)
 }
 
-fn run_effect_ack(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<Value, ErrorObj> {
+fn run_effect_ack(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+) -> Result<Value, ErrorObj> {
     let iid = str_arg(args, "instance_id").unwrap_or("");
     let eid = str_arg(args, "effect_id").unwrap_or("");
     let rid = str_arg(args, "request_id").unwrap_or("");
     let outcome = str_arg(args, "outcome").unwrap_or("ok");
     let result = args.get("result").cloned();
-    store.ack_effect_outcome(iid, eid, rid, outcome, result)
+    store.ack_effect_outcome_on(clock, iid, eid, rid, outcome, result)
 }
 
 fn run_instance_cancel(
     store: &mut Store,
-    _c: &mut dyn Clock,
+    clock: &mut dyn Clock,
     args: &Value,
 ) -> Result<Value, ErrorObj> {
     let iid = str_arg(args, "instance_id").unwrap_or("");
     let reason = str_arg(args, "reason").unwrap_or("");
     let rid = str_arg(args, "request_id").unwrap_or("");
-    store.cancel_instance_reason(iid, rid, reason)
+    store.cancel_instance_reason_on(clock, iid, rid, reason)
 }
 
 fn run_instance_get(
@@ -1280,8 +1365,7 @@ fn run_instance_list(
     let limit = args
         .get("limit")
         .and_then(|v| v.as_num().and_then(|s| s.parse::<usize>().ok()))
-        .unwrap_or(50)
-        .clamp(1, 200);
+        .unwrap_or(50);
     if let Some(mref) = machine {
         store.resolve_machine(mref)?;
     }

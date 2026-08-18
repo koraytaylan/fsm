@@ -322,10 +322,12 @@ pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
     write_genesis_unlocked(&jdir)?;
     drop(lock);
     let mut sink = fsm_core::replay::NopSink;
-    open(dir, &mut sink).map(|(j, _)| j).map_err(|e| match e {
-        OpenError::Io(s) => JournalIoError::Io(s),
-        OpenError::Health(h) => JournalIoError::Io(h.message()),
-    })
+    open(dir, &mut sink)
+        .map(|(j, _, _)| j)
+        .map_err(|e| match e {
+            OpenError::Io(s) => JournalIoError::Io(s),
+            OpenError::Health(h) => JournalIoError::Io(h.message()),
+        })
 }
 
 impl Journal {
@@ -360,6 +362,15 @@ impl Journal {
     }
 
     pub fn append(&mut self, kind: RecordKind, body: Value) -> Result<Record, JournalIoError> {
+        self.append_at(kind, body, crate::clock::now_ms())
+    }
+
+    pub fn append_at(
+        &mut self,
+        kind: RecordKind,
+        body: Value,
+        ts: i64,
+    ) -> Result<Record, JournalIoError> {
         if self.poisoned {
             return Err(JournalIoError::Poisoned);
         }
@@ -369,13 +380,7 @@ impl Journal {
                 return Err(e);
             }
         }
-        let rec = seal(
-            self.last_seq + 1,
-            crate::clock::now_ms(),
-            kind,
-            body,
-            &self.last_hash,
-        );
+        let rec = seal(self.last_seq + 1, ts, kind, body, &self.last_hash);
         let line = rec.to_line();
         if let Err(e) = self.seg.write_line(&line) {
             self.poisoned = true;
@@ -565,7 +570,10 @@ fn active_segment_meta(jdir: &Path, recs: &[Record]) -> Result<(String, u64, u64
     Ok((name, first, bytes, count))
 }
 
-pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreState), OpenError> {
+pub fn open(
+    dir: &Path,
+    sink: &mut impl RecordSink,
+) -> Result<(Journal, StoreState, crate::snapshot::OpenPath), OpenError> {
     if let Err(h) = require_store_format(dir) {
         return Err(OpenError::Health(h));
     }
@@ -590,7 +598,7 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
         return Err(OpenError::Health(health));
     }
     let recs = load_records(dir).map_err(OpenError::Io)?;
-    let state = crate::snapshot::open_state(dir, recs.clone(), sink)
+    let (state, open_path) = crate::snapshot::open_state(dir, recs.clone(), sink)
         .map_err(|e| OpenError::Health(replay_health(e)))?;
     let last = recs.last();
     let (name, first, bytes, count) = active_segment_meta(&jdir, &recs).map_err(OpenError::Io)?;
@@ -616,6 +624,7 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<(Journal, StoreSta
             mem_records: None,
         },
         state,
+        open_path,
     ))
 }
 
@@ -652,12 +661,21 @@ pub fn load_records(dir: &Path) -> Result<Vec<Record>, String> {
 }
 
 #[derive(Debug, Clone)]
+pub struct SegmentProgress {
+    pub segment: String,
+    pub records: u64,
+    pub first_seq: Option<u64>,
+    pub last_seq: Option<u64>,
+    pub status: String,
+}
+
 pub struct VerifyReport {
     pub health: JournalHealth,
     pub records: u64,
     pub machines: u64,
     pub instances: u64,
     pub instance_hashes: std::collections::BTreeMap<String, String>,
+    pub segments: Vec<SegmentProgress>,
 }
 
 pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
@@ -689,6 +707,101 @@ pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
     Ok(())
 }
 
+pub fn verify_segments(dir: &Path) -> Vec<SegmentProgress> {
+    let jdir = journal_dir(dir);
+    let rd = match fs::read_dir(&jdir) {
+        Ok(rd) => rd,
+        Err(_) => {
+            return vec![SegmentProgress {
+                segment: "journal".into(),
+                records: 0,
+                first_seq: None,
+                last_seq: None,
+                status: "metadata-failure".into(),
+            }];
+        }
+    };
+    let mut segs: Vec<_> = rd
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("seg-") && n.ends_with(".jsonl"))
+                .unwrap_or(false)
+        })
+        .collect();
+    segs.sort();
+    let mut out = Vec::new();
+    let mut expect_seq = 0u64;
+    let mut expect_prev = zeros();
+    for (si, path) in segs.iter().enumerate() {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let bytes = match fs::read(path) {
+            Ok(b) => b,
+            Err(_) => {
+                out.push(SegmentProgress {
+                    segment: name,
+                    records: 0,
+                    first_seq: None,
+                    last_seq: None,
+                    status: "metadata-failure".into(),
+                });
+                continue;
+            }
+        };
+        let last_seg = si + 1 == segs.len();
+        let mut records = 0u64;
+        let mut first = None;
+        let mut last = None;
+        let mut status = "ok".to_string();
+        let mut start = 0usize;
+        while start < bytes.len() {
+            let end = bytes[start..]
+                .iter()
+                .position(|&b| b == b'\n')
+                .map(|i| start + i + 1)
+                .unwrap_or(bytes.len());
+            let line = &bytes[start..end];
+            let is_last_line = end == bytes.len();
+            match verify_line(line, expect_seq, &expect_prev) {
+                Ok(rec) => {
+                    records += 1;
+                    if first.is_none() {
+                        first = Some(rec.seq);
+                    }
+                    last = Some(rec.seq);
+                    expect_seq = rec.seq + 1;
+                    expect_prev = rec.hash;
+                }
+                Err(_) if last_seg && is_last_line && !line.ends_with(&[b'\n']) => {
+                    status = "torn".into();
+                    break;
+                }
+                Err(_) => {
+                    status = "broken".into();
+                    break;
+                }
+            }
+            start = end;
+        }
+        if records == 0 && status == "ok" && bytes.iter().all(|b| b.is_ascii_whitespace()) {
+            status = "empty".into();
+        }
+        out.push(SegmentProgress {
+            segment: name,
+            records,
+            first_seq: first,
+            last_seq: last,
+            status,
+        });
+    }
+    out
+}
+
 pub fn verify(dir: &Path) -> VerifyReport {
     if let Err(h) = require_store_format(dir) {
         return VerifyReport {
@@ -697,6 +810,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
             machines: 0,
             instances: 0,
             instance_hashes: Default::default(),
+            segments: verify_segments(dir),
         };
     }
     let health = classify(dir);
@@ -707,6 +821,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
             machines: 0,
             instances: 0,
             instance_hashes: Default::default(),
+            segments: verify_segments(dir),
         };
     }
     let recs = match load_records(dir) {
@@ -718,6 +833,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
                 machines: 0,
                 instances: 0,
                 instance_hashes: Default::default(),
+                segments: verify_segments(dir),
             };
         }
     };
@@ -737,6 +853,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
                 machines: st.machines.len() as u64,
                 instances: st.instances.len() as u64,
                 instance_hashes,
+                segments: verify_segments(dir),
             }
         }
         Err(e) => VerifyReport {
@@ -745,6 +862,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
             machines: 0,
             instances: 0,
             instance_hashes: Default::default(),
+            segments: verify_segments(dir),
         },
     }
 }

@@ -178,7 +178,8 @@ fn block_overflow_is_action_error() {
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), &mut b) {
         Outcome::Rejected(r) => {
-            assert_eq!(r.code, "run/overflow");
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.cause, Some("run/overflow"));
             assert_eq!(r.block.as_deref(), Some("exit(a)"));
             assert!(r.span.is_some());
         }
@@ -196,7 +197,8 @@ fn block_overflow_is_action_error() {
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), &mut b) {
         Outcome::Rejected(r) => {
-            assert_eq!(r.code, "run/overflow");
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.cause, Some("run/overflow"));
             assert_eq!(r.block.as_deref(), Some("transition"));
             assert!(r.span.is_some());
         }
@@ -213,7 +215,8 @@ fn block_overflow_is_action_error() {
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), &mut b) {
         Outcome::Rejected(r) => {
-            assert_eq!(r.code, "run/overflow");
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.cause, Some("run/overflow"));
             assert_eq!(r.block.as_deref(), Some("entry(b)"));
             assert!(r.span.is_some());
             let exit = r
@@ -419,7 +422,8 @@ fn failing_emit_keeps_pipeline_trace() {
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), &mut b) {
         Outcome::Rejected(r) => {
-            assert_eq!(r.code, "run/overflow");
+            assert_eq!(r.code, "run/action_error");
+            assert_eq!(r.cause, Some("run/overflow"));
             assert_eq!(r.block.as_deref(), Some("transition"));
             let tr = r
                 .trace

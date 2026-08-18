@@ -62,6 +62,9 @@ pub struct Rejection {
     pub block: Option<String>,
     pub span: Option<(u32, u32)>,
     pub trace: DecisionTrace,
+    /// Inner evaluator code (`run/overflow`, `run/div_zero`, …) when `code`
+    /// is the public `run/action_error` wrapper. Never used as the public code.
+    pub cause: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +139,7 @@ fn reject(code: &'static str, what: &str) -> Rejection {
         block: None,
         span: None,
         trace: DecisionTrace::default(),
+        cause: None,
     }
 }
 
@@ -297,6 +301,7 @@ pub fn step(
                     block: None,
                     span: None,
                     trace,
+                    cause: None,
                 }),
             };
         }
@@ -309,6 +314,7 @@ pub fn step(
             block: None,
             span: None,
             trace,
+            cause: None,
         });
     };
     let tr = &m.spec.transitions[tidx];
@@ -476,20 +482,25 @@ pub fn step(
         let mut trc = trace;
         trc.pipeline = pipeline;
         trc.invariants = inv_trace;
-        let eval_err = trc
-            .invariants
-            .iter()
-            .find_map(|i| i.error.as_ref().map(|e| (i.name.as_str(), e)));
+        let eval_err = trc.invariants.iter().find_map(|i| {
+            i.error
+                .as_ref()
+                .map(|e| (i.name.clone(), e.code, e.message.clone(), e.span))
+        });
         return Outcome::Rejected(Rejection {
             code: "run/invariant",
             message: eval_err
-                .map(|(n, e)| format!("invariant {n}: {}", e.message))
+                .as_ref()
+                .map(|(n, _, msg, _)| format!("invariant {n}: {msg}"))
                 .unwrap_or_else(|| "enforce invariant failed".into()),
             hint: "adjust the action or the invariant".into(),
             source_state: Some(t.names[src as usize].clone()),
             transition_idx: Some(tidx as u32),
-            block: eval_err.map(|(n, _)| format!("invariant({n})")),
-            span: eval_err.and_then(|(_, e)| e.span),
+            block: eval_err
+                .as_ref()
+                .map(|(n, _, _, _)| format!("invariant({n})")),
+            span: eval_err.as_ref().and_then(|(_, _, _, s)| *s),
+            cause: eval_err.as_ref().map(|(_, c, _, _)| *c),
             trace: trc,
         });
     }
@@ -582,6 +593,7 @@ fn eval_guard(
                     block: None,
                     span: Some((err.span.start, err.span.end)),
                     trace: DecisionTrace::default(),
+                    cause: Some(err.code),
                 })?;
                 annotate_if_widening(
                     &mut e,
@@ -603,6 +615,7 @@ fn eval_guard(
                     transition_idx: Some(tidx as u32),
                     block: None,
                     span: Some((err.span.start, err.span.end)),
+                    cause: Some(err.code),
                     trace: DecisionTrace {
                         candidates: vec![LevelTrace {
                             source_state: String::new(),
@@ -773,12 +786,13 @@ fn apply_block(
                 }
                 return Err(action_err_at(
                     &kind,
-                    err.code,
+                    "run/action_error",
                     err.message,
                     err.hint,
                     Some((err.span.start, err.span.end)),
                     sets,
                     emits,
+                    Some(err.code),
                 ));
             }
             _ => {
@@ -823,12 +837,13 @@ fn apply_block(
                     });
                     return Err(action_err_at(
                         &kind,
-                        err.code,
+                        "run/action_error",
                         err.message,
                         err.hint,
                         Some((err.span.start, err.span.end)),
                         sets,
                         emits,
+                        Some(err.code),
                     ));
                 }
             }
@@ -879,6 +894,7 @@ fn action_err(kind: &BlockKind, message: String, hint: String) -> Rejection {
         None,
         Vec::new(),
         Vec::new(),
+        None,
     )
 }
 
@@ -890,6 +906,7 @@ fn action_err_at(
     span: Option<(u32, u32)>,
     sets: Vec<SetTrace>,
     emits: Vec<EmitTrace>,
+    cause: Option<&'static str>,
 ) -> Rejection {
     Rejection {
         code,
@@ -899,6 +916,7 @@ fn action_err_at(
         transition_idx: None,
         block: Some(kind.as_label()),
         span,
+        cause,
         trace: DecisionTrace {
             pipeline: vec![BlockTrace {
                 block: kind.clone(),
@@ -1126,6 +1144,7 @@ pub fn create(
             transition_idx: None,
             block: eval_err.map(|(n, _)| format!("invariant({n})")),
             span: eval_err.and_then(|(_, e)| e.span),
+            cause: eval_err.map(|(_, e)| e.code),
             trace: DecisionTrace {
                 pipeline,
                 invariants: inv_trace,

@@ -110,7 +110,7 @@ fn stale_self_hashed_snapshot_falls_back() {
         let h = format!(
             "sha256:{}",
             fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-                "fsm:snapshot:1",
+                "fsm:snapshot:2",
                 &Value::Obj(o.clone())
             ))
         );
@@ -128,7 +128,7 @@ fn stale_self_hashed_snapshot_falls_back() {
             let h = format!(
                 "sha256:{}",
                 fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-                    "fsm:snapshot:1",
+                    "fsm:snapshot:2",
                     &Value::Obj(o.clone())
                 ))
             );
