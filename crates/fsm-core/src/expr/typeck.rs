@@ -291,11 +291,12 @@ fn check_bin(op: BinOp, lt: &Ty, rt: &Ty, span: Span) -> Result<Ty, ExprError> {
             (Ty::Dec(a), Ty::Dec(b)) => {
                 let s = u16::from(*a) + u16::from(*b);
                 if s > 12 {
+                    let target = 12u16.saturating_sub(u16::from(*b));
                     Err(ExprError::new(
                         "expr/scale_cap",
                         span,
                         "decimal multiply exceeds scale 12",
-                        "round a value first",
+                        format!("rewrite the left value as round(<left>, {target}, down)"),
                     ))
                 } else {
                     Ok(Ty::Dec(s as u8))

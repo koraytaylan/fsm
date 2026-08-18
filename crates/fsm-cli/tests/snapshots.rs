@@ -26,6 +26,19 @@ fn case() -> Value {
     .unwrap()
 }
 
+fn reseal_snapshot(snapshot: &mut Value) {
+    if let Value::Obj(body) = snapshot {
+        body.insert("snapshot_hash".into(), Value::Str(String::new()));
+    }
+    let hash = format!(
+        "sha256:{}",
+        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash("fsm:snapshot:2", snapshot,))
+    );
+    if let Value::Obj(body) = snapshot {
+        body.insert("snapshot_hash".into(), Value::Str(hash));
+    }
+}
+
 #[test]
 fn snapshot_round_trip_matches_full_fold() {
     let dir = tmp();
@@ -63,6 +76,94 @@ fn snapshot_round_trip_matches_full_fold() {
         folded.instances.get("i1").map(|i| &i.pending)
     );
     assert_eq!(reopened.state.dedup, folded.dedup);
+}
+
+#[test]
+fn explicit_checkpoint_uses_supplied_clock_and_reopen_fast_path() {
+    let dir = tmp();
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    let before = store.journal.last_seq;
+    let mut clock = fsm_cli::clock::FixedClock::new(41_000, 7);
+    store.shutdown_snapshot_on(&mut clock).unwrap();
+    assert_eq!(store.journal.last_seq, before + 1);
+    let checkpoint = store.records.last().unwrap();
+    assert_eq!(
+        checkpoint.kind,
+        fsm_core::record::RecordKind::StateCheckpoint
+    );
+    assert_eq!(checkpoint.ts, 41_000);
+    let state_root = fsm_cli::snapshot::materialize_state_root(&store.state);
+    assert_eq!(
+        checkpoint.body.get("state_root").and_then(Value::as_str),
+        Some(state_root.as_str())
+    );
+    let checkpoint_seq = checkpoint.seq;
+    store.shutdown_snapshot_on(&mut clock).unwrap();
+    assert_eq!(
+        store.journal.last_seq, checkpoint_seq,
+        "an already-bound state must not append another checkpoint"
+    );
+    drop(store);
+    let reopened = Store::open(&dir).unwrap();
+    assert!(reopened.opened_from_snapshot);
+    assert_eq!(reopened.opened_snapshot_seq, Some(checkpoint_seq));
+    assert_eq!(reopened.replayed_records, 0);
+}
+
+#[test]
+fn drop_never_appends_after_mutation_or_read_only_reopen() {
+    let dir = tmp();
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    let mutation_seq = store.journal.last_seq;
+    drop(store);
+    assert_eq!(
+        fsm_cli::journal_io::load_records(&dir)
+            .unwrap()
+            .last()
+            .unwrap()
+            .seq,
+        mutation_seq
+    );
+    let reopened = Store::open(&dir).unwrap();
+    let read_only_seq = reopened.journal.last_seq;
+    drop(reopened);
+    assert_eq!(
+        fsm_cli::journal_io::load_records(&dir)
+            .unwrap()
+            .last()
+            .unwrap()
+            .seq,
+        read_only_seq
+    );
+}
+
+#[test]
+fn snapshot_requires_a_matching_material_root() {
+    let mut store = Store::open_memory().unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    let mut snapshot = fsm_cli::snapshot::state_to_snapshot(&store.state);
+    if let Value::Obj(body) = &mut snapshot {
+        body.remove("state_root");
+    }
+    reseal_snapshot(&mut snapshot);
+    let err = fsm_cli::snapshot::snapshot_to_state(&snapshot).unwrap_err();
+    assert_eq!(err.message, "snapshot missing state_root");
+
+    let mut snapshot = fsm_cli::snapshot::state_to_snapshot(&store.state);
+    if let Value::Obj(body) = &mut snapshot {
+        body.insert("state_root".into(), Value::Str("sha256:00".into()));
+    }
+    reseal_snapshot(&mut snapshot);
+    let err = fsm_cli::snapshot::snapshot_to_state(&snapshot).unwrap_err();
+    assert_eq!(err.message, "snapshot state_root mismatch");
 }
 
 #[test]
@@ -197,8 +298,18 @@ fn ten_k_kill_without_drop_reopen_and_dedup() {
     );
     let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
     assert_eq!(recs.last().map(|r| r.seq), Some(10_000));
+    assert!(
+        recs.last()
+            .and_then(|rec| rec.body.get("state_root"))
+            .and_then(Value::as_str)
+            .is_some(),
+        "the periodic boundary record must bind its post-mutation state"
+    );
     let folded = fold_with(recs, &mut NopSink).unwrap();
     let mut reopened = Store::open(&dir).unwrap();
+    assert!(reopened.opened_from_snapshot);
+    assert_eq!(reopened.opened_snapshot_seq, Some(10_000));
+    assert_eq!(reopened.replayed_records, 0);
     assert_eq!(reopened.state.last_seq, 10_000);
     assert_eq!(reopened.state.last_hash, folded.last_hash);
     assert_eq!(

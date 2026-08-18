@@ -100,17 +100,6 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     let mut store = Store::open(&dir).unwrap_or_else(|e| panic!("seed {seed} open {e:?}"));
     let mut kinds = BTreeMap::new();
     let mut log = Vec::new();
-    push_result(
-        &mut log,
-        "define",
-        &mut kinds,
-        store.define_machine(case(), false, false).map(|o| {
-            Value::Obj(BTreeMap::from([(
-                "machine_id".into(),
-                Value::Str(o.machine_id),
-            )]))
-        }),
-    );
     let n = g.range(30, 80);
     let mut iid = 1u32;
     #[derive(Clone, Debug)]
@@ -128,6 +117,30 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     fn note(tuples: &mut Vec<MutTuple>, t: MutTuple) {
         tuples.push(t);
     }
+    let defined = push_result(
+        &mut log,
+        "define",
+        &mut kinds,
+        store.define_machine(case(), false, false).map(|o| {
+            Value::Obj(BTreeMap::from([(
+                "machine_id".into(),
+                Value::Str(o.machine_id),
+            )]))
+        }),
+    );
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "define",
+            instance: None,
+            event: None,
+            payload: Some(case()),
+            request_id: String::new(),
+            expect_seq: None,
+            effect_id: None,
+            ok: defined,
+        },
+    );
     let tid = format!("i{iid}");
     let crid = format!("c{iid}");
     let cok = push_result(
@@ -149,18 +162,15 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             ok: cok,
         },
     );
-    let sok = push_result(
-        &mut log,
-        "send",
-        &mut kinds,
-        store.send_event(
-            &tid,
-            "docs_ok",
-            Value::Obj(BTreeMap::new()),
-            "typed-d1",
-            None,
-        ),
+    let first_send = store.send_event(
+        &tid,
+        "docs_ok",
+        Value::Obj(BTreeMap::new()),
+        "typed-d1",
+        None,
     );
+    let first_send_response = first_send.as_ref().ok().cloned();
+    let sok = push_result(&mut log, "send", &mut kinds, first_send);
     note(
         &mut tuples,
         MutTuple {
@@ -279,6 +289,15 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             .and_then(|v| v.get("duplicate").and_then(Value::as_bool)),
         Some(true)
     );
+    if let (Some(mut expected), Ok(actual)) = (first_send_response, &dup0) {
+        if let Value::Obj(o) = &mut expected {
+            o.insert("duplicate".into(), Value::Bool(true));
+        }
+        assert_eq!(
+            actual, &expected,
+            "exact duplicate must preserve full outcome"
+        );
+    }
     let dup_ok = push_result(&mut log, "dup", &mut kinds, dup0);
     note(
         &mut tuples,
@@ -378,7 +397,7 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     for _ in 0..n {
         match g.range(0, 10) {
             0 => {
-                push_result(
+                let ok = push_result(
                     &mut log,
                     "define",
                     &mut kinds,
@@ -388,6 +407,19 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                             Value::Str(o.machine_id),
                         )]))
                     }),
+                );
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "define",
+                        instance: None,
+                        event: None,
+                        payload: Some(case()),
+                        request_id: String::new(),
+                        expect_seq: None,
+                        effect_id: None,
+                        ok,
+                    },
                 );
             }
             1 => {
@@ -536,27 +568,67 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             6 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
                 last_rid = format!("t{}", g.next());
-                push_result(
+                let payload = Value::Obj(BTreeMap::from([("score".into(), Value::Bool(true))]));
+                let ok = push_result(
                     &mut log,
                     "typed",
                     &mut kinds,
-                    store.send_event(
-                        &id,
-                        "scored",
-                        Value::Obj(BTreeMap::from([("score".into(), Value::Bool(true))])),
-                        &last_rid,
-                        None,
-                    ),
+                    store.send_event(&id, "scored", payload.clone(), &last_rid, None),
                 );
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "typed_random",
+                        instance: Some(id.clone()),
+                        event: Some("scored".into()),
+                        payload: Some(payload.clone()),
+                        request_id: last_rid.clone(),
+                        expect_seq: None,
+                        effect_id: None,
+                        ok,
+                    },
+                );
+                if ok {
+                    last_ok_send = Some(SendTuple {
+                        id,
+                        event: "scored".into(),
+                        payload,
+                        rid: last_rid.clone(),
+                        expect_seq: None,
+                    });
+                }
             }
             7 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
-                push_result(
+                let payload = Value::Obj(BTreeMap::new());
+                let ok = push_result(
                     &mut log,
                     "dup",
                     &mut kinds,
-                    store.send_event(&id, "docs_ok", Value::Obj(BTreeMap::new()), &last_rid, None),
+                    store.send_event(&id, "docs_ok", payload.clone(), &last_rid, None),
                 );
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "dup_random",
+                        instance: Some(id.clone()),
+                        event: Some("docs_ok".into()),
+                        payload: Some(payload.clone()),
+                        request_id: last_rid.clone(),
+                        expect_seq: None,
+                        effect_id: None,
+                        ok,
+                    },
+                );
+                if ok {
+                    last_ok_send = Some(SendTuple {
+                        id,
+                        event: "docs_ok".into(),
+                        payload,
+                        rid: last_rid.clone(),
+                        expect_seq: None,
+                    });
+                }
             }
             8 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
@@ -596,22 +668,30 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                 }
             }
             _ => {
-                push_result(
+                let bad = parse(br#"{"format":"fsm.machine/1"}"#, &JsonLimits::DEFAULT).unwrap();
+                let ok = push_result(
                     &mut log,
                     "define",
                     &mut kinds,
-                    store
-                        .define_machine(
-                            parse(br#"{"format":"fsm.machine/1"}"#, &JsonLimits::DEFAULT).unwrap(),
-                            false,
-                            false,
-                        )
-                        .map(|o| {
-                            Value::Obj(BTreeMap::from([(
-                                "machine_id".into(),
-                                Value::Str(o.machine_id),
-                            )]))
-                        }),
+                    store.define_machine(bad.clone(), false, false).map(|o| {
+                        Value::Obj(BTreeMap::from([(
+                            "machine_id".into(),
+                            Value::Str(o.machine_id),
+                        )]))
+                    }),
+                );
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "define_invalid",
+                        instance: None,
+                        event: None,
+                        payload: Some(bad),
+                        request_id: String::new(),
+                        expect_seq: None,
+                        effect_id: None,
+                        ok,
+                    },
                 );
             }
         }
@@ -654,6 +734,10 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     }
     let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
     let folded = fold_with(recs, &mut NopSink).unwrap_or_else(|e| panic!("seed {seed} fold {e:?}"));
+    assert!(
+        fsm_cli::snapshot::store_states_eq(&store.state, &folded),
+        "seed {seed} complete StoreState differs after refold"
+    );
     assert_eq!(store.state.last_seq, folded.last_seq, "seed {seed} seq");
     if store.state.last_seq > 0 {
         assert_eq!(store.state.last_hash, folded.last_hash, "seed {seed} hash");

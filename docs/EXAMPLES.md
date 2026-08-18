@@ -16,7 +16,7 @@ leaf: draft
 $ fsm instance send inst-e1 submit --payload '{"amount":"-1.00"}' --request-id e1-bad
 # exit 1
 run/invariant
-hint: adjust the action or the invariant
+hint: adjust the action or invariant nonneg
 $ fsm instance send inst-e1 submit --payload '{"amount":"10.00"}' --request-id e1-submit
 leaf: peer_review
 $ fsm instance send inst-e1 approve --request-id e1-approve
@@ -39,7 +39,7 @@ leaf: placed
 $ fsm instance send inst-ol1 place --request-id ol-place
 leaf: picking
 $ fsm instance show inst-ol1
-effects_pending:
+effects_pending: inst-ol1/3/0
 $ fsm instance ack inst-ol1 inst-ol1/3/0 --outcome ok --request-id ol-ack
 effects_pending:
 $ fsm instance send inst-ol1 confirmed --payload '{"at":"1"}' --request-id ol-early

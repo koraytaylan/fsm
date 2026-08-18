@@ -3,10 +3,10 @@
 #[path = "../../fsm-core/tests/proputil.rs"]
 mod proputil;
 
-use fsm_cli::clock;
+use fsm_cli::clock::FixedClock;
 use fsm_cli::journal_io::{load_records, verify};
+use fsm_cli::snapshot::{open_state, store_states_eq};
 use fsm_cli::store::Store;
-use fsm_core::hashes::state_hash;
 use fsm_core::json::Value;
 use fsm_core::replay::{NopSink, fold_with};
 use std::collections::BTreeMap;
@@ -24,16 +24,14 @@ fn three_way_refold() {
     let mut snaps = 0;
     let mut saw_reject = false;
     for seed in 1u64..=50 {
-        clock::reset_injected();
-        clock::force_ms(1_000);
-        clock::set_step(1);
+        let mut clock = FixedClock::new(1_000 + seed as i64 * 100, 1);
         let dir = tmp(seed);
         let mut g = proputil::Gen(seed);
         let m = proputil::gen_machine(&mut g, 4);
         let evs = proputil::gen_events(&mut g, &m, 8);
         let mut store = Store::open(&dir).unwrap();
         store
-            .define_machine(m, false, false)
+            .define_machine_on(&mut clock, m, false, false)
             .unwrap_or_else(|e| panic!("seed {seed} {e:?}"));
         let name = store
             .state
@@ -46,30 +44,88 @@ fn three_way_refold() {
             .name
             .clone();
         store
-            .create_instance(&name, "i", "c", None)
+            .create_instance_ctx_on(&mut clock, &name, "i", "c", None, &BTreeMap::new(), &[])
             .unwrap_or_else(|e| panic!("seed {seed} create {e:?}"));
-        for (i, ev) in evs.iter().enumerate() {
+        let split = if seed % 2 == 0 {
+            evs.len() / 2
+        } else {
+            evs.len()
+        };
+        for (i, ev) in evs.iter().take(split).enumerate() {
             let n = ev.get("name").and_then(Value::as_str).unwrap_or("go");
-            let _ = store.send_event("i", n, Value::Obj(BTreeMap::new()), &format!("e{i}"), None);
+            let mut payload = Value::Obj(BTreeMap::new());
+            let _ = store.send_event_stamp_on(
+                &mut clock,
+                "i",
+                n,
+                &mut payload,
+                &format!("e{i}"),
+                None,
+                &[],
+            );
         }
+        let mut mid_seq = None;
         if seed % 2 == 0 {
-            store.shutdown_snapshot().ok();
+            let before_checkpoint = store.state.last_seq;
+            store
+                .shutdown_snapshot_on(&mut clock)
+                .unwrap_or_else(|e| panic!("seed {seed} snapshot {e:?}"));
+            let seq = store.state.last_seq;
+            assert!(
+                seq > before_checkpoint,
+                "seed {seed}: checkpoint not committed"
+            );
+            assert!(
+                fsm_cli::snapshot::listed_snaps(&dir)
+                    .iter()
+                    .any(|(snap_seq, _)| *snap_seq == seq),
+                "seed {seed}: snapshot was not written at seq {seq}"
+            );
+            mid_seq = Some(seq);
             snaps += 1;
+
+            // A declared event always reaches the durable outcome path, even
+            // when the generated instance is already terminal.
+            let mut payload = Value::Obj(BTreeMap::new());
+            let _ = store.send_event_stamp_on(
+                &mut clock,
+                "i",
+                "go",
+                &mut payload,
+                "snapshot-tail",
+                None,
+                &[],
+            );
+            assert!(
+                store.state.last_seq > seq,
+                "seed {seed}: snapshot must have a nonempty journal tail"
+            );
         }
-        let live: BTreeMap<_, _> = store
-            .state
-            .instances
-            .iter()
-            .map(|(id, st)| {
-                let mid = store
-                    .state
-                    .instance_machines
-                    .get(id)
-                    .cloned()
-                    .unwrap_or_default();
-                (id.clone(), state_hash(&mid, id, store.journal.last_seq, st))
-            })
-            .collect();
+        for (i, ev) in evs.iter().enumerate().skip(split) {
+            let n = ev.get("name").and_then(Value::as_str).unwrap_or("go");
+            let mut payload = Value::Obj(BTreeMap::new());
+            let _ = store.send_event_stamp_on(
+                &mut clock,
+                "i",
+                n,
+                &mut payload,
+                &format!("e{i}"),
+                None,
+                &[],
+            );
+        }
+        let live = store.state.clone();
+        if let Some(seq) = mid_seq {
+            let (snap_tail, path) = open_state(&dir, store.records.clone(), &mut NopSink)
+                .unwrap_or_else(|e| panic!("seed {seed} snapshot+tail {e:?}"));
+            assert!(
+                path.used_snapshot,
+                "seed {seed}: snapshot path not selected"
+            );
+            assert_eq!(path.snapshot_seq, Some(seq), "seed {seed}");
+            assert!(path.replayed_records > 0, "seed {seed}: empty tail");
+            assert!(store_states_eq(&snap_tail, &live), "seed {seed} snapshot");
+        }
         if store
             .records
             .iter()
@@ -85,16 +141,8 @@ fn three_way_refold() {
         let recs = load_records(&dir).unwrap();
         let folded = fold_with(recs, &mut NopSink).unwrap_or_else(|e| panic!("seed {seed} {e:?}"));
         let store2 = Store::open(&dir).unwrap();
-        for (id, h) in &live {
-            let st = folded.instances.get(id).unwrap();
-            let mid = folded.instance_machines.get(id).unwrap();
-            let hf = state_hash(mid, id, folded.last_seq, st);
-            assert_eq!(&hf, h, "seed {seed} fold");
-            let st2 = store2.state.instances.get(id).unwrap();
-            let mid2 = store2.state.instance_machines.get(id).unwrap();
-            let hr = state_hash(mid2, id, store2.journal.last_seq, st2);
-            assert_eq!(&hr, h, "seed {seed} reopen");
-        }
+        assert!(store_states_eq(&live, &folded), "seed {seed} fold");
+        assert!(store_states_eq(&live, &store2.state), "seed {seed} reopen");
     }
     assert!(snaps >= 25, "{snaps}");
     assert!(saw_reject);
@@ -135,33 +183,18 @@ fn generator_twice_byte_identical() {
 
 #[test]
 fn perf_smoke() {
-    clock::reset_injected();
-    let dir = tmp(99);
-    let mut store = Store::open(&dir).unwrap();
-    let spec = parse_case();
-    store.define_machine(spec, false, false).unwrap();
-    store
-        .create_instance("case_review", "i", "c", None)
-        .unwrap();
-    let mut times = Vec::new();
-    for i in 0..10 {
-        let t = Instant::now();
-        let _ = store.send_event(
-            "i",
-            "docs_ok",
-            Value::Obj(BTreeMap::new()),
-            &format!("p{i}"),
-            None,
-        );
-        times.push(t.elapsed());
-    }
-    let mean = times.iter().sum::<std::time::Duration>() / times.len() as u32;
-    assert!(mean.as_millis() < 250, "mean {}ms", mean.as_millis());
-
     let dir = tmp(12);
+    let mut clock = FixedClock::new(12_000, 1);
     let mut store = Store::open(&dir).unwrap();
     let spec = legal_limit_spec();
-    store.define_machine(spec, false, false).unwrap();
+    assert_eq!(
+        fsm_core::canon::canon_bytes(&spec).len(),
+        fsm_core::limits::MAX_DEF_BYTES,
+        "fixture must be the largest legal definition"
+    );
+    store
+        .define_machine_on(&mut clock, spec, false, false)
+        .unwrap();
     let stored = store.state.machines.values().next().unwrap();
     assert_eq!(
         count_nodes(&stored.compiled.spec.states),
@@ -179,14 +212,35 @@ fn perf_smoke() {
         stored.compiled.spec.invariants.len(),
         fsm_core::limits::MAX_INVARIANTS
     );
+    assert_eq!(
+        stored.compiled.spec.invariants[0].expr.len(),
+        fsm_core::expr::lexer::SOURCE_CAP
+    );
+    assert_full_spine(&stored.compiled.spec.states[0]);
+    assert_full_spine(&stored.compiled.spec.states[1]);
+    for transition in &stored.compiled.spec.transitions {
+        assert_eq!(transition.sets.len(), fsm_core::limits::MAX_SETS_PER_BLOCK);
+        assert_eq!(
+            transition.emits.len(),
+            fsm_core::limits::MAX_EMITS_PER_BLOCK
+        );
+    }
     store
-        .create_instance("limitperf", "deep", "c", None)
+        .create_instance_ctx_on(
+            &mut clock,
+            "limitperf",
+            "deep",
+            "c",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
         .unwrap();
     assert_eq!(store.state.instances.get("deep").unwrap().leaf, "a11");
     let mut times = Vec::new();
     for i in 0..10 {
         if i == 5 {
-            store.shutdown_snapshot().unwrap();
+            store.shutdown_snapshot_on(&mut clock).unwrap();
             assert!(
                 std::fs::read_dir(dir.join("snapshots"))
                     .unwrap()
@@ -195,13 +249,16 @@ fn perf_smoke() {
             );
         }
         let t = Instant::now();
+        let mut payload = Value::Obj(BTreeMap::new());
         let r = store
-            .send_event(
+            .send_event_stamp_on(
+                &mut clock,
                 "deep",
                 "go",
-                Value::Obj(BTreeMap::new()),
+                &mut payload,
                 &format!("cross{i}"),
                 None,
+                &[],
             )
             .unwrap();
         times.push(t.elapsed());
@@ -218,13 +275,20 @@ fn perf_smoke() {
         assert!(!snaps.is_empty(), "midstream snapshot written");
         snaps[0].0
     };
+    let mut payload = Value::Obj(BTreeMap::new());
     store
-        .send_event("deep", "go", Value::Obj(BTreeMap::new()), "tail", None)
+        .send_event_stamp_on(&mut clock, "deep", "go", &mut payload, "tail", None, &[])
         .unwrap();
     let recs = store.records.clone();
     let last = recs.last().unwrap().seq;
     assert!(last > mid_seq, "nonempty tail after mid-stream snapshot");
-    let live = fsm_cli::snapshot::reconstruct_snapshot_plus_tail(&dir, &recs, last).unwrap();
+    let (live, path) = open_state(&dir, recs.clone(), &mut NopSink).unwrap();
+    assert!(path.used_snapshot, "snapshot fast path must be selected");
+    assert_eq!(path.snapshot_seq, Some(mid_seq));
+    assert!(
+        path.replayed_records > 0,
+        "snapshot must have a nonempty tail"
+    );
     let folded = fsm_core::replay::fold_with(recs.clone(), &mut fsm_core::replay::NopSink).unwrap();
     assert!(
         fsm_cli::snapshot::store_states_eq(&live, &folded),
@@ -258,31 +322,52 @@ fn block_do(sets: Vec<Value>, emits: Vec<Value>) -> Value {
     Value::Obj(o)
 }
 
-fn spine(prefix: char, depth: usize, leaf_emits: usize) -> Value {
-    let last = depth - 1;
-    let emits: Vec<Value> = (0..leaf_emits)
+fn full_sets() -> Vec<Value> {
+    (0..fsm_core::limits::MAX_SETS_PER_BLOCK)
+        .map(|i| inc(&format!("n{i}")))
+        .collect()
+}
+
+fn full_emits() -> Vec<Value> {
+    (0..fsm_core::limits::MAX_EMITS_PER_BLOCK)
         .map(|_| {
             vobj(&[
                 ("effect", Value::Str("tick".into())),
                 ("args", vobj(&[("k", Value::Str("ctx.n0".into()))])),
             ])
         })
-        .collect();
+        .collect()
+}
+
+fn spine(prefix: char, depth: usize) -> Value {
+    let last = depth - 1;
     let mut node = vobj(&[
         ("name", Value::Str(format!("{prefix}{last}"))),
-        ("entry", block_do(vec![inc("n0")], emits)),
-        ("exit", block_do(vec![inc("n1")], vec![])),
+        ("entry", block_do(full_sets(), full_emits())),
+        ("exit", block_do(full_sets(), full_emits())),
     ]);
     for i in (0..last).rev() {
         node = vobj(&[
             ("name", Value::Str(format!("{prefix}{i}"))),
             ("initial", Value::Str(format!("{prefix}{}", i + 1))),
-            ("entry", block_do(vec![inc("n0")], vec![])),
-            ("exit", block_do(vec![inc("n1")], vec![])),
+            ("entry", block_do(full_sets(), full_emits())),
+            ("exit", block_do(full_sets(), full_emits())),
             ("states", Value::Arr(vec![node])),
         ]);
     }
     node
+}
+
+fn assert_full_spine(node: &fsm_core::spec::StateNode) {
+    let entry = node.entry.as_ref().expect("entry block");
+    let exit = node.exit.as_ref().expect("exit block");
+    assert_eq!(entry.sets.len(), fsm_core::limits::MAX_SETS_PER_BLOCK);
+    assert_eq!(entry.emits.len(), fsm_core::limits::MAX_EMITS_PER_BLOCK);
+    assert_eq!(exit.sets.len(), fsm_core::limits::MAX_SETS_PER_BLOCK);
+    assert_eq!(exit.emits.len(), fsm_core::limits::MAX_EMITS_PER_BLOCK);
+    if let Some(child) = node.states.first() {
+        assert_full_spine(child);
+    }
 }
 
 fn count_nodes(nodes: &[fsm_core::spec::StateNode]) -> usize {
@@ -290,13 +375,10 @@ fn count_nodes(nodes: &[fsm_core::spec::StateNode]) -> usize {
 }
 
 fn legal_limit_spec() -> Value {
-    use fsm_core::limits::{
-        MAX_CTX_VARS, MAX_EMITS_PER_BLOCK, MAX_EVENTS, MAX_INVARIANTS, MAX_NESTING,
-        MAX_SETS_PER_BLOCK, MAX_STATES,
-    };
+    use fsm_core::limits::{MAX_CTX_VARS, MAX_EVENTS, MAX_INVARIANTS, MAX_NESTING, MAX_STATES};
     let depth = MAX_NESTING as usize;
-    let a = spine('a', depth, MAX_EMITS_PER_BLOCK);
-    let b = spine('b', depth, 0);
+    let a = spine('a', depth);
+    let b = spine('b', depth);
     let used = 2 * depth;
     let mut states = vec![a, b];
     for i in 0..(MAX_STATES - used) {
@@ -321,17 +403,25 @@ fn legal_limit_spec() -> Value {
             ])
         })
         .collect();
+    let max_expr = format!(
+        "{}ctx.n0 >= 0",
+        " ".repeat(fsm_core::expr::lexer::SOURCE_CAP - "ctx.n0 >= 0".len())
+    );
     let invariants: Vec<Value> = (0..MAX_INVARIANTS)
         .map(|i| {
             vobj(&[
                 ("name", Value::Str(format!("i{i}"))),
-                ("expr", Value::Str(format!("ctx.n{i} >= 0"))),
+                (
+                    "expr",
+                    Value::Str(if i == 0 {
+                        max_expr.clone()
+                    } else {
+                        format!("ctx.n{i} >= 0")
+                    }),
+                ),
                 ("mode", Value::Str("monitor".into())),
             ])
         })
-        .collect();
-    let sets: Vec<Value> = (0..MAX_SETS_PER_BLOCK)
-        .map(|i| inc(&format!("n{i}")))
         .collect();
     let transitions = vec![
         vobj(&[
@@ -339,17 +429,19 @@ fn legal_limit_spec() -> Value {
             ("on", Value::Str("go".into())),
             ("to", Value::Str("b11".into())),
             ("if", Value::Str("ctx.n0 >= 0".into())),
-            ("do", Value::Arr(sets.clone())),
+            ("do", Value::Arr(full_sets())),
+            ("emit", Value::Arr(full_emits())),
         ]),
         vobj(&[
             ("from", Value::Str("b11".into())),
             ("on", Value::Str("go".into())),
             ("to", Value::Str("a11".into())),
             ("if", Value::Str("ctx.n0 >= 0".into())),
-            ("do", Value::Arr(sets)),
+            ("do", Value::Arr(full_sets())),
+            ("emit", Value::Arr(full_emits())),
         ]),
     ];
-    vobj(&[
+    let mut spec = vobj(&[
         ("format", Value::Str("fsm.machine/1".into())),
         ("name", Value::Str("limitperf".into())),
         ("states", Value::Arr(states)),
@@ -371,13 +463,17 @@ fn legal_limit_spec() -> Value {
         ),
         ("transitions", Value::Arr(transitions)),
         ("invariants", Value::Arr(invariants)),
-    ])
-}
-
-fn parse_case() -> Value {
-    fsm_core::json::parse(
-        include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
-        &fsm_core::json::JsonLimits::DEFAULT,
-    )
-    .unwrap()
+    ]);
+    if let Value::Obj(obj) = &mut spec {
+        obj.insert("description".into(), Value::Str(String::new()));
+    }
+    let base = fsm_core::canon::canon_bytes(&spec).len();
+    assert!(base <= fsm_core::limits::MAX_DEF_BYTES, "fixture too large");
+    if let Value::Obj(obj) = &mut spec {
+        obj.insert(
+            "description".into(),
+            Value::Str("x".repeat(fsm_core::limits::MAX_DEF_BYTES - base)),
+        );
+    }
+    spec
 }

@@ -114,6 +114,12 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
     if obj.get("format").and_then(Value::as_str) != Some("fsm.snapshot/2") {
         return Err(ErrorObj::new("io/read", "bad snapshot format"));
     }
+    let committed_root = obj
+        .get("state_root")
+        .and_then(Value::as_str)
+        .filter(|root| !root.is_empty())
+        .ok_or_else(|| ErrorObj::new("io/read", "snapshot missing state_root"))?
+        .to_string();
     let want = hash_body(obj);
     let got = obj
         .get("snapshot_hash")
@@ -276,29 +282,35 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
         st.instance_machines.insert(id.clone(), mid);
         st.instances.insert(id.clone(), inst);
     }
+    if committed_root != materialize_state_root(&st) {
+        return Err(ErrorObj::new("io/read", "snapshot state_root mismatch"));
+    }
     Ok(st)
 }
 
 /// Canonical hash of the complete materialized store state.
 pub fn materialize_state_root(state: &StoreState) -> String {
-    format!(
-        "sha256:{}",
-        to_hex(&domain_hash(
-            "fsm:state-root:1",
-            &Value::Obj(snapshot_material(state))
-        ))
-    )
+    materialize_state_root_at(state, state.last_seq)
 }
 
+/// Root committed by a checkpoint at `seq`. The record hash is deliberately
+/// excluded from the material so the root can be placed in that record.
+pub fn materialize_state_root_at(state: &StoreState, seq: u64) -> String {
+    fsm_core::replay::state_root_at(state, seq)
+}
+
+/// Compatibility helper for callers of the former sidecar API. The single
+/// bounded file is never consulted when selecting a snapshot.
 pub fn commit_state_root(data_dir: &Path, seq: u64, root: &str) -> Result<(), ErrorObj> {
     if data_dir.as_os_str() == "<memory>" {
         return Ok(());
     }
     let jdir = data_dir.join("journal");
     fs::create_dir_all(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    let dest = jdir.join(format!("root-{seq:020}"));
-    let tmp = jdir.join(format!("root-{seq:020}.tmp"));
-    fs::write(&tmp, format!("{root}\n")).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    let dest = jdir.join("legacy-snapshot-root");
+    let tmp = jdir.join("legacy-snapshot-root.tmp");
+    fs::write(&tmp, format!("{seq}\t{root}\n"))
+        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let f = fs::File::open(&tmp).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     f.sync_all()
         .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
@@ -310,21 +322,43 @@ pub fn commit_state_root(data_dir: &Path, seq: u64, root: &str) -> Result<(), Er
 }
 
 pub fn load_state_root(data_dir: &Path, seq: u64) -> Option<String> {
-    let p = data_dir.join("journal").join(format!("root-{seq:020}"));
+    let p = data_dir.join("journal").join("legacy-snapshot-root");
     let s = fs::read_to_string(p).ok()?;
-    let t = s.trim();
-    if t.is_empty() {
-        None
-    } else {
-        Some(t.to_string())
-    }
+    let (stored_seq, root) = s.trim().split_once('\t')?;
+    (stored_seq.parse::<u64>().ok()? == seq).then(|| root.to_string())
 }
 
-fn snapshot_bound(data_dir: &Path, base: &StoreState) -> bool {
-    match load_state_root(data_dir, base.last_seq) {
-        Some(root) => root == materialize_state_root(base),
-        None => false,
+fn snapshot_bound(base: &StoreState, rec: &fsm_core::record::Record) -> bool {
+    let root = materialize_state_root(base);
+    rec.body.get("state_root").and_then(Value::as_str) == Some(root.as_str())
+}
+
+fn prune_legacy_root_sidecars(data_dir: &Path) -> Result<(), ErrorObj> {
+    let jdir = data_dir.join("journal");
+    let Ok(entries) = fs::read_dir(&jdir) else {
+        return Ok(());
+    };
+    let mut removed = false;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(suffix) = name.strip_prefix("root-") else {
+            continue;
+        };
+        let digits = suffix.strip_suffix(".tmp").unwrap_or(suffix);
+        if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+            fs::remove_file(entry.path()).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+            removed = true;
+        }
     }
+    if removed {
+        let dir = fs::File::open(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        dir.sync_all()
+            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    }
+    Ok(())
 }
 
 pub fn listed_snaps(data_dir: &Path) -> Vec<(u64, PathBuf)> {
@@ -372,6 +406,7 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
     if state.last_seq == 0 {
         return Err(ErrorObj::new("io/write", "no records to snapshot"));
     }
+    prune_legacy_root_sidecars(data_dir)?;
     let dir = snap_dir(data_dir);
     fs::create_dir_all(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let body = state_to_snapshot(state);
@@ -510,11 +545,10 @@ pub fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
 }
 
 fn snapshot_matches_prefix(base: &StoreState, recs: &[fsm_core::record::Record]) -> bool {
-    let prefix: Vec<_> = recs
+    let prefix = recs
         .iter()
-        .filter(|r| r.seq <= base.last_seq)
-        .cloned()
-        .collect();
+        .filter(|record| record.seq <= base.last_seq)
+        .cloned();
     let Ok(folded) = fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink) else {
         return false;
     };
@@ -572,7 +606,12 @@ pub fn open_state(
     recs: Vec<fsm_core::record::Record>,
     sink: &mut impl fsm_core::replay::RecordSink,
 ) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
+    // Earlier builds emitted one mutable root file per commit. They are never
+    // trust anchors and can be removed opportunistically.
+    let _ = prune_legacy_root_sidecars(data_dir);
     let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
+    // First pass: prefer a hash-chain-bound snapshot even when a newer
+    // clean-shutdown cache exists without a committed root.
     for (_seq, path) in listed_snaps(data_dir) {
         let Ok(bytes) = fs::read(&path) else {
             continue;
@@ -592,8 +631,8 @@ pub fn open_state(
         if rec.hash != base.last_hash {
             continue;
         }
-        let bound = snapshot_bound(data_dir, &base);
-        if !bound && !snapshot_matches_prefix(&base, &recs) {
+        let bound = snapshot_bound(&base, rec);
+        if !bound {
             continue;
         }
         let snap_seq = base.last_seq;
@@ -608,6 +647,44 @@ pub fn open_state(
             state,
             OpenPath {
                 replayed_records: replayed,
+                used_snapshot: true,
+                snapshot_seq: Some(snap_seq),
+            },
+        ));
+    }
+    // An unbound snapshot is still a useful disposable cache representation,
+    // but it cannot be trusted. Re-fold and compare its complete prefix before
+    // using it; this is a correctness fallback, not the fast path.
+    for (_seq, path) in listed_snaps(data_dir) {
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
+            continue;
+        };
+        let Ok(base) = snapshot_to_state(&v) else {
+            continue;
+        };
+        if base.last_seq > journal_last {
+            continue;
+        }
+        let Some(rec) = recs.iter().find(|r| r.seq == base.last_seq) else {
+            continue;
+        };
+        if rec.hash != base.last_hash || !snapshot_matches_prefix(&base, &recs) {
+            continue;
+        }
+        let snap_seq = base.last_seq;
+        let tail: Vec<_> = recs
+            .iter()
+            .filter(|r| r.seq > base.last_seq)
+            .cloned()
+            .collect();
+        let state = fold_from(base, tail, sink)?;
+        return Ok((
+            state,
+            OpenPath {
+                replayed_records: recs.len(),
                 used_snapshot: true,
                 snapshot_seq: Some(snap_seq),
             },

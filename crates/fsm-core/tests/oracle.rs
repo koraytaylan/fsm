@@ -736,48 +736,53 @@ pub fn naive_step(
 pub fn brute_enterable(m: &CompiledMachine) -> std::collections::BTreeSet<String> {
     let nodes = &m.spec.states;
     let mut out = std::collections::BTreeSet::new();
-    fn walk(nodes: &[StateNode], name: &str, out: &mut std::collections::BTreeSet<String>) {
-        if !out.insert(name.into()) {
-            return;
-        }
-        if let Some(n) = find(nodes, name) {
-            if n.history.is_some() {
-                return;
-            }
-            if let Some(init) = &n.initial {
-                walk(nodes, init, out);
-            }
-            for ch in &n.states {
-                if ch.history.is_none() {
-                    // configuration includes the compound itself
-                }
-            }
+    fn add_initial_chain(
+        nodes: &[StateNode],
+        name: &str,
+        out: &mut std::collections::BTreeSet<String>,
+    ) {
+        out.insert(name.to_string());
+        for child in initial_descent(nodes, name) {
+            out.insert(child);
         }
     }
-    fn is_desc_or_self(nodes: &[StateNode], anc: &str, name: &str) -> bool {
-        if anc == name {
-            return true;
-        }
-        let ch = chain(nodes, name);
-        ch.iter().any(|s| s == anc)
-    }
-    walk(nodes, &m.spec.initial, &mut out);
+
+    // Creation enters the selected root and follows every declared initial.
+    // History pseudostates are never configurations and therefore never enterable.
+    add_initial_chain(nodes, &m.spec.initial, &mut out);
     let mut changed = true;
     while changed {
         changed = false;
         for tr in &m.spec.transitions {
-            let source_live = out
-                .iter()
-                .any(|reached| is_desc_or_self(nodes, &tr.from, reached));
-            if !source_live {
+            if !out.contains(&tr.from) {
                 continue;
             }
-            if let Some(to) = &tr.to {
-                let before = out.len();
-                walk(nodes, to, &mut out);
-                if out.len() != before {
-                    changed = true;
+            let Some(to) = &tr.to else { continue };
+            let before = out.len();
+            let target = find(nodes, to).expect("compiled transition target exists");
+            if target.history.is_some() {
+                // The reachability lemma models a history target as its owner's
+                // initial configuration. A binding cannot introduce a state that
+                // was not already active on an earlier path.
+                let owner = parent_of(nodes, to).expect("history has an owner");
+                let dom = lca(nodes, &tr.from, &owner);
+                for name in entry_path(nodes, &dom, &owner) {
+                    out.insert(name);
                 }
+                add_initial_chain(nodes, &owner, &mut out);
+            } else {
+                let dom = lca(nodes, &tr.from, to);
+                for name in entry_path(nodes, &dom, to) {
+                    out.insert(name);
+                }
+                if is_compound(target) {
+                    for name in initial_descent(nodes, to) {
+                        out.insert(name);
+                    }
+                }
+            }
+            if out.len() != before {
+                changed = true;
             }
         }
     }
@@ -796,6 +801,17 @@ mod independence {
         let src = br#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#;
         let v = parse(src, &JsonLimits::DEFAULT).unwrap();
         compile(parse_machine(&v).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn history_reachability_adds_owner_initial_chain_not_pseudostate() {
+        let src = br#"{"format":"fsm.machine/1","name":"reach","states":[{"name":"q","initial":"a","states":[{"name":"h","history":"deep"},{"name":"a"}]},{"name":"x"}],"initial":"x","context":[],"events":[{"name":"back","fields":[]}],"transitions":[{"from":"x","on":"back","to":"h"}]}"#;
+        let value = parse(src, &JsonLimits::DEFAULT).unwrap();
+        let machine = compile(parse_machine(&value).unwrap()).unwrap();
+        let actual = brute_enterable(&machine);
+        let expected = ["a", "q", "x"].into_iter().map(str::to_string).collect();
+        assert_eq!(actual, expected);
+        assert!(!actual.contains("h"));
     }
 
     #[test]

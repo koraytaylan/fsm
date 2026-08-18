@@ -544,11 +544,45 @@ impl Store {
     }
 
     fn finish_commit(&mut self) {
-        if !self.journal.is_memory() {
-            let root = crate::snapshot::materialize_state_root(&self.state);
-            let _ = crate::snapshot::commit_state_root(&self.data_dir, self.state.last_seq, &root);
-        }
         self.after_commit();
+    }
+
+    fn append_at_with_root(
+        &mut self,
+        kind: RecordKind,
+        body: Value,
+        ts: i64,
+    ) -> Result<Record, ErrorObj> {
+        let seq = self.journal.last_seq.saturating_add(1);
+        if seq % 10_000 != 0 {
+            return self
+                .journal
+                .append_at(kind, body, ts)
+                .map_err(|e| ErrorObj::new("io/write", e.to_string()));
+        }
+        let mut body = body.as_obj().cloned().ok_or_else(|| {
+            ErrorObj::new("store/state_hash_mismatch", "record body is not an object")
+        })?;
+        let provisional = fsm_core::record::seal(
+            seq,
+            ts,
+            kind,
+            Value::Obj(body.clone()),
+            &self.journal.last_hash,
+        );
+        let projected = fsm_core::replay::fold_from(
+            self.state.clone(),
+            [provisional],
+            &mut fsm_core::replay::NopSink,
+        )
+        .map_err(|e| ErrorObj::new("store/state_hash_mismatch", format!("{e:?}")))?;
+        body.insert(
+            "state_root".into(),
+            Value::Str(fsm_core::replay::state_root_at(&projected, seq)),
+        );
+        self.journal
+            .append_at(kind, Value::Obj(body), ts)
+            .map_err(|e| ErrorObj::new("io/write", e.to_string()))
     }
 
     fn append_rec(
@@ -558,9 +592,7 @@ impl Store {
         clock: &mut dyn crate::clock::Clock,
     ) -> Result<Record, ErrorObj> {
         let ts = clock.now_ms();
-        self.journal
-            .append_at(kind, body, ts)
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))
+        self.append_at_with_root(kind, body, ts)
     }
 
     pub fn allocate_request_id(&mut self) -> Result<String, ErrorObj> {
@@ -695,6 +727,23 @@ impl Store {
             if let Value::Obj(d) = &mut e.details {
                 d.insert("machine".into(), Value::Str(machine_ref.into()));
                 d.insert("machine_id".into(), Value::Str(mid.clone()));
+                d.insert(
+                    "context_fields".into(),
+                    Value::Arr(
+                        m.compiled
+                            .spec
+                            .context
+                            .iter()
+                            .map(|c| {
+                                Value::Obj(BTreeMap::from([
+                                    ("name".into(), Value::Str(c.name.clone())),
+                                    ("type".into(), Value::Str(c.ty.to_ty().to_string())),
+                                    ("init".into(), Value::Str(c.init.clone())),
+                                ]))
+                            })
+                            .collect(),
+                    ),
+                );
                 let created: Vec<Value> = self
                     .state
                     .instance_machines
@@ -906,10 +955,11 @@ impl Store {
                     "entered".into(),
                     Value::Arr(a.entered.iter().cloned().map(Value::Str).collect()),
                 );
-                let rec = self
-                    .journal
-                    .append_at(RecordKind::EventApplied, Value::Obj(body), commit_ts)
-                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                let rec = self.append_at_with_root(
+                    RecordKind::EventApplied,
+                    Value::Obj(body),
+                    commit_ts,
+                )?;
                 self.state.instances.insert(instance_id.into(), new);
                 self.history
                     .entry(instance_id.into())
@@ -990,10 +1040,11 @@ impl Store {
                     sp.insert("end".into(), Value::Num(e.to_string()));
                     body.insert("span".into(), Value::Obj(sp));
                 }
-                let rec = self
-                    .journal
-                    .append_at(RecordKind::EventRejected, Value::Obj(body), commit_ts)
-                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                let rec = self.append_at_with_root(
+                    RecordKind::EventRejected,
+                    Value::Obj(body),
+                    commit_ts,
+                )?;
                 self.history
                     .entry(instance_id.into())
                     .or_default()
@@ -1013,10 +1064,11 @@ impl Store {
                 body.insert("event".into(), Value::Str(event.into()));
                 body.insert("payload".into(), payload.clone());
                 body.insert("state_hash".into(), Value::Str(sh));
-                let rec = self
-                    .journal
-                    .append_at(RecordKind::EventIgnored, Value::Obj(body), commit_ts)
-                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+                let rec = self.append_at_with_root(
+                    RecordKind::EventIgnored,
+                    Value::Obj(body),
+                    commit_ts,
+                )?;
                 self.note_record(&rec);
                 let mut resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
                 if let Value::Obj(o) = &mut resp {
@@ -1369,17 +1421,53 @@ impl Store {
 
     pub fn maybe_snapshot(&self) -> Result<(), ErrorObj> {
         if self.journal.last_seq > 0 && self.journal.last_seq % 10_000 == 0 {
-            self.shutdown_snapshot()?;
+            crate::snapshot::write_snapshot(&self.data_dir, &self.state)?;
         }
         Ok(())
     }
 
-    pub fn shutdown_snapshot(&self) -> Result<(), ErrorObj> {
+    fn checkpoint_for_snapshot_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
+    ) -> Result<(), ErrorObj> {
+        let current_root = crate::snapshot::materialize_state_root(&self.state);
+        if self
+            .records
+            .last()
+            .filter(|rec| rec.kind == RecordKind::StateCheckpoint)
+            .and_then(|rec| rec.body.get("state_root").and_then(Value::as_str))
+            == Some(current_root.as_str())
+        {
+            return Ok(());
+        }
+        let seq = self.journal.last_seq.saturating_add(1);
+        let root = crate::snapshot::materialize_state_root_at(&self.state, seq);
+        let rec = self
+            .journal
+            .append_at(
+                RecordKind::StateCheckpoint,
+                Value::Obj(BTreeMap::from([("state_root".into(), Value::Str(root))])),
+                clock.now_ms(),
+            )
+            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        self.note_record(&rec);
+        Ok(())
+    }
+
+    pub fn shutdown_snapshot_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
+    ) -> Result<(), ErrorObj> {
         if self.journal.is_memory() || self.journal.last_seq == 0 {
             return Ok(());
         }
+        self.checkpoint_for_snapshot_on(clock)?;
         crate::snapshot::write_snapshot(&self.data_dir, &self.state)?;
         Ok(())
+    }
+
+    pub fn shutdown_snapshot(&mut self) -> Result<(), ErrorObj> {
+        self.shutdown_snapshot_on(&mut crate::clock::GlobalClock)
     }
 
     fn after_commit(&mut self) {
@@ -1455,7 +1543,11 @@ impl Store {
 
 impl Drop for Store {
     fn drop(&mut self) {
-        let _ = self.shutdown_snapshot();
+        if !self.journal.is_memory() && self.journal.last_seq > 0 {
+            // Drop must never append: there is no caller-supplied clock and a
+            // read-only open/close must leave the authoritative journal alone.
+            let _ = crate::snapshot::write_snapshot(&self.data_dir, &self.state);
+        }
     }
 }
 

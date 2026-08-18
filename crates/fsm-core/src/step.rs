@@ -487,13 +487,26 @@ pub fn step(
                 .as_ref()
                 .map(|e| (i.name.clone(), e.code, e.message.clone(), e.span))
         });
+        let failed_inv = eval_err
+            .as_ref()
+            .map(|(name, _, _, _)| name.clone())
+            .or_else(|| {
+                trc.invariants
+                    .iter()
+                    .zip(&m.spec.invariants)
+                    .find(|(trace, spec)| !trace.passed && spec.mode == EnforceMode::Enforce)
+                    .map(|(trace, _)| trace.name.clone())
+            });
         return Outcome::Rejected(Rejection {
             code: "run/invariant",
             message: eval_err
                 .as_ref()
                 .map(|(n, _, msg, _)| format!("invariant {n}: {msg}"))
                 .unwrap_or_else(|| "enforce invariant failed".into()),
-            hint: "adjust the action or the invariant".into(),
+            hint: failed_inv
+                .as_ref()
+                .map(|n| format!("adjust the action or invariant {n}"))
+                .unwrap_or_else(|| "adjust the action or the invariant".into()),
             source_state: Some(t.names[src as usize].clone()),
             transition_idx: Some(tidx as u32),
             block: eval_err
@@ -1134,12 +1147,21 @@ pub fn create(
         let eval_err = inv_trace
             .iter()
             .find_map(|i| i.error.as_ref().map(|e| (i.name.as_str(), e)));
+        let failed_inv = eval_err.map(|(name, _)| name).or_else(|| {
+            inv_trace
+                .iter()
+                .zip(&m.spec.invariants)
+                .find(|(trace, spec)| !trace.passed && spec.mode == EnforceMode::Enforce)
+                .map(|(trace, _)| trace.name.as_str())
+        });
         return Err(Rejection {
             code: "run/create_failed",
             message: eval_err
                 .map(|(n, e)| format!("invariant {n}: {}", e.message))
                 .unwrap_or_else(|| "invariant failed at create".into()),
-            hint: "fix inits or the invariant".into(),
+            hint: failed_inv
+                .map(|n| format!("fix inits or invariant {n}"))
+                .unwrap_or_else(|| "fix inits or the invariant".into()),
             source_state: None,
             transition_idx: None,
             block: eval_err.map(|(n, _)| format!("invariant({n})")),

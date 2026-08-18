@@ -66,6 +66,43 @@ fn finding_hint(err: &fsm_cli::store::ErrorObj) -> String {
         .to_string()
 }
 
+fn first_trace_int(v: &Value) -> Option<i64> {
+    match v {
+        Value::Obj(o) => {
+            if let Some(n) = o
+                .get("value")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse().ok())
+            {
+                return Some(n);
+            }
+            o.values().find_map(first_trace_int)
+        }
+        Value::Arr(a) => a.iter().find_map(first_trace_int),
+        _ => None,
+    }
+}
+
+fn payload_field_for(err: &fsm_cli::store::ErrorObj, event: &str) -> String {
+    err.details
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .into_iter()
+        .flatten()
+        .find(|e| e.get("event").and_then(Value::as_str) == Some(event))
+        .and_then(|e| e.get("payload_fields"))
+        .and_then(Value::as_arr)
+        .and_then(|a| a.first())
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| {
+            panic!(
+                "error identifies the failing event payload field: {:?}",
+                err.to_value()
+            )
+        })
+        .to_string()
+}
+
 fn delete_pointer(v: &mut Value, path: &str) {
     let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if segs.is_empty() {
@@ -151,6 +188,18 @@ fn set_pointer(v: &mut Value, path: &str, val: Value) {
         }
         _ => {}
     }
+}
+
+fn string_at_pointer<'a>(v: &'a Value, path: &str) -> Option<&'a str> {
+    let mut cur = v;
+    for s in path.split('/').filter(|s| !s.is_empty()) {
+        cur = match cur {
+            Value::Obj(o) => o.get(s)?,
+            Value::Arr(a) => a.get(s.parse::<usize>().ok()?)?,
+            _ => return None,
+        };
+    }
+    cur.as_str()
 }
 
 fn first_state_name(v: &Value) -> Option<String> {
@@ -388,6 +437,50 @@ fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
                     }
                 }
             }
+        }
+        "expr/unknown_var" => {
+            let suggested = hint
+                .split('`')
+                .nth(1)
+                .expect("unknown_var must carry its suggested identifier");
+            let finding_message = err
+                .details
+                .get("findings")
+                .and_then(Value::as_arr)
+                .and_then(|a| a.first())
+                .and_then(|f| f.get("message"))
+                .and_then(Value::as_str)
+                .unwrap_or(&err.message);
+            let unknown = finding_message
+                .split("unknown ctx.")
+                .nth(1)
+                .expect("unknown_var message names the bad identifier");
+            let src = string_at_pointer(&v, &path)
+                .expect("unknown_var path points to an expression")
+                .to_string();
+            set_pointer(
+                &mut v,
+                &path,
+                Value::Str(src.replace(&format!("ctx.{unknown}"), &format!("ctx.{suggested}"))),
+            );
+        }
+        "expr/scale_cap" => {
+            let target: u8 = hint
+                .split(|c: char| !c.is_ascii_digit())
+                .find(|s| !s.is_empty())
+                .and_then(|s| s.parse().ok())
+                .expect("scale_cap hint names the target scale");
+            let src = string_at_pointer(&v, &path)
+                .expect("scale_cap path points to an expression")
+                .to_string();
+            let (lhs, rest) = src
+                .split_once(" * ")
+                .expect("scale_cap fixture contains multiplication");
+            set_pointer(
+                &mut v,
+                &path,
+                Value::Str(format!("round({lhs}, {target}, down) * {rest}")),
+            );
         }
         "expr/round_widens" => {
             let p = if path.is_empty() {
@@ -721,14 +814,18 @@ fn one_step_recovery() {
     );
     assert!(ok.is_ok(), "number_token retry {ok:?}");
 
-    // seq_mismatch
+    // seq_mismatch: change only the stale precondition; keep the same operation and id.
+    let stale_event = obj(&[
+        ("name", Value::Str("note_added".into())),
+        ("payload", obj(&[("text", Value::Str("n".into()))])),
+    ]);
     let err = dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-c1".into())),
-            ("event", obj(&[("name", Value::Str("docs_ok".into()))])),
+            ("event", stale_event.clone()),
             ("request_id", Value::Str("sm".into())),
             ("expect_seq", Value::Num("0".into())),
         ]),
@@ -747,13 +844,7 @@ fn one_step_recovery() {
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-c1".into())),
-            (
-                "event",
-                obj(&[
-                    ("name", Value::Str("note_added".into())),
-                    ("payload", obj(&[("text", Value::Str("n".into()))])),
-                ]),
-            ),
+            ("event", stale_event),
             ("request_id", Value::Str("sm".into())),
             ("expect_seq", seq),
         ]),
@@ -840,7 +931,7 @@ fn one_step_recovery() {
     );
     assert!(ok.is_ok(), "field_unknown omit {extra} {ok:?}");
 
-    // run/not_enabled from a failing guard; retry an enabled event from the error
+    // run/not_enabled: keep the event and repair its payload from the trace binding.
     let ng = parse(
         br#"{"format":"fsm.machine/1","name":"ng","context":[],"events":[{"name":"go","fields":[{"name":"n","ty":"int"}]},{"name":"skip","fields":[]}],"states":[{"name":"s"}],"initial":"s","transitions":[{"from":"s","on":"go","if":"evt.n > 0"},{"from":"s","on":"skip"}]}"#,
         &JsonLimits::DEFAULT,
@@ -875,7 +966,7 @@ fn one_step_recovery() {
     )
     .unwrap_err();
     assert_eq!(err.code, "run/not_enabled");
-    let skip = err
+    let payload_field = err
         .details
         .get("enabled_events")
         .and_then(Value::as_arr)
@@ -883,25 +974,43 @@ fn one_step_recovery() {
         .flatten()
         .find_map(|e| {
             let name = e.get("event").and_then(Value::as_str)?;
-            let st = e.get("status").and_then(Value::as_str)?;
-            if st == "enabled" && name != "go" {
-                Some(name.to_string())
-            } else {
-                None
-            }
+            (name == "go")
+                .then(|| e.get("payload_fields")?.as_arr()?.first()?.as_str())
+                .flatten()
+                .map(str::to_string)
         })
-        .expect("enabled non-failing event");
+        .expect("guard-dependent event exposes its payload field");
+    let observed = err
+        .details
+        .get("trace")
+        .and_then(first_trace_int)
+        .expect("guard trace carries the observed binding");
+    let corrected = observed + 1;
     let ok = dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-ng1".into())),
-            ("event", obj(&[("name", Value::Str(skip.clone()))])),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("go".into())),
+                    (
+                        "payload",
+                        obj(&[(payload_field.as_str(), Value::Str(corrected.to_string()))]),
+                    ),
+                ]),
+            ),
             ("request_id", Value::Str("ng-ok".into())),
         ]),
     );
-    assert!(ok.is_ok(), "not_enabled retry {skip} {ok:?}");
+    assert!(
+        ok.is_ok(),
+        "not_enabled retry go.{}={} {ok:?}",
+        payload_field,
+        corrected
+    );
 
     // machine_ambiguous: two versions, retry with a listed full id
     for desc in ["v1", "v2"] {
@@ -1019,7 +1128,7 @@ fn one_step_recovery() {
         err.hint
     );
     let mid = first_detail_str(&err, "machine_id").expect("completed machine_id");
-    let ok = dispatch(
+    let created = dispatch(
         &mut st,
         &mut clock,
         "instance_create",
@@ -1028,7 +1137,31 @@ fn one_step_recovery() {
             ("request_id", Value::Str("done-retry".into())),
         ]),
     );
-    assert!(ok.is_ok(), "instance_completed create retry {ok:?}");
+    assert!(
+        created.is_ok(),
+        "instance_completed create retry {created:?}"
+    );
+    let replacement_id = created
+        .as_ref()
+        .ok()
+        .and_then(|v| v.get("instance_id"))
+        .and_then(Value::as_str)
+        .expect("replacement instance id")
+        .to_string();
+    let sent = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str(replacement_id)),
+            ("event", obj(&[("name", Value::Str("docs_ok".into()))])),
+            ("request_id", Value::Str("done-retry-send".into())),
+        ]),
+    );
+    assert!(
+        sent.is_ok(),
+        "replacement instance must accept the send: {sent:?}"
+    );
 
     // unknown effect id → retry with a pending id from details
     dispatch(
@@ -1967,23 +2100,6 @@ fn first_detail_str(err: &fsm_cli::store::ErrorObj, key: &str) -> Option<String>
         })
 }
 
-fn first_enabled_except(err: &fsm_cli::store::ErrorObj, skip: &str) -> Option<String> {
-    err.details
-        .get("enabled_events")
-        .and_then(Value::as_arr)
-        .into_iter()
-        .flatten()
-        .find_map(|e| {
-            let name = e.get("event").and_then(Value::as_str)?;
-            let st = e.get("status").and_then(Value::as_str).unwrap_or("enabled");
-            if st == "enabled" && name != skip {
-                Some(name.to_string())
-            } else {
-                None
-            }
-        })
-}
-
 fn err_from_analyze(code: &str, an: &Value) -> fsm_cli::store::ErrorObj {
     let findings = an
         .get("findings")
@@ -2142,7 +2258,7 @@ fn one_step_every_non_infra_code() {
         ),
         (
             "expr/unknown_var",
-            r#"{"format":"fsm.machine/1","name":"uv","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.missing"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"uv","states":[{"name":"a"}],"initial":"a","context":[{"name":"flag","ty":"bool","init":"true"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.falg"}]}"#,
             r#"{"format":"fsm.machine/1","name":"uv2","states":[{"name":"a"}],"initial":"a","context":[{"name":"b","ty":"bool","init":"true"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.b"}]}"#,
         ),
         (
@@ -2766,7 +2882,7 @@ fn one_step_every_non_infra_code() {
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ov","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"ok","fields":[]},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"ok","do":[{"target":"n","value":"0"}]},{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
+        r#"{"format":"fsm.machine/1","name":"ov","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[{"name":"delta","ty":"int"}]}],"transitions":[{"from":"a","on":"go","if":"evt.delta >= 0","do":[{"target":"n","value":"ctx.n + evt.delta"}]}]}"#,
     );
     dispatch(
         &mut st,
@@ -2778,13 +2894,20 @@ fn one_step_every_non_infra_code() {
         ]),
     )
     .unwrap();
-    let err = send_err(&mut st, &mut clock, "inst-ov1", "go", obj(&[]), "ov-bad");
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-ov1",
+        "go",
+        obj(&[("delta", Value::Str("1".into()))]),
+        "ov-bad",
+    );
     assert_eq!(err.code, "run/action_error");
     assert_eq!(
         err.details.get("cause").and_then(Value::as_str),
         Some("run/overflow")
     );
-    let next = first_enabled_except(&err, "go").expect("enabled non-overflow event");
+    let field = payload_field_for(&err, "go");
     let iid = first_detail_str(&err, "instance_id").unwrap_or_else(|| "inst-ov1".into());
     dispatch(
         &mut st,
@@ -2792,7 +2915,13 @@ fn one_step_every_non_infra_code() {
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str(iid)),
-            ("event", obj(&[("name", Value::Str(next))])),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("go".into())),
+                    ("payload", obj(&[(field.as_str(), Value::Str("0".into()))])),
+                ]),
+            ),
             ("request_id", Value::Str("ov-ok".into())),
         ]),
     )
@@ -2802,7 +2931,7 @@ fn one_step_every_non_infra_code() {
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"dz","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"ok","fields":[]},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"ok","do":[{"target":"n","value":"dec(0, 0)"}]},{"from":"a","on":"go","do":[{"target":"n","value":"div(1, 0, 0, down)"}]}]}"#,
+        r#"{"format":"fsm.machine/1","name":"dz","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[{"name":"denom","ty":{"decimal":"0"}}]}],"transitions":[{"from":"a","on":"go","if":"evt.denom >= dec(0, 0)","do":[{"target":"n","value":"div(1, evt.denom, 0, down)"}]}]}"#,
     );
     dispatch(
         &mut st,
@@ -2814,20 +2943,33 @@ fn one_step_every_non_infra_code() {
         ]),
     )
     .unwrap();
-    let err = send_err(&mut st, &mut clock, "inst-dz1", "go", obj(&[]), "dz-bad");
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-dz1",
+        "go",
+        obj(&[("denom", Value::Str("0".into()))]),
+        "dz-bad",
+    );
     assert_eq!(err.code, "run/action_error", "{}", err.code);
     assert_eq!(
         err.details.get("cause").and_then(Value::as_str),
         Some("run/div_zero")
     );
-    let next = first_enabled_except(&err, "go").expect("enabled non-div-zero event");
+    let field = payload_field_for(&err, "go");
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-dz1".into())),
-            ("event", obj(&[("name", Value::Str(next))])),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("go".into())),
+                    ("payload", obj(&[(field.as_str(), Value::Str("1".into()))])),
+                ]),
+            ),
             ("request_id", Value::Str("dz-ok".into())),
         ]),
     )
@@ -2836,7 +2978,7 @@ fn one_step_every_non_infra_code() {
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ge","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[{"name":"z","ty":{"decimal":"0"}}]},{"name":"skip","fields":[]}],"transitions":[{"from":"a","on":"go","if":"div(ctx.n, evt.z, 0, down) == dec(0, 0)"},{"from":"a","on":"skip"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"ge","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"go","fields":[{"name":"z","ty":{"decimal":"0"}}]}],"transitions":[{"from":"a","on":"go","if":"div(1, evt.z, 0, down) == dec(1, 0)"}]}"#,
     );
     dispatch(
         &mut st,
@@ -2857,14 +2999,20 @@ fn one_step_every_non_infra_code() {
         "ge-bad",
     );
     assert_eq!(err.code, "run/guard_error", "{}", err.code);
-    let next = first_enabled_except(&err, "go").expect("enabled non-guard-fail event");
+    let field = payload_field_for(&err, "go");
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-ge1".into())),
-            ("event", obj(&[("name", Value::Str(next))])),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("go".into())),
+                    ("payload", obj(&[(field.as_str(), Value::Str("1".into()))])),
+                ]),
+            ),
             ("request_id", Value::Str("ge-ok".into())),
         ]),
     )
@@ -2874,7 +3022,7 @@ fn one_step_every_non_infra_code() {
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"inv","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]},{"name":"ok","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"-1"}]},{"from":"a","on":"ok","do":[{"target":"n","value":"1"}]}],"invariants":[{"name":"pos","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[{"name":"next","ty":"int"}]}],"transitions":[{"from":"a","on":"go","if":"evt.next >= -1","do":[{"target":"n","value":"evt.next"}]}],"invariants":[{"name":"pos","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
     );
     dispatch(
         &mut st,
@@ -2886,16 +3034,29 @@ fn one_step_every_non_infra_code() {
         ]),
     )
     .unwrap();
-    let err = send_err(&mut st, &mut clock, "inst-inv1", "go", obj(&[]), "inv-bad");
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-inv1",
+        "go",
+        obj(&[("next", Value::Str("-1".into()))]),
+        "inv-bad",
+    );
     assert_eq!(err.code, "run/invariant");
-    let next = first_enabled_except(&err, "go").expect("enabled non-invariant event");
+    let field = payload_field_for(&err, "go");
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-inv1".into())),
-            ("event", obj(&[("name", Value::Str(next))])),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("go".into())),
+                    ("payload", obj(&[(field.as_str(), Value::Str("1".into()))])),
+                ]),
+            ),
             ("request_id", Value::Str("inv-ok".into())),
         ]),
     )
@@ -2905,7 +3066,7 @@ fn one_step_every_non_infra_code() {
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"cf","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{"name":"x","expr":"1 == 0","mode":"enforce"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"cf","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[],"invariants":[{"name":"positive","expr":"ctx.n > 0","mode":"enforce"}]}"#,
     );
     let err = dispatch(
         &mut st,
@@ -2918,14 +3079,29 @@ fn one_step_every_non_infra_code() {
     )
     .unwrap_err();
     assert_eq!(err.code, "run/create_failed");
-    let alt = first_detail_str(&err, "known_machines")
-        .expect("create_failed lists a known working machine");
+    let fields = err
+        .details
+        .get("context_fields")
+        .and_then(Value::as_arr)
+        .expect("create_failed lists overridable context fields");
+    let field = fields
+        .iter()
+        .find(|f| f.get("init").and_then(Value::as_str) == Some("0"))
+        .and_then(|f| f.get("name"))
+        .and_then(Value::as_str)
+        .expect("zero-valued context field")
+        .to_string();
+    let machine = first_detail_str(&err, "machine").expect("failed machine reference");
     dispatch(
         &mut st,
         &mut clock,
         "instance_create",
         &obj(&[
-            ("machine", Value::Str(alt)),
+            ("machine", Value::Str(machine)),
+            (
+                "context",
+                Value::Obj(BTreeMap::from([(field, Value::Str("1".into()))])),
+            ),
             ("request_id", Value::Str("cf-ok".into())),
         ]),
     )

@@ -1,5 +1,7 @@
+use fsm_cli::clock::FixedClock;
 use fsm_cli::mcp::tools::{registry, validate_args};
-use fsm_core::json::Value;
+use fsm_cli::store::Store;
+use fsm_core::json::{JsonLimits, Value, parse};
 use std::collections::BTreeMap;
 
 #[test]
@@ -168,5 +170,162 @@ fn validate_accept_and_reject() {
             .and_then(Value::as_str)
             .unwrap()
             .contains("mermaid")
+    );
+}
+
+#[test]
+fn machine_list_and_history_match_independent_contracts() {
+    // These schemas are intentionally authored in the test instead of being
+    // assembled from the registry helpers under test.
+    let machine_list_contract = parse(
+        br#"{"type":"object","required":["machines"],"additionalProperties":false,"properties":{"machines":{"type":"array","items":{"type":"object","required":["machine_id","name","defined_seq","states","events","instances"],"additionalProperties":false,"properties":{"machine_id":{"type":"string"},"name":{"type":"string"},"defined_seq":{"type":"number"},"states":{"type":"number"},"events":{"type":"number"},"instances":{"type":"object","required":["running","completed","cancelled"],"additionalProperties":false,"properties":{"running":{"type":"number"},"completed":{"type":"number"},"cancelled":{"type":"number"}}}}}},"next_cursor":{"type":"string"}}}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let history_contract = parse(
+        br#"{"type":"object","required":["instance_id","entries","chain_verified"],"additionalProperties":true,"properties":{"instance_id":{"type":"string"},"entries":{"type":"array","items":{"type":"object","required":["seq","ts","kind","hash"],"additionalProperties":true,"properties":{"seq":{"type":"number"},"ts":{"type":"number"},"kind":{"type":"string"},"event":{"type":"string"},"request_id":{"type":"string"},"from_leaf":{"type":"string"},"to_leaf":{"type":"string"},"context_after":{"type":"object"},"trace":{"type":"object"},"hash":{"type":"string"}}}},"next_from_seq":{"type":"number"},"chain_verified":{"type":"boolean"}}}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+
+    let case = parse(
+        include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let mut store = Store::open_memory().unwrap();
+    let mut clock = FixedClock::new(1_000, 1);
+    fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_create",
+        &Value::Obj(BTreeMap::from([("spec".into(), case)])),
+    )
+    .unwrap();
+    let created = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_create",
+        &Value::Obj(BTreeMap::from([
+            ("machine".into(), Value::Str("case_review".into())),
+            ("request_id".into(), Value::Str("create-1".into())),
+        ])),
+    )
+    .unwrap();
+    let instance_id = created
+        .get("instance_id")
+        .and_then(Value::as_str)
+        .unwrap()
+        .to_string();
+    fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_send",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str(instance_id.clone())),
+            (
+                "event".into(),
+                Value::Obj(BTreeMap::from([(
+                    "name".into(),
+                    Value::Str("docs_ok".into()),
+                )])),
+            ),
+            ("request_id".into(), Value::Str("send-1".into())),
+        ])),
+    )
+    .unwrap();
+
+    let listed = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "machine_list",
+        &Value::Obj(BTreeMap::new()),
+    )
+    .unwrap();
+    validate_args(&machine_list_contract, &listed).unwrap();
+    let row = &listed.get("machines").and_then(Value::as_arr).unwrap()[0];
+    assert_eq!(row.get("states").and_then(Value::as_num), Some("8"));
+    assert_eq!(row.get("events").and_then(Value::as_num), Some("6"));
+    assert!(row.get("state_count").is_none(), "{row:?}");
+    assert!(row.get("event_count").is_none(), "{row:?}");
+
+    let history = fsm_cli::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_history",
+        &Value::Obj(BTreeMap::from([
+            ("instance_id".into(), Value::Str(instance_id)),
+            ("include_trace".into(), Value::Bool(true)),
+        ])),
+    )
+    .unwrap();
+    validate_args(&history_contract, &history).unwrap();
+    let applied = history
+        .get("entries")
+        .and_then(Value::as_arr)
+        .unwrap()
+        .iter()
+        .find(|entry| entry.get("kind").and_then(Value::as_str) == Some("EventApplied"))
+        .unwrap();
+    assert_eq!(
+        applied.get("event").and_then(Value::as_str),
+        Some("docs_ok")
+    );
+    assert!(applied.get("trace").and_then(Value::as_obj).is_some());
+
+    let reg = registry();
+    let list_item = (reg
+        .iter()
+        .find(|t| t.name == "machine_list")
+        .unwrap()
+        .output_schema)()
+    .get("properties")
+    .and_then(|p| p.get("machines"))
+    .and_then(|a| a.get("items"))
+    .cloned()
+    .unwrap();
+    assert_eq!(
+        list_item
+            .get("properties")
+            .and_then(|p| p.get("states"))
+            .and_then(|s| s.get("type"))
+            .and_then(Value::as_str),
+        Some("number")
+    );
+    assert_eq!(
+        list_item
+            .get("properties")
+            .and_then(|p| p.get("events"))
+            .and_then(|s| s.get("type"))
+            .and_then(Value::as_str),
+        Some("number")
+    );
+    let history_item = (reg
+        .iter()
+        .find(|t| t.name == "instance_history")
+        .unwrap()
+        .output_schema)()
+    .get("properties")
+    .and_then(|p| p.get("entries"))
+    .and_then(|a| a.get("items"))
+    .cloned()
+    .unwrap();
+    let props = history_item
+        .get("properties")
+        .and_then(Value::as_obj)
+        .unwrap();
+    assert_eq!(
+        props
+            .get("event")
+            .and_then(|s| s.get("type"))
+            .and_then(Value::as_str),
+        Some("string")
+    );
+    assert_eq!(
+        props
+            .get("trace")
+            .and_then(|s| s.get("type"))
+            .and_then(Value::as_str),
+        Some("object")
     );
 }

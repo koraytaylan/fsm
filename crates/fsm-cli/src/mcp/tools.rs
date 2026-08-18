@@ -194,8 +194,8 @@ fn machine_row() -> Value {
     p.insert("machine_id".into(), ty("string"));
     p.insert("name".into(), ty("string"));
     p.insert("defined_seq".into(), ty("number"));
-    p.insert("states".into(), ty_array_of(ty("string")));
-    p.insert("events".into(), ty_array_of(ty("string")));
+    p.insert("states".into(), ty("number"));
+    p.insert("events".into(), ty("number"));
     p.insert("instances".into(), inst);
     schema_obj(
         p,
@@ -243,6 +243,8 @@ fn history_entry_obj() -> Value {
     p.insert("from_leaf".into(), ty("string"));
     p.insert("to_leaf".into(), ty("string"));
     p.insert("context_after".into(), ty("object"));
+    p.insert("event".into(), ty("string"));
+    p.insert("trace".into(), ty("object"));
     schema_obj(p, &["seq", "ts", "kind", "hash"], true)
 }
 
@@ -1105,32 +1107,12 @@ fn run_machine_list(
                 ("cancelled".into(), Value::Num(cancelled.to_string())),
             ])),
         );
-        fn collect_names(nodes: &[fsm_core::spec::StateNode], out: &mut Vec<Value>) {
-            for n in nodes {
-                out.push(Value::Str(n.name.clone()));
-                collect_names(&n.states, out);
-            }
-        }
-        let mut states = Vec::new();
-        collect_names(&m.compiled.spec.states, &mut states);
-        row.insert("states".into(), Value::Arr(states));
         row.insert(
-            "events".into(),
-            Value::Arr(
-                m.compiled
-                    .spec
-                    .events
-                    .iter()
-                    .map(|e| Value::Str(e.name.clone()))
-                    .collect(),
-            ),
-        );
-        row.insert(
-            "state_count".into(),
+            "states".into(),
             Value::Num(count_nodes(&m.compiled.spec.states).to_string()),
         );
         row.insert(
-            "event_count".into(),
+            "events".into(),
             Value::Num(m.compiled.spec.events.len().to_string()),
         );
         let defined_seq = store

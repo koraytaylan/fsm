@@ -543,7 +543,7 @@ fn enabled_events_uses_compiled_decimal_if() {
 }
 
 #[test]
-fn version3_and_missing_marker_are_mismatch() {
+fn versions_before_checkpoint_format_and_missing_marker_are_mismatch() {
     let _g = gate();
     let dir = tmp("ver");
     let mut s = Store::open(&dir).unwrap();
@@ -558,6 +558,12 @@ fn version3_and_missing_marker_are_mismatch() {
     std::fs::write(dir.join("VERSION"), "4\n").unwrap();
     let err = match Store::open(&dir) {
         Ok(_) => panic!("VERSION 4 opened"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code, "store/version_mismatch");
+    std::fs::write(dir.join("VERSION"), "5\n").unwrap();
+    let err = match Store::open(&dir) {
+        Ok(_) => panic!("VERSION 5 opened"),
         Err(e) => e,
     };
     assert_eq!(err.code, "store/version_mismatch");
@@ -997,7 +1003,7 @@ fn concurrent_first_open_installs_one_version() {
         std::fs::read_to_string(dir.join("VERSION"))
             .unwrap_or_default()
             .trim(),
-        "5"
+        "6"
     );
 }
 
@@ -2108,6 +2114,32 @@ fn write_snapshot_propagates_dir_sync() {
     assert_eq!(err.code, "io/write", "{err:?}");
 }
 
+fn reseal_snapshot(o: &mut BTreeMap<String, Value>) {
+    let root_material = Value::Obj(BTreeMap::from([
+        ("seq".into(), o.get("seq").unwrap().clone()),
+        ("machines".into(), o.get("machines").unwrap().clone()),
+        ("instances".into(), o.get("instances").unwrap().clone()),
+        ("dedup".into(), o.get("dedup").unwrap().clone()),
+    ]));
+    let root = format!(
+        "sha256:{}",
+        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+            "fsm:state-root:2",
+            &root_material,
+        ))
+    );
+    o.insert("state_root".into(), Value::Str(root));
+    o.insert("snapshot_hash".into(), Value::Str(String::new()));
+    let hash = format!(
+        "sha256:{}",
+        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+            "fsm:snapshot:2",
+            &Value::Obj(o.clone()),
+        ))
+    );
+    o.insert("snapshot_hash".into(), Value::Str(hash));
+}
+
 fn rewrite_snap_strip_dedup(dir: &std::path::Path, rid: &str, snap_seq: u64) {
     let path = keep_only_snap_seq(dir, snap_seq);
     let bytes = std::fs::read(&path).unwrap();
@@ -2116,20 +2148,12 @@ fn rewrite_snap_strip_dedup(dir: &std::path::Path, rid: &str, snap_seq: u64) {
     if let Some(Value::Obj(d)) = o.get_mut("dedup") {
         d.remove(rid);
     }
-    o.insert("snapshot_hash".into(), Value::Str(String::new()));
-    let h = format!(
-        "sha256:{}",
-        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-            "fsm:snapshot:2",
-            &Value::Obj(o.clone())
-        ))
-    );
-    o.insert("snapshot_hash".into(), Value::Str(h));
+    reseal_snapshot(&mut o);
     std::fs::write(&path, fsm_core::canon::canon_bytes(&Value::Obj(o))).unwrap();
 }
 
 #[test]
-fn stripped_dedup_snapshot_falls_back_and_retry_is_duplicate() {
+fn stripped_dedup_snapshot_and_mutable_sidecars_cannot_reexecute() {
     let _g = gate();
     let dir = tmp("stripd");
     let mut store = Store::open(&dir).unwrap();
@@ -2143,6 +2167,12 @@ fn stripped_dedup_snapshot_falls_back_and_retry_is_duplicate() {
     let snap_seq = store.journal.last_seq;
     drop(store);
     rewrite_snap_strip_dedup(&dir, "c1", snap_seq);
+    let snap_path = keep_only_snap_seq(&dir, snap_seq);
+    let forged = parse(&std::fs::read(&snap_path).unwrap(), &JsonLimits::DEFAULT).unwrap();
+    let forged_root = forged.get("state_root").and_then(Value::as_str).unwrap();
+    fsm_cli::snapshot::commit_state_root(&dir, snap_seq, forged_root).unwrap();
+    let old_sidecar = dir.join("journal").join(format!("root-{snap_seq:020}"));
+    std::fs::write(&old_sidecar, format!("{forged_root}\n")).unwrap();
     let mut store = Store::open(&dir).unwrap();
     assert!(
         store.state.dedup.contains_key("c1"),
@@ -2154,6 +2184,10 @@ fn stripped_dedup_snapshot_falls_back_and_retry_is_duplicate() {
     let v = again.unwrap();
     assert_eq!(v.get("duplicate").and_then(Value::as_bool), Some(true));
     assert_eq!(store.journal.last_seq, seq, "retry must not append");
+    assert!(
+        !old_sidecar.exists(),
+        "legacy unbounded sidecars should be removed, not trusted"
+    );
 }
 
 #[test]
@@ -3072,15 +3106,7 @@ fn rewrite_snap_context(dir: &std::path::Path, snap_seq: u64) {
             );
         }
     }
-    o.insert("snapshot_hash".into(), Value::Str(String::new()));
-    let h = format!(
-        "sha256:{}",
-        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-            "fsm:snapshot:2",
-            &Value::Obj(o.clone())
-        ))
-    );
-    o.insert("snapshot_hash".into(), Value::Str(h));
+    reseal_snapshot(&mut o);
     std::fs::write(&path, fsm_core::canon::canon_bytes(&Value::Obj(o))).unwrap();
 }
 
@@ -3280,15 +3306,7 @@ fn rewrite_snap_field(dir: &std::path::Path, kind: &str, snap_seq: u64) {
             );
         }
     }
-    o.insert("snapshot_hash".into(), Value::Str(String::new()));
-    let h = format!(
-        "sha256:{}",
-        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-            "fsm:snapshot:2",
-            &Value::Obj(o.clone())
-        ))
-    );
-    o.insert("snapshot_hash".into(), Value::Str(h));
+    reseal_snapshot(&mut o);
     std::fs::write(&path, fsm_core::canon::canon_bytes(&Value::Obj(o))).unwrap();
 }
 

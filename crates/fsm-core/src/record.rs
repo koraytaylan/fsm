@@ -1,4 +1,4 @@
-//! Journal record envelope: seal, verify, ten kinds.
+//! Journal record envelope: seal, verify, and record kinds.
 
 #![allow(clippy::should_implement_trait, clippy::byte_char_slices, unused_mut)]
 
@@ -20,6 +20,7 @@ pub enum RecordKind {
     RequestRejected,
     InstanceCancelled,
     Annotated,
+    StateCheckpoint,
 }
 
 impl RecordKind {
@@ -35,6 +36,7 @@ impl RecordKind {
             RecordKind::RequestRejected => "request_rejected",
             RecordKind::InstanceCancelled => "instance_cancelled",
             RecordKind::Annotated => "annotated",
+            RecordKind::StateCheckpoint => "state_checkpoint",
         }
     }
 
@@ -50,11 +52,12 @@ impl RecordKind {
             "request_rejected" => Self::RequestRejected,
             "instance_cancelled" => Self::InstanceCancelled,
             "annotated" => Self::Annotated,
+            "state_checkpoint" => Self::StateCheckpoint,
             _ => return None,
         })
     }
 
-    pub fn all() -> [RecordKind; 10] {
+    pub fn all() -> [RecordKind; 11] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -66,6 +69,7 @@ impl RecordKind {
             Self::RequestRejected,
             Self::InstanceCancelled,
             Self::Annotated,
+            Self::StateCheckpoint,
         ]
     }
 }
@@ -368,6 +372,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
         RecordKind::Annotated => {
             req_str(body, "instance_id") && req_str(body, "request_id") && req_str(body, "note")
         }
+        RecordKind::StateCheckpoint => is_state_hash(body.get("state_root")),
     }
 }
 

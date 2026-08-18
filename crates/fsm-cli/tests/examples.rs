@@ -1,4 +1,4 @@
-use fsm_cli::clock::{self, FixedClock};
+use fsm_cli::clock::FixedClock;
 use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::spec::{compile, parse_machine};
@@ -60,6 +60,42 @@ fn expense_approval_paths() {
         .unwrap();
     assert_eq!(s.state.instances.get("small").unwrap().leaf, "approved");
 
+    s.create_instance("expense_approval", "ancestor", "c-ancestor", None)
+        .unwrap();
+    s.send_event(
+        "ancestor",
+        "submit",
+        Value::Obj(BTreeMap::from([(
+            "amount".into(),
+            Value::Str("10.00".into()),
+        )])),
+        "ancestor-submit",
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        s.state.instances.get("ancestor").unwrap().leaf,
+        "peer_review"
+    );
+    let ancestor = s
+        .send_event(
+            "ancestor",
+            "withdraw",
+            Value::Obj(BTreeMap::new()),
+            "ancestor-withdraw",
+            None,
+        )
+        .unwrap();
+    assert_eq!(ancestor.get("leaf").and_then(Value::as_str), Some("draft"));
+    assert_eq!(
+        ancestor
+            .get("transition")
+            .and_then(|t| t.get("source_state"))
+            .and_then(Value::as_str),
+        Some("review"),
+        "peer_review must inherit the ancestor-sourced withdraw"
+    );
+
     s.create_instance("expense_approval", "big", "c2", None)
         .unwrap();
     let r = s
@@ -78,8 +114,18 @@ fn expense_approval_paths() {
         r.get("leaf").and_then(Value::as_str),
         Some("manager_review")
     );
-    s.send_event("big", "withdraw", Value::Obj(BTreeMap::new()), "b2", None)
+    let child = s
+        .send_event("big", "withdraw", Value::Obj(BTreeMap::new()), "b2", None)
         .unwrap();
+    assert_eq!(child.get("leaf").and_then(Value::as_str), Some("draft"));
+    assert_eq!(
+        child
+            .get("transition")
+            .and_then(|t| t.get("source_state"))
+            .and_then(Value::as_str),
+        Some("manager_review"),
+        "the child-first override must beat review.withdraw"
+    );
 
     s.create_instance("expense_approval", "neg", "c3", None)
         .unwrap();
@@ -96,7 +142,7 @@ fn expense_approval_paths() {
         )
         .unwrap_err();
     assert_eq!(err.code, "run/invariant");
-    assert!(!err.hint.is_empty());
+    assert_eq!(err.hint, "adjust the action or invariant nonneg");
     let ok = s
         .send_event(
             "neg",
@@ -176,6 +222,8 @@ struct DocCmd {
     expect_leaf: Option<String>,
     expect_ok: bool,
     expect_created: bool,
+    expect_hint: Option<String>,
+    expect_effects_pending: Option<String>,
 }
 
 fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
@@ -213,6 +261,8 @@ fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
                     expect_leaf: None,
                     expect_ok: false,
                     expect_created: false,
+                    expect_hint: None,
+                    expect_effects_pending: None,
                 });
             }
             continue;
@@ -226,6 +276,8 @@ fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
                 expect_leaf: None,
                 expect_ok: false,
                 expect_created: false,
+                expect_hint: None,
+                expect_effects_pending: None,
             });
             continue;
         }
@@ -238,7 +290,11 @@ fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
                 cmd.expect_ok = true;
             } else if t == "created: true" {
                 cmd.expect_created = true;
-            } else if t.contains('/') && !t.starts_with('#') && !t.is_empty() {
+            } else if let Some(v) = t.strip_prefix("hint:") {
+                cmd.expect_hint = Some(v.trim().to_string());
+            } else if let Some(v) = t.strip_prefix("effects_pending:") {
+                cmd.expect_effects_pending = Some(v.trim().to_string());
+            } else if cmd.expect_fail && t.contains('/') && !t.starts_with('#') && !t.is_empty() {
                 cmd.expect_code = Some(t.to_string());
             }
         }
@@ -248,6 +304,15 @@ fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
         blocks.push(cur);
     }
     blocks
+}
+
+fn rendered_field(text: &str, name: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        line.trim_start()
+            .strip_prefix(name)
+            .and_then(|rest| rest.strip_prefix(':'))
+            .map(|value| value.trim().to_string())
+    })
 }
 
 #[test]
@@ -267,6 +332,8 @@ fn readme_and_examples_commands_run() {
     let mut saw_invoice = false;
     let mut saw_order_ack_path = false;
     let mut saw_hint = false;
+    let mut saw_pending_effect = false;
+    let mut saw_pending_cleared = false;
     for block in all_blocks {
         let dir = tmp();
         for cmd in block {
@@ -301,9 +368,14 @@ fn readme_and_examples_commands_run() {
                     );
                 }
                 let rendered = format!("{out}{err}");
-                assert!(
-                    rendered.contains("hint:"),
-                    "documented rejection must render hint: {rendered}"
+                let expected_hint = cmd
+                    .expect_hint
+                    .as_ref()
+                    .expect("documented rejection must show its exact hint");
+                assert_eq!(
+                    rendered_field(&rendered, "hint").as_deref(),
+                    Some(expected_hint.as_str()),
+                    "documented hint drifted for {args:?}: {rendered}"
                 );
                 saw_hint = true;
             } else {
@@ -325,6 +397,15 @@ fn readme_and_examples_commands_run() {
             if cmd.expect_created {
                 assert!(out.contains("created") && out.contains("true"), "{out}");
             }
+            if let Some(expected) = &cmd.expect_effects_pending {
+                assert_eq!(
+                    rendered_field(&out, "effects_pending").as_deref(),
+                    Some(expected.as_str()),
+                    "documented pending-effect output drifted for {args:?}: {out}"
+                );
+                saw_pending_effect |= !expected.is_empty();
+                saw_pending_cleared |= expected.is_empty();
+            }
         }
     }
     assert!(
@@ -333,13 +414,18 @@ fn readme_and_examples_commands_run() {
     );
     assert!(saw_order_ack_path, "documented instance ack unused");
     assert!(saw_hint, "documented errors must render a hint");
+    assert!(
+        saw_pending_effect,
+        "documented emitted effect was not checked"
+    );
+    assert!(
+        saw_pending_cleared,
+        "documented cleared outbox was not checked"
+    );
 }
 
 #[test]
 fn order_lifecycle_paths() {
-    clock::reset_injected();
-    clock::force_ms(9_000);
-    clock::set_step(0);
     let dir = tmp();
     let mut s = Store::open(&dir).unwrap();
     s.define_machine(load("order_lifecycle"), false, false)
@@ -372,12 +458,24 @@ fn order_lifecycle_paths() {
         .unwrap();
     s.send_event("o1", "ship", Value::Obj(BTreeMap::new()), "p3", None)
         .unwrap();
-    clock::reset_injected();
-    clock::force_ms(9_000);
+    let mut stamp_clock = FixedClock::new(9_000, 1);
     let mut payload = Value::Obj(BTreeMap::new());
-    s.send_event_stamp("o1", "confirmed", &mut payload, "p4", None, &["at"])
-        .unwrap();
+    s.send_event_stamp_on(
+        &mut stamp_clock,
+        "o1",
+        "confirmed",
+        &mut payload,
+        "p4",
+        None,
+        &["at"],
+    )
+    .unwrap();
     assert_eq!(payload.get("at").and_then(Value::as_str), Some("9000"));
+    assert_eq!(
+        stamp_clock.now, 9_001,
+        "the supplied clock was consumed once"
+    );
+    assert_eq!(s.records.last().unwrap().ts, 9_000);
     assert_eq!(s.state.instances.get("o1").unwrap().leaf, "closed");
 
     s.create_instance("order_lifecycle", "o-noack", "c-noack", None)
@@ -393,8 +491,16 @@ fn order_lifecycle_paths() {
     s.send_event("o-noack", "ship", Value::Obj(BTreeMap::new()), "np3", None)
         .unwrap();
     let mut payload = Value::Obj(BTreeMap::new());
-    s.send_event_stamp("o-noack", "confirmed", &mut payload, "np4", None, &["at"])
-        .unwrap();
+    s.send_event_stamp_on(
+        &mut stamp_clock,
+        "o-noack",
+        "confirmed",
+        &mut payload,
+        "np4",
+        None,
+        &["at"],
+    )
+    .unwrap();
     assert_eq!(s.state.instances.get("o-noack").unwrap().leaf, "closed");
     assert!(
         !s.state.instances.get("o-noack").unwrap().pending.is_empty(),
@@ -425,7 +531,6 @@ fn order_lifecycle_paths() {
             .any(|e| e.get("event").and_then(Value::as_str) == Some("place")),
         "{enabled:?}"
     );
-    let _ = FixedClock::new(1, 1);
 }
 
 #[test]

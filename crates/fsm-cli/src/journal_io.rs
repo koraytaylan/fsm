@@ -16,6 +16,9 @@ use fsm_core::replay::{NopSink, RecordSink, StoreState, fold_with};
 
 const ROTATE_RECORDS: u32 = 65_536;
 const ROTATE_BYTES: u64 = 64 * 1024 * 1024;
+// VERSION 6 adds the `state_checkpoint` record used to bind explicit
+// snapshots without rewriting prior journal records.
+const STORE_VERSION: &str = "6";
 
 pub fn should_rotate(seg_bytes: u64, seg_records: u32) -> bool {
     seg_records >= ROTATE_RECORDS || seg_bytes >= ROTATE_BYTES
@@ -290,7 +293,7 @@ fn write_version_durable(dir: &Path) -> Result<(), JournalIoError> {
             .map(|d| d.as_nanos())
             .unwrap_or(0)
     ));
-    fs::write(&tmp, "5\n").map_err(|e| JournalIoError::Io(e.to_string()))?;
+    fs::write(&tmp, format!("{STORE_VERSION}\n")).map_err(|e| JournalIoError::Io(e.to_string()))?;
     let f = File::open(&tmp).map_err(|e| JournalIoError::Io(e.to_string()))?;
     f.sync_all()
         .map_err(|e| JournalIoError::Io(e.to_string()))?;
@@ -697,10 +700,7 @@ pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
     if ver.exists() {
         let v = fs::read_to_string(&ver).unwrap_or_default();
         let t = v.trim();
-        if t == "1" || t == "2" || t == "3" || t == "4" {
-            return Err(JournalHealth::VersionMismatch { found: t.into() });
-        }
-        if t != "5" {
+        if t != STORE_VERSION {
             return Err(JournalHealth::VersionMismatch {
                 found: t.to_string(),
             });
@@ -1151,7 +1151,7 @@ mod tests {
         let dir = tmp();
         let j = init(&dir).unwrap();
         drop(j);
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "5");
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
         fs::write(dir.join("VERSION"), "3\n").unwrap();
         assert!(matches!(
             require_store_format(&dir),

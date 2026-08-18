@@ -5,13 +5,72 @@
 use std::collections::BTreeMap;
 
 use crate::expr::eval::{Budget, Val};
-use crate::hashes::state_hash;
+use crate::hashes::{domain_hash, state_hash};
 use crate::json::Value;
 use crate::machine::{CompiledMachine, InstanceState, Status};
 use crate::record::{Record, RecordKind};
 use crate::spec::{TySpec, compile, parse_machine};
 use crate::step::{Outcome, create, step};
 use crate::tree::Tree;
+
+/// Hash the complete logical store state at `seq` without the journal hash.
+///
+/// Omitting `last_hash` avoids a cycle when this root is placed inside the
+/// checkpoint record whose hash authenticates it. The checkpoint hash
+/// separately binds a snapshot's `last_hash`.
+pub fn state_root_at(st: &StoreState, seq: u64) -> String {
+    let mut machines = BTreeMap::new();
+    for (id, machine) in &st.machines {
+        machines.insert(id.clone(), machine.def.clone());
+    }
+
+    let mut instances = BTreeMap::new();
+    for (id, inst) in &st.instances {
+        let mid = st.instance_machines.get(id).cloned().unwrap_or_default();
+        let context = inst
+            .ctx
+            .iter()
+            .map(|(name, value)| (name.clone(), Value::Str(value.canonical_string())))
+            .collect();
+        let history = inst
+            .history
+            .iter()
+            .map(|(owner, leaf)| (owner.clone(), Value::Str(leaf.clone())))
+            .collect();
+        let body = BTreeMap::from([
+            ("leaf".into(), Value::Str(inst.leaf.clone())),
+            ("status".into(), Value::Str(inst.status.as_str().into())),
+            ("machine_id".into(), Value::Str(mid.clone())),
+            ("context".into(), Value::Obj(context)),
+            ("history".into(), Value::Obj(history)),
+            (
+                "pending".into(),
+                Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
+            ),
+            (
+                "state_hash".into(),
+                Value::Str(state_hash(&mid, id, seq, inst)),
+            ),
+        ]);
+        instances.insert(id.clone(), Value::Obj(body));
+    }
+
+    let dedup = st
+        .dedup
+        .iter()
+        .map(|(request_id, request_seq)| (request_id.clone(), Value::Num(request_seq.to_string())))
+        .collect();
+    let material = Value::Obj(BTreeMap::from([
+        ("seq".into(), Value::Num(seq.to_string())),
+        ("machines".into(), Value::Obj(machines)),
+        ("instances".into(), Value::Obj(instances)),
+        ("dedup".into(), Value::Obj(dedup)),
+    ]));
+    format!(
+        "sha256:{}",
+        crate::sha256::to_hex(&domain_hash("fsm:state-root:2", &material))
+    )
+}
 
 #[derive(Debug, Clone)]
 pub struct StoredMachine {
@@ -147,7 +206,7 @@ fn claim_request_id(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError
 }
 
 fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
-    match rec.kind {
+    let applied = match rec.kind {
         RecordKind::Genesis => Ok(()),
         RecordKind::MachineDefined => {
             let def = rec
@@ -673,7 +732,22 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             claim_request_id(st, rec)?;
             Ok(())
         }
+        RecordKind::StateCheckpoint => Ok(()),
+    };
+    applied?;
+    if let Some(root) = rec.body.get("state_root") {
+        let want = root.as_str().ok_or(ReplayError::FieldMismatch {
+            seq: rec.seq,
+            field: "state_root",
+        })?;
+        if want != state_root_at(st, rec.seq) {
+            return Err(ReplayError::FieldMismatch {
+                seq: rec.seq,
+                field: "state_root",
+            });
+        }
     }
+    Ok(())
 }
 
 fn expected_event_rejected_details(

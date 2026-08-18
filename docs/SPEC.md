@@ -108,7 +108,7 @@ These numeric limits match `crates/fsm-core/src/limits.rs`.
 
 ## Journal
 
-A record exists **iff** the outcome depended on instance state and is not retry-stable. The unique admitted state-dependent-but-retry-stable case is `expect_seq` mismatch (`req/seq_mismatch`): it is unjournaled and does not consume `request_id`. Dedup lookup MUST precede the `expect_seq` check — otherwise a lost-response retry with a stale seq would be rejected, the client would "fix" the seq under a new request_id, and the event would apply twice. `run/create_failed` is the one unjournaled `run/*` outcome (no prior instance exists).
+A request-outcome record exists **iff** the outcome depended on instance state and is not retry-stable. The unique admitted state-dependent-but-retry-stable case is `expect_seq` mismatch (`req/seq_mismatch`): it is unjournaled and does not consume `request_id`. Dedup lookup MUST precede the `expect_seq` check — otherwise a lost-response retry with a stale seq would be rejected, the client would "fix" the seq under a new request_id, and the event would apply twice. `run/create_failed` is the one unjournaled `run/*` outcome (no prior instance exists). `state_checkpoint` is a maintenance record rather than a request outcome; it changes no logical state and consumes no `request_id`.
 
 Envelope (one canonical LF-terminated line, domain `fsm:record:1` over the envelope minus `hash`):
 
@@ -130,8 +130,9 @@ Genesis is `seq` 0, `prev` sixty-four `0`s, body `{format: "fsm.journal/1", crea
 | `request_rejected` | `request_id`, `instance_id`, `code`, `message`, `hint`, `details`, `operation`, `state_hash`; `effect_id` required when `operation` is `ack` |
 | `instance_cancelled` | `instance_id`, `request_id`, `reason`, `state_hash` |
 | `annotated` | `instance_id`, `request_id`, `note` |
+| `state_checkpoint` | `state_root` |
 
-Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`. Duplicate `request_id` values are a fold error. `effect_acked` and `instance_cancelled` commit the post-operation instance `state_hash`. On-disk store `VERSION` is `5`. `VERSION` `1`, `2`, `3`, and `4` directories are rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records.
+Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`. Duplicate `request_id` values are a fold error. `effect_acked` and `instance_cancelled` commit the post-operation instance `state_hash`. A record carrying `state_root` commits the complete logical store state after that record at its `seq`; the root excludes the record hash to avoid a cycle, and replay MUST recompute it. On-disk store `VERSION` is `6`. `VERSION` `1` through `5` directories are rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records.
 
 ### Recovery
 
@@ -144,7 +145,7 @@ Verification: the stored line MUST equal its canonical re-serialization; seq is 
 | `NonCanonical` | refuse; no repair |
 | `LockIo` | refuse |
 
-Interior history is never rewritten. Snapshots (`fsm.snapshot/2`) are disposable caches, never authoritative, never part of the chain. Each snapshot carries a `state_root` bound to a journal-committed `journal/root-<seq>` file written at the same sequence; a matching binding reconstructs without replaying the prefix. `fsm.snapshot/1` caches are rejected, never reinterpreted.
+Interior history is never rewritten. Snapshots (`fsm.snapshot/2`) are disposable caches, never authoritative, never part of the chain. Each snapshot carries a self-checked `state_root`: `sha256:` plus the hex encoding of domain `fsm:state-root:2` over canonical `{seq,machines,instances,dedup}` using the same values and per-instance hashes as the snapshot; `last_hash` is excluded to avoid a cycle. The fast path is permitted only when the journal record at the snapshot sequence has the same hash as the snapshot's `last_hash` and carries that same `state_root` in its hash-chained body. Explicit snapshots append a `state_checkpoint`; the automatic 10,000-record snapshot commits the root in that existing boundary record. A clean-shutdown cache without a journal-bound root is accepted only after folding the complete journal prefix and proving exact state equality, so it is not a fast path. Mutable sidecar files are never trust anchors. `fsm.snapshot/1` caches are rejected, never reinterpreted.
 
 ## Expressions
 
@@ -371,7 +372,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed
 - `store/torn_tail` — truncated final record
-- `store/version_mismatch` — data directory VERSION is not 5
+- `store/version_mismatch` — data directory VERSION is not 6
 
 ## Appendix B — Limits
 
@@ -401,9 +402,9 @@ These match `crates/fsm-core/src/limits.rs`.
 |---|---|
 | `fsm.machine/1` | Machine definition documents |
 | `fsm.journal/1` | Journal record envelopes |
-| `fsm.snapshot/2` | Disposable snapshot caches bound by journal-committed `state_root` |
+| `fsm.snapshot/2` | Disposable snapshot caches optionally accelerated by a hash-chained `state_root` |
 | `fsm.snapshot/1` | Rejected (never reinterpreted) |
 | `fsm.state/1` | Instance state identity hash payload |
 | `expr/1` | Expression grammar |
 
-On-disk store `VERSION` is `5`. A `VERSION` `1`, `2`, `3`, or `4` directory is rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records, machine ids, or snapshots.
+On-disk store `VERSION` is `6`. A `VERSION` `1` through `5` directory is rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records, machine ids, or snapshots.
