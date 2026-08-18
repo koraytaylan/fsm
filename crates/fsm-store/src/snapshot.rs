@@ -336,15 +336,8 @@ pub fn commit_state_root(data_dir: &Path, seq: u64, root: &str) -> Result<(), Er
     fs::create_dir_all(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let dest = jdir.join("legacy-snapshot-root");
     let tmp = jdir.join("legacy-snapshot-root.tmp");
-    fs::write(&tmp, format!("{seq}\t{root}\n"))
+    crate::write_durable(&tmp, format!("{seq}\t{root}\n").as_bytes())
         .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    let f = fs::File::open(&tmp).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    f.sync_all()
-        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    // Close the handle before renaming. Unix happily renames a file that still
-    // has one open; Windows refuses with a sharing violation, and the fsync
-    // above is the only reason it is open.
-    drop(f);
     fs::rename(&tmp, &dest).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     crate::sync_dir(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     Ok(())
@@ -448,14 +441,7 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
             .unwrap_or(0)
     );
     let tmp = dir.join(format!("snap-{seq}-{nonce}.tmp"));
-    fs::write(&tmp, &bytes).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    let f = fs::File::open(&tmp).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    f.sync_all()
-        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    // Close the handle before renaming. Unix happily renames a file that still
-    // has one open; Windows refuses with a sharing violation, and the fsync
-    // above is the only reason it is open.
-    drop(f);
+    crate::write_durable(&tmp, &bytes).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let dest = dir.join(format!("snap-{seq}.json"));
     let final_path = if dest.exists() {
         dir.join(format!("snap-{seq}-{nonce}.json"))

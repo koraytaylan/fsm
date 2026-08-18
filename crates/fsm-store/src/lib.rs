@@ -29,6 +29,24 @@ pub mod journal_io;
 pub mod snapshot;
 pub mod store;
 
+/// Write `bytes` to `path` and fsync them before returning.
+///
+/// The obvious spelling — `fs::write`, then reopen with `File::open` and
+/// `sync_all` — is broken on Windows: `File::open` asks for read access, and
+/// `FlushFileBuffers` requires a handle that can write, so the flush fails with
+/// `ERROR_ACCESS_DENIED`. On Unix `fsync` on a read-only descriptor is fine,
+/// which is why it survived this long.
+///
+/// Keeping the write handle and syncing it also closes the file before the
+/// caller renames it into place, which Windows requires and Unix does not care
+/// about. Both hazards live here once instead of at every durable-write site.
+pub(crate) fn write_durable(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(path)?;
+    f.write_all(bytes)?;
+    f.sync_all()
+}
+
 /// Flush a *directory* so that a file created or renamed inside it survives a
 /// crash, not just the file's own contents.
 ///

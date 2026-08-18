@@ -359,13 +359,8 @@ fn stamp_store_version(dir: &Path) -> Result<(), JournalIoError> {
             .map(|d| d.as_nanos())
             .unwrap_or(0)
     ));
-    fs::write(&tmp, format!("{STORE_VERSION}\n")).map_err(|e| io_err("write", &tmp, e))?;
-    let f = File::open(&tmp).map_err(|e| io_err("open", &tmp, e))?;
-    f.sync_all().map_err(|e| io_err("sync", &tmp, e))?;
-    // Close the handle before renaming. Unix happily renames a file that still
-    // has one open; Windows refuses with a sharing violation, and the fsync
-    // above is the only reason it is open.
-    drop(f);
+    crate::write_durable(&tmp, format!("{STORE_VERSION}\n").as_bytes())
+        .map_err(|e| io_err("write", &tmp, e))?;
     match fs::rename(&tmp, &ver) {
         Ok(()) => {}
         Err(e) => {
@@ -1178,12 +1173,20 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// Per-process counter. Tests in one binary run concurrently and a
+    /// timestamp alone collides: two threads landing in the same nanosecond
+    /// bucket share a directory, and one wipes the other's store mid-run. It
+    /// showed up first on a fast macOS release build.
+    static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     fn tmp() -> PathBuf {
         let n = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("fsm-j-{n}"));
+        let pid = std::process::id();
+        let i = TMP_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let p = std::env::temp_dir().join(format!("fsm-j-{pid}-{n}-{i}"));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).unwrap();
         p
