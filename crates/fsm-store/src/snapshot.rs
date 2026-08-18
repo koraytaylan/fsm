@@ -342,9 +342,7 @@ pub fn commit_state_root(data_dir: &Path, seq: u64, root: &str) -> Result<(), Er
     f.sync_all()
         .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     fs::rename(&tmp, &dest).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    let df = fs::File::open(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    df.sync_all()
-        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    crate::sync_dir(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     Ok(())
 }
 
@@ -381,9 +379,7 @@ fn prune_legacy_root_sidecars(data_dir: &Path) -> Result<(), ErrorObj> {
         }
     }
     if removed {
-        let dir = fs::File::open(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        dir.sync_all()
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        crate::sync_dir(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     }
     Ok(())
 }
@@ -459,9 +455,7 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
         dest
     };
     fs::rename(&tmp, &final_path).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    let df = fs::File::open(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    df.sync_all()
-        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    crate::sync_dir(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let back = fs::read(&final_path).map_err(|e| ErrorObj::new("io/read", e.to_string()))?;
     let parsed =
         parse(&back, &JsonLimits::DEFAULT).map_err(|e| ErrorObj::new("io/read", e.message))?;
@@ -492,9 +486,7 @@ pub fn prune_old(data_dir: &Path) -> Result<(), ErrorObj> {
     }
     let dir = snap_dir(data_dir);
     if dir.exists() {
-        let df = fs::File::open(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        df.sync_all()
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        crate::sync_dir(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     }
     Ok(())
 }

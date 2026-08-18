@@ -81,6 +81,20 @@ fn embedder_docs_quote_current_versions() {
         "API-POLICY.md must list the live hash domains"
     );
 
+    // Naming the current format is not enough: a superseded one left behind in
+    // prose reads as current to anyone who finds that paragraph first. Only the
+    // passage that documents *rejecting* old snapshots may name them.
+    let superseded = "fsm.snapshot/2";
+    assert_ne!(superseded, snapshot_format, "update this test after a bump");
+    for line in SPEC.lines().chain(API_POLICY.lines()) {
+        if line.contains(superseded) {
+            assert!(
+                line.contains("skipped") || line.contains("Skipped"),
+                "a superseded snapshot format is described as live: {line}"
+            );
+        }
+    }
+
     // The payload limit is quoted in prose as a KiB figure.
     let kib = fsm_core::limits::MAX_PAYLOAD_BYTES / 1024;
     for (name, doc) in [("EMBEDDING.md", EMBEDDING), ("SPEC.md", SPEC)] {

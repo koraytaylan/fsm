@@ -180,7 +180,24 @@ Verification: the stored line MUST equal its canonical re-serialization; seq is 
 | `NonCanonical` | refuse; no repair |
 | `LockIo` | refuse |
 
-Interior history is never rewritten. Snapshots (`fsm.snapshot/2`) are disposable caches, never authoritative, never part of the chain. Each snapshot carries a self-checked `state_root`: `sha256:` plus the hex encoding of domain `fsm:state-root:2` over canonical `{seq,machines,instances,dedup}` using the same values and per-instance hashes as the snapshot; `last_hash` is excluded to avoid a cycle. The fast path is permitted only when the journal record at the snapshot sequence has the same hash as the snapshot's `last_hash` and carries that same `state_root` in its hash-chained body. Explicit snapshots append a `state_checkpoint`; the automatic 10,000-record snapshot commits the root in that existing boundary record. A clean-shutdown cache without a journal-bound root is accepted only after folding the complete journal prefix and proving exact state equality, so it is not a fast path. Mutable sidecar files are never trust anchors. `fsm.snapshot/1` caches are rejected, never reinterpreted.
+#### Durability across platforms
+
+Every append fsyncs the segment **file** before returning, on every platform.
+What differs is the enclosing directory entry: after creating or renaming a file
+(segment rotation, snapshot installation, the request-id allocation file) the
+store also fsyncs the containing directory, and that step is Unix-only. Windows
+exposes no portable equivalent — opening a directory as a file fails outright,
+and flushing a directory handle requires `FILE_FLAG_BACKUP_SEMANTICS`, which the
+standard library does not offer.
+
+The consequence on Windows is bounded: a crash in the window between a rename
+and the directory metadata reaching disk can leave the entry missing even though
+the file's bytes were flushed. It cannot corrupt a record, because record
+durability does not depend on it. Every such case lands in the table above and
+is classified on the next open rather than trusted, so the outcome is a recovery
+step, not silent loss.
+
+Interior history is never rewritten. Snapshots (`fsm.snapshot/3`) are disposable caches, never authoritative, never part of the chain. Each snapshot carries a self-checked `state_root`: `sha256:` plus the hex encoding of domain `fsm:state-root:2` over canonical `{seq,machines,instances,dedup}` using the same values and per-instance hashes as the snapshot; `last_hash` is excluded to avoid a cycle. The fast path is permitted only when the journal record at the snapshot sequence has the same hash as the snapshot's `last_hash` and carries that same `state_root` in its hash-chained body. Explicit snapshots append a `state_checkpoint`; the automatic 10,000-record snapshot commits the root in that existing boundary record. A clean-shutdown cache without a journal-bound root is accepted only after folding the complete journal prefix and proving exact state equality, so it is not a fast path. Mutable sidecar files are never trust anchors. `fsm.snapshot/1` and `fsm.snapshot/2` caches are skipped, never reinterpreted.
 
 ## Expressions
 

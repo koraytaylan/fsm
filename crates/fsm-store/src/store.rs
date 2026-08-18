@@ -797,9 +797,7 @@ impl Store {
                 f.sync_all()
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
                 fs::rename(&tmp, &path).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-                let dirf = fs::File::open(&self.data_dir)
-                    .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-                dirf.sync_all()
+                crate::sync_dir(&self.data_dir)
                     .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
                 return Ok(cand);
             }

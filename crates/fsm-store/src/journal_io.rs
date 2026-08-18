@@ -280,10 +280,7 @@ fn acquire_lock(jdir: &Path) -> Result<File, JournalIoError> {
 }
 
 fn sync_dir(dir: &Path) -> Result<(), JournalIoError> {
-    let f = File::open(dir).map_err(|e| JournalIoError::Io(e.to_string()))?;
-    f.sync_all()
-        .map_err(|e| JournalIoError::Io(e.to_string()))?;
-    Ok(())
+    crate::sync_dir(dir).map_err(|e| JournalIoError::Io(e.to_string()))
 }
 
 fn seg_name(first: u64) -> String {

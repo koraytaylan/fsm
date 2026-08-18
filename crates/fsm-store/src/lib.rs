@@ -28,3 +28,31 @@ pub mod clock;
 pub mod journal_io;
 pub mod snapshot;
 pub mod store;
+
+/// Flush a *directory* so that a file created or renamed inside it survives a
+/// crash, not just the file's own contents.
+///
+/// Unix only, and deliberately a no-op elsewhere. On Windows there is no
+/// portable equivalent: `File::open` on a directory fails outright with
+/// `ERROR_ACCESS_DENIED`, and obtaining a flushable directory handle needs
+/// `FILE_FLAG_BACKUP_SEMANTICS`, which `std` does not expose.
+///
+/// What this does **not** affect on any platform: journal record durability.
+/// Every append fsyncs the segment *file* before returning, and that works
+/// identically everywhere. What is weaker on Windows is only the durability of
+/// the enclosing directory entry after a create or rename — segment rotation,
+/// snapshot installation, and the request-id allocation file. A crash inside
+/// that window can leave the entry missing even though the bytes were flushed.
+/// The store classifies and repairs that on the next open rather than trusting
+/// it, so the consequence is a recovery step, not silent loss.
+pub(crate) fn sync_dir(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::File::open(path)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
