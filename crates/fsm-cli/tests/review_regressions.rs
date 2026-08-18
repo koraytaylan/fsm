@@ -40,7 +40,12 @@ fn fsm_bin() -> std::path::PathBuf {
     std::env::var_os("CARGO_BIN_EXE_fsm")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/fsm")
+            // The fallback has to spell the executable the way the platform
+            // does; on Windows the binary is `fsm.exe`, so a bare `fsm` never
+            // exists and the test reports the binary as missing.
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/debug")
+                .join(format!("fsm{}", std::env::consts::EXE_SUFFIX))
         })
 }
 

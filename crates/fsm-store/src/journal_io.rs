@@ -2,9 +2,16 @@
 
 #![allow(clippy::all, unused)]
 //!
-//! Advisory `journal/LOCK` is released by the OS on process death; the pid
-//! metadata is diagnostic only and is never trusted for liveness. There is
-//! deliberately no stale-lock heuristic.
+//! `journal/LOCK` is released by the OS on process death; the pid metadata is
+//! diagnostic only and is never trusted for liveness. There is deliberately no
+//! stale-lock heuristic.
+//!
+//! Lock semantics differ by platform and the difference is visible in one
+//! place. Unix `flock` is advisory, so the pid metadata can be read while the
+//! lock is held; Windows `LockFileEx` is mandatory and refuses that read. The
+//! contention path already tolerates it — the pid falls back to 0 and the
+//! caller still gets `Locked` — so on Windows a busy store reports that it is
+//! owned without naming the owner. Exclusion itself is identical.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
@@ -1248,8 +1255,14 @@ mod tests {
         let dir = tmp();
         let j = init(&dir).unwrap();
         let lock_path = journal_dir(&dir).join("LOCK");
-        let meta = fs::read_to_string(&lock_path).unwrap();
-        assert!(meta.contains(&format!("\"pid\":{}", std::process::id())));
+        // Readable while held only where locks are advisory. Windows refuses
+        // this read outright, which is why the pid is diagnostic and the
+        // contention path never depends on it.
+        #[cfg(unix)]
+        {
+            let meta = fs::read_to_string(&lock_path).unwrap();
+            assert!(meta.contains(&format!("\"pid\":{}", std::process::id())));
+        }
         let f = OpenOptions::new()
             .read(true)
             .write(true)
