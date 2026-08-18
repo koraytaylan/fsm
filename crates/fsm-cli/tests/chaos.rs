@@ -113,15 +113,43 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     );
     let n = g.range(30, 80);
     let mut iid = 1u32;
-    let mut ledger: Vec<(String, bool)> = Vec::new();
+    #[derive(Clone, Debug)]
+    struct MutTuple {
+        kind: &'static str,
+        instance: Option<String>,
+        event: Option<String>,
+        payload: Option<Value>,
+        request_id: String,
+        expect_seq: Option<u64>,
+        effect_id: Option<String>,
+        ok: bool,
+    }
+    let mut tuples: Vec<MutTuple> = Vec::new();
+    fn note(tuples: &mut Vec<MutTuple>, t: MutTuple) {
+        tuples.push(t);
+    }
     let tid = format!("i{iid}");
-    push_result(
+    let crid = format!("c{iid}");
+    let cok = push_result(
         &mut log,
         "create",
         &mut kinds,
-        store.create_instance("case_review", &tid, &format!("c{iid}"), None),
+        store.create_instance("case_review", &tid, &crid, None),
     );
-    push_result(
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "create",
+            instance: Some(tid.clone()),
+            event: None,
+            payload: None,
+            request_id: crid,
+            expect_seq: None,
+            effect_id: None,
+            ok: cok,
+        },
+    );
+    let sok = push_result(
         &mut log,
         "send",
         &mut kinds,
@@ -133,8 +161,21 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             None,
         ),
     );
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "send",
+            instance: Some(tid.clone()),
+            event: Some("docs_ok".into()),
+            payload: Some(Value::Obj(BTreeMap::new())),
+            request_id: "typed-d1".into(),
+            expect_seq: None,
+            effect_id: None,
+            ok: sok,
+        },
+    );
     let mut last_rid = String::from("typed-d1");
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct SendTuple {
         id: String,
         event: String,
@@ -142,15 +183,17 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
         rid: String,
         expect_seq: Option<u64>,
     }
-    let mut last_ok_send = Some(SendTuple {
-        id: tid.clone(),
-        event: "docs_ok".into(),
-        payload: Value::Obj(BTreeMap::new()),
-        rid: last_rid.clone(),
-        expect_seq: None,
-    });
-    let mut tuples: Vec<String> = Vec::new();
-    ledger.push((last_rid.clone(), true));
+    let mut last_ok_send = if sok {
+        Some(SendTuple {
+            id: tid.clone(),
+            event: "docs_ok".into(),
+            payload: Value::Obj(BTreeMap::new()),
+            rid: last_rid.clone(),
+            expect_seq: None,
+        })
+    } else {
+        None
+    };
     let typed_err = store.send_event(
         &tid,
         "scored",
@@ -163,7 +206,22 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
         Some("req/field_type")
     );
     push_result(&mut log, "typed_err", &mut kinds, typed_err);
-    tuples.push("typed_err scored bool".into());
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "typed_err",
+            instance: Some(tid.clone()),
+            event: Some("scored".into()),
+            payload: Some(Value::Obj(BTreeMap::from([(
+                "score".into(),
+                Value::Bool(true),
+            )]))),
+            request_id: "typed-bad".into(),
+            expect_seq: None,
+            effect_id: None,
+            ok: false,
+        },
+    );
     let stale = store.send_event(
         &tid,
         "docs_ok",
@@ -176,14 +234,38 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
         Some("req/seq_mismatch")
     );
     push_result(&mut log, "stale", &mut kinds, stale);
-    tuples.push("stale expect_seq=0".into());
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "stale",
+            instance: Some(tid.clone()),
+            event: Some("docs_ok".into()),
+            payload: Some(Value::Obj(BTreeMap::new())),
+            request_id: "stale-1".into(),
+            expect_seq: Some(0),
+            effect_id: None,
+            ok: false,
+        },
+    );
     let unk = store.ack_effect(&tid, "none", "ack-unknown");
     assert_eq!(
         unk.as_ref().err().map(|e| e.code.as_str()),
         Some("req/field_unknown")
     );
     push_result(&mut log, "unknown_ack", &mut kinds, unk);
-    tuples.push("unknown_ack none".into());
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "unknown_ack",
+            instance: Some(tid.clone()),
+            event: None,
+            payload: None,
+            request_id: "ack-unknown".into(),
+            expect_seq: None,
+            effect_id: Some("none".into()),
+            ok: false,
+        },
+    );
     let dup0 = store.send_event(
         &tid,
         "docs_ok",
@@ -197,8 +279,22 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             .and_then(|v| v.get("duplicate").and_then(Value::as_bool)),
         Some(true)
     );
-    push_result(&mut log, "dup", &mut kinds, dup0);
-    push_result(
+    let dup_ok = push_result(&mut log, "dup", &mut kinds, dup0);
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "dup",
+            instance: Some(tid.clone()),
+            event: Some("docs_ok".into()),
+            payload: Some(Value::Obj(BTreeMap::new())),
+            request_id: "typed-d1".into(),
+            expect_seq: None,
+            effect_id: None,
+            ok: dup_ok,
+        },
+    );
+    let exp_live = Some(store.journal.last_seq);
+    let eok = push_result(
         &mut log,
         "expect_seq",
         &mut kinds,
@@ -207,10 +303,26 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             "note_added",
             Value::Obj(BTreeMap::from([("text".into(), Value::Str("n".into()))])),
             "expect-live",
-            Some(store.journal.last_seq),
+            exp_live,
         ),
     );
-    push_result(
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "expect_seq",
+            instance: Some(tid.clone()),
+            event: Some("note_added".into()),
+            payload: Some(Value::Obj(BTreeMap::from([(
+                "text".into(),
+                Value::Str("n".into()),
+            )]))),
+            request_id: "expect-live".into(),
+            expect_seq: exp_live,
+            effect_id: None,
+            ok: eok,
+        },
+    );
+    let s2 = push_result(
         &mut log,
         "send",
         &mut kinds,
@@ -222,7 +334,20 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             None,
         ),
     );
-    push_result(
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "send",
+            instance: Some(tid.clone()),
+            event: Some("docs_ok".into()),
+            payload: Some(Value::Obj(BTreeMap::new())),
+            request_id: "typed-d2".into(),
+            expect_seq: None,
+            effect_id: None,
+            ok: s2,
+        },
+    );
+    let tok = push_result(
         &mut log,
         "typed",
         &mut kinds,
@@ -233,6 +358,22 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             "typed-ok",
             None,
         ),
+    );
+    note(
+        &mut tuples,
+        MutTuple {
+            kind: "typed",
+            instance: Some(tid.clone()),
+            event: Some("scored".into()),
+            payload: Some(Value::Obj(BTreeMap::from([(
+                "score".into(),
+                Value::Str("800".into()),
+            )]))),
+            request_id: "typed-ok".into(),
+            expect_seq: None,
+            effect_id: None,
+            ok: tok,
+        },
     );
     for _ in 0..n {
         match g.range(0, 10) {
@@ -252,11 +393,25 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             1 => {
                 iid += 1;
                 let id = format!("i{iid}");
-                push_result(
+                let rid = format!("c{iid}");
+                let ok = push_result(
                     &mut log,
                     "create",
                     &mut kinds,
-                    store.create_instance("case_review", &id, &format!("c{iid}"), None),
+                    store.create_instance("case_review", &id, &rid, None),
+                );
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "create",
+                        instance: Some(id),
+                        event: None,
+                        payload: None,
+                        request_id: rid,
+                        expect_seq: None,
+                        effect_id: None,
+                        ok,
+                    },
                 );
             }
             2 => {
@@ -273,7 +428,19 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                     &mut kinds,
                     store.send_event(&id, ev, Value::Obj(BTreeMap::new()), &last_rid, None),
                 );
-                ledger.push((last_rid.clone(), ok));
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "send",
+                        instance: Some(id.clone()),
+                        event: Some(ev.into()),
+                        payload: Some(Value::Obj(BTreeMap::new())),
+                        request_id: last_rid.clone(),
+                        expect_seq: None,
+                        effect_id: None,
+                        ok,
+                    },
+                );
                 if ok {
                     last_ok_send = Some(SendTuple {
                         id: id.clone(),
@@ -292,30 +459,73 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                     .get(&id)
                     .and_then(|st| st.pending.first().cloned());
                 if let Some(eid) = pending {
-                    if push_result(
+                    let rid = format!("a{}", g.next());
+                    let ok = push_result(
                         &mut log,
                         "ack_ok",
                         &mut kinds,
-                        store.ack_effect(&id, &eid, &format!("a{}", g.next())),
-                    ) {
+                        store.ack_effect(&id, &eid, &rid),
+                    );
+                    if ok {
                         *kinds.entry("ack").or_insert(0) += 1;
                     }
+                    note(
+                        &mut tuples,
+                        MutTuple {
+                            kind: "ack",
+                            instance: Some(id),
+                            event: None,
+                            payload: None,
+                            request_id: rid,
+                            expect_seq: None,
+                            effect_id: Some(eid),
+                            ok,
+                        },
+                    );
                 } else {
-                    push_result(
+                    let rid = format!("a{}", g.next());
+                    let ok = push_result(
                         &mut log,
                         "ack",
                         &mut kinds,
-                        store.ack_effect(&id, "none", &format!("a{}", g.next())),
+                        store.ack_effect(&id, "none", &rid),
+                    );
+                    note(
+                        &mut tuples,
+                        MutTuple {
+                            kind: "ack",
+                            instance: Some(id),
+                            event: None,
+                            payload: None,
+                            request_id: rid,
+                            expect_seq: None,
+                            effect_id: Some("none".into()),
+                            ok,
+                        },
                     );
                 }
             }
             4 => {
                 let id = format!("i{}", g.range(1, iid.max(1)));
-                push_result(
+                let rid = format!("k{}", g.next());
+                let ok = push_result(
                     &mut log,
                     "cancel",
                     &mut kinds,
-                    store.cancel_instance(&id, &format!("k{}", g.next())),
+                    store.cancel_instance(&id, &rid),
+                );
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "cancel",
+                        instance: Some(id),
+                        event: None,
+                        payload: None,
+                        request_id: rid,
+                        expect_seq: None,
+                        effect_id: None,
+                        ok,
+                    },
                 );
             }
             5 => {
@@ -362,7 +572,19 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
                     &mut kinds,
                     store.send_event(&id, "docs_ok", Value::Obj(BTreeMap::new()), &last_rid, exp),
                 );
-                ledger.push((last_rid.clone(), ok));
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "expect_seq",
+                        instance: Some(id.clone()),
+                        event: Some("docs_ok".into()),
+                        payload: Some(Value::Obj(BTreeMap::new())),
+                        request_id: last_rid.clone(),
+                        expect_seq: exp,
+                        effect_id: None,
+                        ok,
+                    },
+                );
                 if ok {
                     last_ok_send = Some(SendTuple {
                         id: id.clone(),
@@ -404,14 +626,28 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     if kinds.get("ack_ok").copied().unwrap_or(0) == 0 {
         for (id, inst) in store.state.instances.clone() {
             if let Some(eid) = inst.pending.first().cloned() {
+                let rid = format!("forced-{}", g.next());
                 let ok = push_result(
                     &mut log,
                     "ack_ok",
                     &mut kinds,
-                    store.ack_effect(&id, &eid, &format!("forced-{}", g.next())),
+                    store.ack_effect(&id, &eid, &rid),
                 );
                 assert!(ok, "forced pending ack failed");
                 *kinds.entry("ack").or_insert(0) += 1;
+                note(
+                    &mut tuples,
+                    MutTuple {
+                        kind: "ack",
+                        instance: Some(id),
+                        event: None,
+                        payload: None,
+                        request_id: rid,
+                        expect_seq: None,
+                        effect_id: Some(eid),
+                        ok,
+                    },
+                );
                 break;
             }
         }
@@ -452,13 +688,46 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
         assert_eq!(st.history, o.history, "seed {seed} {id} hist");
         assert_eq!(st.pending, o.pending, "seed {seed} {id} pend");
     }
-    for (rid, ok) in &ledger {
-        if *ok {
-            assert!(
-                folded.dedup.contains_key(rid),
-                "seed {seed} success {rid} missing from refold"
-            );
-        }
+    assert!(
+        tuples.iter().any(|t| t.kind == "typed_err" && !t.ok),
+        "seed {seed} missing typed_err tuple"
+    );
+    assert!(
+        tuples
+            .iter()
+            .any(|t| t.kind == "stale" && t.expect_seq == Some(0) && !t.ok),
+        "seed {seed} missing stale tuple"
+    );
+    assert!(
+        tuples
+            .iter()
+            .any(|t| t.kind == "unknown_ack" && t.effect_id.as_deref() == Some("none") && !t.ok),
+        "seed {seed} missing unknown_ack tuple"
+    );
+    assert!(
+        tuples.iter().any(|t| t.kind == "dup" && t.ok),
+        "seed {seed} missing duplicate tuple"
+    );
+    assert!(
+        tuples
+            .iter()
+            .any(|t| { t.instance.is_some() && t.event.is_some() && t.payload.is_some() && t.ok }),
+        "seed {seed} missing complete successful send tuple"
+    );
+    let success_ids: Vec<String> = tuples
+        .iter()
+        .filter(|t| t.ok && !t.request_id.is_empty())
+        .map(|t| t.request_id.clone())
+        .collect();
+    assert!(
+        !success_ids.is_empty(),
+        "seed {seed} no successful mutations"
+    );
+    for rid in &success_ids {
+        assert!(
+            folded.dedup.contains_key(rid),
+            "seed {seed} success {rid} missing from refold; tuples={tuples:?}"
+        );
     }
     drop(store);
     let v = verify(&dir);

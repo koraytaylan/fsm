@@ -160,6 +160,32 @@ impl ErrorObj {
         e
     }
 
+    pub fn with_store_catalog(mut self, store: &Store) -> Self {
+        if let Value::Obj(d) = &mut self.details {
+            let machines: Vec<Value> = store
+                .state
+                .machines
+                .keys()
+                .cloned()
+                .map(Value::Str)
+                .collect();
+            let instances: Vec<Value> = store
+                .state
+                .instances
+                .keys()
+                .cloned()
+                .map(Value::Str)
+                .collect();
+            if !machines.is_empty() {
+                d.insert("known_machines".into(), Value::Arr(machines));
+            }
+            if !instances.is_empty() {
+                d.insert("known_instances".into(), Value::Arr(instances));
+            }
+        }
+        self
+    }
+
     pub fn from_findings(fs: Vec<Finding>) -> Self {
         let first = fs.first().map(|f| f.code).unwrap_or("def/shape");
         let mut details = BTreeMap::new();
@@ -342,11 +368,9 @@ impl Store {
     pub fn resolve_machine(&self, reference: &str) -> Result<&StoredMachine, ErrorObj> {
         let ids = self.state.machines.keys().map(String::as_str);
         match resolve_machine_ref(ids, reference) {
-            Ok(id) => self
-                .state
-                .machines
-                .get(&id)
-                .ok_or_else(|| ErrorObj::new("req/machine_not_found", reference)),
+            Ok(id) => self.state.machines.get(&id).ok_or_else(|| {
+                ErrorObj::new("req/machine_not_found", reference).with_store_catalog(self)
+            }),
             Err(ResolveError::Ambiguous(v)) => {
                 let mut details = BTreeMap::new();
                 details.insert(
@@ -361,11 +385,11 @@ impl Store {
                 "req/machine_not_found",
                 "hash prefix must be at least 12 hex digits",
             )
-            .hint("use at least 12 hex digits")),
-            Err(_) => {
-                Err(ErrorObj::new("req/machine_not_found", reference)
-                    .hint("machine add a spec first"))
-            }
+            .hint("use at least 12 hex digits")
+            .with_store_catalog(self)),
+            Err(_) => Err(ErrorObj::new("req/machine_not_found", reference)
+                .hint("use a known machine id from details.known_machines")
+                .with_store_catalog(self)),
         }
     }
 
@@ -406,6 +430,16 @@ impl Store {
             let mut err = ErrorObj::new(code, message).hint(hint);
             if let Some(d) = rec.body.get("details") {
                 err.details = d.clone();
+            }
+            if rec.kind == RecordKind::EventRejected {
+                if let Value::Obj(d) = &mut err.details {
+                    if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                        d.insert("instance_id".into(), Value::Str(iid.into()));
+                        if let Some(mid) = self.state.instance_machines.get(iid) {
+                            d.insert("machine_id".into(), Value::Str(mid.clone()));
+                        }
+                    }
+                }
             }
             if let Some(sp) = rec.body.get("span").and_then(Value::as_obj) {
                 if let (Some(s), Some(e)) = (
@@ -497,7 +531,10 @@ impl Store {
                 }
             }
         }
-        Some(Ok(obj(&[("ok", "true"), ("duplicate", "true")])))
+        Some(Ok(Value::Obj(BTreeMap::from([
+            ("ok".into(), Value::Str("true".into())),
+            ("duplicate".into(), Value::Bool(true)),
+        ]))))
     }
 
     fn note_record(&mut self, rec: &Record) {
@@ -623,6 +660,11 @@ impl Store {
         }
         if let Some(exp) = expect_seq {
             if exp != self.journal.last_seq {
+                let mut d = BTreeMap::new();
+                d.insert(
+                    "current_seq".into(),
+                    Value::Num(self.journal.last_seq.to_string()),
+                );
                 return Err(ErrorObj::new(
                     "req/seq_mismatch",
                     "re-read the instance, then retry with the same request_id and the current seq",
@@ -630,7 +672,9 @@ impl Store {
                 .hint(
                     "re-read the instance, then retry with the same request_id and the current seq",
                 )
-                .request_id(request_id));
+                .details(Value::Obj(d))
+                .request_id(request_id)
+                .with_store_catalog(self));
             }
         }
         let mid = {
@@ -640,10 +684,33 @@ impl Store {
             machine_id(&m.def)
         };
         let m = self.state.machines.get(&mid).ok_or_else(|| {
-            ErrorObj::new("req/machine_not_found", machine_ref).request_id(request_id)
+            ErrorObj::new("req/machine_not_found", machine_ref)
+                .request_id(request_id)
+                .with_store_catalog(self)
         })?;
-        let a = create(&m.compiled, &m.tree, overrides)
-            .map_err(|r| ErrorObj::from_rejection(&r).request_id(request_id))?;
+        let a = create(&m.compiled, &m.tree, overrides).map_err(|r| {
+            let mut e = ErrorObj::from_rejection(&r)
+                .request_id(request_id)
+                .with_store_catalog(self);
+            if let Value::Obj(d) = &mut e.details {
+                d.insert("machine".into(), Value::Str(machine_ref.into()));
+                d.insert("machine_id".into(), Value::Str(mid.clone()));
+                let created: Vec<Value> = self
+                    .state
+                    .instance_machines
+                    .values()
+                    .cloned()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .filter(|id| id != &mid)
+                    .map(Value::Str)
+                    .collect();
+                if !created.is_empty() {
+                    d.insert("known_machines".into(), Value::Arr(created));
+                }
+            }
+            e
+        })?;
         let pending: Vec<String> = a
             .effects
             .iter()
@@ -745,6 +812,11 @@ impl Store {
         }
         if let Some(exp) = expect_seq {
             if exp != self.journal.last_seq {
+                let mut d = BTreeMap::new();
+                d.insert(
+                    "current_seq".into(),
+                    Value::Num(self.journal.last_seq.to_string()),
+                );
                 return Err(ErrorObj::new(
                     "req/seq_mismatch",
                     "re-read the instance, then retry with the same request_id and the current seq",
@@ -752,7 +824,9 @@ impl Store {
                 .hint(
                     "re-read the instance, then retry with the same request_id and the current seq",
                 )
-                .request_id(request_id));
+                .details(Value::Obj(d))
+                .request_id(request_id)
+                .with_store_catalog(self));
             }
         }
         let mid = self
@@ -761,14 +835,21 @@ impl Store {
             .get(instance_id)
             .cloned()
             .ok_or_else(|| {
-                ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+                ErrorObj::new("req/instance_not_found", instance_id)
+                    .request_id(request_id)
+                    .hint("use a known instance id from details.known_instances")
+                    .with_store_catalog(self)
             })?;
-        let m =
-            self.state.machines.get(&mid).ok_or_else(|| {
-                ErrorObj::new("req/machine_not_found", &mid).request_id(request_id)
-            })?;
+        let m = self.state.machines.get(&mid).ok_or_else(|| {
+            ErrorObj::new("req/machine_not_found", &mid)
+                .request_id(request_id)
+                .with_store_catalog(self)
+        })?;
         let inst = self.state.instances.get(instance_id).ok_or_else(|| {
-            ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+            ErrorObj::new("req/instance_not_found", instance_id)
+                .request_id(request_id)
+                .hint("use a known instance id from details.known_instances")
+                .with_store_catalog(self)
         })?;
         let from_leaf = inst.leaf.clone();
         let mut absent_stamps: Vec<String> = Vec::new();
@@ -899,6 +980,10 @@ impl Store {
                 };
                 err = err.request_id(request_id);
                 body.insert("details".into(), err.details.clone());
+                if let Value::Obj(d) = &mut err.details {
+                    d.insert("machine_id".into(), Value::Str(mid.clone()));
+                    d.insert("instance_id".into(), Value::Str(instance_id.into()));
+                }
                 if let Some((s, e)) = err.span {
                     let mut sp = BTreeMap::new();
                     sp.insert("start".into(), Value::Num(s.to_string()));
@@ -1215,7 +1300,9 @@ impl Store {
         duplicate: Option<bool>,
     ) -> Result<Value, ErrorObj> {
         let inst = self.state.instances.get(instance_id).ok_or_else(|| {
-            let e = ErrorObj::new("req/instance_not_found", instance_id);
+            let e = ErrorObj::new("req/instance_not_found", instance_id)
+                .hint("use a known instance id from details.known_instances")
+                .with_store_catalog(self);
             match request_id {
                 Some(rid) => e.request_id(rid),
                 None => e,
@@ -1795,6 +1882,7 @@ pub fn coerce_ctx_override(ty: &TySpec, key: &str, raw: &str) -> Result<Val, Err
     }
 }
 
+#[allow(dead_code)]
 fn obj(pairs: &[(&str, &str)]) -> Value {
     let mut m = BTreeMap::new();
     for (k, v) in pairs {

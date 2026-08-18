@@ -465,7 +465,7 @@ fn journal_ids_at(
     (machines, instances)
 }
 
-fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
+pub fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
     if a.last_seq != b.last_seq || a.last_hash != b.last_hash {
         return false;
     }
@@ -482,7 +482,7 @@ fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
         let Some(mb) = b.machines.get(id) else {
             return false;
         };
-        if ma.compiled.machine_id != mb.compiled.machine_id {
+        if ma.compiled.machine_id != mb.compiled.machine_id || ma.def != mb.def {
             return false;
         }
     }

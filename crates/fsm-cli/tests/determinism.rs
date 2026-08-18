@@ -160,34 +160,28 @@ fn perf_smoke() {
 
     let dir = tmp(12);
     let mut store = Store::open(&dir).unwrap();
-    let mut a_inner = String::from(
-        r#"{"name":"a11","entry":{"do":[{"target":"n","value":"ctx.n + 1"}],"emit":[{"effect":"tick","args":{"k":"ctx.n"}}]},"exit":{"do":[{"target":"x","value":"ctx.x + 1"}]}}"#,
-    );
-    for i in (0..11).rev() {
-        a_inner = format!(
-            r#"{{"name":"a{i}","initial":"a{}","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}},"exit":{{"do":[{{"target":"x","value":"ctx.x + 1"}}]}},"states":[{a_inner}]}}"#,
-            i + 1
-        );
-    }
-    let mut b_inner = String::from(
-        r#"{"name":"b11","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]},"exit":{"do":[{"target":"x","value":"ctx.x + 1"}]}}"#,
-    );
-    for i in (0..11).rev() {
-        b_inner = format!(
-            r#"{{"name":"b{i}","initial":"b{}","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}},"exit":{{"do":[{{"target":"x","value":"ctx.x + 1"}}]}},"states":[{b_inner}]}}"#,
-            i + 1
-        );
-    }
-    let invs: String = (0..16)
-        .map(|i| format!(r#"{{"name":"i{i}","expr":"ctx.n >= 0","mode":"monitor"}}"#))
-        .collect::<Vec<_>>()
-        .join(",");
-    let src = format!(
-        r#"{{"format":"fsm.machine/1","name":"d12","states":[{a_inner},{b_inner}],"initial":"a0","context":[{{"name":"n","ty":"int","init":"0"}},{{"name":"x","ty":"int","init":"0"}},{{"name":"flag","ty":"bool","init":"true"}}],"events":[{{"name":"go","fields":[]}}],"effects":[{{"name":"tick","fields":[{{"name":"k","ty":"int"}}]}}],"transitions":[{{"from":"a11","on":"go","to":"b11","if":"ctx.n >= 0 and ctx.flag","do":[{{"target":"n","value":"ctx.n + 1"}}]}},{{"from":"b11","on":"go","to":"a11","if":"ctx.n >= 0","do":[{{"target":"n","value":"ctx.n + 1"}}]}}],"invariants":[{{"name":"nneg","expr":"ctx.n >= 0","mode":"enforce"}},{invs}]}}"#
-    );
-    let spec = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+    let spec = legal_limit_spec();
     store.define_machine(spec, false, false).unwrap();
-    store.create_instance("d12", "deep", "c", None).unwrap();
+    let stored = store.state.machines.values().next().unwrap();
+    assert_eq!(
+        count_nodes(&stored.compiled.spec.states),
+        fsm_core::limits::MAX_STATES
+    );
+    assert_eq!(
+        stored.compiled.spec.events.len(),
+        fsm_core::limits::MAX_EVENTS
+    );
+    assert_eq!(
+        stored.compiled.spec.context.len(),
+        fsm_core::limits::MAX_CTX_VARS
+    );
+    assert_eq!(
+        stored.compiled.spec.invariants.len(),
+        fsm_core::limits::MAX_INVARIANTS
+    );
+    store
+        .create_instance("limitperf", "deep", "c", None)
+        .unwrap();
     assert_eq!(store.state.instances.get("deep").unwrap().leaf, "a11");
     let mut times = Vec::new();
     for i in 0..10 {
@@ -218,7 +212,7 @@ fn perf_smoke() {
         );
     }
     let mean = times.iter().sum::<std::time::Duration>() / times.len() as u32;
-    assert!(mean.as_millis() < 250, "depth12 mean {}", mean.as_millis());
+    assert!(mean.as_millis() < 250, "limit mean {}", mean.as_millis());
     let mid_seq = {
         let snaps = fsm_cli::snapshot::listed_snaps(&dir);
         assert!(!snaps.is_empty(), "midstream snapshot written");
@@ -232,20 +226,152 @@ fn perf_smoke() {
     assert!(last > mid_seq, "nonempty tail after mid-stream snapshot");
     let live = fsm_cli::snapshot::reconstruct_snapshot_plus_tail(&dir, &recs, last).unwrap();
     let folded = fsm_core::replay::fold_with(recs.clone(), &mut fsm_core::replay::NopSink).unwrap();
-    assert_eq!(live.last_seq, folded.last_seq);
-    assert_eq!(live.last_hash, folded.last_hash);
-    assert_eq!(live.dedup, folded.dedup);
-    assert_eq!(live.instance_machines, folded.instance_machines);
-    assert_eq!(live.instances.len(), folded.instances.len());
-    for (id, a) in &live.instances {
-        let b = folded.instances.get(id).unwrap();
-        assert_eq!(a.leaf, b.leaf);
-        assert_eq!(a.status, b.status);
-        assert_eq!(a.ctx, b.ctx);
-        assert_eq!(a.history, b.history);
-        assert_eq!(a.pending, b.pending);
-    }
+    assert!(
+        fsm_cli::snapshot::store_states_eq(&live, &folded),
+        "complete StoreState mismatch live vs fold"
+    );
     drop(store);
+}
+
+fn vobj(pairs: &[(&str, Value)]) -> Value {
+    Value::Obj(
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).into(), v.clone()))
+            .collect(),
+    )
+}
+
+fn inc(target: &str) -> Value {
+    vobj(&[
+        ("target", Value::Str(target.into())),
+        ("value", Value::Str(format!("ctx.{target} + 1"))),
+    ])
+}
+
+fn block_do(sets: Vec<Value>, emits: Vec<Value>) -> Value {
+    let mut o = BTreeMap::new();
+    o.insert("do".into(), Value::Arr(sets));
+    if !emits.is_empty() {
+        o.insert("emit".into(), Value::Arr(emits));
+    }
+    Value::Obj(o)
+}
+
+fn spine(prefix: char, depth: usize, leaf_emits: usize) -> Value {
+    let last = depth - 1;
+    let emits: Vec<Value> = (0..leaf_emits)
+        .map(|_| {
+            vobj(&[
+                ("effect", Value::Str("tick".into())),
+                ("args", vobj(&[("k", Value::Str("ctx.n0".into()))])),
+            ])
+        })
+        .collect();
+    let mut node = vobj(&[
+        ("name", Value::Str(format!("{prefix}{last}"))),
+        ("entry", block_do(vec![inc("n0")], emits)),
+        ("exit", block_do(vec![inc("n1")], vec![])),
+    ]);
+    for i in (0..last).rev() {
+        node = vobj(&[
+            ("name", Value::Str(format!("{prefix}{i}"))),
+            ("initial", Value::Str(format!("{prefix}{}", i + 1))),
+            ("entry", block_do(vec![inc("n0")], vec![])),
+            ("exit", block_do(vec![inc("n1")], vec![])),
+            ("states", Value::Arr(vec![node])),
+        ]);
+    }
+    node
+}
+
+fn count_nodes(nodes: &[fsm_core::spec::StateNode]) -> usize {
+    nodes.iter().map(|n| 1 + count_nodes(&n.states)).sum()
+}
+
+fn legal_limit_spec() -> Value {
+    use fsm_core::limits::{
+        MAX_CTX_VARS, MAX_EMITS_PER_BLOCK, MAX_EVENTS, MAX_INVARIANTS, MAX_NESTING,
+        MAX_SETS_PER_BLOCK, MAX_STATES,
+    };
+    let depth = MAX_NESTING as usize;
+    let a = spine('a', depth, MAX_EMITS_PER_BLOCK);
+    let b = spine('b', depth, 0);
+    let used = 2 * depth;
+    let mut states = vec![a, b];
+    for i in 0..(MAX_STATES - used) {
+        states.push(vobj(&[("name", Value::Str(format!("p{i}")))]));
+    }
+    let mut events = vec![vobj(&[
+        ("name", Value::Str("go".into())),
+        ("fields", Value::Arr(vec![])),
+    ])];
+    for i in 1..MAX_EVENTS {
+        events.push(vobj(&[
+            ("name", Value::Str(format!("e{i}"))),
+            ("fields", Value::Arr(vec![])),
+        ]));
+    }
+    let context: Vec<Value> = (0..MAX_CTX_VARS)
+        .map(|i| {
+            vobj(&[
+                ("name", Value::Str(format!("n{i}"))),
+                ("ty", Value::Str("int".into())),
+                ("init", Value::Str("0".into())),
+            ])
+        })
+        .collect();
+    let invariants: Vec<Value> = (0..MAX_INVARIANTS)
+        .map(|i| {
+            vobj(&[
+                ("name", Value::Str(format!("i{i}"))),
+                ("expr", Value::Str(format!("ctx.n{i} >= 0"))),
+                ("mode", Value::Str("monitor".into())),
+            ])
+        })
+        .collect();
+    let sets: Vec<Value> = (0..MAX_SETS_PER_BLOCK)
+        .map(|i| inc(&format!("n{i}")))
+        .collect();
+    let transitions = vec![
+        vobj(&[
+            ("from", Value::Str("a11".into())),
+            ("on", Value::Str("go".into())),
+            ("to", Value::Str("b11".into())),
+            ("if", Value::Str("ctx.n0 >= 0".into())),
+            ("do", Value::Arr(sets.clone())),
+        ]),
+        vobj(&[
+            ("from", Value::Str("b11".into())),
+            ("on", Value::Str("go".into())),
+            ("to", Value::Str("a11".into())),
+            ("if", Value::Str("ctx.n0 >= 0".into())),
+            ("do", Value::Arr(sets)),
+        ]),
+    ];
+    vobj(&[
+        ("format", Value::Str("fsm.machine/1".into())),
+        ("name", Value::Str("limitperf".into())),
+        ("states", Value::Arr(states)),
+        ("initial", Value::Str("a0".into())),
+        ("context", Value::Arr(context)),
+        ("events", Value::Arr(events)),
+        (
+            "effects",
+            Value::Arr(vec![vobj(&[
+                ("name", Value::Str("tick".into())),
+                (
+                    "fields",
+                    Value::Arr(vec![vobj(&[
+                        ("name", Value::Str("k".into())),
+                        ("ty", Value::Str("int".into())),
+                    ])]),
+                ),
+            ])]),
+        ),
+        ("transitions", Value::Arr(transitions)),
+        ("invariants", Value::Arr(invariants)),
+    ])
 }
 
 fn parse_case() -> Value {

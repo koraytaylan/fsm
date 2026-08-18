@@ -389,6 +389,14 @@ fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
                 }
             }
         }
+        "expr/round_widens" => {
+            let p = if path.is_empty() {
+                "/transitions/0/do/0/value"
+            } else {
+                path.as_str()
+            };
+            set_pointer(&mut v, p, Value::Str("ctx.d".into()));
+        }
         c if c.starts_with("expr/") => {
             if path.contains("/if") || hint.contains("if") {
                 set_pointer(&mut v, "/transitions/0/if", Value::Str("true".into()));
@@ -396,44 +404,101 @@ fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
                 set_pointer(&mut v, "/states/0/entry/do/0/value", Value::Str("1".into()));
             } else if path.contains("invariant") {
                 set_pointer(&mut v, "/invariants", Value::Arr(vec![]));
+            } else if path.contains("/do") || path.contains("value") {
+                set_pointer(
+                    &mut v,
+                    "/transitions/0/do/0/value",
+                    Value::Str("ctx.d".into()),
+                );
             } else {
                 set_pointer(&mut v, "/transitions/0/if", Value::Str("true".into()));
             }
         }
-        c if c.starts_with("def/limit_") => {
-            let p = if path.is_empty() {
-                match c {
-                    "def/limit_states" => "/states",
-                    "def/limit_events" => "/events",
-                    "def/limit_ctx" => "/context",
-                    "def/limit_fields" => "/events/0/fields",
-                    "def/limit_sets" => "/transitions/0/do",
-                    "def/limit_emits" => "/transitions/0/emit",
-                    "def/limit_invariants" => "/invariants",
-                    "def/limit_enums" => "/enums",
-                    "def/limit_variants" => "/enums/E",
-                    "def/limit_cell" | "def/limit_transitions" => "/transitions",
-                    "def/limit_history" => "/states",
-                    "def/limit_depth" => "/states",
-                    "def/limit_bytes" => "/description",
-                    _ => "/states",
-                }
-            } else {
-                path.as_str()
-            };
-            if c == "def/limit_bytes" {
+        c if c.starts_with("def/limit_") => match c {
+            "def/limit_bytes" => {
                 set_pointer(&mut v, "/description", Value::Str("x".into()));
-            } else if c == "def/limit_depth" {
+            }
+            "def/limit_depth" => {
                 set_pointer(
                     &mut v,
                     "/states",
                     Value::Arr(vec![obj(&[("name", Value::Str("a".into()))])]),
                 );
                 set_pointer(&mut v, "/initial", Value::Str("a".into()));
-            } else {
+            }
+            "def/limit_fields" => {
+                let name = path
+                    .trim_start_matches("/events/")
+                    .trim_start_matches("/effects/");
+                let bucket = if path.starts_with("/effects/") {
+                    "effects"
+                } else {
+                    "events"
+                };
+                if let Some(Value::Arr(evs)) = v.as_obj_mut().and_then(|o| o.get_mut(bucket)) {
+                    for ev in evs {
+                        if ev.get("name").and_then(Value::as_str) == Some(name) {
+                            if let Some(Value::Arr(f)) =
+                                ev.as_obj_mut().and_then(|o| o.get_mut("fields"))
+                            {
+                                f.truncate(1);
+                            }
+                        }
+                    }
+                } else {
+                    truncate_array(&mut v, "/events/0/fields", 1);
+                }
+            }
+            "def/limit_sets" => {
+                let p = if path.is_empty() {
+                    "/transitions/0/do".into()
+                } else if path.ends_with("/do") {
+                    path.clone()
+                } else {
+                    format!("{path}/do")
+                };
+                truncate_array(&mut v, &p, 1);
+            }
+            "def/limit_emits" => {
+                let p = if path.is_empty() {
+                    "/transitions/0/emit".into()
+                } else if path.ends_with("/emit") {
+                    path.clone()
+                } else {
+                    format!("{path}/emit")
+                };
+                truncate_array(&mut v, &p, 1);
+            }
+            "def/limit_cell" | "def/limit_transitions" => {
+                truncate_array(&mut v, "/transitions", 1);
+            }
+            "def/limit_variants" => {
+                let p = if path.is_empty() {
+                    "/enums/E"
+                } else {
+                    path.as_str()
+                };
                 truncate_array(&mut v, p, 1);
             }
-        }
+            "def/limit_enums" => truncate_array(&mut v, "/enums", 1),
+            "def/limit_states" | "def/limit_history" => {
+                truncate_array(&mut v, "/states", 1);
+                if let Some(n) = first_state_name(&v) {
+                    set_pointer(&mut v, "/initial", Value::Str(n));
+                }
+            }
+            "def/limit_events" => truncate_array(&mut v, "/events", 1),
+            "def/limit_ctx" => truncate_array(&mut v, "/context", 1),
+            "def/limit_invariants" => truncate_array(&mut v, "/invariants", 1),
+            _ => {
+                let p = if path.is_empty() {
+                    "/states"
+                } else {
+                    path.as_str()
+                };
+                truncate_array(&mut v, p, 1);
+            }
+        },
         "def/shadowed" | "def/duplicate_guard" | "def/ancestor_shadowed" => {
             if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
                 tr.truncate(1);
@@ -671,14 +736,11 @@ fn one_step_recovery() {
     .unwrap_err();
     assert_eq!(err.code, "req/seq_mismatch");
     assert!(err.retryable);
-    let view = dispatch(
-        &mut st,
-        &mut clock,
-        "instance_get",
-        &obj(&[("instance_id", Value::Str("inst-c1".into()))]),
-    )
-    .unwrap();
-    let seq = view.get("seq").cloned().unwrap_or(Value::Num("0".into()));
+    let seq = err
+        .details
+        .get("current_seq")
+        .cloned()
+        .expect("seq_mismatch current_seq");
     let ok = dispatch(
         &mut st,
         &mut clock,
@@ -778,9 +840,9 @@ fn one_step_recovery() {
     );
     assert!(ok.is_ok(), "field_unknown omit {extra} {ok:?}");
 
-    // run/not_enabled from a single failing guard; retry with the hinted binding
+    // run/not_enabled from a failing guard; retry an enabled event from the error
     let ng = parse(
-        br#"{"format":"fsm.machine/1","name":"ng","context":[],"events":[{"name":"go","fields":[{"name":"n","ty":"int"}]}],"states":[{"name":"s"}],"initial":"s","transitions":[{"from":"s","on":"go","if":"evt.n > 0"}]}"#,
+        br#"{"format":"fsm.machine/1","name":"ng","context":[],"events":[{"name":"go","fields":[{"name":"n","ty":"int"}]},{"name":"skip","fields":[]}],"states":[{"name":"s"}],"initial":"s","transitions":[{"from":"s","on":"go","if":"evt.n > 0"},{"from":"s","on":"skip"}]}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
@@ -813,23 +875,33 @@ fn one_step_recovery() {
     )
     .unwrap_err();
     assert_eq!(err.code, "run/not_enabled");
+    let skip = err
+        .details
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .into_iter()
+        .flatten()
+        .find_map(|e| {
+            let name = e.get("event").and_then(Value::as_str)?;
+            let st = e.get("status").and_then(Value::as_str)?;
+            if st == "enabled" && name != "go" {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+        .expect("enabled non-failing event");
     let ok = dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-ng1".into())),
-            (
-                "event",
-                obj(&[
-                    ("name", Value::Str("go".into())),
-                    ("payload", obj(&[("n", Value::Str("1".into()))])),
-                ]),
-            ),
+            ("event", obj(&[("name", Value::Str(skip.clone()))])),
             ("request_id", Value::Str("ng-ok".into())),
         ]),
     );
-    assert!(ok.is_ok(), "not_enabled retry {ok:?}");
+    assert!(ok.is_ok(), "not_enabled retry {skip} {ok:?}");
 
     // machine_ambiguous: two versions, retry with a listed full id
     for desc in ["v1", "v2"] {
@@ -946,12 +1018,13 @@ fn one_step_recovery() {
         "{}",
         err.hint
     );
+    let mid = first_detail_str(&err, "machine_id").expect("completed machine_id");
     let ok = dispatch(
         &mut st,
         &mut clock,
         "instance_create",
         &obj(&[
-            ("machine", Value::Str("case_review".into())),
+            ("machine", Value::Str(mid)),
             ("request_id", Value::Str("done-retry".into())),
         ]),
     );
@@ -1870,7 +1943,6 @@ fn create_ok(st: &mut Store, clock: &mut FixedClock, src: &str) {
         .unwrap_or_else(|e| panic!("expected ok after repair {src}: {e:?}"));
 }
 
-#[allow(dead_code)]
 fn create_repaired(
     st: &mut Store,
     clock: &mut FixedClock,
@@ -1880,6 +1952,58 @@ fn create_repaired(
     let fixed = repair_spec(&spec(bad), err);
     dispatch(st, clock, "machine_create", &obj(&[("spec", fixed)]))
         .unwrap_or_else(|e| panic!("repair of {} failed: {} {}", err.code, e.code, e.hint));
+}
+
+fn first_detail_str(err: &fsm_cli::store::ErrorObj, key: &str) -> Option<String> {
+    err.details
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            err.details
+                .get(key)
+                .and_then(Value::as_arr)
+                .and_then(|a| a.iter().find_map(Value::as_str).map(str::to_string))
+        })
+}
+
+fn first_enabled_except(err: &fsm_cli::store::ErrorObj, skip: &str) -> Option<String> {
+    err.details
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .into_iter()
+        .flatten()
+        .find_map(|e| {
+            let name = e.get("event").and_then(Value::as_str)?;
+            let st = e.get("status").and_then(Value::as_str).unwrap_or("enabled");
+            if st == "enabled" && name != skip {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+}
+
+fn err_from_analyze(code: &str, an: &Value) -> fsm_cli::store::ErrorObj {
+    let findings = an
+        .get("findings")
+        .cloned()
+        .unwrap_or_else(|| Value::Arr(vec![]));
+    let f = findings
+        .as_arr()
+        .into_iter()
+        .flatten()
+        .find(|x| x.get("code").and_then(Value::as_str) == Some(code));
+    let path = f
+        .and_then(|x| x.get("path").and_then(Value::as_str))
+        .unwrap_or("");
+    let hint = f
+        .and_then(|x| x.get("hint").and_then(Value::as_str))
+        .unwrap_or("");
+    fsm_cli::store::ErrorObj::new(code, code)
+        .path(path)
+        .hint(hint)
+        .details(obj(&[("findings", findings)]))
 }
 
 fn send_err(
@@ -2171,11 +2295,11 @@ fn one_step_every_non_infra_code() {
             .any(|w| w.as_str() == Some("expr/round_widens")),
         "{warn:?}"
     );
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"erw2","states":[{"name":"a"}],"initial":"a","context":[{"name":"d","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"d","value":"round(1.505, 2, half_even)"}]}]}"#,
-    );
+    let warn_src = r#"{"format":"fsm.machine/1","name":"erw","states":[{"name":"a"}],"initial":"a","context":[{"name":"d","ty":{"decimal":"4"},"init":"0.0000"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"d","value":"round(1.50, 4, half_even)"}]}]}"#;
+    let warn_err = fsm_cli::store::ErrorObj::new("expr/round_widens", "expr/round_widens")
+        .path("/transitions/0/do/0/value")
+        .hint("narrow the destination or the rounded scale");
+    create_repaired(&mut st, &mut clock, warn_src, &warn_err);
     seen.insert("expr/round_widens");
 
     let long_if = "1+".repeat(2500) + "1";
@@ -2184,11 +2308,7 @@ fn one_step_every_non_infra_code() {
     );
     let err = create_err(&mut st, &mut clock, &too_long);
     assert_eq!(err.code, "expr/too_long", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"etl2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true"}]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &too_long, &err);
     seen.insert("expr/too_long");
 
     let mut deep = String::from("1");
@@ -2200,201 +2320,127 @@ fn one_step_every_non_infra_code() {
     );
     let err = create_err(&mut st, &mut clock, &too_deep);
     assert_eq!(err.code, "expr/too_deep", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"etd2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true"}]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &too_deep, &err);
     seen.insert("expr/too_deep");
 
     let states: String = (0..257)
         .map(|i| format!(r#"{{"name":"s{i}"}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lst","states":[{states}],"initial":"s0","context":[],"events":[],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lst","states":[{states}],"initial":"s0","context":[],"events":[],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_states", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lst2","states":[{"name":"s0"}],"initial":"s0","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_states");
 
     let evs: String = (0..129)
         .map(|i| format!(r#"{{"name":"e{i}","fields":[]}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lev","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{evs}],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lev","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{evs}],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_events", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lev2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_events");
 
     let ctxs: String = (0..65)
         .map(|i| format!(r#"{{"name":"c{i}","ty":"int","init":"0"}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lcx","states":[{{"name":"a"}}],"initial":"a","context":[{ctxs}],"events":[],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lcx","states":[{{"name":"a"}}],"initial":"a","context":[{ctxs}],"events":[],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_ctx", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lcx2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_ctx");
 
     let fields: String = (0..33)
         .map(|i| format!(r#"{{"name":"f{i}","ty":"int"}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lfd","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[{fields}]}}],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lfd","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[{fields}]}}],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_fields", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lfd2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_fields");
 
     let sets: String = (0..33)
         .map(|i| format!(r#"{{"target":"n","value":"{i}"}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lset","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","do":[{sets}]}}]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lset","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","do":[{sets}]}}]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_sets", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lset2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"}]}]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_sets");
 
     let emits: String = (0..9)
         .map(|_| r#"{"effect":"fx","args":{}}"#.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lem","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"effects":[{{"name":"fx","fields":[]}}],"transitions":[{{"from":"a","on":"e","emit":[{emits}]}}]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lem","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"effects":[{{"name":"fx","fields":[]}}],"transitions":[{{"from":"a","on":"e","emit":[{emits}]}}]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_emits", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lem2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"effects":[{"name":"fx","fields":[]}],"transitions":[{"from":"a","on":"e","emit":[{"effect":"fx","args":{}}]}]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_emits");
 
     let invs: String = (0..65)
         .map(|i| format!(r#"{{"name":"i{i}","expr":"true","mode":"monitor"}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"linv","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{invs}]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"linv","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{invs}]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_invariants", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"linv2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_invariants");
 
     let enums: String = (0..33)
         .map(|i| format!(r#""E{i}":["a"]"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"len","enums":{{{enums}}},"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"len","enums":{{{enums}}},"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_enums", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"len2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_enums");
 
     let vars: String = (0..65)
         .map(|i| format!(r#""v{i}""#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lvar","enums":{{"E":[{vars}]}},"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lvar","enums":{{"E":[{vars}]}},"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_variants", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lvar2","enums":{"E":["a"]},"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_variants");
 
     let cell: String = (0..33)
         .map(|i| format!(r#"{{"from":"a","on":"e","if":"ctx.n == {i}"}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lcell","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}}],"transitions":[{cell}]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lcell","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}}],"transitions":[{cell}]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_cell", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lcell2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e"}]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_cell");
 
     let states17: String = (0..17)
@@ -2415,38 +2461,24 @@ fn one_step_every_non_infra_code() {
         }
     }
     let trs = trs.join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"ltr","states":[{states17}],"initial":"s0","context":[],"events":[{evs128}],"transitions":[{trs}]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"ltr","states":[{states17}],"initial":"s0","context":[],"events":[{evs128}],"transitions":[{trs}]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_transitions", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ltr2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_transitions");
 
     let hists: String = (0..33)
         .map(|i| format!(r#"{{"name":"c{i}","initial":"l{i}","states":[{{"name":"h{i}","history":"deep"}},{{"name":"l{i}"}}]}}"#))
         .collect::<Vec<_>>()
         .join(",");
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"lhist","states":[{hists}],"initial":"c0","context":[],"events":[],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lhist","states":[{hists}],"initial":"c0","context":[],"events":[],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_history", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lhist2","states":[{"name":"c0","initial":"l0","states":[{"name":"h0","history":"deep"},{"name":"l0"}]}],"initial":"c0","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_history");
 
     let mut nest = r#"{"name":"leaf"}"#.to_string();
@@ -2456,19 +2488,12 @@ fn one_step_every_non_infra_code() {
         nest = format!(r#"{{"name":"{name}","initial":"{init}","states":[{nest}]}}"#);
         init = name;
     }
-    let err = create_err(
-        &mut st,
-        &mut clock,
-        &format!(
-            r#"{{"format":"fsm.machine/1","name":"ldep","states":[{nest}],"initial":"{init}","context":[],"events":[],"transitions":[]}}"#
-        ),
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"ldep","states":[{nest}],"initial":"{init}","context":[],"events":[],"transitions":[]}}"#
     );
+    let err = create_err(&mut st, &mut clock, &bad);
     assert_eq!(err.code, "def/limit_depth", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ldep2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_depth");
 
     let huge = format!(
@@ -2477,42 +2502,33 @@ fn one_step_every_non_infra_code() {
     );
     let err = create_err(&mut st, &mut clock, &huge);
     assert_eq!(err.code, "def/limit_bytes", "{}", err.code);
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"lby2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-    );
+    create_repaired(&mut st, &mut clock, &huge, &err);
     seen.insert("def/limit_bytes");
 
-    // analyzer-only: create succeeds, analyze reports the code, repaired spec drops it
-    let analyze_rows: &[(&str, &str, &str)] = &[
+    // analyzer-only: create succeeds, analyze reports the code, retry is repair_spec(bad, err)
+    let analyze_rows: &[(&str, &str)] = &[
         (
             "def/shadowed",
             r#"{"format":"fsm.machine/1","name":"sh","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true","to":"b"},{"from":"a","on":"e","if":"false","to":"b"}]}"#,
-            r#"{"format":"fsm.machine/1","name":"sh2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
         ),
         (
             "def/duplicate_guard",
             r#"{"format":"fsm.machine/1","name":"dg","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true","to":"b"},{"from":"a","on":"e","if":"true","to":"b"}]}"#,
-            r#"{"format":"fsm.machine/1","name":"dg2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
         ),
         (
             "def/ancestor_shadowed",
             r#"{"format":"fsm.machine/1","name":"as","states":[{"name":"c","initial":"l","states":[{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"c","on":"e"},{"from":"l","on":"e"},{"from":"r","on":"e"}]}"#,
-            r#"{"format":"fsm.machine/1","name":"as2","states":[{"name":"c","initial":"l","states":[{"name":"l"},{"name":"r"}]}],"initial":"c","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"l","on":"e"}]}"#,
         ),
         (
             "def/unreachable_state",
             r#"{"format":"fsm.machine/1","name":"ur","states":[{"name":"a"},{"name":"ghost"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-            r#"{"format":"fsm.machine/1","name":"ur2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
         ),
         (
             "def/create_always_fails",
             r#"{"format":"fsm.machine/1","name":"caf","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{"name":"x","expr":"1 == 0","mode":"enforce"}]}"#,
-            r#"{"format":"fsm.machine/1","name":"caf2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
         ),
     ];
-    for (code, bad, good) in analyze_rows {
+    for (code, bad) in analyze_rows {
         create_ok(&mut st, &mut clock, bad);
         let name = spec(bad)
             .get("name")
@@ -2537,7 +2553,8 @@ fn one_step_every_non_infra_code() {
             codes.iter().any(|c| c == code),
             "{code} missing in {codes:?}"
         );
-        create_ok(&mut st, &mut clock, good);
+        let err = err_from_analyze(code, &an);
+        create_repaired(&mut st, &mut clock, bad, &err);
         seen.insert(*code);
     }
 
@@ -2581,12 +2598,28 @@ fn one_step_every_non_infra_code() {
     )
     .unwrap_err();
     assert_eq!(err.code, "req/machine_not_found");
+    let known_m = err
+        .details
+        .get("known_machines")
+        .and_then(Value::as_arr)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .find(|s| s.starts_with("case_review"))
+        .or_else(|| {
+            err.details
+                .get("known_machines")
+                .and_then(Value::as_arr)
+                .and_then(|a| a.iter().find_map(Value::as_str))
+        })
+        .expect("known_machines")
+        .to_string();
     dispatch(
         &mut st,
         &mut clock,
         "instance_create",
         &obj(&[
-            ("machine", Value::Str("case_review".into())),
+            ("machine", Value::Str(known_m)),
             ("request_id", Value::Str("nf-ok".into())),
         ]),
     )
@@ -2605,12 +2638,13 @@ fn one_step_every_non_infra_code() {
     )
     .unwrap_err();
     assert_eq!(err.code, "req/instance_not_found");
+    let known_i = first_detail_str(&err, "known_instances").expect("known_instances");
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
-            ("instance_id", Value::Str("inst-nf-ok".into())),
+            ("instance_id", Value::Str(known_i.clone())),
             ("event", obj(&[("name", Value::Str("docs_ok".into()))])),
             ("request_id", Value::Str("inf-ok".into())),
         ]),
@@ -2622,22 +2656,47 @@ fn one_step_every_non_infra_code() {
         &mut st,
         &mut clock,
         "instance_send",
-        &obj(&[("instance_id", Value::Str("inst-nf-ok".into()))]),
+        &obj(&[("instance_id", Value::Str(known_i.clone()))]),
     )
     .unwrap_err();
     assert_eq!(err.code, "req/args_invalid");
+    let ev_row = err
+        .details
+        .get("enabled_events")
+        .and_then(Value::as_arr)
+        .into_iter()
+        .flatten()
+        .find(|e| e.get("status").and_then(Value::as_str) == Some("enabled"))
+        .cloned()
+        .expect("args_invalid enabled_events");
+    let ev = ev_row
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap()
+        .to_string();
+    let owned_fields: Vec<String> = ev_row
+        .get("payload_fields")
+        .and_then(Value::as_arr)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    let payload = if owned_fields.iter().any(|f| f == "text") {
+        obj(&[("text", Value::Str("x".into()))])
+    } else {
+        obj(&[])
+    };
+    let iid = first_detail_str(&err, "instance_id").unwrap_or(known_i);
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
-            ("instance_id", Value::Str("inst-nf-ok".into())),
+            ("instance_id", Value::Str(iid)),
             (
                 "event",
-                obj(&[
-                    ("name", Value::Str("note_added".into())),
-                    ("payload", obj(&[("text", Value::Str("x".into()))])),
-                ]),
+                obj(&[("name", Value::Str(ev)), ("payload", payload)]),
             ),
             ("request_id", Value::Str("args-ok".into())),
         ]),
@@ -2707,7 +2766,7 @@ fn one_step_every_non_infra_code() {
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ov","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
+        r#"{"format":"fsm.machine/1","name":"ov","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"ok","fields":[]},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"ok","do":[{"target":"n","value":"0"}]},{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
     );
     dispatch(
         &mut st,
@@ -2725,67 +2784,14 @@ fn one_step_every_non_infra_code() {
         err.details.get("cause").and_then(Value::as_str),
         Some("run/overflow")
     );
-    let ev = err
-        .details
-        .get("enabled_events")
-        .and_then(Value::as_arr)
-        .and_then(|a| {
-            a.iter().find_map(|e| {
-                let name = e.get("event").and_then(Value::as_str)?;
-                if name != "go" {
-                    Some(name.to_string())
-                } else {
-                    None
-                }
-            })
-        });
-    let _ = ev;
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ovok","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"9223372036854775807"}],"events":[{"name":"ok","fields":[]},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"ok","do":[{"target":"n","value":"0"}]},{"from":"a","on":"go","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#,
-    );
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_create",
-        &obj(&[
-            ("machine", Value::Str("ovok".into())),
-            ("request_id", Value::Str("ovokc".into())),
-        ]),
-    )
-    .unwrap();
-    let err2 = send_err(
-        &mut st,
-        &mut clock,
-        "inst-ovokc",
-        "go",
-        obj(&[]),
-        "ovok-bad",
-    );
-    assert_eq!(err2.code, "run/action_error");
-    let next = err2
-        .details
-        .get("enabled_events")
-        .and_then(Value::as_arr)
-        .into_iter()
-        .flatten()
-        .find_map(|e| {
-            let name = e.get("event").and_then(Value::as_str)?;
-            let st = e.get("status").and_then(Value::as_str)?;
-            if st == "enabled" && name != "go" {
-                Some(name.to_string())
-            } else {
-                None
-            }
-        })
-        .expect("enabled non-overflow event");
+    let next = first_enabled_except(&err, "go").expect("enabled non-overflow event");
+    let iid = first_detail_str(&err, "instance_id").unwrap_or_else(|| "inst-ov1".into());
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
-            ("instance_id", Value::Str("inst-ovokc".into())),
+            ("instance_id", Value::Str(iid)),
             ("event", obj(&[("name", Value::Str(next))])),
             ("request_id", Value::Str("ov-ok".into())),
         ]),
@@ -2796,7 +2802,7 @@ fn one_step_every_non_infra_code() {
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"dz","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"div(1, 0, 0, down)"}]}]}"#,
+        r#"{"format":"fsm.machine/1","name":"dz","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"ok","fields":[]},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"ok","do":[{"target":"n","value":"dec(0, 0)"}]},{"from":"a","on":"go","do":[{"target":"n","value":"div(1, 0, 0, down)"}]}]}"#,
     );
     dispatch(
         &mut st,
@@ -2814,38 +2820,23 @@ fn one_step_every_non_infra_code() {
         err.details.get("cause").and_then(Value::as_str),
         Some("run/div_zero")
     );
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"dz2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"div(1, 1, 0, down)"}]}]}"#,
-    );
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_create",
-        &obj(&[
-            ("machine", Value::Str("dz2".into())),
-            ("request_id", Value::Str("dz2".into())),
-        ]),
-    )
-    .unwrap();
+    let next = first_enabled_except(&err, "go").expect("enabled non-div-zero event");
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
-            ("instance_id", Value::Str("inst-dz2".into())),
-            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("instance_id", Value::Str("inst-dz1".into())),
+            ("event", obj(&[("name", Value::Str(next))])),
             ("request_id", Value::Str("dz-ok".into())),
         ]),
     )
     .unwrap();
-    seen.insert("run/div_zero");
 
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ge","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[{"name":"z","ty":{"decimal":"0"}}]}],"transitions":[{"from":"a","on":"go","if":"div(ctx.n, evt.z, 0, down) == dec(0, 0)"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"ge","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":{"decimal":"0"},"init":"0"}],"events":[{"name":"go","fields":[{"name":"z","ty":{"decimal":"0"}}]},{"name":"skip","fields":[]}],"transitions":[{"from":"a","on":"go","if":"div(ctx.n, evt.z, 0, down) == dec(0, 0)"},{"from":"a","on":"skip"}]}"#,
     );
     dispatch(
         &mut st,
@@ -2866,38 +2857,24 @@ fn one_step_every_non_infra_code() {
         "ge-bad",
     );
     assert_eq!(err.code, "run/guard_error", "{}", err.code);
-    seen.insert("run/guard_error");
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"ge2","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","if":"true"}]}"#,
-    );
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_create",
-        &obj(&[
-            ("machine", Value::Str("ge2".into())),
-            ("request_id", Value::Str("ge2".into())),
-        ]),
-    )
-    .unwrap();
+    let next = first_enabled_except(&err, "go").expect("enabled non-guard-fail event");
     dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
-            ("instance_id", Value::Str("inst-ge2".into())),
-            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("instance_id", Value::Str("inst-ge1".into())),
+            ("event", obj(&[("name", Value::Str(next))])),
             ("request_id", Value::Str("ge-ok".into())),
         ]),
     )
     .unwrap();
+    seen.insert("run/guard_error");
 
     create_ok(
         &mut st,
         &mut clock,
-        r#"{"format":"fsm.machine/1","name":"inv","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"-1"}]}],"invariants":[{"name":"pos","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]},{"name":"ok","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"-1"}]},{"from":"a","on":"ok","do":[{"target":"n","value":"1"}]}],"invariants":[{"name":"pos","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
     );
     dispatch(
         &mut st,
@@ -2911,38 +2888,14 @@ fn one_step_every_non_infra_code() {
     .unwrap();
     let err = send_err(&mut st, &mut clock, "inst-inv1", "go", obj(&[]), "inv-bad");
     assert_eq!(err.code, "run/invariant");
-    let _ = dispatch(
+    let next = first_enabled_except(&err, "go").expect("enabled non-invariant event");
+    dispatch(
         &mut st,
         &mut clock,
         "instance_send",
         &obj(&[
             ("instance_id", Value::Str("inst-inv1".into())),
-            ("event", obj(&[("name", Value::Str("go".into()))])),
-            ("request_id", Value::Str("inv-retry".into())),
-        ]),
-    );
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"inv2","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","do":[{"target":"n","value":"1"}]}],"invariants":[{"name":"pos","expr":"ctx.n >= 0","mode":"enforce"}]}"#,
-    );
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_create",
-        &obj(&[
-            ("machine", Value::Str("inv2".into())),
-            ("request_id", Value::Str("inv2".into())),
-        ]),
-    )
-    .unwrap();
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_send",
-        &obj(&[
-            ("instance_id", Value::Str("inst-inv2".into())),
-            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("event", obj(&[("name", Value::Str(next))])),
             ("request_id", Value::Str("inv-ok".into())),
         ]),
     )
@@ -2965,12 +2918,14 @@ fn one_step_every_non_infra_code() {
     )
     .unwrap_err();
     assert_eq!(err.code, "run/create_failed");
+    let alt = first_detail_str(&err, "known_machines")
+        .expect("create_failed lists a known working machine");
     dispatch(
         &mut st,
         &mut clock,
         "instance_create",
         &obj(&[
-            ("machine", Value::Str("case_review".into())),
+            ("machine", Value::Str(alt)),
             ("request_id", Value::Str("cf-ok".into())),
         ]),
     )
@@ -3007,12 +2962,13 @@ fn one_step_every_non_infra_code() {
         "canx-bad",
     );
     assert_eq!(err.code, "run/instance_cancelled");
+    let mid = first_detail_str(&err, "machine_id").expect("cancelled machine_id");
     dispatch(
         &mut st,
         &mut clock,
         "instance_create",
         &obj(&[
-            ("machine", Value::Str("case_review".into())),
+            ("machine", Value::Str(mid)),
             ("request_id", Value::Str("canx-ok".into())),
         ]),
     )

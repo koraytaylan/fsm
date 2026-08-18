@@ -2108,19 +2108,8 @@ fn write_snapshot_propagates_dir_sync() {
     assert_eq!(err.code, "io/write", "{err:?}");
 }
 
-fn rewrite_snap_strip_dedup(dir: &std::path::Path, rid: &str) {
-    let snap_dir = dir.join("snapshots");
-    let paths: Vec<_> = std::fs::read_dir(&snap_dir)
-        .unwrap()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("snap-") && n.ends_with(".json"))
-        })
-        .collect();
-    let path = paths.first().cloned().expect("snapshot file");
+fn rewrite_snap_strip_dedup(dir: &std::path::Path, rid: &str, snap_seq: u64) {
+    let path = keep_only_snap_seq(dir, snap_seq);
     let bytes = std::fs::read(&path).unwrap();
     let v = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
     let mut o = v.as_obj().unwrap().clone();
@@ -2136,16 +2125,7 @@ fn rewrite_snap_strip_dedup(dir: &std::path::Path, rid: &str) {
         ))
     );
     o.insert("snapshot_hash".into(), Value::Str(h));
-    let seq = o
-        .get("seq")
-        .and_then(Value::as_num)
-        .unwrap_or("0")
-        .to_string();
-    for p in &paths {
-        let _ = std::fs::remove_file(p);
-    }
-    let dest = snap_dir.join(format!("snap-{seq}.json"));
-    std::fs::write(&dest, fsm_core::canon::canon_bytes(&Value::Obj(o))).unwrap();
+    std::fs::write(&path, fsm_core::canon::canon_bytes(&Value::Obj(o))).unwrap();
 }
 
 #[test]
@@ -2160,8 +2140,9 @@ fn stripped_dedup_snapshot_falls_back_and_retry_is_duplicate() {
     store.shutdown_snapshot().unwrap();
     let seq = store.journal.last_seq;
     assert!(store.state.dedup.contains_key("c1"));
+    let snap_seq = store.journal.last_seq;
     drop(store);
-    rewrite_snap_strip_dedup(&dir, "c1");
+    rewrite_snap_strip_dedup(&dir, "c1", snap_seq);
     let mut store = Store::open(&dir).unwrap();
     assert!(
         store.state.dedup.contains_key("c1"),
@@ -2185,8 +2166,13 @@ fn journal_replay_disagrees_on_stripped_dedup_snapshot() {
         .create_instance("case_review", "i1", "c1", None)
         .unwrap();
     store.shutdown_snapshot().unwrap();
+    let snap_seq = store.journal.last_seq;
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    let last_seq = store.journal.last_seq;
     drop(store);
-    rewrite_snap_strip_dedup(&dir, "c1");
+    rewrite_snap_strip_dedup(&dir, "c1", snap_seq);
     let snap_path = std::fs::read_dir(dir.join("snapshots"))
         .unwrap()
         .flatten()
@@ -2203,24 +2189,10 @@ fn journal_replay_disagrees_on_stripped_dedup_snapshot() {
         "reconstruct should keep stripped snap dedup {:?}",
         live.dedup
     );
-    let bin = fsm_bin();
-    let out = Command::new(&bin)
-        .args([
-            "--data-dir",
-            dir.to_str().unwrap(),
-            "--json",
-            "journal",
-            "replay",
-        ])
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("\"agreement\":false") || stdout.contains("agreement\": false"),
-        "{stdout}"
-    );
-    assert_ne!(out.status.code(), Some(0));
-    assert!(stdout.contains("first_divergent_seq"), "{stdout}");
+    let (_, div) = replay_disagreement(&dir);
+    assert_eq!(div, snap_seq, "dedup responsible seq");
+    assert_ne!(div, last_seq, "dedup must not be last_seq");
+    let _ = last;
 }
 
 #[test]
@@ -2963,21 +2935,7 @@ fn snapshot_binding_skips_prefix_replay() {
     assert!(store.replayed_records < store.records.len());
 }
 
-#[test]
-fn journal_replay_disagrees_on_context_divergent_snapshot() {
-    let _g = gate();
-    let dir = tmp("ctxdiv");
-    let mut store = Store::open(&dir).unwrap();
-    store.define_machine(case(), false, false).unwrap();
-    store
-        .create_instance("case_review", "i1", "c1", None)
-        .unwrap();
-    store.shutdown_snapshot().unwrap();
-    store
-        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
-        .unwrap();
-    drop(store);
-    rewrite_snap_context(&dir);
+fn replay_disagreement(dir: &std::path::Path) -> (String, u64) {
     let bin = fsm_bin();
     let out = Command::new(&bin)
         .args([
@@ -2989,20 +2947,58 @@ fn journal_replay_disagrees_on_context_divergent_snapshot() {
         ])
         .output()
         .unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     assert!(stdout.contains("\"agreement\":false"), "{stdout}");
-    assert!(stdout.contains("first_divergent_seq"), "{stdout}");
-    assert_ne!(out.status.code(), Some(0));
+    assert_ne!(out.status.code(), Some(0), "{stdout}");
+    let v = parse(stdout.trim().as_bytes(), &JsonLimits::DEFAULT).expect(&stdout);
+    let seq = v
+        .get("first_divergent_seq")
+        .and_then(Value::as_num)
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or_else(|| panic!("numeric first_divergent_seq missing: {stdout}"));
+    (stdout, seq)
 }
 
-fn rewrite_snap_context(dir: &std::path::Path) {
-    let snap_dir = dir.join("snapshots");
-    let path = std::fs::read_dir(&snap_dir)
-        .unwrap()
-        .flatten()
-        .map(|e| e.path())
-        .find(|p| p.extension().and_then(|s| s.to_str()) == Some("json"))
+#[test]
+fn journal_replay_disagrees_on_context_divergent_snapshot() {
+    let _g = gate();
+    let dir = tmp("ctxdiv");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
         .unwrap();
+    store.shutdown_snapshot().unwrap();
+    let snap_seq = store.journal.last_seq;
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    let last_seq = store.journal.last_seq;
+    drop(store);
+    rewrite_snap_context(&dir, snap_seq);
+    let (out1, div) = replay_disagreement(&dir);
+    assert_eq!(div, snap_seq, "responsible seq must be the snapshot seq");
+    assert_ne!(div, last_seq, "must not report the tail last_seq");
+    let (out2, div2) = replay_disagreement(&dir);
+    assert_eq!(div2, snap_seq);
+    assert_eq!(out1, out2, "two CLI replay runs must match");
+}
+
+fn keep_only_snap_seq(dir: &std::path::Path, snap_seq: u64) -> std::path::PathBuf {
+    let snaps = fsm_cli::snapshot::listed_snaps(dir);
+    let mut keep = None;
+    for (seq, path) in &snaps {
+        if *seq == snap_seq && keep.is_none() {
+            keep = Some(path.clone());
+        } else {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    keep.expect("midstream snapshot")
+}
+
+fn rewrite_snap_context(dir: &std::path::Path, snap_seq: u64) {
+    let path = keep_only_snap_seq(dir, snap_seq);
     let bytes = std::fs::read(&path).unwrap();
     let v = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
     let mut o = v.as_obj().unwrap().clone();
@@ -3099,14 +3095,51 @@ fn verify_report_ordered_segment_progress() {
             .create_instance("case_review", &format!("i{i}"), &format!("c{i}"), None)
             .unwrap();
     }
+    let first_name = store.journal.seg_name.clone();
+    store.journal.force_rotate().unwrap();
+    for i in 3..6 {
+        store
+            .create_instance("case_review", &format!("i{i}"), &format!("c{i}"), None)
+            .unwrap();
+    }
+    let second_name = store.journal.seg_name.clone();
+    assert_ne!(first_name, second_name, "rotation must open a new segment");
     drop(store);
+    let bogus = dir.join("journal").join("seg-zzzz.jsonl");
+    std::fs::create_dir_all(&bogus).unwrap();
     let r = fsm_cli::journal_io::verify(&dir);
-    assert!(!r.segments.is_empty());
+    assert!(
+        r.segments.len() >= 3,
+        "expected ≥2 real segments plus metadata-failure, got {:?}",
+        r.segments
+            .iter()
+            .map(|s| format!("{}:{}", s.segment, s.status))
+            .collect::<Vec<_>>()
+    );
     let names: Vec<_> = r.segments.iter().map(|s| s.segment.as_str()).collect();
     let mut sorted = names.clone();
     sorted.sort();
     assert_eq!(names, sorted, "segments must be ordered");
-    assert!(r.segments.iter().any(|s| s.status == "ok" && s.records > 0));
+    assert!(
+        r.segments
+            .iter()
+            .filter(|s| s.status == "ok" && s.records > 0)
+            .count()
+            >= 2,
+        "need two populated segments {:?}",
+        r.segments
+            .iter()
+            .map(|s| format!("{}:{}:{}", s.segment, s.status, s.records))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        r.segments.iter().any(|s| s.status == "metadata-failure"),
+        "missing metadata-failure {:?}",
+        r.segments
+            .iter()
+            .map(|s| s.status.as_str())
+            .collect::<Vec<_>>()
+    );
     let bin = fsm_bin();
     let out = Command::new(&bin)
         .args([
@@ -3122,6 +3155,18 @@ fn verify_report_ordered_segment_progress() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("\"records\""), "{stdout}");
     assert!(stdout.contains("\"status\""), "{stdout}");
+    assert!(stdout.contains(&first_name), "{stdout}");
+    assert!(stdout.contains(&second_name), "{stdout}");
+    assert!(stdout.contains("metadata-failure"), "{stdout}");
+    let v = parse(stdout.trim().as_bytes(), &JsonLimits::DEFAULT).expect(&stdout);
+    let segs = v.get("segments").and_then(Value::as_arr).expect(&stdout);
+    let reported: Vec<&str> = segs
+        .iter()
+        .map(|s| s.get("segment").and_then(Value::as_str).unwrap_or(""))
+        .collect();
+    let mut sorted = reported.clone();
+    sorted.sort();
+    assert_eq!(reported, sorted, "CLI segments unordered {stdout}");
 }
 
 #[test]
@@ -3135,35 +3180,21 @@ fn journal_replay_disagrees_on_pending_and_history_divergent_snapshots() {
             .create_instance("case_review", "i1", "c1", None)
             .unwrap();
         store.shutdown_snapshot().unwrap();
+        let snap_seq = store.journal.last_seq;
         store
             .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
             .unwrap();
+        let last_seq = store.journal.last_seq;
         drop(store);
-        rewrite_snap_field(&dir, kind);
-        let bin = fsm_bin();
-        let out = Command::new(&bin)
-            .args([
-                "--data-dir",
-                dir.to_str().unwrap(),
-                "--json",
-                "journal",
-                "replay",
-            ])
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(stdout.contains("\"agreement\":false"), "{kind} {stdout}");
-        assert!(stdout.contains("first_divergent_seq"), "{kind} {stdout}");
-        assert_ne!(out.status.code(), Some(0), "{kind}");
+        rewrite_snap_field(&dir, kind, snap_seq);
+        let (_, div) = replay_disagreement(&dir);
+        assert_eq!(div, snap_seq, "{kind} responsible seq");
+        assert_ne!(div, last_seq, "{kind} must not be last_seq");
     }
 }
 
-fn rewrite_snap_field(dir: &std::path::Path, kind: &str) {
-    let snaps = fsm_cli::snapshot::listed_snaps(dir);
-    let path = snaps.first().map(|(_, p)| p.clone()).unwrap();
-    for (_, p) in snaps.iter().skip(1) {
-        let _ = std::fs::remove_file(p);
-    }
+fn rewrite_snap_field(dir: &std::path::Path, kind: &str, snap_seq: u64) {
+    let path = keep_only_snap_seq(dir, snap_seq);
     let bytes = std::fs::read(&path).unwrap();
     let v = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
     let mut o = v.as_obj().unwrap().clone();

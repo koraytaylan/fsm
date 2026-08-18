@@ -949,7 +949,19 @@ pub fn dispatch(
             }
         }
     }
-    if let Err(e) = validate_args(&(spec.input_schema)(), args) {
+    if let Err(mut e) = validate_args(&(spec.input_schema)(), args) {
+        if name == "instance_send" {
+            if let Some(iid) = args.get("instance_id").and_then(Value::as_str) {
+                if let Ok(view) = store.instance_view(iid, None, None) {
+                    if let Value::Obj(d) = &mut e.details {
+                        if let Some(en) = view.get("enabled_events") {
+                            d.insert("enabled_events".into(), en.clone());
+                        }
+                        d.insert("instance_id".into(), Value::Str(iid.into()));
+                    }
+                }
+            }
+        }
         return Err(attach_request_id(e, args));
     }
     (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))

@@ -417,6 +417,12 @@ impl Journal {
         self.seg_records = 0;
         Ok(())
     }
+
+    /// Close the current segment and open the next one. Tests use this to
+    /// produce multiple on-disk segments without writing `ROTATE_RECORDS`.
+    pub fn force_rotate(&mut self) -> Result<(), JournalIoError> {
+        self.rotate()
+    }
 }
 
 pub fn classify(dir: &Path) -> JournalHealth {
