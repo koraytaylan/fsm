@@ -354,6 +354,10 @@ fn stamp_store_version(dir: &Path) -> Result<(), JournalIoError> {
     let f = File::open(&tmp).map_err(|e| JournalIoError::Io(e.to_string()))?;
     f.sync_all()
         .map_err(|e| JournalIoError::Io(e.to_string()))?;
+    // Close the handle before renaming. Unix happily renames a file that still
+    // has one open; Windows refuses with a sharing violation, and the fsync
+    // above is the only reason it is open.
+    drop(f);
     match fs::rename(&tmp, &ver) {
         Ok(()) => {}
         Err(e) => {
