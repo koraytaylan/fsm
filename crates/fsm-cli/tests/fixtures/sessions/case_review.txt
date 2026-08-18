@@ -424,8 +424,9 @@ instance_id:    inst-new-1
 argv: journal verify
 exit: 0
 --- stdout ---
-health:    Ok
-instances: 1
-machines:  1
-records:   8
+health:        Ok
+instances:     1
+machines:      1
+records:       8
+store_version: 6
 --- stderr ---

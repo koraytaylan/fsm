@@ -226,10 +226,6 @@ pub struct DefineOutcome {
 impl Store {
     pub fn open(data_dir: &Path) -> Result<Self, ErrorObj> {
         fs::create_dir_all(data_dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-        if let Err(h) = journal_io::require_store_format(data_dir) {
-            return Err(ErrorObj::new("store/version_mismatch", h.message())
-                .hint("delete the data directory and recreate the store"));
-        }
         let mut sink = HistSink {
             history: BTreeMap::new(),
             records: Vec::new(),
@@ -1855,9 +1851,17 @@ fn health_err(h: &JournalHealth) -> ErrorObj {
         JournalHealth::ReplayMismatch { .. } => "store/state_hash_mismatch",
         JournalHealth::MissingGenesis => "store/chain_broken",
         JournalHealth::VersionMismatch { .. } => "store/version_mismatch",
+        JournalHealth::StoreIo(_) => "io/read",
         JournalHealth::Ok => "store/lock",
     };
-    ErrorObj::new(code, h.message())
+    let err = ErrorObj::new(code, h.message());
+    if matches!(h, JournalHealth::VersionMismatch { .. }) {
+        // Post-migration this fires for newer or unknown formats, where the
+        // store may be the only good copy — never advise deleting it.
+        err.hint("upgrade fsm to a build that supports this store format, or point --data-dir at a fresh directory")
+    } else {
+        err
+    }
 }
 
 pub fn val_json(v: &Val) -> Value {

@@ -57,3 +57,12 @@ Claude Desktop `mcpServers` JSON:
 Honest non-claims: this is a **single-node** single-writer engine. There is no HA/replication, no real-time deadline, and the throughput ceiling is a feature.
 
 See [docs/SPEC.md](docs/SPEC.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), and [docs/RELEASE.md](docs/RELEASE.md).
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.

@@ -17,8 +17,67 @@ use fsm_core::replay::{NopSink, RecordSink, StoreState, fold_with};
 const ROTATE_RECORDS: u32 = 65_536;
 const ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 // VERSION 6 adds the `state_checkpoint` record used to bind explicit
-// snapshots without rewriting prior journal records.
+// snapshots without rewriting prior journal records. Formats 1–5 (and a
+// journal with no VERSION marker) are best-effort migrated on open by
+// folding the journal and stamping 6; records are never rewritten.
 const STORE_VERSION: &str = "6";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DetectedStoreFormat {
+    Current,
+    Empty,
+    Migratable { found: String },
+    Incompatible { found: String },
+    Unreadable { err: String },
+}
+
+fn is_seg_file_name(name: &str) -> bool {
+    name.starts_with("seg-") && name.ends_with(".jsonl")
+}
+
+fn has_journal_segments(dir: &Path) -> bool {
+    let jdir = journal_dir(dir);
+    jdir.exists()
+        && fs::read_dir(&jdir)
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .any(|e| is_seg_file_name(&e.file_name().to_string_lossy()))
+            })
+            .unwrap_or(false)
+}
+
+fn is_migratable_version(v: &str) -> bool {
+    matches!(v, "1" | "2" | "3" | "4" | "5")
+}
+
+pub(crate) fn detect_store_format(dir: &Path) -> DetectedStoreFormat {
+    let ver = dir.join("VERSION");
+    if ver.exists() {
+        let t = match fs::read_to_string(&ver) {
+            Ok(t) => t,
+            Err(e) => {
+                return DetectedStoreFormat::Unreadable { err: e.to_string() };
+            }
+        };
+        let t = t.trim();
+        if t == STORE_VERSION {
+            return DetectedStoreFormat::Current;
+        }
+        if is_migratable_version(t) {
+            return DetectedStoreFormat::Migratable {
+                found: t.to_string(),
+            };
+        }
+        return DetectedStoreFormat::Incompatible {
+            found: t.to_string(),
+        };
+    }
+    if has_journal_segments(dir) {
+        DetectedStoreFormat::Migratable { found: "1".into() }
+    } else {
+        DetectedStoreFormat::Empty
+    }
+}
 
 pub fn should_rotate(seg_bytes: u64, seg_records: u32) -> bool {
     seg_records >= ROTATE_RECORDS || seg_bytes >= ROTATE_BYTES
@@ -115,6 +174,7 @@ pub enum JournalHealth {
     VersionMismatch {
         found: String,
     },
+    StoreIo(String),
 }
 
 impl JournalHealth {
@@ -154,13 +214,16 @@ impl JournalHealth {
                 format!("replay mismatch at seq {seq} field {field}")
             }
             JournalHealth::MissingGenesis => {
-                "journal has no genesis record; delete the data directory and recreate".into()
+                "journal has no genesis record; restore the journal from backup or recreate the data directory"
+                    .into()
             }
             JournalHealth::VersionMismatch { found } => {
+                let shown = if found.is_empty() { "unknown" } else { found };
                 format!(
-                    "store format {found} is not compatible; delete the data directory and recreate"
+                    "store format {shown} is not supported by this build; upgrade fsm, or recreate the data directory"
                 )
             }
+            JournalHealth::StoreIo(s) => s.clone(),
         }
     }
 }
@@ -265,13 +328,6 @@ fn classify_has_genesis(jdir: &Path) -> bool {
     matches!(classify(dir), JournalHealth::Ok)
 }
 
-pub(crate) fn write_store_version(dir: &Path) -> Result<(), String> {
-    if let Err(h) = require_store_format(dir) {
-        return Err(format!("store/version_mismatch: {}", h.message()));
-    }
-    write_version_durable(dir).map_err(|e| e.to_string())
-}
-
 fn from_health(h: JournalHealth) -> JournalIoError {
     match h {
         JournalHealth::VersionMismatch { found } => JournalIoError::VersionMismatch { found },
@@ -279,12 +335,9 @@ fn from_health(h: JournalHealth) -> JournalIoError {
     }
 }
 
-fn write_version_durable(dir: &Path) -> Result<(), JournalIoError> {
+fn stamp_store_version(dir: &Path) -> Result<(), JournalIoError> {
     fs::create_dir_all(dir).map_err(|e| JournalIoError::Io(e.to_string()))?;
     let ver = dir.join("VERSION");
-    if ver.exists() {
-        return Ok(());
-    }
     let tmp = dir.join(format!(
         "VERSION.{}.{}.tmp",
         std::process::id(),
@@ -301,7 +354,11 @@ fn write_version_durable(dir: &Path) -> Result<(), JournalIoError> {
         Ok(()) => {}
         Err(e) => {
             let _ = fs::remove_file(&tmp);
-            if ver.exists() {
+            if ver.exists()
+                && fs::read_to_string(&ver)
+                    .map(|s| s.trim() == STORE_VERSION)
+                    .unwrap_or(false)
+            {
                 return Ok(());
             }
             return Err(JournalIoError::Io(e.to_string()));
@@ -310,19 +367,36 @@ fn write_version_durable(dir: &Path) -> Result<(), JournalIoError> {
     sync_dir(dir)
 }
 
+fn write_version_durable(dir: &Path) -> Result<(), JournalIoError> {
+    if dir.join("VERSION").exists() {
+        return Ok(());
+    }
+    stamp_store_version(dir)
+}
+
 pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
-    if let Err(h) = require_store_format(dir) {
+    if let Err(h) = refuse_incompatible_store_format(dir) {
         return Err(from_health(h));
     }
     let jdir = journal_dir(dir);
     fs::create_dir_all(&jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
     let lock = acquire_lock(&jdir)?;
-    if let Err(h) = require_store_format(dir) {
+    if let Err(h) = refuse_incompatible_store_format(dir) {
         drop(lock);
         return Err(from_health(h));
     }
-    write_version_durable(dir)?;
-    write_genesis_unlocked(&jdir)?;
+    let fmt = detect_store_format(dir);
+    if matches!(fmt, DetectedStoreFormat::Empty) {
+        write_version_durable(dir)?;
+    }
+    // A Migratable dir must keep its own journal; writing a fresh genesis
+    // there would orphan the old data behind a new chain.
+    if matches!(
+        fmt,
+        DetectedStoreFormat::Empty | DetectedStoreFormat::Current
+    ) {
+        write_genesis_unlocked(&jdir)?;
+    }
     drop(lock);
     let mut sink = fsm_core::replay::NopSink;
     open(dir, &mut sink)
@@ -437,7 +511,7 @@ pub fn classify(dir: &Path) -> JournalHealth {
             .filter(|p| {
                 p.file_name()
                     .and_then(|n| n.to_str())
-                    .map(|n| n.starts_with("seg-") && n.ends_with(".jsonl"))
+                    .map(is_seg_file_name)
                     .unwrap_or(false)
             })
             .collect(),
@@ -564,7 +638,7 @@ fn active_segment_meta(jdir: &Path, recs: &[Record]) -> Result<(String, u64, u64
         .map_err(|e| e.to_string())?
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.starts_with("seg-") && n.ends_with(".jsonl"))
+        .filter(|n| is_seg_file_name(n))
         .collect();
     segs.sort();
     let name = segs.pop().unwrap_or_else(|| seg_name(0));
@@ -583,7 +657,7 @@ pub fn open(
     dir: &Path,
     sink: &mut impl RecordSink,
 ) -> Result<(Journal, StoreState, crate::snapshot::OpenPath), OpenError> {
-    if let Err(h) = require_store_format(dir) {
+    if let Err(h) = refuse_incompatible_store_format(dir) {
         return Err(OpenError::Health(h));
     }
     let jdir = journal_dir(dir);
@@ -594,12 +668,22 @@ pub fn open(
         }
         other => OpenError::Io(other.to_string()),
     })?;
-    if let Err(h) = require_store_format(dir) {
+    if let Err(h) = refuse_incompatible_store_format(dir) {
         return Err(OpenError::Health(h));
     }
-    write_version_durable(dir).map_err(|e| OpenError::Io(e.to_string()))?;
+    let fmt = detect_store_format(dir);
+    if matches!(fmt, DetectedStoreFormat::Empty) {
+        write_version_durable(dir).map_err(|e| OpenError::Io(e.to_string()))?;
+    }
+    let migrating = matches!(fmt, DetectedStoreFormat::Migratable { .. });
     let health = classify(dir);
     if matches!(health, JournalHealth::MissingGenesis) {
+        // Auto-genesis only completes a store this build created (fresh dir,
+        // or a crash between VERSION and genesis). A Migratable dir missing
+        // its journal is lost data, not a store to re-create over.
+        if migrating {
+            return Err(OpenError::Health(JournalHealth::MissingGenesis));
+        }
         write_genesis_unlocked(&jdir).map_err(|e| OpenError::Io(e.to_string()))?;
     }
     let health = classify(dir);
@@ -607,8 +691,27 @@ pub fn open(
         return Err(OpenError::Health(health));
     }
     let recs = load_records(dir).map_err(OpenError::Io)?;
-    let (state, open_path) = crate::snapshot::open_state(dir, recs.clone(), sink)
-        .map_err(|e| OpenError::Health(replay_health(e)))?;
+    let (state, open_path) = if migrating {
+        // Migration ignores snapshot caches and folds the complete journal
+        // under current semantics before certifying the store.
+        let n = recs.len();
+        let state =
+            fold_with(recs.clone(), sink).map_err(|e| OpenError::Health(replay_health(e)))?;
+        (
+            state,
+            crate::snapshot::OpenPath {
+                replayed_records: n,
+                used_snapshot: false,
+                snapshot_seq: None,
+            },
+        )
+    } else {
+        crate::snapshot::open_state(dir, recs.clone(), sink)
+            .map_err(|e| OpenError::Health(replay_health(e)))?
+    };
+    if migrating {
+        stamp_store_version(dir).map_err(|e| OpenError::Io(e.to_string()))?;
+    }
     let last = recs.last();
     let (name, first, bytes, count) = active_segment_meta(&jdir, &recs).map_err(OpenError::Io)?;
     let path = jdir.join(&name);
@@ -646,7 +749,7 @@ pub fn load_records(dir: &Path) -> Result<Vec<Record>, String> {
         .filter(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.starts_with("seg-"))
+                .map(is_seg_file_name)
                 .unwrap_or(false)
         })
         .collect();
@@ -685,32 +788,20 @@ pub struct VerifyReport {
     pub instances: u64,
     pub instance_hashes: std::collections::BTreeMap<String, String>,
     pub segments: Vec<SegmentProgress>,
+    pub store_version: Option<String>,
+    pub migratable: bool,
 }
 
-pub fn require_store_format(dir: &Path) -> Result<(), JournalHealth> {
-    let ver = dir.join("VERSION");
-    let jdir = journal_dir(dir);
-    let has_journal = jdir.exists()
-        && fs::read_dir(&jdir)
-            .map(|rd| {
-                rd.filter_map(|e| e.ok())
-                    .any(|e| e.file_name().to_string_lossy().starts_with("seg-"))
-            })
-            .unwrap_or(false);
-    if ver.exists() {
-        let v = fs::read_to_string(&ver).unwrap_or_default();
-        let t = v.trim();
-        if t != STORE_VERSION {
-            return Err(JournalHealth::VersionMismatch {
-                found: t.to_string(),
-            });
+pub fn refuse_incompatible_store_format(dir: &Path) -> Result<(), JournalHealth> {
+    match detect_store_format(dir) {
+        DetectedStoreFormat::Incompatible { found } => {
+            Err(JournalHealth::VersionMismatch { found })
         }
-        return Ok(());
+        DetectedStoreFormat::Unreadable { err } => Err(JournalHealth::StoreIo(format!(
+            "cannot read VERSION: {err}"
+        ))),
+        _ => Ok(()),
     }
-    if has_journal {
-        return Err(JournalHealth::VersionMismatch { found: "1".into() });
-    }
-    Ok(())
 }
 
 pub fn verify_segments(dir: &Path) -> Vec<SegmentProgress> {
@@ -733,7 +824,7 @@ pub fn verify_segments(dir: &Path) -> Vec<SegmentProgress> {
         .filter(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.starts_with("seg-") && n.ends_with(".jsonl"))
+                .map(is_seg_file_name)
                 .unwrap_or(false)
         })
         .collect();
@@ -809,39 +900,35 @@ pub fn verify_segments(dir: &Path) -> Vec<SegmentProgress> {
 }
 
 pub fn verify(dir: &Path) -> VerifyReport {
-    if let Err(h) = require_store_format(dir) {
-        return VerifyReport {
-            health: h,
-            records: 0,
-            machines: 0,
-            instances: 0,
-            instance_hashes: Default::default(),
-            segments: verify_segments(dir),
-        };
+    let fmt = detect_store_format(dir);
+    let store_version = match &fmt {
+        DetectedStoreFormat::Current => Some(STORE_VERSION.to_string()),
+        DetectedStoreFormat::Migratable { found } | DetectedStoreFormat::Incompatible { found } => {
+            Some(found.clone())
+        }
+        DetectedStoreFormat::Empty | DetectedStoreFormat::Unreadable { .. } => None,
+    };
+    let migratable = matches!(&fmt, DetectedStoreFormat::Migratable { .. });
+    let empty = |health: JournalHealth| VerifyReport {
+        health,
+        records: 0,
+        machines: 0,
+        instances: 0,
+        instance_hashes: Default::default(),
+        segments: verify_segments(dir),
+        store_version: store_version.clone(),
+        migratable,
+    };
+    if let Err(h) = refuse_incompatible_store_format(dir) {
+        return empty(h);
     }
     let health = classify(dir);
     if !matches!(health, JournalHealth::Ok) {
-        return VerifyReport {
-            health,
-            records: 0,
-            machines: 0,
-            instances: 0,
-            instance_hashes: Default::default(),
-            segments: verify_segments(dir),
-        };
+        return empty(health);
     }
     let recs = match load_records(dir) {
         Ok(r) => r,
-        Err(e) => {
-            return VerifyReport {
-                health: JournalHealth::LockIo(e),
-                records: 0,
-                machines: 0,
-                instances: 0,
-                instance_hashes: Default::default(),
-                segments: verify_segments(dir),
-            };
-        }
+        Err(e) => return empty(JournalHealth::LockIo(e)),
     };
     match fold_with(recs.clone(), &mut NopSink) {
         Ok(st) => {
@@ -860,6 +947,8 @@ pub fn verify(dir: &Path) -> VerifyReport {
                 instances: st.instances.len() as u64,
                 instance_hashes,
                 segments: verify_segments(dir),
+                store_version,
+                migratable,
             }
         }
         Err(e) => VerifyReport {
@@ -869,6 +958,8 @@ pub fn verify(dir: &Path) -> VerifyReport {
             instances: 0,
             instance_hashes: Default::default(),
             segments: verify_segments(dir),
+            store_version,
+            migratable,
         },
     }
 }
@@ -888,11 +979,15 @@ pub enum RepairError {
 }
 
 pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError> {
-    if let Err(h) = require_store_format(dir) {
+    if let Err(h) = refuse_incompatible_store_format(dir) {
         return Err(RepairError::Interior(h));
     }
     let jdir = journal_dir(dir);
     let _lock = acquire_lock(&jdir).map_err(|e| RepairError::Io(e.to_string()))?;
+    let migrating = matches!(
+        detect_store_format(dir),
+        DetectedStoreFormat::Migratable { .. }
+    );
     let health = classify(dir);
     match health {
         JournalHealth::Ok => Err(RepairError::NothingToRepair),
@@ -961,6 +1056,11 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
             if let Err(e) = fold_with(kept, &mut NopSink) {
                 return Err(RepairError::Interior(replay_health(e)));
             }
+            if migrating {
+                // A successful repair has folded the complete retained journal
+                // under current semantics — the migration success condition.
+                stamp_store_version(dir).map_err(|e| RepairError::Io(e.to_string()))?;
+            }
             Ok(RepairReport {
                 quarantined: qpath,
                 bytes,
@@ -983,7 +1083,7 @@ fn load_prior_records(dir: &Path, torn_segment: &str) -> Result<Vec<Record>, Str
         .filter(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.starts_with("seg-") && n.ends_with(".jsonl"))
+                .map(is_seg_file_name)
                 .unwrap_or(false)
         })
         .collect();
@@ -1153,30 +1253,124 @@ mod tests {
         drop(j);
         assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
         fs::write(dir.join("VERSION"), "3\n").unwrap();
-        assert!(matches!(
-            require_store_format(&dir),
-            Err(JournalHealth::VersionMismatch { found }) if found == "3"
-        ));
-        assert!(init(&dir).is_err());
+        assert_eq!(
+            detect_store_format(&dir),
+            DetectedStoreFormat::Migratable { found: "3".into() }
+        );
+        assert!(refuse_incompatible_store_format(&dir).is_ok());
+        let j = init(&dir).unwrap();
+        drop(j);
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
         fs::remove_file(dir.join("VERSION")).unwrap();
+        assert_eq!(
+            detect_store_format(&dir),
+            DetectedStoreFormat::Migratable { found: "1".into() }
+        );
+        let j = init(&dir).unwrap();
+        drop(j);
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        fs::write(dir.join("VERSION"), "7\n").unwrap();
         assert!(matches!(
-            require_store_format(&dir),
-            Err(JournalHealth::VersionMismatch { .. })
+            refuse_incompatible_store_format(&dir),
+            Err(JournalHealth::VersionMismatch { found }) if found == "7"
         ));
         assert!(matches!(
             init(&dir),
-            Err(JournalIoError::VersionMismatch { .. })
+            Err(JournalIoError::VersionMismatch { found }) if found == "7"
         ));
     }
 
     #[test]
-    fn write_store_version_refuses_missing_marker_with_journal() {
+    fn migratable_marker_stamps_after_successful_open() {
         let dir = tmp();
         let j = init(&dir).unwrap();
         drop(j);
+        fs::write(dir.join("VERSION"), "5\n").unwrap();
+        let mut sink = NopSink;
+        drop(open(&dir, &mut sink).unwrap());
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
         fs::remove_file(dir.join("VERSION")).unwrap();
-        let err = write_store_version(&dir).unwrap_err();
-        assert!(err.contains("store/version_mismatch"), "{err}");
+        drop(open(&dir, &mut sink).unwrap());
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+    }
+
+    #[test]
+    fn migratable_torn_tail_does_not_stamp() {
+        let dir = tmp();
+        let j = init(&dir).unwrap();
+        drop(j);
+        let seg = journal_dir(&dir).join("seg-00000000000000000000.jsonl");
+        let mut bytes = fs::read(&seg).unwrap();
+        bytes.extend_from_slice(b"{\"partial");
+        fs::write(&seg, bytes).unwrap();
+        fs::write(dir.join("VERSION"), "5\n").unwrap();
+        let mut sink = NopSink;
+        assert!(matches!(
+            open(&dir, &mut sink),
+            Err(OpenError::Health(JournalHealth::TornTail { .. }))
+        ));
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "5");
+    }
+
+    #[test]
+    fn migratable_marker_without_journal_refuses() {
+        let dir = tmp();
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("VERSION"), "3\n").unwrap();
+        let mut sink = NopSink;
+        assert!(matches!(
+            open(&dir, &mut sink),
+            Err(OpenError::Health(JournalHealth::MissingGenesis))
+        ));
+        assert!(matches!(init(&dir), Err(JournalIoError::Io(_))));
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "3");
+    }
+
+    #[test]
+    fn stray_tmp_segment_is_not_a_store() {
+        let dir = tmp();
+        let jdir = journal_dir(&dir);
+        fs::create_dir_all(&jdir).unwrap();
+        fs::write(jdir.join("seg-00000000000000000000.jsonl.tmp"), b"junk").unwrap();
+        assert_eq!(detect_store_format(&dir), DetectedStoreFormat::Empty);
+        let j = init(&dir).unwrap();
+        drop(j);
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+    }
+
+    #[test]
+    fn unreadable_version_is_store_io() {
+        let dir = tmp();
+        fs::create_dir_all(dir.join("VERSION")).unwrap();
+        assert!(matches!(
+            detect_store_format(&dir),
+            DetectedStoreFormat::Unreadable { .. }
+        ));
+        assert!(matches!(
+            refuse_incompatible_store_format(&dir),
+            Err(JournalHealth::StoreIo(_))
+        ));
+        let mut sink = NopSink;
+        assert!(matches!(
+            open(&dir, &mut sink),
+            Err(OpenError::Health(JournalHealth::StoreIo(_)))
+        ));
+    }
+
+    #[test]
+    fn repair_stamps_migratable_store() {
+        let dir = tmp();
+        let j = init(&dir).unwrap();
+        drop(j);
+        let seg = journal_dir(&dir).join("seg-00000000000000000000.jsonl");
+        let mut bytes = fs::read(&seg).unwrap();
+        bytes.extend_from_slice(b"{\"partial");
+        fs::write(&seg, bytes).unwrap();
+        fs::write(dir.join("VERSION"), "5\n").unwrap();
+        repair_truncate_torn_tail(&dir).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        let mut sink = NopSink;
+        drop(open(&dir, &mut sink).unwrap());
     }
 
     #[test]

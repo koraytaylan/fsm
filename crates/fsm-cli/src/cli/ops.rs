@@ -5,7 +5,8 @@ use fsm_core::replay::{NopSink, fold_with};
 
 use crate::args::{Args, CmdSpec, Ctx};
 use crate::journal_io::{
-    JournalHealth, RepairError, load_records, repair_truncate_torn_tail, verify,
+    DetectedStoreFormat, JournalHealth, RepairError, detect_store_format, load_records,
+    repair_truncate_torn_tail, verify,
 };
 use crate::render::{emit_error, emit_success};
 use crate::store::ErrorObj;
@@ -21,15 +22,26 @@ pub fn health_exit(h: &JournalHealth) -> u8 {
         JournalHealth::ReplayMismatch { .. } => 4,
         JournalHealth::MissingGenesis => 3,
         JournalHealth::VersionMismatch { .. } => 6,
+        JournalHealth::StoreIo(_) => 6,
+    }
+}
+
+fn store_format_refusal_code(h: &JournalHealth) -> &'static str {
+    match h {
+        JournalHealth::StoreIo(_) => "io/read",
+        _ => "store/version_mismatch",
     }
 }
 
 fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
     let r = verify(&ctx.data_dir);
-    if matches!(r.health, JournalHealth::VersionMismatch { .. }) {
+    if matches!(
+        r.health,
+        JournalHealth::VersionMismatch { .. } | JournalHealth::StoreIo(_)
+    ) {
         return emit_error(
             ctx,
-            &ErrorObj::new("store/version_mismatch", r.health.message()),
+            &ErrorObj::new(store_format_refusal_code(&r.health), r.health.message()),
         );
     }
     let mut m = BTreeMap::new();
@@ -37,6 +49,12 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
     m.insert("machines".into(), Value::Num(r.machines.to_string()));
     m.insert("instances".into(), Value::Num(r.instances.to_string()));
     m.insert("health".into(), Value::Str(format!("{:?}", r.health)));
+    if let Some(v) = &r.store_version {
+        m.insert("store_version".into(), Value::Str(v.clone()));
+    }
+    if r.migratable {
+        m.insert("migratable".into(), Value::Bool(true));
+    }
     if args.switches.contains("report") {
         m.insert("report".into(), Value::Bool(true));
         let hashes: Vec<Value> = r
@@ -75,8 +93,11 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
 }
 
 fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
-    if let Err(h) = crate::journal_io::require_store_format(&ctx.data_dir) {
-        return emit_error(ctx, &ErrorObj::new("store/version_mismatch", h.message()));
+    if let Err(h) = crate::journal_io::refuse_incompatible_store_format(&ctx.data_dir) {
+        return emit_error(
+            ctx,
+            &ErrorObj::new(store_format_refusal_code(&h), h.message()),
+        );
     }
     let recs = match load_records(&ctx.data_dir) {
         Ok(r) => r,
@@ -116,6 +137,22 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
         .collect();
     match fold_with(recs.clone(), &mut NopSink) {
         Ok(folded) => {
+            if matches!(
+                detect_store_format(&ctx.data_dir),
+                DetectedStoreFormat::Migratable { .. }
+            ) {
+                // Migration ignores snapshot caches wholesale, so against a
+                // migratable store the complete fold is the whole verdict;
+                // judging pre-migration caches would only manufacture alarms.
+                emit_success(
+                    ctx,
+                    &Value::Obj(BTreeMap::from([
+                        ("agreement".into(), Value::Bool(true)),
+                        ("snapshots_ignored".into(), Value::Bool(true)),
+                    ])),
+                );
+                return 0;
+            }
             let live_at = match crate::snapshot::reconstruct_snapshot_plus_tail(
                 &ctx.data_dir,
                 &recs,
@@ -157,8 +194,25 @@ fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
         "data_dir".into(),
         Value::Str(ctx.data_dir.display().to_string()),
     );
+    let before = detect_store_format(&ctx.data_dir);
+    // The open probe checks the lock and, on a migratable store, performs the
+    // one-time migration; every fact below is read after it so the report
+    // matches what doctor leaves on disk.
+    if let Ok(s) = crate::store::Store::open(&ctx.data_dir) {
+        m.insert(
+            "lock_holder".into(),
+            Value::Str(format!("{}", std::process::id())),
+        );
+        drop(s);
+    }
     let ver = std::fs::read_to_string(ctx.data_dir.join("VERSION")).unwrap_or_default();
-    m.insert("version".into(), Value::Str(ver.trim().into()));
+    let ver = ver.trim();
+    m.insert("version".into(), Value::Str(ver.into()));
+    if let DetectedStoreFormat::Migratable { found } = &before {
+        if ver != found.as_str() {
+            m.insert("migrated_from".into(), Value::Str(found.clone()));
+        }
+    }
     let snaps = std::fs::read_dir(ctx.data_dir.join("snapshots"))
         .map(|rd| rd.count())
         .unwrap_or(0);
@@ -173,13 +227,6 @@ fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
         "FSM_LOG".into(),
         Value::Str(std::env::var("FSM_LOG").unwrap_or_default()),
     );
-    if let Ok(s) = crate::store::Store::open(&ctx.data_dir) {
-        m.insert(
-            "lock_holder".into(),
-            Value::Str(format!("{}", std::process::id())),
-        );
-        drop(s);
-    }
     emit_success(ctx, &Value::Obj(m));
     0
 }
@@ -205,6 +252,7 @@ fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
         Err(RepairError::Interior(h)) => {
             let code = match h {
                 JournalHealth::VersionMismatch { .. } => "store/version_mismatch",
+                JournalHealth::StoreIo(_) => "io/read",
                 JournalHealth::TornTail { .. } => "store/torn_tail",
                 _ => "store/chain_broken",
             };

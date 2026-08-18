@@ -183,7 +183,9 @@ fn generator_twice_byte_identical() {
 
 #[test]
 fn perf_smoke() {
-    let dir = tmp(12);
+    // tmp seeds are a process-wide namespace shared with three_way_refold's
+    // 1..=50 loop; this seed must stay outside that range.
+    let dir = tmp(1_012);
     let mut clock = FixedClock::new(12_000, 1);
     let mut store = Store::open(&dir).unwrap();
     let spec = legal_limit_spec();

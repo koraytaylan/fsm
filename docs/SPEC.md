@@ -132,7 +132,7 @@ Genesis is `seq` 0, `prev` sixty-four `0`s, body `{format: "fsm.journal/1", crea
 | `annotated` | `instance_id`, `request_id`, `note` |
 | `state_checkpoint` | `state_root` |
 
-Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`. Duplicate `request_id` values are a fold error. `effect_acked` and `instance_cancelled` commit the post-operation instance `state_hash`. A record carrying `state_root` commits the complete logical store state after that record at its `seq`; the root excludes the record hash to avoid a cycle, and replay MUST recompute it. On-disk store `VERSION` is `6`. `VERSION` `1` through `5` directories are rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records.
+Verification: the stored line MUST equal its canonical re-serialization; seq is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold re-applies through `step`/`create` and checks journaled `state_hash` / `exited` / `entered` / `source_state`. Duplicate `request_id` values are a fold error. `effect_acked` and `instance_cancelled` commit the post-operation instance `state_hash`. A record carrying `state_root` commits the complete logical store state after that record at its `seq`; the root excludes the record hash to avoid a cycle, and replay MUST recompute it. On-disk store `VERSION` is `6`. Opening a `VERSION` `1` through `5` directory, or a journal with no `VERSION` marker, MUST attempt a best-effort migration: ignore snapshot caches entirely, fold the complete journal under current `fsm.journal/1` semantics, and on success stamp `VERSION` `6`. Interior journal records MUST NOT be rewritten. If classify is not `Ok` (including a migratable marker whose journal is missing) or fold fails, refuse with that health and leave `VERSION` unchanged — a migratable directory is never re-created over. A successful `repair --truncate-torn-tail` on a migratable store folds the complete retained journal and likewise stamps `VERSION` `6`. Any other `VERSION` value is `store/version_mismatch`, refused and never silently reinterpreted.
 
 ### Recovery
 
@@ -372,7 +372,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed
 - `store/torn_tail` — truncated final record
-- `store/version_mismatch` — data directory VERSION is not 6
+- `store/version_mismatch` — data directory VERSION is not 6 and cannot be migrated
 
 ## Appendix B — Limits
 
@@ -407,4 +407,4 @@ These match `crates/fsm-core/src/limits.rs`.
 | `fsm.state/1` | Instance state identity hash payload |
 | `expr/1` | Expression grammar |
 
-On-disk store `VERSION` is `6`. A `VERSION` `1` through `5` directory is rejected with `store/version_mismatch` and must be recreated; there is no silent reinterpretation of old records, machine ids, or snapshots.
+On-disk store `VERSION` is `6`. A `VERSION` `1` through `5` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `6`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted.

@@ -260,3 +260,36 @@ fn version_and_docs() {
         format!("{}\n", env!("CARGO_PKG_VERSION"))
     );
 }
+
+#[test]
+fn doctor_reports_migration() {
+    let dir = tmp();
+    let example =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/expense_approval.json");
+    let (code, _, err) = run(
+        &dir,
+        &[
+            "machine".into(),
+            "add".into(),
+            example.display().to_string(),
+        ],
+        false,
+    );
+    assert_eq!(code, 0, "{err}");
+    std::fs::write(dir.join("VERSION"), "5\n").unwrap();
+    let (code, out, err) = run(&dir, &["doctor".into()], false);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("migrated_from: 5"), "{out}");
+    assert!(
+        out.lines()
+            .any(|l| l.starts_with("version:") && l.trim_end().ends_with('6')),
+        "{out}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+        "6"
+    );
+    let (code, out, _) = run(&dir, &["doctor".into()], false);
+    assert_eq!(code, 0);
+    assert!(!out.contains("migrated_from"), "{out}");
+}

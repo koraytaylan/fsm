@@ -543,39 +543,45 @@ fn enabled_events_uses_compiled_decimal_if() {
 }
 
 #[test]
-fn versions_before_checkpoint_format_and_missing_marker_are_mismatch() {
+fn versions_before_checkpoint_format_and_missing_marker_migrate() {
     let _g = gate();
     let dir = tmp("ver");
     let mut s = Store::open(&dir).unwrap();
     s.define_machine(case(), false, false).unwrap();
     drop(s);
-    std::fs::write(dir.join("VERSION"), "3\n").unwrap();
-    let err = match Store::open(&dir) {
-        Ok(_) => panic!("VERSION 3 opened"),
-        Err(e) => e,
-    };
-    assert_eq!(err.code, "store/version_mismatch");
-    std::fs::write(dir.join("VERSION"), "4\n").unwrap();
-    let err = match Store::open(&dir) {
-        Ok(_) => panic!("VERSION 4 opened"),
-        Err(e) => e,
-    };
-    assert_eq!(err.code, "store/version_mismatch");
-    std::fs::write(dir.join("VERSION"), "5\n").unwrap();
-    let err = match Store::open(&dir) {
-        Ok(_) => panic!("VERSION 5 opened"),
-        Err(e) => e,
-    };
-    assert_eq!(err.code, "store/version_mismatch");
+    for marker in ["3", "4", "5"] {
+        std::fs::write(dir.join("VERSION"), format!("{marker}\n")).unwrap();
+        let s = match Store::open(&dir) {
+            Ok(s) => s,
+            Err(e) => panic!("VERSION {marker} should migrate: {e:?}"),
+        };
+        assert_eq!(
+            std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            "6"
+        );
+        s.resolve_machine("case_review").unwrap();
+        drop(s);
+    }
     std::fs::remove_file(dir.join("VERSION")).unwrap();
+    let s = match Store::open(&dir) {
+        Ok(s) => s,
+        Err(e) => panic!("missing VERSION should migrate: {e:?}"),
+    };
+    assert_eq!(
+        std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+        "6"
+    );
+    s.resolve_machine("case_review").unwrap();
+    drop(s);
+    std::fs::write(dir.join("VERSION"), "7\n").unwrap();
     let err = match Store::open(&dir) {
-        Ok(_) => panic!("missing VERSION opened"),
+        Ok(_) => panic!("VERSION 7 opened"),
         Err(e) => e,
     };
     assert_eq!(err.code, "store/version_mismatch");
     match fsm_cli::journal_io::init(&dir) {
-        Err(fsm_cli::journal_io::JournalIoError::VersionMismatch { .. }) => {}
-        Err(_) => panic!("expected version mismatch"),
+        Err(fsm_cli::journal_io::JournalIoError::VersionMismatch { found }) if found == "7" => {}
+        Err(e) => panic!("expected version mismatch, got {e:?}"),
         Ok(_) => panic!("init succeeded on refused VERSION"),
     }
 }
@@ -3317,4 +3323,93 @@ fn old_snapshot_format_rejected() {
         ("seq".into(), Value::Num("1".into())),
     ]));
     assert!(fsm_cli::snapshot::snapshot_to_state(&v).is_err());
+}
+
+#[test]
+fn migration_ignores_snapshot_caches() {
+    let _g = gate();
+    let dir = tmp("migsnap");
+    let mut s = Store::open(&dir).unwrap();
+    s.define_machine(case(), false, false).unwrap();
+    s.shutdown_snapshot().unwrap();
+    drop(s);
+    let s = Store::open(&dir).unwrap();
+    assert!(
+        s.opened_from_snapshot,
+        "bound snapshot must fast-path a current store"
+    );
+    drop(s);
+    std::fs::write(dir.join("VERSION"), "5\n").unwrap();
+    let s = Store::open(&dir).unwrap();
+    assert!(
+        !s.opened_from_snapshot,
+        "migration must fold the complete journal"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+        "6"
+    );
+    s.resolve_machine("case_review").unwrap();
+    drop(s);
+    let s = Store::open(&dir).unwrap();
+    assert!(
+        s.opened_from_snapshot,
+        "stamped store returns to the fast path"
+    );
+    drop(s);
+}
+
+#[test]
+fn migratable_marker_with_lost_journal_refuses() {
+    let _g = gate();
+    let dir = tmp("miglost");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("VERSION"), "4\n").unwrap();
+    let err = match Store::open(&dir) {
+        Ok(_) => panic!("lost-journal migratable dir opened"),
+        Err(e) => e,
+    };
+    assert_eq!(err.code, "store/chain_broken");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+        "4"
+    );
+}
+
+#[test]
+fn journal_replay_ignores_caches_on_migratable_store() {
+    let _g = gate();
+    let dir = tmp("jrmig");
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i1", "c1", None)
+        .unwrap();
+    store.shutdown_snapshot().unwrap();
+    let snap_seq = store.journal.last_seq;
+    store
+        .send_event("i1", "docs_ok", Value::Obj(BTreeMap::new()), "s1", None)
+        .unwrap();
+    drop(store);
+    rewrite_snap_strip_dedup(&dir, "c1", snap_seq);
+    std::fs::write(dir.join("VERSION"), "5\n").unwrap();
+    let out = Command::new(fsm_bin())
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "replay",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert_eq!(out.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("\"agreement\":true"), "{stdout}");
+    assert!(stdout.contains("\"snapshots_ignored\":true"), "{stdout}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+        "5",
+        "replay must not migrate"
+    );
 }
