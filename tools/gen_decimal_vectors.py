@@ -409,7 +409,12 @@ def main() -> int:
     lines = sorted(line(r) for r in rows)
     text = "\n".join(lines) + "\n"
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(text, encoding="utf-8")
+    # Bytes, not text. `write_text` opens in text mode, and on Windows that
+    # rewrites every "\n" as "\r\n" — so this generator, whose whole purpose is
+    # to reproduce a fixture byte for byte, produced a different file there than
+    # everywhere else. Encoding explicitly leaves nothing for the platform to
+    # decide.
+    OUT.write_bytes(text.encode("utf-8"))
     print(f"wrote {len(lines)} vectors to {OUT}")
     return 0
 

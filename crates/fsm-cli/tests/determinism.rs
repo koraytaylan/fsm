@@ -159,16 +159,26 @@ fn generator_twice_byte_identical() {
     for dest in [&a, &b] {
         // Windows ships the interpreter as `python`; Unix as `python3`. Try both
         // rather than skipping, so this stays a hard gate on every platform.
-        let out = ["python3", "python"]
-            .into_iter()
-            .find_map(|exe| {
-                std::process::Command::new(exe)
-                    .arg(&script)
-                    .arg(dest)
-                    .output()
-                    .ok()
-            })
-            .expect("neither python3 nor python could run tools/gen_decimal_vectors.py");
+        // Keep the first that *succeeds*, not the first that merely spawns:
+        // Windows has a `python3.exe` execution-alias stub that launches happily
+        // and then exits non-zero, and it would otherwise shadow a working
+        // `python`.
+        let mut last: Option<std::process::Output> = None;
+        for exe in ["python3", "python"] {
+            match std::process::Command::new(exe)
+                .arg(&script)
+                .arg(dest)
+                .output()
+            {
+                Ok(out) if out.status.success() => {
+                    last = Some(out);
+                    break;
+                }
+                Ok(out) => last = Some(out),
+                Err(_) => continue,
+            }
+        }
+        let out = last.expect("neither python3 nor python could run tools/gen_decimal_vectors.py");
         assert!(
             out.status.success(),
             "{}",
