@@ -245,15 +245,25 @@ pub fn journal_dir(data: &Path) -> PathBuf {
     data.join("journal")
 }
 
+/// Attach the operation and path to an IO failure.
+///
+/// `io::Error` alone renders as bare OS text — "Access is denied. (os error 5)"
+/// names neither the file nor what was attempted, which leaves an operator, and
+/// anyone reading a CI log, with nothing to act on. Every IO failure on the
+/// open path carries both.
+fn io_err(op: &str, path: &Path, e: impl std::fmt::Display) -> JournalIoError {
+    JournalIoError::Io(format!("{op} {}: {e}", path.display()))
+}
+
 fn acquire_lock(jdir: &Path) -> Result<File, JournalIoError> {
-    fs::create_dir_all(jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
+    fs::create_dir_all(jdir).map_err(|e| io_err("create journal dir", jdir, e))?;
     let path = jdir.join("LOCK");
     let mut f = OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
         .open(&path)
-        .map_err(|e| JournalIoError::Io(e.to_string()))?;
+        .map_err(|e| io_err("open lock", &path, e))?;
     if f.try_lock().is_err() {
         let mut buf = String::new();
         let _ = f.read_to_string(&mut buf);
@@ -268,19 +278,18 @@ fn acquire_lock(jdir: &Path) -> Result<File, JournalIoError> {
         return Err(JournalIoError::Locked { pid });
     }
     f.set_len(0)
-        .map_err(|e| JournalIoError::Io(e.to_string()))?;
+        .map_err(|e| io_err("truncate lock", &path, e))?;
     let pid = std::process::id();
     let ts = crate::clock::now_ms();
     let line = format!("{{\"pid\":{pid},\"started_ts\":{ts}}}\n");
     f.write_all(line.as_bytes())
-        .map_err(|e| JournalIoError::Io(e.to_string()))?;
-    f.sync_all()
-        .map_err(|e| JournalIoError::Io(e.to_string()))?;
+        .map_err(|e| io_err("write lock", &path, e))?;
+    f.sync_all().map_err(|e| io_err("sync lock", &path, e))?;
     Ok(f)
 }
 
 fn sync_dir(dir: &Path) -> Result<(), JournalIoError> {
-    crate::sync_dir(dir).map_err(|e| JournalIoError::Io(e.to_string()))
+    crate::sync_dir(dir).map_err(|e| io_err("sync dir", dir, e))
 }
 
 fn seg_name(first: u64) -> String {
@@ -350,10 +359,9 @@ fn stamp_store_version(dir: &Path) -> Result<(), JournalIoError> {
             .map(|d| d.as_nanos())
             .unwrap_or(0)
     ));
-    fs::write(&tmp, format!("{STORE_VERSION}\n")).map_err(|e| JournalIoError::Io(e.to_string()))?;
-    let f = File::open(&tmp).map_err(|e| JournalIoError::Io(e.to_string()))?;
-    f.sync_all()
-        .map_err(|e| JournalIoError::Io(e.to_string()))?;
+    fs::write(&tmp, format!("{STORE_VERSION}\n")).map_err(|e| io_err("write", &tmp, e))?;
+    let f = File::open(&tmp).map_err(|e| io_err("open", &tmp, e))?;
+    f.sync_all().map_err(|e| io_err("sync", &tmp, e))?;
     // Close the handle before renaming. Unix happily renames a file that still
     // has one open; Windows refuses with a sharing violation, and the fsync
     // above is the only reason it is open.
@@ -387,7 +395,7 @@ pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
         return Err(from_health(h));
     }
     let jdir = journal_dir(dir);
-    fs::create_dir_all(&jdir).map_err(|e| JournalIoError::Io(e.to_string()))?;
+    fs::create_dir_all(&jdir).map_err(|e| io_err("create journal dir", &jdir, e))?;
     let lock = acquire_lock(&jdir)?;
     if let Err(h) = refuse_incompatible_store_format(dir) {
         drop(lock);
