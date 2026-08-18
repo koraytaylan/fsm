@@ -157,11 +157,18 @@ fn generator_twice_byte_identical() {
     let a = std::env::temp_dir().join(format!("dec-a-{}.jsonl", std::process::id()));
     let b = std::env::temp_dir().join(format!("dec-b-{}.jsonl", std::process::id()));
     for dest in [&a, &b] {
-        let out = std::process::Command::new("python3")
-            .arg(&script)
-            .arg(dest)
-            .output()
-            .expect("python3 tools/gen_decimal_vectors.py <dest>");
+        // Windows ships the interpreter as `python`; Unix as `python3`. Try both
+        // rather than skipping, so this stays a hard gate on every platform.
+        let out = ["python3", "python"]
+            .into_iter()
+            .find_map(|exe| {
+                std::process::Command::new(exe)
+                    .arg(&script)
+                    .arg(dest)
+                    .output()
+                    .ok()
+            })
+            .expect("neither python3 nor python could run tools/gen_decimal_vectors.py");
         assert!(
             out.status.success(),
             "{}",

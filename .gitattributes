@@ -1,0 +1,9 @@
+# Sixty-odd fixtures are compared byte-for-byte through `include_str!` and
+# `include_bytes!`, and record hashes are taken over canonical bytes. Git for
+# Windows defaults to `core.autocrlf=true`, which would rewrite every one of
+# them on checkout and fail tests that are correct — a failure that looks like a
+# real regression and is not.
+#
+# Normalise to LF in the working tree on every platform. `text=auto` still
+# detects and leaves binary files alone.
+* text=auto eol=lf

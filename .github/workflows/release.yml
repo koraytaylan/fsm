@@ -1,6 +1,7 @@
 # Tag-driven releases: pushing a tag `vX.Y.Z` verifies the tag matches the
 # workspace version, that the full ci.yml gate passes on the tagged commit — on
-# Linux and macOS, at stable and the minimum supported Rust version — and that
+# Linux, macOS and Windows, at stable and the minimum supported Rust version, so
+# every platform whose binary is shipped below is also tested — and that
 # a downstream crate can actually depend on the tag, because a git tag *is* the
 # distribution artifact here (docs/API-POLICY.md). Then it generates the
 # changelog from the conventional-commit history with git-cliff, builds the CLI
@@ -42,17 +43,18 @@ jobs:
 
   # Deliberately the same command set and matrix as ci.yml's gate, run against
   # the tagged commit. A Linux-only verification could publish a release whose
-  # macOS half never ran, and nothing between the branch gate and the tag
-  # re-checks it. Keep this in step with ci.yml.
+  # macOS or Windows half never ran, and nothing between the branch gate and the
+  # tag re-checks it. Every platform in the `build` matrix below appears here.
+  # Keep this in step with ci.yml.
   verify:
     needs: version
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         rust: [stable, "1.89"]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     # Job-scoped rather than workflow-wide: the binary builds below must not
     # compile with warnings denied.
     env:

@@ -14,8 +14,9 @@ late is superseded by a new patch version, never by rewriting the tag.
 ## Before tagging
 
 - The CI matrix is green **on the exact commit you intend to tag**, not merely
-  on an earlier commit in the branch. It covers Linux and macOS at stable and
-  the minimum supported Rust version; a local run on one host cannot stand in
+  on an earlier commit in the branch. It covers Linux, macOS and Windows at
+  stable and the minimum supported Rust version — every platform whose binary
+  the release ships is also tested — and a local run on one host cannot stand in
   for it. `rust-toolchain.toml` pins 1.89.0 locally, so a plain `cargo test`
   never exercises stable at all.
 - `manual:` the host matrix below has been run against the candidate build.
@@ -100,10 +101,10 @@ $ git push origin vX.Y.Z
 
 ## What the tag runs
 
-Version check, then the gate matrix and the git-dependency proof in parallel,
-then the changelog from the conventional-commit history, then a CLI binary per
-platform, then the GitHub release with checksums, and finally the fast-forward
-of `main`. Every step converges on re-runs, so a release that fails partway is
+Version check, then the six-leg gate matrix and the git-dependency proof in
+parallel, then the changelog from the conventional-commit history, then a CLI
+binary per platform, then the GitHub release with checksums, and finally the
+fast-forward of `main`. Every step converges on re-runs, so a release that fails partway is
 finished by pushing the same tag again rather than by inventing a new version.
 
 ## Afterwards

@@ -200,3 +200,30 @@ fn the_release_proves_the_tag_is_consumable() {
         "release.yml must keep the git-dependency proof job"
     );
 }
+
+/// Every platform the release ships a binary for must also be a platform the
+/// release tested. Shipping an artifact from an untested target is worse than
+/// not shipping it: it looks supported.
+#[test]
+fn every_shipped_platform_is_also_verified() {
+    let verify = RELEASE_WORKFLOW
+        .split("build:")
+        .next()
+        .expect("release.yml has a build job after verify");
+    for (triple_marker, runner) in [
+        ("-unknown-linux-", "ubuntu-latest"),
+        ("-apple-darwin", "macos-latest"),
+        ("-pc-windows-", "windows-latest"),
+    ] {
+        if RELEASE_WORKFLOW.contains(triple_marker) {
+            assert!(
+                verify.contains(runner),
+                "release.yml builds a {triple_marker} binary but never tests on {runner}"
+            );
+            assert!(
+                CI_WORKFLOW.contains(runner),
+                "release.yml builds a {triple_marker} binary but ci.yml never tests on {runner}"
+            );
+        }
+    }
+}
