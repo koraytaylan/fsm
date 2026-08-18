@@ -25,13 +25,12 @@ depend on them is a **git tag**:
 
 ```toml
 [dependencies]
-fsm-core  = { git = "<repository url>", tag = "vX.Y.Z" }
-fsm-store = { git = "<repository url>", tag = "vX.Y.Z" }
+fsm-core  = { git = "https://github.com/koraytaylan/fsm", tag = "vX.Y.Z" }
+fsm-store = { git = "https://github.com/koraytaylan/fsm", tag = "vX.Y.Z" }
 ```
 
-> The repository has no remote configured and no tags yet; `vX.Y.Z` is the first
-> tag the release checklist will create. Fill the URL in here when the remote
-> exists.
+> No tags exist yet; `vX.Y.Z` is the first one the release checklist creates.
+> Until it does, there is nothing to pin — do not substitute a branch.
 
 The commitments that make a tag safe to pin:
 

@@ -12,6 +12,7 @@ edition = "2024"
 rust-version = "1.89"
 version = "0.0.0"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/koraytaylan/fsm"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

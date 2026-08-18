@@ -31,7 +31,7 @@ library:
 | `fsm-cli` | the `fsm` binary and MCP server. Not a supported library dependency. |
 
 ```toml
-fsm-core = { git = "<repository url>", tag = "vX.Y.Z" }
+fsm-core = { git = "https://github.com/koraytaylan/fsm", tag = "vX.Y.Z" }
 ```
 
 See [docs/EMBEDDING.md](docs/EMBEDDING.md) for the library loop, the `Store`

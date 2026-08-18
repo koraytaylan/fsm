@@ -117,3 +117,23 @@ fn embedding_guide_covers_the_embedder_contracts() {
         );
     }
 }
+
+/// The git-dep snippets tell a downstream crate where to fetch from, so they
+/// must agree with the manifests' own `repository` — a stale URL in either
+/// place sends an embedder somewhere that does not exist.
+#[test]
+fn git_dep_snippets_match_the_manifest_repository() {
+    let repo = env!("CARGO_PKG_REPOSITORY");
+    assert!(!repo.is_empty(), "workspace must declare a repository");
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
+    for (name, doc) in [
+        ("README.md", readme.as_str()),
+        ("API-POLICY.md", API_POLICY),
+    ] {
+        assert!(
+            doc.contains(&format!(r#"git = "{repo}""#)),
+            "{name} git dependency does not point at {repo}"
+        );
+    }
+}
