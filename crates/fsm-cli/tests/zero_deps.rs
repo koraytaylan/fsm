@@ -1,12 +1,17 @@
-//! The resolved cargo graph must contain only `fsm-core` and `fsm-cli`.
+//! The resolved cargo graph must contain only this workspace's own crates.
 
 use std::collections::BTreeSet;
 use std::process::Command;
 
 use fsm_core::json::{JsonLimits, parse}; // drives fsm_core::json::parse
 
+/// Every package in the resolved graph. Adding a first-party crate means
+/// adding it here; anything else appearing is a third-party dependency and
+/// breaks the zero-dependency guarantee.
+const WORKSPACE_CRATES: &[&str] = &["fsm-core", "fsm-store", "fsm-cli", "fsm-embed-acceptance"];
+
 #[test]
-fn workspace_package_set_is_exactly_two() {
+fn workspace_package_set_is_exactly_our_own_crates() {
     let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let output = Command::new(env!("CARGO"))
         .args(["metadata", "--format-version", "1", "--locked"])
@@ -32,12 +37,12 @@ fn workspace_package_set_is_exactly_two() {
             .to_string();
         names.insert(name);
     }
-    let expected: BTreeSet<String> = ["fsm-core", "fsm-cli"]
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let expected: BTreeSet<String> = WORKSPACE_CRATES.iter().map(|s| (*s).to_string()).collect();
     if names != expected {
         let extra: Vec<_> = names.difference(&expected).cloned().collect();
-        panic!("unexpected packages in the graph: {extra:?} (got {names:?})");
+        let missing: Vec<_> = expected.difference(&names).cloned().collect();
+        panic!(
+            "third-party packages in the graph: {extra:?}, missing: {missing:?} (got {names:?})"
+        );
     }
 }

@@ -1,0 +1,18 @@
+[package]
+name = "fsm-embed-acceptance"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+# Deliberately depends on `fsm-core` ALONE. This crate stands in for a
+# downstream embedder that keeps its own persistence, so it must never reach for
+# `fsm-store` or `fsm-cli`; if the library loop ever needs something only those
+# provide, that is a hole in the `fsm-core` public API and this crate stops
+# compiling — which is the point.
+[dependencies]
+fsm-core = { path = "../fsm-core" }
+
+[lints]
+workspace = true

@@ -1020,21 +1020,15 @@ fn run_machine_create(
 }
 
 pub fn machine_summary(c: &fsm_core::machine::CompiledMachine) -> Value {
-    let mut terminals = Vec::new();
-    fn walk(nodes: &[fsm_core::spec::StateNode], out: &mut Vec<Value>) {
-        for n in nodes {
-            if n.terminal {
-                out.push(Value::Str(n.name.clone()));
-            }
-            walk(&n.states, out);
-        }
-    }
-    walk(&c.spec.states, &mut terminals);
+    let terminals: Vec<Value> = fsm_core::spec::terminal_states(&c.spec.states)
+        .into_iter()
+        .map(|n| Value::Str(n.into()))
+        .collect();
     Value::Obj(BTreeMap::from([
         ("initial".into(), Value::Str(c.spec.initial.clone())),
         (
             "states".into(),
-            Value::Num(count_nodes(&c.spec.states).to_string()),
+            Value::Num(fsm_core::spec::count_states(&c.spec.states).to_string()),
         ),
         ("events".into(), Value::Num(c.spec.events.len().to_string())),
         (
@@ -1109,7 +1103,7 @@ fn run_machine_list(
         );
         row.insert(
             "states".into(),
-            Value::Num(count_nodes(&m.compiled.spec.states).to_string()),
+            Value::Num(fsm_core::spec::count_states(&m.compiled.spec.states).to_string()),
         );
         row.insert(
             "events".into(),
@@ -1129,10 +1123,6 @@ fn run_machine_list(
         out.insert("next_cursor".into(), Value::Str(c));
     }
     Ok(Value::Obj(out))
-}
-
-fn count_nodes(nodes: &[fsm_core::spec::StateNode]) -> usize {
-    nodes.iter().map(|n| 1 + count_nodes(&n.states)).sum()
 }
 
 fn run_machine_get(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<Value, ErrorObj> {
@@ -1545,7 +1535,7 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
         .map_err(|r| ErrorObj::from_rejection(&r))?;
     let mut initial_ctx = BTreeMap::new();
     for (k, v) in &created.ctx_after {
-        initial_ctx.insert(k.clone(), crate::store::val_json(v));
+        initial_ctx.insert(k.clone(), fsm_core::replay::ctx_val_json(v));
     }
     let initial_state = tree.dotted_path(&created.leaf_after);
     let report = simulate(&compiled, &tree, &overrides, &events, on);
@@ -1568,7 +1558,7 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
         m.insert("to_leaf".into(), Value::Str(st.leaf_after.clone()));
         let mut ctx = BTreeMap::new();
         for (k, v) in &st.ctx_after {
-            ctx.insert(k.clone(), crate::store::val_json(v));
+            ctx.insert(k.clone(), fsm_core::replay::ctx_val_json(v));
         }
         m.insert("context".into(), Value::Obj(ctx));
         m.insert(
@@ -1582,7 +1572,7 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
                         em.insert("k".into(), Value::Num(ef.k.to_string()));
                         let mut args = BTreeMap::new();
                         for (k, v) in &ef.args {
-                            args.insert(k.clone(), crate::store::val_json(v));
+                            args.insert(k.clone(), fsm_core::replay::ctx_val_json(v));
                         }
                         em.insert("args".into(), Value::Obj(args));
                         Value::Obj(em)
@@ -1617,7 +1607,7 @@ fn run_simulate(store: &mut Store, _c: &mut dyn Clock, args: &Value) -> Result<V
     if let Some(last) = report.steps.last() {
         final_ctx.clear();
         for (k, v) in &last.ctx_after {
-            final_ctx.insert(k.clone(), crate::store::val_json(v));
+            final_ctx.insert(k.clone(), fsm_core::replay::ctx_val_json(v));
         }
     }
     let mut out = BTreeMap::from([

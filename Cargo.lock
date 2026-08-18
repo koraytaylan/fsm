@@ -7,8 +7,23 @@ name = "fsm-cli"
 version = "0.0.0"
 dependencies = [
  "fsm-core",
+ "fsm-store",
 ]
 
 [[package]]
 name = "fsm-core"
 version = "0.0.0"
+
+[[package]]
+name = "fsm-embed-acceptance"
+version = "0.0.0"
+dependencies = [
+ "fsm-core",
+]
+
+[[package]]
+name = "fsm-store"
+version = "0.0.0"
+dependencies = [
+ "fsm-core",
+]

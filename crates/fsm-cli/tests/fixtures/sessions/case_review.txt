@@ -300,7 +300,7 @@ entries:
       score:  0
       visits: 0
     from_leaf:     intake
-    hash:          13401d566b7f2092619f7e075bd6d6e073c74d61d60c124cc89479de854611cb
+    hash:          42e1456fe94a31cd1b19778fba9c6ffddc59e7ef7c6c9e5296ac4da535d93515
     kind:          InstanceCreated
     request_id:    new-1
     seq:           2
@@ -322,7 +322,7 @@ entries:
       visits: 1
     event:          docs_ok
     from_leaf:      intake
-    hash:           be3bb8f398675d695da8775671eb3ac3481b3ed139448f44e288bde654484b38
+    hash:           c5e3eed0146d16c377d47846a438767f441a08cc92ab8860dfeb8bbd40234965
     kind:           EventApplied
     payload:
     request_id:     send-1
@@ -345,7 +345,7 @@ entries:
       visits: 1
     event:          resume
     from_leaf:      docs_review
-    hash:           3cbdfaaa8e7f84a3ba24995f9b70104820fd320d0c78c46f448ce34d3a455d07
+    hash:           e7f90578725d0248d927835a8ea9838eef8928c567171182bc6d66501b8f62c2
     kind:           EventRejected
     payload:
     request_id:     send-bad
@@ -368,7 +368,7 @@ entries:
       visits: 1
     event:          docs_ok
     from_leaf:      docs_review
-    hash:           bbbb59e08672c97a8f19260fab224dfaebd244e0f721e5a5a06b29d82ad61fe1
+    hash:           1e0adeb9d281a3a9d5d9aaafb367536b427d08d4b0a56e22d3291e07a24e67c6
     kind:           EventApplied
     payload:
     request_id:     send-2
@@ -390,7 +390,7 @@ entries:
       score:  0
       visits: 1
     from_leaf:      risk_review
-    hash:           fa6686d23b32e26e7201c27bee9549d80904c083b5a05592a15db2e3677af656
+    hash:           bfdcc4251955a0cd03dce3bb6c458d1e83cfef90051abfa16b42bf23f8c269a0
     kind:           EffectAcked
     request_id:     ack-1
     seq:            6
@@ -411,7 +411,7 @@ entries:
       score:  0
       visits: 1
     from_leaf:      risk_review
-    hash:           5d6e728718000608ab9a1bfb2dea20e25e06397b862fbfec3faa3c8adcc8de4f
+    hash:           94d6bc7ff4515d501b9e46a800dcdc6e3bc540b6dd5a3b6345119e12d84a70dd
     kind:           Annotated
     note:           hello-note
     request_id:     ann-1
@@ -428,5 +428,5 @@ health:        Ok
 instances:     1
 machines:      1
 records:       8
-store_version: 6
+store_version: 7
 --- stderr ---

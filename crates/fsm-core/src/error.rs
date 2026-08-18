@@ -82,6 +82,8 @@ pub const ALL_CODES: &[&str] = &[
     "req/machine_exists",
     "req/machine_not_found",
     "req/number_token",
+    "req/payload_too_large",
+    "req/request_id_conflict",
     "req/seq_mismatch",
     "run/action_error",
     "run/create_failed",

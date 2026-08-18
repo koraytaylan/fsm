@@ -10,17 +10,39 @@ pub struct InstanceOverlay {
     pub visited: BTreeSet<String>,
 }
 
+/// Edge label: the event, plus the guard that distinguishes this transition
+/// from the other edges on the same event. Without the guard, two guarded
+/// transitions on one event render as the same arrow and the diagram silently
+/// misstates the machine.
+fn edge_label(tr: &crate::spec::TransitionSpec, escape: fn(&str) -> String) -> String {
+    match &tr.guard {
+        Some(g) => format!("{} [{}]", tr.on, escape(g)),
+        None => tr.on.clone(),
+    }
+}
+
+/// A Mermaid transition label runs to end of line, so a newline would truncate
+/// it and `;` would start a new statement. `#` introduces Mermaid's own numeric
+/// entity escapes, so it must be escaped first. Comparison operators are legal
+/// in `stateDiagram-v2` labels and stay readable as written.
+fn mermaid_escape(s: &str) -> String {
+    s.replace('#', "#35;")
+        .replace(';', "#59;")
+        .replace(['\n', '\r'], " ")
+}
+
 pub fn mermaid(m: &CompiledMachine, overlay: Option<&InstanceOverlay>) -> String {
     let mut s = String::from("stateDiagram-v2\n");
     s.push_str(&format!("  [*] --> {}\n", m.spec.initial));
     write_mermaid_states(&m.spec.states, &mut s, overlay, 1);
     for tr in &m.spec.transitions {
+        let label = edge_label(tr, mermaid_escape);
         if let Some(to) = &tr.to {
-            s.push_str(&format!("  {} --> {}: {}\n", tr.from, to, tr.on));
+            s.push_str(&format!("  {} --> {}: {}\n", tr.from, to, label));
         } else {
             s.push_str(&format!(
                 "  {} --> {}: {} (internal)\n",
-                tr.from, tr.from, tr.on
+                tr.from, tr.from, label
             ));
         }
     }
@@ -67,6 +89,14 @@ fn write_mermaid_states(
     }
 }
 
+/// DOT labels are quoted strings: backslash and quote need escaping, and a
+/// literal newline would end the attribute.
+fn dot_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace(['\n', '\r'], " ")
+}
+
 pub fn dot(m: &CompiledMachine, overlay: Option<&InstanceOverlay>) -> String {
     let mut s = String::from("digraph fsm {\n");
     write_dot_states(&m.spec.states, &mut s, overlay, 1);
@@ -76,7 +106,8 @@ pub fn dot(m: &CompiledMachine, overlay: Option<&InstanceOverlay>) -> String {
     ));
     for tr in &m.spec.transitions {
         let to = tr.to.as_deref().unwrap_or(&tr.from);
-        s.push_str(&format!("  {} -> {} [label=\"{}\"];\n", tr.from, to, tr.on));
+        let label = edge_label(tr, dot_escape);
+        s.push_str(&format!("  {} -> {} [label=\"{}\"];\n", tr.from, to, label));
     }
     s.push_str("}\n");
     s

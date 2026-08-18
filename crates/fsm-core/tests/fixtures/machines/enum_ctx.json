@@ -1,0 +1,23 @@
+{
+  "format": "fsm.machine/1",
+  "name": "enum_ctx",
+  "description": "Enum-typed context: the serialization round-trip the rest of the corpus misses.",
+  "enums": {"Tier": ["basic", "premium"]},
+  "context": [
+    {"name": "level", "ty": {"enum": "Tier"}, "init": "basic"},
+    {"name": "visits", "ty": "int", "init": "0"}
+  ],
+  "events": [
+    {"name": "upgrade", "fields": []},
+    {"name": "go", "fields": []}
+  ],
+  "states": [
+    {"name": "start"},
+    {"name": "done", "terminal": true}
+  ],
+  "initial": "start",
+  "transitions": [
+    {"from": "start", "on": "upgrade", "do": [{"target": "level", "value": "Tier.premium"}]},
+    {"from": "start", "on": "go", "to": "done"}
+  ]
+}

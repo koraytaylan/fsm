@@ -10,9 +10,10 @@
 
 pub mod args;
 pub mod cli;
-pub mod clock;
-pub mod journal_io;
 pub mod mcp;
 pub mod render;
-pub mod snapshot;
-pub mod store;
+
+// The durable store lives in `fsm-store` so embedders can depend on it without
+// depending on this binary crate. Re-exported here so `crate::store::…` paths
+// and existing `fsm_cli::store::…` importers keep resolving.
+pub use fsm_store::{clock, journal_io, snapshot, store};

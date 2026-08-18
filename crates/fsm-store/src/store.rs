@@ -14,7 +14,7 @@ use fsm_core::hashes::{ResolveError, machine_id, resolve_machine_ref, state_hash
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{InstanceState, Status};
 use fsm_core::record::{Record, RecordKind};
-use fsm_core::replay::{NopSink, RecordSink, StoreState, StoredMachine, fold_with};
+use fsm_core::replay::{NopSink, RecordSink, StoreState, StoredMachine, ctx_val_json, fold_with};
 use fsm_core::spec::{Finding, MachineSpec, TySpec};
 use fsm_core::step::{Outcome, Rejection, create, step, validate_event};
 use fsm_core::tree::Tree;
@@ -33,6 +33,11 @@ pub struct Store {
     pub replayed_records: usize,
     pub opened_from_snapshot: bool,
     pub opened_snapshot_seq: Option<u64>,
+    /// Fingerprint of the request currently being committed. Set by
+    /// `claim_request`, stamped into every record that request appends, and
+    /// cleared on commit. Keeping it here rather than threading it through
+    /// each body-building site means a new operation cannot forget it.
+    pending_fp: Option<String>,
 }
 
 struct HistSink {
@@ -256,6 +261,7 @@ impl Store {
             replayed_records: open_path.replayed_records,
             opened_from_snapshot: open_path.used_snapshot,
             opened_snapshot_seq: open_path.snapshot_seq,
+            pending_fp: None,
         })
     }
 
@@ -277,6 +283,7 @@ impl Store {
             replayed_records,
             opened_from_snapshot: false,
             opened_snapshot_seq: None,
+            pending_fp: None,
         })
     }
 
@@ -387,6 +394,62 @@ impl Store {
                 .hint("use a known machine id from details.known_machines")
                 .with_store_catalog(self)),
         }
+    }
+
+    /// Resolve a `request_id` against the idempotency ledger.
+    ///
+    /// `Ok(None)` means the key is unclaimed and the caller should proceed;
+    /// the fingerprint is stashed for the records the operation will append.
+    /// `Ok(Some(_))` is the original outcome, replayed. `Err` is either the
+    /// original error replayed, or `req/request_id_conflict` when the key was
+    /// claimed by a *different* request — a reuse must never return an
+    /// unrelated outcome as though it were this request's.
+    #[allow(clippy::type_complexity)]
+    fn claim_request(
+        &mut self,
+        request_id: &str,
+        fp: String,
+    ) -> Result<Option<Result<Value, ErrorObj>>, ErrorObj> {
+        self.pending_fp = None;
+        if let Some(slot) = self.state.dedup.get(request_id) {
+            if let Some(prev) = slot.fp.clone() {
+                if prev != fp {
+                    let claimed_seq = slot.seq;
+                    return Err(self.request_id_conflict(request_id, claimed_seq));
+                }
+            }
+        }
+        if let Some(r) = self.replay_request(request_id) {
+            return Ok(Some(r));
+        }
+        self.pending_fp = Some(fp);
+        Ok(None)
+    }
+
+    /// The key is taken by different content. Point at the record that claimed
+    /// it so the caller can see what they actually sent, and say plainly that
+    /// the remedy is a new key — not a retry.
+    fn request_id_conflict(&self, request_id: &str, claimed_seq: u64) -> ErrorObj {
+        let mut d = BTreeMap::new();
+        d.insert("claimed_by_seq".into(), Value::Num(claimed_seq.to_string()));
+        if let Some(rec) = self.records.iter().find(|r| r.seq == claimed_seq) {
+            d.insert(
+                "claimed_by".into(),
+                Value::Str(rec.kind.as_str().to_string()),
+            );
+            for field in ["instance_id", "event", "effect_id"] {
+                if let Some(v) = rec.body.get(field) {
+                    d.insert(format!("original_{field}"), v.clone());
+                }
+            }
+        }
+        ErrorObj::new(
+            "req/request_id_conflict",
+            "request_id already used for a different request",
+        )
+        .hint("this request_id is an idempotency key held by different content; send this request with a NEW request_id, and retry the original one only to replay its outcome")
+        .details(Value::Obj(d))
+        .request_id(request_id)
     }
 
     fn replay_request(&self, request_id: &str) -> Option<Result<Value, ErrorObj>> {
@@ -533,6 +596,106 @@ impl Store {
         ]))))
     }
 
+    /// Fingerprint of a `create` request. The machine reference is fingerprinted
+    /// as written, not as resolved: resolution happens after this check, and a
+    /// retry resends the same text. A different spelling of the same machine is
+    /// therefore a conflict — strict, but never silently wrong.
+    fn fp_create(
+        machine_ref: &str,
+        instance_id: &str,
+        overrides: &BTreeMap<String, Val>,
+        tags: &[String],
+    ) -> String {
+        let ov = overrides
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::Str(fsm_core::replay::ctx_val_string(v))))
+            .collect();
+        fsm_core::hashes::request_fp(
+            "create",
+            &BTreeMap::from([
+                ("machine".into(), Value::Str(machine_ref.into())),
+                ("instance_id".into(), Value::Str(instance_id.into())),
+                ("overrides".into(), Value::Obj(ov)),
+                (
+                    "tags".into(),
+                    Value::Arr(tags.iter().cloned().map(Value::Str).collect()),
+                ),
+            ]),
+        )
+    }
+
+    /// Fingerprint of a `send` request, over the payload **as received** —
+    /// before stamp fields are filled in, so an honest retry of a stamped send
+    /// still matches.
+    fn fp_send(instance_id: &str, event: &str, payload: &Value) -> String {
+        fsm_core::hashes::request_fp(
+            "send",
+            &BTreeMap::from([
+                ("instance_id".into(), Value::Str(instance_id.into())),
+                ("event".into(), Value::Str(event.into())),
+                ("payload".into(), payload.clone()),
+            ]),
+        )
+    }
+
+    fn fp_ack(instance_id: &str, effect_id: &str, outcome: &str, result: Option<&Value>) -> String {
+        fsm_core::hashes::request_fp(
+            "ack",
+            &BTreeMap::from([
+                ("instance_id".into(), Value::Str(instance_id.into())),
+                ("effect_id".into(), Value::Str(effect_id.into())),
+                ("outcome".into(), Value::Str(outcome.into())),
+                ("result".into(), result.cloned().unwrap_or(Value::Null)),
+            ]),
+        )
+    }
+
+    fn fp_cancel(instance_id: &str, reason: &str) -> String {
+        fsm_core::hashes::request_fp(
+            "cancel",
+            &BTreeMap::from([
+                ("instance_id".into(), Value::Str(instance_id.into())),
+                ("reason".into(), Value::Str(reason.into())),
+            ]),
+        )
+    }
+
+    fn fp_annotate(instance_id: &str, note: &str) -> String {
+        fsm_core::hashes::request_fp(
+            "annotate",
+            &BTreeMap::from([
+                ("instance_id".into(), Value::Str(instance_id.into())),
+                ("note".into(), Value::Str(note.into())),
+            ]),
+        )
+    }
+
+    /// Reject a value too large to journal.
+    ///
+    /// Checked before the request is applied, so an oversized payload costs
+    /// nothing but the error — it never reaches the journal, which would carry
+    /// it forever.
+    fn check_journalled_size(what: &str, v: &Value, request_id: &str) -> Result<(), ErrorObj> {
+        let bytes = canon_bytes(v).len();
+        if bytes <= fsm_core::limits::MAX_PAYLOAD_BYTES {
+            return Ok(());
+        }
+        let max = fsm_core::limits::MAX_PAYLOAD_BYTES;
+        let mut d = BTreeMap::new();
+        d.insert("field".into(), Value::Str(what.into()));
+        d.insert("bytes".into(), Value::Num(bytes.to_string()));
+        d.insert("max_bytes".into(), Value::Num(max.to_string()));
+        Err(ErrorObj::new(
+            "req/payload_too_large",
+            format!("{what} is {bytes} bytes; the limit is {max}"),
+        )
+        .hint(format!(
+            "journal records are permanent: send a digest or an identifier in {what} and keep the payload in your own store"
+        ))
+        .details(Value::Obj(d))
+        .request_id(request_id))
+    }
+
     fn note_record(&mut self, rec: &Record) {
         self.records.push(rec.clone());
         self.state.last_seq = rec.seq;
@@ -540,7 +703,22 @@ impl Store {
     }
 
     fn finish_commit(&mut self) {
+        self.pending_fp = None;
         self.after_commit();
+    }
+
+    /// Stamp the in-flight request's fingerprint onto any body that claims a
+    /// `request_id`, so the fold can rebuild the idempotency ledger with the
+    /// content each key was claimed for. Done in the one funnel every append
+    /// passes through rather than at each body-building site.
+    fn stamp_request_fp(&self, body: Value) -> Value {
+        match (self.pending_fp.as_ref(), body) {
+            (Some(fp), Value::Obj(mut o)) if o.contains_key("request_id") => {
+                o.insert("request_fp".into(), Value::Str(fp.clone()));
+                Value::Obj(o)
+            }
+            (_, other) => other,
+        }
     }
 
     fn append_at_with_root(
@@ -549,6 +727,7 @@ impl Store {
         body: Value,
         ts: i64,
     ) -> Result<Record, ErrorObj> {
+        let body = self.stamp_request_fp(body);
         let seq = self.journal.last_seq.saturating_add(1);
         if seq % 10_000 != 0 {
             return self
@@ -628,8 +807,18 @@ impl Store {
         }
     }
 
+    /// Record which request claimed the key, so a later reuse with different
+    /// content is a conflict rather than a replay of this outcome.
+    fn claimed_slot(&self, seq: u64) -> fsm_core::replay::RequestSlot {
+        fsm_core::replay::RequestSlot {
+            seq,
+            fp: self.pending_fp.clone(),
+        }
+    }
+
     fn commit_dedup(&mut self, request_id: &str, resp: Value, seq: u64) {
-        self.state.dedup.insert(request_id.into(), seq);
+        let slot = self.claimed_slot(seq);
+        self.state.dedup.insert(request_id.into(), slot);
         self.last_responses.insert(request_id.into(), resp);
         self.state.last_seq = self.journal.last_seq;
         self.state.last_hash = self.journal.last_hash.clone();
@@ -683,7 +872,10 @@ impl Store {
         overrides: &BTreeMap<String, Val>,
         tags: &[String],
     ) -> Result<Value, ErrorObj> {
-        if let Some(r) = self.replay_request(request_id) {
+        if let Some(r) = self.claim_request(
+            request_id,
+            Self::fp_create(machine_ref, instance_id, overrides, tags),
+        )? {
             return r;
         }
         if let Some(exp) = expect_seq {
@@ -852,9 +1044,12 @@ impl Store {
         expect_seq: Option<u64>,
         stamps: &[&str],
     ) -> Result<Value, ErrorObj> {
-        if let Some(r) = self.replay_request(request_id) {
+        if let Some(r) =
+            self.claim_request(request_id, Self::fp_send(instance_id, event, payload))?
+        {
             return r;
         }
+        Self::check_journalled_size("payload", payload, request_id)?;
         if let Some(exp) = expect_seq {
             if exp != self.journal.last_seq {
                 let mut d = BTreeMap::new();
@@ -1046,7 +1241,8 @@ impl Store {
                     .or_default()
                     .push(rec.seq);
                 self.note_record(&rec);
-                self.state.dedup.insert(request_id.into(), rec.seq);
+                let slot = self.claimed_slot(rec.seq);
+                self.state.dedup.insert(request_id.into(), slot);
                 self.last_errors.insert(request_id.into(), err.clone());
                 self.finish_commit();
                 Err(err)
@@ -1130,8 +1326,14 @@ impl Store {
         outcome: &str,
         result: Option<Value>,
     ) -> Result<Value, ErrorObj> {
-        if let Some(r) = self.replay_request(request_id) {
+        if let Some(r) = self.claim_request(
+            request_id,
+            Self::fp_ack(instance_id, effect_id, outcome, result.as_ref()),
+        )? {
             return r;
+        }
+        if let Some(v) = result.as_ref() {
+            Self::check_journalled_size("result", v, request_id)?;
         }
         if outcome != "ok" && outcome != "failed" {
             return Err(
@@ -1182,7 +1384,8 @@ impl Store {
                 .details(Value::Obj(details))
                 .request_id(request_id);
             self.last_errors.insert(request_id.into(), err.clone());
-            self.state.dedup.insert(request_id.into(), rec.seq);
+            let slot = self.claimed_slot(rec.seq);
+            self.state.dedup.insert(request_id.into(), slot);
             self.finish_commit();
             return Err(err);
         }
@@ -1270,7 +1473,7 @@ impl Store {
         request_id: &str,
         reason: &str,
     ) -> Result<Value, ErrorObj> {
-        if let Some(r) = self.replay_request(request_id) {
+        if let Some(r) = self.claim_request(request_id, Self::fp_cancel(instance_id, reason))? {
             return r;
         }
         if !self.state.instances.contains_key(instance_id) {
@@ -1311,9 +1514,10 @@ impl Store {
         request_id: &str,
         note: &str,
     ) -> Result<Value, ErrorObj> {
-        if let Some(r) = self.replay_request(request_id) {
+        if let Some(r) = self.claim_request(request_id, Self::fp_annotate(instance_id, note))? {
             return r;
         }
+        Self::check_journalled_size("note", &Value::Str(note.into()), request_id)?;
         if !self.state.instances.contains_key(instance_id) {
             return Err(ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id));
         }
@@ -1365,7 +1569,7 @@ impl Store {
         let stored = self.state.machines.get(&mid);
         let mut ctx = BTreeMap::new();
         for (k, v) in &inst.ctx {
-            ctx.insert(k.clone(), val_json(v));
+            ctx.insert(k.clone(), ctx_val_json(v));
         }
         let mut m = BTreeMap::new();
         m.insert("instance_id".into(), Value::Str(instance_id.into()));
@@ -1709,7 +1913,7 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                         e.insert("before_leaf".into(), Value::Str(before.leaf.clone()));
                         let mut ctx = BTreeMap::new();
                         for (k, v) in &before.ctx {
-                            ctx.insert(k.clone(), val_json(v));
+                            ctx.insert(k.clone(), ctx_val_json(v));
                         }
                         e.insert("before_context".into(), Value::Obj(ctx));
                     }
@@ -1718,7 +1922,7 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                         e.insert("after_leaf".into(), Value::Str(after.leaf.clone()));
                         let mut ctx = BTreeMap::new();
                         for (k, v) in &after.ctx {
-                            ctx.insert(k.clone(), val_json(v));
+                            ctx.insert(k.clone(), ctx_val_json(v));
                         }
                         e.insert("context_after".into(), Value::Obj(ctx.clone()));
                         e.insert("after_context".into(), Value::Obj(ctx));
@@ -1799,7 +2003,7 @@ fn view_at(
     let enabled = enabled_events(&m.compiled, &m.tree, inst, &mut bud);
     let mut ctx = BTreeMap::new();
     for (k, v) in &inst.ctx {
-        ctx.insert(k.clone(), val_json(v));
+        ctx.insert(k.clone(), ctx_val_json(v));
     }
     let mut mobj = BTreeMap::new();
     mobj.insert("ok".into(), Value::Str("true".into()));
@@ -1861,13 +2065,6 @@ fn health_err(h: &JournalHealth) -> ErrorObj {
         err.hint("upgrade fsm to a build that supports this store format, or point --data-dir at a fresh directory")
     } else {
         err
-    }
-}
-
-pub fn val_json(v: &Val) -> Value {
-    match v {
-        Val::Bool(b) => Value::Bool(*b),
-        other => Value::Str(other.canonical_string()),
     }
 }
 
@@ -1971,10 +2168,10 @@ pub fn coerce_ctx_override(ty: &TySpec, key: &str, raw: &str) -> Result<Val, Err
                 }
             }
         },
-        TySpec::Enum { of } => Ok(Val::Enum {
-            ty: of.clone(),
-            variant: raw.into(),
-        }),
+        // Shares the reader in core so a hand-supplied override and a
+        // journalled one parse identically; accepts `premium` and `tier.premium`.
+        TySpec::Enum { .. } => fsm_core::replay::parse_ctx_val(ty, raw)
+            .ok_or_else(|| ErrorObj::new("req/field_type", key)),
     }
 }
 

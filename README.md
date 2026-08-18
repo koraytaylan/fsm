@@ -19,6 +19,25 @@ fsm instance history inst-demo
 cargo install --path crates/fsm-cli --locked
 ```
 
+## Embedding it
+
+`fsm` is three crates. Depend on the one you need — the CLI binary is not a
+library:
+
+| Crate | Use it for |
+|---|---|
+| `fsm-core` | the pure engine: parse, compile, analyse, step. No I/O, no clock. |
+| `fsm-store` | the durable journal-backed store, if you want ours rather than yours. |
+| `fsm-cli` | the `fsm` binary and MCP server. Not a supported library dependency. |
+
+```toml
+fsm-core = { git = "<repository url>", tag = "vX.Y.Z" }
+```
+
+See [docs/EMBEDDING.md](docs/EMBEDDING.md) for the library loop, the `Store`
+concurrency contract with measured latencies, and the guarantees an embedder
+should know; [docs/API-POLICY.md](docs/API-POLICY.md) for semver and formats.
+
 ## MCP setup
 
 Claude Code:
@@ -46,7 +65,7 @@ Claude Desktop `mcpServers` JSON:
 | atomic transitions | step is pure; the shell commits Applied only |
 | content-addressed definitions | `machine_id` is a hash of the spec |
 | deterministic identifiers | ids derive from content and the injected clock |
-| exact idempotency | the same `request_id` never applies twice |
+| exact idempotency | the same `request_id` never applies twice; reusing it for different content is refused, not replayed |
 | tamper-evident history | hash-chained, fsynced records |
 | time as data | the clock is injected; time is a payload field |
 | bounded computation | a shared eval budget per event |
@@ -56,7 +75,7 @@ Claude Desktop `mcpServers` JSON:
 
 Honest non-claims: this is a **single-node** single-writer engine. There is no HA/replication, no real-time deadline, and the throughput ceiling is a feature.
 
-See [docs/SPEC.md](docs/SPEC.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), and [docs/RELEASE.md](docs/RELEASE.md).
+See [docs/SPEC.md](docs/SPEC.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), [docs/EMBEDDING.md](docs/EMBEDDING.md), [docs/API-POLICY.md](docs/API-POLICY.md), and [docs/RELEASE.md](docs/RELEASE.md).
 
 ## License
 

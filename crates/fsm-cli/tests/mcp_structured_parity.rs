@@ -44,7 +44,11 @@ fn assert_bytes(name: &str, got: &Value) {
         let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/structured")
             .join(name);
-        std::fs::write(p, have).unwrap();
+        // Trailing newline: the committed fixtures have one, and regenerating
+        // without it churns every file on every regen.
+        let mut out = have.clone();
+        out.push(b'\n');
+        std::fs::write(p, out).unwrap();
         return;
     }
     assert_eq!(

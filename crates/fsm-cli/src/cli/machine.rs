@@ -79,9 +79,13 @@ fn ls(ctx: &mut Ctx, args: &Args) -> u8 {
         let mut row = BTreeMap::new();
         row.insert("machine_id".into(), Value::Str(id.clone()));
         row.insert("name".into(), Value::Str(name.clone()));
+        // Every state in the tree, not just the top-level children — matching
+        // `fsm validate`, `machine show`, and the MCP tools, which all count
+        // recursively. Counting one level here made a nested machine report
+        // 4 states where validate reported 9.
         row.insert(
             "states".into(),
-            Value::Num(m.compiled.spec.states.len().to_string()),
+            Value::Num(fsm_core::spec::count_states(&m.compiled.spec.states).to_string()),
         );
         row.insert(
             "events".into(),
@@ -113,13 +117,11 @@ fn show(ctx: &mut Ctx, args: &Args) -> u8 {
                 "initial".into(),
                 Value::Str(m.compiled.spec.initial.clone()),
             );
-            let terminals: Vec<Value> = m
-                .compiled
-                .spec
-                .states
-                .iter()
-                .filter(|s| s.terminal)
-                .map(|s| Value::Str(s.name.clone()))
+            // Recursive, like every other terminal-state listing; the
+            // top-level filter missed terminals nested in compound states.
+            let terminals: Vec<Value> = fsm_core::spec::terminal_states(&m.compiled.spec.states)
+                .into_iter()
+                .map(|n| Value::Str(n.into()))
                 .collect();
             summary.insert("terminal_states".into(), Value::Arr(terminals));
             let mut obj = BTreeMap::new();

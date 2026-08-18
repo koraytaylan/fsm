@@ -108,6 +108,41 @@ These numeric limits match `crates/fsm-core/src/limits.rs`.
 
 ## Journal
 
+### Idempotency
+
+`request_id` is an idempotency key over the *content* of a request, not a label
+on a slot. Every record that claims a key also stores `request_fp`, a
+`fsm:request-fp:1` digest of the operation and its arguments — for a send, the
+instance, event, and payload as received. Resending a key:
+
+- with the same fingerprint replays the original outcome, marked `duplicate`;
+- with a different fingerprint is `req/request_id_conflict`, never a replay.
+
+Without that check a driver deriving ids from (task, event) rather than
+per-attempt would receive the *first* request's success for a second, different
+request, and diverge from the instance silently. `req/request_id_conflict` is
+not retryable: the remedy is a new key, and the old key still replays its own
+outcome. `expect_seq` is excluded from the fingerprint — it is a concurrency
+precondition, so refreshing it across a retry must not look like new content.
+
+Keys claimed by records written before store format 7 carry no fingerprint and
+remain replay-only; the format is migrated on open without rewriting records.
+
+### Payload size
+
+Event payloads, effect-ack `result`s, and annotation notes are journalled
+verbatim and never rewritten, so their cost is permanent and is paid again on
+every fold, snapshot, and verify. Anything larger than `MAX_PAYLOAD_BYTES`
+(64 KiB of canonical bytes) is refused with `req/payload_too_large` — journal a
+digest or an identifier and keep the blob in its own store. The check runs
+before the request is applied and does not depend on instance state, so like
+`req/seq_mismatch` it is unjournaled and does not consume `request_id`: correct
+the payload and resend under the same key.
+
+`MAX_PAYLOAD_BYTES` is deliberately absent from the genesis `limits` block,
+which is hash-verified on fold; adding a key there would make every store
+written by an earlier build unreadable rather than migratable.
+
 A request-outcome record exists **iff** the outcome depended on instance state and is not retry-stable. The unique admitted state-dependent-but-retry-stable case is `expect_seq` mismatch (`req/seq_mismatch`): it is unjournaled and does not consume `request_id`. Dedup lookup MUST precede the `expect_seq` check — otherwise a lost-response retry with a stale seq would be rejected, the client would "fix" the seq under a new request_id, and the event would apply twice. `run/create_failed` is the one unjournaled `run/*` outcome (no prior instance exists). `state_checkpoint` is a maintenance record rather than a request outcome; it changes no logical state and consumes no `request_id`.
 
 Envelope (one canonical LF-terminated line, domain `fsm:record:1` over the envelope minus `hash`):
@@ -356,6 +391,8 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `req/machine_exists` — define refused because the spec exists
 - `req/machine_not_found` — unknown machine
 - `req/number_token` — raw JSON number where a string is required
+- `req/payload_too_large` — journalled payload exceeds 64 KiB
+- `req/request_id_conflict` — request_id reused for different content
 - `req/seq_mismatch` — stale expect_seq
 - `run/action_error` — block evaluation failed
 - `run/create_failed` — creation failed
@@ -379,6 +416,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 | Limit | Value |
 |---|---|
 | definition size | 256 KiB (`MAX_DEF_BYTES`) |
+| journalled payload | 64 KiB (`MAX_PAYLOAD_BYTES`) |
 | nesting depth | 12 (`MAX_NESTING`) |
 | eval budget | 4096 ticks per event |
 | states | 256 |
@@ -402,9 +440,13 @@ These match `crates/fsm-core/src/limits.rs`.
 |---|---|
 | `fsm.machine/1` | Machine definition documents |
 | `fsm.journal/1` | Journal record envelopes |
-| `fsm.snapshot/2` | Disposable snapshot caches optionally accelerated by a hash-chained `state_root` |
-| `fsm.snapshot/1` | Rejected (never reinterpreted) |
+| `fsm.snapshot/3` | Disposable snapshot caches optionally accelerated by a hash-chained `state_root` |
+| `fsm.snapshot/1`, `fsm.snapshot/2` | Skipped, never reinterpreted; the journal is folded instead |
 | `fsm.state/1` | Instance state identity hash payload |
 | `expr/1` | Expression grammar |
 
-On-disk store `VERSION` is `6`. A `VERSION` `1` through `5` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `6`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted.
+On-disk store `VERSION` is `7`. A `VERSION` `1` through `6` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `7`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted.
+
+Because records are never rewritten, a migrated store keeps whatever its records already carried: a `request_id` claimed before `VERSION` `7` has no `request_fp`, so it can be replayed but not conflict-checked. Records written after the migration are fully checked.
+
+Hash domains are versioned independently of these tags: `fsm:machine:1`, `fsm:record:1`, `fsm:state:1`, `fsm:state-root:2`, `fsm:snapshot:3`, `fsm:request-fp:1`.

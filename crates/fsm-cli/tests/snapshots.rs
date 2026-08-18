@@ -5,14 +5,19 @@ use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::replay::{NopSink, fold_with};
 
+/// Per-process counter. Tests in one binary run concurrently, and a timestamp
+/// alone can collide between two threads building a path together.
+static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn tmp() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!(
-        "fsm-snap-{}-{}",
+        "fsm-snap-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        TMP_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&p).unwrap();
     p
@@ -32,7 +37,10 @@ fn reseal_snapshot(snapshot: &mut Value) {
     }
     let hash = format!(
         "sha256:{}",
-        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash("fsm:snapshot:2", snapshot,))
+        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+            fsm_store::snapshot::SNAPSHOT_DOMAIN,
+            snapshot,
+        ))
     );
     if let Value::Obj(body) = snapshot {
         body.insert("snapshot_hash".into(), Value::Str(hash));
@@ -211,7 +219,7 @@ fn stale_self_hashed_snapshot_falls_back() {
         let h = format!(
             "sha256:{}",
             fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-                "fsm:snapshot:2",
+                fsm_store::snapshot::SNAPSHOT_DOMAIN,
                 &Value::Obj(o.clone())
             ))
         );
@@ -229,7 +237,7 @@ fn stale_self_hashed_snapshot_falls_back() {
             let h = format!(
                 "sha256:{}",
                 fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-                    "fsm:snapshot:2",
+                    fsm_store::snapshot::SNAPSHOT_DOMAIN,
                     &Value::Obj(o.clone())
                 ))
             );

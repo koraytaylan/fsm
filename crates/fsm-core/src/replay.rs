@@ -13,6 +13,11 @@ use crate::spec::{TySpec, compile, parse_machine};
 use crate::step::{Outcome, create, step};
 use crate::tree::Tree;
 
+/// Hash domain for [`state_root_at`]. Unchanged by the addition of request
+/// fingerprints, which the hash chain already authenticates — see the note in
+/// `state_root_at` — so historical roots stay verifiable.
+pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:2";
+
 /// Hash the complete logical store state at `seq` without the journal hash.
 ///
 /// Omitting `last_hash` avoids a cycle when this root is placed inside the
@@ -30,7 +35,7 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
         let context = inst
             .ctx
             .iter()
-            .map(|(name, value)| (name.clone(), Value::Str(value.canonical_string())))
+            .map(|(name, value)| (name.clone(), Value::Str(ctx_val_string(value))))
             .collect();
         let history = inst
             .history
@@ -55,10 +60,14 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
         instances.insert(id.clone(), Value::Obj(body));
     }
 
+    // Only the claiming seq enters the root, not the request fingerprint. The
+    // fingerprint lives in the record body that claimed the key, so the hash
+    // chain already authenticates it; including it here would change every
+    // historical root for no added binding.
     let dedup = st
         .dedup
         .iter()
-        .map(|(request_id, request_seq)| (request_id.clone(), Value::Num(request_seq.to_string())))
+        .map(|(request_id, slot)| (request_id.clone(), Value::Num(slot.seq.to_string())))
         .collect();
     let material = Value::Obj(BTreeMap::from([
         ("seq".into(), Value::Num(seq.to_string())),
@@ -68,7 +77,7 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
     ]));
     format!(
         "sha256:{}",
-        crate::sha256::to_hex(&domain_hash("fsm:state-root:2", &material))
+        crate::sha256::to_hex(&domain_hash(STATE_ROOT_DOMAIN, &material))
     )
 }
 
@@ -79,12 +88,25 @@ pub struct StoredMachine {
     pub tree: Tree,
 }
 
+/// One claimed idempotency key.
+///
+/// `fp` is the [`crate::hashes::request_fp`] of the request that claimed the
+/// key. Reusing the key for a request with a different fingerprint is a
+/// conflict, not a replay. It is `None` for records written before
+/// fingerprints existed (store format ≤ 6), where the original content is
+/// unrecoverable and the key can only be replayed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestSlot {
+    pub seq: u64,
+    pub fp: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct StoreState {
     pub machines: BTreeMap<String, StoredMachine>,
     pub instances: BTreeMap<String, InstanceState>,
     pub instance_machines: BTreeMap<String, String>,
-    pub dedup: BTreeMap<String, u64>,
+    pub dedup: BTreeMap<String, RequestSlot>,
     pub last_seq: u64,
     pub last_hash: String,
 }
@@ -152,8 +174,47 @@ pub fn fold_from(
     Ok(st)
 }
 
+/// Serialize a context value in the **persistence form**: always a string.
+///
+/// This is the exact inverse of [`parse_ctx_val`] for every declared type, and
+/// it is the form the engine's own snapshots and `state_root` hashing use. An
+/// embedder persisting [`InstanceState`] in its own store wants this pair.
+pub fn ctx_val_string(v: &Val) -> String {
+    v.canonical_string()
+}
+
+/// Read a context value back from its [`ctx_val_string`] form.
+///
+/// Returns `None` when `raw` does not denote a value of the declared type.
 pub fn parse_ctx_val(ty: &TySpec, raw: &str) -> Option<Val> {
     parse_override(ty, raw)
+}
+
+/// Serialize a context value in the **API form**: booleans become JSON
+/// booleans, every other type becomes its canonical string.
+///
+/// This is the shape that appears in tool responses and CLI output. It is
+/// deliberately *not* the inverse of [`parse_ctx_val`], which reads strings
+/// only — read this form back with [`parse_ctx_json`], or persist with the
+/// [`ctx_val_string`]/[`parse_ctx_val`] pair instead.
+pub fn ctx_val_json(v: &Val) -> Value {
+    match v {
+        Val::Bool(b) => Value::Bool(*b),
+        other => Value::Str(other.canonical_string()),
+    }
+}
+
+/// Read a context value back from its [`ctx_val_json`] form.
+///
+/// Accepts the JSON boolean that [`ctx_val_json`] emits for [`TySpec::Bool`],
+/// and otherwise defers to [`parse_ctx_val`]. Returns `None` when `v` does not
+/// denote a value of the declared type.
+pub fn parse_ctx_json(ty: &TySpec, v: &Value) -> Option<Val> {
+    match (ty, v) {
+        (TySpec::Bool, Value::Bool(b)) => Some(Val::Bool(*b)),
+        (_, Value::Str(s)) => parse_ctx_val(ty, s),
+        _ => None,
+    }
 }
 
 fn parse_override(ty: &TySpec, raw: &str) -> Option<Val> {
@@ -168,10 +229,23 @@ fn parse_override(ty: &TySpec, raw: &str) -> Option<Val> {
         TySpec::Ts => raw.parse().ok().map(Val::Ts),
         TySpec::Dur => raw.parse().ok().map(Val::Dur),
         TySpec::Dec { scale } => crate::decimal::Dec::parse(raw, *scale).ok().map(Val::Dec),
-        TySpec::Enum { of } => Some(Val::Enum {
-            ty: of.clone(),
-            variant: raw.into(),
-        }),
+        // `canonical_string` writes enums qualified (`tier.premium`), so the
+        // inverse must strip the type prefix — parsing the whole string as the
+        // variant re-qualifies it on every round-trip and silently drifts the
+        // value. The bare form is accepted too, since that is what a caller
+        // supplying an override by hand writes. Identifiers cannot contain a
+        // dot, so the split is unambiguous.
+        TySpec::Enum { of } => {
+            let variant = match raw.split_once('.') {
+                Some((ty, v)) if ty == of => v,
+                Some(_) => return None,
+                None => raw,
+            };
+            Some(Val::Enum {
+                ty: of.clone(),
+                variant: variant.into(),
+            })
+        }
     }
 }
 
@@ -200,7 +274,13 @@ fn claim_request_id(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError
                 field: "request_id",
             });
         }
-        st.dedup.insert(rid.into(), rec.seq);
+        let fp = rec
+            .body
+            .get("request_fp")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        st.dedup
+            .insert(rid.into(), RequestSlot { seq: rec.seq, fp });
     }
     Ok(())
 }

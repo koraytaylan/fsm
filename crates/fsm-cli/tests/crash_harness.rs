@@ -61,6 +61,26 @@ fn script_rids() -> Vec<String> {
     (0..SCRIPT_LEN).map(|i| format!("r{i}")).collect()
 }
 
+/// The child annotates with a large blob so record writes are long enough to be
+/// caught mid-flight — that is the only way this harness ever observes a torn
+/// tail. It must stay *under* `MAX_PAYLOAD_BYTES`: once it exceeded the limit
+/// every annotation was refused, the journal saw only short records, and the
+/// harness silently stopped producing the very condition it exists to test.
+fn blob_len() -> usize {
+    fsm_core::limits::MAX_PAYLOAD_BYTES - 1024
+}
+
+/// Guards the note above: the blob must actually reach the journal.
+#[test]
+fn crash_blob_is_journalable() {
+    let quoted = blob_len() + 2; // canonical JSON adds the two quotes
+    assert!(
+        quoted < fsm_core::limits::MAX_PAYLOAD_BYTES,
+        "crash harness blob ({quoted} canonical bytes) would be refused as too large, \
+         leaving the journal with only short records and no torn tails to find"
+    );
+}
+
 #[test]
 fn crash_child() {
     let Ok(spec) = std::env::var("FSM_CRASH_CHILD") else {
@@ -69,7 +89,7 @@ fn crash_child() {
     let (dir, _seed) = spec.split_once(';').unwrap();
     let mut store = Store::open(PathBuf::from(dir).as_path()).unwrap();
     let _ = store.define_machine(case_def(), false, false);
-    let blob = "x".repeat(64 * 1024);
+    let blob = "x".repeat(blob_len());
     for i in 0..SCRIPT_LEN {
         let rid = format!("r{i}");
         if store

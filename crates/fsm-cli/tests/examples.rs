@@ -4,6 +4,10 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::spec::{compile, parse_machine};
 use std::collections::BTreeMap;
 
+/// Per-process counter. Tests in one binary run concurrently, and a timestamp
+/// alone can collide between two threads building a path together.
+static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn load(name: &str) -> Value {
     let p = format!("{}/../../examples/{name}.json", env!("CARGO_MANIFEST_DIR"));
     parse(&std::fs::read(p).unwrap(), &JsonLimits::DEFAULT).unwrap()
@@ -24,12 +28,13 @@ fn all_valid() {
 
 fn tmp() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!(
-        "fsm-ex-{}-{}",
+        "fsm-ex-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        TMP_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&p).unwrap();
     p

@@ -17,13 +17,19 @@ use fsm_core::replay::{NopSink, RecordSink, StoreState, fold_with};
 const ROTATE_RECORDS: u32 = 65_536;
 const ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 // VERSION 6 adds the `state_checkpoint` record used to bind explicit
-// snapshots without rewriting prior journal records. Formats 1–5 (and a
-// journal with no VERSION marker) are best-effort migrated on open by
-// folding the journal and stamping 6; records are never rewritten.
-const STORE_VERSION: &str = "6";
+// snapshots without rewriting prior journal records. VERSION 7 adds
+// `request_fp` to every record that claims a `request_id`, so a reused key can
+// be checked against the content it was claimed for instead of replaying an
+// unrelated outcome. Formats 1–6 (and a journal with no VERSION marker) are
+// best-effort migrated on open by folding the journal and stamping 7; records
+// are never rewritten, so keys claimed before the upgrade keep no fingerprint
+// and stay replay-only.
+pub const STORE_VERSION: &str = "7";
 
+/// On-disk store format as detected before opening. Public because store
+/// diagnostics (`fsm store status`, `fsm store repair`) report it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DetectedStoreFormat {
+pub enum DetectedStoreFormat {
     Current,
     Empty,
     Migratable { found: String },
@@ -47,10 +53,11 @@ fn has_journal_segments(dir: &Path) -> bool {
 }
 
 fn is_migratable_version(v: &str) -> bool {
-    matches!(v, "1" | "2" | "3" | "4" | "5")
+    matches!(v, "1" | "2" | "3" | "4" | "5" | "6")
 }
 
-pub(crate) fn detect_store_format(dir: &Path) -> DetectedStoreFormat {
+/// Classify an on-disk store directory without opening or locking it.
+pub fn detect_store_format(dir: &Path) -> DetectedStoreFormat {
     let ver = dir.join("VERSION");
     if ver.exists() {
         let t = match fs::read_to_string(&ver) {
@@ -1251,7 +1258,10 @@ mod tests {
         let dir = tmp();
         let j = init(&dir).unwrap();
         drop(j);
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        assert_eq!(
+            fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            STORE_VERSION
+        );
         fs::write(dir.join("VERSION"), "3\n").unwrap();
         assert_eq!(
             detect_store_format(&dir),
@@ -1260,7 +1270,10 @@ mod tests {
         assert!(refuse_incompatible_store_format(&dir).is_ok());
         let j = init(&dir).unwrap();
         drop(j);
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        assert_eq!(
+            fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            STORE_VERSION
+        );
         fs::remove_file(dir.join("VERSION")).unwrap();
         assert_eq!(
             detect_store_format(&dir),
@@ -1268,15 +1281,22 @@ mod tests {
         );
         let j = init(&dir).unwrap();
         drop(j);
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
-        fs::write(dir.join("VERSION"), "7\n").unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            STORE_VERSION
+        );
+        // One past the current format: written by a newer build, so it is
+        // refused rather than migrated. Derived so a version bump keeps this a
+        // future version instead of silently testing the current one.
+        let future = (STORE_VERSION.parse::<u32>().unwrap() + 1).to_string();
+        fs::write(dir.join("VERSION"), format!("{future}\n")).unwrap();
         assert!(matches!(
             refuse_incompatible_store_format(&dir),
-            Err(JournalHealth::VersionMismatch { found }) if found == "7"
+            Err(JournalHealth::VersionMismatch { found }) if found == future
         ));
         assert!(matches!(
             init(&dir),
-            Err(JournalIoError::VersionMismatch { found }) if found == "7"
+            Err(JournalIoError::VersionMismatch { found }) if found == future
         ));
     }
 
@@ -1288,10 +1308,16 @@ mod tests {
         fs::write(dir.join("VERSION"), "5\n").unwrap();
         let mut sink = NopSink;
         drop(open(&dir, &mut sink).unwrap());
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        assert_eq!(
+            fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            STORE_VERSION
+        );
         fs::remove_file(dir.join("VERSION")).unwrap();
         drop(open(&dir, &mut sink).unwrap());
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        assert_eq!(
+            fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            STORE_VERSION
+        );
     }
 
     #[test]
@@ -1335,7 +1361,10 @@ mod tests {
         assert_eq!(detect_store_format(&dir), DetectedStoreFormat::Empty);
         let j = init(&dir).unwrap();
         drop(j);
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        assert_eq!(
+            fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            STORE_VERSION
+        );
     }
 
     #[test]
@@ -1368,7 +1397,10 @@ mod tests {
         fs::write(&seg, bytes).unwrap();
         fs::write(dir.join("VERSION"), "5\n").unwrap();
         repair_truncate_torn_tail(&dir).unwrap();
-        assert_eq!(fs::read_to_string(dir.join("VERSION")).unwrap().trim(), "6");
+        assert_eq!(
+            fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
+            STORE_VERSION
+        );
         let mut sink = NopSink;
         drop(open(&dir, &mut sink).unwrap());
     }

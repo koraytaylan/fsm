@@ -8,12 +8,20 @@ use fsm_core::canon::canon_bytes;
 use fsm_core::hashes::{domain_hash, state_hash};
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{InstanceState, Status};
-use fsm_core::replay::{StoreState, StoredMachine, fold_from, parse_ctx_val};
+use fsm_core::replay::{StoreState, StoredMachine, ctx_val_string, fold_from, parse_ctx_val};
 use fsm_core::sha256::to_hex;
 use fsm_core::spec::compile_accepted;
 use fsm_core::tree::Tree;
 
 use crate::store::ErrorObj;
+
+/// On-disk snapshot format tag. Bumped to `/3` when dedup entries gained the
+/// request fingerprint. Snapshots are disposable: an unrecognised format is
+/// skipped and the journal is folded instead.
+pub const SNAPSHOT_FORMAT: &str = "fsm.snapshot/3";
+
+/// Hash domain for [`SNAPSHOT_FORMAT`]. Kept in lockstep with it.
+pub const SNAPSHOT_DOMAIN: &str = "fsm:snapshot:3";
 
 pub fn snap_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("snapshots")
@@ -24,7 +32,7 @@ fn hash_body(body: &BTreeMap<String, Value>) -> String {
     tmp.insert("snapshot_hash".into(), Value::Str(String::new()));
     format!(
         "sha256:{}",
-        to_hex(&domain_hash("fsm:snapshot:2", &Value::Obj(tmp)))
+        to_hex(&domain_hash(SNAPSHOT_DOMAIN, &Value::Obj(tmp)))
     )
 }
 
@@ -40,7 +48,7 @@ fn status_from(s: &str) -> Option<Status> {
 fn instance_value(id: &str, inst: &InstanceState, mid: &str, seq: u64) -> Value {
     let mut ctx = BTreeMap::new();
     for (k, v) in &inst.ctx {
-        ctx.insert(k.clone(), Value::Str(v.canonical_string()));
+        ctx.insert(k.clone(), Value::Str(ctx_val_string(v)));
     }
     let mut hist = BTreeMap::new();
     for (k, v) in &inst.history {
@@ -74,8 +82,14 @@ fn snapshot_material(state: &StoreState) -> BTreeMap<String, Value> {
         instances.insert(id.clone(), instance_value(id, inst, &mid, state.last_seq));
     }
     let mut dedup = BTreeMap::new();
-    for (rid, seq) in &state.dedup {
-        dedup.insert(rid.clone(), Value::Num(seq.to_string()));
+    for (rid, slot) in &state.dedup {
+        let mut e = BTreeMap::from([("seq".into(), Value::Num(slot.seq.to_string()))]);
+        // Absent for keys claimed before fingerprints existed; those replay
+        // but cannot be conflict-checked.
+        if let Some(fp) = &slot.fp {
+            e.insert("fp".into(), Value::Str(fp.clone()));
+        }
+        dedup.insert(rid.clone(), Value::Obj(e));
     }
     let mut body = BTreeMap::new();
     body.insert("seq".into(), Value::Num(state.last_seq.to_string()));
@@ -88,7 +102,7 @@ fn snapshot_material(state: &StoreState) -> BTreeMap<String, Value> {
 
 pub fn state_to_snapshot(state: &StoreState) -> Value {
     let mut body = snapshot_material(state);
-    body.insert("format".into(), Value::Str("fsm.snapshot/2".into()));
+    body.insert("format".into(), Value::Str(SNAPSHOT_FORMAT.into()));
     body.insert(
         "state_root".into(),
         Value::Str(materialize_state_root(state)),
@@ -111,7 +125,7 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
     let obj = v
         .as_obj()
         .ok_or_else(|| ErrorObj::new("io/read", "snapshot not an object"))?;
-    if obj.get("format").and_then(Value::as_str) != Some("fsm.snapshot/2") {
+    if obj.get("format").and_then(Value::as_str) != Some(SNAPSHOT_FORMAT) {
         return Err(ErrorObj::new("io/read", "bad snapshot format"));
     }
     let committed_root = obj
@@ -159,15 +173,28 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
             },
         );
     }
-    for (rid, seqv) in req_obj(obj, "dedup")? {
-        let n: u64 = seqv
-            .as_num()
+    for (rid, slotv) in req_obj(obj, "dedup")? {
+        let so = slotv
+            .as_obj()
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot dedup slot"))?;
+        let n: u64 = so
+            .get("seq")
+            .and_then(Value::as_num)
             .and_then(|s| s.parse().ok())
             .ok_or_else(|| ErrorObj::new("io/read", "snapshot dedup seq"))?;
         if n == 0 || n > seq {
             return Err(ErrorObj::new("io/read", "snapshot dedup out of bounds"));
         }
-        st.dedup.insert(rid.clone(), n);
+        let fp = match so.get("fp") {
+            None => None,
+            Some(v) => Some(
+                v.as_str()
+                    .ok_or_else(|| ErrorObj::new("io/read", "snapshot dedup fp"))?
+                    .to_string(),
+            ),
+        };
+        st.dedup
+            .insert(rid.clone(), fsm_core::replay::RequestSlot { seq: n, fp });
     }
     for (id, iv) in req_obj(obj, "instances")? {
         let io = iv

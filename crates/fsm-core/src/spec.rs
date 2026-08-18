@@ -151,6 +151,30 @@ pub struct StateNode {
     pub states: Vec<StateNode>,
 }
 
+/// Total states in the tree, nested ones included.
+///
+/// Every summary reports this. It lives here because hand-rolled copies drifted
+/// once already: `fsm machine ls` counted only top-level children and reported
+/// 4 states for a machine `fsm validate` reported 9 for.
+pub fn count_states(nodes: &[StateNode]) -> usize {
+    nodes.iter().map(|n| 1 + count_states(&n.states)).sum()
+}
+
+/// Terminal states anywhere in the tree, in document order.
+pub fn terminal_states(nodes: &[StateNode]) -> Vec<&str> {
+    let mut out = Vec::new();
+    fn walk<'a>(nodes: &'a [StateNode], out: &mut Vec<&'a str>) {
+        for n in nodes {
+            if n.terminal {
+                out.push(n.name.as_str());
+            }
+            walk(&n.states, out);
+        }
+    }
+    walk(nodes, &mut out);
+    out
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransitionSpec {
     pub from: String,

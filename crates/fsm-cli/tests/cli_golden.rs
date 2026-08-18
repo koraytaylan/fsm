@@ -279,15 +279,16 @@ fn doctor_reports_migration() {
     std::fs::write(dir.join("VERSION"), "5\n").unwrap();
     let (code, out, err) = run(&dir, &["doctor".into()], false);
     assert_eq!(code, 0, "{err}");
+    let current = fsm_store::journal_io::STORE_VERSION;
     assert!(out.contains("migrated_from: 5"), "{out}");
     assert!(
         out.lines()
-            .any(|l| l.starts_with("version:") && l.trim_end().ends_with('6')),
+            .any(|l| l.starts_with("version:") && l.trim_end().ends_with(current)),
         "{out}"
     );
     assert_eq!(
         std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
-        "6"
+        current
     );
     let (code, out, _) = run(&dir, &["doctor".into()], false);
     assert_eq!(code, 0);

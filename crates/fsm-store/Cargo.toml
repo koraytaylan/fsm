@@ -1,17 +1,12 @@
 [package]
-name = "fsm-cli"
+name = "fsm-store"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "fsm"
-path = "src/main.rs"
-
 [dependencies]
 fsm-core = { path = "../fsm-core" }
-fsm-store = { path = "../fsm-store" }
 
 [lints]
 workspace = true

@@ -8,12 +8,18 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::RecordKind;
 use fsm_core::replay::{NopSink, fold_with};
 
+/// Per-process counter. Tests in one binary run concurrently, and a timestamp
+/// alone can collide between two threads building a path together.
+static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn tmp() -> PathBuf {
     let n = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let p = std::env::temp_dir().join(format!("fsm-rd-{n}"));
+    let pid = std::process::id();
+    let i = TMP_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let p = std::env::temp_dir().join(format!("fsm-rd-{pid}-{n}-{i}"));
     fs::create_dir_all(&p).unwrap();
     p
 }

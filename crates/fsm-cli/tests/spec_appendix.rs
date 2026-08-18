@@ -50,3 +50,70 @@ fn readme_and_licenses() {
     assert!(ap.contains("Apache License"));
     assert!(!mit.is_empty() && !ap.is_empty());
 }
+
+const EMBEDDING: &str = include_str!("../../../docs/EMBEDDING.md");
+const API_POLICY: &str = include_str!("../../../docs/API-POLICY.md");
+
+/// The embedder-facing docs quote concrete versions and limits. They are the
+/// first thing to go stale after a format bump, and a downstream reader has no
+/// way to tell — so pin them to the constants they describe.
+#[test]
+fn embedder_docs_quote_current_versions() {
+    let store_version = fsm_store::journal_io::STORE_VERSION;
+    let snapshot_format = fsm_store::snapshot::SNAPSHOT_FORMAT;
+    let snapshot_domain = fsm_store::snapshot::SNAPSHOT_DOMAIN;
+    let state_root_domain = fsm_core::replay::STATE_ROOT_DOMAIN;
+
+    for (name, doc) in [("API-POLICY.md", API_POLICY), ("SPEC.md", SPEC)] {
+        assert!(
+            doc.contains(snapshot_format),
+            "{name} does not mention the current snapshot format {snapshot_format}"
+        );
+        assert!(
+            doc.contains(&format!("`VERSION` {store_version}"))
+                || doc.contains(&format!("VERSION` is `{store_version}`"))
+                || doc.contains(&format!("store `VERSION` {store_version}")),
+            "{name} does not state the current store VERSION {store_version}"
+        );
+    }
+    assert!(
+        API_POLICY.contains(snapshot_domain) && API_POLICY.contains(state_root_domain),
+        "API-POLICY.md must list the live hash domains"
+    );
+
+    // The payload limit is quoted in prose as a KiB figure.
+    let kib = fsm_core::limits::MAX_PAYLOAD_BYTES / 1024;
+    for (name, doc) in [("EMBEDDING.md", EMBEDDING), ("SPEC.md", SPEC)] {
+        assert!(
+            doc.contains(&format!("{kib} KiB")),
+            "{name} does not state the {kib} KiB payload limit"
+        );
+    }
+}
+
+/// Every promise the makina-facing contracts make must be findable, so a reader
+/// looking for one of them does not conclude it is undocumented.
+#[test]
+fn embedding_guide_covers_the_embedder_contracts() {
+    for needle in [
+        "req/request_id_conflict",
+        "req/payload_too_large",
+        "ctx_val_string",
+        "parse_ctx_val",
+        "single-writer",
+        "MAX_PAYLOAD_BYTES",
+        "pinned",
+        "effect_ack",
+    ] {
+        assert!(
+            EMBEDDING.contains(needle),
+            "EMBEDDING.md must document {needle}"
+        );
+    }
+    for needle in ["fsm-embed-acceptance", "tag = ", "MSRV", "1.89"] {
+        assert!(
+            API_POLICY.contains(needle),
+            "API-POLICY.md must document {needle}"
+        );
+    }
+}

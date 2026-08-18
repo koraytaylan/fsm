@@ -35,24 +35,15 @@ fn validate_text(text: &str) -> Result<Value, ErrorObj> {
     let tree = Tree::build(&compiled.spec.states);
     let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
     let id = compiled.machine_id.clone();
-    fn count_nodes(nodes: &[fsm_core::spec::StateNode]) -> usize {
-        nodes.iter().map(|n| 1 + count_nodes(&n.states)).sum()
-    }
-    fn terminals(nodes: &[fsm_core::spec::StateNode], out: &mut Vec<Value>) {
-        for n in nodes {
-            if n.terminal {
-                out.push(Value::Str(n.name.clone()));
-            }
-            terminals(&n.states, out);
-        }
-    }
-    let mut terms = Vec::new();
-    terminals(&compiled.spec.states, &mut terms);
+    let terms: Vec<Value> = fsm_core::spec::terminal_states(&compiled.spec.states)
+        .into_iter()
+        .map(|n| Value::Str(n.into()))
+        .collect();
     let summary = Value::Obj(BTreeMap::from([
         ("initial".into(), Value::Str(compiled.spec.initial.clone())),
         (
             "states".into(),
-            Value::Num(count_nodes(&compiled.spec.states).to_string()),
+            Value::Num(fsm_core::spec::count_states(&compiled.spec.states).to_string()),
         ),
         (
             "events".into(),

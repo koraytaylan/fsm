@@ -101,6 +101,30 @@ pub fn resolve_machine_ref<'a>(
     }
 }
 
+/// Fingerprint of a request's *content*, for idempotency-key checking.
+///
+/// A `request_id` is an idempotency key: resending it must replay the original
+/// outcome. That is only sound while the request is the same request. This
+/// digest binds everything that decides the outcome — the operation, the
+/// instance it targets, and the operation's own arguments — so that reusing a
+/// key for different content is detectable and can be rejected
+/// (`req/request_id_conflict`) instead of silently replaying an unrelated
+/// result.
+///
+/// Deliberately excluded: `expect_seq`, which is a concurrency precondition
+/// rather than request content, and the wall clock, which must not make an
+/// honest retry look like a new request.
+pub fn request_fp(operation: &str, fields: &BTreeMap<String, Value>) -> String {
+    let obj = BTreeMap::from([
+        ("operation".into(), Value::Str(operation.into())),
+        ("fields".into(), Value::Obj(fields.clone())),
+    ]);
+    format!(
+        "sha256:{}",
+        to_hex(&domain_hash("fsm:request-fp:1", &Value::Obj(obj)))
+    )
+}
+
 pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String {
     let mut ctx = BTreeMap::new();
     for (k, v) in &st.ctx {

@@ -16,14 +16,20 @@ fn case() -> Value {
     .unwrap()
 }
 
+/// Per-process counter. Tests in one binary run concurrently, and a timestamp
+/// alone can collide between two threads entering `store()` together — the
+/// loser then hits the store's advisory lock instead of getting its own store.
+static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn store() -> (Store, FixedClock) {
     let dir = std::env::temp_dir().join(format!(
-        "fsm-naive-{}-{}",
+        "fsm-naive-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
     (Store::open(&dir).unwrap(), FixedClock::new(1000, 1000))
@@ -1978,6 +1984,46 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         Ok(v) => note_ok(&v, &mut out),
         Err(e) => note_err(&e, &mut out),
     }
+    match dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-actc".into())),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("go".into())),
+                    (
+                        "payload",
+                        obj(&[(
+                            "text",
+                            Value::Str("x".repeat(fsm_core::limits::MAX_PAYLOAD_BYTES + 1)),
+                        )]),
+                    ),
+                ]),
+            ),
+            ("request_id", Value::Str("actbig".into())),
+        ]),
+    ) {
+        Ok(v) => note_ok(&v, &mut out),
+        Err(e) => note_err(&e, &mut out),
+    }
+    // Reuse the key just claimed by that send for a different operation
+    // entirely: an idempotency-key conflict, not a replay.
+    match dispatch(
+        &mut st,
+        &mut clock,
+        "instance_cancel",
+        &obj(&[
+            ("instance_id", Value::Str("inst-actc".into())),
+            ("reason", Value::Str("stop".into())),
+            ("request_id", Value::Str("acts".into())),
+        ]),
+    ) {
+        Ok(v) => note_ok(&v, &mut out),
+        Err(e) => note_err(&e, &mut out),
+    }
     out
 }
 
@@ -3150,6 +3196,100 @@ fn one_step_every_non_infra_code() {
     )
     .unwrap();
     seen.insert("run/instance_cancelled");
+
+    // req/request_id_conflict: a key already held by different content. The
+    // one-step recovery is a NEW key for the new request — never a retry, which
+    // would conflict again.
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("case_review".into())),
+            ("request_id", Value::Str("conf".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-conf".into())),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("docs_ok".into())),
+                    ("payload", obj(&[])),
+                ]),
+            ),
+            ("request_id", Value::Str("conf-key".into())),
+        ]),
+    )
+    .unwrap();
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-conf",
+        "note_added",
+        obj(&[("text", Value::Str("hi".into()))]),
+        "conf-key",
+    );
+    assert_eq!(err.code, "req/request_id_conflict");
+    assert!(
+        !err.retryable,
+        "retrying a conflicting key conflicts again; the hint must not invite a retry"
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-conf".into())),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("note_added".into())),
+                    ("payload", obj(&[("text", Value::Str("hi".into()))])),
+                ]),
+            ),
+            ("request_id", Value::Str("conf-key-2".into())),
+        ]),
+    )
+    .expect("a fresh request_id lands the request");
+    seen.insert("req/request_id_conflict");
+
+    // req/payload_too_large: rejected before anything is journalled, and it is
+    // a pure function of the request, so the key is NOT consumed. The one-step
+    // recovery is a smaller payload under the SAME request_id.
+    let big = Value::Str("x".repeat(fsm_core::limits::MAX_PAYLOAD_BYTES + 1));
+    let err = send_err(
+        &mut st,
+        &mut clock,
+        "inst-conf",
+        "note_added",
+        obj(&[("text", big)]),
+        "big-key",
+    );
+    assert_eq!(err.code, "req/payload_too_large");
+    dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-conf".into())),
+            (
+                "event",
+                obj(&[
+                    ("name", Value::Str("note_added".into())),
+                    ("payload", obj(&[("text", Value::Str("digest:abc".into()))])),
+                ]),
+            ),
+            ("request_id", Value::Str("big-key".into())),
+        ]),
+    )
+    .expect("an oversized request consumes no request_id, so the same key still works");
+    seen.insert("req/payload_too_large");
 
     let mut missing = Vec::new();
     for c in ALL_CODES {

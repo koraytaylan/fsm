@@ -7,17 +7,22 @@ use fsm_cli::mcp::serve::serve_session;
 use fsm_cli::mcp::tools::names;
 use fsm_cli::store::Store;
 
+/// Per-process counter. Tests in one binary run concurrently, and a timestamp
+/// alone can collide between two threads building a path together.
+static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn drive(input: &str) -> String {
     let _g = LOCK.lock().unwrap();
     let dir = std::env::temp_dir().join(format!(
-        "fsm-full-{}-{}",
+        "fsm-full-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        TMP_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
