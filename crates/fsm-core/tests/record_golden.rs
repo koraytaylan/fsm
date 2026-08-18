@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::{RecordError, RecordKind, seal, verify_line, zeros};
 use fsm_core::replay::{NopSink, ReplayError, fold_with};
-use fsm_core::spec::load_machine_json;
 
 #[test]
 fn chain_and_tamper() {
@@ -54,7 +53,6 @@ fn chain_and_tamper() {
         b.insert("overrides".into(), Value::Obj(BTreeMap::new()));
         seal(2, 2, RecordKind::InstanceCreated, Value::Obj(b), &prev)
     };
-    prev = created.hash.clone();
     recs.push(created);
 
     let mut expect_prev = zeros();

@@ -137,3 +137,66 @@ fn git_dep_snippets_match_the_manifest_repository() {
         );
     }
 }
+
+const CI_WORKFLOW: &str = include_str!("../../../.github/workflows/ci.yml");
+const RELEASE_WORKFLOW: &str = include_str!("../../../.github/workflows/release.yml");
+const RELEASING_DOC: &str = include_str!("../../../docs/RELEASE.md");
+
+/// The release workflow re-runs the branch gate against the tagged commit, and
+/// docs/RELEASE.md tells a human the same list. Three copies drift, and the way
+/// they drift is silent: a check quietly stops running at exactly the moment it
+/// matters most. Pin them to each other.
+#[test]
+fn the_gate_is_the_same_in_ci_release_and_docs() {
+    const GATE: &[&str] = &[
+        "cargo fmt --all -- --check",
+        "cargo test --workspace",
+        "cargo test --workspace --release",
+        "cargo clippy --workspace -- -D warnings",
+        "cargo doc --workspace --no-deps",
+    ];
+    for cmd in GATE {
+        assert!(CI_WORKFLOW.contains(cmd), "ci.yml is missing `{cmd}`");
+        assert!(
+            RELEASE_WORKFLOW.contains(cmd),
+            "release.yml verify job is missing `{cmd}`"
+        );
+        assert!(
+            RELEASING_DOC.contains(cmd),
+            "docs/RELEASE.md does not list `{cmd}`"
+        );
+    }
+}
+
+/// `rust-toolchain.toml` outranks `rustup default`, so a matrix that does not
+/// set `RUSTUP_TOOLCHAIN` silently runs the pinned version on every leg and
+/// tests one toolchain twice while claiming to test two.
+#[test]
+fn workflow_matrices_override_the_pinned_toolchain() {
+    let pinned = include_str!("../../../rust-toolchain.toml");
+    assert!(
+        pinned.contains("channel"),
+        "this test assumes rust-toolchain.toml pins a channel"
+    );
+    for (name, wf) in [("ci.yml", CI_WORKFLOW), ("release.yml", RELEASE_WORKFLOW)] {
+        assert!(
+            wf.contains("RUSTUP_TOOLCHAIN: ${{ matrix.rust }}"),
+            "{name} has a rust matrix but never overrides the pinned toolchain"
+        );
+    }
+}
+
+/// A tag is the distribution artifact, so the release must prove the tag is
+/// consumable rather than assume it.
+#[test]
+fn the_release_proves_the_tag_is_consumable() {
+    assert!(
+        RELEASE_WORKFLOW.contains("tag = \\\"$GITHUB_REF_NAME\\\"")
+            || RELEASE_WORKFLOW.contains("tag = \"$GITHUB_REF_NAME\""),
+        "release.yml must build a scratch crate against the tag it is releasing"
+    );
+    assert!(
+        RELEASE_WORKFLOW.contains("git-dep"),
+        "release.yml must keep the git-dependency proof job"
+    );
+}

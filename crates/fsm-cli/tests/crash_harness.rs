@@ -196,6 +196,12 @@ fn crash_harness() {
         .max(1000);
     let mut seen_ok = false;
     let mut seen_torn = false;
+    // Counted and printed below. Twice now this harness has quietly stopped
+    // producing torn tails — once when a payload limit refused its blob, once
+    // when a hardcoded kill range fell outside the write phase — and reported
+    // success either way. A histogram makes a degenerate run visible in the log
+    // before it becomes a green build that tested nothing.
+    let (mut n_ok, mut n_torn, mut n_empty) = (0u32, 0u32, 0u32);
     let mut seed = 0xF00D_u64;
     let script = script_rids();
     let run_root = crash_run_root();
@@ -214,6 +220,11 @@ fn crash_harness() {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn");
+        // Timed from spawn, deliberately: most kills land while the process is
+        // still starting up and writing its first records, which is where a
+        // record write can actually be caught in flight. Widening this to cover
+        // the whole run makes kills land in CPU-bound work between writes
+        // instead, and the torn-tail count collapses to zero.
         let delay = Duration::from_micros(100 + (seed % 25_000));
         std::thread::sleep(delay);
         let _ = child.kill();
@@ -238,14 +249,19 @@ fn crash_harness() {
                 "iter {it} seed {seed} acked {acked:?} but no journal"
             );
             seen_ok = true;
+            n_empty += 1;
             let _ = fs::remove_dir_all(&dir);
             continue;
         }
         let health = wait_classify(&dir);
         match &health {
-            JournalHealth::Ok | JournalHealth::MissingGenesis => seen_ok = true,
+            JournalHealth::Ok | JournalHealth::MissingGenesis => {
+                seen_ok = true;
+                n_ok += 1;
+            }
             JournalHealth::TornTail { .. } => {
                 seen_torn = true;
+                n_torn += 1;
                 repair_truncate_torn_tail(&dir)
                     .unwrap_or_else(|e| panic!("iter {it} seed {seed} repair {e:?}"));
             }
@@ -278,7 +294,77 @@ fn crash_harness() {
         }
         let _ = fs::remove_dir_all(&dir);
     }
+    println!(
+        "classifications over {want} kills: ok={n_ok} torn_tail={n_torn} no_journal={n_empty}"
+    );
     assert!(seen_ok, "no Ok classification across {want} kills");
-    assert!(seen_torn, "no TornTail classification across {want} kills");
+    // `seen_torn` is reported, not asserted. A SIGKILL cannot interrupt a
+    // `write` syscall to a regular file, so a random kill only tears a record
+    // in the narrow window where the page cache is partially flushed: about
+    // 5 hits per 1,000 here, and none at all on a faster toolchain. Asserting
+    // it made the gate a coin flip that passed by a hair and proved nothing on
+    // the runs where it came up zero. The property itself is proven below by
+    // construction, every run, on every machine.
+    if !seen_torn {
+        println!(
+            "note: no torn tail arose by chance this run; the constructed case below still covers it"
+        );
+    }
+    torn_tail_is_classified_and_repaired(&run_root);
     let _ = fs::remove_dir_all(&run_root);
+}
+
+/// The torn-tail path, proven rather than sampled.
+///
+/// Truncate a segment mid-record — exactly the state an interrupted write
+/// leaves — then require that it is classified as such, repaired, and that the
+/// repaired store folds to the same state the live store reports. This is what
+/// the random kills above are *trying* to reach; doing it deliberately means a
+/// run that never got there by luck has still covered it.
+fn torn_tail_is_classified_and_repaired(run_root: &Path) {
+    let dir = run_root.join("constructed-torn");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let mut store = Store::open(&dir).unwrap();
+    store.define_machine(case_def(), false, false).unwrap();
+    store
+        .create_instance("case_review", "i0", "r0", None)
+        .unwrap();
+    store.annotate("i0", "n0", &"x".repeat(blob_len())).unwrap();
+    let before = store.state.clone();
+    drop(store);
+
+    let seg = dir.join("journal/seg-00000000000000000000.jsonl");
+    let mut bytes = fs::read(&seg).unwrap();
+    let full_len = bytes.len();
+    bytes.truncate(full_len - 17);
+    fs::write(&seg, &bytes).unwrap();
+
+    match wait_classify(&dir) {
+        JournalHealth::TornTail { .. } => {}
+        other => panic!("a mid-record truncation must classify as TornTail, got {other:?}"),
+    }
+
+    repair_truncate_torn_tail(&dir).expect("repair must accept a torn tail");
+    match wait_classify(&dir) {
+        JournalHealth::Ok => {}
+        other => panic!("repair must leave a healthy journal, got {other:?}"),
+    }
+
+    // The torn record is gone, so the recovered state is a strict prefix: it
+    // must still fold, and the live store must agree with the fold.
+    let recs = load_records(&dir).unwrap();
+    let folded = fold_with(recs, &mut NopSink).expect("repaired journal must fold");
+    let live = Store::open(&dir).expect("repaired store must open");
+    if let Some(diff) = states_diff(&live.state, &folded) {
+        panic!("after repair live != fold: {diff}");
+    }
+    assert!(
+        folded.last_seq < before.last_seq,
+        "the torn record must not survive repair: {} vs {}",
+        folded.last_seq,
+        before.last_seq
+    );
+    let _ = fs::remove_dir_all(&dir);
 }

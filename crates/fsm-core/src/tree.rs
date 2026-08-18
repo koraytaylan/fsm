@@ -45,8 +45,8 @@ impl Tree {
                 Some(p) => depth[p as usize] + 1,
             };
             depth.push(d);
-            let k = if node.history.is_some() {
-                NodeKind::History(node.history.unwrap())
+            let k = if let Some(h) = node.history {
+                NodeKind::History(h)
             } else if node.states.is_empty() {
                 NodeKind::Leaf
             } else {

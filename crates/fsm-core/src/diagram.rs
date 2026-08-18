@@ -133,8 +133,8 @@ fn write_dot_states(
                     }
                 })
                 .unwrap_or("");
-            if n.history.is_some() {
-                let tag = match n.history.unwrap() {
+            if let Some(h) = n.history {
+                let tag = match h {
                     HistoryKind::Deep => "deep-history",
                     HistoryKind::Shallow => "shallow-history",
                 };

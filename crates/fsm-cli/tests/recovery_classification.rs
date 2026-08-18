@@ -2,9 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fsm_cli::journal_io::{Journal, JournalHealth, classify, init, verify};
-use fsm_core::json::Value;
-use fsm_core::record::RecordKind;
+use fsm_cli::journal_io::{JournalHealth, classify, init, verify};
 
 /// Per-process counter. Tests in one binary run concurrently, and a timestamp
 /// alone can collide between two threads building a path together.

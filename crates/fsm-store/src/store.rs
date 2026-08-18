@@ -729,7 +729,7 @@ impl Store {
     ) -> Result<Record, ErrorObj> {
         let body = self.stamp_request_fp(body);
         let seq = self.journal.last_seq.saturating_add(1);
-        if seq % 10_000 != 0 {
+        if !seq.is_multiple_of(10_000) {
             return self
                 .journal
                 .append_at(kind, body, ts)
@@ -1620,7 +1620,7 @@ impl Store {
     }
 
     pub fn maybe_snapshot(&self) -> Result<(), ErrorObj> {
-        if self.journal.last_seq > 0 && self.journal.last_seq % 10_000 == 0 {
+        if self.journal.last_seq > 0 && self.journal.last_seq.is_multiple_of(10_000) {
             crate::snapshot::write_snapshot(&self.data_dir, &self.state)?;
         }
         Ok(())

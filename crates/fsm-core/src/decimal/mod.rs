@@ -295,8 +295,8 @@ impl Dec {
         let r = mag % div;
         let mut q = q;
         if r != 0 {
-            let twice = (r as u128).saturating_mul(2);
-            let ord = twice.cmp(&(div as u128));
+            let twice = r.saturating_mul(2);
+            let ord = twice.cmp(&div);
             if bump(mode, negative, ord, q.is_multiple_of(2)) {
                 q = q.checked_add(1).ok_or(DecError::Overflow)?;
             }

@@ -1,0 +1,309 @@
+# Tag-driven releases: pushing a tag `vX.Y.Z` verifies the tag matches the
+# workspace version, that the full ci.yml gate passes on the tagged commit — on
+# Linux and macOS, at stable and the minimum supported Rust version — and that
+# a downstream crate can actually depend on the tag, because a git tag *is* the
+# distribution artifact here (docs/API-POLICY.md). Then it generates the
+# changelog from the conventional-commit history with git-cliff, builds the CLI
+# for the most compatible target of each platform, publishes a GitHub release
+# with the binaries and checksums, and fast-forwards `main` to the released
+# commit. Every step converges on re-runs, so a partially failed release can be
+# finished by pushing the tag again.
+#
+# There is no crates.io publish: fsm is consumed as a tagged git dependency, so
+# the `git-dep` job below is what "published" means for this project. Nothing
+# here is irreversible except the tag itself.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Cheap and first, so a mistyped tag fails before the matrix below occupies
+  # four runners.
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag must match the workspace version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          manifest_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+          if [ "$tag_version" != "$manifest_version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $manifest_version" >&2
+            exit 1
+          fi
+
+  # Deliberately the same command set and matrix as ci.yml's gate, run against
+  # the tagged commit. A Linux-only verification could publish a release whose
+  # macOS half never ran, and nothing between the branch gate and the tag
+  # re-checks it. Keep this in step with ci.yml.
+  verify:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable, "1.89"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    # Job-scoped rather than workflow-wide: the binary builds below must not
+    # compile with warnings denied.
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
+      RUSTFLAGS: --deny warnings
+      RUSTDOCFLAGS: --deny warnings
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install ${{ matrix.rust }} --profile minimal --component rustfmt,clippy
+      # Restores the dependency cache CI saves on develop for this same
+      # runner/toolchain pair; tag runs can read default-branch caches.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: gate-${{ matrix.os }}-${{ matrix.rust }}
+          save-if: false
+      - run: cargo fmt --all -- --check
+      - run: cargo test --workspace
+      - run: cargo test --workspace --release
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo doc --workspace --no-deps
+
+  # What `cargo publish` is for a registry project: proof that the thing
+  # consumers are told to depend on actually resolves and builds. README.md and
+  # docs/API-POLICY.md tell an embedder to pin `git = <repo>, tag = vX.Y.Z`, and
+  # that instruction is only true if a crate outside this workspace can follow
+  # it against the tag that just triggered this run.
+  #
+  # Built outside the checkout so it resolves the tag from the remote by URL,
+  # exactly as a downstream crate would, rather than through a path dependency.
+  git-dep:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install 1.89 --profile minimal
+      - name: A downstream crate can depend on this tag
+        env:
+          RUSTUP_TOOLCHAIN: "1.89"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Lets cargo fetch the tag whether or not the repository is public.
+          git config --global \
+            url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf \
+            "https://github.com/"
+          repo="https://github.com/${GITHUB_REPOSITORY}"
+          work="$(mktemp -d)"
+          mkdir -p "$work/src"
+          cat > "$work/Cargo.toml" <<EOF
+          [package]
+          name = "fsm-git-dep-check"
+          version = "${GITHUB_REF_NAME#v}"
+          edition = "2024"
+
+          [dependencies]
+          fsm-core = { git = "$repo", tag = "$GITHUB_REF_NAME" }
+          fsm-store = { git = "$repo", tag = "$GITHUB_REF_NAME" }
+          EOF
+          # Exercises the same entry points docs/EMBEDDING.md opens with, so a
+          # missing re-export fails here rather than in an embedder's build.
+          cat > "$work/src/main.rs" <<'EOF'
+          fn main() {
+              let def = fsm_core::json::parse(
+                  br#"{"format":"fsm.machine/1","name":"m","context":[],
+                       "events":[{"name":"go","fields":[]}],
+                       "states":[{"name":"a"},{"name":"b","terminal":true}],
+                       "initial":"a",
+                       "transitions":[{"from":"a","on":"go","to":"b"}]}"#,
+                  &fsm_core::json::JsonLimits::DEFAULT,
+              )
+              .expect("parse");
+              let compiled = fsm_core::spec::compile_accepted(&def).expect("compile");
+              let tree = fsm_core::tree::Tree::build(&compiled.spec.states);
+              let applied =
+                  fsm_core::step::create(&compiled, &tree, &Default::default()).expect("create");
+              assert_eq!(applied.leaf_after, "a");
+              // The store crate must be reachable from the same tag.
+              let _ = fsm_store::journal_io::STORE_VERSION;
+              println!("git dependency on {} builds and runs", env!("CARGO_PKG_NAME"));
+          }
+          EOF
+          cd "$work"
+          cargo run
+
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Prebuilt binary: compiling git-cliff from source costs minutes per
+      # release.
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+      - name: Generate the full changelog and this release's notes
+        run: |
+          git-cliff --output CHANGELOG.md
+          git-cliff --latest --strip header --output RELEASE_NOTES.md
+          {
+            echo ""
+            echo "### Using this release"
+            echo ""
+            echo "As a CLI and MCP server, download the archive for your platform below."
+            echo "As a library, pin this tag:"
+            echo ""
+            echo '```toml'
+            echo "fsm-core = { git = \"https://github.com/${GITHUB_REPOSITORY}\", tag = \"${GITHUB_REF_NAME}\" }"
+            echo '```'
+            echo ""
+            echo "- The tag is verified buildable as a git dependency by this release run."
+            echo "- fsm has zero third-party dependencies; adding it adds one crate, not a subtree."
+            echo "- Stores written by earlier formats migrate on open; a newer format is refused."
+            echo "- See \`docs/EMBEDDING.md\` for the library loop and \`docs/API-POLICY.md\` for"
+            echo "  what this tag commits to."
+            echo "- \`sha256sum --check SHA256SUMS\` verifies any downloaded archive."
+          } >> RELEASE_NOTES.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: changelog
+          path: |
+            CHANGELOG.md
+            RELEASE_NOTES.md
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - run: rustup toolchain install stable --profile minimal
+      - run: rustup target add ${{ matrix.target }}
+      # Warms same-tag re-runs; first runs per target stay cold builds because
+      # nothing on the default branch compiles these targets.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+      - run: cargo build --release -p fsm-cli --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          name="fsm-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            cp "target/${{ matrix.target }}/release/fsm.exe" "$name/"
+          else
+            cp "target/${{ matrix.target }}/release/fsm" "$name/"
+          fi
+          cp README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          # The spec is the reference an operator needs without network access.
+          cp docs/SPEC.md "$name/"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a "$name.zip" "$name"
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.target }}
+          path: |
+            fsm-*.tar.gz
+            fsm-*.zip
+
+  release:
+    needs: [verify, git-dep, changelog, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum fsm-*.tar.gz fsm-*.zip > SHA256SUMS
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # A re-run after a partial release must refresh the existing release
+        # rather than die on the duplicate.
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "fsm $GITHUB_REF_NAME" \
+              --notes-file artifacts/RELEASE_NOTES.md
+            gh release upload "$GITHUB_REF_NAME" --clobber \
+              artifacts/fsm-*.tar.gz \
+              artifacts/fsm-*.zip \
+              artifacts/SHA256SUMS \
+              artifacts/CHANGELOG.md
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "fsm $GITHUB_REF_NAME" \
+              --notes-file artifacts/RELEASE_NOTES.md \
+              artifacts/fsm-*.tar.gz \
+              artifacts/fsm-*.zip \
+              artifacts/SHA256SUMS \
+              artifacts/CHANGELOG.md
+          fi
+
+  # Advance `main` to the released commit, so "main is the latest released
+  # state" is a property this pipeline maintains rather than a habit someone has
+  # to remember. Last, and dependent on the release, so main only ever names a
+  # commit whose artifacts actually published. The push is a fast-forward: main
+  # carries no commits of its own, and refusing a non-fast-forward makes a
+  # divergence fail loudly here instead of being resolved by a merge nobody
+  # reviewed.
+  advance-main:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fast-forward main to the release commit
+        run: |
+          released="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          if ! git fetch origin main 2>/dev/null; then
+            echo "no main branch yet; creating it at $GITHUB_REF_NAME"
+            git push origin "$released:refs/heads/main"
+            exit 0
+          fi
+          if ! git merge-base --is-ancestor origin/main "$released"; then
+            echo "main ($(git rev-parse --short origin/main)) is not an ancestor of" \
+                 "$GITHUB_REF_NAME ($(git rev-parse --short "$released")); it has" \
+                 "commits of its own, so advancing it is not a fast-forward." \
+                 "Reconcile deliberately rather than letting this job merge." >&2
+            exit 1
+          fi
+          if [ "$(git rev-parse origin/main)" = "$released" ]; then
+            echo "main is already at $GITHUB_REF_NAME; nothing to do."
+            exit 0
+          fi
+          git push origin "$released:refs/heads/main"
