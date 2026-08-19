@@ -13,9 +13,10 @@ late is superseded by a new patch version, never by rewriting the tag.
 
 ## Initial release compatibility note
 
-This first tagged release establishes the public surface at `X.Y.Z`, including
-parallel regions and explicit deadline polling. The migration list remains
-relevant to consumers of historical untagged builds: `MachineSpec` now carries
+This first tagged release establishes the public surface at the workspace
+version declared in the root `Cargo.toml`, including parallel regions and
+explicit deadline polling. The migration list remains relevant to consumers of
+historical untagged builds: `MachineSpec` now carries
 `topology` and `deadlines`; `Tree::build` takes the sequential initial (with
 `Tree::for_machine` preferred); `InstanceState` and `Applied` now carry tagged
 complete configurations and deadline state, while `SimStep` and `SimReport`
@@ -77,10 +78,10 @@ both hooks when abandoned reservations must not advance them.
 - `manual:` the host matrix below has been run against the candidate build.
 - `manual:` live-model acceptance has been run against the candidate build.
 - `manual:` if the `fsm-core` or `fsm-store` public API changed, the version
-  bump matches the semver rules in [`API-POLICY.md`](API-POLICY.md). During the
-  `0.0.x` prototype line every subsequent release advances the patch and Cargo
-  treats each version as incompatible; if the project later adopts a nonzero
-  `0.y.z` minor, the minor becomes the breaking bump.
+  bump matches the semver rules in [`API-POLICY.md`](API-POLICY.md). While both
+  major and minor remain zero, each release advances the patch and is a Cargo
+  compatibility boundary; with a nonzero minor before `1.0`, the minor becomes
+  the breaking bump.
 - Release notes are generated from the conventional-commit history by
   `cliff.toml`, so the commit messages *are* the changelog. Write them for a
   reader of the release, not for the diff.
@@ -117,6 +118,10 @@ gate once that debt is paid, and update `ci.yml` and `release.yml` together.
 
 - Workspace tests pin `fsm version` and MCP `serverInfo.version` to the workspace
   package version.
+- After changing the root manifest version, regenerate the byte-exact MCP
+  outputs with `REGEN_SKELETON=1 cargo +stable test -p fsm-cli --test
+  mcp_skeleton` and `REGEN_MCP_FULL=1 cargo +stable test -p fsm-cli --test
+  mcp_full`, then rerun both tests without the environment variables.
 - The `version` job refuses lightweight tags, dereferences the required
   annotated tag, and refuses a tagged commit that is not contained in
   `develop`, or a tag version that does not match the manifest. Containment
@@ -157,8 +162,11 @@ Tags are annotated and named `vX.Y.Z`.
 ```console
 $ git push origin develop
 # wait for the branch matrix to pass
-$ git tag -a vX.Y.Z -m "fsm X.Y.Z"
-$ git push origin vX.Y.Z
+$ version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+$ test -n "$version"
+$ tag="v${version}"
+$ git tag -a "$tag" -m "fsm ${version}"
+$ git push origin "$tag"
 ```
 
 ## What the tag runs

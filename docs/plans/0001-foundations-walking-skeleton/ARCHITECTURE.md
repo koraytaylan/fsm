@@ -17,7 +17,7 @@ Read this before your first task. The workflow is identical for every task in th
 
 ## 0001 — Scaffold
 
-Root `Cargo.toml` is a `[workspace]` with `members = ["crates/fsm-core", "crates/fsm-cli"]`, `resolver = "3"`, and a `[workspace.package]` table pinning `edition = "2024"`, `rust-version = "1.89"`, `version = "X.Y.Z"`, `license = "MIT OR Apache-2.0"`. A `[workspace.lints.rust]` table sets `unsafe_code = "forbid"`. `rust-toolchain.toml` pins `channel = "1.89.0"` with `components = ["clippy", "rustfmt"]`.
+Root `Cargo.toml` is a `[workspace]` with `members = ["crates/fsm-core", "crates/fsm-cli"]`, `resolver = "3"`, and a `[workspace.package]` table pinning `edition = "2024"`, `rust-version = "1.89"`, the release version, and `license = "MIT OR Apache-2.0"`. A `[workspace.lints.rust]` table sets `unsafe_code = "forbid"`. `rust-toolchain.toml` pins `channel = "1.89.0"` with `components = ["clippy", "rustfmt"]`.
 
 Member manifests are written once here and never edited by a later task (zero dependencies makes this final):
 

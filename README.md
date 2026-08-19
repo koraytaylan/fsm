@@ -31,8 +31,11 @@ library:
 | `fsm-cli` | the `fsm` binary and MCP server. Not a supported library dependency. |
 
 ```toml
-fsm-core = { git = "https://github.com/koraytaylan/fsm", tag = "vX.Y.Z" }
+fsm-core = { git = "https://github.com/koraytaylan/fsm", tag = "<release-tag>" }
 ```
+
+Replace `<release-tag>` with an exact annotated tag from the repository's
+Releases page; never substitute a branch.
 
 See [docs/EMBEDDING.md](docs/EMBEDDING.md) for the library loop, the `Store`
 concurrency contract with measured latencies, and the guarantees an embedder

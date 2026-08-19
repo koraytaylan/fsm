@@ -27,12 +27,13 @@ depend on them is a **git tag**:
 
 ```toml
 [dependencies]
-fsm-core  = { git = "https://github.com/koraytaylan/fsm", tag = "vX.Y.Z" }
-fsm-store = { git = "https://github.com/koraytaylan/fsm", tag = "vX.Y.Z" }
+fsm-core  = { git = "https://github.com/koraytaylan/fsm", tag = "<release-tag>" }
+fsm-store = { git = "https://github.com/koraytaylan/fsm", tag = "<release-tag>" }
 ```
 
-> No tags exist yet; `vX.Y.Z` is the first one the release checklist creates.
-> Until it does, there is nothing to pin — do not substitute a branch.
+> Replace `<release-tag>` with an exact annotated tag listed on the repository's
+> Releases page. If none is listed, there is nothing to pin — do not substitute
+> a branch.
 
 The commitments that make a tag safe to pin:
 
@@ -51,11 +52,17 @@ registry compatibility follows Cargo and the rules below.
 
 ## Semver
 
-The workspace stays at `X.Y.Z` until its first public tag. Once published,
-`vX.Y.Z` is immutable like every other release tag. Cargo treats each distinct
-`0.0.x` release as incompatible, so every subsequent release in this prototype
-line increments the patch and may contain either compatible or breaking
-changes. Untagged `develop` commits carry no compatibility promise.
+The release version is authored once in the root `Cargo.toml` and inherited by
+the workspace crates. The fuzz workspace declares its own package version;
+lockfiles and byte-exact protocol fixtures merely materialize those manifest
+values. A release tag is `v` followed by the root manifest version and is
+immutable once published. Untagged `develop` commits carry no compatibility
+promise.
+
+Cargo's compatibility boundary before `1.0` is the leftmost non-zero version
+component. While both the major and minor are zero, each patch release is a
+new compatibility boundary and may contain either compatible or breaking
+changes.
 
 The initial tagged library surface includes these current contracts and
 migration paths from historical untagged builds:
@@ -132,10 +139,10 @@ Changes a compiling downstream would notice include:
 
 Compatible changes include bug fixes that make behaviour match its
 documentation, additive functions and modules, better hints and messages, and
-performance improvements. During the `0.0.x` phase both categories advance the
-patch. If the project later adopts a nonzero `0.y.z` minor, Cargo's usual
-pre-1.0 rule applies: the minor is the breaking bump and the patch is the
-compatible bump.
+performance improvements. While both major and minor remain zero, both
+categories advance the patch. If the project later adopts a nonzero minor
+before `1.0`, the minor is the breaking bump and the patch is the compatible
+bump.
 
 Two clarifications, because they are the ones that bite:
 

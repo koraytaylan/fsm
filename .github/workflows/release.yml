@@ -110,9 +110,9 @@ jobs:
 
   # What `cargo publish` is for a registry project: proof that the thing
   # consumers are told to depend on actually resolves and builds. README.md and
-  # docs/API-POLICY.md tell an embedder to pin `git = <repo>, tag = vX.Y.Z`, and
-  # that instruction is only true if a crate outside this workspace can follow
-  # it against the tag that just triggered this run.
+  # docs/API-POLICY.md tell an embedder to replace `<release-tag>` with an exact
+  # published tag, and that instruction is only true if a crate outside this
+  # workspace can follow it against the tag that just triggered this run.
   #
   # Built outside the checkout so it resolves the tag from the remote by URL,
   # exactly as a downstream crate would, rather than through a path dependency.
