@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use fsm_core::json::{JsonLimits, parse};
-use fsm_store::journal_io::{
-    JournalHealth, RepairError, classify, load_records, repair_truncate_torn_tail, verify,
-};
+use fsm_store::journal_io::{JournalHealth, classify, load_records, verify};
+#[cfg(unix)]
+use fsm_store::journal_io::{RepairError, repair_truncate_torn_tail};
+#[cfg(unix)]
 use fsm_store::snapshot::write_snapshot;
 use fsm_store::store::{ErrorObj, Store};
 

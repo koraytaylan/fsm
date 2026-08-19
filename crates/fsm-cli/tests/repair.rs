@@ -1,11 +1,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
 use fsm_cli::journal_io::{JournalHealth, RepairError, classify, init, repair_truncate_torn_tail};
-use fsm_core::json::{JsonLimits, Value, parse};
+use fsm_core::json::Value;
+#[cfg(unix)]
+use fsm_core::json::{JsonLimits, parse};
 use fsm_core::record::RecordKind;
 
 // A CLI child can briefly inherit a sibling test's advisory lock across fork.
