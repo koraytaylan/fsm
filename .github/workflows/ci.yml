@@ -48,6 +48,9 @@ jobs:
         with:
           shared-key: gate-${{ matrix.os }}-${{ matrix.rust }}
       - run: cargo fmt --all -- --check
+      # clippy has no file-length lint, so the thousand-line rule in
+      # CONTRIBUTING.md is enforced by a script rather than by the compiler.
+      - run: scripts/oversized-files.sh
       - run: cargo test --workspace
       - run: cargo test --workspace --release
       # Not `--all-targets`: the test targets carry pre-existing clippy lint

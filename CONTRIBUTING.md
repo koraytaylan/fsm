@@ -263,6 +263,13 @@ with spec fidelity, the idiom and the spec win.
   generality — the same instinct zero dependencies exists to resist. YAGNI
   applies to internal structure, not to spec coverage: the spec's own
   complexity is not optional.
+* **A thousand lines is the limit for a file.** `scripts/oversized-files.sh`
+  enforces it and CI runs it, because clippy has no lint for this —
+  `too_many_lines` measures a function's body, not a module. Split at the
+  seams the file already has, and move each test to the module it now
+  belongs with. A directory module (`foo/mod.rs` plus submodules) is the
+  usual shape; an inherent `impl` may be divided across them, so a large
+  type does not force a large file.
 
 ## Testing standards
 
@@ -289,7 +296,7 @@ apply:
 4. **Property tests where the law is a property.** `proputil.rs`,
    `history_props.rs`, `replay_determinism.rs`, and `determinism.rs` pin
    laws that hold across generated inputs rather than across one fixture.
-5. **Independent-caller integration tests.** `crates/fsm-cli/tests/naive_caller.rs`
+5. **Independent-caller integration tests.** `crates/fsm-cli/tests/naive_caller/`
    drives the MCP tool dispatch the way an LLM would — reading the error
    `hint` and correcting the next call — so a hint that stops teaching the
    fix fails the suite, not just the user.
@@ -380,6 +387,7 @@ Before requesting review, every code change runs the stable host gate:
 
 ```console
 $ cargo +stable fmt --all -- --check
+$ scripts/oversized-files.sh
 $ cargo +stable test --workspace --no-fail-fast
 $ cargo +stable test --workspace --release --no-fail-fast
 $ cargo +stable clippy --workspace -- -D warnings

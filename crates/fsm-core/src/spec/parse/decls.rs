@@ -1,0 +1,195 @@
+use crate::json::Value;
+
+use super::super::{CtxVar, EffectDecl, EventDecl, FieldDecl, Finding};
+use super::transitions::parse_ty_spec;
+use super::{check_keys, req_str};
+
+pub(super) fn parse_ctx(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<CtxVar> {
+    let Some(arr) = v.and_then(Value::as_arr) else {
+        if v.is_some() {
+            errs.push(Finding::err(
+                "def/shape",
+                "/context",
+                "context must be an array",
+                "use an array",
+            ));
+        }
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (i, item) in arr.iter().enumerate() {
+        let path = format!("/context/{i}");
+        let Some(obj) = item.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &path,
+                "context entry must be an object",
+                "use an object",
+            ));
+            continue;
+        };
+        check_keys(obj, &["name", "ty", "init"], &path, errs);
+        let name = req_str(obj, "name", &format!("{path}/name"), errs)
+            .unwrap_or("")
+            .to_string();
+        let ty = obj
+            .get("ty")
+            .and_then(|t| parse_ty_spec(t, &format!("{path}/ty"), errs));
+        let init = match obj.get("init") {
+            Some(Value::Num(_)) => {
+                errs.push(Finding::err(
+                    "req/number_token",
+                    format!("{path}/init"),
+                    "init must be a string",
+                    "quote the number",
+                ));
+                String::new()
+            }
+            Some(Value::Str(s)) => s.clone(),
+            _ => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{path}/init"),
+                    "init is required",
+                    "set init",
+                ));
+                String::new()
+            }
+        };
+        if name.starts_with('$') {
+            errs.push(Finding::err(
+                "def/reserved_ident",
+                format!("{path}/name"),
+                "$-prefixed identifiers are reserved",
+                "remove the $ prefix",
+            ));
+        }
+        if let Some(ty) = ty {
+            out.push(CtxVar { name, ty, init });
+        }
+    }
+    out
+}
+
+fn parse_fields(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Vec<FieldDecl> {
+    let Some(v) = v else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            path,
+            "fields must be an array",
+            "use an array of field objects",
+        ));
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (i, item) in arr.iter().enumerate() {
+        let p = format!("{path}/{i}");
+        let Some(obj) = item.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &p,
+                "field must be an object",
+                "use an object",
+            ));
+            continue;
+        };
+        check_keys(obj, &["name", "ty"], &p, errs);
+        let name = req_str(obj, "name", &format!("{p}/name"), errs)
+            .unwrap_or("")
+            .to_string();
+        if let Some(ty) = obj
+            .get("ty")
+            .and_then(|t| parse_ty_spec(t, &format!("{p}/ty"), errs))
+        {
+            out.push(FieldDecl { name, ty });
+        } else if obj.get("ty").is_none() {
+            errs.push(Finding::err(
+                "def/shape",
+                format!("{p}/ty"),
+                "ty is required",
+                "declare a type",
+            ));
+        }
+    }
+    out
+}
+
+fn parse_named_list(
+    v: Option<&Value>,
+    path: &str,
+    errs: &mut Vec<Finding>,
+) -> Option<Vec<(String, Vec<FieldDecl>)>> {
+    match v {
+        None => Some(Vec::new()),
+        Some(x) => match x.as_arr() {
+            None => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    path,
+                    format!("{path} must be an array"),
+                    "use an array",
+                ));
+                None
+            }
+            Some(arr) => {
+                let mut out = Vec::new();
+                for (i, item) in arr.iter().enumerate() {
+                    let p = format!("{path}/{i}");
+                    let Some(obj) = item.as_obj() else {
+                        errs.push(Finding::err(
+                            "def/shape",
+                            &p,
+                            "entry must be an object",
+                            "use an object",
+                        ));
+                        continue;
+                    };
+                    check_keys(obj, &["name", "fields"], &p, errs);
+                    let name = req_str(obj, "name", &format!("{p}/name"), errs)
+                        .unwrap_or("")
+                        .to_string();
+                    if name.starts_with('$') {
+                        errs.push(Finding::err(
+                            "def/reserved_ident",
+                            format!("{p}/name"),
+                            "$-prefixed identifiers are reserved",
+                            "remove the $ prefix",
+                        ));
+                    }
+                    let fields = parse_fields(obj.get("fields"), &format!("{p}/fields"), errs);
+                    for f in &fields {
+                        if f.name.starts_with('$') {
+                            errs.push(Finding::err(
+                                "def/reserved_ident",
+                                format!("{p}/fields"),
+                                "$-prefixed identifiers are reserved",
+                                "remove the $ prefix",
+                            ));
+                        }
+                    }
+                    out.push((name, fields));
+                }
+                Some(out)
+            }
+        },
+    }
+}
+
+pub(super) fn parse_events(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<EventDecl> {
+    parse_named_list(v, "/events", errs)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, fields)| EventDecl { name, fields })
+        .collect()
+}
+
+pub(super) fn parse_effects(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<EffectDecl> {
+    parse_named_list(v, "/effects", errs)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, fields)| EffectDecl { name, fields })
+        .collect()
+}
