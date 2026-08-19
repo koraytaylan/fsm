@@ -14,11 +14,12 @@ late is superseded by a new patch version, never by rewriting the tag.
 ## Before tagging
 
 - The CI matrix is green **on the exact commit you intend to tag**, not merely
-  on an earlier commit in the branch. It covers Linux, macOS and Windows at
-  stable and the minimum supported Rust version — every platform whose binary
-  the release ships is also tested — and a local run on one host cannot stand in
-  for it. `rust-toolchain.toml` pins 1.89.0 locally, so a plain `cargo test`
-  never exercises stable at all.
+  on an earlier commit in the branch. It covers the Linux, macOS and Windows OS
+  families at stable and the minimum supported Rust version; target-specific
+  release binaries are additionally built and smoke-tested on their matching
+  runner. A local run on one host cannot stand in for that matrix.
+  `rust-toolchain.toml` pins 1.89.0 locally, so a plain `cargo test` never
+  exercises stable at all.
 - `manual:` the host matrix below has been run against the candidate build.
 - `manual:` live-model acceptance has been run against the candidate build.
 - `manual:` if the `fsm-core` or `fsm-store` public API changed, the version
@@ -58,8 +59,13 @@ gate once that debt is paid, and update `ci.yml` and `release.yml` together.
 
 ### Version stamping
 
-- `grep '^version' Cargo.toml` matches `fsm version` and `serverInfo.version`.
-- The `version` job refuses the tag if it does not match the manifest.
+- Workspace tests pin `fsm version` and MCP `serverInfo.version` to the workspace
+  package version.
+- The `version` job refuses lightweight tags, dereferences the required
+  annotated tag, and refuses a tagged commit that is not contained in
+  `develop`, or a tag version that does not match the manifest. Containment
+  permits a release candidate to lag later `develop` pushes without permitting
+  a tag cut from another branch.
 
 ## Manual acceptance
 
@@ -101,11 +107,12 @@ $ git push origin vX.Y.Z
 
 ## What the tag runs
 
-Version check, then the six-leg gate matrix and the git-dependency proof in
-parallel, then the changelog from the conventional-commit history, then a CLI
-binary per platform, then the GitHub release with checksums, and finally the
-fast-forward of `main`. Every step converges on re-runs, so a release that fails partway is
-finished by pushing the same tag again rather than by inventing a new version.
+The version check runs first. The six-leg gate matrix, git-dependency proof,
+changelog generation, and target CLI builds then run in parallel. The GitHub
+release with checksums waits for all four, and the fast-forward of `main` runs
+last. Every step converges on re-runs, so a release that fails partway is
+finished with GitHub Actions' **Re-run failed jobs** action. Do not move, delete,
+or attempt to re-push the immutable tag.
 
 ## Afterwards
 

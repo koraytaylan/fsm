@@ -56,12 +56,22 @@ jobs:
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo doc --workspace --no-deps
 
-  # The zero-dependency guarantee is a property of the resolved graph, so it is
-  # worth one explicit, cheap check that does not depend on the test matrix
-  # happening to run.
+  # The zero-dependency guarantee and the core-only embed boundary are
+  # properties of the resolved graph, so keep explicit cheap checks that do
+  # not depend on the test matrix merely happening to compile the crates.
   zero-deps:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install 1.89 --profile minimal
       - run: cargo test -p fsm-cli --test zero_deps
+      - name: Embed acceptance depends on fsm-core alone
+        shell: bash
+        run: |
+          packages="$(
+            cargo tree -p fsm-embed-acceptance --depth 1 --prefix none \
+              --target all --all-features --format '{p}'
+          )"
+          [[ $(printf '%s\n' "$packages" | awk 'END { print NR }') -eq 2 ]]
+          [[ $(printf '%s\n' "$packages" | sed -n '1p') == fsm-embed-acceptance\ v* ]]
+          [[ $(printf '%s\n' "$packages" | sed -n '2p') == fsm-core\ v* ]]

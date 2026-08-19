@@ -1,14 +1,16 @@
-# Tag-driven releases: pushing a tag `vX.Y.Z` verifies the tag matches the
-# workspace version, that the full ci.yml gate passes on the tagged commit — on
+# Tag-driven releases: pushing a tag `vX.Y.Z` verifies that it is annotated,
+# its dereferenced commit is contained in `develop`, and it matches the
+# workspace version, then verifies that the full ci.yml gate passes on the
+# tagged commit — on
 # Linux, macOS and Windows, at stable and the minimum supported Rust version, so
-# every platform whose binary is shipped below is also tested — and that
+# every supported operating-system family is tested — and that
 # a downstream crate can actually depend on the tag, because a git tag *is* the
 # distribution artifact here (docs/API-POLICY.md). Then it generates the
 # changelog from the conventional-commit history with git-cliff, builds the CLI
 # for the most compatible target of each platform, publishes a GitHub release
 # with the binaries and checksums, and fast-forwards `main` to the released
-# commit. Every step converges on re-runs, so a partially failed release can be
-# finished by pushing the tag again.
+# commit. Every step converges on GitHub Actions job re-runs, so a partially
+# failed release can be finished without moving or re-pushing the tag.
 #
 # There is no crates.io publish: fsm is consumed as a tagged git dependency, so
 # the `git-dep` job below is what "published" means for this project. Nothing
@@ -27,11 +29,31 @@ env:
 
 jobs:
   # Cheap and first, so a mistyped tag fails before the matrix below occupies
-  # four runners.
+  # six runner jobs.
   version:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The containment proof below needs the tagged commit's ancestry, not
+          # the default one-commit checkout used for a tag-triggered workflow.
+          fetch-depth: 0
+      - name: Tag must be annotated
+        run: |
+          tag_type="$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}" 2>/dev/null || true)"
+          if [ "$tag_type" != "tag" ]; then
+            echo "tag $GITHUB_REF_NAME must be annotated; found ${tag_type:-missing}" >&2
+            exit 1
+          fi
+      - name: Tag commit must be contained in develop
+        run: |
+          released="$(git rev-parse "${GITHUB_REF_NAME}^{commit}")"
+          git fetch --no-tags origin +refs/heads/develop:refs/remotes/origin/develop
+          if ! git merge-base --is-ancestor "$released" origin/develop; then
+            echo "tag $GITHUB_REF_NAME is not contained in origin/develop" >&2
+            echo "release tags must be cut from develop" >&2
+            exit 1
+          fi
       - name: Tag must match the workspace version
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
@@ -75,6 +97,16 @@ jobs:
       - run: cargo test --workspace --release
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo doc --workspace --no-deps
+      - name: Embed acceptance depends on fsm-core alone
+        shell: bash
+        run: |
+          packages="$(
+            cargo tree -p fsm-embed-acceptance --depth 1 --prefix none \
+              --target all --all-features --format '{p}'
+          )"
+          [[ $(printf '%s\n' "$packages" | awk 'END { print NR }') -eq 2 ]]
+          [[ $(printf '%s\n' "$packages" | sed -n '1p') == fsm-embed-acceptance\ v* ]]
+          [[ $(printf '%s\n' "$packages" | sed -n '2p') == fsm-core\ v* ]]
 
   # What `cargo publish` is for a registry project: proof that the thing
   # consumers are told to depend on actually resolves and builds. README.md and
@@ -139,6 +171,7 @@ jobs:
           cargo run
 
   changelog:
+    needs: version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -180,6 +213,7 @@ jobs:
             RELEASE_NOTES.md
 
   build:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -212,6 +246,14 @@ jobs:
         with:
           shared-key: release-${{ matrix.target }}
       - run: cargo build --release -p fsm-cli --target ${{ matrix.target }}
+      - name: Smoke-test the target CLI
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/fsm"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            bin="$bin.exe"
+          fi
+          "$bin" version
       - name: Package
         shell: bash
         run: |

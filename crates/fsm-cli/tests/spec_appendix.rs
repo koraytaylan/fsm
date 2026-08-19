@@ -200,6 +200,57 @@ fn workflow_matrices_override_the_pinned_toolchain() {
     }
 }
 
+/// A release tag may lag later `develop` pushes, but it must name a commit that
+/// actually passed through that branch. Scope this proof to the earliest job so
+/// a similarly worded check after publication cannot satisfy the regression.
+fn release_version_job() -> &'static str {
+    RELEASE_WORKFLOW
+        .split("\n  version:")
+        .nth(1)
+        .and_then(|workflow| workflow.split("\n  verify:").next())
+        .expect("release.yml has a version job before verify")
+}
+
+#[test]
+fn release_tag_must_be_annotated() {
+    let version_job = release_version_job();
+    let object_type_check = version_job
+        .find("git cat-file -t \"refs/tags/${GITHUB_REF_NAME}\"")
+        .expect("the version job must inspect the release tag object");
+    assert!(
+        version_job.contains("[ \"$tag_type\" != \"tag\" ]"),
+        "the version job must refuse a lightweight release tag"
+    );
+    let commit_dereference = version_job
+        .find("git rev-parse \"${GITHUB_REF_NAME}^{commit}\"")
+        .expect("the version job must dereference the annotated tag");
+    assert!(
+        object_type_check < commit_dereference,
+        "the version job must establish that the tag is annotated before dereferencing it"
+    );
+}
+
+#[test]
+fn release_tag_commit_must_be_contained_in_develop() {
+    let version_job = release_version_job();
+    assert!(
+        version_job.contains("fetch-depth: 0"),
+        "the tag checkout needs complete history for an ancestry proof"
+    );
+    assert!(
+        version_job.contains("${GITHUB_REF_NAME}^{commit}"),
+        "the branch check must dereference annotated release tags"
+    );
+    assert!(
+        version_job.contains("refs/heads/develop:refs/remotes/origin/develop"),
+        "the version job must fetch the current develop branch"
+    );
+    assert!(
+        version_job.contains("git merge-base --is-ancestor \"$released\" origin/develop"),
+        "the version job must refuse a tag outside develop"
+    );
+}
+
 /// A tag is the distribution artifact, so the release must prove the tag is
 /// consumable rather than assume it.
 #[test]
