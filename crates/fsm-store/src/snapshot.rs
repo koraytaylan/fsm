@@ -670,7 +670,7 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
         Ok(state) => state,
         Err(current_error) => {
             // A migrated historical-genesis store can legitimately contain a
-            // definition above the aggregate current evaluation ceiling. Retry
+            // definition above the current aggregate evaluation ceiling. Retry
             // only after re-reading and verifying the journal chain and
             // matching its seq0 body against the exact historical limits
             // object.

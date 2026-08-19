@@ -174,7 +174,7 @@ pub struct Journal {
 
 /// Failures returned by direct journal creation and append operations.
 ///
-/// `RecordTooLarge` is part of the current persistence-boundary migration. Code
+/// `RecordTooLarge` is part of the current persistence-boundary contract. Code
 /// that matches this enum exhaustively must handle it as a refusal before any
 /// segment or in-memory journal state changes.
 #[derive(Debug)]

@@ -46,14 +46,19 @@ The commitments that make a tag safe to pin:
   warnings && cargo fmt --check` passes and the RELEASE.md checklist is complete
   at every tag, including the library acceptance check.
 
-Should these crates later go to crates.io, git-tag consumption keeps working and
-the semver rules below hold unchanged.
+Should these crates later go to crates.io, git-tag consumption keeps working;
+registry compatibility follows Cargo and the rules below.
 
 ## Semver
 
-Version `0.y.z`, so per Cargo's rules a **minor bump is the breaking bump**.
+The workspace stays at `X.Y.Z` until its first public tag. Once published,
+`vX.Y.Z` is immutable like every other release tag. Cargo treats each distinct
+`0.0.x` release as incompatible, so every subsequent release in this prototype
+line increments the patch and may contain either compatible or breaking
+changes. Untagged `develop` commits carry no compatibility promise.
 
-The `vX.Y.Z` library surface includes the breaking configuration migration:
+The initial tagged library surface includes these current contracts and
+migration paths from historical untagged builds:
 
 - `MachineSpec` replaces direct `states`/`initial` fields with `topology` and
   adds `deadlines`; match `Topology` or use its state-group helpers.
@@ -115,7 +120,7 @@ The `vX.Y.Z` library surface includes the breaking configuration migration:
   deadline definitions later appended to that journal remain replayable and do
   not receive the malformed-history exception.
 
-**Minor (`0.y` → `0.y+1`)** — anything a compiling downstream would notice:
+Changes a compiling downstream would notice include:
 
 - removing or renaming a public item, or changing its signature;
 - adding a field to a public struct, or a variant to a public enum (both are
@@ -125,19 +130,22 @@ The `vX.Y.Z` library surface includes the breaking configuration migration:
 - changing any hash, canonical form, or on-disk format (see below);
 - raising the minimum supported Rust version.
 
-**Patch (`0.y.z` → `0.y.z+1`)** — everything else: bug fixes that make behaviour
-match its documentation, new functions, new modules, better hints and messages,
-performance.
+Compatible changes include bug fixes that make behaviour match its
+documentation, additive functions and modules, better hints and messages, and
+performance improvements. During the `0.0.x` phase both categories advance the
+patch. If the project later adopts a nonzero `0.y.z` minor, Cargo's usual
+pre-1.0 rule applies: the minor is the breaking bump and the patch is the
+compatible bump.
 
 Two clarifications, because they are the ones that bite:
 
-- **Error `code` strings are API.** Adding a new code is a patch; changing which
-  code an existing situation returns is minor. `message` and `hint` text is *not*
-  API — it is written for humans and models and changes freely.
-- **Fixing a stated law is a patch even when output changes.** If a documented
-  round-trip is broken and the fix changes bytes, that is a patch: the previous
-  behaviour was not the contract. Such fixes are always called out in the release
-  notes.
+- **Error `code` strings are API.** Adding a new code is compatible; changing
+  which code an existing situation returns is breaking. `message` and `hint`
+  text is *not* API — it is written for humans and models and changes freely.
+- **Fixing a stated law is compatible even when output changes.** If a
+  documented round-trip is broken and the fix changes bytes, the previous
+  behaviour was not the contract. Such fixes are always called out in the
+  release notes.
 
 Nothing outside the documented public API is covered — in particular, `pub` items
 whose doc comment says they are diagnostic or internal.
@@ -180,7 +188,8 @@ Rules:
   `fsm:state:2`, `fsm:state-root:3`, `fsm:snapshot:4`,
   `fsm:request-fp:1`) so a change to one does not invalidate the others.
   Replay retains explicit legacy verifiers for markerless `fsm.state/1` and
-  `fsm.state-root/2` material. Changing a current domain is a minor bump.
+  `fsm.state-root/2` material. Changing a current domain is a compatibility
+  break and requires a new release tag.
 - `machine_id` is a hash of the whole canonical definition, `description`
   included. Editing a description yields a different machine. This is deliberate:
   see the pinning guarantee in [EMBEDDING.md](EMBEDDING.md).
@@ -198,4 +207,5 @@ your build, not a subtree.
 ## Minimum supported Rust version
 
 The MSRV is **1.89** (edition 2024), declared in `rust-toolchain.toml` and in
-each manifest's `rust-version`. Raising the MSRV is a minor bump.
+each manifest's `rust-version`. Raising the MSRV is a compatibility break and
+requires a new release tag.

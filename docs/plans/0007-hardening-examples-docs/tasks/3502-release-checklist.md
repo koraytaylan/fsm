@@ -13,7 +13,7 @@ merged_as: ""
 ---
 # Release Checklist
 
-initial release needs a written, repeatable definition of done: stamping, install verification, the host matrix, the live-model acceptance note, and the regeneration checks that keep the fixtures honest.
+The initial release needs a written, repeatable definition of done: stamping, install verification, the host matrix, the live-model acceptance note, and the regeneration checks that keep the fixtures honest.
 
 **Steps:**
 

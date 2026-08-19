@@ -1,10 +1,10 @@
 # Scope — Plan 0007
 
-> Attack it, randomize it, document it — then call it initial release.
+> Attack it, randomize it, document it — then ship the initial release.
 
 ## Why this plan
 
-Plans 0001–0006 prove correctness on curated fixtures. Nothing yet attacks the hand-rolled parsers with hostile bytes, runs randomized whole-stack operation sequences, measures determinism and latency on generated machines, or explains the engine to a first-time user. This plan closes those gaps: an out-of-workspace fuzz crate (the one documented exception to zero dependencies, never part of the shipped binary's graph), an in-tree zero-dependency chaos suite, seeded machine generators feeding a determinism and performance suite, three worked example machines with full walkthroughs, and the README, SPEC appendices, licenses, and release checklist that make initial release shippable.
+Plans 0001–0006 prove correctness on curated fixtures. Nothing yet attacks the hand-rolled parsers with hostile bytes, runs randomized whole-stack operation sequences, measures determinism and latency on generated machines, or explains the engine to a first-time user. This plan closes those gaps: an out-of-workspace fuzz crate (the one documented exception to zero dependencies, never part of the shipped binary's graph), an in-tree zero-dependency chaos suite, seeded machine generators feeding a determinism and performance suite, three worked example machines with full walkthroughs, and the README, SPEC appendices, licenses, and release checklist that make the initial release shippable.
 
 ## In scope
 

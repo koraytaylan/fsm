@@ -38,7 +38,7 @@ binding keywords and is the source of truth.
   event**, deadlines advance only through an explicit caller-timed poll, and
   there are no hidden events, background timers, floats, `HashMap`, or
   `SystemTime` in `fsm-core`. Broadening any of those rules is a spec change,
-  not an implementation change, and a spec change is a minor version bump per
+  not an implementation change, and requires a new release tag under
   [`docs/API-POLICY.md`](docs/API-POLICY.md).
 * Deliberate deviations from "what a database would do" are also part of the
   contract: journals are migrated forward and never rewritten, a
@@ -138,8 +138,9 @@ implementation is complete.
   each manifest's `rust-version`. Workspace lints in the root `Cargo.toml`
   forbid `unsafe_code` and deny `print_stdout` / `print_stderr`.
   `crates/fsm-core/clippy.toml` disallows `HashMap`, `HashSet`,
-  `SystemTime`, and `Instant` in `fsm-core`. Raising the MSRV is a minor
-  bump per [`docs/API-POLICY.md`](docs/API-POLICY.md).
+  `SystemTime`, and `Instant` in `fsm-core`. Raising the MSRV is a compatibility
+  break requiring a new release tag under
+  [`docs/API-POLICY.md`](docs/API-POLICY.md).
 
 The rest of this section is craft guidance. It is a set of heuristics with a
 stated purpose, not a checklist to satisfy mechanically: a reviewer may ask

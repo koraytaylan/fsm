@@ -11,11 +11,12 @@ moved or deleted, because library consumers pin it. There is no crates.io
 publish to undo — a git tag *is* the distribution artifact — so a mistake found
 late is superseded by a new patch version, never by rewriting the tag.
 
-## X.Y.Z compatibility note
+## Initial release compatibility note
 
-This release adds parallel regions and explicit deadline polling. It is a
-pre-1.0 minor release because `MachineSpec` now carries `topology` and
-`deadlines`; `Tree::build` takes the sequential initial (with
+This first tagged release establishes the public surface at `X.Y.Z`, including
+parallel regions and explicit deadline polling. The migration list remains
+relevant to consumers of historical untagged builds: `MachineSpec` now carries
+`topology` and `deadlines`; `Tree::build` takes the sequential initial (with
 `Tree::for_machine` preferred); `InstanceState` and `Applied` now carry tagged
 complete configurations and deadline state, while `SimStep` and `SimReport`
 carry tagged complete configurations;
@@ -38,7 +39,7 @@ during a complete journal fold. New definition writes, `fold_from` snapshot
 tails, and current-genesis snapshots remain subject to the current ceiling.
 Historical folds additionally accept already-sealed rejection details produced
 before enabled-event analysis charged omitted guards; new diagnostics always
-use the corrected accounting. Current admission also closes the legacy bug
+use the corrected accounting. Current admission also closes the historical bug
 that allowed ownerless, child-bearing, terminal, or initial-bearing history
 pseudostates. Exact-historical-genesis full folds retain that admission only for
 sequential definitions without deadlines and reproduce the active/history
@@ -76,8 +77,10 @@ both hooks when abandoned reservations must not advance them.
 - `manual:` the host matrix below has been run against the candidate build.
 - `manual:` live-model acceptance has been run against the candidate build.
 - `manual:` if the `fsm-core` or `fsm-store` public API changed, the version
-  bump matches the semver rules in [`API-POLICY.md`](API-POLICY.md). Pre-`1.0`,
-  the **minor** is the breaking bump.
+  bump matches the semver rules in [`API-POLICY.md`](API-POLICY.md). During the
+  `0.0.x` prototype line every subsequent release advances the patch and Cargo
+  treats each version as incompatible; if the project later adopts a nonzero
+  `0.y.z` minor, the minor becomes the breaking bump.
 - Release notes are generated from the conventional-commit history by
   `cliff.toml`, so the commit messages *are* the changelog. Write them for a
   reader of the release, not for the diff.
@@ -182,10 +185,11 @@ Confirm the outcome from outside the workflow that produced it:
   `SHA256SUMS`;
 - `main` points at the tagged commit.
 
-## current definition of done
+## Initial release definition of done
 
-current is done when the gate, the supported-consumer checks, version stamping, the
-manual acceptance list, and the tag pipeline are all complete and green.
+The initial release is done when the gate, the supported-consumer checks,
+version stamping, the manual acceptance list, and the tag pipeline are all
+complete and green.
 
 There are three supported consumers, and all three are in that list: the CLI,
 the MCP hosts, and a Rust program embedding `fsm-core` (optionally `fsm-store`).

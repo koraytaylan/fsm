@@ -116,7 +116,7 @@ pub fn zeros() -> String {
 
 /// Exact resource-ceiling object written into new genesis records.
 ///
-/// Verification additionally recognizes the historical object from before
+/// Verification additionally recognizes the historical object that predates
 /// the current definition ceilings, without rewriting its hash material.
 pub fn limits_value() -> Value {
     let mut m = BTreeMap::new();

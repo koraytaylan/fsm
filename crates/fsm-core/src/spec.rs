@@ -2967,8 +2967,8 @@ fn compile_accepted_with_compatibility(
 
 /// Compile a definition using the legacy persistence compatibility rules.
 ///
-/// This unchecked primitive skips the aggregate current expression ceiling. For
-/// sequential definitions without deadlines, it also preserves the old
+/// This unchecked primitive skips the current aggregate expression ceiling.
+/// For sequential definitions without deadlines, it also preserves the old
 /// admission of ownerless, child-bearing, terminal, or initial-bearing history
 /// pseudostates. All other structural, parsing, and typing checks remain
 /// enforced. It does not authenticate a genesis or prove that `source` was
