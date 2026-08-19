@@ -21,58 +21,75 @@ pub use crate::spec::Finding as AnalyzeFinding;
 /// (guard-optimistic).
 pub fn enterable(m: &CompiledMachine, t: &Tree) -> BTreeSet<String> {
     let mut enterable = BTreeSet::new();
-    if let Some(root) = t.id(&m.spec.initial) {
-        enterable.insert(t.names[root as usize].clone());
-        for n in t.initial_descent(root) {
-            enterable.insert(t.names[n as usize].clone());
+    for (_, root_initial) in &t.root_initials {
+        enterable.insert(t.names[*root_initial as usize].clone());
+        for state in t.initial_descent(*root_initial) {
+            enterable.insert(t.names[state as usize].clone());
         }
     }
     let mut changed = true;
     while changed {
         changed = false;
-        for tr in &m.spec.transitions {
-            if !enterable.contains(&tr.from) {
+        for transition in &m.spec.transitions {
+            if !enterable.contains(&transition.from) {
                 continue;
             }
-            let Some(to) = &tr.to else { continue };
-            let Some(tid) = t.id(to) else { continue };
-            let mut add = Vec::new();
-            match &t.kind[tid as usize] {
-                NodeKind::History(_) => {
-                    if let Some(owner) = t.history_owner(tid) {
-                        add.push(owner);
-                        add.extend(t.initial_descent(owner));
-                        if let Some(src) = t.id(&tr.from) {
-                            let dom = t.proper_lca(src, owner);
-                            for n in t.entry_path(dom, owner) {
-                                add.push(n);
-                            }
-                        }
-                    }
-                }
-                NodeKind::Compound => {
-                    add.push(tid);
-                    add.extend(t.initial_descent(tid));
-                }
-                NodeKind::Leaf => add.push(tid),
+            let Some(target) = &transition.to else {
+                continue;
+            };
+            if add_enterable_target(t, &transition.from, target, &mut enterable) {
+                changed = true;
             }
-            // also add ancestors of the target down from root? entry path
-            if let Some(src) = t.id(&tr.from) {
-                if !matches!(t.kind[tid as usize], NodeKind::History(_)) {
-                    let dom = t.proper_lca(src, tid);
-                    for n in t.entry_path(dom, tid) {
-                        add.push(n);
-                    }
-                }
-            }
-            for n in add {
-                if enterable.insert(t.names[n as usize].clone()) {
-                    changed = true;
-                }
+        }
+        for deadline in &m.spec.deadlines {
+            if enterable.contains(&deadline.from)
+                && add_enterable_target(t, &deadline.from, &deadline.to, &mut enterable)
+            {
+                changed = true;
             }
         }
     }
     enterable
+}
+
+fn add_enterable_target(
+    tree: &Tree,
+    source: &str,
+    target: &str,
+    enterable: &mut BTreeSet<String>,
+) -> bool {
+    let Some(target_id) = tree.id(target) else {
+        return false;
+    };
+    let mut additions = Vec::new();
+    match &tree.kind[target_id as usize] {
+        NodeKind::History(_) => {
+            if let Some(owner) = tree.history_owner(target_id) {
+                additions.push(owner);
+                additions.extend(tree.initial_descent(owner));
+                if let Some(source_id) = tree.id(source) {
+                    let domain = tree.proper_lca(source_id, owner);
+                    additions.extend(tree.entry_path(domain, owner));
+                }
+            }
+        }
+        NodeKind::Compound => {
+            additions.push(target_id);
+            additions.extend(tree.initial_descent(target_id));
+        }
+        NodeKind::Leaf => additions.push(target_id),
+    }
+    if let Some(source_id) = tree.id(source)
+        && !matches!(tree.kind[target_id as usize], NodeKind::History(_))
+    {
+        let domain = tree.proper_lca(source_id, target_id);
+        additions.extend(tree.entry_path(domain, target_id));
+    }
+    let mut changed = false;
+    for state in additions {
+        changed |= enterable.insert(tree.names[state as usize].clone());
+    }
+    changed
 }
 
 pub fn reachability_findings(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
@@ -93,6 +110,10 @@ pub fn reachability_findings(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     out
 }
 
+/// Report structural event handling for every real leaf.
+///
+/// Terminal leaves are inert: their ancestor handlers are not candidates, even
+/// while another region keeps a parallel instance running.
 pub fn completeness_matrix(m: &CompiledMachine, t: &Tree) -> BTreeMap<(String, String), String> {
     let policy = match m.spec.on_unhandled {
         crate::spec::Unhandled::Ignore => "ignore",
@@ -111,15 +132,18 @@ pub fn completeness_matrix(m: &CompiledMachine, t: &Tree) -> BTreeMap<(String, S
     for leaf in leaves {
         let chain = t.chain(leaf);
         let lname = t.names[leaf as usize].clone();
+        let terminal = find_machine_node(&m.spec, &lname).is_some_and(|node| node.terminal);
         for ev in &m.spec.events {
             let mut cell = format!("unhandled({policy})");
-            for &sid in &chain {
-                let sname = &t.names[sid as usize];
-                if m.transitions_by
-                    .contains_key(&(sname.clone(), ev.name.clone()))
-                {
-                    cell = format!("handled@{sname}");
-                    break;
+            if !terminal {
+                for &sid in &chain {
+                    let sname = &t.names[sid as usize];
+                    if m.transitions_by
+                        .contains_key(&(sname.clone(), ev.name.clone()))
+                    {
+                        cell = format!("handled@{sname}");
+                        break;
+                    }
                 }
             }
             out.insert((lname.clone(), ev.name.clone()), cell);
@@ -320,17 +344,25 @@ fn find_node<'a>(
     None
 }
 
+fn find_machine_node<'a>(spec: &'a MachineSpec, name: &str) -> Option<&'a crate::spec::StateNode> {
+    spec.state_groups()
+        .into_iter()
+        .find_map(|(_, states, _)| find_node(states, name))
+}
+
 fn create_path_depends_on_override(m: &CompiledMachine, t: &Tree) -> bool {
     let mut srcs = Vec::new();
     for inv in &m.spec.invariants {
         srcs.push(inv.expr.as_str());
     }
-    if let Some(root) = t.id(&m.spec.initial) {
-        let mut chain = vec![root];
-        chain.extend(t.initial_descent(root));
-        for id in chain {
-            let name = &t.names[id as usize];
-            if let Some(node) = find_node(&m.spec.states, name) {
+    let mut entered_names = BTreeSet::new();
+    for (_, root_initial) in &t.root_initials {
+        let mut entry_path = vec![*root_initial];
+        entry_path.extend(t.initial_descent(*root_initial));
+        for state in entry_path {
+            let name = &t.names[state as usize];
+            entered_names.insert(name.as_str());
+            if let Some(node) = find_machine_node(&m.spec, name) {
                 if let Some(b) = &node.entry {
                     for s in &b.sets {
                         srcs.push(s.value.as_str());
@@ -344,6 +376,11 @@ fn create_path_depends_on_override(m: &CompiledMachine, t: &Tree) -> bool {
             }
         }
     }
+    for deadline in &m.spec.deadlines {
+        if entered_names.contains(deadline.from.as_str()) {
+            srcs.push(deadline.after.as_str());
+        }
+    }
     srcs.iter().any(|src| {
         parser::parse(src)
             .map(|e| expr_reads_ctx(&e))
@@ -352,7 +389,7 @@ fn create_path_depends_on_override(m: &CompiledMachine, t: &Tree) -> bool {
 }
 
 pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
-    let declared = crate::step::create(m, t, &BTreeMap::new());
+    let declared = crate::step::create(m, t, &BTreeMap::new(), 0);
     let Err(r) = declared else {
         return Vec::new();
     };
@@ -365,7 +402,7 @@ pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
             defaults.insert(c.name.clone(), v);
         }
     }
-    if crate::step::create(m, t, &defaults).is_ok() {
+    if crate::step::create(m, t, &defaults, 0).is_ok() {
         return Vec::new();
     }
     let mut alts = BTreeMap::new();
@@ -374,14 +411,14 @@ pub fn create_always_fails(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
             alts.insert(c.name.clone(), v);
         }
     }
-    if crate::step::create(m, t, &alts).is_ok() {
+    if crate::step::create(m, t, &alts, 0).is_ok() {
         return Vec::new();
     }
     for c in &m.spec.context {
         if let Some(v) = type_alt(&c.ty, &m.spec.enums) {
             let mut one = BTreeMap::new();
             one.insert(c.name.clone(), v);
-            if crate::step::create(m, t, &one).is_ok() {
+            if crate::step::create(m, t, &one, 0).is_ok() {
                 return Vec::new();
             }
         }
@@ -431,8 +468,35 @@ pub fn enabled_events(
     st: &InstanceState,
     budget: &mut Budget,
 ) -> Vec<EventReport> {
-    let leaf = t.id(&st.leaf).unwrap();
-    let chain = t.chain(leaf);
+    enabled_events_with_guard_accounting(m, t, st, budget, OmittedGuardAccounting::Current)
+}
+
+/// Reproduce the legacy diagnostic accounting used in already-sealed
+/// rejection details. Runtime selection always charged omitted guards; only
+/// the historical enabled-event diagnostic omitted those ticks.
+pub(crate) fn enabled_events_historical(
+    m: &CompiledMachine,
+    t: &Tree,
+    st: &InstanceState,
+    budget: &mut Budget,
+) -> Vec<EventReport> {
+    enabled_events_with_guard_accounting(m, t, st, budget, OmittedGuardAccounting::Historical)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OmittedGuardAccounting {
+    Current,
+    Historical,
+}
+
+fn enabled_events_with_guard_accounting(
+    m: &CompiledMachine,
+    t: &Tree,
+    st: &InstanceState,
+    budget: &mut Budget,
+    omitted_guard_accounting: OmittedGuardAccounting,
+) -> Vec<EventReport> {
+    let active_leaves = t.active_leaves(&st.configuration).unwrap_or_default();
     let ctx_tys: BTreeMap<String, crate::expr::typeck::Ty> = m
         .spec
         .context
@@ -450,28 +514,33 @@ pub fn enabled_events(
         let mut summary = EventStatus::Disabled;
         let mut fields = Vec::new();
         let mut preempt = None;
-        for &sid in &chain {
-            let sname = t.names[sid as usize].clone();
-            let idxs = m
-                .transitions_by
-                .get(&(sname.clone(), ev.name.clone()))
-                .cloned()
-                .unwrap_or_default();
-            for idx in idxs {
-                let status = if let Some(p) = preempt {
-                    p
-                } else {
-                    match &m.spec.transitions[idx].guard {
-                        None => EventStatus::Enabled,
-                        Some(src) => {
-                            let e = m
-                                .compiled_exprs
-                                .get(&crate::machine::ExprSlot::TransitionGuard(idx))
-                                .map(|c| c.expr.clone())
-                                .or_else(|| parser::parse(src).ok());
-                            match e {
-                                Some(e) => match partial_eval_bool(
-                                    &e,
+        for (_, leaf) in &active_leaves {
+            let leaf_name = &t.names[*leaf as usize];
+            if find_machine_node(&m.spec, leaf_name).is_some_and(|node| node.terminal) {
+                continue;
+            }
+            for sid in t.chain(*leaf) {
+                let sname = t.names[sid as usize].clone();
+                let idxs = m
+                    .transitions_by
+                    .get(&(sname.clone(), ev.name.clone()))
+                    .cloned()
+                    .unwrap_or_default();
+                for idx in idxs {
+                    let status = if let Some(p) = preempt {
+                        p
+                    } else {
+                        match &m.spec.transitions[idx].guard {
+                            None if omitted_guard_accounting == OmittedGuardAccounting::Current => {
+                                // Runtime evaluates an omitted guard as an
+                                // implicit `true`, including its one budget
+                                // tick. Analysis follows the same path; as for
+                                // any other concrete evaluation error, budget
+                                // exhaustion is conservatively Unknown.
+                                let implicit =
+                                    parser::parse("true").expect("static omitted-guard expression");
+                                match partial_eval_bool(
+                                    &implicit,
                                     &st.ctx,
                                     &crate::expr::typeck::Scope {
                                         kind: crate::expr::typeck::ScopeKind::Guard,
@@ -483,35 +552,60 @@ pub fn enabled_events(
                                 ) {
                                     Truth::True => EventStatus::Enabled,
                                     Truth::False => EventStatus::Disabled,
-                                    Truth::Unknown => {
-                                        fields = field_reads(src);
-                                        EventStatus::DependsOnPayload
-                                    }
-                                },
-                                None => EventStatus::DependsOnPayload,
+                                    Truth::Unknown => EventStatus::DependsOnPayload,
+                                }
+                            }
+                            None => EventStatus::Enabled,
+                            Some(src) => {
+                                let e = m
+                                    .compiled_exprs
+                                    .get(&crate::machine::ExprSlot::TransitionGuard(idx))
+                                    .map(|c| c.expr.clone())
+                                    .or_else(|| parser::parse(src).ok());
+                                match e {
+                                    Some(e) => match partial_eval_bool(
+                                        &e,
+                                        &st.ctx,
+                                        &crate::expr::typeck::Scope {
+                                            kind: crate::expr::typeck::ScopeKind::Guard,
+                                            ctx: &ctx_tys,
+                                            evt: Some(&evt_tys),
+                                            enums: &m.spec.enums,
+                                        },
+                                        budget,
+                                    ) {
+                                        Truth::True => EventStatus::Enabled,
+                                        Truth::False => EventStatus::Disabled,
+                                        Truth::Unknown => {
+                                            fields = field_reads(src);
+                                            EventStatus::DependsOnPayload
+                                        }
+                                    },
+                                    None => EventStatus::DependsOnPayload,
+                                }
                             }
                         }
-                    }
-                };
-                if preempt.is_none() {
-                    match status {
-                        EventStatus::Enabled => {
-                            summary = EventStatus::Enabled;
-                            preempt = Some(EventStatus::Preempted);
+                    };
+                    if preempt.is_none() {
+                        match status {
+                            EventStatus::Enabled => {
+                                summary = EventStatus::Enabled;
+                                preempt = Some(EventStatus::Preempted);
+                            }
+                            EventStatus::DependsOnPayload => {
+                                summary = EventStatus::DependsOnPayload;
+                                preempt = Some(EventStatus::PreemptedMaybe);
+                            }
+                            EventStatus::Disabled => {}
+                            _ => {}
                         }
-                        EventStatus::DependsOnPayload => {
-                            summary = EventStatus::DependsOnPayload;
-                            preempt = Some(EventStatus::PreemptedMaybe);
-                        }
-                        EventStatus::Disabled => {}
-                        _ => {}
                     }
+                    cands.push(CandidateReport {
+                        source_state: sname.clone(),
+                        transition_idx: idx,
+                        truth: status,
+                    });
                 }
-                cands.push(CandidateReport {
-                    source_state: sname.clone(),
-                    transition_idx: idx,
-                    truth: status,
-                });
             }
         }
         if summary == EventStatus::Disabled && !cands.is_empty() {

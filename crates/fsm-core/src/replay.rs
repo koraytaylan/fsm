@@ -5,24 +5,29 @@
 use std::collections::BTreeMap;
 
 use crate::expr::eval::{Budget, Val};
-use crate::hashes::{domain_hash, state_hash};
+use crate::hashes::{
+    STATE_FORMAT, configuration_value, domain_hash, legacy_state_hash, state_hash,
+};
 use crate::json::Value;
-use crate::machine::{CompiledMachine, InstanceState, Status};
+use crate::machine::{ActiveConfiguration, CompiledMachine, InstanceState, Status};
 use crate::record::{Record, RecordKind};
 use crate::spec::{TySpec, compile, parse_machine};
-use crate::step::{Outcome, create, step};
+use crate::step::{
+    DeadlineOutcome, Outcome, PendingDeadline, Rejection, create, poll_deadline, step,
+};
 use crate::tree::Tree;
 
-/// Hash domain for [`state_root_at`]. Unchanged by the addition of request
-/// fingerprints, which the hash chain already authenticates — see the note in
-/// `state_root_at` — so historical roots stay verifiable.
-pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:2";
+/// Format discriminator for newly written logical store-state roots.
+pub const STATE_ROOT_FORMAT: &str = "fsm.state-root/3";
+/// Hash domain paired with [`STATE_ROOT_FORMAT`].
+pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:3";
 
 /// Hash the complete logical store state at `seq` without the journal hash.
 ///
 /// Omitting `last_hash` avoids a cycle when this root is placed inside the
 /// checkpoint record whose hash authenticates it. The checkpoint hash
-/// separately binds a snapshot's `last_hash`.
+/// separately binds a snapshot's `last_hash`. The current root commits each
+/// instance's tagged active configuration and absolute deadline schedules.
 pub fn state_root_at(st: &StoreState, seq: u64) -> String {
     let mut machines = BTreeMap::new();
     for (id, machine) in &st.machines {
@@ -42,12 +47,21 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
             .iter()
             .map(|(owner, leaf)| (owner.clone(), Value::Str(leaf.clone())))
             .collect();
+        let deadlines = inst
+            .deadlines
+            .iter()
+            .map(|(name, due_ms)| (name.clone(), Value::Num(due_ms.to_string())))
+            .collect();
         let body = BTreeMap::from([
-            ("leaf".into(), Value::Str(inst.leaf.clone())),
+            (
+                "configuration".into(),
+                configuration_value(&inst.configuration),
+            ),
             ("status".into(), Value::Str(inst.status.as_str().into())),
             ("machine_id".into(), Value::Str(mid.clone())),
             ("context".into(), Value::Obj(context)),
             ("history".into(), Value::Obj(history)),
+            ("deadlines".into(), Value::Obj(deadlines)),
             (
                 "pending".into(),
                 Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
@@ -79,6 +93,85 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
         "sha256:{}",
         crate::sha256::to_hex(&domain_hash(STATE_ROOT_DOMAIN, &material))
     )
+}
+
+fn legacy_state_root_at(state: &StoreState, seq: u64) -> String {
+    let machines = state
+        .machines
+        .iter()
+        .map(|(identifier, machine)| (identifier.clone(), machine.def.clone()))
+        .collect();
+    let mut instances = BTreeMap::new();
+    for (identifier, instance) in &state.instances {
+        let machine_id = state
+            .instance_machines
+            .get(identifier)
+            .cloned()
+            .unwrap_or_default();
+        let leaf = match &instance.configuration {
+            ActiveConfiguration::Sequential { leaf } => leaf.clone(),
+            ActiveConfiguration::Parallel { .. } => String::new(),
+        };
+        let context = instance
+            .ctx
+            .iter()
+            .map(|(name, value)| (name.clone(), Value::Str(ctx_val_string(value))))
+            .collect();
+        let history = instance
+            .history
+            .iter()
+            .map(|(owner, bound)| (owner.clone(), Value::Str(bound.clone())))
+            .collect();
+        instances.insert(
+            identifier.clone(),
+            Value::Obj(BTreeMap::from([
+                ("leaf".into(), Value::Str(leaf)),
+                ("status".into(), Value::Str(instance.status.as_str().into())),
+                ("machine_id".into(), Value::Str(machine_id.clone())),
+                ("context".into(), Value::Obj(context)),
+                ("history".into(), Value::Obj(history)),
+                (
+                    "pending".into(),
+                    Value::Arr(instance.pending.iter().cloned().map(Value::Str).collect()),
+                ),
+                (
+                    "state_hash".into(),
+                    Value::Str(
+                        legacy_state_hash(&machine_id, identifier, seq, instance)
+                            .unwrap_or_default(),
+                    ),
+                ),
+            ])),
+        );
+    }
+    let dedup = state
+        .dedup
+        .iter()
+        .map(|(request_id, slot)| (request_id.clone(), Value::Num(slot.seq.to_string())))
+        .collect();
+    let material = Value::Obj(BTreeMap::from([
+        ("seq".into(), Value::Num(seq.to_string())),
+        ("machines".into(), Value::Obj(machines)),
+        ("instances".into(), Value::Obj(instances)),
+        ("dedup".into(), Value::Obj(dedup)),
+    ]));
+    format!(
+        "sha256:{}",
+        crate::sha256::to_hex(&domain_hash("fsm:state-root:2", &material))
+    )
+}
+
+fn state_hash_for_record(
+    record: &Record,
+    machine_id: &str,
+    instance_id: &str,
+    state: &InstanceState,
+) -> Option<String> {
+    match record.body.get("state_format").and_then(Value::as_str) {
+        Some(STATE_FORMAT) => Some(state_hash(machine_id, instance_id, record.seq, state)),
+        None => legacy_state_hash(machine_id, instance_id, record.seq, state),
+        Some(_) => None,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -153,25 +246,71 @@ pub enum ReplayError {
     },
 }
 
+/// Fold a complete journal from genesis through its final record.
+///
+/// Only this complete-fold path recognizes the exact historical genesis and
+/// applies its journal-level compatibility compiler to `machine_defined`
+/// records above the current aggregate expression ceiling and to the narrowly
+/// preserved legacy malformed history shapes.
 pub fn fold_with(
     records: impl IntoIterator<Item = Record>,
     sink: &mut impl RecordSink,
 ) -> Result<StoreState, ReplayError> {
-    fold_from(StoreState::default(), records, sink)
+    fold_records(
+        StoreState::default(),
+        records,
+        sink,
+        GenesisDefinitionLimits::DetectHistorical,
+    )
 }
 
+/// Fold a current-format journal tail onto an already-authenticated state.
+///
+/// Tail records never gain historical definition authority: a new
+/// `machine_defined` record is compiled under the current aggregate ceiling.
 pub fn fold_from(
-    mut st: StoreState,
+    st: StoreState,
     records: impl IntoIterator<Item = Record>,
     sink: &mut impl RecordSink,
 ) -> Result<StoreState, ReplayError> {
+    // A tail fold starts from an already-validated state or snapshot. Any new
+    // MachineDefined record in that tail was admitted by the current writer.
+    fold_records(st, records, sink, GenesisDefinitionLimits::CurrentOnly)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GenesisDefinitionLimits {
+    DetectHistorical,
+    CurrentOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DefinitionCompileMode {
+    Current,
+    HistoricalPersistence,
+}
+
+fn fold_records(
+    mut state: StoreState,
+    records: impl IntoIterator<Item = Record>,
+    sink: &mut impl RecordSink,
+    genesis_definition_limits: GenesisDefinitionLimits,
+) -> Result<StoreState, ReplayError> {
+    let mut compile_mode = DefinitionCompileMode::Current;
     for rec in records {
-        apply(&mut st, &rec)?;
-        st.last_seq = rec.seq;
-        st.last_hash = rec.hash.clone();
-        sink.on_record(&rec, &st);
+        if genesis_definition_limits == GenesisDefinitionLimits::DetectHistorical
+            && rec.seq == 0
+            && rec.kind == RecordKind::Genesis
+            && crate::record::genesis_uses_historical_definition_limits(&rec.body)
+        {
+            compile_mode = DefinitionCompileMode::HistoricalPersistence;
+        }
+        apply(&mut state, &rec, compile_mode)?;
+        state.last_seq = rec.seq;
+        state.last_hash = rec.hash.clone();
+        sink.on_record(&rec, &state);
     }
-    Ok(st)
+    Ok(state)
 }
 
 /// Serialize a context value in the **persistence form**: always a string.
@@ -285,7 +424,11 @@ fn claim_request_id(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError
     Ok(())
 }
 
-fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
+fn apply(
+    st: &mut StoreState,
+    rec: &Record,
+    compile_mode: DefinitionCompileMode,
+) -> Result<(), ReplayError> {
     let applied = match rec.kind {
         RecordKind::Genesis => Ok(()),
         RecordKind::MachineDefined => {
@@ -294,9 +437,14 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .get("def")
                 .cloned()
                 .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
-            let compiled = crate::spec::compile_accepted(&def)
-                .map_err(|_| ReplayError::UnknownMachine { seq: rec.seq })?;
-            let tree = Tree::build(&compiled.spec.states);
+            let compiled = match compile_mode {
+                DefinitionCompileMode::Current => crate::spec::compile_accepted(&def),
+                DefinitionCompileMode::HistoricalPersistence => {
+                    crate::spec::compile_accepted_historical_unchecked(&def)
+                }
+            }
+            .map_err(|_| ReplayError::UnknownMachine { seq: rec.seq })?;
+            let tree = Tree::for_machine(&compiled.spec);
             let id = rec
                 .body
                 .get("machine_id")
@@ -344,13 +492,14 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                         });
                     }
                 };
-            let a = create(&m.compiled, &m.tree, &overrides)
+            let a = create(&m.compiled, &m.tree, &overrides, rec.ts)
                 .map_err(|_| ReplayError::UnknownInstance { seq: rec.seq })?;
             let inst = InstanceState {
                 status: a.status_after,
-                leaf: a.leaf_after,
+                configuration: a.configuration_after,
                 ctx: a.ctx_after,
                 history: a.history_after,
+                deadlines: a.deadlines_after,
                 pending: a
                     .effects
                     .iter()
@@ -358,7 +507,12 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     .collect(),
             };
             if let Some(want) = rec.body.get("state_hash").and_then(Value::as_str) {
-                let got = state_hash(mid, iid, rec.seq, &inst);
+                let got = state_hash_for_record(rec, mid, iid, &inst).ok_or(
+                    ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "state_format",
+                    },
+                )?;
                 if got != want {
                     return Err(ReplayError::StateHashMismatch {
                         seq: rec.seq,
@@ -368,10 +522,18 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 }
             }
             if let Some(want) = rec.body.get("leaf").and_then(Value::as_str) {
-                if want != inst.leaf {
+                if inst.configuration.leaf(None) != Some(want) {
                     return Err(ReplayError::FieldMismatch {
                         seq: rec.seq,
                         field: "leaf",
+                    });
+                }
+            }
+            if let Some(want) = rec.body.get("configuration") {
+                if want != &configuration_value(&inst.configuration) {
+                    return Err(ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "configuration",
                     });
                 }
             }
@@ -406,8 +568,8 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .get(iid)
                 .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?
                 .clone();
-            let mut bud = Budget::new(4096);
-            match step(&m.compiled, &m.tree, &inst, ev, &payload, &mut bud) {
+            let mut bud = Budget::new(crate::limits::MAX_EVAL_TICKS);
+            match step(&m.compiled, &m.tree, &inst, ev, &payload, rec.ts, &mut bud) {
                 Outcome::Applied(a) => {
                     let want = rec.body.get("exited").and_then(Value::as_arr).ok_or(
                         ReplayError::FieldMismatch {
@@ -455,9 +617,10 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     );
                     let new = InstanceState {
                         status: a.status_after,
-                        leaf: a.leaf_after,
+                        configuration: a.configuration_after,
                         ctx: a.ctx_after,
                         history: a.history_after,
+                        deadlines: a.deadlines_after,
                         pending,
                     };
                     let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
@@ -466,7 +629,12 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                             field: "state_hash",
                         },
                     )?;
-                    let got = state_hash(&mid, iid, rec.seq, &new);
+                    let got = state_hash_for_record(rec, &mid, iid, &new).ok_or(
+                        ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "state_format",
+                        },
+                    )?;
                     if got != want {
                         return Err(ReplayError::StateHashMismatch {
                             seq: rec.seq,
@@ -517,7 +685,11 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     field: "state_hash",
                 },
             )?;
-            let got = state_hash(&mid, iid, rec.seq, inst);
+            let got =
+                state_hash_for_record(rec, &mid, iid, inst).ok_or(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_format",
+                })?;
             if got != want {
                 return Err(ReplayError::StateHashMismatch {
                     seq: rec.seq,
@@ -525,8 +697,8 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     found: got,
                 });
             }
-            let mut bud = Budget::new(4096);
-            let out = step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud);
+            let mut bud = Budget::new(crate::limits::MAX_EVAL_TICKS);
+            let out = step(&m.compiled, &m.tree, inst, ev, &payload, rec.ts, &mut bud);
             match (rec.kind, &out) {
                 (RecordKind::EventRejected, Outcome::Rejected(r)) => {
                     let code = rec.body.get("code").and_then(Value::as_str).ok_or(
@@ -571,11 +743,30 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                             field: "details",
                         },
                     )?;
-                    let mut bud2 = Budget::new(4096);
+                    let mut bud2 = Budget::new(crate::limits::MAX_EVAL_TICKS);
                     let evs = crate::analyze::enabled_events(&m.compiled, &m.tree, inst, &mut bud2);
                     let rid = rec.body.get("request_id").and_then(Value::as_str);
                     let want = expected_event_rejected_details(r, rid, enabled_reports_value(&evs));
-                    if details != &want {
+                    let historical_match = if details != &want
+                        && compile_mode == DefinitionCompileMode::HistoricalPersistence
+                    {
+                        let mut historical_budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+                        let historical_events = crate::analyze::enabled_events_historical(
+                            &m.compiled,
+                            &m.tree,
+                            inst,
+                            &mut historical_budget,
+                        );
+                        let historical = expected_event_rejected_details(
+                            r,
+                            rid,
+                            enabled_reports_value(&historical_events),
+                        );
+                        details == &historical
+                    } else {
+                        false
+                    };
+                    if details != &want && !historical_match {
                         return Err(ReplayError::FieldMismatch {
                             seq: rec.seq,
                             field: "details",
@@ -602,6 +793,172 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     }
                 }
                 (RecordKind::EventIgnored, Outcome::Ignored) => {}
+                _ => {
+                    return Err(ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "outcome",
+                    });
+                }
+            }
+            claim_request_id(st, rec)?;
+            Ok(())
+        }
+        RecordKind::DeadlineApplied => {
+            let iid = rec
+                .body
+                .get("instance_id")
+                .and_then(Value::as_str)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let mid = st
+                .instance_machines
+                .get(iid)
+                .cloned()
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let machine = st
+                .machines
+                .get(&mid)
+                .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+            let instance = st
+                .instances
+                .get(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?
+                .clone();
+            let expected_deadline = record_deadline(rec)?;
+            let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+            match poll_deadline(
+                &machine.compiled,
+                &machine.tree,
+                &instance,
+                rec.ts,
+                &mut budget,
+            ) {
+                DeadlineOutcome::Applied(applied) => {
+                    verify_deadline(rec, &expected_deadline, &applied.deadline, false)?;
+                    verify_deadline_transition(rec, &applied.transition)?;
+                    let mut pending = instance.pending.clone();
+                    pending.extend(
+                        applied
+                            .transition
+                            .effects
+                            .iter()
+                            .map(|effect| format!("{iid}/{}/{}", rec.seq, effect.k)),
+                    );
+                    let new = InstanceState {
+                        status: applied.transition.status_after,
+                        configuration: applied.transition.configuration_after,
+                        ctx: applied.transition.ctx_after,
+                        history: applied.transition.history_after,
+                        deadlines: applied.transition.deadlines_after,
+                        pending,
+                    };
+                    verify_record_state_hash(rec, &mid, iid, &new)?;
+                    st.instances.insert(iid.into(), new);
+                }
+                _ => {
+                    return Err(ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "outcome",
+                    });
+                }
+            }
+            claim_request_id(st, rec)?;
+            Ok(())
+        }
+        RecordKind::DeadlineRejected => {
+            let iid = rec
+                .body
+                .get("instance_id")
+                .and_then(Value::as_str)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let mid = st
+                .instance_machines
+                .get(iid)
+                .cloned()
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let machine = st
+                .machines
+                .get(&mid)
+                .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+            let instance = st
+                .instances
+                .get(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            verify_record_state_hash(rec, &mid, iid, instance)?;
+            let expected_deadline = record_deadline(rec)?;
+            let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+            match poll_deadline(
+                &machine.compiled,
+                &machine.tree,
+                instance,
+                rec.ts,
+                &mut budget,
+            ) {
+                DeadlineOutcome::Rejected(rejected) => {
+                    let selected =
+                        rejected
+                            .deadline
+                            .as_ref()
+                            .ok_or(ReplayError::FieldMismatch {
+                                seq: rec.seq,
+                                field: "deadline",
+                            })?;
+                    verify_deadline(rec, &expected_deadline, selected, false)?;
+                    let request_id = rec.body.get("request_id").and_then(Value::as_str);
+                    let details =
+                        expected_deadline_rejected_details(&rejected.rejection, request_id);
+                    verify_rejection(rec, &rejected.rejection, &details)?;
+                }
+                _ => {
+                    return Err(ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "outcome",
+                    });
+                }
+            }
+            claim_request_id(st, rec)?;
+            Ok(())
+        }
+        RecordKind::DeadlineNotDue => {
+            let iid = rec
+                .body
+                .get("instance_id")
+                .and_then(Value::as_str)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let mid = st
+                .instance_machines
+                .get(iid)
+                .cloned()
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            let machine = st
+                .machines
+                .get(&mid)
+                .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+            let instance = st
+                .instances
+                .get(iid)
+                .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+            verify_record_state_hash(rec, &mid, iid, instance)?;
+            let expected_next = record_next_deadline(rec)?;
+            let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+            match poll_deadline(
+                &machine.compiled,
+                &machine.tree,
+                instance,
+                rec.ts,
+                &mut budget,
+            ) {
+                DeadlineOutcome::NotDue { next } => match (&expected_next, &next) {
+                    (None, None) => {}
+                    (Some(expected), Some(actual)) => {
+                        verify_deadline(rec, expected, actual, true)?;
+                    }
+                    _ => {
+                        return Err(ReplayError::FieldMismatch {
+                            seq: rec.seq,
+                            field: "next_deadline",
+                        });
+                    }
+                },
                 _ => {
                     return Err(ReplayError::FieldMismatch {
                         seq: rec.seq,
@@ -650,7 +1007,11 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     field: "state_hash",
                 },
             )?;
-            let got = state_hash(&mid, iid, rec.seq, inst);
+            let got =
+                state_hash_for_record(rec, &mid, iid, inst).ok_or(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_format",
+                })?;
             if got != want {
                 return Err(ReplayError::StateHashMismatch {
                     seq: rec.seq,
@@ -682,7 +1043,11 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     field: "state_hash",
                 },
             )?;
-            let got = state_hash(&mid, iid, rec.seq, inst);
+            let got =
+                state_hash_for_record(rec, &mid, iid, inst).ok_or(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_format",
+                })?;
             if got != want {
                 return Err(ReplayError::StateHashMismatch {
                     seq: rec.seq,
@@ -746,6 +1111,28 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                         });
                     }
                 }
+                Some("poll_deadline") => {
+                    let machine = st
+                        .machines
+                        .get(&mid)
+                        .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+                    let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+                    match poll_deadline(&machine.compiled, &machine.tree, inst, rec.ts, &mut budget)
+                    {
+                        DeadlineOutcome::Rejected(rejected) if rejected.deadline.is_none() => {
+                            let request_id = rec.body.get("request_id").and_then(Value::as_str);
+                            let details =
+                                expected_deadline_rejected_details(&rejected.rejection, request_id);
+                            verify_rejection(rec, &rejected.rejection, &details)?;
+                        }
+                        _ => {
+                            return Err(ReplayError::FieldMismatch {
+                                seq: rec.seq,
+                                field: "outcome",
+                            });
+                        }
+                    }
+                }
                 _ => {
                     return Err(ReplayError::FieldMismatch {
                         seq: rec.seq,
@@ -767,6 +1154,7 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                 .get_mut(iid)
                 .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
             inst.status = Status::Cancelled;
+            inst.deadlines.clear();
             let mid = st
                 .instance_machines
                 .get(iid)
@@ -782,7 +1170,11 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
                     field: "state_hash",
                 },
             )?;
-            let got = state_hash(&mid, iid, rec.seq, inst);
+            let got =
+                state_hash_for_record(rec, &mid, iid, inst).ok_or(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_format",
+                })?;
             if got != want {
                 return Err(ReplayError::StateHashMismatch {
                     seq: rec.seq,
@@ -820,7 +1212,17 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
             seq: rec.seq,
             field: "state_root",
         })?;
-        if want != state_root_at(st, rec.seq) {
+        let found = match rec.body.get("state_root_format").and_then(Value::as_str) {
+            Some(STATE_ROOT_FORMAT) => state_root_at(st, rec.seq),
+            None => legacy_state_root_at(st, rec.seq),
+            Some(_) => {
+                return Err(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "state_root_format",
+                });
+            }
+        };
+        if want != found {
             return Err(ReplayError::FieldMismatch {
                 seq: rec.seq,
                 field: "state_root",
@@ -828,6 +1230,264 @@ fn apply(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
         }
     }
     Ok(())
+}
+
+fn record_deadline(record: &Record) -> Result<PendingDeadline, ReplayError> {
+    let name =
+        record
+            .body
+            .get("deadline")
+            .and_then(Value::as_str)
+            .ok_or(ReplayError::FieldMismatch {
+                seq: record.seq,
+                field: "deadline",
+            })?;
+    let deadline_idx = record
+        .body
+        .get("deadline_idx")
+        .and_then(Value::as_num)
+        .and_then(|raw| raw.parse().ok())
+        .ok_or(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "deadline_idx",
+        })?;
+    let due_ms = record
+        .body
+        .get("due_ms")
+        .and_then(Value::as_num)
+        .and_then(|raw| raw.parse().ok())
+        .ok_or(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "due_ms",
+        })?;
+    Ok(PendingDeadline {
+        name: name.into(),
+        deadline_idx,
+        due_ms,
+    })
+}
+
+fn record_next_deadline(record: &Record) -> Result<Option<PendingDeadline>, ReplayError> {
+    let Some(name) = record.body.get("next_deadline") else {
+        if record.body.get("next_deadline_idx").is_some()
+            || record.body.get("next_due_ms").is_some()
+        {
+            return Err(ReplayError::FieldMismatch {
+                seq: record.seq,
+                field: "next_deadline",
+            });
+        }
+        return Ok(None);
+    };
+    let name = name.as_str().ok_or(ReplayError::FieldMismatch {
+        seq: record.seq,
+        field: "next_deadline",
+    })?;
+    let deadline_idx = record
+        .body
+        .get("next_deadline_idx")
+        .and_then(Value::as_num)
+        .and_then(|raw| raw.parse().ok())
+        .ok_or(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "next_deadline_idx",
+        })?;
+    let due_ms = record
+        .body
+        .get("next_due_ms")
+        .and_then(Value::as_num)
+        .and_then(|raw| raw.parse().ok())
+        .ok_or(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "next_due_ms",
+        })?;
+    Ok(Some(PendingDeadline {
+        name: name.into(),
+        deadline_idx,
+        due_ms,
+    }))
+}
+
+fn verify_deadline(
+    record: &Record,
+    expected: &PendingDeadline,
+    actual: &PendingDeadline,
+    next: bool,
+) -> Result<(), ReplayError> {
+    if expected.name != actual.name {
+        return Err(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: if next { "next_deadline" } else { "deadline" },
+        });
+    }
+    if expected.deadline_idx != actual.deadline_idx {
+        return Err(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: if next {
+                "next_deadline_idx"
+            } else {
+                "deadline_idx"
+            },
+        });
+    }
+    if expected.due_ms != actual.due_ms {
+        return Err(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: if next { "next_due_ms" } else { "due_ms" },
+        });
+    }
+    Ok(())
+}
+
+fn verify_deadline_transition(
+    record: &Record,
+    applied: &crate::step::Applied,
+) -> Result<(), ReplayError> {
+    let exited =
+        record
+            .body
+            .get("exited")
+            .and_then(Value::as_arr)
+            .ok_or(ReplayError::FieldMismatch {
+                seq: record.seq,
+                field: "exited",
+            })?;
+    let actual_exited: Vec<_> = applied.exited.iter().cloned().map(Value::Str).collect();
+    if exited != actual_exited {
+        return Err(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "exited",
+        });
+    }
+
+    let entered =
+        record
+            .body
+            .get("entered")
+            .and_then(Value::as_arr)
+            .ok_or(ReplayError::FieldMismatch {
+                seq: record.seq,
+                field: "entered",
+            })?;
+    let actual_entered: Vec<_> = applied.entered.iter().cloned().map(Value::Str).collect();
+    if entered != actual_entered {
+        return Err(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "entered",
+        });
+    }
+
+    if record.body.get("source_state").and_then(Value::as_str)
+        != Some(applied.source_state.as_str())
+    {
+        return Err(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "source_state",
+        });
+    }
+    Ok(())
+}
+
+fn verify_record_state_hash(
+    record: &Record,
+    machine_id: &str,
+    instance_id: &str,
+    state: &InstanceState,
+) -> Result<(), ReplayError> {
+    let expected = record
+        .body
+        .get("state_hash")
+        .and_then(Value::as_str)
+        .ok_or(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "state_hash",
+        })?;
+    let actual = state_hash_for_record(record, machine_id, instance_id, state).ok_or(
+        ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "state_format",
+        },
+    )?;
+    if actual != expected {
+        return Err(ReplayError::StateHashMismatch {
+            seq: record.seq,
+            expected: expected.into(),
+            found: actual,
+        });
+    }
+    Ok(())
+}
+
+fn verify_rejection(
+    record: &Record,
+    rejection: &Rejection,
+    expected_details: &BTreeMap<String, Value>,
+) -> Result<(), ReplayError> {
+    for (field, expected) in [
+        ("code", rejection.code),
+        ("message", rejection.message.as_str()),
+        ("hint", rejection.hint.as_str()),
+    ] {
+        if record.body.get(field).and_then(Value::as_str) != Some(expected) {
+            return Err(ReplayError::FieldMismatch {
+                seq: record.seq,
+                field,
+            });
+        }
+    }
+    if record.body.get("details").and_then(Value::as_obj) != Some(expected_details) {
+        return Err(ReplayError::FieldMismatch {
+            seq: record.seq,
+            field: "details",
+        });
+    }
+    match (record.body.get("span"), rejection.span) {
+        (None, None) => {}
+        (Some(Value::Obj(span)), Some((start, end))) => {
+            if span.get("start").and_then(Value::as_num) != Some(&start.to_string())
+                || span.get("end").and_then(Value::as_num) != Some(&end.to_string())
+            {
+                return Err(ReplayError::FieldMismatch {
+                    seq: record.seq,
+                    field: "span",
+                });
+            }
+        }
+        _ => {
+            return Err(ReplayError::FieldMismatch {
+                seq: record.seq,
+                field: "span",
+            });
+        }
+    }
+    Ok(())
+}
+
+fn expected_deadline_rejected_details(
+    rejection: &Rejection,
+    request_id: Option<&str>,
+) -> BTreeMap<String, Value> {
+    let mut details = BTreeMap::new();
+    if let Some(block) = &rejection.block {
+        details.insert("block".into(), Value::Str(block.clone()));
+    }
+    if let Some(cause) = rejection.cause {
+        details.insert("cause".into(), Value::Str(cause.into()));
+    }
+    if let Some(source_state) = &rejection.source_state {
+        details.insert("source_state".into(), Value::Str(source_state.clone()));
+    }
+    if let Some(transition_idx) = rejection.transition_idx {
+        details.insert(
+            "transition_idx".into(),
+            Value::Num(transition_idx.to_string()),
+        );
+    }
+    details.insert("trace".into(), rejection.trace.to_value());
+    if let Some(request_id) = request_id {
+        details.insert("request_id".into(), Value::Str(request_id.into()));
+    }
+    details
 }
 
 fn expected_event_rejected_details(
@@ -905,7 +1565,14 @@ fn enabled_reports_value(evs: &[crate::analyze::EventReport]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::expr::ast::node_count;
+    use crate::expr::eval::Budget;
+    use crate::expr::parser;
+    use crate::hashes::legacy_state_hash;
+    use crate::json::{JsonLimits, parse};
     use crate::record::{RecordKind, seal};
+    use crate::spec::{compile_accepted, compile_accepted_historical_unchecked};
+    use crate::step::{Outcome, create, step};
 
     struct Collect(Vec<u64>);
     impl RecordSink for Collect {
@@ -938,5 +1605,188 @@ mod tests {
         let mut c = Collect(Vec::new());
         fold_with(vec![r0], &mut c).unwrap();
         assert_eq!(c.0, [0]);
+    }
+
+    #[test]
+    fn historical_guardless_budget_rejection_still_full_folds() {
+        fn balanced_sum(terms: usize) -> String {
+            if terms == 1 {
+                return "1".into();
+            }
+            let left = terms / 2;
+            format!("({} + {})", balanced_sum(left), balanced_sum(terms - left))
+        }
+
+        let context = (0..32)
+            .map(|index| format!(r#"{{"name":"x{index}","ty":"int","init":"0"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        let expression = format!("-({})", balanced_sum(64));
+        assert_eq!(node_count(&parser::parse(&expression).unwrap()), 128);
+        let sets = (0..32)
+            .map(|index| format!(r#"{{"target":"x{index}","value":"{expression}"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        let conjunction = (0..16).map(|_| "true").collect::<Vec<_>>().join(" and ");
+        let diagnostic_guard = format!("not (not ({conjunction}))");
+        assert_eq!(node_count(&parser::parse(&diagnostic_guard).unwrap()), 33);
+        let mut events = (0..127)
+            .map(|index| format!(r#"{{"name":"e{index}","fields":[]}}"#))
+            .collect::<Vec<_>>();
+        events.push(r#"{"name":"go","fields":[]}"#.into());
+        let mut transitions = (0..127)
+            .map(|index| {
+                format!(r#"{{"from":"waiting","on":"e{index}","if":"{diagnostic_guard}"}}"#)
+            })
+            .collect::<Vec<_>>();
+        transitions.push(format!(r#"{{"from":"waiting","on":"go","do":[{sets}]}}"#));
+        let definition = parse(
+            format!(
+                r#"{{"format":"fsm.machine/1","name":"legacy_guard_tick","states":[{{"name":"waiting"}}],"initial":"waiting","context":[{context}],"events":[{}],"transitions":[{}]}}"#,
+                events.join(","),
+                transitions.join(",")
+            )
+            .as_bytes(),
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        assert!(
+            compile_accepted(&definition)
+                .unwrap_err()
+                .iter()
+                .any(|finding| finding.code == "def/limit_eval")
+        );
+        let machine = compile_accepted_historical_unchecked(&definition).unwrap();
+        let machine_id = machine.machine_id.clone();
+        let tree = Tree::for_machine(&machine.spec);
+
+        let Value::Obj(mut historical_limits) = crate::record::limits_value() else {
+            unreachable!("limits are an object")
+        };
+        historical_limits.remove("max_regions");
+        historical_limits.remove("max_deadlines");
+        historical_limits.remove("max_eval_ticks");
+        let genesis = seal(
+            0,
+            0,
+            RecordKind::Genesis,
+            Value::Obj(BTreeMap::from([
+                ("format".into(), Value::Str("fsm.journal/1".into())),
+                ("created_ts".into(), Value::Num("0".into())),
+                ("limits".into(), Value::Obj(historical_limits)),
+            ])),
+            &crate::record::zeros(),
+        );
+        let defined = seal(
+            1,
+            1,
+            RecordKind::MachineDefined,
+            Value::Obj(BTreeMap::from([
+                ("machine_id".into(), Value::Str(machine_id.clone())),
+                ("def".into(), definition),
+            ])),
+            &genesis.hash,
+        );
+
+        let created = create(&machine, &tree, &BTreeMap::new(), 2).unwrap();
+        let state = InstanceState {
+            status: created.status_after,
+            configuration: created.configuration_after,
+            ctx: created.ctx_after,
+            history: created.history_after,
+            deadlines: created.deadlines_after,
+            pending: Vec::new(),
+        };
+        let instance_id = "legacy-instance";
+        let created_record = seal(
+            2,
+            2,
+            RecordKind::InstanceCreated,
+            Value::Obj(BTreeMap::from([
+                ("instance_id".into(), Value::Str(instance_id.into())),
+                ("machine_id".into(), Value::Str(machine_id.clone())),
+                ("request_id".into(), Value::Str("create".into())),
+                (
+                    "state_hash".into(),
+                    Value::Str(legacy_state_hash(&machine_id, instance_id, 2, &state).unwrap()),
+                ),
+                ("leaf".into(), Value::Str("waiting".into())),
+                ("overrides".into(), Value::Obj(BTreeMap::new())),
+            ])),
+            &defined.hash,
+        );
+
+        let payload = Value::Obj(BTreeMap::new());
+        let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+        let Outcome::Rejected(rejection) =
+            step(&machine, &tree, &state, "go", &payload, 3, &mut budget)
+        else {
+            panic!("the historical omitted-guard tick must exhaust the budget");
+        };
+        assert_eq!(rejection.code, "run/action_error");
+        assert_eq!(rejection.cause, Some("internal/budget"));
+        let mut current_analysis_budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+        let current_enabled =
+            crate::analyze::enabled_events(&machine, &tree, &state, &mut current_analysis_budget);
+        let mut historical_analysis_budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+        let enabled = crate::analyze::enabled_events_historical(
+            &machine,
+            &tree,
+            &state,
+            &mut historical_analysis_budget,
+        );
+        assert_eq!(
+            current_enabled.last().map(|event| event.status),
+            Some(crate::analyze::EventStatus::DependsOnPayload)
+        );
+        assert_eq!(
+            enabled.last().map(|event| event.status),
+            Some(crate::analyze::EventStatus::Enabled)
+        );
+        let mut rejected_body = BTreeMap::from([
+            ("instance_id".into(), Value::Str(instance_id.into())),
+            ("request_id".into(), Value::Str("send".into())),
+            ("event".into(), Value::Str("go".into())),
+            ("payload".into(), payload),
+            (
+                "state_hash".into(),
+                Value::Str(legacy_state_hash(&machine_id, instance_id, 3, &state).unwrap()),
+            ),
+            ("code".into(), Value::Str(rejection.code.into())),
+            ("message".into(), Value::Str(rejection.message.clone())),
+            ("hint".into(), Value::Str(rejection.hint.clone())),
+            (
+                "details".into(),
+                Value::Obj(expected_event_rejected_details(
+                    &rejection,
+                    Some("send"),
+                    enabled_reports_value(&enabled),
+                )),
+            ),
+        ]);
+        if let Some((start, end)) = rejection.span {
+            rejected_body.insert(
+                "span".into(),
+                Value::Obj(BTreeMap::from([
+                    ("start".into(), Value::Num(start.to_string())),
+                    ("end".into(), Value::Num(end.to_string())),
+                ])),
+            );
+        }
+        let rejected = seal(
+            3,
+            3,
+            RecordKind::EventRejected,
+            Value::Obj(rejected_body),
+            &created_record.hash,
+        );
+
+        let replayed = fold_with(
+            vec![genesis, defined, created_record, rejected],
+            &mut NopSink,
+        )
+        .expect("the exact historical rejection must remain replayable");
+        assert_eq!(replayed.last_seq, 3);
+        assert_eq!(replayed.instances.get(instance_id), Some(&state));
     }
 }

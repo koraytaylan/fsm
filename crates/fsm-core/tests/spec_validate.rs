@@ -176,13 +176,12 @@ fn each_structural_rule() {
         r#"{{"format":"fsm.machine/1","name":"m","regions":[],"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
     );
     let cs = parse_s_res(&s).err().unwrap_or_default();
-    assert!(cs.contains(&"def/not_supported"), "{cs:?}");
+    assert!(cs.contains(&"def/shape"), "{cs:?}");
 
     let s = format!(
         r#"{{"format":"fsm.machine/1","name":"m","deadlines":[],"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
     );
-    let cs = parse_s_res(&s).err().unwrap_or_default();
-    assert!(cs.contains(&"def/not_supported"), "{cs:?}");
+    assert!(parse_s_res(&s).is_ok());
 }
 
 #[test]

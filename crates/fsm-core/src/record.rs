@@ -16,6 +16,12 @@ pub enum RecordKind {
     EventApplied,
     EventRejected,
     EventIgnored,
+    /// A due deadline atomically applied its transition pipeline.
+    DeadlineApplied,
+    /// A selected deadline was rejected without changing instance state.
+    DeadlineRejected,
+    /// An explicit poll found no due deadline but durably claimed its request id.
+    DeadlineNotDue,
     EffectAcked,
     RequestRejected,
     InstanceCancelled,
@@ -32,6 +38,9 @@ impl RecordKind {
             RecordKind::EventApplied => "event_applied",
             RecordKind::EventRejected => "event_rejected",
             RecordKind::EventIgnored => "event_ignored",
+            RecordKind::DeadlineApplied => "deadline_applied",
+            RecordKind::DeadlineRejected => "deadline_rejected",
+            RecordKind::DeadlineNotDue => "deadline_not_due",
             RecordKind::EffectAcked => "effect_acked",
             RecordKind::RequestRejected => "request_rejected",
             RecordKind::InstanceCancelled => "instance_cancelled",
@@ -48,6 +57,9 @@ impl RecordKind {
             "event_applied" => Self::EventApplied,
             "event_rejected" => Self::EventRejected,
             "event_ignored" => Self::EventIgnored,
+            "deadline_applied" => Self::DeadlineApplied,
+            "deadline_rejected" => Self::DeadlineRejected,
+            "deadline_not_due" => Self::DeadlineNotDue,
             "effect_acked" => Self::EffectAcked,
             "request_rejected" => Self::RequestRejected,
             "instance_cancelled" => Self::InstanceCancelled,
@@ -57,7 +69,8 @@ impl RecordKind {
         })
     }
 
-    pub fn all() -> [RecordKind; 11] {
+    /// Every recognized record kind in stable protocol order.
+    pub fn all() -> [RecordKind; 14] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -65,6 +78,9 @@ impl RecordKind {
             Self::EventApplied,
             Self::EventRejected,
             Self::EventIgnored,
+            Self::DeadlineApplied,
+            Self::DeadlineRejected,
+            Self::DeadlineNotDue,
             Self::EffectAcked,
             Self::RequestRejected,
             Self::InstanceCancelled,
@@ -98,6 +114,10 @@ pub fn zeros() -> String {
     "0".repeat(64)
 }
 
+/// Exact resource-ceiling object written into new genesis records.
+///
+/// Verification additionally recognizes the historical object from before
+/// the current definition ceilings, without rewriting its hash material.
 pub fn limits_value() -> Value {
     let mut m = BTreeMap::new();
     m.insert(
@@ -111,6 +131,18 @@ pub fn limits_value() -> Value {
     m.insert(
         "max_history".into(),
         Value::Num(crate::limits::MAX_HISTORY.to_string()),
+    );
+    m.insert(
+        "max_regions".into(),
+        Value::Num(crate::limits::MAX_REGIONS.to_string()),
+    );
+    m.insert(
+        "max_deadlines".into(),
+        Value::Num(crate::limits::MAX_DEADLINES.to_string()),
+    );
+    m.insert(
+        "max_eval_ticks".into(),
+        Value::Num(crate::limits::MAX_EVAL_TICKS.to_string()),
     );
     m.insert(
         "max_events".into(),
@@ -157,6 +189,33 @@ pub fn limits_value() -> Value {
         Value::Num(crate::limits::MAX_DEF_BYTES.to_string()),
     );
     Value::Obj(m)
+}
+
+fn legacy_limits_value() -> Value {
+    let Value::Obj(mut limits) = limits_value() else {
+        unreachable!("limits_value always returns an object")
+    };
+    limits.remove("max_regions");
+    limits.remove("max_deadlines");
+    limits.remove("max_eval_ticks");
+    Value::Obj(limits)
+}
+
+/// Whether a candidate genesis body carries the exact legacy limits object.
+///
+/// This checks only the body value. It does not verify record kind, envelope,
+/// hash chain, or persistence provenance. Persistence migration uses it only
+/// after those checks to authorize
+/// [`crate::spec::compile_accepted_historical_unchecked`]. It is not a
+/// definition-admission API; partial or otherwise modified limit tables return
+/// false.
+#[doc(hidden)]
+pub fn genesis_uses_historical_definition_limits(body: &Value) -> bool {
+    body.get("limits") == Some(&legacy_limits_value())
+}
+
+fn genesis_limits_ok(value: Option<&Value>) -> bool {
+    value.is_some_and(|value| value == &limits_value() || value == &legacy_limits_value())
 }
 
 fn envelope_minus_hash(seq: u64, ts: i64, kind: RecordKind, body: &Value, prev: &str) -> Value {
@@ -281,26 +340,74 @@ fn req_str(body: &Value, k: &str) -> bool {
     body.get(k).and_then(Value::as_str).is_some()
 }
 
-fn req_arr(body: &Value, k: &str) -> bool {
-    body.get(k).and_then(Value::as_arr).is_some()
+fn req_i64(body: &Value, k: &str) -> bool {
+    body.get(k)
+        .and_then(Value::as_num)
+        .is_some_and(|raw| raw.parse::<i64>().is_ok())
+}
+
+fn req_u32(body: &Value, k: &str) -> bool {
+    body.get(k)
+        .and_then(Value::as_num)
+        .is_some_and(|raw| raw.parse::<u32>().is_ok())
+}
+
+fn req_str_arr(body: &Value, k: &str) -> bool {
+    body.get(k)
+        .and_then(Value::as_arr)
+        .is_some_and(|values| values.iter().all(|value| value.as_str().is_some()))
+}
+
+fn state_format_ok(body: &Value, required: bool) -> bool {
+    match body.get("state_format") {
+        Some(Value::Str(format)) => format == crate::hashes::STATE_FORMAT,
+        None => !required,
+        Some(_) => false,
+    }
+}
+
+fn root_format_ok(body: &Value) -> bool {
+    match body.get("state_root_format") {
+        Some(Value::Str(format)) => {
+            format == "fsm.state-root/3" && is_state_hash(body.get("state_root"))
+        }
+        None => true,
+        Some(_) => false,
+    }
+}
+
+fn deadline_identity_ok(body: &Value) -> bool {
+    req_str(body, "deadline") && req_u32(body, "deadline_idx") && req_i64(body, "due_ms")
 }
 
 fn span_ok(v: Option<&Value>) -> bool {
     match v {
         None => true,
         Some(Value::Obj(o)) => {
-            o.get("start").and_then(Value::as_num).is_some()
-                && o.get("end").and_then(Value::as_num).is_some()
+            o.get("start")
+                .and_then(Value::as_num)
+                .is_some_and(|raw| raw.parse::<u32>().is_ok())
+                && o.get("end")
+                    .and_then(Value::as_num)
+                    .is_some_and(|raw| raw.parse::<u32>().is_ok())
         }
         Some(_) => false,
     }
 }
 
+fn rejection_ok(body: &Value) -> bool {
+    req_str(body, "code")
+        && req_str(body, "message")
+        && req_str(body, "hint")
+        && body.get("details").and_then(Value::as_obj).is_some()
+        && span_ok(body.get("span"))
+}
+
 fn body_ok(kind: RecordKind, body: &Value) -> bool {
-    match kind {
+    let shape_ok = match kind {
         RecordKind::Genesis => {
             body.get("format").and_then(Value::as_str) == Some("fsm.journal/1")
-                && body.get("limits") == Some(&limits_value())
+                && genesis_limits_ok(body.get("limits"))
                 && body.get("created_ts").and_then(Value::as_num).is_some()
         }
         RecordKind::MachineDefined => req_str(body, "machine_id") && body.get("def").is_some(),
@@ -308,9 +415,12 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
             req_str(body, "instance_id")
                 && req_str(body, "machine_id")
                 && req_str(body, "request_id")
-                && req_str(body, "leaf")
                 && is_state_hash(body.get("state_hash"))
                 && body.get("overrides").and_then(Value::as_obj).is_some()
+                && match body.get("state_format") {
+                    Some(_) => body.get("configuration").and_then(Value::as_obj).is_some(),
+                    None => req_str(body, "leaf"),
+                }
         }
         RecordKind::EventApplied => {
             req_str(body, "instance_id")
@@ -318,8 +428,8 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && body.get("payload").is_some()
                 && req_str(body, "request_id")
                 && is_state_hash(body.get("state_hash"))
-                && req_arr(body, "exited")
-                && req_arr(body, "entered")
+                && req_str_arr(body, "exited")
+                && req_str_arr(body, "entered")
                 && req_str(body, "source_state")
         }
         RecordKind::EventRejected => {
@@ -328,11 +438,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "event")
                 && body.get("payload").is_some()
                 && is_state_hash(body.get("state_hash"))
-                && req_str(body, "code")
-                && req_str(body, "message")
-                && req_str(body, "hint")
-                && body.get("details").and_then(Value::as_obj).is_some()
-                && span_ok(body.get("span"))
+                && rejection_ok(body)
         }
         RecordKind::EventIgnored => {
             req_str(body, "instance_id")
@@ -340,6 +446,40 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "event")
                 && body.get("payload").is_some()
                 && is_state_hash(body.get("state_hash"))
+        }
+        RecordKind::DeadlineApplied => {
+            req_str(body, "instance_id")
+                && req_str(body, "request_id")
+                && deadline_identity_ok(body)
+                && is_state_hash(body.get("state_hash"))
+                && req_str_arr(body, "exited")
+                && req_str_arr(body, "entered")
+                && req_str(body, "source_state")
+        }
+        RecordKind::DeadlineRejected => {
+            req_str(body, "instance_id")
+                && req_str(body, "request_id")
+                && deadline_identity_ok(body)
+                && is_state_hash(body.get("state_hash"))
+                && rejection_ok(body)
+        }
+        RecordKind::DeadlineNotDue => {
+            let next_ok = match (
+                body.get("next_deadline"),
+                body.get("next_deadline_idx"),
+                body.get("next_due_ms"),
+            ) {
+                (None, None, None) => true,
+                (Some(Value::Str(_)), Some(idx), Some(due)) => {
+                    idx.as_num().is_some_and(|raw| raw.parse::<u32>().is_ok())
+                        && due.as_num().is_some_and(|raw| raw.parse::<i64>().is_ok())
+                }
+                _ => false,
+            };
+            req_str(body, "instance_id")
+                && req_str(body, "request_id")
+                && is_state_hash(body.get("state_hash"))
+                && next_ok
         }
         RecordKind::EffectAcked => {
             req_str(body, "instance_id")
@@ -354,10 +494,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
         RecordKind::RequestRejected => {
             req_str(body, "request_id")
                 && req_str(body, "instance_id")
-                && req_str(body, "code")
-                && req_str(body, "message")
-                && req_str(body, "hint")
-                && body.get("details").and_then(Value::as_obj).is_some()
+                && rejection_ok(body)
                 && req_str(body, "operation")
                 && is_state_hash(body.get("state_hash"))
                 && (body.get("operation").and_then(Value::as_str) != Some("ack")
@@ -373,7 +510,16 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
             req_str(body, "instance_id") && req_str(body, "request_id") && req_str(body, "note")
         }
         RecordKind::StateCheckpoint => is_state_hash(body.get("state_root")),
-    }
+    };
+
+    let current_only = matches!(
+        kind,
+        RecordKind::DeadlineApplied | RecordKind::DeadlineRejected | RecordKind::DeadlineNotDue
+    );
+    let current_root_ok = body.get("state_root").is_none()
+        || body.get("state_format").is_none()
+        || body.get("state_root_format").and_then(Value::as_str) == Some("fsm.state-root/3");
+    shape_ok && state_format_ok(body, current_only) && root_format_ok(body) && current_root_ok
 }
 
 #[cfg(test)]
@@ -529,6 +675,53 @@ mod tests {
         ann.insert("note".into(), Value::Str("n".into()));
         assert!(matches!(
             verify_kind(RecordKind::Annotated, ann),
+            Err(RecordError::BodyInvalid { .. })
+        ));
+    }
+
+    #[test]
+    fn deadline_body_schemas_require_current_formats_and_complete_identity() {
+        let mut applied = BTreeMap::from([
+            ("instance_id".into(), Value::Str("i".into())),
+            ("request_id".into(), Value::Str("r".into())),
+            ("deadline".into(), Value::Str("expire".into())),
+            ("deadline_idx".into(), Value::Num("0".into())),
+            ("due_ms".into(), Value::Num("42".into())),
+            ("state_hash".into(), Value::Str(hex_hash())),
+            (
+                "state_format".into(),
+                Value::Str(crate::hashes::STATE_FORMAT.into()),
+            ),
+            ("exited".into(), Value::Arr(vec![Value::Str("wait".into())])),
+            (
+                "entered".into(),
+                Value::Arr(vec![Value::Str("done".into())]),
+            ),
+            ("source_state".into(), Value::Str("wait".into())),
+        ]);
+        assert!(verify_kind(RecordKind::DeadlineApplied, applied.clone()).is_ok());
+        applied.remove("state_format");
+        assert!(matches!(
+            verify_kind(RecordKind::DeadlineApplied, applied),
+            Err(RecordError::BodyInvalid { .. })
+        ));
+
+        let mut idle = BTreeMap::from([
+            ("instance_id".into(), Value::Str("i".into())),
+            ("request_id".into(), Value::Str("r".into())),
+            ("state_hash".into(), Value::Str(hex_hash())),
+            (
+                "state_format".into(),
+                Value::Str(crate::hashes::STATE_FORMAT.into()),
+            ),
+            ("next_deadline".into(), Value::Str("expire".into())),
+            ("next_deadline_idx".into(), Value::Num("0".into())),
+            ("next_due_ms".into(), Value::Num("42".into())),
+        ]);
+        assert!(verify_kind(RecordKind::DeadlineNotDue, idle.clone()).is_ok());
+        idle.remove("next_due_ms");
+        assert!(matches!(
+            verify_kind(RecordKind::DeadlineNotDue, idle),
             Err(RecordError::BodyInvalid { .. })
         ));
     }

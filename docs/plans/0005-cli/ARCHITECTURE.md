@@ -68,7 +68,7 @@ Read this before your first task. The workflow is identical for every task in th
 
 - `fsm journal verify [--report]` — runs `journal_io::verify`; maps `JournalHealth` to exit codes `0` Ok · `2` TornTail · `3` ChainBroken · `4` StateHashMismatch · `5` NonCanonical · `6` LockIo; `--report` prints per-segment progress and the final `{records, machines, instances, final state hashes}` summary.
 - `fsm journal replay [--to-seq N]` — refolds ignoring snapshots, compares state hashes against the snapshot/live view, reports agreement or the first divergent seq.
-- `fsm doctor` — data dir path and `VERSION`, lock status (holder pid if held), snapshot inventory, quick verify summary, environment (`FSM_DATA_DIR`, `FSM_LOG` in effect).
+- `fsm doctor` — data dir path and `VERSION`, read-only store health, snapshot inventory, quick verify summary, environment (`FSM_DATA_DIR`, `FSM_LOG` in effect). It does not probe lock availability because inspection commands never acquire the advisory lock.
 - `fsm repair --truncate-torn-tail` — invokes `journal_io::repair_truncate_torn_tail`, printing the quarantine path and truncation seq; refuses interior corruption with the same report as verify.
 
 ## 0027 — Proof

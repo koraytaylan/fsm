@@ -8,7 +8,7 @@ fn names(t: &Tree, ids: &[u16]) -> Vec<String> {
 #[test]
 fn initial_and_history() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
-    let t = Tree::build(&spec.states);
+    let t = Tree::for_machine(&spec);
     let ir = t.id("in_review").unwrap();
     assert_eq!(names(&t, &t.initial_descent(ir)), ["docs_review"]);
     assert!(t.initial_descent(t.id("intake").unwrap()).is_empty());

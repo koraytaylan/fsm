@@ -38,7 +38,7 @@ fn case_review_dot_shape() {
 fn overlay_marks_current_and_visited() {
     let m = compiled();
     let ov = InstanceOverlay {
-        current_leaf: "risk_review".into(),
+        current_leaves: BTreeSet::from(["risk_review".into()]),
         visited: BTreeSet::from(["intake".into(), "docs_review".into()]),
     };
     let mm = mermaid(&m, Some(&ov));

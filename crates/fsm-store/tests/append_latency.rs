@@ -7,8 +7,13 @@
 //! disk, not of this code:
 //!
 //! ```text
-//! cargo test -p fsm-store --test append_latency -- --ignored --nocapture
+//! FSM_BENCH_ROOT=/path/on/filesystem-under-test \
+//!   cargo +stable test --release -p fsm-store --test append_latency -- --ignored --nocapture
 //! ```
+//!
+//! `FSM_BENCH_ROOT` must name an existing directory on the persistence
+//! filesystem being measured. The harness creates and removes one uniquely
+//! named child beneath it; it never removes the caller-provided root.
 //!
 //! Ignored by default: it is a measurement, not an assertion, and its timings
 //! are meaningless under a loaded test runner.
@@ -16,24 +21,48 @@
 #![allow(clippy::print_stdout)]
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_store::store::Store;
 
 const SPEC: &[u8] = include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json");
+static BENCH_DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-fn tmp(tag: &str) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "fsm-bench-{tag}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
+struct BenchDirectory {
+    path: PathBuf,
+}
+
+impl BenchDirectory {
+    fn create(tag: &str) -> Self {
+        let configured = std::env::var_os("FSM_BENCH_ROOT").unwrap_or_else(|| {
+            panic!(
+                "FSM_BENCH_ROOT must name an existing directory on the persistence filesystem to measure"
+            )
+        });
+        let root = fs::canonicalize(PathBuf::from(configured))
+            .unwrap_or_else(|error| panic!("canonicalize FSM_BENCH_ROOT: {error}"));
+        assert!(root.is_dir(), "FSM_BENCH_ROOT is not a directory: {root:?}");
+
+        let sequence = BENCH_DIRECTORY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let path = root.join(format!("fsm-bench-{tag}-{}-{sequence}", std::process::id()));
+        fs::create_dir(&path)
+            .unwrap_or_else(|error| panic!("create benchmark directory {path:?}: {error}"));
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for BenchDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
 }
 
 fn percentile(sorted_us: &[u128], p: f64) -> u128 {
@@ -67,8 +96,10 @@ fn append_latency() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(2_000);
 
-    let dir = tmp("append");
-    let mut store = Store::open(&dir).unwrap();
+    let directory = BenchDirectory::create("append");
+    let dir = directory.path();
+    println!("benchmark data directory: {}", dir.display());
+    let mut store = Store::open(dir).unwrap();
     let def = parse(SPEC, &JsonLimits::DEFAULT).unwrap();
     store.define_machine(def, false, false).unwrap();
 
@@ -105,9 +136,9 @@ fn append_latency() {
 
     // Genuinely cold: snapshots are a disposable cache, so clearing them forces
     // the whole-journal fold an embedder pays after an unclean shutdown.
-    let _ = std::fs::remove_dir_all(fsm_store::snapshot::snap_dir(&dir));
+    let _ = fs::remove_dir_all(fsm_store::snapshot::snap_dir(dir));
     let t = Instant::now();
-    let reopened = Store::open(&dir).unwrap();
+    let reopened = Store::open(dir).unwrap();
     let cold = t.elapsed();
     assert!(
         !reopened.opened_from_snapshot,
@@ -124,12 +155,11 @@ fn append_latency() {
     s.shutdown_snapshot().unwrap();
     drop(s);
     let t = Instant::now();
-    let warm = Store::open(&dir).unwrap();
+    let warm = Store::open(dir).unwrap();
     let warm_ms = t.elapsed().as_secs_f64() * 1000.0;
     println!(
         "warm open: {records} records in {warm_ms:.1}ms (snapshot={}, replayed={})",
         warm.opened_from_snapshot, warm.replayed_records
     );
     drop(warm);
-    let _ = std::fs::remove_dir_all(&dir);
 }

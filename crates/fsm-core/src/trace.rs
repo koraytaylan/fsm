@@ -28,6 +28,8 @@ pub struct LevelTrace {
 pub enum BlockKind {
     Exit(String),
     Transition,
+    /// Action block belonging to the named deadline definition.
+    Deadline(String),
     Entry(String),
 }
 
@@ -36,6 +38,7 @@ impl BlockKind {
         match self {
             BlockKind::Exit(s) => format!("exit({s})"),
             BlockKind::Transition => "transition".into(),
+            BlockKind::Deadline(s) => format!("deadline({s})"),
             BlockKind::Entry(s) => format!("entry({s})"),
         }
     }

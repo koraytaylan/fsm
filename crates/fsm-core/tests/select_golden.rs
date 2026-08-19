@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 fn case() -> (fsm_core::machine::CompiledMachine, Tree) {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     (m, t)
 }
 
@@ -66,26 +66,28 @@ fn validate_event_codes() {
 #[test]
 fn unhandled_vs_not_enabled() {
     let (m, t) = case();
-    let created = fsm_core::step::create(&m, &t, &BTreeMap::new()).unwrap();
+    let created = fsm_core::step::create(&m, &t, &BTreeMap::new(), 0).unwrap();
     // go to docs_review
     let mut st = InstanceState {
         status: created.status_after,
-        leaf: created.leaf_after,
+        configuration: created.configuration_after,
         ctx: created.ctx_after,
         history: created.history_after,
+        deadlines: created.deadlines_after,
         pending: vec![],
     };
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "docs_ok", &obj(&[]), &mut b) {
+    match step(&m, &t, &st, "docs_ok", &obj(&[]), 0, &mut b) {
         Outcome::Applied(a) => {
-            st.leaf = a.leaf_after;
+            st.configuration = a.configuration_after;
             st.ctx = a.ctx_after;
             st.history = a.history_after;
+            st.deadlines = a.deadlines_after;
         }
         o => panic!("{o:?}"),
     }
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "scored", &obj(&[("score", "1")]), &mut b) {
+    match step(&m, &t, &st, "scored", &obj(&[("score", "1")]), 0, &mut b) {
         Outcome::Rejected(r) => assert_eq!(r.code, "run/unhandled"),
         o => panic!("{o:?}"),
     }
@@ -96,18 +98,19 @@ fn ignore_unhandled() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","on_unhandled":"ignore","context":[],"events":[{"name":"e","fields":[]},{"name":"z","fields":[]}],"transitions":[{"from":"a","on":"e"}]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let c = fsm_core::step::create(&m, &t, &BTreeMap::new()).unwrap();
+    let t = Tree::for_machine(&m.spec);
+    let c = fsm_core::step::create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let st = InstanceState {
         status: c.status_after,
-        leaf: c.leaf_after,
+        configuration: c.configuration_after,
         ctx: c.ctx_after,
         history: c.history_after,
+        deadlines: c.deadlines_after,
         pending: vec![],
     };
     let mut b = Budget::new(64);
     assert!(matches!(
-        step(&m, &t, &st, "z", &obj(&[]), &mut b),
+        step(&m, &t, &st, "z", &obj(&[]), 0, &mut b),
         Outcome::Ignored
     ));
 }
@@ -117,17 +120,18 @@ fn not_enabled_false_guard() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"false","to":"a"}]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let c = fsm_core::step::create(&m, &t, &BTreeMap::new()).unwrap();
+    let t = Tree::for_machine(&m.spec);
+    let c = fsm_core::step::create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let st = InstanceState {
         status: c.status_after,
-        leaf: c.leaf_after,
+        configuration: c.configuration_after,
         ctx: c.ctx_after,
         history: c.history_after,
+        deadlines: c.deadlines_after,
         pending: vec![],
     };
     let mut b = Budget::new(64);
-    match step(&m, &t, &st, "e", &obj(&[]), &mut b) {
+    match step(&m, &t, &st, "e", &obj(&[]), 0, &mut b) {
         Outcome::Rejected(r) => assert_eq!(r.code, "run/not_enabled"),
         o => panic!("{o:?}"),
     }

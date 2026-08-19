@@ -1,7 +1,7 @@
 //! Parse `fsm.machine/1` and malformed variants.
 
 use fsm_core::json::{JsonLimits, parse};
-use fsm_core::spec::parse_machine;
+use fsm_core::spec::{Topology, parse_machine};
 
 fn load_case() -> fsm_core::json::Value {
     let bytes = include_bytes!("fixtures/machines/case_review.json");
@@ -11,12 +11,16 @@ fn load_case() -> fsm_core::json::Value {
 #[test]
 fn case_review_shape() {
     let spec = parse_machine(&load_case()).unwrap();
-    let names: Vec<_> = spec.states.iter().map(|s| s.name.as_str()).collect();
+    let states = match &spec.topology {
+        Topology::Sequential { states, .. } => states,
+        Topology::Parallel { .. } => panic!("case_review must be sequential"),
+    };
+    let names: Vec<_> = states.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(
         names,
         ["intake", "in_review", "suspended", "approved", "rejected"]
     );
-    let ir = spec.states.iter().find(|s| s.name == "in_review").unwrap();
+    let ir = states.iter().find(|s| s.name == "in_review").unwrap();
     let kids: Vec<_> = ir
         .states
         .iter()
@@ -49,7 +53,7 @@ fn model_round_trip() {
     let v = spec.to_value();
     let spec2 = parse_machine(&v).unwrap();
     assert_eq!(spec.name, spec2.name);
-    assert_eq!(spec.states.len(), spec2.states.len());
+    assert_eq!(spec.topology, spec2.topology);
     assert_eq!(spec.transitions.len(), spec2.transitions.len());
 }
 

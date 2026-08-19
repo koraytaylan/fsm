@@ -34,10 +34,12 @@ binding keywords and is the source of truth.
   invariants are in [`docs/SPEC.md`](docs/SPEC.md) and
   [`docs/API-POLICY.md`](docs/API-POLICY.md).
 * Deliberate deviations from a "fuller" statechart are part of the contract,
-  not gaps to fill: **no parallel regions, no deadlines or timers, no hidden
-  events, no floats, no `HashMap`, no `SystemTime` in `fsm-core`**. Adding
-  any of them is a spec change, not an implementation change, and a spec
-  change is a minor version bump per [`docs/API-POLICY.md`](docs/API-POLICY.md).
+  not gaps to fill: parallel regions still select **one global transition per
+  event**, deadlines advance only through an explicit caller-timed poll, and
+  there are no hidden events, background timers, floats, `HashMap`, or
+  `SystemTime` in `fsm-core`. Broadening any of those rules is a spec change,
+  not an implementation change, and a spec change is a minor version bump per
+  [`docs/API-POLICY.md`](docs/API-POLICY.md).
 * Deliberate deviations from "what a database would do" are also part of the
   contract: journals are migrated forward and never rewritten, a
   `request_id` claimed before fingerprints existed can be replayed but not
@@ -319,9 +321,10 @@ is a test nobody dares change when the spec demands it.
   order, and depend on no wall-clock time, no ambient environment, and no
   leftover directory from a previous run. Anything written goes to a
   temporary directory the test owns and removes; a test that needs a clock
-  injects a `FixedClock`. `fsm-core` has no clock to inject — time is a
-  payload field — so a `fsm-core` test that reaches for `SystemTime` is a
-  contract violation, not a convenience.
+  injects a `FixedClock`. `fsm-core` has no clock to inject — callers pass
+  explicit `now_ms` values to creation, event, and deadline-poll operations —
+  so a `fsm-core` test that reaches for `SystemTime` is a contract violation,
+  not a convenience.
 * **Fixture-building belongs in helpers; the property belongs in the
   test.** A reader should see the arrangement summarized and the assertion
   in full, not thirty lines of byte-array setup obscuring one comparison.
@@ -343,8 +346,13 @@ boundary or typed error. Helper tests may supplement that wiring proof.
 
 A declared budget documents its accounting unit, charges every operation or
 allocation in that unit, and has an exact limit / limit-plus-one regression.
-The eval budget is 4,096 ticks per event and `internal/budget` is an engine
-invariant breach; a change to the budget or its accounting is a spec change.
+The eval budget is 4,096 ticks per create, event, deadline poll, or
+enabled-event scan; the compiler bounds the whole definition's worst-case
+evaluation cost, including one possible implicit omitted-guard tick per
+affected event (an enabled-event scan selects independently per event), so a
+fresh standard budget suffices for every currently accepted definition, and
+`internal/budget` is an engine invariant breach. A change to the budget or its
+accounting is a spec change.
 
 Public configuration and diagnostic types must be usable as documented from
 a downstream crate. If a type is deliberately non-exhaustive, provide

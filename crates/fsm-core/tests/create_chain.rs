@@ -10,15 +10,20 @@ use fsm_core::tree::Tree;
 fn case_review_create() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let a = create(&m, &t, &BTreeMap::new()).unwrap();
-    assert_eq!(a.leaf_after, "intake");
+    let t = Tree::for_machine(&m.spec);
+    let a = create(&m, &t, &BTreeMap::new(), 0).unwrap();
+    assert_eq!(
+        a.configuration_after,
+        fsm_core::machine::ActiveConfiguration::Sequential {
+            leaf: "intake".into()
+        }
+    );
     assert_eq!(a.ctx_after.get("visits").unwrap().canonical_string(), "0");
     assert!(a.effects.is_empty());
     assert!(a.history_after.is_empty());
     assert_eq!(a.status_after, fsm_core::machine::Status::Running);
-    let b = create(&m, &t, &BTreeMap::new()).unwrap();
-    assert_eq!(a.leaf_after, b.leaf_after);
+    let b = create(&m, &t, &BTreeMap::new(), 0).unwrap();
+    assert_eq!(a.configuration_after, b.configuration_after);
     assert_eq!(a.ctx_after, b.ctx_after);
 }
 
@@ -27,8 +32,8 @@ fn compound_entry_order() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"c","initial":"leaf","entry":{"do":[{"target":"n","value":"ctx.n + 1"}],"emit":[{"effect":"fx","args":{}}]},"states":[{"name":"leaf","entry":{"do":[{"target":"n","value":"ctx.n + 10"}]}}]}],"initial":"c","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"effects":[{"name":"fx","fields":[]}],"transitions":[]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let a = create(&m, &t, &BTreeMap::new()).unwrap();
+    let t = Tree::for_machine(&m.spec);
+    let a = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     assert_eq!(a.entered, ["c", "leaf"]);
     assert_eq!(a.ctx_after.get("n").unwrap().canonical_string(), "11");
     assert_eq!(a.effects[0].k, 0);
@@ -39,17 +44,20 @@ fn compound_entry_order() {
 fn overrides() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     let mut ov = BTreeMap::new();
     ov.insert("score".into(), Val::Int(5));
-    let a = create(&m, &t, &ov).unwrap();
+    let a = create(&m, &t, &ov, 0).unwrap();
     assert_eq!(a.ctx_after.get("score").unwrap().canonical_string(), "5");
     let mut bad = BTreeMap::new();
     bad.insert("nope".into(), Val::Int(1));
-    assert_eq!(create(&m, &t, &bad).unwrap_err().code, "req/field_unknown");
+    assert_eq!(
+        create(&m, &t, &bad, 0).unwrap_err().code,
+        "req/field_unknown"
+    );
     let mut typ = BTreeMap::new();
     typ.insert("score".into(), Val::Bool(true));
-    assert_eq!(create(&m, &t, &typ).unwrap_err().code, "req/field_type");
+    assert_eq!(create(&m, &t, &typ, 0).unwrap_err().code, "req/field_type");
 }
 
 #[test]
@@ -57,9 +65,9 @@ fn create_failed_pure() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"c","initial":"leaf","entry":{"do":[{"target":"n","value":"9223372036854775807 + 1"}]},"states":[{"name":"leaf"}]}],"initial":"c","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let e1 = create(&m, &t, &BTreeMap::new()).unwrap_err();
-    let e2 = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    let t = Tree::for_machine(&m.spec);
+    let e1 = create(&m, &t, &BTreeMap::new(), 0).unwrap_err();
+    let e2 = create(&m, &t, &BTreeMap::new(), 0).unwrap_err();
     assert_eq!(e1.code, "run/create_failed");
     assert_eq!(e1.code, e2.code);
     assert_eq!(e1.message, e2.message);
@@ -70,8 +78,8 @@ fn create_inner_failure_keeps_discarded_outer_trace() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"c","initial":"leaf","entry":{"do":[{"target":"y","value":"1"}]},"states":[{"name":"leaf","entry":{"do":[{"target":"x","value":"ctx.x + 1"}]}}]}],"initial":"c","context":[{"name":"x","ty":"int","init":"9223372036854775807"},{"name":"y","ty":"int","init":"0"}],"events":[],"transitions":[]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    let t = Tree::for_machine(&m.spec);
+    let e = create(&m, &t, &BTreeMap::new(), 0).unwrap_err();
     assert_eq!(e.code, "run/create_failed");
     assert_eq!(e.block.as_deref(), Some("entry(leaf)"));
     assert!(e.span.is_some());
@@ -97,8 +105,8 @@ fn create_first_block_failure_has_failing_trace() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"c","initial":"leaf","entry":{"do":[{"target":"n","value":"9223372036854775807 + 1"}]},"states":[{"name":"leaf"}]}],"initial":"c","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    let t = Tree::for_machine(&m.spec);
+    let e = create(&m, &t, &BTreeMap::new(), 0).unwrap_err();
     assert_eq!(e.code, "run/create_failed");
     assert_eq!(e.block.as_deref(), Some("entry(c)"));
     assert_eq!(e.trace.pipeline.len(), 1);
@@ -111,8 +119,8 @@ fn create_invariant_eval_error_has_identity() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"x","ty":"int","init":"9223372036854775807"}],"events":[],"transitions":[],"invariants":[{"name":"pos","expr":"ctx.x + 1 > 0","mode":"enforce"}]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    let t = Tree::for_machine(&m.spec);
+    let e = create(&m, &t, &BTreeMap::new(), 0).unwrap_err();
     assert_eq!(e.code, "run/create_failed");
     assert_eq!(e.block.as_deref(), Some("invariant(pos)"));
     assert!(e.span.is_some());
@@ -157,8 +165,8 @@ fn create_ordinary_false_invariant_renders_expr() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"x","ty":"int","init":"-1"}],"events":[],"transitions":[],"invariants":[{"name":"pos","expr":"ctx.x >= 0","mode":"enforce"}]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let e = create(&m, &t, &BTreeMap::new()).unwrap_err();
+    let t = Tree::for_machine(&m.spec);
+    let e = create(&m, &t, &BTreeMap::new(), 0).unwrap_err();
     assert_eq!(e.code, "run/create_failed");
     let rendered = e.trace.to_value();
     let invs = rendered

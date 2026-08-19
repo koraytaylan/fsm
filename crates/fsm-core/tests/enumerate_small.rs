@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::Budget;
 use fsm_core::json::Value;
-use fsm_core::machine::InstanceState;
-use fsm_core::spec::{compile, parse_machine};
-use fsm_core::step::{Outcome, create, step};
+use fsm_core::machine::{ActiveConfiguration, InstanceState, Status};
+use fsm_core::spec::{Topology, compile, parse_machine};
+use fsm_core::step::{Applied, DeadlineOutcome, Outcome, create, poll_deadline, step};
 use fsm_core::tree::Tree;
 
 mod oracle;
@@ -23,7 +23,7 @@ fn compile_src(src: &str) -> (fsm_core::machine::CompiledMachine, Tree) {
     let machine = compile(spec).unwrap_or_else(|findings| {
         panic!("generated machine did not compile: {findings:?}\n{src}")
     });
-    let tree = Tree::build(&machine.spec.states);
+    let tree = Tree::for_machine(&machine.spec);
     (machine, tree)
 }
 
@@ -336,6 +336,179 @@ fn machine_json(
     )
 }
 
+fn parallel_machine_json(selection_transitions: &[String]) -> String {
+    let mut transitions = selection_transitions.to_vec();
+    transitions.push(transition_json(
+        "a",
+        "finish_a",
+        Some("af"),
+        None,
+        BlockCase::Emit,
+    ));
+    transitions.push(transition_json(
+        "b",
+        "finish_b",
+        Some("bf"),
+        None,
+        BlockCase::Emit,
+    ));
+    let events = ["choose", "finish_a", "finish_b", "idle"]
+        .map(|name| format!(r#"{{"name":"{name}","fields":[]}}"#))
+        .join(",");
+    format!(
+        r#"{{"format":"fsm.machine/1","name":"parallel_generated","regions":[{{"name":"alpha","states":[{{"name":"a","initial":"a0","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}],"emit":[{{"effect":"fx","args":{{"v":"ctx.n"}}}}]}},"states":[{{"name":"a0","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}}}},{{"name":"a1"}},{{"name":"af","terminal":true}}]}}],"initial":"a"}},{{"name":"beta","states":[{{"name":"b","initial":"b0","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}],"emit":[{{"effect":"fx","args":{{"v":"ctx.n"}}}}]}},"states":[{{"name":"b0","entry":{{"do":[{{"target":"n","value":"ctx.n + 1"}}]}}}},{{"name":"b1"}},{{"name":"bf","terminal":true}}]}}],"initial":"b"}}],"context":[{{"name":"b","ty":"bool","init":"true"}},{{"name":"n","ty":"int","init":"0"}}],"events":[{events}],"effects":[{{"name":"fx","fields":[{{"name":"v","ty":"int"}}]}}],"on_unhandled":"ignore","transitions":[{}],"invariants":[{{"name":"nneg","expr":"ctx.n >= 0","mode":"enforce"}}]}}"#,
+        transitions.join(",")
+    )
+}
+
+#[derive(Clone, Copy)]
+struct ParallelSelectionRow {
+    source: &'static str,
+    target: Option<&'static str>,
+    guard: &'static str,
+}
+
+struct ParallelWinnerCase {
+    name: &'static str,
+    rows: &'static [ParallelSelectionRow],
+    expected_region: &'static str,
+    expected_source: &'static str,
+    expected_alpha: &'static str,
+    expected_beta: &'static str,
+}
+
+const PARALLEL_WINNER_CASES: &[ParallelWinnerCase] = &[
+    ParallelWinnerCase {
+        name: "region order overrides transition document order",
+        rows: &[
+            ParallelSelectionRow {
+                source: "b0",
+                target: Some("b1"),
+                guard: "ctx.b",
+            },
+            ParallelSelectionRow {
+                source: "a0",
+                target: Some("a1"),
+                guard: "ctx.b",
+            },
+        ],
+        expected_region: "alpha",
+        expected_source: "a0",
+        expected_alpha: "a1",
+        expected_beta: "b0",
+    },
+    ParallelWinnerCase {
+        name: "later region fallback",
+        rows: &[
+            ParallelSelectionRow {
+                source: "a0",
+                target: Some("a1"),
+                guard: "false",
+            },
+            ParallelSelectionRow {
+                source: "b0",
+                target: Some("b1"),
+                guard: "ctx.b",
+            },
+        ],
+        expected_region: "beta",
+        expected_source: "b0",
+        expected_alpha: "a0",
+        expected_beta: "b1",
+    },
+    ParallelWinnerCase {
+        name: "same-state document order",
+        rows: &[
+            ParallelSelectionRow {
+                source: "a0",
+                target: None,
+                guard: "false",
+            },
+            ParallelSelectionRow {
+                source: "a0",
+                target: None,
+                guard: "ctx.b",
+            },
+            ParallelSelectionRow {
+                source: "b0",
+                target: Some("b1"),
+                guard: "ctx.b",
+            },
+        ],
+        expected_region: "alpha",
+        expected_source: "a0",
+        expected_alpha: "a0",
+        expected_beta: "b0",
+    },
+    ParallelWinnerCase {
+        name: "ancestor before later region",
+        rows: &[
+            ParallelSelectionRow {
+                source: "a0",
+                target: Some("a1"),
+                guard: "false",
+            },
+            ParallelSelectionRow {
+                source: "a",
+                target: Some("a1"),
+                guard: "ctx.b",
+            },
+            ParallelSelectionRow {
+                source: "b0",
+                target: Some("b1"),
+                guard: "ctx.b",
+            },
+        ],
+        expected_region: "alpha",
+        expected_source: "a",
+        expected_alpha: "a1",
+        expected_beta: "b0",
+    },
+    ParallelWinnerCase {
+        name: "leaf before ancestor",
+        rows: &[
+            ParallelSelectionRow {
+                source: "a0",
+                target: None,
+                guard: "ctx.b",
+            },
+            ParallelSelectionRow {
+                source: "a",
+                target: Some("a1"),
+                guard: "ctx.b",
+            },
+            ParallelSelectionRow {
+                source: "b0",
+                target: Some("b1"),
+                guard: "ctx.b",
+            },
+        ],
+        expected_region: "alpha",
+        expected_source: "a0",
+        expected_alpha: "a0",
+        expected_beta: "b0",
+    },
+    ParallelWinnerCase {
+        name: "later-region ancestor",
+        rows: &[
+            ParallelSelectionRow {
+                source: "a",
+                target: Some("a1"),
+                guard: "not ctx.b",
+            },
+            ParallelSelectionRow {
+                source: "b",
+                target: Some("b1"),
+                guard: "ctx.b",
+            },
+        ],
+        expected_region: "beta",
+        expected_source: "b",
+        expected_alpha: "a0",
+        expected_beta: "b1",
+    },
+];
+
 fn sequences<'a>(events: &'a [&'a str]) -> Vec<Vec<&'a str>> {
     fn extend<'a>(events: &'a [&'a str], prefix: &mut Vec<&'a str>, out: &mut Vec<Vec<&'a str>>) {
         out.push(prefix.clone());
@@ -377,13 +550,13 @@ fn compare_run(src: &str) -> RunCounts {
         .map(|event| event.name.clone())
         .collect();
     let event_refs: Vec<&str> = event_names.iter().map(String::as_str).collect();
-    let engine_create = create(&machine, &tree, &BTreeMap::new())
+    let engine_create = create(&machine, &tree, &BTreeMap::new(), 0)
         .unwrap_or_else(|err| panic!("engine create failed for generated machine: {err:?}\n{src}"));
     let oracle_create = oracle::naive_create(&machine, &BTreeMap::new())
         .unwrap_or_else(|err| panic!("oracle create failed for generated machine: {err:?}\n{src}"));
     assert_eq!(
-        engine_create.leaf_after, oracle_create.leaf_after,
-        "create leaf {src}"
+        engine_create.configuration_after, oracle_create.configuration_after,
+        "create configuration {src}"
     );
     assert_eq!(
         engine_create.ctx_after, oracle_create.ctx_after,
@@ -392,6 +565,10 @@ fn compare_run(src: &str) -> RunCounts {
     assert_eq!(
         engine_create.history_after, oracle_create.history_after,
         "create history {src}"
+    );
+    assert_eq!(
+        engine_create.deadlines_after, oracle_create.deadlines_after,
+        "create deadlines {src}"
     );
     assert_eq!(
         engine_create.effects, oracle_create.effects,
@@ -410,22 +587,26 @@ fn compare_run(src: &str) -> RunCounts {
         "create entry path {src}"
     );
 
-    let engine_enterable = fsm_core::analyze::enterable(&machine, &tree);
-    let oracle_enterable = oracle::brute_enterable(&machine);
-    assert_eq!(engine_enterable, oracle_enterable, "enterable {src}");
+    if matches!(&machine.spec.topology, Topology::Sequential { .. }) {
+        let engine_enterable = fsm_core::analyze::enterable(&machine, &tree);
+        let oracle_enterable = oracle::brute_enterable(&machine);
+        assert_eq!(engine_enterable, oracle_enterable, "enterable {src}");
+    }
 
     let initial_engine = InstanceState {
         status: engine_create.status_after,
-        leaf: engine_create.leaf_after,
+        configuration: engine_create.configuration_after,
         ctx: engine_create.ctx_after,
         history: engine_create.history_after,
+        deadlines: engine_create.deadlines_after,
         pending: vec![],
     };
     let initial_oracle = InstanceState {
         status: oracle_create.status_after,
-        leaf: oracle_create.leaf_after,
+        configuration: oracle_create.configuration_after,
         ctx: oracle_create.ctx_after,
         history: oracle_create.history_after,
+        deadlines: oracle_create.deadlines_after,
         pending: vec![],
     };
     let all_sequences = sequences(&event_refs);
@@ -448,6 +629,7 @@ fn compare_run(src: &str) -> RunCounts {
                 &engine_state,
                 event,
                 &payload(),
+                0,
                 &mut engine_budget,
             );
             let oracle_outcome = oracle::naive_step(
@@ -466,13 +648,16 @@ fn compare_run(src: &str) -> RunCounts {
                     } else {
                         counts.external_applied += 1;
                     }
-                    if engine.leaf_after != pre_engine.leaf {
+                    if engine.configuration_after != pre_engine.configuration {
                         counts.leaf_changes += 1;
                     }
                     if engine.history_after != pre_engine.history {
                         counts.history_changes += 1;
                     }
-                    assert_eq!(engine.leaf_after, oracle.leaf_after, "{src} {sequence:?}");
+                    assert_eq!(
+                        engine.configuration_after, oracle.configuration_after,
+                        "{src} {sequence:?}"
+                    );
                     assert_eq!(engine.ctx_after, oracle.ctx_after, "{src} {sequence:?}");
                     assert_eq!(
                         engine.history_after, oracle.history_after,
@@ -488,6 +673,7 @@ fn compare_run(src: &str) -> RunCounts {
                         "{src} {sequence:?}"
                     );
                     assert_eq!(engine.internal, oracle.internal, "{src} {sequence:?}");
+                    assert_eq!(engine.region, oracle.region, "{src} {sequence:?}");
                     assert_eq!(
                         engine.source_state, oracle.source_state,
                         "{src} {sequence:?}"
@@ -498,13 +684,19 @@ fn compare_run(src: &str) -> RunCounts {
                     );
                     assert_eq!(engine.exited, oracle.exited, "{src} {sequence:?}");
                     assert_eq!(engine.entered, oracle.entered, "{src} {sequence:?}");
-                    engine_state.leaf = engine.leaf_after.clone();
+                    assert_eq!(
+                        engine.deadlines_after, oracle.deadlines_after,
+                        "{src} {sequence:?}"
+                    );
+                    engine_state.configuration = engine.configuration_after.clone();
                     engine_state.ctx = engine.ctx_after.clone();
                     engine_state.history = engine.history_after.clone();
+                    engine_state.deadlines = engine.deadlines_after.clone();
                     engine_state.status = engine.status_after;
-                    oracle_state.leaf = oracle.leaf_after.clone();
+                    oracle_state.configuration = oracle.configuration_after.clone();
                     oracle_state.ctx = oracle.ctx_after.clone();
                     oracle_state.history = oracle.history_after.clone();
+                    oracle_state.deadlines = oracle.deadlines_after.clone();
                     oracle_state.status = oracle.status_after;
                 }
                 (Outcome::Rejected(engine), Outcome::Rejected(oracle)) => {
@@ -561,14 +753,418 @@ fn execute_case(src: String, counts: &mut SuiteCounts) {
 }
 
 fn state_from_create(machine: &fsm_core::machine::CompiledMachine, tree: &Tree) -> InstanceState {
-    let created = create(machine, tree, &BTreeMap::new()).unwrap();
+    let created = create(machine, tree, &BTreeMap::new(), 0).unwrap();
     InstanceState {
         status: created.status_after,
-        leaf: created.leaf_after,
+        configuration: created.configuration_after,
         ctx: created.ctx_after,
         history: created.history_after,
+        deadlines: created.deadlines_after,
         pending: vec![],
     }
+}
+
+fn state_from_applied(applied: Applied) -> InstanceState {
+    InstanceState {
+        status: applied.status_after,
+        configuration: applied.configuration_after,
+        ctx: applied.ctx_after,
+        history: applied.history_after,
+        deadlines: applied.deadlines_after,
+        pending: Vec::new(),
+    }
+}
+
+fn assert_applied_parity(engine: &Applied, oracle: &Applied, case: &str) {
+    assert_eq!(
+        engine.configuration_after, oracle.configuration_after,
+        "{case}"
+    );
+    assert_eq!(engine.ctx_after, oracle.ctx_after, "{case}");
+    assert_eq!(engine.history_after, oracle.history_after, "{case}");
+    assert_eq!(engine.deadlines_after, oracle.deadlines_after, "{case}");
+    assert_eq!(engine.effects, oracle.effects, "{case}");
+    assert_eq!(engine.monitor_flags, oracle.monitor_flags, "{case}");
+    assert_eq!(engine.status_after, oracle.status_after, "{case}");
+    assert_eq!(engine.internal, oracle.internal, "{case}");
+    assert_eq!(engine.region, oracle.region, "{case}");
+    assert_eq!(engine.source_state, oracle.source_state, "{case}");
+    assert_eq!(engine.transition_idx, oracle.transition_idx, "{case}");
+    assert_eq!(engine.exited, oracle.exited, "{case}");
+    assert_eq!(engine.entered, oracle.entered, "{case}");
+}
+
+fn generated_deadline_machine(
+    first_after: i64,
+    second_after: i64,
+    initial_n: i64,
+    first_value: &str,
+    second_value: &str,
+) -> String {
+    format!(
+        r#"{{"format":"fsm.machine/1","name":"generated_deadlines","states":[{{"name":"waiting"}},{{"name":"away"}}],"initial":"waiting","context":[{{"name":"n","ty":"int","init":"{initial_n}"}}],"events":[{{"name":"leave","fields":[]}},{{"name":"return","fields":[]}}],"transitions":[{{"from":"waiting","on":"leave","to":"away"}},{{"from":"away","on":"return","to":"waiting"}}],"deadlines":[{{"name":"first","from":"waiting","after":"dur({first_after}, ms)","to":"waiting","do":[{{"target":"n","value":"{first_value}"}}]}},{{"name":"second","from":"waiting","after":"dur({second_after}, ms)","to":"waiting","do":[{{"target":"n","value":"{second_value}"}}]}}],"invariants":[{{"name":"nonnegative","expr":"ctx.n >= 0","mode":"enforce"}}]}}"#
+    )
+}
+
+#[test]
+fn enumerate_deadline_schedule_poll_cancel_and_reentry_differential() {
+    let mut generated = 0u64;
+    let mut not_due = 0u64;
+    let mut applied = 0u64;
+    let mut ties = 0u64;
+    let mut cancellations = 0u64;
+    let mut reentries = 0u64;
+
+    for first_after in 0..=2 {
+        for second_after in 0..=2 {
+            generated += 1;
+            let source = generated_deadline_machine(first_after, second_after, 0, "1", "2");
+            let (machine, tree) = compile_src(&source);
+            let engine_created = create(&machine, &tree, &BTreeMap::new(), 10).unwrap();
+            let oracle_created = oracle::naive_create_at(&machine, &BTreeMap::new(), 10).unwrap();
+            assert_applied_parity(&engine_created, &oracle_created, &source);
+            assert_eq!(
+                engine_created.deadlines_after,
+                BTreeMap::from([
+                    ("first".to_string(), 10 + first_after),
+                    ("second".to_string(), 10 + second_after),
+                ])
+            );
+            let engine_state = state_from_applied(engine_created);
+            let oracle_state = state_from_applied(oracle_created);
+            let first_due = 10 + first_after;
+            let second_due = 10 + second_after;
+            let due_ms = first_due.min(second_due);
+            let expected_index = usize::from(second_due < first_due);
+            let engine_before_poll = engine_state.clone();
+            let oracle_before_poll = oracle_state.clone();
+
+            let mut engine_budget = Budget::new(4096);
+            let mut oracle_budget = Budget::new(4096);
+            let engine_early = poll_deadline(
+                &machine,
+                &tree,
+                &engine_state,
+                due_ms - 1,
+                &mut engine_budget,
+            );
+            let oracle_early = oracle::naive_poll_deadline(
+                &machine,
+                &oracle_state,
+                due_ms - 1,
+                &mut oracle_budget,
+            );
+            match (engine_early, oracle_early) {
+                (
+                    DeadlineOutcome::NotDue { next: engine },
+                    DeadlineOutcome::NotDue { next: oracle },
+                ) => {
+                    not_due += 1;
+                    assert_eq!(engine, oracle, "{source}");
+                    let next = engine.expect("a generated waiting state has schedules");
+                    assert_eq!(next.deadline_idx, expected_index as u32, "{source}");
+                    assert_eq!(next.due_ms, due_ms, "{source}");
+                }
+                outcomes => panic!("NotDue mismatch: {outcomes:?}\n{source}"),
+            }
+            assert_eq!(
+                engine_state, engine_before_poll,
+                "engine NotDue mutated state"
+            );
+            assert_eq!(
+                oracle_state, oracle_before_poll,
+                "oracle NotDue mutated state"
+            );
+
+            let mut engine_budget = Budget::new(4096);
+            let mut oracle_budget = Budget::new(4096);
+            let engine_due =
+                poll_deadline(&machine, &tree, &engine_state, due_ms, &mut engine_budget);
+            let oracle_due =
+                oracle::naive_poll_deadline(&machine, &oracle_state, due_ms, &mut oracle_budget);
+            let (engine_fired, oracle_fired) = match (engine_due, oracle_due) {
+                (DeadlineOutcome::Applied(engine), DeadlineOutcome::Applied(oracle)) => {
+                    applied += 1;
+                    assert_eq!(engine.deadline, oracle.deadline, "{source}");
+                    assert_eq!(
+                        engine.deadline.deadline_idx, expected_index as u32,
+                        "{source}"
+                    );
+                    assert_applied_parity(&engine.transition, &oracle.transition, &source);
+                    (engine.transition, oracle.transition)
+                }
+                outcomes => panic!("due poll mismatch: {outcomes:?}\n{source}"),
+            };
+            if first_due == second_due {
+                ties += 1;
+                assert_eq!(expected_index, 0);
+            }
+            assert_eq!(
+                engine_fired.ctx_after.get("n"),
+                Some(&fsm_core::expr::eval::Val::Int(if expected_index == 0 {
+                    1
+                } else {
+                    2
+                })),
+                "one poll must apply exactly one selected deadline"
+            );
+
+            let engine_reentered = state_from_applied(engine_fired);
+            let oracle_reentered = state_from_applied(oracle_fired);
+            assert_eq!(
+                engine_reentered.deadlines,
+                BTreeMap::from([
+                    ("first".to_string(), due_ms + first_after),
+                    ("second".to_string(), due_ms + second_after),
+                ]),
+                "external self-target must reschedule from poll time"
+            );
+
+            let mut engine_budget = Budget::new(4096);
+            let mut oracle_budget = Budget::new(4096);
+            let engine_left = step(
+                &machine,
+                &tree,
+                &engine_reentered,
+                "leave",
+                &payload(),
+                due_ms + 3,
+                &mut engine_budget,
+            );
+            let oracle_left = oracle::naive_step_at(
+                &machine,
+                &oracle_reentered,
+                "leave",
+                &payload(),
+                due_ms + 3,
+                &mut oracle_budget,
+            );
+            let (engine_left, oracle_left) = match (engine_left, oracle_left) {
+                (Outcome::Applied(engine), Outcome::Applied(oracle)) => {
+                    assert_applied_parity(&engine, &oracle, &source);
+                    (engine, oracle)
+                }
+                outcomes => panic!("deadline cancellation mismatch: {outcomes:?}\n{source}"),
+            };
+            cancellations += 1;
+            assert!(engine_left.deadlines_after.is_empty());
+
+            let engine_away = state_from_applied(engine_left);
+            let oracle_away = state_from_applied(oracle_left);
+            let return_ms = due_ms + 20;
+            let mut engine_budget = Budget::new(4096);
+            let mut oracle_budget = Budget::new(4096);
+            let engine_returned = step(
+                &machine,
+                &tree,
+                &engine_away,
+                "return",
+                &payload(),
+                return_ms,
+                &mut engine_budget,
+            );
+            let oracle_returned = oracle::naive_step_at(
+                &machine,
+                &oracle_away,
+                "return",
+                &payload(),
+                return_ms,
+                &mut oracle_budget,
+            );
+            match (engine_returned, oracle_returned) {
+                (Outcome::Applied(engine), Outcome::Applied(oracle)) => {
+                    reentries += 1;
+                    assert_applied_parity(&engine, &oracle, &source);
+                    assert_eq!(
+                        engine.deadlines_after,
+                        BTreeMap::from([
+                            ("first".to_string(), return_ms + first_after),
+                            ("second".to_string(), return_ms + second_after),
+                        ])
+                    );
+                }
+                outcomes => panic!("deadline re-entry mismatch: {outcomes:?}\n{source}"),
+            }
+        }
+    }
+
+    assert_eq!(generated, 9);
+    assert_eq!(not_due, generated);
+    assert_eq!(applied, generated);
+    assert_eq!(ties, 3);
+    assert_eq!(cancellations, generated);
+    assert_eq!(reentries, generated);
+}
+
+#[test]
+fn enumerate_deadline_rejection_is_selected_once_and_atomic() {
+    let cases = [
+        (0, 0, "ctx.n + 1", "0", 0u32),
+        (1, 0, "0", "ctx.n + 1", 1u32),
+    ];
+    let mut rejected = 0u64;
+    for (first_after, second_after, first_value, second_value, expected_index) in cases {
+        let source = generated_deadline_machine(
+            first_after,
+            second_after,
+            i64::MAX,
+            first_value,
+            second_value,
+        );
+        let (machine, tree) = compile_src(&source);
+        let engine_created = create(&machine, &tree, &BTreeMap::new(), 10).unwrap();
+        let oracle_created = oracle::naive_create_at(&machine, &BTreeMap::new(), 10).unwrap();
+        assert_applied_parity(&engine_created, &oracle_created, &source);
+        let engine_state = state_from_applied(engine_created);
+        let oracle_state = state_from_applied(oracle_created);
+        let engine_before = engine_state.clone();
+        let oracle_before = oracle_state.clone();
+
+        let mut engine_budget = Budget::new(4096);
+        let mut oracle_budget = Budget::new(4096);
+        let engine = poll_deadline(&machine, &tree, &engine_state, 10, &mut engine_budget);
+        let oracle = oracle::naive_poll_deadline(&machine, &oracle_state, 10, &mut oracle_budget);
+        match (engine, oracle) {
+            (DeadlineOutcome::Rejected(engine), DeadlineOutcome::Rejected(oracle)) => {
+                rejected += 1;
+                assert_eq!(engine.deadline, oracle.deadline, "{source}");
+                let selected = engine.deadline.expect("a due schedule was selected");
+                assert_eq!(selected.deadline_idx, expected_index, "{source}");
+                assert_eq!(engine.rejection.code, oracle.rejection.code, "{source}");
+                assert_eq!(engine.rejection.cause, oracle.rejection.cause, "{source}");
+                assert_eq!(engine.rejection.code, "run/action_error");
+                assert_eq!(engine.rejection.cause, Some("run/overflow"));
+            }
+            outcomes => panic!("deadline rejection mismatch: {outcomes:?}\n{source}"),
+        }
+        assert_eq!(
+            engine_state, engine_before,
+            "engine rejection mutated state"
+        );
+        assert_eq!(
+            oracle_state, oracle_before,
+            "oracle rejection mutated state"
+        );
+        assert_eq!(
+            engine_state.ctx.get("n"),
+            Some(&fsm_core::expr::eval::Val::Int(i64::MAX)),
+            "a rejected selected deadline must not fall through to the other due deadline"
+        );
+    }
+    assert_eq!(rejected, cases.len() as u64);
+}
+
+#[test]
+fn enumerate_parallel_global_winner_differential() {
+    let mut counts = SuiteCounts::default();
+
+    for case in PARALLEL_WINNER_CASES {
+        let selection: Vec<String> = case
+            .rows
+            .iter()
+            .map(|row| {
+                transition_json(
+                    row.source,
+                    "choose",
+                    row.target,
+                    Some(row.guard),
+                    BlockCase::IncrementAndEmit,
+                )
+            })
+            .collect();
+        let src = parallel_machine_json(&selection);
+        let (machine, tree) = compile_src(&src);
+        let engine_create = create(&machine, &tree, &BTreeMap::new(), 0).unwrap();
+        let oracle_create = oracle::naive_create(&machine, &BTreeMap::new()).unwrap();
+        let expected_leaves = BTreeMap::from([
+            ("alpha".to_string(), "a0".to_string()),
+            ("beta".to_string(), "b0".to_string()),
+        ]);
+        assert_eq!(
+            engine_create.configuration_after,
+            ActiveConfiguration::Parallel {
+                leaves: expected_leaves.clone()
+            }
+        );
+        assert_eq!(
+            oracle_create.configuration_after,
+            ActiveConfiguration::Parallel {
+                leaves: expected_leaves
+            }
+        );
+        assert_eq!(engine_create.entered, ["a", "a0", "b", "b0"]);
+        assert_eq!(oracle_create.entered, engine_create.entered);
+        assert_eq!(
+            engine_create.ctx_after.get("n"),
+            Some(&fsm_core::expr::eval::Val::Int(4))
+        );
+        assert_eq!(oracle_create.ctx_after, engine_create.ctx_after);
+
+        let state = InstanceState {
+            status: Status::Running,
+            configuration: engine_create.configuration_after,
+            ctx: engine_create.ctx_after,
+            history: engine_create.history_after,
+            deadlines: BTreeMap::new(),
+            pending: Vec::new(),
+        };
+        let mut engine_budget = Budget::new(4096);
+        let mut oracle_budget = Budget::new(4096);
+        let engine = step(
+            &machine,
+            &tree,
+            &state,
+            "choose",
+            &payload(),
+            0,
+            &mut engine_budget,
+        );
+        let oracle = oracle::naive_step(&machine, &state, "choose", &payload(), &mut oracle_budget);
+        match (engine, oracle) {
+            (Outcome::Applied(engine), Outcome::Applied(oracle)) => {
+                assert_eq!(
+                    engine.region.as_deref(),
+                    Some(case.expected_region),
+                    "{}",
+                    case.name
+                );
+                assert_eq!(oracle.region, engine.region);
+                assert_eq!(engine.source_state, case.expected_source, "{}", case.name);
+                assert_eq!(oracle.source_state, engine.source_state);
+                assert_eq!(oracle.transition_idx, engine.transition_idx);
+                assert_eq!(oracle.configuration_after, engine.configuration_after);
+                let ActiveConfiguration::Parallel { leaves } = engine.configuration_after else {
+                    panic!("parallel event produced a sequential configuration");
+                };
+                assert_eq!(
+                    leaves.get("alpha").map(String::as_str),
+                    Some(case.expected_alpha),
+                    "{}",
+                    case.name
+                );
+                assert_eq!(
+                    leaves.get("beta").map(String::as_str),
+                    Some(case.expected_beta),
+                    "{}",
+                    case.name
+                );
+            }
+            other => panic!("parallel winner mismatch: {other:?}\n{src}"),
+        }
+
+        execute_case(src, &mut counts);
+    }
+
+    assert_eq!(counts.generated, 6, "parallel case grammar changed");
+    assert_eq!(counts.generated, counts.executed);
+    assert_eq!(counts.runs.sequences, counts.executed * 341);
+    assert_eq!(counts.runs.steps, counts.executed * 1_252);
+    assert!(counts.runs.internal_applied > 0);
+    assert!(counts.runs.external_applied > 0);
+    assert!(counts.runs.leaf_changes > 0);
+    assert!(counts.runs.effects > 0);
+    assert!(counts.runs.rejected > 0);
+    assert!(counts.runs.ignored > 0);
 }
 
 #[test]
@@ -809,7 +1405,15 @@ fn enumerate_small_differential() {
     let before = state.clone();
     let mut engine_budget = Budget::new(1);
     let mut oracle_budget = Budget::new(1);
-    let engine = step(&machine, &tree, &state, "e", &payload(), &mut engine_budget);
+    let engine = step(
+        &machine,
+        &tree,
+        &state,
+        "e",
+        &payload(),
+        0,
+        &mut engine_budget,
+    );
     let oracle = oracle::naive_step(&machine, &state, "e", &payload(), &mut oracle_budget);
     match (&engine, &oracle) {
         (Outcome::Rejected(engine), Outcome::Rejected(oracle)) => {
@@ -836,6 +1440,7 @@ fn enumerate_small_differential() {
             &state,
             "paint",
             &Value::Obj(bad.clone()),
+            0,
             &mut engine_budget,
         ),
         oracle::naive_step(
@@ -863,6 +1468,7 @@ fn enumerate_small_differential() {
             &state,
             "paint",
             &Value::Obj(good.clone()),
+            0,
             &mut engine_budget,
         ),
         oracle::naive_step(
@@ -893,6 +1499,7 @@ fn enumerate_small_differential() {
             &state,
             "pay",
             &Value::Obj(wide.clone()),
+            0,
             &mut engine_budget,
         ),
         oracle::naive_step(

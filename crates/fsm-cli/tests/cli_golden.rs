@@ -262,7 +262,7 @@ fn version_and_docs() {
 }
 
 #[test]
-fn doctor_reports_migration() {
+fn doctor_reports_pending_migration_without_mutating() {
     let dir = tmp();
     let example =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/expense_approval.json");
@@ -277,20 +277,26 @@ fn doctor_reports_migration() {
     );
     assert_eq!(code, 0, "{err}");
     std::fs::write(dir.join("VERSION"), "5\n").unwrap();
+    let snapshots_before = std::fs::read_dir(dir.join("snapshots")).unwrap().count();
     let (code, out, err) = run(&dir, &["doctor".into()], false);
     assert_eq!(code, 0, "{err}");
-    let current = fsm_store::journal_io::STORE_VERSION;
-    assert!(out.contains("migrated_from: 5"), "{out}");
+    assert!(out.contains("migration_required_from: 5"), "{out}");
+    assert!(!out.contains("writer_lock"), "{out}");
+    assert!(!out.contains("lock_holder"), "{out}");
     assert!(
         out.lines()
-            .any(|l| l.starts_with("version:") && l.trim_end().ends_with(current)),
+            .any(|l| l.starts_with("version:") && l.trim_end().ends_with('5')),
         "{out}"
     );
     assert_eq!(
         std::fs::read_to_string(dir.join("VERSION")).unwrap().trim(),
-        current
+        "5"
+    );
+    assert_eq!(
+        std::fs::read_dir(dir.join("snapshots")).unwrap().count(),
+        snapshots_before
     );
     let (code, out, _) = run(&dir, &["doctor".into()], false);
     assert_eq!(code, 0);
-    assert!(!out.contains("migrated_from"), "{out}");
+    assert!(out.contains("migration_required_from: 5"), "{out}");
 }

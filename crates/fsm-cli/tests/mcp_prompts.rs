@@ -54,6 +54,8 @@ fn instructions() {
         "enabled_events",
         "dry_run",
         "effect_ack",
+        "deadline_poll",
+        "deadlines_pending",
         "request_id",
         "JSON strings",
     ] {

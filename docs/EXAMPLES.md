@@ -1,5 +1,34 @@
 Load any example with `fsm machine add examples/<name>.json`. The grammar lives at `fsm://docs/spec`.
 
+## parallel_review_deadline
+
+Intent: run review and audit concurrently while keeping the engine's
+one-transition guarantee, and expire review only through an explicit poll.
+
+The two `regions` enter in document order. An event scans review before audit
+and still applies at most one global transition. `review_timeout` is scheduled
+when `awaiting_review` is entered; no background task fires it. The poll below
+uses a later injected timestamp and applies exactly that one due deadline.
+
+```
+$ fsm validate examples/parallel_review_deadline.json
+ok: true
+$ fsm machine add examples/parallel_review_deadline.json
+created: true
+$ FSM_CLOCK_MS=1000 fsm instance new parallel_review_deadline --request-id pr1
+configuration: {"kind":"parallel","leaves":{"audit":"auditing","review":"awaiting_review"}}
+$ fsm instance send inst-pr1 audit_ok --request-id pr-audit
+status: running
+$ FSM_CLOCK_MS=31000 fsm instance poll inst-pr1 --request-id pr-timeout
+deadline: review_timeout
+deadline_applied: true
+status: completed
+```
+
+A no-due poll is journaled. Retrying its `request_id` returns the original
+no-due observation even after time advances; use a new `request_id` for a new
+observation.
+
 ## expense_approval
 
 Intent: route an expense through peer or manager review using a decimal limit, with an ancestor `withdraw` and a child-first override.

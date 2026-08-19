@@ -1,0 +1,41 @@
+{
+  "format": "fsm.machine/1",
+  "name": "parallel_review_deadline",
+  "description": "Run review and audit in parallel; expire review only when explicitly polled after 30 seconds.",
+  "context": [],
+  "events": [
+    {"name": "approve", "fields": []},
+    {"name": "audit_ok", "fields": []}
+  ],
+  "regions": [
+    {
+      "name": "review",
+      "states": [
+        {"name": "awaiting_review"},
+        {"name": "approved", "terminal": true},
+        {"name": "timed_out", "terminal": true}
+      ],
+      "initial": "awaiting_review"
+    },
+    {
+      "name": "audit",
+      "states": [
+        {"name": "auditing"},
+        {"name": "audit_complete", "terminal": true}
+      ],
+      "initial": "auditing"
+    }
+  ],
+  "transitions": [
+    {"from": "awaiting_review", "on": "approve", "to": "approved"},
+    {"from": "auditing", "on": "audit_ok", "to": "audit_complete"}
+  ],
+  "deadlines": [
+    {
+      "name": "review_timeout",
+      "from": "awaiting_review",
+      "after": "dur(30, s)",
+      "to": "timed_out"
+    }
+  ]
+}

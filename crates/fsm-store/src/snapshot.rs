@@ -5,23 +5,25 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use fsm_core::canon::canon_bytes;
-use fsm_core::hashes::{domain_hash, state_hash};
+use fsm_core::hashes::{configuration_value, domain_hash, state_hash};
 use fsm_core::json::{JsonLimits, Value, parse};
-use fsm_core::machine::{InstanceState, Status};
-use fsm_core::replay::{StoreState, StoredMachine, ctx_val_string, fold_from, parse_ctx_val};
+use fsm_core::machine::{ActiveConfiguration, InstanceState, Status};
+use fsm_core::replay::{
+    STATE_ROOT_FORMAT, StoreState, StoredMachine, ctx_val_string, fold_from, parse_ctx_val,
+};
 use fsm_core::sha256::to_hex;
-use fsm_core::spec::compile_accepted;
+use fsm_core::spec::{compile_accepted, compile_accepted_historical_unchecked};
 use fsm_core::tree::Tree;
 
 use crate::store::ErrorObj;
 
-/// On-disk snapshot format tag. Bumped to `/3` when dedup entries gained the
-/// request fingerprint. Snapshots are disposable: an unrecognised format is
+/// On-disk snapshot format tag. Version 4 persists active configurations and
+/// deadline schedules. Snapshots are disposable: an unrecognised format is
 /// skipped and the journal is folded instead.
-pub const SNAPSHOT_FORMAT: &str = "fsm.snapshot/3";
+pub const SNAPSHOT_FORMAT: &str = "fsm.snapshot/4";
 
 /// Hash domain for [`SNAPSHOT_FORMAT`]. Kept in lockstep with it.
-pub const SNAPSHOT_DOMAIN: &str = "fsm:snapshot:3";
+pub const SNAPSHOT_DOMAIN: &str = "fsm:snapshot:4";
 
 pub fn snap_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("snapshots")
@@ -55,11 +57,23 @@ fn instance_value(id: &str, inst: &InstanceState, mid: &str, seq: u64) -> Value 
         hist.insert(k.clone(), Value::Str(v.clone()));
     }
     let mut o = BTreeMap::new();
-    o.insert("leaf".into(), Value::Str(inst.leaf.clone()));
+    o.insert(
+        "configuration".into(),
+        configuration_value(&inst.configuration),
+    );
     o.insert("status".into(), Value::Str(inst.status.as_str().into()));
     o.insert("machine_id".into(), Value::Str(mid.into()));
     o.insert("context".into(), Value::Obj(ctx));
     o.insert("history".into(), Value::Obj(hist));
+    o.insert(
+        "deadlines".into(),
+        Value::Obj(
+            inst.deadlines
+                .iter()
+                .map(|(name, due_ms)| (name.clone(), Value::Num(due_ms.to_string())))
+                .collect(),
+        ),
+    );
     o.insert(
         "pending".into(),
         Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
@@ -100,12 +114,20 @@ fn snapshot_material(state: &StoreState) -> BTreeMap<String, Value> {
     body
 }
 
+/// Encode a materialized store state as a self-hashed [`SNAPSHOT_FORMAT`] value.
+///
+/// The result is only a disposable cache representation; the journal remains
+/// authoritative and must bind or reproduce the represented state on open.
 pub fn state_to_snapshot(state: &StoreState) -> Value {
     let mut body = snapshot_material(state);
     body.insert("format".into(), Value::Str(SNAPSHOT_FORMAT.into()));
     body.insert(
         "state_root".into(),
         Value::Str(materialize_state_root(state)),
+    );
+    body.insert(
+        "state_root_format".into(),
+        Value::Str(STATE_ROOT_FORMAT.into()),
     );
     let h = hash_body(&body);
     body.insert("snapshot_hash".into(), Value::Str(h));
@@ -121,12 +143,76 @@ fn req_obj<'a>(
         .ok_or_else(|| ErrorObj::new("io/read", format!("snapshot missing object {k}")))
 }
 
-pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
+fn configuration_from_value(value: &Value) -> Result<ActiveConfiguration, ErrorObj> {
+    let object = value
+        .as_obj()
+        .ok_or_else(|| ErrorObj::new("io/read", "snapshot configuration not object"))?;
+    match object.get("kind").and_then(Value::as_str) {
+        Some("sequential") => {
+            if object.len() != 2 {
+                return Err(ErrorObj::new(
+                    "io/read",
+                    "snapshot sequential configuration fields",
+                ));
+            }
+            let leaf = object
+                .get("leaf")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ErrorObj::new("io/read", "snapshot configuration leaf"))?;
+            Ok(ActiveConfiguration::Sequential {
+                leaf: leaf.to_string(),
+            })
+        }
+        Some("parallel") => {
+            if object.len() != 2 {
+                return Err(ErrorObj::new(
+                    "io/read",
+                    "snapshot parallel configuration fields",
+                ));
+            }
+            let leaves = object
+                .get("leaves")
+                .and_then(Value::as_obj)
+                .ok_or_else(|| ErrorObj::new("io/read", "snapshot configuration leaves"))?
+                .iter()
+                .map(|(region, leaf)| {
+                    leaf.as_str()
+                        .map(|leaf| (region.clone(), leaf.to_string()))
+                        .ok_or_else(|| ErrorObj::new("io/read", "snapshot region leaf"))
+                })
+                .collect::<Result<BTreeMap<_, _>, _>>()?;
+            Ok(ActiveConfiguration::Parallel { leaves })
+        }
+        _ => Err(ErrorObj::new("io/read", "snapshot configuration kind")),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SnapshotDefinitionLimits {
+    Current,
+    Historical,
+}
+
+fn journal_uses_historical_definition_limits(records: &[fsm_core::record::Record]) -> bool {
+    records.first().is_some_and(|record| {
+        record.seq == 0
+            && record.kind == fsm_core::record::RecordKind::Genesis
+            && fsm_core::record::genesis_uses_historical_definition_limits(&record.body)
+    })
+}
+
+fn snapshot_to_state_with_definition_limits(
+    v: &Value,
+    definition_limits: SnapshotDefinitionLimits,
+) -> Result<StoreState, ErrorObj> {
     let obj = v
         .as_obj()
         .ok_or_else(|| ErrorObj::new("io/read", "snapshot not an object"))?;
     if obj.get("format").and_then(Value::as_str) != Some(SNAPSHOT_FORMAT) {
         return Err(ErrorObj::new("io/read", "bad snapshot format"));
+    }
+    if obj.get("state_root_format").and_then(Value::as_str) != Some(STATE_ROOT_FORMAT) {
+        return Err(ErrorObj::new("io/read", "bad snapshot state_root_format"));
     }
     let committed_root = obj
         .get("state_root")
@@ -159,11 +245,15 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
         ..StoreState::default()
     };
     for (id, def) in req_obj(obj, "machines")? {
-        let compiled = compile_accepted(def).map_err(ErrorObj::from_findings)?;
+        let compiled = match definition_limits {
+            SnapshotDefinitionLimits::Current => compile_accepted(def),
+            SnapshotDefinitionLimits::Historical => compile_accepted_historical_unchecked(def),
+        }
+        .map_err(ErrorObj::from_findings)?;
         if compiled.machine_id != *id {
             return Err(ErrorObj::new("io/read", "snapshot machine id mismatch"));
         }
-        let tree = Tree::build(&compiled.spec.states);
+        let tree = Tree::for_machine(&compiled.spec);
         st.machines.insert(
             id.clone(),
             StoredMachine {
@@ -209,14 +299,10 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
             .machines
             .get(&mid)
             .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance unknown machine"))?;
-        let leaf = io
-            .get("leaf")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing leaf"))?
-            .to_string();
-        if stored.tree.id(&leaf).is_none() {
-            return Err(ErrorObj::new("io/read", "snapshot instance unknown leaf"));
-        }
+        let configuration =
+            configuration_from_value(io.get("configuration").ok_or_else(|| {
+                ErrorObj::new("io/read", "snapshot instance missing configuration")
+            })?)?;
         let status = io
             .get("status")
             .and_then(Value::as_str)
@@ -257,27 +343,6 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
             let s = raw
                 .as_str()
                 .ok_or_else(|| ErrorObj::new("io/read", "snapshot history binding"))?;
-            let Some(owner) = stored.tree.id(k) else {
-                return Err(ErrorObj::new("io/read", "snapshot history unknown owner"));
-            };
-            let Some(bound) = stored.tree.id(s) else {
-                return Err(ErrorObj::new(
-                    "io/read",
-                    "snapshot history unknown descendant",
-                ));
-            };
-            let mut walk = Some(bound);
-            let mut under = owner == bound;
-            while let Some(n) = walk {
-                if n == owner {
-                    under = true;
-                    break;
-                }
-                walk = stored.tree.parent[n as usize];
-            }
-            if !under {
-                return Err(ErrorObj::new("io/read", "snapshot history not descendant"));
-            }
             history.insert(k.clone(), s.to_string());
         }
         let pending = io
@@ -291,13 +356,37 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
                     .ok_or_else(|| ErrorObj::new("io/read", "snapshot pending id"))
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let deadline_object = io
+            .get("deadlines")
+            .and_then(Value::as_obj)
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot instance missing deadlines"))?;
+        let deadlines = deadline_object
+            .iter()
+            .map(|(name, due)| {
+                let due_ms = due
+                    .as_num()
+                    .and_then(|raw| raw.parse::<i64>().ok())
+                    .ok_or_else(|| ErrorObj::new("io/read", "snapshot deadline timestamp"))?;
+                Ok((name.clone(), due_ms))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
         let inst = InstanceState {
             status,
-            leaf,
+            configuration,
             ctx,
             history,
+            deadlines,
             pending,
         };
+        stored
+            .tree
+            .validate_instance_state(&stored.compiled, &inst)
+            .map_err(|error| {
+                ErrorObj::new(
+                    "io/read",
+                    format!("snapshot invalid instance state: {}", error.detail()),
+                )
+            })?;
         let want_h = io
             .get("state_hash")
             .and_then(Value::as_str)
@@ -315,6 +404,30 @@ pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
     Ok(st)
 }
 
+/// Decode a snapshot using the current definition-admission limits.
+///
+/// Historical definitions are accepted only by store-open paths that also
+/// authenticate the exact legacy genesis in the hash-chained journal.
+pub fn snapshot_to_state(v: &Value) -> Result<StoreState, ErrorObj> {
+    snapshot_to_state_with_definition_limits(v, SnapshotDefinitionLimits::Current)
+}
+
+fn snapshot_to_state_for_journal(
+    value: &Value,
+    records: &[fsm_core::record::Record],
+) -> Result<(StoreState, SnapshotDefinitionLimits), ErrorObj> {
+    match snapshot_to_state(value) {
+        Ok(state) => Ok((state, SnapshotDefinitionLimits::Current)),
+        Err(current_error) => {
+            if !journal_uses_historical_definition_limits(records) {
+                return Err(current_error);
+            }
+            snapshot_to_state_with_definition_limits(value, SnapshotDefinitionLimits::Historical)
+                .map(|state| (state, SnapshotDefinitionLimits::Historical))
+        }
+    }
+}
+
 /// Canonical hash of the complete materialized store state.
 pub fn materialize_state_root(state: &StoreState) -> String {
     materialize_state_root_at(state, state.last_seq)
@@ -328,12 +441,15 @@ pub fn materialize_state_root_at(state: &StoreState, seq: u64) -> String {
 
 /// Compatibility helper for callers of the former sidecar API. The single
 /// bounded file is never consulted when selecting a snapshot.
+///
+/// This mutating helper requires the caller to provide writer exclusion.
 pub fn commit_state_root(data_dir: &Path, seq: u64, root: &str) -> Result<(), ErrorObj> {
     if data_dir.as_os_str() == "<memory>" {
         return Ok(());
     }
     let jdir = data_dir.join("journal");
-    fs::create_dir_all(&jdir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+    crate::ensure_persistence_directory(&jdir)
+        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let dest = jdir.join("legacy-snapshot-root");
     let tmp = jdir.join("legacy-snapshot-root.tmp");
     crate::write_durable(&tmp, format!("{seq}\t{root}\n").as_bytes())
@@ -344,24 +460,82 @@ pub fn commit_state_root(data_dir: &Path, seq: u64, root: &str) -> Result<(), Er
 }
 
 pub fn load_state_root(data_dir: &Path, seq: u64) -> Option<String> {
-    let p = data_dir.join("journal").join("legacy-snapshot-root");
-    let s = fs::read_to_string(p).ok()?;
+    let journal = data_dir.join("journal");
+    if !crate::persistence_directory_exists(&journal).ok()? {
+        return None;
+    }
+    let p = journal.join("legacy-snapshot-root");
+    let s = crate::read_regular_string_capped(&p, crate::PERSISTENCE_READ_CAP).ok()?;
     let (stored_seq, root) = s.trim().split_once('\t')?;
     (stored_seq.parse::<u64>().ok()? == seq).then(|| root.to_string())
 }
 
-fn snapshot_bound(base: &StoreState, rec: &fsm_core::record::Record) -> bool {
+fn snapshot_dedup_matches_journal(base: &StoreState, records: &[fsm_core::record::Record]) -> bool {
+    base.dedup.iter().all(|(request_id, slot)| {
+        let Ok(index) = records.binary_search_by_key(&slot.seq, |record| record.seq) else {
+            return false;
+        };
+        let record = &records[index];
+        if record.body.get("request_id").and_then(Value::as_str) != Some(request_id.as_str()) {
+            return false;
+        }
+        match record.body.get("request_fp") {
+            None => slot.fp.is_none(),
+            Some(Value::Str(fingerprint)) => slot.fp.as_deref() == Some(fingerprint.as_str()),
+            Some(_) => false,
+        }
+    })
+}
+
+fn snapshot_bound(
+    base: &StoreState,
+    record: &fsm_core::record::Record,
+    records: &[fsm_core::record::Record],
+    definition_limits: SnapshotDefinitionLimits,
+) -> bool {
     let root = materialize_state_root(base);
-    rec.body.get("state_root").and_then(Value::as_str) == Some(root.as_str())
+    record.body.get("state_root").and_then(Value::as_str) == Some(root.as_str())
+        && record
+            .body
+            .get("state_root_format")
+            .and_then(Value::as_str)
+            == Some(STATE_ROOT_FORMAT)
+        // `fsm.state-root/3` binds each request id to its claiming sequence.
+        // The hash-chained claiming record binds the fingerprint itself, so a
+        // fast-path snapshot must agree with that record before its dedup
+        // ledger is trusted.
+        && snapshot_dedup_matches_journal(base, records)
+        // A snapshot can omit the MachineDefined prefix it materializes. The
+        // historical compiler is therefore safe on the fast path only when
+        // the authenticated seq0 record carries the exact old limits table.
+        && (definition_limits == SnapshotDefinitionLimits::Current
+            || journal_uses_historical_definition_limits(records))
 }
 
 fn prune_legacy_root_sidecars(data_dir: &Path) -> Result<(), ErrorObj> {
     let jdir = data_dir.join("journal");
-    let Ok(entries) = fs::read_dir(&jdir) else {
+    if !crate::persistence_directory_exists(&jdir)
+        .map_err(|error| ErrorObj::new("io/write", error.to_string()))?
+    {
         return Ok(());
-    };
+    }
+    let entries = fs::read_dir(&jdir).map_err(|error| {
+        ErrorObj::new(
+            "io/write",
+            format!("read journal directory {}: {error}", jdir.display()),
+        )
+    })?;
     let mut removed = false;
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            ErrorObj::new(
+                "io/write",
+                format!(
+                    "read journal directory entry in {}: {error}",
+                    jdir.display()
+                ),
+            )
+        })?;
         let name = entry.file_name();
         let Some(name) = name.to_str() else {
             continue;
@@ -381,13 +555,15 @@ fn prune_legacy_root_sidecars(data_dir: &Path) -> Result<(), ErrorObj> {
     Ok(())
 }
 
-pub fn listed_snaps(data_dir: &Path) -> Vec<(u64, PathBuf)> {
+fn try_listed_snaps(data_dir: &Path) -> std::io::Result<Vec<(u64, PathBuf)>> {
     let dir = snap_dir(data_dir);
-    let Ok(rd) = fs::read_dir(&dir) else {
-        return Vec::new();
-    };
+    if !crate::persistence_directory_exists(&dir)? {
+        return Ok(Vec::new());
+    }
+    let rd = fs::read_dir(&dir)?;
     let mut out = Vec::new();
-    for ent in rd.flatten() {
+    for ent in rd {
+        let ent = ent?;
         let p = ent.path();
         let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
             continue;
@@ -404,12 +580,23 @@ pub fn listed_snaps(data_dir: &Path) -> Vec<(u64, PathBuf)> {
         out.push((seq, p));
     }
     out.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
-    out
+    Ok(out)
 }
 
+/// List snapshot cache files without following a symlinked snapshot directory.
+/// An inaccessible or invalid cache directory is equivalent to no snapshots;
+/// the authenticated journal remains authoritative.
+pub fn listed_snaps(data_dir: &Path) -> Vec<(u64, PathBuf)> {
+    try_listed_snaps(data_dir).unwrap_or_default()
+}
+
+/// Decode the newest self-consistent current-format snapshot cache, if any.
+///
+/// This helper does not authenticate the result against a journal. Operational
+/// store opens use [`open_state`] so a forged cache can never become authority.
 pub fn load_newest_valid(data_dir: &Path) -> Option<(u64, StoreState)> {
     for (_seq, path) in listed_snaps(data_dir) {
-        let Ok(bytes) = fs::read(&path) else {
+        let Ok(bytes) = crate::read_regular_file_capped(&path, crate::PERSISTENCE_READ_CAP) else {
             continue;
         };
         let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
@@ -422,15 +609,40 @@ pub fn load_newest_valid(data_dir: &Path) -> Option<(u64, StoreState)> {
     None
 }
 
+/// Durably install and verify a bounded disposable snapshot cache.
+///
+/// Callers that use this low-level helper directly must provide the same
+/// single-writer exclusion as [`crate::store::Store`]. An over-cap snapshot is
+/// refused before any cache path is changed; authoritative journal state is
+/// unaffected.
 pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, ErrorObj> {
     if state.last_seq == 0 {
         return Err(ErrorObj::new("io/write", "no records to snapshot"));
     }
-    prune_legacy_root_sidecars(data_dir)?;
-    let dir = snap_dir(data_dir);
-    fs::create_dir_all(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let body = state_to_snapshot(state);
     let bytes = canon_bytes(&body);
+    if bytes.len() > crate::PERSISTENCE_READ_CAP {
+        let mut details = BTreeMap::new();
+        details.insert("bytes".into(), Value::Num(bytes.len().to_string()));
+        details.insert(
+            "max_bytes".into(),
+            Value::Num(crate::PERSISTENCE_READ_CAP.to_string()),
+        );
+        return Err(ErrorObj::new(
+            "io/write",
+            format!(
+                "snapshot is {} bytes; the limit is {} bytes",
+                bytes.len(),
+                crate::PERSISTENCE_READ_CAP
+            ),
+        )
+        .hint("the journal remains authoritative; this oversized snapshot cache was not installed")
+        .details(Value::Obj(details)));
+    }
+    prune_legacy_root_sidecars(data_dir)?;
+    let dir = snap_dir(data_dir);
+    crate::ensure_persistence_directory(&dir)
+        .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     let seq = state.last_seq;
     let nonce = format!(
         "{}-{}",
@@ -450,10 +662,26 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
     };
     fs::rename(&tmp, &final_path).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     crate::sync_dir(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
-    let back = fs::read(&final_path).map_err(|e| ErrorObj::new("io/read", e.to_string()))?;
+    let back = crate::read_regular_file_capped(&final_path, crate::PERSISTENCE_READ_CAP)
+        .map_err(|e| ErrorObj::new("io/read", e.to_string()))?;
     let parsed =
         parse(&back, &JsonLimits::DEFAULT).map_err(|e| ErrorObj::new("io/read", e.message))?;
-    let reloaded = snapshot_to_state(&parsed)?;
+    let reloaded = match snapshot_to_state(&parsed) {
+        Ok(state) => state,
+        Err(current_error) => {
+            // A migrated historical-genesis store can legitimately contain a
+            // definition above the aggregate current evaluation ceiling. Retry
+            // only after re-reading and verifying the journal chain and
+            // matching its seq0 body against the exact historical limits
+            // object.
+            let records = crate::journal_io::load_records(data_dir)
+                .map_err(|error| ErrorObj::new("io/read", error))?;
+            if !journal_uses_historical_definition_limits(&records) {
+                return Err(current_error);
+            }
+            snapshot_to_state_with_definition_limits(&parsed, SnapshotDefinitionLimits::Historical)?
+        }
+    };
     if reloaded.last_seq != state.last_seq || reloaded.last_hash != state.last_hash {
         return Err(ErrorObj::new("io/read", "snapshot reload mismatch"));
     }
@@ -473,13 +701,19 @@ pub fn write_snapshot(data_dir: &Path, state: &StoreState) -> Result<PathBuf, Er
     Ok(final_path)
 }
 
+/// Retain the three newest snapshot cache files.
+///
+/// This mutating helper requires the caller to provide writer exclusion.
 pub fn prune_old(data_dir: &Path) -> Result<(), ErrorObj> {
-    let snaps = listed_snaps(data_dir);
+    let snaps =
+        try_listed_snaps(data_dir).map_err(|error| ErrorObj::new("io/write", error.to_string()))?;
     for (_, p) in snaps.into_iter().skip(3) {
         fs::remove_file(&p).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     }
     let dir = snap_dir(data_dir);
-    if dir.exists() {
+    if crate::persistence_directory_exists(&dir)
+        .map_err(|error| ErrorObj::new("io/write", error.to_string()))?
+    {
         crate::sync_dir(&dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
     }
     Ok(())
@@ -541,10 +775,11 @@ pub fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
         let Some(ib) = b.instances.get(id) else {
             return false;
         };
-        if ia.leaf != ib.leaf
+        if ia.configuration != ib.configuration
             || ia.status != ib.status
             || ia.ctx != ib.ctx
             || ia.history != ib.history
+            || ia.deadlines != ib.deadlines
             || ia.pending != ib.pending
         {
             return false;
@@ -575,6 +810,13 @@ pub struct OpenPath {
     pub snapshot_seq: Option<u64>,
 }
 
+/// Reconstruct an untrusted snapshot-cache view plus its journal tail.
+///
+/// This exists only for diagnostics that immediately compare the result with
+/// a complete journal fold. It deliberately preserves a self-consistent but
+/// divergent cache so `journal replay` can report the first disagreement.
+/// Callers MUST NOT use the returned state operationally; [`open_state`] is
+/// the authenticated store-open path.
 pub fn reconstruct_snapshot_plus_tail(
     data_dir: &Path,
     recs: &[fsm_core::record::Record],
@@ -583,13 +825,13 @@ pub fn reconstruct_snapshot_plus_tail(
     let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
     let want = to_seq.min(journal_last);
     for (_seq, path) in listed_snaps(data_dir) {
-        let Ok(bytes) = fs::read(&path) else {
+        let Ok(bytes) = crate::read_regular_file_capped(&path, crate::PERSISTENCE_READ_CAP) else {
             continue;
         };
         let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
             continue;
         };
-        let Ok(base) = snapshot_to_state(&v) else {
+        let Ok((base, _definition_limits)) = snapshot_to_state_for_journal(&v, recs) else {
             continue;
         };
         if base.last_seq > want {
@@ -614,25 +856,28 @@ pub fn reconstruct_snapshot_plus_tail(
         .map_err(|e| ErrorObj::new("io/read", format!("{e:?}")))
 }
 
-pub fn open_state(
+fn open_state_impl(
     data_dir: &Path,
     recs: Vec<fsm_core::record::Record>,
     sink: &mut impl fsm_core::replay::RecordSink,
+    may_prune: bool,
 ) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
     // Earlier builds emitted one mutable root file per commit. They are never
     // trust anchors and can be removed opportunistically.
-    let _ = prune_legacy_root_sidecars(data_dir);
+    if may_prune {
+        let _ = prune_legacy_root_sidecars(data_dir);
+    }
     let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
     // First pass: prefer a hash-chain-bound snapshot even when a newer
     // clean-shutdown cache exists without a committed root.
     for (_seq, path) in listed_snaps(data_dir) {
-        let Ok(bytes) = fs::read(&path) else {
+        let Ok(bytes) = crate::read_regular_file_capped(&path, crate::PERSISTENCE_READ_CAP) else {
             continue;
         };
         let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
             continue;
         };
-        let Ok(base) = snapshot_to_state(&v) else {
+        let Ok((base, definition_limits)) = snapshot_to_state_for_journal(&v, &recs) else {
             continue;
         };
         if base.last_seq > journal_last {
@@ -644,7 +889,7 @@ pub fn open_state(
         if rec.hash != base.last_hash {
             continue;
         }
-        let bound = snapshot_bound(&base, rec);
+        let bound = snapshot_bound(&base, rec, &recs, definition_limits);
         if !bound {
             continue;
         }
@@ -669,13 +914,13 @@ pub fn open_state(
     // but it cannot be trusted. Re-fold and compare its complete prefix before
     // using it; this is a correctness fallback, not the fast path.
     for (_seq, path) in listed_snaps(data_dir) {
-        let Ok(bytes) = fs::read(&path) else {
+        let Ok(bytes) = crate::read_regular_file_capped(&path, crate::PERSISTENCE_READ_CAP) else {
             continue;
         };
         let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
             continue;
         };
-        let Ok(base) = snapshot_to_state(&v) else {
+        let Ok((base, _definition_limits)) = snapshot_to_state_for_journal(&v, &recs) else {
             continue;
         };
         if base.last_seq > journal_last {
@@ -713,4 +958,25 @@ pub fn open_state(
             snapshot_seq: None,
         },
     ))
+}
+
+/// Fold a verified journal, using a snapshot only after binding or reproducing
+/// its complete journal prefix.
+///
+/// This writer-side path may prune obsolete cache metadata. Inspection code
+/// uses the crate-private non-mutating counterpart.
+pub fn open_state(
+    data_dir: &Path,
+    recs: Vec<fsm_core::record::Record>,
+    sink: &mut impl fsm_core::replay::RecordSink,
+) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
+    open_state_impl(data_dir, recs, sink, true)
+}
+
+pub(crate) fn open_state_read_only(
+    data_dir: &Path,
+    recs: Vec<fsm_core::record::Record>,
+    sink: &mut impl fsm_core::replay::RecordSink,
+) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
+    open_state_impl(data_dir, recs, sink, false)
 }

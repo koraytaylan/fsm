@@ -6,7 +6,7 @@ use fsm_core::tree::Tree;
 fn comp(src: &str) -> (fsm_core::machine::CompiledMachine, Tree) {
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     (m, t)
 }
 
@@ -14,7 +14,7 @@ fn comp(src: &str) -> (fsm_core::machine::CompiledMachine, Tree) {
 fn case_review_clean() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     assert!(shadowing_findings(&m).is_empty());
     assert!(ancestor_shadowed(&m, &t).is_empty());
     assert!(create_always_fails(&m, &t).is_empty());
@@ -116,6 +116,7 @@ fn create_always_fails_skips_boolean_override() {
         &m,
         &t,
         &std::collections::BTreeMap::from([("b".into(), fsm_core::expr::eval::Val::Bool(true))]),
+        0,
     );
     assert!(ok.is_ok(), "{ok:?}");
 }
@@ -133,6 +134,7 @@ fn create_always_fails_skips_int_eq_override() {
         &m,
         &t,
         &std::collections::BTreeMap::from([("n".into(), fsm_core::expr::eval::Val::Int(7))]),
+        0,
     );
     assert!(ok.is_ok(), "{ok:?}");
 }
@@ -150,6 +152,7 @@ fn create_always_fails_skips_entry_emit_override() {
         &m,
         &t,
         &std::collections::BTreeMap::from([("n".into(), fsm_core::expr::eval::Val::Int(2))]),
+        0,
     );
     assert!(ok.is_ok(), "{ok:?}");
 }

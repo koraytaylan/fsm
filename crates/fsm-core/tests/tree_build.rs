@@ -4,7 +4,7 @@ use fsm_core::tree::{NodeKind, Tree};
 #[test]
 fn case_review_tables() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
-    let t = Tree::build(&spec.states);
+    let t = Tree::for_machine(&spec);
     let rows: &[(&str, Option<&str>, u8, &str, Option<&str>)] = &[
         ("intake", None, 1, "leaf", None),
         ("in_review", None, 1, "compound", Some("docs_review")),
@@ -53,7 +53,7 @@ fn case_review_tables() {
             .collect::<Vec<_>>(),
         ["intake"]
     );
-    let t2 = Tree::build(&spec.states);
+    let t2 = Tree::for_machine(&spec);
     assert_eq!(t, t2);
 }
 
@@ -70,7 +70,7 @@ fn depth4_document_order() {
         .unwrap(),
     )
     .unwrap();
-    let t = Tree::build(&spec.states);
+    let t = Tree::for_machine(&spec);
     assert_eq!(t.names, ["c1", "c2", "c3", "leaf", "sib"]);
     assert_eq!(t.depth, [1, 2, 3, 4, 1]);
     assert_eq!(t.parent[4], None);

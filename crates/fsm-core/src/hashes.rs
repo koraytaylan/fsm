@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use crate::canon::canon_bytes;
 use crate::json::{Value, write_canonical};
-use crate::machine::{InstanceState, Status};
+use crate::machine::{ActiveConfiguration, InstanceState, Status};
 use crate::sha256::{sha256, to_hex};
 
 pub fn domain_hash(tag: &str, v: &Value) -> [u8; 32] {
@@ -125,6 +125,37 @@ pub fn request_fp(operation: &str, fields: &BTreeMap<String, Value>) -> String {
     )
 }
 
+/// Format discriminator for newly written logical instance-state hashes.
+pub const STATE_FORMAT: &str = "fsm.state/2";
+/// Domain-separation tag paired with [`STATE_FORMAT`].
+pub const STATE_DOMAIN: &str = "fsm:state:2";
+
+/// Encode an active configuration in the canonical tagged JSON shape.
+pub fn configuration_value(configuration: &ActiveConfiguration) -> Value {
+    match configuration {
+        ActiveConfiguration::Sequential { leaf } => Value::Obj(BTreeMap::from([
+            ("kind".into(), Value::Str("sequential".into())),
+            ("leaf".into(), Value::Str(leaf.clone())),
+        ])),
+        ActiveConfiguration::Parallel { leaves } => Value::Obj(BTreeMap::from([
+            ("kind".into(), Value::Str("parallel".into())),
+            (
+                "leaves".into(),
+                Value::Obj(
+                    leaves
+                        .iter()
+                        .map(|(region, leaf)| (region.clone(), Value::Str(leaf.clone())))
+                        .collect(),
+                ),
+            ),
+        ])),
+    }
+}
+
+/// Hash a complete logical instance state using the current state format.
+///
+/// The hash binds the active configuration and absolute deadline schedules in
+/// addition to context, history, lifecycle status, and pending effects.
 pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String {
     let mut ctx = BTreeMap::new();
     for (k, v) in &st.ctx {
@@ -136,21 +167,73 @@ pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceSt
     }
     let mut pending: Vec<String> = st.pending.clone();
     pending.sort();
+    let deadlines = st
+        .deadlines
+        .iter()
+        .map(|(name, due_ms)| (name.clone(), Value::Num(due_ms.to_string())))
+        .collect();
     let mut obj = BTreeMap::new();
-    obj.insert("format".into(), Value::Str("fsm.state/1".into()));
+    obj.insert("format".into(), Value::Str(STATE_FORMAT.into()));
     obj.insert("machine_id".into(), Value::Str(machine_id.into()));
     obj.insert("instance_id".into(), Value::Str(instance_id.into()));
     obj.insert("seq".into(), Value::Num(seq.to_string()));
     obj.insert("status".into(), Value::Str(st.status.as_str().into()));
-    obj.insert("state".into(), Value::Str(st.leaf.clone()));
+    obj.insert(
+        "configuration".into(),
+        configuration_value(&st.configuration),
+    );
     obj.insert("ctx".into(), Value::Obj(ctx));
     obj.insert("history".into(), Value::Obj(hist));
+    obj.insert("deadlines".into(), Value::Obj(deadlines));
     obj.insert(
         "pending".into(),
         Value::Arr(pending.into_iter().map(Value::Str).collect()),
     );
-    let hex = to_hex(&domain_hash("fsm:state:1", &Value::Obj(obj)));
+    let hex = to_hex(&domain_hash(STATE_DOMAIN, &Value::Obj(obj)));
     format!("sha256:{hex}")
+}
+
+/// Historical state hash used only to verify records written before store
+/// VERSION 8. New writes always use [`state_hash`].
+pub fn legacy_state_hash(
+    machine_id: &str,
+    instance_id: &str,
+    seq: u64,
+    state: &InstanceState,
+) -> Option<String> {
+    let ActiveConfiguration::Sequential { leaf } = &state.configuration else {
+        return None;
+    };
+    let context = state
+        .ctx
+        .iter()
+        .map(|(name, value)| (name.clone(), Value::Str(value.canonical_string())))
+        .collect();
+    let history = state
+        .history
+        .iter()
+        .map(|(owner, bound)| (owner.clone(), Value::Str(bound.clone())))
+        .collect();
+    let mut pending = state.pending.clone();
+    pending.sort();
+    let material = Value::Obj(BTreeMap::from([
+        ("format".into(), Value::Str("fsm.state/1".into())),
+        ("machine_id".into(), Value::Str(machine_id.into())),
+        ("instance_id".into(), Value::Str(instance_id.into())),
+        ("seq".into(), Value::Num(seq.to_string())),
+        ("status".into(), Value::Str(state.status.as_str().into())),
+        ("state".into(), Value::Str(leaf.clone())),
+        ("ctx".into(), Value::Obj(context)),
+        ("history".into(), Value::Obj(history)),
+        (
+            "pending".into(),
+            Value::Arr(pending.into_iter().map(Value::Str).collect()),
+        ),
+    ]));
+    Some(format!(
+        "sha256:{}",
+        to_hex(&domain_hash("fsm:state:1", &material))
+    ))
 }
 
 #[cfg(test)]

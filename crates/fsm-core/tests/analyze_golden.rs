@@ -7,7 +7,7 @@ use fsm_core::tree::Tree;
 fn case_review_reachability_and_matrix() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     let f = reachability_findings(&m, &t);
     assert!(f.is_empty(), "{f:?}");
     let mat = completeness_matrix(&m, &t);
@@ -60,7 +60,7 @@ fn unreachable_state() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"},{"name":"ghost"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     let f = reachability_findings(&m, &t);
     assert!(
         f.iter()
@@ -75,7 +75,7 @@ fn ignore_policy_matrix() {
     let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","on_unhandled":"ignore","context":[],"events":[{"name":"e","fields":[]}],"transitions":[]}"#;
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     let mat = completeness_matrix(&m, &t);
     assert_eq!(
         mat.get(&("a".into(), "e".into())).unwrap(),

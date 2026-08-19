@@ -7,10 +7,13 @@ dry_run:    true
 machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 name:       case_review
 summary:
+  deadlines:       0
   events:          6
   initial:         intake
+  regions:
   states:          8
   terminal_states: approved, rejected
+  topology:        sequential
   transitions:     8
 warnings:
 --- stderr ---
@@ -23,10 +26,13 @@ dry_run:    false
 machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 name:       case_review
 summary:
+  deadlines:       0
   events:          6
   initial:         intake
+  regions:
   states:          8
   terminal_states: approved, rejected
+  topology:        sequential
   transitions:     8
 warnings:
 --- stderr ---
@@ -34,12 +40,15 @@ warnings:
 argv: instance new case_review --request-id new-1
 exit: 0
 --- stdout ---
-configuration:   intake
+configuration:
+  kind: sequential
+  leaf: intake
 context:
   notes:  0
   score:  0
   visits: 0
-duplicate:       false
+deadlines_pending:
+duplicate:         false
 effects_pending:
 enabled_events:
   -     event:  docs_ok
@@ -54,30 +63,35 @@ enabled_events:
     status: disabled
   -     event:  resume
     status: disabled
-instance_id:     inst-new-1
-leaf:            intake
+instance_id:       inst-new-1
+leaf:              intake
 machine:
   machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
-ok:              true
-request_id:      new-1
-seq:             2
-state:           intake
-state_hash:      sha256:bea77fe1466ef20a6286d8876e6d9df098767d144aa7efe83c464ae4dbe6e456
-status:          running
+ok:                true
+request_id:        new-1
+seq:               2
+state:             intake
+state_format:      fsm.state/2
+state_hash:        sha256:1b2b293a48cc4c57d2a4f841a47b47e2c75376e60a721f5e221187938df45914
+state_path:        intake
+status:            running
 --- stderr ---
 [send_docs_ok]
 argv: instance send inst-new-1 docs_ok --request-id send-1
 exit: 0
 --- stdout ---
-applied:         true
-configuration:   in_review, docs_review
+applied:           true
+configuration:
+  kind: sequential
+  leaf: docs_review
 context:
   notes:  0
   score:  0
   visits: 1
-duplicate:       false
-effects_pending: inst-new-1/3/0
+deadlines_pending:
+duplicate:         false
+effects_pending:   inst-new-1/3/0
 enabled_events:
   -     event:  docs_ok
     status: enabled
@@ -91,18 +105,20 @@ enabled_events:
     status: enabled
   -     event:  resume
     status: disabled
-instance_id:     inst-new-1
-leaf:            docs_review
+instance_id:       inst-new-1
+leaf:              docs_review
 machine:
   machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
 monitor_flags:
-ok:              true
-request_id:      send-1
-seq:             3
-state:           in_review.docs_review
-state_hash:      sha256:5e4f307b274c277f1850b62d9a2c3fe60e3f887960cb7b51fbb1e28ad17bf849
-status:          running
+ok:                true
+request_id:        send-1
+seq:               3
+state:             in_review.docs_review
+state_format:      fsm.state/2
+state_hash:        sha256:e486ff24a8c250baf78c2acc1b9a3ec72547ca9ab78d6dc98b5feb1099994a51
+state_path:        in_review, docs_review
+status:            running
 trace:
   candidates:
     -       source_state: intake
@@ -157,33 +173,42 @@ trace:
             value:    1
           target: visits
 transition:
-  entered:        in_review, docs_review
-  exited:         intake
-  from_leaf:      intake
-  internal:       false
-  source_state:   intake
-  to_leaf:        docs_review
-  transition_idx: 0
+  entered:            in_review, docs_review
+  exited:             intake
+  from_configuration:
+    kind: sequential
+    leaf: intake
+  from_leaf:          intake
+  internal:           false
+  source_state:       intake
+  to_configuration:
+    kind: sequential
+    leaf: docs_review
+  to_leaf:            docs_review
+  transition_idx:     0
 --- stderr ---
 [send_rejected]
 argv: instance send inst-new-1 resume --request-id send-bad
 exit: 1
 --- stdout ---
 --- stderr ---
-run/unhandled: no handler for resume at docs_review
+run/unhandled: no handler for resume in the active configuration
   hint: add a transition or send a handled event
 [send_docs_ok2]
 argv: instance send inst-new-1 docs_ok --request-id send-2
 exit: 0
 --- stdout ---
-applied:         true
-configuration:   in_review, risk_review
+applied:           true
+configuration:
+  kind: sequential
+  leaf: risk_review
 context:
   notes:  0
   score:  0
   visits: 1
-duplicate:       false
-effects_pending: inst-new-1/3/0
+deadlines_pending:
+duplicate:         false
+effects_pending:   inst-new-1/3/0
 enabled_events:
   -     event:  docs_ok
     status: disabled
@@ -198,18 +223,20 @@ enabled_events:
     status: enabled
   -     event:  resume
     status: disabled
-instance_id:     inst-new-1
-leaf:            risk_review
+instance_id:       inst-new-1
+leaf:              risk_review
 machine:
   machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
 monitor_flags:
-ok:              true
-request_id:      send-2
-seq:             5
-state:           in_review.risk_review
-state_hash:      sha256:f7ccb87cdacff877f6450b79a927abc1ca70599dd8dc0102a1f5cb8b61d92163
-status:          running
+ok:                true
+request_id:        send-2
+seq:               5
+state:             in_review.risk_review
+state_format:      fsm.state/2
+state_hash:        sha256:2bcdafb17acc803231e3b8d5eca980bfe63a439e94faed914b2c00be46f407f1
+state_path:        in_review, risk_review
+status:            running
 trace:
   candidates:
     -       source_state: docs_review
@@ -254,13 +281,19 @@ trace:
             value:    0
           target: score
 transition:
-  entered:        risk_review
-  exited:         docs_review
-  from_leaf:      docs_review
-  internal:       false
-  source_state:   docs_review
-  to_leaf:        risk_review
-  transition_idx: 1
+  entered:            risk_review
+  exited:             docs_review
+  from_configuration:
+    kind: sequential
+    leaf: docs_review
+  from_leaf:          docs_review
+  internal:           false
+  source_state:       docs_review
+  to_configuration:
+    kind: sequential
+    leaf: risk_review
+  to_leaf:            risk_review
+  transition_idx:     1
 --- stderr ---
 [ack]
 argv: instance ack inst-new-1 inst-new-1/3/0 --outcome ok --request-id ack-1
@@ -290,134 +323,203 @@ exit: 0
 --- stdout ---
 chain_verified: true
 entries:
-  -     after_context:
+  -     after_configuration:
+      kind: sequential
+      leaf: intake
+    after_context:
       notes:  0
       score:  0
       visits: 0
-    after_leaf:    intake
+    after_leaf:          intake
     context_after:
       notes:  0
       score:  0
       visits: 0
-    from_leaf:     intake
-    hash:          42e1456fe94a31cd1b19778fba9c6ffddc59e7ef7c6c9e5296ac4da535d93515
-    kind:          InstanceCreated
-    request_id:    new-1
-    seq:           2
-    to_leaf:       intake
-    ts:            5001
-  -     after_context:
+    from_configuration:
+      kind: sequential
+      leaf: intake
+    from_leaf:           intake
+    hash:                019904085fef35b107ae11acb403ab7e9f4618e40346d4203b0e1a8b8668da99
+    kind:                InstanceCreated
+    request_id:          new-1
+    seq:                 2
+    to_configuration:
+      kind: sequential
+      leaf: intake
+    to_leaf:             intake
+    ts:                  5001
+  -     after_configuration:
+      kind: sequential
+      leaf: docs_review
+    after_context:
       notes:  0
       score:  0
       visits: 1
-    after_leaf:     docs_review
+    after_leaf:           docs_review
+    before_configuration:
+      kind: sequential
+      leaf: intake
     before_context:
       notes:  0
       score:  0
       visits: 0
-    before_leaf:    intake
+    before_leaf:          intake
     context_after:
       notes:  0
       score:  0
       visits: 1
-    event:          docs_ok
-    from_leaf:      intake
-    hash:           c5e3eed0146d16c377d47846a438767f441a08cc92ab8860dfeb8bbd40234965
-    kind:           EventApplied
+    event:                docs_ok
+    from_configuration:
+      kind: sequential
+      leaf: intake
+    from_leaf:            intake
+    hash:                 b9ca0308258f38ed85504f43cefe87a57a096ca62cec40ca3dcc5ea443e2c427
+    kind:                 EventApplied
     payload:
-    request_id:     send-1
-    seq:            3
-    to_leaf:        docs_review
-    ts:             5001
-  -     after_context:
+    request_id:           send-1
+    seq:                  3
+    to_configuration:
+      kind: sequential
+      leaf: docs_review
+    to_leaf:              docs_review
+    ts:                   5001
+  -     after_configuration:
+      kind: sequential
+      leaf: docs_review
+    after_context:
       notes:  0
       score:  0
       visits: 1
-    after_leaf:     docs_review
+    after_leaf:           docs_review
+    before_configuration:
+      kind: sequential
+      leaf: docs_review
     before_context:
       notes:  0
       score:  0
       visits: 1
-    before_leaf:    docs_review
+    before_leaf:          docs_review
     context_after:
       notes:  0
       score:  0
       visits: 1
-    event:          resume
-    from_leaf:      docs_review
-    hash:           e7f90578725d0248d927835a8ea9838eef8928c567171182bc6d66501b8f62c2
-    kind:           EventRejected
+    event:                resume
+    from_configuration:
+      kind: sequential
+      leaf: docs_review
+    from_leaf:            docs_review
+    hash:                 778987fc779444487e0c2bafdddadad01edd46c6de7abf0ff4d0af8ebcb631a8
+    kind:                 EventRejected
     payload:
-    request_id:     send-bad
-    seq:            4
-    to_leaf:        docs_review
-    ts:             5001
-  -     after_context:
+    request_id:           send-bad
+    seq:                  4
+    to_configuration:
+      kind: sequential
+      leaf: docs_review
+    to_leaf:              docs_review
+    ts:                   5001
+  -     after_configuration:
+      kind: sequential
+      leaf: risk_review
+    after_context:
       notes:  0
       score:  0
       visits: 1
-    after_leaf:     risk_review
+    after_leaf:           risk_review
+    before_configuration:
+      kind: sequential
+      leaf: docs_review
     before_context:
       notes:  0
       score:  0
       visits: 1
-    before_leaf:    docs_review
+    before_leaf:          docs_review
     context_after:
       notes:  0
       score:  0
       visits: 1
-    event:          docs_ok
-    from_leaf:      docs_review
-    hash:           1e0adeb9d281a3a9d5d9aaafb367536b427d08d4b0a56e22d3291e07a24e67c6
-    kind:           EventApplied
+    event:                docs_ok
+    from_configuration:
+      kind: sequential
+      leaf: docs_review
+    from_leaf:            docs_review
+    hash:                 3766d943442d377c6882a07413e180635fb0f25d88b656b1085f48ea9c05bb07
+    kind:                 EventApplied
     payload:
-    request_id:     send-2
-    seq:            5
-    to_leaf:        risk_review
-    ts:             5001
-  -     after_context:
+    request_id:           send-2
+    seq:                  5
+    to_configuration:
+      kind: sequential
+      leaf: risk_review
+    to_leaf:              risk_review
+    ts:                   5001
+  -     after_configuration:
+      kind: sequential
+      leaf: risk_review
+    after_context:
       notes:  0
       score:  0
       visits: 1
-    after_leaf:     risk_review
+    after_leaf:           risk_review
+    before_configuration:
+      kind: sequential
+      leaf: risk_review
     before_context:
       notes:  0
       score:  0
       visits: 1
-    before_leaf:    risk_review
+    before_leaf:          risk_review
     context_after:
       notes:  0
       score:  0
       visits: 1
-    from_leaf:      risk_review
-    hash:           bfdcc4251955a0cd03dce3bb6c458d1e83cfef90051abfa16b42bf23f8c269a0
-    kind:           EffectAcked
-    request_id:     ack-1
-    seq:            6
-    to_leaf:        risk_review
-    ts:             5001
-  -     after_context:
+    from_configuration:
+      kind: sequential
+      leaf: risk_review
+    from_leaf:            risk_review
+    hash:                 5546f0612740c22aaeb14e02f206fe02c22e04bf4941f22a303db4d4eaba45ba
+    kind:                 EffectAcked
+    request_id:           ack-1
+    seq:                  6
+    to_configuration:
+      kind: sequential
+      leaf: risk_review
+    to_leaf:              risk_review
+    ts:                   5001
+  -     after_configuration:
+      kind: sequential
+      leaf: risk_review
+    after_context:
       notes:  0
       score:  0
       visits: 1
-    after_leaf:     risk_review
+    after_leaf:           risk_review
+    before_configuration:
+      kind: sequential
+      leaf: risk_review
     before_context:
       notes:  0
       score:  0
       visits: 1
-    before_leaf:    risk_review
+    before_leaf:          risk_review
     context_after:
       notes:  0
       score:  0
       visits: 1
-    from_leaf:      risk_review
-    hash:           94d6bc7ff4515d501b9e46a800dcdc6e3bc540b6dd5a3b6345119e12d84a70dd
-    kind:           Annotated
-    note:           hello-note
-    request_id:     ann-1
-    seq:            7
-    to_leaf:        risk_review
-    ts:             5001
+    from_configuration:
+      kind: sequential
+      leaf: risk_review
+    from_leaf:            risk_review
+    hash:                 4cee0312283bba0fe1afdc5a56067f06714911a79ddaf5e8b89cb30f5de087eb
+    kind:                 Annotated
+    note:                 hello-note
+    request_id:           ann-1
+    seq:                  7
+    to_configuration:
+      kind: sequential
+      leaf: risk_review
+    to_leaf:              risk_review
+    ts:                   5001
 instance_id:    inst-new-1
 --- stderr ---
 [journal_verify]
@@ -428,5 +530,5 @@ health:        Ok
 instances:     1
 machines:      1
 records:       8
-store_version: 7
+store_version: 8
 --- stderr ---

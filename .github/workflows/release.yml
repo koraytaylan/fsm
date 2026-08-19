@@ -158,12 +158,41 @@ jobs:
               )
               .expect("parse");
               let compiled = fsm_core::spec::compile_accepted(&def).expect("compile");
-              let tree = fsm_core::tree::Tree::build(&compiled.spec.states);
-              let applied =
-                  fsm_core::step::create(&compiled, &tree, &Default::default()).expect("create");
-              assert_eq!(applied.leaf_after, "a");
-              // The store crate must be reachable from the same tag.
-              let _ = fsm_store::journal_io::STORE_VERSION;
+              let tree = fsm_core::tree::Tree::for_machine(&compiled.spec);
+              let applied = fsm_core::step::create(
+                  &compiled,
+                  &tree,
+                  &Default::default(),
+                  0,
+              )
+              .expect("create");
+              assert_eq!(
+                  applied.configuration_after.sequential_leaf(),
+                  Some("a"),
+              );
+              // Drive the supported store API from the same tag too.
+              let mut store = fsm_store::store::Store::open_memory().expect("store");
+              store
+                  .define_machine(def, false, false)
+                  .expect("store definition");
+              store
+                  .create_instance("m", "case-1", "create-1", None)
+                  .expect("store create");
+              let mut clock = fsm_store::clock::FixedClock::new(0, 1);
+              let polled = store
+                  .poll_instance_deadline_on(
+                      &mut clock,
+                      "case-1",
+                      "poll-1",
+                      None,
+                  )
+                  .expect("store deadline poll");
+              assert_eq!(
+                  polled
+                      .get("deadline_not_due")
+                      .and_then(fsm_core::json::Value::as_bool),
+                  Some(true),
+              );
               println!("git dependency on {} builds and runs", env!("CARGO_PKG_NAME"));
           }
           EOF

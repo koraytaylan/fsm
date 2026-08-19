@@ -57,7 +57,7 @@ fn add(ctx: &mut Ctx, args: &Args) -> u8 {
 }
 
 fn ls(ctx: &mut Ctx, args: &Args) -> u8 {
-    let store = match Store::open(&ctx.data_dir) {
+    let store = match Store::open_read_only(&ctx.data_dir) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
@@ -85,7 +85,15 @@ fn ls(ctx: &mut Ctx, args: &Args) -> u8 {
         // 4 states where validate reported 9.
         row.insert(
             "states".into(),
-            Value::Num(fsm_core::spec::count_states(&m.compiled.spec.states).to_string()),
+            Value::Num(
+                m.compiled
+                    .spec
+                    .state_groups()
+                    .into_iter()
+                    .map(|(_, states, _)| fsm_core::spec::count_states(states))
+                    .sum::<usize>()
+                    .to_string(),
+            ),
         );
         row.insert(
             "events".into(),
@@ -105,7 +113,7 @@ fn show(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(r) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "machine show <id>"));
     };
-    let store = match Store::open(&ctx.data_dir) {
+    let store = match Store::open_read_only(&ctx.data_dir) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
@@ -113,14 +121,32 @@ fn show(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(m) => {
             let canon = String::from_utf8(canon_bytes(&m.def)).unwrap_or_default();
             let mut summary = BTreeMap::new();
-            summary.insert(
-                "initial".into(),
-                Value::Str(m.compiled.spec.initial.clone()),
-            );
+            match &m.compiled.spec.topology {
+                fsm_core::spec::Topology::Sequential { initial, .. } => {
+                    summary.insert("initial".into(), Value::Str(initial.clone()));
+                }
+                fsm_core::spec::Topology::Parallel { regions } => {
+                    summary.insert(
+                        "regions".into(),
+                        Value::Obj(
+                            regions
+                                .iter()
+                                .map(|region| {
+                                    (region.name.clone(), Value::Str(region.initial.clone()))
+                                })
+                                .collect(),
+                        ),
+                    );
+                }
+            }
             // Recursive, like every other terminal-state listing; the
             // top-level filter missed terminals nested in compound states.
-            let terminals: Vec<Value> = fsm_core::spec::terminal_states(&m.compiled.spec.states)
+            let terminals: Vec<Value> = m
+                .compiled
+                .spec
+                .state_groups()
                 .into_iter()
+                .flat_map(|(_, states, _)| fsm_core::spec::terminal_states(states))
                 .map(|n| Value::Str(n.into()))
                 .collect();
             summary.insert("terminal_states".into(), Value::Arr(terminals));
@@ -142,13 +168,13 @@ fn analyze(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(r) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "machine analyze <id>"));
     };
-    let store = match Store::open(&ctx.data_dir) {
+    let store = match Store::open_read_only(&ctx.data_dir) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
     match store.resolve_machine(r) {
         Ok(m) => {
-            let t = Tree::build(&m.compiled.spec.states);
+            let t = Tree::for_machine(&m.compiled.spec);
             let findings = analyze_all(&m.compiled, &t);
             let has_err = findings
                 .iter()

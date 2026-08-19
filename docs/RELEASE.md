@@ -11,6 +11,59 @@ moved or deleted, because library consumers pin it. There is no crates.io
 publish to undo — a git tag *is* the distribution artifact — so a mistake found
 late is superseded by a new patch version, never by rewriting the tag.
 
+## X.Y.Z compatibility note
+
+This release adds parallel regions and explicit deadline polling. It is a
+pre-1.0 minor release because `MachineSpec` now carries `topology` and
+`deadlines`; `Tree::build` takes the sequential initial (with
+`Tree::for_machine` preferred); `InstanceState` and `Applied` now carry tagged
+complete configurations and deadline state, while `SimStep` and `SimReport`
+carry tagged complete configurations;
+diagram overlays take `current_leaves`; pure create/step calls take
+caller-supplied timestamps; and `simulate::simulate` returns a typed creation
+rejection instead of a sentinel report. See the migration list in
+[`API-POLICY.md`](API-POLICY.md). The current persisted formats move to store
+`VERSION` 8, `fsm.state/2`, `fsm.state-root/3`, and `fsm.snapshot/4`. Stores at versions 1
+through 7 are full-folded and stamped forward without rewriting journal
+records; legacy state hashes and roots remain verifiable. New genesis records
+also bind the region, deadline, and aggregate expression-evaluation ceilings,
+while readers retain exact support for the historical limits object already
+sealed into older journals. Definitions exceeding the standard 4096-tick
+whole-machine worst-case evaluation cost (compiled AST nodes plus one implicit
+guard tick per distinct event with an omitted guard) fail compilation with
+`def/limit_eval` rather than reaching `internal/budget` during creation,
+execution, or enabled-event analysis. The exact historical genesis
+enables ceiling-free compatibility compilation of `machine_defined` records
+during a complete journal fold. New definition writes, `fold_from` snapshot
+tails, and current-genesis snapshots remain subject to the current ceiling.
+Historical folds additionally accept already-sealed rejection details produced
+before enabled-event analysis charged omitted guards; new diagnostics always
+use the corrected accounting. Current admission also closes the legacy bug
+that allowed ownerless, child-bearing, terminal, or initial-bearing history
+pseudostates. Exact-historical-genesis full folds retain that admission only for
+sequential definitions without deadlines and reproduce the active/history
+states and global-name malformed-history initial descents the old stepper could
+seal; new writes and current-genesis snapshots use the strict shape.
+Current-valid parallel and deadline definitions appended after migration still
+full-fold under the historical genesis and receive no malformed-history
+exception. Persistence inputs are now bounded before allocation and static
+non-regular or symlinked journal/snapshot paths are not followed. Library and
+CLI inspection paths create nothing, take no advisory lock, perform no
+`VERSION` migration or stamping, and write no snapshot; mutating methods on a
+read-only `Store` fail with `io/write`. Downstream exhaustive matches must
+replace `journal_io::OpenError::Io` and `RepairError::Io` with their respective
+`ReadIo` and `WriteIo` variants, and handle
+`JournalIoError::RecordTooLarge { bytes, max_bytes }` on direct journal
+appends. The persistence ceiling is 16 MiB per `VERSION`, snapshot, or
+individual streamed journal record: exact is accepted, oversized authoritative
+input is `io/read`, an oversized append is refused before rotation/write as
+`io/write`, and an oversized disposable snapshot is skipped on read and
+refused before cache mutation on write. Stamped events are measured after stamp
+insertion; an oversized candidate leaves the caller value and built-in injected
+clock unchanged. `Clock` gains provided reservation/commit hooks, so existing
+custom implementations keep compiling with eager consumption and may override
+both hooks when abandoned reservations must not advance them.
+
 ## Before tagging
 
 - The CI matrix is green **on the exact commit you intend to tag**, not merely
@@ -71,11 +124,11 @@ gate once that debt is paid, and update `ci.yml` and `release.yml` together.
 
 The pipeline cannot run these; do them before tagging.
 
-- `manual:` Claude Code: connect, list all 13 tools, run the golden loop
+- `manual:` Claude Code: connect, list all 14 tools, run the golden loop
   end-to-end.
-- `manual:` Claude Desktop: connect, list all 13 tools, run the golden loop
+- `manual:` Claude Desktop: connect, list all 14 tools, run the golden loop
   end-to-end.
-- `manual:` MCP Inspector: connect, list all 13 tools, run the golden loop
+- `manual:` MCP Inspector: connect, list all 14 tools, run the golden loop
   end-to-end.
 - `manual:` an LLM authors and drives the case-review machine from a
   natural-language brief, unaided, in a bounded number of tool calls.
@@ -84,7 +137,7 @@ The pipeline cannot run these; do them before tagging.
 - `manual:` `cargo install --path crates/fsm-cli --locked && fsm version && fsm docs spec`
 - `manual:` re-run the latency harness and update the measured table in
   [`EMBEDDING.md`](EMBEDDING.md) if the numbers have moved materially:
-  `cargo test --release -p fsm-store --test append_latency -- --ignored --nocapture`
+  `FSM_BENCH_ROOT=/path/on/filesystem-under-test cargo +stable test --release -p fsm-store --test append_latency -- --ignored --nocapture`
 - `manual:` regenerate the decimal vectors and confirm they are byte-identical:
   `python3 tools/gen_decimal_vectors.py /tmp/dec-a.jsonl && python3 tools/gen_decimal_vectors.py /tmp/dec-b.jsonl && cmp /tmp/dec-a.jsonl /tmp/dec-b.jsonl && cmp /tmp/dec-a.jsonl crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl`
 - `cargo metadata --manifest-path fuzz/Cargo.toml --format-version 1`
@@ -129,9 +182,9 @@ Confirm the outcome from outside the workflow that produced it:
   `SHA256SUMS`;
 - `main` points at the tagged commit.
 
-## initial release definition of done
+## current definition of done
 
-initial release is done when the gate, the supported-consumer checks, version stamping, the
+current is done when the gate, the supported-consumer checks, version stamping, the
 manual acceptance list, and the tag pipeline are all complete and green.
 
 There are three supported consumers, and all three are in that list: the CLI,

@@ -151,6 +151,34 @@ pub struct StateNode {
     pub states: Vec<StateNode>,
 }
 
+/// One top-level orthogonal region in a parallel machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionSpec {
+    /// Globally unique region name.
+    pub name: String,
+    /// This region's independent state hierarchy.
+    pub states: Vec<StateNode>,
+    /// Top-level state entered when this region starts.
+    pub initial: String,
+}
+
+/// The mutually exclusive single-region and parallel definition forms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Topology {
+    /// A conventional machine with exactly one active leaf.
+    Sequential {
+        /// The machine's single state hierarchy.
+        states: Vec<StateNode>,
+        /// Top-level state entered when an instance starts.
+        initial: String,
+    },
+    /// A machine with one simultaneously active leaf in each region.
+    Parallel {
+        /// Orthogonal regions in semantic document order.
+        regions: Vec<RegionSpec>,
+    },
+}
+
 /// Total states in the tree, nested ones included.
 ///
 /// Every summary reports this. It lives here because hand-rolled copies drifted
@@ -185,6 +213,23 @@ pub struct TransitionSpec {
     pub to: Option<String>,
 }
 
+/// A timed transition scheduled whenever its source state is entered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeadlineSpec {
+    /// Globally unique deadline name.
+    pub name: String,
+    /// Source state whose entry schedules the deadline.
+    pub from: String,
+    /// Context-only duration expression evaluated on source entry.
+    pub after: String,
+    /// Context assignments applied when the deadline fires.
+    pub sets: Vec<SetSpec>,
+    /// Effects emitted when the deadline fires.
+    pub emits: Vec<EmitSpec>,
+    /// Target state in the same region as `from`.
+    pub to: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvariantSpec {
     pub name: String,
@@ -201,8 +246,10 @@ pub struct MachineSpec {
     pub context: Vec<CtxVar>,
     pub events: Vec<EventDecl>,
     pub effects: Vec<EffectDecl>,
-    pub states: Vec<StateNode>,
-    pub initial: String,
+    /// Sequential or orthogonal-region state topology.
+    pub topology: Topology,
+    /// Timed transitions in deterministic document order.
+    pub deadlines: Vec<DeadlineSpec>,
     pub on_unhandled: Unhandled,
     pub transitions: Vec<TransitionSpec>,
     pub invariants: Vec<InvariantSpec>,
@@ -250,22 +297,6 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
         "",
         &mut errs,
     );
-    if obj.contains_key("regions") {
-        errs.push(Finding::err(
-            "def/not_supported",
-            "/regions",
-            "regions is not yet supported",
-            "omit regions until parallel regions land",
-        ));
-    }
-    if obj.contains_key("deadlines") {
-        errs.push(Finding::err(
-            "def/not_supported",
-            "/deadlines",
-            "deadlines is not yet supported",
-            "omit deadlines until declarative deadlines land",
-        ));
-    }
     let format = req_str(obj, "format", "/format", &mut errs)
         .unwrap_or("")
         .to_string();
@@ -357,30 +388,48 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
     let context = parse_ctx(obj.get("context"), &mut errs);
     let events = parse_events(obj.get("events"), &mut errs);
     let effects = parse_effects(obj.get("effects"), &mut errs);
-    let states = match obj.get("states") {
-        Some(s) if s.as_arr().is_some() => parse_states(s.as_arr().unwrap(), "/states", &mut errs),
-        Some(_) => {
-            errs.push(Finding::err(
-                "def/shape",
-                "/states",
-                "states must be an array",
-                "use an array of state objects",
-            ));
-            Vec::new()
+    let topology = match obj.get("regions") {
+        Some(regions) => {
+            if obj.contains_key("states") || obj.contains_key("initial") {
+                errs.push(Finding::err(
+                    "def/shape",
+                    "/regions",
+                    "regions cannot be combined with states or initial",
+                    "use either regions, or states with initial",
+                ));
+            }
+            Topology::Parallel {
+                regions: parse_regions(regions, &mut errs),
+            }
         }
         None => {
-            errs.push(Finding::err(
-                "def/shape",
-                "/states",
-                "states is required",
-                "declare a states array",
-            ));
-            Vec::new()
+            let states = match obj.get("states") {
+                Some(Value::Arr(states)) => parse_states(states, "/states", &mut errs),
+                Some(_) => {
+                    errs.push(Finding::err(
+                        "def/shape",
+                        "/states",
+                        "states must be an array",
+                        "use an array of state objects",
+                    ));
+                    Vec::new()
+                }
+                None => {
+                    errs.push(Finding::err(
+                        "def/shape",
+                        "/states",
+                        "states is required when regions is absent",
+                        "declare states and initial, or declare regions",
+                    ));
+                    Vec::new()
+                }
+            };
+            let initial = req_str(obj, "initial", "/initial", &mut errs)
+                .unwrap_or("")
+                .to_string();
+            Topology::Sequential { states, initial }
         }
     };
-    let initial = req_str(obj, "initial", "/initial", &mut errs)
-        .unwrap_or("")
-        .to_string();
     let on_unhandled = match obj.get("on_unhandled") {
         None => Unhandled::Reject,
         Some(Value::Str(s)) if s == "reject" => Unhandled::Reject,
@@ -405,6 +454,7 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
         }
     };
     let transitions = parse_transitions(obj.get("transitions"), &mut errs);
+    let deadlines = parse_deadlines(obj.get("deadlines"), &mut errs);
     let invariants = parse_invariants(obj.get("invariants"), &mut errs);
     if !errs.is_empty() {
         return Err(errs);
@@ -417,8 +467,8 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
         context,
         events,
         effects,
-        states,
-        initial,
+        topology,
+        deadlines,
         on_unhandled,
         transitions,
         invariants,
@@ -1018,6 +1068,65 @@ fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -> Vec<State
     out
 }
 
+fn parse_regions(value: &Value, errs: &mut Vec<Finding>) -> Vec<RegionSpec> {
+    let Some(regions) = value.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            "/regions",
+            "regions must be an array",
+            "use an array of region objects",
+        ));
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (index, value) in regions.iter().enumerate() {
+        let path = format!("/regions/{index}");
+        let Some(object) = value.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &path,
+                "region must be an object",
+                "use an object with name, states, and initial",
+            ));
+            continue;
+        };
+        check_keys(object, &["name", "states", "initial"], &path, errs);
+        let name = req_str(object, "name", &format!("{path}/name"), errs)
+            .unwrap_or("")
+            .to_string();
+        let states = match object.get("states") {
+            Some(Value::Arr(states)) => parse_states(states, &format!("{path}/states"), errs),
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{path}/states"),
+                    "region states must be an array",
+                    "use an array of state objects",
+                ));
+                Vec::new()
+            }
+            None => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{path}/states"),
+                    "region states is required",
+                    "declare the region's state tree",
+                ));
+                Vec::new()
+            }
+        };
+        let initial = req_str(object, "initial", &format!("{path}/initial"), errs)
+            .unwrap_or("")
+            .to_string();
+        out.push(RegionSpec {
+            name,
+            states,
+            initial,
+        });
+    }
+    out
+}
+
 fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<TransitionSpec> {
     let Some(v) = v else {
         return Vec::new();
@@ -1124,6 +1233,67 @@ fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<Transiti
             sets: block.sets,
             emits: block.emits,
             to,
+        });
+    }
+    out
+}
+
+fn parse_deadlines(value: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<DeadlineSpec> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+    let Some(deadlines) = value.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            "/deadlines",
+            "deadlines must be an array",
+            "use an array of deadline objects",
+        ));
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (index, value) in deadlines.iter().enumerate() {
+        let path = format!("/deadlines/{index}");
+        let Some(object) = value.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &path,
+                "deadline must be an object",
+                "use an object with name, from, after, and to",
+            ));
+            continue;
+        };
+        check_keys(
+            object,
+            &["name", "from", "after", "to", "do", "emit"],
+            &path,
+            errs,
+        );
+        let block_value = Value::Obj(
+            ["do", "emit"]
+                .into_iter()
+                .filter_map(|key| object.get(key).cloned().map(|value| (key.into(), value)))
+                .collect(),
+        );
+        let block = parse_block(Some(&block_value), &path, errs).unwrap_or(Block {
+            sets: Vec::new(),
+            emits: Vec::new(),
+        });
+        out.push(DeadlineSpec {
+            name: req_str(object, "name", &format!("{path}/name"), errs)
+                .unwrap_or("")
+                .to_string(),
+            from: req_str(object, "from", &format!("{path}/from"), errs)
+                .unwrap_or("")
+                .to_string(),
+            after: req_str(object, "after", &format!("{path}/after"), errs)
+                .unwrap_or("")
+                .to_string(),
+            sets: block.sets,
+            emits: block.emits,
+            to: req_str(object, "to", &format!("{path}/to"), errs)
+                .unwrap_or("")
+                .to_string(),
         });
     }
     out
@@ -1298,6 +1468,7 @@ fn states_value(nodes: &[StateNode]) -> Value {
 }
 
 impl MachineSpec {
+    /// Encode this parsed specification back into its accepted JSON shape.
     pub fn to_value(&self) -> Value {
         let mut m = BTreeMap::new();
         m.insert("format".into(), v_str(self.format.clone()));
@@ -1367,8 +1538,29 @@ impl MachineSpec {
                 ),
             );
         }
-        m.insert("states".into(), states_value(&self.states));
-        m.insert("initial".into(), v_str(self.initial.clone()));
+        match &self.topology {
+            Topology::Sequential { states, initial } => {
+                m.insert("states".into(), states_value(states));
+                m.insert("initial".into(), v_str(initial.clone()));
+            }
+            Topology::Parallel { regions } => {
+                m.insert(
+                    "regions".into(),
+                    Value::Arr(
+                        regions
+                            .iter()
+                            .map(|region| {
+                                v_obj([
+                                    ("name".into(), v_str(region.name.clone())),
+                                    ("states".into(), states_value(&region.states)),
+                                    ("initial".into(), v_str(region.initial.clone())),
+                                ])
+                            })
+                            .collect(),
+                    ),
+                );
+            }
+        }
         if !matches!(self.on_unhandled, Unhandled::Reject) {
             m.insert("on_unhandled".into(), v_str("ignore"));
         }
@@ -1431,6 +1623,73 @@ impl MachineSpec {
                     .collect(),
             ),
         );
+        if !self.deadlines.is_empty() {
+            m.insert(
+                "deadlines".into(),
+                Value::Arr(
+                    self.deadlines
+                        .iter()
+                        .map(|deadline| {
+                            let mut object = BTreeMap::new();
+                            object.insert("name".into(), v_str(deadline.name.clone()));
+                            object.insert("from".into(), v_str(deadline.from.clone()));
+                            object.insert("after".into(), v_str(deadline.after.clone()));
+                            object.insert("to".into(), v_str(deadline.to.clone()));
+                            if !deadline.sets.is_empty() {
+                                object.insert(
+                                    "do".into(),
+                                    Value::Arr(
+                                        deadline
+                                            .sets
+                                            .iter()
+                                            .map(|set| {
+                                                v_obj([
+                                                    ("target".into(), v_str(set.target.clone())),
+                                                    ("value".into(), v_str(set.value.clone())),
+                                                ])
+                                            })
+                                            .collect(),
+                                    ),
+                                );
+                            }
+                            if !deadline.emits.is_empty() {
+                                object.insert(
+                                    "emit".into(),
+                                    Value::Arr(
+                                        deadline
+                                            .emits
+                                            .iter()
+                                            .map(|emit| {
+                                                let mut value = BTreeMap::new();
+                                                value.insert(
+                                                    "effect".into(),
+                                                    v_str(emit.effect.clone()),
+                                                );
+                                                if !emit.args.is_empty() {
+                                                    value.insert(
+                                                        "args".into(),
+                                                        v_obj(emit.args.iter().map(
+                                                            |(name, expression)| {
+                                                                (
+                                                                    name.clone(),
+                                                                    v_str(expression.clone()),
+                                                                )
+                                                            },
+                                                        )),
+                                                    );
+                                                }
+                                                Value::Obj(value)
+                                            })
+                                            .collect(),
+                                    ),
+                                );
+                            }
+                            Value::Obj(object)
+                        })
+                        .collect(),
+                ),
+            );
+        }
         if !self.invariants.is_empty() {
             m.insert(
                 "invariants".into(),
@@ -1457,6 +1716,11 @@ impl MachineSpec {
         Value::Obj(m)
     }
 
+    /// Walk every state in document order across all topologies.
+    ///
+    /// Each item includes its compound-state parent, if any. Region roots have
+    /// no state parent; use [`MachineSpec::state_groups`] when region identity
+    /// is also required.
     pub fn walk_states(&self) -> Vec<(&StateNode, Option<&str>)> {
         let mut out = Vec::new();
         fn rec<'a>(
@@ -1469,8 +1733,40 @@ impl MachineSpec {
                 rec(&n.states, Some(n.name.as_str()), out);
             }
         }
-        rec(&self.states, None, &mut out);
+        match &self.topology {
+            Topology::Sequential { states, .. } => rec(states, None, &mut out),
+            Topology::Parallel { regions } => {
+                for region in regions {
+                    rec(&region.states, None, &mut out);
+                }
+            }
+        }
         out
+    }
+
+    /// Top-level state trees with their optional region and initial state, in
+    /// semantic scan order.
+    pub fn state_groups(&self) -> Vec<(Option<&str>, &[StateNode], &str)> {
+        match &self.topology {
+            Topology::Sequential { states, initial } => {
+                vec![(None, states.as_slice(), initial.as_str())]
+            }
+            Topology::Parallel { regions } => regions
+                .iter()
+                .map(|region| {
+                    (
+                        Some(region.name.as_str()),
+                        region.states.as_slice(),
+                        region.initial.as_str(),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    /// Whether this specification uses the orthogonal-region topology.
+    pub fn is_parallel(&self) -> bool {
+        matches!(self.topology, Topology::Parallel { .. })
     }
 }
 
@@ -1509,17 +1805,79 @@ fn check_block_limits(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DefinitionCompatibility {
+    Current,
+    HistoricalPersistence,
+}
+
+impl DefinitionCompatibility {
+    fn permits_legacy_history_shapes(self, spec: &MachineSpec) -> bool {
+        self == Self::HistoricalPersistence
+            && matches!(spec.topology, Topology::Sequential { .. })
+            && spec.deadlines.is_empty()
+    }
+}
+
 pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
+    validate_with_compatibility(spec, DefinitionCompatibility::Current)
+}
+
+fn validate_with_compatibility(
+    spec: &MachineSpec,
+    compatibility: DefinitionCompatibility,
+) -> Result<(), Vec<Finding>> {
     let mut errs = Vec::new();
+    let permits_legacy_history_shapes = compatibility.permits_legacy_history_shapes(spec);
+    if let Topology::Parallel { regions } = &spec.topology {
+        if regions.len() < 2 {
+            errs.push(Finding::err(
+                "def/shape",
+                "/regions",
+                "parallel machines require at least two regions",
+                "declare two or more regions, or use states with initial",
+            ));
+        }
+        if regions.len() > limits::MAX_REGIONS {
+            errs.push(Finding::err(
+                "def/limit_regions",
+                "/regions",
+                "more than 8 parallel regions",
+                "reduce the region count to 8",
+            ));
+        }
+        let mut region_names = BTreeSet::new();
+        for (index, region) in regions.iter().enumerate() {
+            if !region_names.insert(region.name.as_str()) {
+                errs.push(Finding::err(
+                    "def/dup_name",
+                    format!("/regions/{index}/name"),
+                    format!("duplicate region {}", region.name),
+                    "rename one of the regions",
+                ));
+            }
+            if region.name.starts_with('$') {
+                errs.push(Finding::err(
+                    "def/reserved_ident",
+                    format!("/regions/{index}/name"),
+                    "$-prefixed region names are reserved",
+                    "remove the $ prefix",
+                ));
+            }
+        }
+    }
     let mut names = BTreeSet::new();
     let mut by_name: BTreeMap<String, &StateNode> = BTreeMap::new();
     let mut parent: BTreeMap<String, Option<String>> = BTreeMap::new();
+    let mut region_by_state: BTreeMap<String, Option<String>> = BTreeMap::new();
     fn collect<'a>(
         nodes: &'a [StateNode],
         par: Option<String>,
+        region: Option<&str>,
         names: &mut BTreeSet<String>,
         by_name: &mut BTreeMap<String, &'a StateNode>,
         parent: &mut BTreeMap<String, Option<String>>,
+        region_by_state: &mut BTreeMap<String, Option<String>>,
         errs: &mut Vec<Finding>,
         depth: u32,
     ) {
@@ -1550,26 +1908,33 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
             }
             by_name.insert(n.name.clone(), n);
             parent.insert(n.name.clone(), par.clone());
+            region_by_state.insert(n.name.clone(), region.map(str::to_string));
             collect(
                 &n.states,
                 Some(n.name.clone()),
+                region,
                 names,
                 by_name,
                 parent,
+                region_by_state,
                 errs,
                 depth + 1,
             );
         }
     }
-    collect(
-        &spec.states,
-        None,
-        &mut names,
-        &mut by_name,
-        &mut parent,
-        &mut errs,
-        1,
-    );
+    for (region, states, _) in spec.state_groups() {
+        collect(
+            states,
+            None,
+            region,
+            &mut names,
+            &mut by_name,
+            &mut parent,
+            &mut region_by_state,
+            &mut errs,
+            1,
+        );
+    }
     if names.len() > limits::MAX_STATES {
         errs.push(Finding::err(
             "def/limit_states",
@@ -1582,8 +1947,28 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
     for (n, node) in &by_name {
         if node.history.is_some() {
             hist_count += 1;
-            if !node.states.is_empty() || node.terminal || node.initial.is_some() {
-                // history is a leaf-like pseudostate
+            let has_compound_owner = parent
+                .get(n)
+                .and_then(Option::as_ref)
+                .and_then(|owner| by_name.get(owner))
+                .is_some_and(|owner| owner.history.is_none() && !owner.states.is_empty());
+            if !has_compound_owner && !permits_legacy_history_shapes {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("/states/{n}/history"),
+                    "history pseudostate must have a compound owner",
+                    "move history under the compound whose configuration it remembers",
+                ));
+            }
+            if (!node.states.is_empty() || node.terminal || node.initial.is_some())
+                && !permits_legacy_history_shapes
+            {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("/states/{n}"),
+                    "history pseudostate must be childless, non-terminal, and have no initial",
+                    "remove states, terminal, and initial from the history node",
+                ));
             }
         }
         if node.history.is_none() && !node.states.is_empty() {
@@ -1653,52 +2038,65 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
             "reduce history",
         ));
     }
-    if !by_name.contains_key(&spec.initial) {
-        errs.push(Finding::err(
-            "def/unknown_state",
-            "/initial",
-            format!("unknown initial {}", spec.initial),
-            "name a top-level state",
-        ));
-    } else if !spec.states.iter().any(|s| s.name == spec.initial) {
-        errs.push(Finding::err(
-            "def/initial_not_child",
-            "/initial",
-            "initial is not a top-level state",
-            "name a direct top-level child",
-        ));
-    } else if spec
-        .states
-        .iter()
-        .find(|s| s.name == spec.initial)
-        .and_then(|s| s.history)
-        .is_some()
-    {
-        errs.push(Finding::err(
-            "def/initial_is_history",
-            "/initial",
-            "initial cannot be a history pseudostate",
-            "name a real top-level state",
-        ));
-    } else {
-        // creation chain leaf must not be terminal
-        let mut cur = spec.initial.as_str();
-        loop {
-            let node = by_name[cur];
-            if node.states.is_empty() {
-                if node.terminal {
-                    errs.push(Finding::err(
-                        "def/initial_terminal",
-                        "/initial",
-                        "creation chain lands on a terminal",
-                        "start in a non-terminal leaf",
-                    ));
+    for (region_index, (_, states, initial)) in spec.state_groups().into_iter().enumerate() {
+        let initial_path = match &spec.topology {
+            Topology::Sequential { .. } => "/initial".to_string(),
+            Topology::Parallel { .. } => format!("/regions/{region_index}/initial"),
+        };
+        if !by_name.contains_key(initial) {
+            errs.push(Finding::err(
+                "def/unknown_state",
+                &initial_path,
+                format!("unknown initial {initial}"),
+                "name a top-level state in this region",
+            ));
+        } else if !states.iter().any(|state| state.name == initial) {
+            errs.push(Finding::err(
+                "def/initial_not_child",
+                &initial_path,
+                "initial is not a top-level state in this region",
+                "name a direct top-level child",
+            ));
+        } else if states
+            .iter()
+            .find(|state| state.name == initial)
+            .and_then(|state| state.history)
+            .is_some()
+        {
+            errs.push(Finding::err(
+                "def/initial_is_history",
+                &initial_path,
+                "initial cannot be a history pseudostate",
+                "name a real top-level state",
+            ));
+        } else {
+            // Walk the actual child objects rather than resolving each name
+            // through the global index. Rejected definitions may contain
+            // duplicate names, and following that lossy index could otherwise
+            // jump between unrelated subtrees or cycle on hostile input.
+            let mut node = states
+                .iter()
+                .find(|state| state.name == initial)
+                .expect("the direct-child check above established the initial");
+            loop {
+                if node.states.is_empty() {
+                    if node.terminal {
+                        errs.push(Finding::err(
+                            "def/initial_terminal",
+                            &initial_path,
+                            "creation chain lands on a terminal",
+                            "start in a non-terminal leaf",
+                        ));
+                    }
+                    break;
                 }
-                break;
-            }
-            match &node.initial {
-                Some(i) if by_name.contains_key(i) => cur = i,
-                _ => break,
+                match node.initial.as_deref() {
+                    Some(next) => match node.states.iter().find(|child| child.name == next) {
+                        Some(child) => node = child,
+                        None => break,
+                    },
+                    _ => break,
+                }
             }
         }
     }
@@ -1862,6 +2260,15 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
                     format!("unknown to {to}"),
                     "name a declared state",
                 ));
+            } else if by_name.contains_key(&t.from)
+                && region_by_state.get(&t.from) != region_by_state.get(to)
+            {
+                errs.push(Finding::err(
+                    "def/cross_region",
+                    format!("{p}/to"),
+                    "transition source and target are in different regions",
+                    "target a state in the source region",
+                ));
             } else if let Some(h) = by_name[to].history {
                 let _ = h;
                 // owner is parent of history node
@@ -1885,11 +2292,119 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
                             "target a real child instead",
                         ));
                     }
+                } else if !permits_legacy_history_shapes {
+                    errs.push(Finding::err(
+                        "def/shape",
+                        format!("{p}/to"),
+                        "top-level history target has no compound owner",
+                        "move history under a compound and target it from outside that owner",
+                    ));
                 }
             }
         }
         check_block_limits(&t.sets, &t.emits, &effect_names, &p, &mut errs);
         *cell.entry((t.from.clone(), t.on.clone())).or_insert(0) += 1;
+    }
+    if spec.deadlines.len() > limits::MAX_DEADLINES {
+        errs.push(Finding::err(
+            "def/limit_deadlines",
+            "/deadlines",
+            "more than 128 deadlines",
+            "reduce the deadline count to 128",
+        ));
+    }
+    let mut deadline_names = BTreeSet::new();
+    for (index, deadline) in spec.deadlines.iter().enumerate() {
+        let path = format!("/deadlines/{index}");
+        if !deadline_names.insert(deadline.name.as_str()) {
+            errs.push(Finding::err(
+                "def/duplicate_deadline",
+                format!("{path}/name"),
+                format!("duplicate deadline {}", deadline.name),
+                "give every deadline a unique name",
+            ));
+        }
+        if deadline.name.starts_with('$') {
+            errs.push(Finding::err(
+                "def/reserved_ident",
+                format!("{path}/name"),
+                "$-prefixed deadline names are reserved",
+                "remove the $ prefix",
+            ));
+        }
+        match by_name.get(&deadline.from) {
+            None => errs.push(Finding::err(
+                "def/unknown_state",
+                format!("{path}/from"),
+                format!("unknown from {}", deadline.from),
+                "name a declared state",
+            )),
+            Some(source) if source.terminal => errs.push(Finding::err(
+                "def/terminal_has_transitions",
+                format!("{path}/from"),
+                "terminal cannot be a deadline source",
+                "move the deadline to a non-terminal state",
+            )),
+            Some(source) if source.history.is_some() => errs.push(Finding::err(
+                "def/from_history",
+                format!("{path}/from"),
+                "history cannot be a deadline source",
+                "use the owner compound",
+            )),
+            Some(_) => {}
+        }
+        if !by_name.contains_key(&deadline.to) {
+            errs.push(Finding::err(
+                "def/unknown_state",
+                format!("{path}/to"),
+                format!("unknown to {}", deadline.to),
+                "name a declared state",
+            ));
+        } else if by_name.contains_key(&deadline.from)
+            && region_by_state.get(&deadline.from) != region_by_state.get(&deadline.to)
+        {
+            errs.push(Finding::err(
+                "def/cross_region",
+                format!("{path}/to"),
+                "deadline source and target are in different regions",
+                "target a state in the source region",
+            ));
+        } else if by_name[&deadline.to].history.is_some() {
+            let owner = parent.get(&deadline.to).and_then(|parent| parent.clone());
+            if let Some(owner) = owner {
+                let mut current = Some(deadline.from.clone());
+                let mut inside = false;
+                while let Some(state) = current {
+                    if state == owner {
+                        inside = true;
+                        break;
+                    }
+                    current = parent.get(&state).and_then(|parent| parent.clone());
+                }
+                if inside {
+                    errs.push(Finding::err(
+                        "def/history_target_from_inside",
+                        format!("{path}/to"),
+                        "history may only be targeted from outside its owner",
+                        "target a real child instead",
+                    ));
+                }
+            } else {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{path}/to"),
+                    "top-level history target has no compound owner",
+                    "move history under a compound and target it from outside that owner",
+                ));
+            }
+        }
+        check_block_limits(
+            &deadline.sets,
+            &deadline.emits,
+            &effect_names,
+            &path,
+            &mut errs,
+        );
     }
     fn walk_state_blocks(
         nodes: &[StateNode],
@@ -1908,7 +2423,13 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
             walk_state_blocks(&n.states, &format!("{p}/states"), effect_names, errs);
         }
     }
-    walk_state_blocks(&spec.states, "/states", &effect_names, &mut errs);
+    for (region_index, (_, states, _)) in spec.state_groups().into_iter().enumerate() {
+        let path = match &spec.topology {
+            Topology::Sequential { .. } => "/states".to_string(),
+            Topology::Parallel { .. } => format!("/regions/{region_index}/states"),
+        };
+        walk_state_blocks(states, &path, &effect_names, &mut errs);
+    }
     for ((from, on), n) in cell {
         if n > limits::MAX_TRANSITIONS_PER_CELL {
             errs.push(Finding::err(
@@ -1991,7 +2512,14 @@ pub fn validate(spec: &MachineSpec) -> Result<(), Vec<Finding>> {
 }
 
 pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
-    validate(&spec)?;
+    compile_with_compatibility(spec, DefinitionCompatibility::Current)
+}
+
+fn compile_with_compatibility(
+    spec: MachineSpec,
+    compatibility: DefinitionCompatibility,
+) -> Result<CompiledMachine, Vec<Finding>> {
+    validate_with_compatibility(&spec, compatibility)?;
     let mut errs = Vec::new();
     let mut compiled_exprs = BTreeMap::new();
     let ctx_tys: BTreeMap<String, Ty> = spec
@@ -2068,12 +2596,14 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
 
     enum BlockOwner {
         Transition(usize),
+        Deadline(usize),
         Entry(String),
         Exit(String),
     }
     let set_slot = |owner: &BlockOwner, i: usize| -> ExprSlot {
         match owner {
             BlockOwner::Transition(t) => ExprSlot::TransitionSet(*t, i),
+            BlockOwner::Deadline(deadline) => ExprSlot::DeadlineSet(*deadline, i),
             BlockOwner::Entry(n) => ExprSlot::StateEntrySet(n.clone(), i),
             BlockOwner::Exit(n) => ExprSlot::StateExitSet(n.clone(), i),
         }
@@ -2081,6 +2611,7 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     let emit_slot = |owner: &BlockOwner, i: usize, arg: &str| -> ExprSlot {
         match owner {
             BlockOwner::Transition(t) => ExprSlot::TransitionEmitArg(*t, i, arg.into()),
+            BlockOwner::Deadline(deadline) => ExprSlot::DeadlineEmitArg(*deadline, i, arg.into()),
             BlockOwner::Entry(n) => ExprSlot::StateEntryEmitArg(n.clone(), i, arg.into()),
             BlockOwner::Exit(n) => ExprSlot::StateExitEmitArg(n.clone(), i, arg.into()),
         }
@@ -2205,13 +2736,46 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         evt: None,
         enums: &enums,
     };
-    walk_blocks(
-        &spec.states,
-        &check_block,
-        &block_scope,
-        &mut compiled_exprs,
-        &mut errs,
-    );
+    for (_, states, _) in spec.state_groups() {
+        walk_blocks(
+            states,
+            &check_block,
+            &block_scope,
+            &mut compiled_exprs,
+            &mut errs,
+        );
+    }
+
+    for (index, deadline) in spec.deadlines.iter().enumerate() {
+        if let Some(ty) = bind(
+            &deadline.after,
+            &block_scope,
+            &format!("/deadlines/{index}/after"),
+            ExprSlot::DeadlineAfter(index),
+            &mut compiled_exprs,
+            &mut errs,
+        ) {
+            if ty != Ty::Dur {
+                errs.push(Finding::err(
+                    "def/deadline_type",
+                    format!("/deadlines/{index}/after"),
+                    format!("deadline after has type {ty}, expected duration"),
+                    "return a duration, for example dur(5, min)",
+                ));
+            }
+        }
+        check_block(
+            &Block {
+                sets: deadline.sets.clone(),
+                emits: deadline.emits.clone(),
+            },
+            &block_scope,
+            &format!("/deadlines/{index}"),
+            &BlockOwner::Deadline(index),
+            &mut compiled_exprs,
+            &mut errs,
+        );
+    }
 
     let inv_scope = Scope {
         kind: ScopeKind::Invariant,
@@ -2293,6 +2857,44 @@ pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
         let _ = empty;
     }
 
+    // SPEC Evaluation: a runtime create, step, deadline poll, or enabled-event
+    // scan visits each compiled slot at most once, while lazy operators can
+    // only reduce the number of visited nodes. A step can additionally visit
+    // at most one omitted guard: its implicit `true` immediately wins global
+    // transition selection, so every later candidate is not considered. An
+    // enabled-event scan repeats selection independently for every event and
+    // can therefore visit one omitted guard per affected event.
+    // Bounding that worst-case cost guarantees that a fresh standard budget
+    // cannot be exhausted by an operation on a currently accepted definition.
+    let compiled_ticks: u64 = compiled_exprs
+        .values()
+        .map(|compiled| u64::from(crate::expr::ast::node_count(&compiled.expr)))
+        .sum();
+    let implicit_guard_ticks = spec
+        .transitions
+        .iter()
+        .filter(|transition| transition.guard.is_none())
+        .map(|transition| transition.on.as_str())
+        .collect::<BTreeSet<_>>()
+        .len() as u64;
+    let evaluation_ticks = compiled_ticks + implicit_guard_ticks;
+    if compatibility == DefinitionCompatibility::Current
+        && evaluation_ticks > u64::from(limits::MAX_EVAL_TICKS)
+    {
+        errs.push(Finding::err(
+            "def/limit_eval",
+            "/",
+            format!(
+                "expression evaluation requires {evaluation_ticks} ticks; limit is {}",
+                limits::MAX_EVAL_TICKS
+            ),
+            format!(
+                "shorten or remove expressions so compiled AST nodes plus the per-event omitted-guard reserve total at most {}",
+                limits::MAX_EVAL_TICKS
+            ),
+        ));
+    }
+
     if errs.iter().any(|f| f.severity == Severity::Error) {
         return Err(errs);
     }
@@ -2316,8 +2918,8 @@ fn semantics_eq(a: &MachineSpec, b: &MachineSpec) -> bool {
         && a.context == b.context
         && a.events == b.events
         && a.effects == b.effects
-        && a.states == b.states
-        && a.initial == b.initial
+        && a.topology == b.topology
+        && a.deadlines == b.deadlines
         && a.on_unhandled == b.on_unhandled
         && a.transitions == b.transitions
         && a.invariants == b.invariants
@@ -2344,6 +2946,13 @@ pub fn accepted_identity(def: &Value) -> (Vec<u8>, String) {
 
 /// Compile a definition using the accepted source document as the identity input.
 pub fn compile_accepted(source: &Value) -> Result<CompiledMachine, Vec<Finding>> {
+    compile_accepted_with_compatibility(source, DefinitionCompatibility::Current)
+}
+
+fn compile_accepted_with_compatibility(
+    source: &Value,
+    compatibility: DefinitionCompatibility,
+) -> Result<CompiledMachine, Vec<Finding>> {
     if crate::canon::canon_bytes(source).len() > limits::MAX_DEF_BYTES {
         return Err(vec![Finding::err(
             "def/limit_bytes",
@@ -2353,7 +2962,24 @@ pub fn compile_accepted(source: &Value) -> Result<CompiledMachine, Vec<Finding>>
         )]);
     }
     let spec = parse_machine(source)?;
-    compile(spec)
+    compile_with_compatibility(spec, compatibility)
+}
+
+/// Compile a definition using the legacy persistence compatibility rules.
+///
+/// This unchecked primitive skips the aggregate current expression ceiling. For
+/// sequential definitions without deadlines, it also preserves the old
+/// admission of ownerless, child-bearing, terminal, or initial-bearing history
+/// pseudostates. All other structural, parsing, and typing checks remain
+/// enforced. It does not authenticate a genesis or prove that `source` was
+/// previously persisted. Callers MUST restrict it to machine material reached
+/// through a complete hash-verified historical-genesis fold, or a snapshot
+/// bound to such a journal. Definition admission MUST use [`compile_accepted`].
+#[doc(hidden)]
+pub fn compile_accepted_historical_unchecked(
+    source: &Value,
+) -> Result<CompiledMachine, Vec<Finding>> {
+    compile_accepted_with_compatibility(source, DefinitionCompatibility::HistoricalPersistence)
 }
 
 pub fn load_machine_json(bytes: &[u8]) -> Result<MachineSpec, Vec<Finding>> {

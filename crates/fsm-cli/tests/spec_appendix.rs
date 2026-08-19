@@ -8,7 +8,13 @@ fn all_codes_appear() {
     for c in ALL_CODES {
         assert!(SPEC.contains(c), "SPEC missing {c}");
     }
-    for tag in ["fsm.machine/1", "fsm.journal/1", "fsm.state/1"] {
+    for tag in [
+        "fsm.machine/1",
+        "fsm.journal/1",
+        "fsm.state/2",
+        "fsm.state-root/3",
+        "fsm.snapshot/4",
+    ] {
         assert!(SPEC.contains(tag), "{tag}");
     }
     assert!(SPEC.contains("256 KiB") || SPEC.contains("256 * 1024"));
@@ -42,7 +48,7 @@ fn readme_and_licenses() {
         .lines()
         .filter(|l| l.starts_with("|") && !l.contains("---") && !l.contains("Guarantee"))
         .count();
-    assert_eq!(rows, 16, "{rows}");
+    assert_eq!(rows, 18, "{rows}");
     assert!(readme.contains("single-node"));
     let mit = std::fs::read_to_string(root.join("LICENSE-MIT")).unwrap();
     let ap = std::fs::read_to_string(root.join("LICENSE-APACHE")).unwrap();
@@ -84,7 +90,7 @@ fn embedder_docs_quote_current_versions() {
     // Naming the current format is not enough: a superseded one left behind in
     // prose reads as current to anyone who finds that paragraph first. Only the
     // passage that documents *rejecting* old snapshots may name them.
-    let superseded = "fsm.snapshot/2";
+    let superseded = "fsm.snapshot/3";
     assert_ne!(superseded, snapshot_format, "update this test after a bump");
     for line in SPEC.lines().chain(API_POLICY.lines()) {
         if line.contains(superseded) {
@@ -116,6 +122,8 @@ fn embedding_guide_covers_the_embedder_contracts() {
         "parse_ctx_val",
         "single-writer",
         "MAX_PAYLOAD_BYTES",
+        "reserve_ms",
+        "commit_reserved_ms",
         "pinned",
         "effect_ack",
     ] {
@@ -124,7 +132,14 @@ fn embedding_guide_covers_the_embedder_contracts() {
             "EMBEDDING.md must document {needle}"
         );
     }
-    for needle in ["fsm-embed-acceptance", "tag = ", "MSRV", "1.89"] {
+    for needle in [
+        "fsm-embed-acceptance",
+        "reserve_ms",
+        "commit_reserved_ms",
+        "tag = ",
+        "MSRV",
+        "1.89",
+    ] {
         assert!(
             API_POLICY.contains(needle),
             "API-POLICY.md must document {needle}"
@@ -263,6 +278,23 @@ fn the_release_proves_the_tag_is_consumable() {
     assert!(
         RELEASE_WORKFLOW.contains("git-dep"),
         "release.yml must keep the git-dependency proof job"
+    );
+    for current_core_api in [
+        "Tree::for_machine(&compiled.spec)",
+        "&Default::default(),",
+        "applied.configuration_after.sequential_leaf()",
+        "Store::open_memory()",
+        ".poll_instance_deadline_on(",
+    ] {
+        assert!(
+            RELEASE_WORKFLOW.contains(current_core_api),
+            "release.yml scratch consumer is stale: missing `{current_core_api}`"
+        );
+    }
+    assert!(
+        !RELEASE_WORKFLOW.contains("compiled.spec.states")
+            && !RELEASE_WORKFLOW.contains("applied.leaf_after"),
+        "release.yml scratch consumer still uses the legacy state API"
     );
 }
 

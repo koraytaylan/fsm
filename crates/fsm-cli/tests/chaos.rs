@@ -5,6 +5,40 @@ use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::replay::{NopSink, fold_with};
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEMPORARY_DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+struct TestDirectory(PathBuf);
+
+impl TestDirectory {
+    fn create(seed: u64) -> Self {
+        loop {
+            let sequence = TEMPORARY_DIRECTORY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "fsm-cli-chaos-{}-{seed}-{sequence}",
+                std::process::id()
+            ));
+            match fs::create_dir(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("create test directory {path:?}: {error}"),
+            }
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 struct Gen(u64);
 impl Gen {
@@ -27,13 +61,6 @@ fn case() -> Value {
         &JsonLimits::DEFAULT,
     )
     .unwrap()
-}
-
-fn tmp(seed: u64) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!("fsm-chaos-{}-{seed}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
-    p
 }
 
 #[test]
@@ -95,9 +122,10 @@ fn push_result(
 }
 
 fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
-    let dir = tmp(seed);
+    let directory = TestDirectory::create(seed);
     let mut g = Gen(seed);
-    let mut store = Store::open(&dir).unwrap_or_else(|e| panic!("seed {seed} open {e:?}"));
+    let mut store =
+        Store::open(directory.path()).unwrap_or_else(|e| panic!("seed {seed} open {e:?}"));
     let mut kinds = BTreeMap::new();
     let mut log = Vec::new();
     let n = g.range(30, 80);
@@ -562,7 +590,8 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             }
             5 => {
                 drop(store);
-                store = Store::open(&dir).unwrap_or_else(|e| panic!("seed {seed} reopen {e:?}"));
+                store = Store::open(directory.path())
+                    .unwrap_or_else(|e| panic!("seed {seed} reopen {e:?}"));
                 *kinds.entry("reopen").or_insert(0) += 1;
             }
             6 => {
@@ -732,7 +761,7 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
             }
         }
     }
-    let recs = fsm_cli::journal_io::load_records(&dir).unwrap();
+    let recs = fsm_cli::journal_io::load_records(directory.path()).unwrap();
     let folded = fold_with(recs, &mut NopSink).unwrap_or_else(|e| panic!("seed {seed} fold {e:?}"));
     assert!(
         fsm_cli::snapshot::store_states_eq(&store.state, &folded),
@@ -766,10 +795,14 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
     );
     for (id, st) in &store.state.instances {
         let o = folded.instances.get(id).expect(id);
-        assert_eq!(st.leaf, o.leaf, "seed {seed} {id} leaf");
+        assert_eq!(
+            st.configuration, o.configuration,
+            "seed {seed} {id} configuration"
+        );
         assert_eq!(st.status, o.status, "seed {seed} {id} status");
         assert_eq!(st.ctx, o.ctx, "seed {seed} {id} ctx");
         assert_eq!(st.history, o.history, "seed {seed} {id} hist");
+        assert_eq!(st.deadlines, o.deadlines, "seed {seed} {id} deadlines");
         assert_eq!(st.pending, o.pending, "seed {seed} {id} pend");
     }
     assert!(
@@ -814,7 +847,7 @@ fn run_seed(seed: u64) -> (BTreeMap<&'static str, u32>, Vec<u8>) {
         );
     }
     drop(store);
-    let v = verify(&dir);
+    let v = verify(directory.path());
     assert!(
         matches!(v.health, fsm_cli::journal_io::JournalHealth::Ok),
         "seed {seed} health {:?}",

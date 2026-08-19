@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use fsm_cli::clock::FixedClock;
 use fsm_cli::journal_io::{JournalHealth, classify, load_records, repair_truncate_torn_tail};
 use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
@@ -50,6 +51,14 @@ fn crash_temp_root_is_invocation_unique() {
 fn case_def() -> Value {
     parse(
         include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap()
+}
+
+fn parallel_deadline_def() -> Value {
+    parse(
+        include_bytes!("../../../examples/parallel_review_deadline.json"),
         &JsonLimits::DEFAULT,
     )
     .unwrap()
@@ -169,15 +178,16 @@ fn states_diff(a: &StoreState, b: &StoreState) -> Option<String> {
         let Some(o) = b.instances.get(id) else {
             return Some(format!("missing inst {id}"));
         };
-        if o.leaf != st.leaf
+        if o.configuration != st.configuration
             || o.status != st.status
             || o.ctx != st.ctx
             || o.history != st.history
+            || o.deadlines != st.deadlines
             || o.pending != st.pending
         {
             return Some(format!(
-                "inst {id} leaf {}/{} pend {:?}/{:?}",
-                st.leaf, o.leaf, st.pending, o.pending
+                "inst {id} configuration {:?}/{:?} deadlines {:?}/{:?} pend {:?}/{:?}",
+                st.configuration, o.configuration, st.deadlines, o.deadlines, st.pending, o.pending
             ));
         }
     }
@@ -327,11 +337,30 @@ fn torn_tail_is_classified_and_repaired(run_root: &Path) {
     fs::create_dir_all(&dir).unwrap();
 
     let mut store = Store::open(&dir).unwrap();
-    store.define_machine(case_def(), false, false).unwrap();
+    let mut define_clock = FixedClock::new(1, 1);
     store
-        .create_instance("case_review", "i0", "r0", None)
+        .define_machine_on(&mut define_clock, parallel_deadline_def(), false, false)
         .unwrap();
-    store.annotate("i0", "n0", &"x".repeat(blob_len())).unwrap();
+    let mut create_clock = FixedClock::new(1_000, 1);
+    store
+        .create_instance_ctx_on(
+            &mut create_clock,
+            "parallel_review_deadline",
+            "i0",
+            "r0",
+            None,
+            &Default::default(),
+            &[],
+        )
+        .unwrap();
+    let mut deadline_clock = FixedClock::new(31_000, 1);
+    let applied = store
+        .poll_instance_deadline_on(&mut deadline_clock, "i0", "deadline-r0", None)
+        .unwrap();
+    assert_eq!(
+        applied.get("deadline_applied").and_then(Value::as_bool),
+        Some(true)
+    );
     let before = store.state.clone();
     drop(store);
 

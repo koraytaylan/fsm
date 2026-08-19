@@ -32,29 +32,10 @@ fn validate_text(text: &str) -> Result<Value, ErrorObj> {
     let v = parse(text.as_bytes(), &JsonLimits::DEFAULT)
         .map_err(|e| ErrorObj::new("def/shape", e.message))?;
     let compiled = fsm_core::spec::compile_accepted(&v).map_err(ErrorObj::from_findings)?;
-    let tree = Tree::build(&compiled.spec.states);
+    let tree = Tree::for_machine(&compiled.spec);
     let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
     let id = compiled.machine_id.clone();
-    let terms: Vec<Value> = fsm_core::spec::terminal_states(&compiled.spec.states)
-        .into_iter()
-        .map(|n| Value::Str(n.into()))
-        .collect();
-    let summary = Value::Obj(BTreeMap::from([
-        ("initial".into(), Value::Str(compiled.spec.initial.clone())),
-        (
-            "states".into(),
-            Value::Num(fsm_core::spec::count_states(&compiled.spec.states).to_string()),
-        ),
-        (
-            "events".into(),
-            Value::Num(compiled.spec.events.len().to_string()),
-        ),
-        (
-            "transitions".into(),
-            Value::Num(compiled.spec.transitions.len().to_string()),
-        ),
-        ("terminal_states".into(), Value::Arr(terms)),
-    ]));
+    let summary = crate::mcp::tools::machine_summary(&compiled);
     Ok(Value::Obj(BTreeMap::from([
         ("machine_id".into(), Value::Str(id)),
         ("name".into(), Value::Str(compiled.spec.name)),
@@ -102,7 +83,7 @@ fn simulate_cmd(ctx: &mut Ctx, args: &Args) -> u8 {
                 Err(fs) => return emit_error(ctx, &ErrorObj::from_findings(fs)),
             }
         } else {
-            match crate::store::Store::open(&ctx.data_dir) {
+            match crate::store::Store::open_read_only(&ctx.data_dir) {
                 Ok(store) => match store.resolve_machine(src) {
                     Ok(m) => m.compiled.clone(),
                     Err(e) => return emit_error(ctx, &e),
@@ -110,7 +91,7 @@ fn simulate_cmd(ctx: &mut Ctx, args: &Args) -> u8 {
                 Err(e) => return emit_error(ctx, &e),
             }
         };
-    let tree = Tree::build(&compiled.spec.states);
+    let tree = Tree::for_machine(&compiled.spec);
     let mut overrides = BTreeMap::new();
     if let Some(pairs) = args.flags.get("context") {
         for part in pairs.split(',') {
@@ -156,7 +137,10 @@ fn simulate_cmd(ctx: &mut Ctx, args: &Args) -> u8 {
         Some("continue") => OnReject::Continue,
         _ => OnReject::Stop,
     };
-    let report = simulate(&compiled, &tree, &overrides, &events, on_reject);
+    let report = match simulate(&compiled, &tree, &overrides, &events, on_reject) {
+        Ok(report) => report,
+        Err(rejection) => return emit_error(ctx, &ErrorObj::from_rejection(&rejection)),
+    };
     let mut steps = Vec::new();
     for st in &report.steps {
         let mut m = BTreeMap::new();
@@ -166,7 +150,13 @@ fn simulate_cmd(ctx: &mut Ctx, args: &Args) -> u8 {
             "applied".into(),
             Value::Bool(matches!(st.outcome, fsm_core::step::Outcome::Applied(_))),
         );
-        m.insert("to_leaf".into(), Value::Str(st.leaf_after.clone()));
+        m.insert(
+            "configuration".into(),
+            fsm_core::hashes::configuration_value(&st.configuration_after),
+        );
+        if let Some(leaf) = st.configuration_after.sequential_leaf() {
+            m.insert("to_leaf".into(), Value::Str(leaf.to_string()));
+        }
         if let fsm_core::step::Outcome::Rejected(r) = &st.outcome {
             m.insert("error".into(), Value::Str(r.code.into()));
             m.insert("hint".into(), Value::Str(r.hint.clone()));
@@ -176,7 +166,13 @@ fn simulate_cmd(ctx: &mut Ctx, args: &Args) -> u8 {
     let mut out = BTreeMap::new();
     out.insert("ok".into(), Value::Bool(true));
     out.insert("steps".into(), Value::Arr(steps));
-    out.insert("final_leaf".into(), Value::Str(report.final_leaf.clone()));
+    out.insert(
+        "final_configuration".into(),
+        fsm_core::hashes::configuration_value(&report.final_configuration),
+    );
+    if let Some(leaf) = report.final_configuration.sequential_leaf() {
+        out.insert("final_leaf".into(), Value::Str(leaf.to_string()));
+    }
     out.insert("terminal".into(), Value::Bool(report.terminal));
     if let Some(i) = report.stopped_at {
         out.insert("stopped_at".into(), Value::Num(i.to_string()));
@@ -295,14 +291,14 @@ mod tests {
         let v = parse(text.as_bytes(), &JsonLimits::DEFAULT).unwrap();
         let spec = parse_machine(&v).unwrap();
         let compiled = compile(spec).unwrap();
-        let tree = Tree::build(&compiled.spec.states);
+        let tree = Tree::for_machine(&compiled.spec);
         let events = vec![
             ("docs_ok".into(), Value::Obj(BTreeMap::new())),
             ("suspend".into(), Value::Obj(BTreeMap::new())),
         ];
-        let r = simulate(&compiled, &tree, &BTreeMap::new(), &events, OnReject::Stop);
+        let r = simulate(&compiled, &tree, &BTreeMap::new(), &events, OnReject::Stop).unwrap();
         assert_eq!(r.steps.len(), 2);
-        assert_eq!(r.final_leaf, "suspended");
+        assert_eq!(r.final_configuration.sequential_leaf(), Some("suspended"));
 
         let events3 = vec![
             ("docs_ok".into(), Value::Obj(BTreeMap::new())),
@@ -313,7 +309,7 @@ mod tests {
             ("suspend".into(), Value::Obj(BTreeMap::new())),
         ];
         // after docs_ok, scored is not enabled at docs_review → unhandled/not_enabled
-        let stop = simulate(&compiled, &tree, &BTreeMap::new(), &events3, OnReject::Stop);
+        let stop = simulate(&compiled, &tree, &BTreeMap::new(), &events3, OnReject::Stop).unwrap();
         assert_eq!(stop.steps.len(), 2);
         assert!(stop.stopped_at.is_some());
         let cont = simulate(
@@ -322,9 +318,34 @@ mod tests {
             &BTreeMap::new(),
             &events3,
             OnReject::Continue,
-        );
+        )
+        .unwrap();
         assert_eq!(cont.steps.len(), 3);
         assert_eq!(simulate_cmd(&mut c, &args), 0);
+    }
+
+    #[test]
+    fn simulate_parallel_creation_failure_is_an_error_exit() {
+        let spec = r#"{
+          "format":"fsm.machine/1",
+          "name":"parallel_create_failure",
+          "regions":[
+            {"name":"left","states":[{"name":"left_ready"}],"initial":"left_ready"},
+            {"name":"right","states":[{"name":"right_ready"}],"initial":"right_ready"}
+          ],
+          "context":[],
+          "events":[],
+          "transitions":[],
+          "invariants":[{"name":"never","expr":"false","mode":"enforce"}]
+        }"#;
+        let mut context = ctx();
+        let args = Args {
+            positionals: vec![spec.into()],
+            flags: BTreeMap::from([("events", "[]".into())]),
+            switches: Default::default(),
+        };
+
+        assert_eq!(simulate_cmd(&mut context, &args), 1);
     }
 
     #[test]

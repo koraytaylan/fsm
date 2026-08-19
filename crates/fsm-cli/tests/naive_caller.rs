@@ -16,23 +16,8 @@ fn case() -> Value {
     .unwrap()
 }
 
-/// Per-process counter. Tests in one binary run concurrently, and a timestamp
-/// alone can collide between two threads entering `store()` together — the
-/// loser then hits the store's advisory lock instead of getting its own store.
-static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
 fn store() -> (Store, FixedClock) {
-    let dir = std::env::temp_dir().join(format!(
-        "fsm-naive-{}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos(),
-        N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    (Store::open(&dir).unwrap(), FixedClock::new(1000, 1000))
+    (Store::open_memory().unwrap(), FixedClock::new(1000, 1000))
 }
 
 fn obj(pairs: &[(&str, Value)]) -> Value {
@@ -265,7 +250,7 @@ fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
         }
     }
     match err.code.as_str() {
-        "def/unknown_key" | "def/not_supported" => delete_pointer(&mut v, &path),
+        "def/unknown_key" => delete_pointer(&mut v, &path),
         "def/shape" => {
             if v.get("name").is_none() {
                 set_pointer(&mut v, "/name", Value::Str("fixed".into()));
@@ -444,6 +429,19 @@ fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
                 }
             }
         }
+        "def/cross_region" => {
+            let owner_path = path
+                .strip_suffix("/to")
+                .expect("cross_region finding points to a target");
+            let from = string_at_pointer(&v, &format!("{owner_path}/from"))
+                .expect("cross_region source is present")
+                .to_string();
+            set_pointer(&mut v, &path, Value::Str(from));
+        }
+        "def/deadline_type" => {
+            set_pointer(&mut v, &path, Value::Str("dur(1, s)".into()));
+        }
+        "def/duplicate_deadline" => truncate_array(&mut v, "/deadlines", 1),
         "expr/unknown_var" => {
             let suggested = hint
                 .split('`')
@@ -517,6 +515,7 @@ fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
             "def/limit_bytes" => {
                 set_pointer(&mut v, "/description", Value::Str("x".into()));
             }
+            "def/limit_eval" => truncate_array(&mut v, "/deadlines", 1),
             "def/limit_depth" => {
                 set_pointer(
                     &mut v,
@@ -571,6 +570,8 @@ fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value {
             "def/limit_cell" | "def/limit_transitions" => {
                 truncate_array(&mut v, "/transitions", 1);
             }
+            "def/limit_deadlines" => truncate_array(&mut v, "/deadlines", 1),
+            "def/limit_regions" => truncate_array(&mut v, "/regions", 2),
             "def/limit_variants" => {
                 let p = if path.is_empty() {
                     "/enums/E"
@@ -627,6 +628,283 @@ impl AsObjMut for Value {
             _ => None,
         }
     }
+}
+
+#[test]
+fn current_regions_deadlines_public_contract() {
+    assert_eq!(
+        fsm_cli::mcp::tools::names(),
+        vec![
+            "machine_create",
+            "machine_list",
+            "machine_get",
+            "machine_analyze",
+            "machine_diagram",
+            "instance_create",
+            "instance_send",
+            "deadline_poll",
+            "effect_ack",
+            "instance_cancel",
+            "instance_get",
+            "instance_list",
+            "instance_history",
+            "simulate",
+        ]
+    );
+
+    let (mut st, mut clock) = store();
+    dispatch(
+        &mut st,
+        &mut clock,
+        "machine_create",
+        &obj(&[("spec", case())]),
+    )
+    .unwrap();
+    let sequential = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("case_review".into())),
+            ("request_id", Value::Str("current-sequential".into())),
+        ]),
+    )
+    .unwrap();
+    let sequential_configuration = sequential
+        .get("configuration")
+        .and_then(Value::as_obj)
+        .expect("sequential creation exposes a tagged configuration");
+    assert_eq!(
+        sequential_configuration.get("kind").and_then(Value::as_str),
+        Some("sequential")
+    );
+    assert_eq!(
+        sequential_configuration.get("leaf").and_then(Value::as_str),
+        Some("intake")
+    );
+
+    let parallel = spec(
+        r#"{
+            "format":"fsm.machine/1","name":"naive_parallel_deadline",
+            "regions":[
+                {"name":"review","states":[
+                    {"name":"waiting"},{"name":"timed_out","terminal":true}
+                ],"initial":"waiting"},
+                {"name":"audit","states":[
+                    {"name":"auditing"},{"name":"audit_done","terminal":true}
+                ],"initial":"auditing"}
+            ],
+            "context":[],
+            "events":[{"name":"audit_ok","fields":[]}],
+            "transitions":[{"from":"auditing","on":"audit_ok","to":"audit_done"}],
+            "deadlines":[{
+                "name":"review_timeout","from":"waiting","after":"dur(2, s)","to":"timed_out"
+            }]
+        }"#,
+    );
+    let defined = dispatch(
+        &mut st,
+        &mut clock,
+        "machine_create",
+        &obj(&[("spec", parallel)]),
+    )
+    .unwrap();
+    let summary = defined
+        .get("summary")
+        .and_then(Value::as_obj)
+        .expect("definition response has a summary");
+    assert_eq!(
+        summary.get("topology").and_then(Value::as_str),
+        Some("parallel")
+    );
+    assert_eq!(summary.get("deadlines").and_then(Value::as_num), Some("1"));
+    assert_eq!(
+        summary
+            .get("regions")
+            .and_then(Value::as_arr)
+            .map(<[_]>::len),
+        Some(2)
+    );
+
+    let created = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("naive_parallel_deadline".into())),
+            ("request_id", Value::Str("current-parallel".into())),
+        ]),
+    )
+    .unwrap();
+    let configuration = created
+        .get("configuration")
+        .and_then(Value::as_obj)
+        .expect("parallel creation exposes a tagged configuration");
+    assert_eq!(
+        configuration.get("kind").and_then(Value::as_str),
+        Some("parallel")
+    );
+    let leaves = configuration
+        .get("leaves")
+        .and_then(Value::as_obj)
+        .expect("parallel configuration exposes all regional leaves");
+    assert_eq!(
+        leaves.get("review").and_then(Value::as_str),
+        Some("waiting")
+    );
+    assert_eq!(
+        leaves.get("audit").and_then(Value::as_str),
+        Some("auditing")
+    );
+    assert!(created.get("leaf").is_none(), "no synthetic primary leaf");
+    assert!(created.get("state").is_none(), "no synthetic primary state");
+    let pending = created
+        .get("deadlines_pending")
+        .and_then(Value::as_arr)
+        .and_then(|rows| rows.first())
+        .expect("creation exposes its absolute pending deadline");
+    assert_eq!(
+        pending.get("name").and_then(Value::as_str),
+        Some("review_timeout")
+    );
+    let due = pending
+        .get("due_ms")
+        .and_then(Value::as_str)
+        .expect("due time is an exact decimal string")
+        .to_string();
+
+    let early = dispatch(
+        &mut st,
+        &mut clock,
+        "deadline_poll",
+        &obj(&[
+            ("instance_id", Value::Str("inst-current-parallel".into())),
+            ("request_id", Value::Str("current-poll-early".into())),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        early.get("deadline_not_due").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        early.get("next_due_ms").and_then(Value::as_str),
+        Some(due.as_str())
+    );
+    let early_seq = early
+        .get("seq")
+        .and_then(Value::as_num)
+        .unwrap()
+        .to_string();
+
+    let duplicate = dispatch(
+        &mut st,
+        &mut clock,
+        "deadline_poll",
+        &obj(&[
+            ("instance_id", Value::Str("inst-current-parallel".into())),
+            ("request_id", Value::Str("current-poll-early".into())),
+            ("expect_seq", Value::Num("0".into())),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        duplicate.get("duplicate").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        duplicate.get("seq").and_then(Value::as_num),
+        Some(early_seq.as_str())
+    );
+    assert_eq!(
+        duplicate.get("deadline_not_due").and_then(Value::as_bool),
+        Some(true)
+    );
+
+    let fired = dispatch(
+        &mut st,
+        &mut clock,
+        "deadline_poll",
+        &obj(&[
+            ("instance_id", Value::Str("inst-current-parallel".into())),
+            ("request_id", Value::Str("current-poll-due".into())),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        fired.get("deadline_applied").and_then(Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(
+        fired.get("deadline").and_then(Value::as_str),
+        Some("review_timeout")
+    );
+    assert_eq!(fired.get("status").and_then(Value::as_str), Some("running"));
+    let fired_leaves = fired
+        .get("configuration")
+        .and_then(|v| v.get("leaves"))
+        .and_then(Value::as_obj)
+        .unwrap();
+    assert_eq!(
+        fired_leaves.get("review").and_then(Value::as_str),
+        Some("timed_out")
+    );
+    assert_eq!(
+        fired_leaves.get("audit").and_then(Value::as_str),
+        Some("auditing")
+    );
+    assert!(
+        fired
+            .get("deadlines_pending")
+            .and_then(Value::as_arr)
+            .is_some_and(<[_]>::is_empty)
+    );
+
+    let completed = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-current-parallel".into())),
+            ("event", obj(&[("name", Value::Str("audit_ok".into()))])),
+            ("request_id", Value::Str("current-audit-ok".into())),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        completed.get("status").and_then(Value::as_str),
+        Some("completed")
+    );
+    let completed_leaves = completed
+        .get("configuration")
+        .and_then(|v| v.get("leaves"))
+        .and_then(Value::as_obj)
+        .unwrap();
+    assert_eq!(
+        completed_leaves.get("review").and_then(Value::as_str),
+        Some("timed_out")
+    );
+    assert_eq!(
+        completed_leaves.get("audit").and_then(Value::as_str),
+        Some("audit_done")
+    );
+
+    let history = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_history",
+        &obj(&[("instance_id", Value::Str("inst-current-parallel".into()))]),
+    )
+    .unwrap();
+    assert!(
+        history
+            .get("entries")
+            .and_then(Value::as_arr)
+            .into_iter()
+            .flatten()
+            .any(|entry| entry.get("kind").and_then(Value::as_str) == Some("DeadlineApplied")),
+        "deadline firing is a first-class durable operation"
+    );
 }
 
 #[test]
@@ -1311,6 +1589,18 @@ fn spec(s: &str) -> Value {
     parse(s.as_bytes(), &JsonLimits::DEFAULT).unwrap()
 }
 
+fn over_eval_limit_spec(name: &str) -> String {
+    let sum = (0..16).map(|_| "1").collect::<Vec<_>>().join(" + ");
+    let after = format!("dur({sum}, ms)");
+    let deadlines = (0..fsm_core::limits::MAX_DEADLINES)
+        .map(|index| format!(r#"{{"name":"d{index}","from":"a","after":"{after}","to":"a"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        r#"{{"format":"fsm.machine/1","name":"{name}","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{deadlines}],"invariants":[{{"name":"extra","expr":"true","mode":"monitor"}}]}}"#
+    )
+}
+
 fn drive_create(
     st: &mut Store,
     clock: &mut FixedClock,
@@ -1411,6 +1701,13 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
                 ("instance_id", Value::Str("inst-c1".into())),
                 ("event", obj(&[("name", Value::Str("resume".into()))])),
                 ("request_id", Value::Str("unh".into())),
+            ]),
+        ),
+        (
+            "deadline_poll",
+            obj(&[
+                ("instance_id", Value::Str("inst-c1".into())),
+                ("request_id", Value::Str("poll-none".into())),
             ]),
         ),
         (
@@ -1626,6 +1923,9 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         r#"{"format":"fsm.machine/1","name":"m47","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"1.0000000000000 == 1.0"}]}"#,
         r#"{"format":"fsm.machine/1","name":"m48","states":[{"name":"a"}],"initial":"a","context":[{"name":"a","ty":{"decimal":"7"},"init":"0.0000000"},{"name":"b","ty":{"decimal":"7"},"init":"0.0000000"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"ctx.a * ctx.b == ctx.a"}]}"#,
         r#"{"format":"fsm.machine/1","name":"m49","states":[{"name":"a"}],"initial":"a","context":[{"name":"d","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"dec(ctx.d, 1) == 0.0"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"m50","regions":[{"name":"left","states":[{"name":"a"}],"initial":"a"},{"name":"right","states":[{"name":"b"}],"initial":"b"}],"context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"m51","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"1","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"m52","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"dur(1, s)","to":"a"},{"name":"later","from":"a","after":"dur(2, s)","to":"a"}]}"#,
     ];
     for src in create_specs {
         drive_create(&mut st, &mut clock, src, &mut out);
@@ -1809,6 +2109,36 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         &format!(
             r#"{{"format":"fsm.machine/1","name":"mtr","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"n","ty":"int","init":"0"}}],"events":[{evs2}],"transitions":[{trs}]}}"#
         ),
+        &mut out,
+    );
+    let regions = (0..9)
+        .map(|i| format!(r#"{{"name":"r{i}","states":[{{"name":"rs{i}"}}],"initial":"rs{i}"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    drive_create(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"mregions","regions":[{regions}],"context":[],"events":[],"transitions":[]}}"#
+        ),
+        &mut out,
+    );
+    let deadlines = (0..129)
+        .map(|i| format!(r#"{{"name":"dl{i}","from":"a","after":"dur(1, s)","to":"a"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    drive_create(
+        &mut st,
+        &mut clock,
+        &format!(
+            r#"{{"format":"fsm.machine/1","name":"mdeadlines","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{deadlines}]}}"#
+        ),
+        &mut out,
+    );
+    drive_create(
+        &mut st,
+        &mut clock,
+        &over_eval_limit_spec("meval"),
         &mut out,
     );
     let huge = format!(
@@ -2048,6 +2378,7 @@ fn all_codes_hygiene() {
         "store/version_mismatch",
         "internal/budget",
         "internal/unimplemented",
+        "run/configuration_invalid",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");
@@ -2102,6 +2433,10 @@ const INFRA: &[(&str, &str)] = &[
     (
         "internal/unimplemented",
         "reserved internal path, no public correction",
+    ),
+    (
+        "run/configuration_invalid",
+        "library-only malformed InstanceState cannot be created through a store tool",
     ),
     (
         "run/overflow",
@@ -2213,9 +2548,19 @@ fn one_step_every_non_infra_code() {
             r#"{"format":"fsm.machine/1","name":"uk2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
         ),
         (
-            "def/not_supported",
-            r#"{"format":"fsm.machine/1","name":"ns","regions":[],"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-            r#"{"format":"fsm.machine/1","name":"ns2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+            "def/cross_region",
+            r#"{"format":"fsm.machine/1","name":"xr","regions":[{"name":"left","states":[{"name":"a"}],"initial":"a"},{"name":"right","states":[{"name":"b"}],"initial":"b"}],"context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"xr2","regions":[{"name":"left","states":[{"name":"a"}],"initial":"a"},{"name":"right","states":[{"name":"b"}],"initial":"b"}],"context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"a"}]}"#,
+        ),
+        (
+            "def/deadline_type",
+            r#"{"format":"fsm.machine/1","name":"dt","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"1","to":"a"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"dt2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"dur(1, s)","to":"a"}]}"#,
+        ),
+        (
+            "def/duplicate_deadline",
+            r#"{"format":"fsm.machine/1","name":"dd","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"dur(1, s)","to":"a"},{"name":"later","from":"a","after":"dur(2, s)","to":"a"}]}"#,
+            r#"{"format":"fsm.machine/1","name":"dd2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"dur(1, s)","to":"a"}]}"#,
         ),
         (
             "def/dup_name",
@@ -2630,6 +2975,36 @@ fn one_step_every_non_infra_code() {
     assert_eq!(err.code, "def/limit_transitions", "{}", err.code);
     create_repaired(&mut st, &mut clock, &bad, &err);
     seen.insert("def/limit_transitions");
+
+    let regions: String = (0..9)
+        .map(|i| format!(r#"{{"name":"r{i}","states":[{{"name":"s{i}"}}],"initial":"s{i}"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"lreg","regions":[{regions}],"context":[],"events":[],"transitions":[]}}"#
+    );
+    let err = create_err(&mut st, &mut clock, &bad);
+    assert_eq!(err.code, "def/limit_regions", "{}", err.code);
+    create_repaired(&mut st, &mut clock, &bad, &err);
+    seen.insert("def/limit_regions");
+
+    let deadlines: String = (0..129)
+        .map(|i| format!(r#"{{"name":"d{i}","from":"a","after":"dur(1, s)","to":"a"}}"#))
+        .collect::<Vec<_>>()
+        .join(",");
+    let bad = format!(
+        r#"{{"format":"fsm.machine/1","name":"ldl","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{deadlines}]}}"#
+    );
+    let err = create_err(&mut st, &mut clock, &bad);
+    assert_eq!(err.code, "def/limit_deadlines", "{}", err.code);
+    create_repaired(&mut st, &mut clock, &bad, &err);
+    seen.insert("def/limit_deadlines");
+
+    let bad = over_eval_limit_spec("levl");
+    let err = create_err(&mut st, &mut clock, &bad);
+    assert_eq!(err.code, "def/limit_eval", "{}", err.code);
+    create_repaired(&mut st, &mut clock, &bad, &err);
+    seen.insert("def/limit_eval");
 
     let hists: String = (0..33)
         .map(|i| format!(r#"{{"name":"c{i}","initial":"l{i}","states":[{{"name":"h{i}","history":"deep"}},{{"name":"l{i}"}}]}}"#))

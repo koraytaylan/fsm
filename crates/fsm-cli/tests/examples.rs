@@ -3,10 +3,41 @@ use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::spec::{compile, parse_machine};
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Per-process counter. Tests in one binary run concurrently, and a timestamp
-/// alone can collide between two threads building a path together.
-static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Keeps concurrently created test directories distinct within this process.
+static TEMPORARY_DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+struct TestDirectory(PathBuf);
+
+impl TestDirectory {
+    fn create() -> Self {
+        loop {
+            let sequence = TEMPORARY_DIRECTORY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "fsm-cli-examples-{}-{sequence}",
+                std::process::id()
+            ));
+            match fs::create_dir(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("create test directory {path:?}: {error}"),
+            }
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 fn load(name: &str) -> Value {
     let p = format!("{}/../../examples/{name}.json", env!("CARGO_MANIFEST_DIR"));
@@ -24,26 +55,108 @@ fn all_valid() {
     valid("expense_approval");
     valid("order_lifecycle");
     valid("invoice_matching");
+    valid("parallel_review_deadline");
 }
 
-fn tmp() -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "fsm-ex-{}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+#[test]
+fn parallel_review_deadline_is_explicit_and_region_safe() {
+    let directory = TestDirectory::create();
+    let mut store = Store::open(directory.path()).unwrap();
+    store
+        .define_machine(load("parallel_review_deadline"), false, false)
+        .unwrap();
+
+    let mut create_clock = FixedClock::new(1_000, 1);
+    let created = store
+        .create_instance_ctx_on(
+            &mut create_clock,
+            "parallel_review_deadline",
+            "parallel",
+            "parallel-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    assert!(
+        created.get("leaf").is_none(),
+        "parallel views have no fake leaf"
+    );
+    let leaves = created
+        .get("configuration")
+        .and_then(|configuration| configuration.get("leaves"))
+        .and_then(Value::as_obj)
+        .unwrap();
+    assert_eq!(
+        leaves.get("review").and_then(Value::as_str),
+        Some("awaiting_review")
+    );
+    assert_eq!(
+        leaves.get("audit").and_then(Value::as_str),
+        Some("auditing")
+    );
+    assert_eq!(
+        store
+            .state
+            .instances
+            .get("parallel")
             .unwrap()
-            .as_nanos(),
-        TMP_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&p).unwrap();
-    p
+            .deadlines
+            .get("review_timeout"),
+        Some(&31_000)
+    );
+
+    let mut early_clock = FixedClock::new(30_999, 1);
+    let early = store
+        .poll_instance_deadline_on(&mut early_clock, "parallel", "poll-early", None)
+        .unwrap();
+    assert_eq!(
+        early.get("deadline_not_due").and_then(Value::as_bool),
+        Some(true)
+    );
+
+    let mut due_clock = FixedClock::new(31_000, 1);
+    let fired = store
+        .poll_instance_deadline_on(&mut due_clock, "parallel", "poll-due", None)
+        .unwrap();
+    assert_eq!(
+        fired.get("deadline").and_then(Value::as_str),
+        Some("review_timeout")
+    );
+    let leaves = fired
+        .get("configuration")
+        .and_then(|configuration| configuration.get("leaves"))
+        .and_then(Value::as_obj)
+        .unwrap();
+    assert_eq!(
+        leaves.get("review").and_then(Value::as_str),
+        Some("timed_out")
+    );
+    assert_eq!(
+        leaves.get("audit").and_then(Value::as_str),
+        Some("auditing")
+    );
+    assert_eq!(fired.get("status").and_then(Value::as_str), Some("running"));
+
+    let completed = store
+        .send_event(
+            "parallel",
+            "audit_ok",
+            Value::Obj(BTreeMap::new()),
+            "audit-ok",
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        completed.get("status").and_then(Value::as_str),
+        Some("completed")
+    );
 }
 
 #[test]
 fn expense_approval_paths() {
-    let dir = tmp();
-    let mut s = Store::open(&dir).unwrap();
+    let directory = TestDirectory::create();
+    let mut s = Store::open(directory.path()).unwrap();
     s.define_machine(load("expense_approval"), false, false)
         .unwrap();
     s.create_instance("expense_approval", "small", "c1", None)
@@ -63,7 +176,15 @@ fn expense_approval_paths() {
     assert_eq!(r.get("leaf").and_then(Value::as_str), Some("peer_review"));
     s.send_event("small", "approve", Value::Obj(BTreeMap::new()), "s2", None)
         .unwrap();
-    assert_eq!(s.state.instances.get("small").unwrap().leaf, "approved");
+    assert_eq!(
+        s.state
+            .instances
+            .get("small")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("approved")
+    );
 
     s.create_instance("expense_approval", "ancestor", "c-ancestor", None)
         .unwrap();
@@ -79,8 +200,13 @@ fn expense_approval_paths() {
     )
     .unwrap();
     assert_eq!(
-        s.state.instances.get("ancestor").unwrap().leaf,
-        "peer_review"
+        s.state
+            .instances
+            .get("ancestor")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("peer_review")
     );
     let ancestor = s
         .send_event(
@@ -167,11 +293,11 @@ fn fsm() -> &'static str {
     env!("CARGO_BIN_EXE_fsm")
 }
 
-fn run_fsm(dir: &std::path::Path, args: &[&str]) -> (i32, String, String) {
+fn run_fsm(dir: &std::path::Path, args: &[&str], clock_ms: Option<&str>) -> (i32, String, String) {
     let out = std::process::Command::new(fsm())
         .args(args)
         .arg(format!("--data-dir={}", dir.display()))
-        .env("FSM_CLOCK_MS", "5000")
+        .env("FSM_CLOCK_MS", clock_ms.unwrap_or("5000"))
         .env("NO_COLOR", "1")
         .output()
         .unwrap();
@@ -182,15 +308,22 @@ fn run_fsm(dir: &std::path::Path, args: &[&str]) -> (i32, String, String) {
     )
 }
 
-fn extract_fsm_line(line: &str) -> Option<String> {
+fn extract_fsm_line(line: &str) -> Option<(String, Option<String>)> {
     let t = line.trim();
-    let rest = t
-        .strip_prefix("$ fsm ")
-        .or_else(|| t.strip_prefix("fsm "))?;
+    let (rest, clock_ms) = if let Some(rest) = t.strip_prefix("$ FSM_CLOCK_MS=") {
+        let (clock_ms, command) = rest.split_once(" fsm ")?;
+        (command, Some(clock_ms.to_string()))
+    } else {
+        (
+            t.strip_prefix("$ fsm ")
+                .or_else(|| t.strip_prefix("fsm "))?,
+            None,
+        )
+    };
     if rest.starts_with("version") || rest.starts_with("docs ") || rest.starts_with("help") {
         return None;
     }
-    Some(rest.to_string())
+    Some((rest.to_string(), clock_ms))
 }
 
 fn split_cmd(rest: &str) -> Vec<String> {
@@ -222,6 +355,7 @@ fn split_cmd(rest: &str) -> Vec<String> {
 
 struct DocCmd {
     args: Vec<String>,
+    clock_ms: Option<String>,
     expect_fail: bool,
     expect_code: Option<String>,
     expect_leaf: Option<String>,
@@ -254,13 +388,14 @@ fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
             continue;
         }
         if !in_fence {
-            if let Some(rest) = extract_fsm_line(t) {
+            if let Some((rest, clock_ms)) = extract_fsm_line(t) {
                 flush_pending(&mut cur, &mut pending);
                 if !cur.is_empty() {
                     blocks.push(std::mem::take(&mut cur));
                 }
                 pending = Some(DocCmd {
                     args: split_cmd(&rest),
+                    clock_ms,
                     expect_fail: false,
                     expect_code: None,
                     expect_leaf: None,
@@ -272,10 +407,11 @@ fn parse_doc_commands(text: &str) -> Vec<Vec<DocCmd>> {
             }
             continue;
         }
-        if let Some(rest) = extract_fsm_line(t) {
+        if let Some((rest, clock_ms)) = extract_fsm_line(t) {
             flush_pending(&mut cur, &mut pending);
             pending = Some(DocCmd {
                 args: split_cmd(&rest),
+                clock_ms,
                 expect_fail: false,
                 expect_code: None,
                 expect_leaf: None,
@@ -340,7 +476,7 @@ fn readme_and_examples_commands_run() {
     let mut saw_pending_effect = false;
     let mut saw_pending_cleared = false;
     for block in all_blocks {
-        let dir = tmp();
+        let directory = TestDirectory::create();
         for cmd in block {
             let mut args: Vec<String> = Vec::new();
             for a in &cmd.args {
@@ -363,7 +499,7 @@ fn readme_and_examples_commands_run() {
                 saw_order_ack_path = true;
             }
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            let (c, out, err) = run_fsm(&dir, &arg_refs);
+            let (c, out, err) = run_fsm(directory.path(), &arg_refs, cmd.clock_ms.as_deref());
             if cmd.expect_fail {
                 assert_ne!(c, 0, "expected failure for {args:?}\n{out}{err}");
                 if let Some(code) = &cmd.expect_code {
@@ -431,8 +567,8 @@ fn readme_and_examples_commands_run() {
 
 #[test]
 fn order_lifecycle_paths() {
-    let dir = tmp();
-    let mut s = Store::open(&dir).unwrap();
+    let directory = TestDirectory::create();
+    let mut s = Store::open(directory.path()).unwrap();
     s.define_machine(load("order_lifecycle"), false, false)
         .unwrap();
     s.create_instance("order_lifecycle", "o1", "c1", None)
@@ -443,7 +579,7 @@ fn order_lifecycle_paths() {
     assert!(!pending.is_empty());
     s.ack_effect("o1", &pending[0], "a1").unwrap();
     assert!(s.state.instances.get("o1").unwrap().pending.is_empty());
-    let leaf = s.state.instances.get("o1").unwrap().leaf.clone();
+    let configuration = s.state.instances.get("o1").unwrap().configuration.clone();
     let pending_before_note = s.state.instances.get("o1").unwrap().pending.clone();
     s.send_event(
         "o1",
@@ -453,7 +589,10 @@ fn order_lifecycle_paths() {
         None,
     )
     .unwrap();
-    assert_eq!(s.state.instances.get("o1").unwrap().leaf, leaf);
+    assert_eq!(
+        s.state.instances.get("o1").unwrap().configuration,
+        configuration
+    );
     assert_eq!(
         s.state.instances.get("o1").unwrap().pending,
         pending_before_note,
@@ -481,7 +620,15 @@ fn order_lifecycle_paths() {
         "the supplied clock was consumed once"
     );
     assert_eq!(s.records.last().unwrap().ts, 9_000);
-    assert_eq!(s.state.instances.get("o1").unwrap().leaf, "closed");
+    assert_eq!(
+        s.state
+            .instances
+            .get("o1")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("closed")
+    );
 
     s.create_instance("order_lifecycle", "o-noack", "c-noack", None)
         .unwrap();
@@ -506,7 +653,15 @@ fn order_lifecycle_paths() {
         &["at"],
     )
     .unwrap();
-    assert_eq!(s.state.instances.get("o-noack").unwrap().leaf, "closed");
+    assert_eq!(
+        s.state
+            .instances
+            .get("o-noack")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("closed")
+    );
     assert!(
         !s.state.instances.get("o-noack").unwrap().pending.is_empty(),
         "terminal no-ack still retains pending"
@@ -540,8 +695,8 @@ fn order_lifecycle_paths() {
 
 #[test]
 fn invoice_matching_paths() {
-    let dir = tmp();
-    let mut s = Store::open(&dir).unwrap();
+    let directory = TestDirectory::create();
+    let mut s = Store::open(directory.path()).unwrap();
     s.define_machine(load("invoice_matching"), false, false)
         .unwrap();
     s.create_instance("invoice_matching", "i1", "c1", None)
@@ -590,7 +745,15 @@ fn invoice_matching_paths() {
     assert_eq!(ratio, "1.0000");
     s.send_event("i1", "match", Value::Obj(BTreeMap::new()), "m1", None)
         .unwrap();
-    assert_eq!(s.state.instances.get("i1").unwrap().leaf, "matched");
+    assert_eq!(
+        s.state
+            .instances
+            .get("i1")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("matched")
+    );
 
     s.create_instance("invoice_matching", "i2", "c2", None)
         .unwrap();

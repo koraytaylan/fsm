@@ -10,16 +10,22 @@ use fsm_core::analyze::{EventStatus, enabled_events};
 use fsm_core::canon::canon_bytes;
 use fsm_core::error::{FsmError, retryable};
 use fsm_core::expr::eval::{Budget, Val};
-use fsm_core::hashes::{ResolveError, machine_id, resolve_machine_ref, state_hash};
+use fsm_core::hashes::{
+    ResolveError, STATE_FORMAT, configuration_value, machine_id, resolve_machine_ref, state_hash,
+};
 use fsm_core::json::{JsonLimits, Value, parse};
-use fsm_core::machine::{InstanceState, Status};
+use fsm_core::machine::{ActiveConfiguration, InstanceState, Status};
 use fsm_core::record::{Record, RecordKind};
-use fsm_core::replay::{NopSink, RecordSink, StoreState, StoredMachine, ctx_val_json, fold_with};
+use fsm_core::replay::{
+    NopSink, RecordSink, STATE_ROOT_FORMAT, StoreState, StoredMachine, ctx_val_json, fold_with,
+};
 use fsm_core::spec::{Finding, MachineSpec, TySpec};
-use fsm_core::step::{Outcome, Rejection, create, step, validate_event};
+use fsm_core::step::{
+    DeadlineOutcome, Outcome, Rejection, create, poll_deadline, step, validate_event,
+};
 use fsm_core::tree::Tree;
 
-use crate::journal_io::{self, Journal, JournalHealth, OpenError};
+use crate::journal_io::{self, Journal, JournalHealth, JournalIoError, OpenError};
 
 pub struct Store {
     pub journal: Journal,
@@ -156,8 +162,10 @@ impl ErrorObj {
             if let Some(c) = r.cause {
                 d.insert("cause".into(), Value::Str(c.into()));
             }
-            if let (Some(s), Some(idx)) = (r.source_state.as_ref(), r.transition_idx) {
+            if let Some(s) = r.source_state.as_ref() {
                 d.insert("source_state".into(), Value::Str(s.clone()));
+            }
+            if let Some(idx) = r.transition_idx {
                 d.insert("transition_idx".into(), Value::Num(idx.to_string()));
             }
             d.insert("trace".into(), r.trace.to_value());
@@ -231,6 +239,9 @@ pub struct DefineOutcome {
 impl Store {
     pub fn open(data_dir: &Path) -> Result<Self, ErrorObj> {
         fs::create_dir_all(data_dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+        let snapshot_directory = data_dir.join("snapshots");
+        crate::persistence_directory_exists(&snapshot_directory)
+            .map_err(|error| ErrorObj::new("io/write", error.to_string()))?;
         let mut sink = HistSink {
             history: BTreeMap::new(),
             records: Vec::new(),
@@ -238,14 +249,71 @@ impl Store {
         let (journal, state, open_path) = match journal_io::open(data_dir, &mut sink) {
             Ok(x) => x,
             Err(OpenError::Health(h)) => return Err(health_err(&h)),
-            Err(OpenError::Io(s)) => return Err(ErrorObj::new("io/read", s)),
+            Err(OpenError::ReadIo(message)) => {
+                return Err(ErrorObj::new("io/read", message));
+            }
+            Err(OpenError::WriteIo(message)) => {
+                return Err(ErrorObj::new("io/write", message));
+            }
         };
-        fs::create_dir_all(data_dir.join("snapshots")).ok();
+        crate::ensure_persistence_directory(&snapshot_directory)
+            .map_err(|error| ErrorObj::new("io/write", error.to_string()))?;
         let records = journal_io::load_records(data_dir).unwrap_or(sink.records);
         let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
         for rec in &records {
             if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                 history.entry(iid.into()).or_default().push(rec.seq);
+            }
+        }
+        let tags = load_tags_from_records(&records);
+        Ok(Store {
+            journal,
+            state,
+            history,
+            records,
+            data_dir: data_dir.to_path_buf(),
+            last_responses: BTreeMap::new(),
+            last_errors: BTreeMap::new(),
+            tags,
+            replayed_records: open_path.replayed_records,
+            opened_from_snapshot: open_path.used_snapshot,
+            opened_snapshot_seq: open_path.snapshot_seq,
+            pending_fp: None,
+        })
+    }
+
+    /// Load one internally consistent journal prefix for inspection without
+    /// creating the data directory, taking the writer lock, migrating
+    /// `VERSION`, or enabling snapshot writes.
+    ///
+    /// A live writer may append after this read; reopen to observe that later
+    /// prefix. An unterminated line at the end of the final segment is omitted
+    /// as an in-progress append; strict open and verification still report it
+    /// as a torn tail. Mutating methods on the returned store fail with
+    /// `io/write`.
+    pub fn open_read_only(data_dir: &Path) -> Result<Self, ErrorObj> {
+        let mut sink = HistSink {
+            history: BTreeMap::new(),
+            records: Vec::new(),
+        };
+        // `open_read_only` returns the exact record vector it folded. Loading
+        // again here would let a live writer append between reads and produce
+        // state from one prefix with history/tags from another.
+        let (journal, state, open_path, records) =
+            match journal_io::open_read_only(data_dir, &mut sink) {
+                Ok(value) => value,
+                Err(OpenError::Health(health)) => return Err(health_err(&health)),
+                Err(OpenError::ReadIo(message) | OpenError::WriteIo(message)) => {
+                    return Err(ErrorObj::new("io/read", message));
+                }
+            };
+        let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+        for record in &records {
+            if let Some(instance_id) = record.body.get("instance_id").and_then(Value::as_str) {
+                history
+                    .entry(instance_id.into())
+                    .or_default()
+                    .push(record.seq);
             }
         }
         let tags = load_tags_from_records(&records);
@@ -308,11 +376,39 @@ impl Store {
         dry_run: bool,
         if_exists_error: bool,
     ) -> Result<DefineOutcome, ErrorObj> {
+        if !dry_run {
+            self.ensure_writable()?;
+        }
         if fsm_core::canon::canon_bytes(&def).len() > fsm_core::limits::MAX_DEF_BYTES {
             return Err(ErrorObj::new(
                 "def/limit_bytes",
                 "definition exceeds 256 KiB",
             ));
+        }
+        // Content identity is enough to recognize an immutable definition
+        // that this journal already authenticated. In particular, a migrated
+        // legacy definition may exceed a ceiling introduced later; requiring
+        // current admission again would break the documented idempotent
+        // `created: false` path even though no definition is being written.
+        let candidate_id = machine_id(&def);
+        if let Some(existing) = self
+            .state
+            .machines
+            .get(&candidate_id)
+            .filter(|existing| existing.def == def)
+        {
+            if if_exists_error {
+                return Err(ErrorObj::new("req/machine_exists", candidate_id.clone())
+                    .hint(format!("machine already stored as {candidate_id}")));
+            }
+            let mut warnings = fsm_core::analyze::analyze_all(&existing.compiled, &existing.tree);
+            warnings.extend(existing.compiled.compile_warnings.clone());
+            return Ok(DefineOutcome {
+                created: false,
+                machine_id: candidate_id,
+                warnings,
+                name: existing.compiled.spec.name.clone(),
+            });
         }
         let compiled = fsm_core::spec::compile_accepted(&def).map_err(ErrorObj::from_findings)?;
         let id = compiled.machine_id.clone();
@@ -323,7 +419,7 @@ impl Store {
             ));
         }
         let name = compiled.spec.name.clone();
-        let tree = Tree::build(&compiled.spec.states);
+        let tree = Tree::for_machine(&compiled.spec);
         let mut warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
         warnings.extend(compiled.compile_warnings.clone());
         if self.state.machines.contains_key(&id) {
@@ -396,7 +492,33 @@ impl Store {
         }
     }
 
-    /// Resolve a `request_id` against the idempotency ledger.
+    /// Look up a `request_id` against the idempotency ledger without claiming
+    /// an unused key.
+    ///
+    /// `Ok(None)` means the key is unclaimed. `Ok(Some(_))` is the original
+    /// outcome, replayed. `Err` is either the original error replayed, or
+    /// `req/request_id_conflict` when the key was claimed by a *different*
+    /// request.
+    #[allow(clippy::type_complexity)]
+    fn lookup_request(
+        &mut self,
+        request_id: &str,
+        fp: &str,
+    ) -> Result<Option<Result<Value, ErrorObj>>, ErrorObj> {
+        self.pending_fp = None;
+        if let Some(slot) = self.state.dedup.get(request_id) {
+            if let Some(prev) = slot.fp.as_deref() {
+                if prev != fp {
+                    let claimed_seq = slot.seq;
+                    return Err(self.request_id_conflict(request_id, claimed_seq));
+                }
+            }
+        }
+        Ok(self.replay_request(request_id))
+    }
+
+    /// Resolve a `request_id` against the idempotency ledger and stage its
+    /// fingerprint for the records the operation will append.
     ///
     /// `Ok(None)` means the key is unclaimed and the caller should proceed;
     /// the fingerprint is stashed for the records the operation will append.
@@ -410,20 +532,11 @@ impl Store {
         request_id: &str,
         fp: String,
     ) -> Result<Option<Result<Value, ErrorObj>>, ErrorObj> {
-        self.pending_fp = None;
-        if let Some(slot) = self.state.dedup.get(request_id) {
-            if let Some(prev) = slot.fp.clone() {
-                if prev != fp {
-                    let claimed_seq = slot.seq;
-                    return Err(self.request_id_conflict(request_id, claimed_seq));
-                }
-            }
+        let replay = self.lookup_request(request_id, &fp)?;
+        if replay.is_none() {
+            self.pending_fp = Some(fp);
         }
-        if let Some(r) = self.replay_request(request_id) {
-            return Ok(Some(r));
-        }
-        self.pending_fp = Some(fp);
-        Ok(None)
+        Ok(replay)
     }
 
     /// The key is taken by different content. Point at the record that claimed
@@ -437,7 +550,7 @@ impl Store {
                 "claimed_by".into(),
                 Value::Str(rec.kind.as_str().to_string()),
             );
-            for field in ["instance_id", "event", "effect_id"] {
+            for field in ["instance_id", "event", "deadline", "effect_id"] {
                 if let Some(v) = rec.body.get(field) {
                     d.insert(format!("original_{field}"), v.clone());
                 }
@@ -470,7 +583,10 @@ impl Store {
             .iter()
             .rev()
             .find(|r| r.body.get("request_id").and_then(Value::as_str) == Some(request_id))?;
-        if rec.kind == RecordKind::EventRejected || rec.kind == RecordKind::RequestRejected {
+        if matches!(
+            rec.kind,
+            RecordKind::EventRejected | RecordKind::DeadlineRejected | RecordKind::RequestRejected
+        ) {
             let code = rec
                 .body
                 .get("code")
@@ -490,7 +606,12 @@ impl Store {
             if let Some(d) = rec.body.get("details") {
                 err.details = d.clone();
             }
-            if rec.kind == RecordKind::EventRejected {
+            let include_instance_identity = matches!(
+                rec.kind,
+                RecordKind::EventRejected | RecordKind::DeadlineRejected
+            ) || (rec.kind == RecordKind::RequestRejected
+                && rec.body.get("operation").and_then(Value::as_str) == Some("poll_deadline"));
+            if include_instance_identity {
                 if let Value::Obj(d) = &mut err.details {
                     if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                         d.insert("instance_id".into(), Value::Str(iid.into()));
@@ -567,6 +688,34 @@ impl Store {
                 }
             }
         }
+        if rec.kind == RecordKind::DeadlineNotDue {
+            if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                if let Ok(folded) = fold_prefix(&self.records, rec.seq) {
+                    if let Ok(mut value) =
+                        view_at(&folded, iid, Some(request_id), Some(true), rec.seq)
+                    {
+                        if let Value::Obj(output) = &mut value {
+                            output.insert("deadline_applied".into(), Value::Bool(false));
+                            output.insert("deadline_not_due".into(), Value::Bool(true));
+                            for field in ["next_deadline", "next_deadline_idx"] {
+                                if let Some(field_value) = rec.body.get(field) {
+                                    output.insert(field.into(), field_value.clone());
+                                }
+                            }
+                            if let Some(next_due_ms) =
+                                rec.body.get("next_due_ms").and_then(Value::as_num)
+                            {
+                                output.insert(
+                                    "next_due_ms".into(),
+                                    Value::Str(next_due_ms.to_string()),
+                                );
+                            }
+                        }
+                        return Some(Ok(value));
+                    }
+                }
+            }
+        }
         if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
             if rec.kind == RecordKind::EventApplied {
                 if let Ok(pre) = fold_prefix(&self.records, rec.seq.saturating_sub(1)) {
@@ -578,12 +727,26 @@ impl Store {
                     }
                 }
             }
+            if rec.kind == RecordKind::DeadlineApplied {
+                if let Ok(pre) = fold_prefix(&self.records, rec.seq.saturating_sub(1)) {
+                    if let Some(mut value) =
+                        reconstruct_deadline_applied(&pre, rec, iid, request_id)
+                    {
+                        if let Value::Obj(output) = &mut value {
+                            output.insert("duplicate".into(), Value::Bool(true));
+                        }
+                        return Some(Ok(value));
+                    }
+                }
+            }
             if let Ok(folded) = fold_prefix(&self.records, rec.seq) {
                 if let Ok(mut v) = view_at(&folded, iid, Some(request_id), Some(true), rec.seq) {
                     if let Value::Obj(o) = &mut v {
                         o.insert("duplicate".into(), Value::Bool(true));
                         if rec.kind == RecordKind::EventApplied {
                             o.insert("applied".into(), Value::Bool(true));
+                        } else if rec.kind == RecordKind::DeadlineApplied {
+                            o.insert("deadline_applied".into(), Value::Bool(true));
                         }
                     }
                     return Some(Ok(v));
@@ -635,6 +798,13 @@ impl Store {
                 ("event".into(), Value::Str(event.into())),
                 ("payload".into(), payload.clone()),
             ]),
+        )
+    }
+
+    fn fp_poll_deadline(instance_id: &str) -> String {
+        fsm_core::hashes::request_fp(
+            "poll_deadline",
+            &BTreeMap::from([("instance_id".into(), Value::Str(instance_id.into()))]),
         )
     }
 
@@ -721,6 +891,32 @@ impl Store {
         }
     }
 
+    fn journal_write_error(error: JournalIoError, request_id: Option<&str>) -> ErrorObj {
+        let mut output = match error {
+            JournalIoError::RecordTooLarge { bytes, max_bytes } => {
+                let details = Value::Obj(BTreeMap::from([
+                    ("bytes".into(), Value::Num(bytes.to_string())),
+                    ("max_bytes".into(), Value::Num(max_bytes.to_string())),
+                ]));
+                ErrorObj::new(
+                    "io/write",
+                    format!(
+                        "journal record is {bytes} bytes; the limit is {max_bytes} bytes"
+                    ),
+                )
+                .hint(
+                    "shorten identifiers, creation overrides, tags, or cancellation reasons before retrying",
+                )
+                .details(details)
+            }
+            other => ErrorObj::new("io/write", other.to_string()),
+        };
+        if let Some(request_id) = request_id {
+            output = output.request_id(request_id);
+        }
+        output
+    }
+
     fn append_at_with_root(
         &mut self,
         kind: RecordKind,
@@ -728,12 +924,16 @@ impl Store {
         ts: i64,
     ) -> Result<Record, ErrorObj> {
         let body = self.stamp_request_fp(body);
+        let request_id = body
+            .get("request_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         let seq = self.journal.last_seq.saturating_add(1);
         if !seq.is_multiple_of(10_000) {
             return self
                 .journal
                 .append_at(kind, body, ts)
-                .map_err(|e| ErrorObj::new("io/write", e.to_string()));
+                .map_err(|error| Self::journal_write_error(error, request_id.as_deref()));
         }
         let mut body = body.as_obj().cloned().ok_or_else(|| {
             ErrorObj::new("store/state_hash_mismatch", "record body is not an object")
@@ -755,9 +955,21 @@ impl Store {
             "state_root".into(),
             Value::Str(fsm_core::replay::state_root_at(&projected, seq)),
         );
+        body.insert(
+            "state_root_format".into(),
+            Value::Str(STATE_ROOT_FORMAT.into()),
+        );
         self.journal
             .append_at(kind, Value::Obj(body), ts)
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))
+            .map_err(|error| Self::journal_write_error(error, request_id.as_deref()))
+    }
+
+    fn ensure_writable(&self) -> Result<(), ErrorObj> {
+        if self.journal.is_read_only() {
+            Err(ErrorObj::new("io/write", "store was opened read-only"))
+        } else {
+            Ok(())
+        }
     }
 
     fn append_rec(
@@ -771,8 +983,9 @@ impl Store {
     }
 
     pub fn allocate_request_id(&mut self) -> Result<String, ErrorObj> {
+        self.ensure_writable()?;
         let path = self.data_dir.join("alloc");
-        let n = fs::read_to_string(&path)
+        let n = crate::read_regular_string_capped(&path, crate::PERSISTENCE_READ_CAP)
             .ok()
             .and_then(|s| {
                 let t = s.trim();
@@ -866,6 +1079,7 @@ impl Store {
         overrides: &BTreeMap<String, Val>,
         tags: &[String],
     ) -> Result<Value, ErrorObj> {
+        self.ensure_writable()?;
         if let Some(r) = self.claim_request(
             request_id,
             Self::fp_create(machine_ref, instance_id, overrides, tags),
@@ -902,7 +1116,8 @@ impl Store {
                 .request_id(request_id)
                 .with_store_catalog(self)
         })?;
-        let a = create(&m.compiled, &m.tree, overrides).map_err(|r| {
+        let commit_ts = clock.now_ms();
+        let a = create(&m.compiled, &m.tree, overrides, commit_ts).map_err(|r| {
             let mut e = ErrorObj::from_rejection(&r)
                 .request_id(request_id)
                 .with_store_catalog(self);
@@ -949,9 +1164,10 @@ impl Store {
             .collect();
         let inst = InstanceState {
             status: a.status_after,
-            leaf: a.leaf_after.clone(),
+            configuration: a.configuration_after.clone(),
             ctx: a.ctx_after.clone(),
             history: a.history_after.clone(),
+            deadlines: a.deadlines_after.clone(),
             pending: pending.clone(),
         };
         let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &inst);
@@ -964,7 +1180,11 @@ impl Store {
         body.insert("machine_id".into(), Value::Str(mid.clone()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("state_hash".into(), Value::Str(sh.clone()));
-        body.insert("leaf".into(), Value::Str(inst.leaf.clone()));
+        body.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
+        body.insert(
+            "configuration".into(),
+            configuration_value(&inst.configuration),
+        );
         body.insert("overrides".into(), Value::Obj(ov));
         if !tags.is_empty() {
             body.insert(
@@ -972,7 +1192,8 @@ impl Store {
                 Value::Arr(tags.iter().cloned().map(Value::Str).collect()),
             );
         }
-        let rec = self.append_rec(RecordKind::InstanceCreated, Value::Obj(body), clock)?;
+        let rec =
+            self.append_at_with_root(RecordKind::InstanceCreated, Value::Obj(body), commit_ts)?;
         self.state.instances.insert(instance_id.into(), inst);
         self.state.instance_machines.insert(instance_id.into(), mid);
         if !tags.is_empty() {
@@ -1038,12 +1259,27 @@ impl Store {
         expect_seq: Option<u64>,
         stamps: &[&str],
     ) -> Result<Value, ErrorObj> {
-        if let Some(r) =
-            self.claim_request(request_id, Self::fp_send(instance_id, event, payload))?
-        {
+        self.ensure_writable()?;
+        let request_fp = Self::fp_send(instance_id, event, payload);
+        if let Some(r) = self.lookup_request(request_id, &request_fp)? {
             return r;
         }
-        Self::check_journalled_size("payload", payload, request_id)?;
+
+        // Stamp a candidate rather than the caller's value so every
+        // unjournaled rejection remains atomic. A single reservation supplies
+        // every absent field and lets us enforce the cap against the exact
+        // payload that will be journalled without advancing built-in clocks.
+        let mut final_payload = payload.clone();
+        let mut reserved_ts = None;
+        if let Value::Obj(fields) = &mut final_payload {
+            for field in stamps {
+                if !fields.contains_key(*field) {
+                    let timestamp = *reserved_ts.get_or_insert_with(|| clock.reserve_ms());
+                    fields.insert((*field).into(), Value::Str(timestamp.to_string()));
+                }
+            }
+        }
+        Self::check_journalled_size("payload", &final_payload, request_id)?;
         if let Some(exp) = expect_seq {
             if exp != self.journal.last_seq {
                 let mut d = BTreeMap::new();
@@ -1079,36 +1315,38 @@ impl Store {
                 .request_id(request_id)
                 .with_store_catalog(self)
         })?;
+        let response_tree = m.tree.clone();
         let inst = self.state.instances.get(instance_id).ok_or_else(|| {
             ErrorObj::new("req/instance_not_found", instance_id)
                 .request_id(request_id)
                 .hint("use a known instance id from details.known_instances")
                 .with_store_catalog(self)
         })?;
-        let from_leaf = inst.leaf.clone();
-        let mut absent_stamps: Vec<String> = Vec::new();
-        if let Value::Obj(o) = payload {
-            for field in stamps {
-                if !o.contains_key(*field) {
-                    absent_stamps.push((*field).into());
-                    o.insert((*field).into(), Value::Str("0".into()));
-                }
+        let from_configuration = inst.configuration.clone();
+        // SPEC step ordering status-gates before event validation. Request
+        // shape errors remain unjournaled only while the instance is running;
+        // completed/cancelled outcomes depend on durable instance state and
+        // must flow through `step` so they are journaled and replayable.
+        if inst.status == Status::Running {
+            if let Err(r) = validate_event(&m.compiled, event, &final_payload) {
+                return Err(ErrorObj::from_rejection(&r).request_id(request_id));
             }
         }
-        if let Err(r) = validate_event(&m.compiled, event, payload) {
-            return Err(ErrorObj::from_rejection(&r).request_id(request_id));
-        }
-        let commit_ts = clock.now_ms();
-        if let Value::Obj(o) = payload {
-            if !absent_stamps.is_empty() {
-                let ts = commit_ts.to_string();
-                for field in &absent_stamps {
-                    o.insert(field.clone(), Value::Str(ts.clone()));
-                }
-            }
-        }
-        let mut bud = Budget::new(4096);
-        let out = step(&m.compiled, &m.tree, inst, event, payload, &mut bud);
+        let commit_ts = reserved_ts
+            .map(|timestamp| clock.commit_reserved_ms(timestamp))
+            .unwrap_or_else(|| clock.now_ms());
+        self.pending_fp = Some(request_fp);
+        *payload = final_payload;
+        let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+        let out = step(
+            &m.compiled,
+            &m.tree,
+            inst,
+            event,
+            payload,
+            commit_ts,
+            &mut bud,
+        );
         match out {
             Outcome::Applied(a) => {
                 let mut pending = inst.pending.clone();
@@ -1119,9 +1357,10 @@ impl Store {
                 );
                 let new = InstanceState {
                     status: a.status_after,
-                    leaf: a.leaf_after.clone(),
+                    configuration: a.configuration_after.clone(),
                     ctx: a.ctx_after.clone(),
                     history: a.history_after.clone(),
+                    deadlines: a.deadlines_after.clone(),
                     pending,
                 };
                 let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &new);
@@ -1131,6 +1370,7 @@ impl Store {
                 body.insert("payload".into(), payload.clone());
                 body.insert("request_id".into(), Value::Str(request_id.into()));
                 body.insert("state_hash".into(), Value::Str(sh.clone()));
+                body.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
                 body.insert("source_state".into(), Value::Str(a.source_state.clone()));
                 body.insert(
                     "exited".into(),
@@ -1155,7 +1395,7 @@ impl Store {
                 if let Value::Obj(o) = &mut resp {
                     o.insert("applied".into(), Value::Bool(true));
                     o.insert("ok".into(), Value::Str("true".into()));
-                    o.insert("leaf".into(), Value::Str(a.leaf_after.clone()));
+                    insert_configuration_fields(o, &response_tree, &a.configuration_after);
                     let mut tr = BTreeMap::new();
                     tr.insert("source_state".into(), Value::Str(a.source_state.clone()));
                     tr.insert(
@@ -1163,8 +1403,14 @@ impl Store {
                         Value::Num(a.transition_idx.to_string()),
                     );
                     tr.insert("internal".into(), Value::Bool(a.internal));
-                    tr.insert("from_leaf".into(), Value::Str(from_leaf.clone()));
-                    tr.insert("to_leaf".into(), Value::Str(a.leaf_after.clone()));
+                    if let Some(region) = &a.region {
+                        tr.insert("region".into(), Value::Str(region.clone()));
+                    }
+                    insert_transition_configuration_fields(
+                        &mut tr,
+                        &from_configuration,
+                        &a.configuration_after,
+                    );
                     tr.insert(
                         "exited".into(),
                         Value::Arr(a.exited.iter().cloned().map(Value::Str).collect()),
@@ -1193,6 +1439,7 @@ impl Store {
                 body.insert("event".into(), Value::Str(event.into()));
                 body.insert("payload".into(), payload.clone());
                 body.insert("state_hash".into(), Value::Str(sh));
+                body.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
                 body.insert("code".into(), Value::Str(r.code.into()));
                 body.insert("message".into(), Value::Str(r.message.clone()));
                 body.insert("hint".into(), Value::Str(r.hint.clone()));
@@ -1250,6 +1497,7 @@ impl Store {
                 body.insert("event".into(), Value::Str(event.into()));
                 body.insert("payload".into(), payload.clone());
                 body.insert("state_hash".into(), Value::Str(sh));
+                body.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
                 let rec = self.append_at_with_root(
                     RecordKind::EventIgnored,
                     Value::Obj(body),
@@ -1266,20 +1514,325 @@ impl Store {
                     o.insert("trace".into(), Value::Obj(BTreeMap::new()));
                     o.insert(
                         "transition".into(),
-                        Value::Obj(BTreeMap::from([
-                            ("source_state".into(), Value::Str(inst.leaf.clone())),
-                            ("transition_idx".into(), Value::Num("-1".into())),
-                            ("internal".into(), Value::Bool(false)),
-                            ("from_leaf".into(), Value::Str(inst.leaf.clone())),
-                            ("to_leaf".into(), Value::Str(inst.leaf.clone())),
-                            ("exited".into(), Value::Arr(vec![])),
-                            ("entered".into(), Value::Arr(vec![])),
-                        ])),
+                        Value::Obj({
+                            let mut transition = BTreeMap::from([
+                                ("transition_idx".into(), Value::Num("-1".into())),
+                                ("internal".into(), Value::Bool(false)),
+                                ("exited".into(), Value::Arr(vec![])),
+                                ("entered".into(), Value::Arr(vec![])),
+                            ]);
+                            if let Some(leaf) = inst.configuration.sequential_leaf() {
+                                transition
+                                    .insert("source_state".into(), Value::Str(leaf.to_string()));
+                            }
+                            insert_transition_configuration_fields(
+                                &mut transition,
+                                &inst.configuration,
+                                &inst.configuration,
+                            );
+                            transition
+                        }),
                     );
                 }
                 self.commit_dedup(request_id, resp.clone(), rec.seq);
                 self.finish_commit();
                 Ok(resp)
+            }
+        }
+    }
+
+    /// Poll and apply at most one due deadline using the process clock.
+    pub fn poll_instance_deadline(
+        &mut self,
+        instance_id: &str,
+        request_id: &str,
+        expect_seq: Option<u64>,
+    ) -> Result<Value, ErrorObj> {
+        self.poll_instance_deadline_on(
+            &mut crate::clock::GlobalClock,
+            instance_id,
+            request_id,
+            expect_seq,
+        )
+    }
+
+    /// Injected-clock form of [`Store::poll_instance_deadline`].
+    pub fn poll_instance_deadline_on(
+        &mut self,
+        clock: &mut dyn crate::clock::Clock,
+        instance_id: &str,
+        request_id: &str,
+        expect_seq: Option<u64>,
+    ) -> Result<Value, ErrorObj> {
+        self.ensure_writable()?;
+        if let Some(result) = self.claim_request(request_id, Self::fp_poll_deadline(instance_id))? {
+            return result;
+        }
+        if let Some(expected) = expect_seq {
+            if expected != self.journal.last_seq {
+                return Err(ErrorObj::new(
+                    "req/seq_mismatch",
+                    "re-read the instance, then retry with the same request_id and the current seq",
+                )
+                .hint(
+                    "re-read the instance, then retry with the same request_id and the current seq",
+                )
+                .details(Value::Obj(BTreeMap::from([(
+                    "current_seq".into(),
+                    Value::Num(self.journal.last_seq.to_string()),
+                )])))
+                .request_id(request_id));
+            }
+        }
+        let machine_id = self
+            .state
+            .instance_machines
+            .get(instance_id)
+            .cloned()
+            .ok_or_else(|| {
+                ErrorObj::new("req/instance_not_found", instance_id)
+                    .request_id(request_id)
+                    .with_store_catalog(self)
+            })?;
+        let machine = self.state.machines.get(&machine_id).ok_or_else(|| {
+            ErrorObj::new("req/machine_not_found", &machine_id).request_id(request_id)
+        })?;
+        let instance = self.state.instances.get(instance_id).ok_or_else(|| {
+            ErrorObj::new("req/instance_not_found", instance_id).request_id(request_id)
+        })?;
+        let before_configuration = instance.configuration.clone();
+        let commit_ts = clock.now_ms();
+        let mut budget = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+        let outcome = poll_deadline(
+            &machine.compiled,
+            &machine.tree,
+            instance,
+            commit_ts,
+            &mut budget,
+        );
+        match outcome {
+            DeadlineOutcome::Applied(applied) => {
+                let transition = applied.transition;
+                let mut pending = instance.pending.clone();
+                pending.extend(transition.effects.iter().map(|effect| {
+                    format!("{instance_id}/{}/{}", self.journal.last_seq + 1, effect.k)
+                }));
+                let next_state = InstanceState {
+                    status: transition.status_after,
+                    configuration: transition.configuration_after.clone(),
+                    ctx: transition.ctx_after.clone(),
+                    history: transition.history_after.clone(),
+                    deadlines: transition.deadlines_after.clone(),
+                    pending,
+                };
+                let state_hash = state_hash(
+                    &machine_id,
+                    instance_id,
+                    self.journal.last_seq + 1,
+                    &next_state,
+                );
+                let body = Value::Obj(BTreeMap::from([
+                    ("instance_id".into(), Value::Str(instance_id.into())),
+                    ("request_id".into(), Value::Str(request_id.into())),
+                    ("deadline".into(), Value::Str(applied.deadline.name.clone())),
+                    (
+                        "deadline_idx".into(),
+                        Value::Num(applied.deadline.deadline_idx.to_string()),
+                    ),
+                    (
+                        "due_ms".into(),
+                        Value::Num(applied.deadline.due_ms.to_string()),
+                    ),
+                    ("state_hash".into(), Value::Str(state_hash)),
+                    ("state_format".into(), Value::Str(STATE_FORMAT.into())),
+                    (
+                        "source_state".into(),
+                        Value::Str(transition.source_state.clone()),
+                    ),
+                    (
+                        "exited".into(),
+                        Value::Arr(transition.exited.iter().cloned().map(Value::Str).collect()),
+                    ),
+                    (
+                        "entered".into(),
+                        Value::Arr(transition.entered.iter().cloned().map(Value::Str).collect()),
+                    ),
+                ]));
+                let record =
+                    self.append_at_with_root(RecordKind::DeadlineApplied, body, commit_ts)?;
+                self.state.instances.insert(instance_id.into(), next_state);
+                self.history
+                    .entry(instance_id.into())
+                    .or_default()
+                    .push(record.seq);
+                self.note_record(&record);
+                let mut response =
+                    self.instance_view(instance_id, Some(request_id), Some(false))?;
+                if let Value::Obj(output) = &mut response {
+                    output.insert("deadline_applied".into(), Value::Bool(true));
+                    output.insert("deadline_not_due".into(), Value::Bool(false));
+                    output.insert("deadline".into(), Value::Str(applied.deadline.name));
+                    output.insert(
+                        "deadline_idx".into(),
+                        Value::Num(applied.deadline.deadline_idx.to_string()),
+                    );
+                    output.insert(
+                        "due_ms".into(),
+                        Value::Str(applied.deadline.due_ms.to_string()),
+                    );
+                    let mut transition_value = BTreeMap::from([
+                        (
+                            "source_state".into(),
+                            Value::Str(transition.source_state.clone()),
+                        ),
+                        (
+                            "deadline_idx".into(),
+                            Value::Num(transition.transition_idx.to_string()),
+                        ),
+                        ("internal".into(), Value::Bool(false)),
+                        (
+                            "exited".into(),
+                            Value::Arr(transition.exited.iter().cloned().map(Value::Str).collect()),
+                        ),
+                        (
+                            "entered".into(),
+                            Value::Arr(
+                                transition.entered.iter().cloned().map(Value::Str).collect(),
+                            ),
+                        ),
+                    ]);
+                    if let Some(region) = &transition.region {
+                        transition_value.insert("region".into(), Value::Str(region.clone()));
+                    }
+                    insert_transition_configuration_fields(
+                        &mut transition_value,
+                        &before_configuration,
+                        &transition.configuration_after,
+                    );
+                    output.insert("transition".into(), Value::Obj(transition_value));
+                    output.insert("trace".into(), transition.trace.to_value());
+                    output.insert(
+                        "monitor_flags".into(),
+                        Value::Arr(
+                            transition
+                                .monitor_flags
+                                .iter()
+                                .cloned()
+                                .map(Value::Str)
+                                .collect(),
+                        ),
+                    );
+                }
+                self.commit_dedup(request_id, response.clone(), record.seq);
+                self.finish_commit();
+                Ok(response)
+            }
+            DeadlineOutcome::NotDue { next } => {
+                let unchanged = instance.clone();
+                let state_hash = state_hash(
+                    &machine_id,
+                    instance_id,
+                    self.journal.last_seq + 1,
+                    &unchanged,
+                );
+                let mut body = BTreeMap::from([
+                    ("instance_id".into(), Value::Str(instance_id.into())),
+                    ("request_id".into(), Value::Str(request_id.into())),
+                    ("state_hash".into(), Value::Str(state_hash)),
+                    ("state_format".into(), Value::Str(STATE_FORMAT.into())),
+                ]);
+                if let Some(next) = &next {
+                    body.insert("next_deadline".into(), Value::Str(next.name.clone()));
+                    body.insert(
+                        "next_deadline_idx".into(),
+                        Value::Num(next.deadline_idx.to_string()),
+                    );
+                    body.insert("next_due_ms".into(), Value::Num(next.due_ms.to_string()));
+                }
+                let record = self.append_at_with_root(
+                    RecordKind::DeadlineNotDue,
+                    Value::Obj(body),
+                    commit_ts,
+                )?;
+                self.note_record(&record);
+                self.history
+                    .entry(instance_id.into())
+                    .or_default()
+                    .push(record.seq);
+                let mut response =
+                    self.instance_view(instance_id, Some(request_id), Some(false))?;
+                if let Value::Obj(output) = &mut response {
+                    output.insert("deadline_applied".into(), Value::Bool(false));
+                    output.insert("deadline_not_due".into(), Value::Bool(true));
+                    if let Some(next) = next {
+                        output.insert("next_deadline".into(), Value::Str(next.name));
+                        output.insert(
+                            "next_deadline_idx".into(),
+                            Value::Num(next.deadline_idx.to_string()),
+                        );
+                        output.insert("next_due_ms".into(), Value::Str(next.due_ms.to_string()));
+                    }
+                }
+                self.commit_dedup(request_id, response.clone(), record.seq);
+                self.finish_commit();
+                Ok(response)
+            }
+            DeadlineOutcome::Rejected(rejected) => {
+                let rejection = rejected.rejection;
+                let unchanged = instance.clone();
+                let state_hash = state_hash(
+                    &machine_id,
+                    instance_id,
+                    self.journal.last_seq + 1,
+                    &unchanged,
+                );
+                let mut error = ErrorObj::from_rejection(&rejection).request_id(request_id);
+                let mut body = BTreeMap::from([
+                    ("instance_id".into(), Value::Str(instance_id.into())),
+                    ("request_id".into(), Value::Str(request_id.into())),
+                    ("state_hash".into(), Value::Str(state_hash)),
+                    ("state_format".into(), Value::Str(STATE_FORMAT.into())),
+                    ("code".into(), Value::Str(rejection.code.into())),
+                    ("message".into(), Value::Str(rejection.message.clone())),
+                    ("hint".into(), Value::Str(rejection.hint.clone())),
+                    ("details".into(), error.details.clone()),
+                ]);
+                let kind = if let Some(deadline) = rejected.deadline {
+                    body.insert("deadline".into(), Value::Str(deadline.name));
+                    body.insert(
+                        "deadline_idx".into(),
+                        Value::Num(deadline.deadline_idx.to_string()),
+                    );
+                    body.insert("due_ms".into(), Value::Num(deadline.due_ms.to_string()));
+                    RecordKind::DeadlineRejected
+                } else {
+                    body.insert("operation".into(), Value::Str("poll_deadline".into()));
+                    RecordKind::RequestRejected
+                };
+                if let Some((start, end)) = rejection.span {
+                    body.insert(
+                        "span".into(),
+                        Value::Obj(BTreeMap::from([
+                            ("start".into(), Value::Num(start.to_string())),
+                            ("end".into(), Value::Num(end.to_string())),
+                        ])),
+                    );
+                }
+                if let Value::Obj(details) = &mut error.details {
+                    details.insert("machine_id".into(), Value::Str(machine_id));
+                    details.insert("instance_id".into(), Value::Str(instance_id.into()));
+                }
+                let record = self.append_at_with_root(kind, Value::Obj(body), commit_ts)?;
+                self.note_record(&record);
+                self.history
+                    .entry(instance_id.into())
+                    .or_default()
+                    .push(record.seq);
+                let slot = self.claimed_slot(record.seq);
+                self.state.dedup.insert(request_id.into(), slot);
+                self.last_errors.insert(request_id.into(), error.clone());
+                self.finish_commit();
+                Err(error)
             }
         }
     }
@@ -1320,6 +1873,7 @@ impl Store {
         outcome: &str,
         result: Option<Value>,
     ) -> Result<Value, ErrorObj> {
+        self.ensure_writable()?;
         if let Some(r) = self.claim_request(
             request_id,
             Self::fp_ack(instance_id, effect_id, outcome, result.as_ref()),
@@ -1366,6 +1920,7 @@ impl Store {
                 .unwrap_or_default();
             let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, inst);
             body.insert("state_hash".into(), Value::Str(sh));
+            body.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
             let rec = self.append_rec(RecordKind::RequestRejected, Value::Obj(body), clock)?;
             self.note_record(&rec);
             let mut details = BTreeMap::new();
@@ -1406,6 +1961,7 @@ impl Store {
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("outcome".into(), Value::Str(outcome.into()));
         body.insert("state_hash".into(), Value::Str(sh));
+        body.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
         if let Some(res) = result.clone() {
             body.insert("result".into(), res);
         }
@@ -1467,6 +2023,7 @@ impl Store {
         request_id: &str,
         reason: &str,
     ) -> Result<Value, ErrorObj> {
+        self.ensure_writable()?;
         if let Some(r) = self.claim_request(request_id, Self::fp_cancel(instance_id, reason))? {
             return r;
         }
@@ -1483,12 +2040,14 @@ impl Store {
             })?;
         let mut post = self.state.instances.get(instance_id).unwrap().clone();
         post.status = Status::Cancelled;
+        post.deadlines.clear();
         let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &post);
         let mut body = BTreeMap::new();
         body.insert("instance_id".into(), Value::Str(instance_id.into()));
         body.insert("request_id".into(), Value::Str(request_id.into()));
         body.insert("reason".into(), Value::Str(reason.into()));
         body.insert("state_hash".into(), Value::Str(sh));
+        body.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
         let rec = self.append_rec(RecordKind::InstanceCancelled, Value::Obj(body), clock)?;
         self.state.instances.insert(instance_id.into(), post);
         self.note_record(&rec);
@@ -1508,6 +2067,7 @@ impl Store {
         request_id: &str,
         note: &str,
     ) -> Result<Value, ErrorObj> {
+        self.ensure_writable()?;
         if let Some(r) = self.claim_request(request_id, Self::fp_annotate(instance_id, note))? {
             return r;
         }
@@ -1569,20 +2129,13 @@ impl Store {
         m.insert("instance_id".into(), Value::Str(instance_id.into()));
         m.insert("ok".into(), Value::Str("true".into()));
         m.insert("status".into(), Value::Str(inst.status.as_str().into()));
-        m.insert("leaf".into(), Value::Str(inst.leaf.clone()));
         if let Some(st) = stored {
-            m.insert("state".into(), Value::Str(st.tree.dotted_path(&inst.leaf)));
+            insert_configuration_fields(&mut m, &st.tree, &inst.configuration);
             m.insert(
-                "configuration".into(),
-                Value::Arr(
-                    st.tree
-                        .configuration(&inst.leaf)
-                        .into_iter()
-                        .map(Value::Str)
-                        .collect(),
-                ),
+                "deadlines_pending".into(),
+                pending_deadlines_value(st, inst),
             );
-            let mut bud = Budget::new(4096);
+            let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
             let evs = enabled_events(&st.compiled, &st.tree, inst, &mut bud);
             m.insert("enabled_events".into(), enabled_json(&evs));
             let mut mac = BTreeMap::new();
@@ -1590,8 +2143,11 @@ impl Store {
             mac.insert("name".into(), Value::Str(st.compiled.spec.name.clone()));
             m.insert("machine".into(), Value::Obj(mac));
         } else {
-            m.insert("state".into(), Value::Str(inst.leaf.clone()));
-            m.insert("configuration".into(), Value::Arr(vec![]));
+            m.insert(
+                "configuration".into(),
+                configuration_value(&inst.configuration),
+            );
+            m.insert("deadlines_pending".into(), Value::Arr(vec![]));
             m.insert("enabled_events".into(), Value::Arr(vec![]));
         }
         m.insert("context".into(), Value::Obj(ctx));
@@ -1604,6 +2160,7 @@ impl Store {
             "state_hash".into(),
             Value::Str(state_hash(&mid, instance_id, self.journal.last_seq, inst)),
         );
+        m.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
         if let Some(r) = request_id {
             m.insert("request_id".into(), Value::Str(r.into()));
         }
@@ -1614,6 +2171,7 @@ impl Store {
     }
 
     pub fn maybe_snapshot(&self) -> Result<(), ErrorObj> {
+        self.ensure_writable()?;
         if self.journal.last_seq > 0 && self.journal.last_seq.is_multiple_of(10_000) {
             crate::snapshot::write_snapshot(&self.data_dir, &self.state)?;
         }
@@ -1640,10 +2198,16 @@ impl Store {
             .journal
             .append_at(
                 RecordKind::StateCheckpoint,
-                Value::Obj(BTreeMap::from([("state_root".into(), Value::Str(root))])),
+                Value::Obj(BTreeMap::from([
+                    ("state_root".into(), Value::Str(root)),
+                    (
+                        "state_root_format".into(),
+                        Value::Str(STATE_ROOT_FORMAT.into()),
+                    ),
+                ])),
                 clock.now_ms(),
             )
-            .map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
+            .map_err(|error| Self::journal_write_error(error, None))?;
         self.note_record(&rec);
         Ok(())
     }
@@ -1652,6 +2216,7 @@ impl Store {
         &mut self,
         clock: &mut dyn crate::clock::Clock,
     ) -> Result<(), ErrorObj> {
+        self.ensure_writable()?;
         if self.journal.is_memory() || self.journal.last_seq == 0 {
             return Ok(());
         }
@@ -1686,7 +2251,9 @@ impl Store {
             if !include_rejected
                 && matches!(
                     rec.kind,
-                    RecordKind::EventRejected | RecordKind::RequestRejected
+                    RecordKind::EventRejected
+                        | RecordKind::DeadlineRejected
+                        | RecordKind::RequestRejected
                 )
             {
                 continue;
@@ -1737,12 +2304,109 @@ impl Store {
 
 impl Drop for Store {
     fn drop(&mut self) {
-        if !self.journal.is_memory() && self.journal.last_seq > 0 {
+        if !self.journal.is_memory() && !self.journal.is_read_only() && self.journal.last_seq > 0 {
             // Drop must never append: there is no caller-supplied clock and a
             // read-only open/close must leave the authoritative journal alone.
             let _ = crate::snapshot::write_snapshot(&self.data_dir, &self.state);
         }
     }
+}
+
+fn insert_configuration_fields(
+    output: &mut BTreeMap<String, Value>,
+    tree: &Tree,
+    configuration: &ActiveConfiguration,
+) {
+    output.insert("configuration".into(), configuration_value(configuration));
+    match configuration {
+        ActiveConfiguration::Sequential { leaf } => {
+            output.insert("leaf".into(), Value::Str(leaf.clone()));
+            output.insert("state".into(), Value::Str(tree.dotted_path(leaf)));
+            output.insert(
+                "state_path".into(),
+                Value::Arr(
+                    tree.configuration(leaf)
+                        .into_iter()
+                        .map(Value::Str)
+                        .collect(),
+                ),
+            );
+        }
+        ActiveConfiguration::Parallel { leaves } => {
+            let mut regions = BTreeMap::new();
+            for (region, _) in &tree.root_initials {
+                let Some(region) = region.as_ref() else {
+                    continue;
+                };
+                let Some(leaf) = leaves.get(region) else {
+                    continue;
+                };
+                regions.insert(
+                    region.clone(),
+                    Value::Obj(BTreeMap::from([
+                        ("leaf".into(), Value::Str(leaf.clone())),
+                        ("state".into(), Value::Str(tree.dotted_path(leaf))),
+                        (
+                            "state_path".into(),
+                            Value::Arr(
+                                tree.configuration(leaf)
+                                    .into_iter()
+                                    .map(Value::Str)
+                                    .collect(),
+                            ),
+                        ),
+                    ])),
+                );
+            }
+            output.insert("regions".into(), Value::Obj(regions));
+        }
+    }
+}
+
+fn insert_transition_configuration_fields(
+    output: &mut BTreeMap<String, Value>,
+    before: &ActiveConfiguration,
+    after: &ActiveConfiguration,
+) {
+    output.insert("from_configuration".into(), configuration_value(before));
+    output.insert("to_configuration".into(), configuration_value(after));
+    if let (
+        ActiveConfiguration::Sequential { leaf: from },
+        ActiveConfiguration::Sequential { leaf: to },
+    ) = (before, after)
+    {
+        output.insert("from_leaf".into(), Value::Str(from.clone()));
+        output.insert("to_leaf".into(), Value::Str(to.clone()));
+    }
+}
+
+fn pending_deadlines_value(machine: &StoredMachine, state: &InstanceState) -> Value {
+    let mut pending: Vec<_> = state
+        .deadlines
+        .iter()
+        .filter_map(|(name, due_ms)| {
+            machine
+                .compiled
+                .spec
+                .deadlines
+                .iter()
+                .position(|deadline| deadline.name == *name)
+                .map(|index| (due_ms, index, name))
+        })
+        .collect();
+    pending.sort_by(|left, right| (left.0, left.1).cmp(&(right.0, right.1)));
+    Value::Arr(
+        pending
+            .into_iter()
+            .map(|(due_ms, index, name)| {
+                Value::Obj(BTreeMap::from([
+                    ("name".into(), Value::Str(name.clone())),
+                    ("deadline_idx".into(), Value::Num(index.to_string())),
+                    ("due_ms".into(), Value::Str(due_ms.to_string())),
+                ]))
+            })
+            .collect(),
+    )
 }
 
 fn reconstruct_applied(
@@ -1760,14 +2424,15 @@ fn reconstruct_applied(
     let mid = pre.instance_machines.get(iid)?;
     let m = pre.machines.get(mid)?;
     let inst = pre.instances.get(iid)?;
-    let mut bud = Budget::new(4096);
-    match step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud) {
+    let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+    match step(&m.compiled, &m.tree, inst, ev, &payload, rec.ts, &mut bud) {
         Outcome::Applied(a) => {
             let mut post_inst = inst.clone();
             post_inst.status = a.status_after;
-            post_inst.leaf = a.leaf_after.clone();
+            post_inst.configuration = a.configuration_after.clone();
             post_inst.ctx = a.ctx_after.clone();
             post_inst.history = a.history_after.clone();
+            post_inst.deadlines = a.deadlines_after.clone();
             post_inst.pending.extend(
                 a.effects
                     .iter()
@@ -1781,11 +2446,7 @@ fn reconstruct_applied(
             if let Value::Obj(o) = &mut v {
                 o.insert("applied".into(), Value::Bool(true));
                 o.insert("ok".into(), Value::Str("true".into()));
-                o.insert("leaf".into(), Value::Str(a.leaf_after.clone()));
-                o.insert(
-                    "state".into(),
-                    Value::Str(m.tree.dotted_path(&a.leaf_after)),
-                );
+                insert_configuration_fields(o, &m.tree, &a.configuration_after);
                 let mut tr = BTreeMap::new();
                 tr.insert("source_state".into(), Value::Str(a.source_state.clone()));
                 tr.insert(
@@ -1793,8 +2454,14 @@ fn reconstruct_applied(
                     Value::Num(a.transition_idx.to_string()),
                 );
                 tr.insert("internal".into(), Value::Bool(a.internal));
-                tr.insert("from_leaf".into(), Value::Str(inst.leaf.clone()));
-                tr.insert("to_leaf".into(), Value::Str(a.leaf_after.clone()));
+                if let Some(region) = &a.region {
+                    tr.insert("region".into(), Value::Str(region.clone()));
+                }
+                insert_transition_configuration_fields(
+                    &mut tr,
+                    &inst.configuration,
+                    &a.configuration_after,
+                );
                 tr.insert(
                     "exited".into(),
                     Value::Arr(a.exited.iter().cloned().map(Value::Str).collect()),
@@ -1816,6 +2483,100 @@ fn reconstruct_applied(
     }
 }
 
+fn reconstruct_deadline_applied(
+    pre: &StoreState,
+    record: &Record,
+    instance_id: &str,
+    request_id: &str,
+) -> Option<Value> {
+    let machine_id = pre.instance_machines.get(instance_id)?;
+    let machine = pre.machines.get(machine_id)?;
+    let instance = pre.instances.get(instance_id)?;
+    let mut budget = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+    let DeadlineOutcome::Applied(applied) = poll_deadline(
+        &machine.compiled,
+        &machine.tree,
+        instance,
+        record.ts,
+        &mut budget,
+    ) else {
+        return None;
+    };
+    let transition = applied.transition;
+    let mut post_instance = instance.clone();
+    post_instance.status = transition.status_after;
+    post_instance.configuration = transition.configuration_after.clone();
+    post_instance.ctx = transition.ctx_after.clone();
+    post_instance.history = transition.history_after.clone();
+    post_instance.deadlines = transition.deadlines_after.clone();
+    post_instance.pending.extend(
+        transition
+            .effects
+            .iter()
+            .map(|effect| format!("{instance_id}/{}/{}", record.seq, effect.k)),
+    );
+    let mut post = pre.clone();
+    post.instances.insert(instance_id.into(), post_instance);
+    post.last_seq = record.seq;
+    post.last_hash = record.hash.clone();
+    let mut response =
+        view_at(&post, instance_id, Some(request_id), Some(true), record.seq).ok()?;
+    if let Value::Obj(output) = &mut response {
+        output.insert("deadline_applied".into(), Value::Bool(true));
+        output.insert("deadline_not_due".into(), Value::Bool(false));
+        output.insert("deadline".into(), Value::Str(applied.deadline.name));
+        output.insert(
+            "deadline_idx".into(),
+            Value::Num(applied.deadline.deadline_idx.to_string()),
+        );
+        output.insert(
+            "due_ms".into(),
+            Value::Str(applied.deadline.due_ms.to_string()),
+        );
+        let mut transition_value = BTreeMap::from([
+            (
+                "source_state".into(),
+                Value::Str(transition.source_state.clone()),
+            ),
+            (
+                "deadline_idx".into(),
+                Value::Num(transition.transition_idx.to_string()),
+            ),
+            ("internal".into(), Value::Bool(false)),
+            (
+                "exited".into(),
+                Value::Arr(transition.exited.iter().cloned().map(Value::Str).collect()),
+            ),
+            (
+                "entered".into(),
+                Value::Arr(transition.entered.iter().cloned().map(Value::Str).collect()),
+            ),
+        ]);
+        if let Some(region) = &transition.region {
+            transition_value.insert("region".into(), Value::Str(region.clone()));
+        }
+        insert_transition_configuration_fields(
+            &mut transition_value,
+            &instance.configuration,
+            &transition.configuration_after,
+        );
+        output.insert("transition".into(), Value::Obj(transition_value));
+        output.insert("trace".into(), transition.trace.to_value());
+        output.insert(
+            "monitor_flags".into(),
+            Value::Arr(
+                transition
+                    .monitor_flags
+                    .iter()
+                    .cloned()
+                    .map(Value::Str)
+                    .collect(),
+            ),
+        );
+    }
+    Some(response)
+}
+
 fn reconstruct_ignored(
     folded: &StoreState,
     rec: &Record,
@@ -1835,17 +2596,25 @@ fn reconstruct_ignored(
         o.insert("trace".into(), Value::Obj(BTreeMap::new()));
         o.insert(
             "transition".into(),
-            Value::Obj(BTreeMap::from([
-                ("source_state".into(), Value::Str(inst.leaf.clone())),
-                ("transition_idx".into(), Value::Num("-1".into())),
-                ("internal".into(), Value::Bool(false)),
-                ("from_leaf".into(), Value::Str(inst.leaf.clone())),
-                ("to_leaf".into(), Value::Str(inst.leaf.clone())),
-                ("exited".into(), Value::Arr(vec![])),
-                ("entered".into(), Value::Arr(vec![])),
-            ])),
+            Value::Obj({
+                let mut transition = BTreeMap::from([
+                    ("transition_idx".into(), Value::Num("-1".into())),
+                    ("internal".into(), Value::Bool(false)),
+                    ("exited".into(), Value::Arr(vec![])),
+                    ("entered".into(), Value::Arr(vec![])),
+                ]);
+                if let Some(leaf) = inst.configuration.sequential_leaf() {
+                    transition.insert("source_state".into(), Value::Str(leaf.to_string()));
+                }
+                insert_transition_configuration_fields(
+                    &mut transition,
+                    &inst.configuration,
+                    &inst.configuration,
+                );
+                transition
+            }),
         );
-        o.insert("state".into(), Value::Str(m.tree.dotted_path(&inst.leaf)));
+        insert_configuration_fields(o, &m.tree, &inst.configuration);
     }
     Some(v)
 }
@@ -1889,6 +2658,9 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
     if let Some(ev) = rec.body.get("event") {
         e.insert("event".into(), ev.clone());
     }
+    if let Some(deadline) = rec.body.get("deadline") {
+        e.insert("deadline".into(), deadline.clone());
+    }
     if let Some(p) = rec.body.get("payload") {
         e.insert("payload".into(), p.clone());
     }
@@ -1903,8 +2675,18 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
             if let Ok(post) = fold_prefix(&store.records, rec.seq) {
                 if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                     if let Some(before) = pre.instances.get(iid) {
-                        e.insert("from_leaf".into(), Value::Str(before.leaf.clone()));
-                        e.insert("before_leaf".into(), Value::Str(before.leaf.clone()));
+                        e.insert(
+                            "from_configuration".into(),
+                            configuration_value(&before.configuration),
+                        );
+                        e.insert(
+                            "before_configuration".into(),
+                            configuration_value(&before.configuration),
+                        );
+                        if let Some(leaf) = before.configuration.sequential_leaf() {
+                            e.insert("from_leaf".into(), Value::Str(leaf.to_string()));
+                            e.insert("before_leaf".into(), Value::Str(leaf.to_string()));
+                        }
                         let mut ctx = BTreeMap::new();
                         for (k, v) in &before.ctx {
                             ctx.insert(k.clone(), ctx_val_json(v));
@@ -1912,16 +2694,32 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                         e.insert("before_context".into(), Value::Obj(ctx));
                     }
                     if let Some(after) = post.instances.get(iid) {
-                        e.insert("to_leaf".into(), Value::Str(after.leaf.clone()));
-                        e.insert("after_leaf".into(), Value::Str(after.leaf.clone()));
+                        e.insert(
+                            "to_configuration".into(),
+                            configuration_value(&after.configuration),
+                        );
+                        e.insert(
+                            "after_configuration".into(),
+                            configuration_value(&after.configuration),
+                        );
+                        if let Some(leaf) = after.configuration.sequential_leaf() {
+                            e.insert("to_leaf".into(), Value::Str(leaf.to_string()));
+                            e.insert("after_leaf".into(), Value::Str(leaf.to_string()));
+                        }
                         let mut ctx = BTreeMap::new();
                         for (k, v) in &after.ctx {
                             ctx.insert(k.clone(), ctx_val_json(v));
                         }
                         e.insert("context_after".into(), Value::Obj(ctx.clone()));
                         e.insert("after_context".into(), Value::Obj(ctx));
-                        if !e.contains_key("from_leaf") {
-                            e.insert("from_leaf".into(), Value::Str(after.leaf.clone()));
+                        if !e.contains_key("from_configuration") {
+                            e.insert(
+                                "from_configuration".into(),
+                                configuration_value(&after.configuration),
+                            );
+                            if let Some(leaf) = after.configuration.sequential_leaf() {
+                                e.insert("from_leaf".into(), Value::Str(leaf.to_string()));
+                            }
                         }
                     }
                 }
@@ -1932,6 +2730,16 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                         if let Some(v) = reconstruct_applied(&pre, rec, iid, rid) {
                             if let Some(tr) = v.get("trace") {
                                 e.insert("trace".into(), tr.clone());
+                            }
+                        }
+                    }
+                }
+            } else if include_trace && rec.kind == RecordKind::DeadlineApplied {
+                if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                    if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
+                        if let Some(value) = reconstruct_deadline_applied(&pre, rec, iid, rid) {
+                            if let Some(trace) = value.get("trace") {
+                                e.insert("trace".into(), trace.clone());
                             }
                         }
                     }
@@ -1947,13 +2755,38 @@ fn history_entry(store: &Store, rec: &Record, include_trace: bool) -> Result<Val
                                         .get("payload")
                                         .cloned()
                                         .unwrap_or(Value::Obj(BTreeMap::new()));
-                                    let mut bud = Budget::new(4096);
-                                    if let Outcome::Rejected(r) =
-                                        step(&m.compiled, &m.tree, inst, ev, &payload, &mut bud)
-                                    {
+                                    let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+                                    if let Outcome::Rejected(r) = step(
+                                        &m.compiled,
+                                        &m.tree,
+                                        inst,
+                                        ev,
+                                        &payload,
+                                        rec.ts,
+                                        &mut bud,
+                                    ) {
                                         e.insert("trace".into(), r.trace.to_value());
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            } else if include_trace && rec.kind == RecordKind::DeadlineRejected {
+                if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+                    if let Some(machine_id) = pre.instance_machines.get(iid) {
+                        if let (Some(machine), Some(instance)) =
+                            (pre.machines.get(machine_id), pre.instances.get(iid))
+                        {
+                            let mut budget = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+                            if let DeadlineOutcome::Rejected(rejected) = poll_deadline(
+                                &machine.compiled,
+                                &machine.tree,
+                                instance,
+                                rec.ts,
+                                &mut budget,
+                            ) {
+                                e.insert("trace".into(), rejected.rejection.trace.to_value());
                             }
                         }
                     }
@@ -1993,7 +2826,7 @@ fn view_at(
         .machines
         .get(mid)
         .ok_or_else(|| ErrorObj::new("req/machine_not_found", mid.as_str()))?;
-    let mut bud = Budget::new(4096);
+    let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
     let enabled = enabled_events(&m.compiled, &m.tree, inst, &mut bud);
     let mut ctx = BTreeMap::new();
     for (k, v) in &inst.ctx {
@@ -2002,18 +2835,7 @@ fn view_at(
     let mut mobj = BTreeMap::new();
     mobj.insert("ok".into(), Value::Str("true".into()));
     mobj.insert("instance_id".into(), Value::Str(instance_id.into()));
-    mobj.insert("leaf".into(), Value::Str(inst.leaf.clone()));
-    mobj.insert("state".into(), Value::Str(m.tree.dotted_path(&inst.leaf)));
-    mobj.insert(
-        "configuration".into(),
-        Value::Arr(
-            m.tree
-                .configuration(&inst.leaf)
-                .into_iter()
-                .map(Value::Str)
-                .collect(),
-        ),
-    );
+    insert_configuration_fields(&mut mobj, &m.tree, &inst.configuration);
     let mut mac = BTreeMap::new();
     mac.insert("machine_id".into(), Value::Str(mid.clone()));
     mac.insert("name".into(), Value::Str(m.compiled.spec.name.clone()));
@@ -2029,7 +2851,9 @@ fn view_at(
         "state_hash".into(),
         Value::Str(state_hash(mid, instance_id, seq, inst)),
     );
+    mobj.insert("state_format".into(), Value::Str(STATE_FORMAT.into()));
     mobj.insert("enabled_events".into(), enabled_json(&enabled));
+    mobj.insert("deadlines_pending".into(), pending_deadlines_value(m, inst));
     if let Some(r) = request_id {
         mobj.insert("request_id".into(), Value::Str(r.into()));
     }
@@ -2057,6 +2881,8 @@ fn health_err(h: &JournalHealth) -> ErrorObj {
         // Post-migration this fires for newer or unknown formats, where the
         // store may be the only good copy — never advise deleting it.
         err.hint("upgrade fsm to a build that supports this store format, or point --data-dir at a fresh directory")
+    } else if matches!(h, JournalHealth::StoreIo(_)) {
+        err.hint("restore the named persistence path as a readable regular file or directory within the documented per-unit limit, then retry")
     } else {
         err
     }
@@ -2209,6 +3035,24 @@ mod tests {
         .unwrap()
     }
 
+    fn timed_parallel_def() -> Value {
+        parse(
+            br#"{
+                "format":"fsm.machine/1","name":"timed_parallel",
+                "context":[{"name":"fires","ty":"int","init":"0"}],
+                "events":[{"name":"finish","fields":[]}],
+                "regions":[
+                    {"name":"timer","states":[{"name":"waiting"},{"name":"expired","terminal":true}],"initial":"waiting"},
+                    {"name":"work","states":[{"name":"working"},{"name":"done","terminal":true}],"initial":"working"}
+                ],
+                "transitions":[{"from":"working","on":"finish","to":"done"}],
+                "deadlines":[{"name":"expire","from":"waiting","after":"dur(10, ms)","to":"expired","do":[{"target":"fires","value":"ctx.fires + 1"}]}]
+            }"#,
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn define_idempotent_and_resolve() {
         let dir = tmp();
@@ -2255,6 +3099,204 @@ mod tests {
         assert_eq!(r1.get("state_hash"), r2.get("state_hash"));
     }
 
+    #[test]
+    fn deadline_poll_is_durable_idempotent_and_parallel_safe() {
+        let dir = tmp();
+        let mut store = Store::open(&dir).unwrap();
+        let mut define_clock = crate::clock::FixedClock::new(1, 1);
+        store
+            .define_machine_on(&mut define_clock, timed_parallel_def(), false, false)
+            .unwrap();
+        let mut create_clock = crate::clock::FixedClock::new(100, 1);
+        store
+            .create_instance_ctx_on(
+                &mut create_clock,
+                "timed_parallel",
+                "timed-1",
+                "create-1",
+                None,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        assert_eq!(create_clock.now, 101, "creation reads its clock once");
+        assert_eq!(
+            store
+                .state
+                .instances
+                .get("timed-1")
+                .unwrap()
+                .deadlines
+                .get("expire"),
+            Some(&110)
+        );
+
+        let mut snapshot_clock = crate::clock::FixedClock::new(101, 1);
+        store.shutdown_snapshot_on(&mut snapshot_clock).unwrap();
+        drop(store);
+        let mut store = Store::open(&dir).unwrap();
+        assert_eq!(
+            store
+                .state
+                .instances
+                .get("timed-1")
+                .unwrap()
+                .deadlines
+                .get("expire"),
+            Some(&110)
+        );
+
+        let mut early_clock = crate::clock::FixedClock::new(109, 1);
+        let early = store
+            .poll_instance_deadline_on(&mut early_clock, "timed-1", "poll-early", None)
+            .unwrap();
+        assert_eq!(early_clock.now, 110, "poll reads its clock once");
+        assert_eq!(
+            early.get("deadline_not_due").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            early.get("next_deadline").and_then(Value::as_str),
+            Some("expire")
+        );
+        assert_eq!(
+            early.get("next_due_ms").and_then(Value::as_str),
+            Some("110")
+        );
+        let early_seq = store.journal.last_seq;
+
+        let mut retry_clock = crate::clock::FixedClock::new(999, 1);
+        let retry = store
+            .poll_instance_deadline_on(&mut retry_clock, "timed-1", "poll-early", Some(0))
+            .unwrap();
+        assert_eq!(retry_clock.now, 999, "dedup precedes the clock read");
+        assert_eq!(store.journal.last_seq, early_seq);
+        assert_eq!(retry.get("duplicate").and_then(Value::as_bool), Some(true));
+        assert_eq!(retry.get("next_deadline"), early.get("next_deadline"));
+        assert_eq!(
+            retry.get("next_deadline_idx"),
+            early.get("next_deadline_idx")
+        );
+        assert_eq!(retry.get("next_due_ms"), early.get("next_due_ms"));
+
+        let mut due_clock = crate::clock::FixedClock::new(110, 1);
+        let fired = store
+            .poll_instance_deadline_on(&mut due_clock, "timed-1", "poll-due", None)
+            .unwrap();
+        assert_eq!(due_clock.now, 111);
+        assert_eq!(
+            fired.get("deadline_applied").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            fired.get("deadline").and_then(Value::as_str),
+            Some("expire")
+        );
+        let configuration = fired.get("configuration").and_then(Value::as_obj).unwrap();
+        assert_eq!(
+            configuration.get("kind").and_then(Value::as_str),
+            Some("parallel")
+        );
+        assert_eq!(
+            fired
+                .get("context")
+                .and_then(Value::as_obj)
+                .and_then(|context| context.get("fires"))
+                .and_then(Value::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            store.records.last().map(|record| record.kind),
+            Some(RecordKind::DeadlineApplied)
+        );
+
+        let fired_seq = store.journal.last_seq;
+        drop(store);
+        let mut reopened = Store::open(&dir).unwrap();
+        let mut lost_response_clock = crate::clock::FixedClock::new(5_000, 1);
+        let duplicate = reopened
+            .poll_instance_deadline_on(&mut lost_response_clock, "timed-1", "poll-due", None)
+            .unwrap();
+        assert_eq!(lost_response_clock.now, 5_000);
+        assert_eq!(reopened.journal.last_seq, fired_seq);
+        assert_eq!(
+            duplicate.get("deadline_applied").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            duplicate.get("duplicate").and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let mut finish_payload = Value::Obj(BTreeMap::new());
+        let mut finish_clock = crate::clock::FixedClock::new(111, 1);
+        let completed = reopened
+            .send_event_stamp_on(
+                &mut finish_clock,
+                "timed-1",
+                "finish",
+                &mut finish_payload,
+                "finish-1",
+                None,
+                &[],
+            )
+            .unwrap();
+        assert_eq!(
+            completed.get("status").and_then(Value::as_str),
+            Some("completed")
+        );
+        assert!(
+            reopened
+                .state
+                .instances
+                .get("timed-1")
+                .unwrap()
+                .deadlines
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn cancelled_deadline_poll_rejection_is_durable() {
+        let dir = tmp();
+        let mut store = Store::open(&dir).unwrap();
+        store
+            .define_machine(timed_parallel_def(), false, false)
+            .unwrap();
+        store
+            .create_instance("timed_parallel", "timed-2", "create-2", None)
+            .unwrap();
+        store
+            .cancel_instance_reason("timed-2", "cancel-2", "operator")
+            .unwrap();
+        assert!(
+            store
+                .state
+                .instances
+                .get("timed-2")
+                .unwrap()
+                .deadlines
+                .is_empty()
+        );
+        let mut clock = crate::clock::FixedClock::new(1_000, 1);
+        let error = store
+            .poll_instance_deadline_on(&mut clock, "timed-2", "poll-cancelled", None)
+            .unwrap_err();
+        assert_eq!(error.code, "run/instance_cancelled");
+        assert_eq!(
+            store.records.last().map(|record| record.kind),
+            Some(RecordKind::RequestRejected)
+        );
+        drop(store);
+        let mut reopened = Store::open(&dir).unwrap();
+        let mut retry_clock = crate::clock::FixedClock::new(2_000, 1);
+        let duplicate = reopened
+            .poll_instance_deadline_on(&mut retry_clock, "timed-2", "poll-cancelled", None)
+            .unwrap_err();
+        assert_eq!(duplicate, error.mark_duplicate());
+        assert_eq!(retry_clock.now, 2_000);
+    }
+
     fn strip_dup(v: &Value) -> Value {
         let mut c = v.clone();
         if let Value::Obj(o) = &mut c {
@@ -2283,7 +3325,7 @@ mod tests {
         assert_eq!(r2.get("duplicate").and_then(Value::as_bool), Some(true));
         assert_eq!(strip_dup(&r1), strip_dup(&r2));
         assert_eq!(
-            r2.get("configuration")
+            r2.get("state_path")
                 .and_then(Value::as_arr)
                 .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>()),
             Some(vec!["in_review", "docs_review"])

@@ -8,7 +8,7 @@ fn names(t: &Tree, ids: &[u16]) -> Vec<String> {
 #[test]
 fn case_review_dom_table() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
-    let t = Tree::build(&spec.states);
+    let t = Tree::for_machine(&spec);
     let id = |n: &str| t.id(n).unwrap();
     // intake → in_review from intake
     let dom = t.proper_lca(id("intake"), id("in_review"));
@@ -68,7 +68,7 @@ fn case_review_dom_table() {
 #[test]
 fn lca_units() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
-    let t = Tree::build(&spec.states);
+    let t = Tree::for_machine(&spec);
     let id = |n: &str| t.id(n).unwrap();
     assert_eq!(
         t.proper_lca(id("docs_review"), id("risk_review")),
@@ -82,7 +82,7 @@ fn lca_units() {
 #[test]
 fn external_self() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
-    let t = Tree::build(&spec.states);
+    let t = Tree::for_machine(&spec);
     let x = t.id("intake").unwrap();
     let dom = t.parent[x as usize];
     assert_eq!(names(&t, &t.exit_set(x, dom)), ["intake"]);

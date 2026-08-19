@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::store::ErrorObj;
 
-pub const INSTRUCTIONS: &str = "fsm runs deterministic, auditable state machines. Author a JSON spec (state tree, typed context, typed events, guarded transitions), then create instances and send events. Workflow: read fsm://docs/spec if unsure → machine_create (dry_run: true first) → instance_create → instance_send. Every response includes enabled_events — consult it instead of guessing. All decimal values are JSON strings (\"125.50\"), never numbers. When a response lists pending effects, execute them, acknowledge each with effect_ack, and advance with a domain event. Every error includes a hint: retry the SAME request_id after a timeout, a NEW one after a correction. Use simulate to test sequences without recording.";
+pub const INSTRUCTIONS: &str = "fsm runs deterministic, auditable state machines with either one state tree or multiple orthogonal regions. Specs may include explicit deadlines. Workflow: read fsm://docs/spec → machine_create (dry_run first) → instance_create → instance_send. Consult tagged configuration, enabled_events, and deadlines_pending instead of guessing. Time never advances implicitly: call deadline_poll when due. Decimal values are JSON strings (\"125.50\"), never numbers. Execute pending effects, then acknowledge each with effect_ack. Retry the SAME request_id after a timeout and a NEW one after correcting content. Use simulate for event sequences without recording; it does not poll deadlines.";
 
 pub const AUTHOR_MACHINE: &str =
     "Guided flow to author, validate, and prove a new machine from a goal.";
@@ -46,11 +46,11 @@ pub fn get(name: &str, args: Option<&Value>) -> Result<Value, ErrorObj> {
     let text = format!(
         "Goal: {goal}\n\
          1. Read fsm://docs/spec for the spec format and expression grammar.\n\
-         2. Draft the spec JSON (state tree, typed context, typed events, guarded transitions, invariants).\n\
+         2. Draft the spec JSON (one state tree or orthogonal regions, typed context/events, transitions, optional deadlines, invariants).\n\
          3. Call machine_create with dry_run until clean.\n\
          4. Call machine_create to persist the definition.\n\
          5. simulate a happy path and a rejection path, checking traces.\n\
-         6. instance_create and drive with instance_send, consulting enabled_events."
+         6. instance_create and drive with instance_send; consult enabled_events and deadlines_pending, and call deadline_poll only when due."
     );
     let mut msg = BTreeMap::new();
     msg.insert("role".into(), Value::Str("user".into()));

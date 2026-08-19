@@ -39,10 +39,11 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
         r.health,
         JournalHealth::VersionMismatch { .. } | JournalHealth::StoreIo(_)
     ) {
-        return emit_error(
-            ctx,
-            &ErrorObj::new(store_format_refusal_code(&r.health), r.health.message()),
-        );
+        let mut error = ErrorObj::new(store_format_refusal_code(&r.health), r.health.message());
+        if matches!(r.health, JournalHealth::StoreIo(_)) {
+            error = error.hint("restore the named persistence path as a readable regular file or directory within the documented per-unit limit, then retry");
+        }
+        return emit_error(ctx, &error);
     }
     let mut m = BTreeMap::new();
     m.insert("records".into(), Value::Num(r.records.to_string()));
@@ -194,28 +195,27 @@ fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
         "data_dir".into(),
         Value::Str(ctx.data_dir.display().to_string()),
     );
-    let before = detect_store_format(&ctx.data_dir);
-    // The open probe checks the lock and, on a migratable store, performs the
-    // one-time migration; every fact below is read after it so the report
-    // matches what doctor leaves on disk.
-    if let Ok(s) = crate::store::Store::open(&ctx.data_dir) {
-        m.insert(
-            "lock_holder".into(),
-            Value::Str(format!("{}", std::process::id())),
-        );
-        drop(s);
-    }
-    let ver = std::fs::read_to_string(ctx.data_dir.join("VERSION")).unwrap_or_default();
-    let ver = ver.trim();
-    m.insert("version".into(), Value::Str(ver.into()));
-    if let DetectedStoreFormat::Migratable { found } = &before {
-        if ver != found.as_str() {
-            m.insert("migrated_from".into(), Value::Str(found.clone()));
+    let format = detect_store_format(&ctx.data_dir);
+    match crate::store::Store::open_read_only(&ctx.data_dir) {
+        Ok(_) => {
+            m.insert("readable".into(), Value::Bool(true));
+        }
+        Err(error) => {
+            return emit_error(ctx, &error);
         }
     }
-    let snaps = std::fs::read_dir(ctx.data_dir.join("snapshots"))
-        .map(|rd| rd.count())
-        .unwrap_or(0);
+    let ver = match &format {
+        DetectedStoreFormat::Current => crate::journal_io::STORE_VERSION.to_string(),
+        DetectedStoreFormat::Migratable { found } | DetectedStoreFormat::Incompatible { found } => {
+            found.clone()
+        }
+        DetectedStoreFormat::Empty | DetectedStoreFormat::Unreadable { .. } => String::new(),
+    };
+    m.insert("version".into(), Value::Str(ver.clone()));
+    if let DetectedStoreFormat::Migratable { found } = &format {
+        m.insert("migration_required_from".into(), Value::Str(found.clone()));
+    }
+    let snaps = crate::snapshot::listed_snaps(&ctx.data_dir).len();
     m.insert("snapshots".into(), Value::Num(snaps.to_string()));
     let v = verify(&ctx.data_dir);
     m.insert("verify".into(), Value::Str(format!("{:?}", v.health)));
@@ -253,12 +253,21 @@ fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
             let code = match h {
                 JournalHealth::VersionMismatch { .. } => "store/version_mismatch",
                 JournalHealth::StoreIo(_) => "io/read",
+                JournalHealth::LockIo(_) => "store/lock",
                 JournalHealth::TornTail { .. } => "store/torn_tail",
                 _ => "store/chain_broken",
             };
-            emit_error(ctx, &ErrorObj::new(code, h.message()))
+            let mut error = ErrorObj::new(code, h.message());
+            if matches!(h, JournalHealth::StoreIo(_)) {
+                error = error.hint("restore the named persistence path as a readable regular file or directory within the documented per-unit limit, then retry");
+            }
+            emit_error(ctx, &error)
         }
-        Err(e) => emit_error(ctx, &ErrorObj::new("store/torn_tail", format!("{e:?}"))),
+        Err(RepairError::ReadIo(message)) => emit_error(ctx, &ErrorObj::new("io/read", message)),
+        Err(RepairError::WriteIo(message)) => emit_error(ctx, &ErrorObj::new("io/write", message)),
+        Err(RepairError::NothingToRepair) => {
+            emit_error(ctx, &ErrorObj::new("store/torn_tail", "NothingToRepair"))
+        }
     }
 }
 
@@ -339,10 +348,11 @@ fn states_agree(a: &fsm_core::replay::StoreState, b: &fsm_core::replay::StoreSta
         let Some(ib) = b.instances.get(id) else {
             return false;
         };
-        if ia.leaf != ib.leaf
+        if ia.configuration != ib.configuration
             || ia.status != ib.status
             || ia.ctx != ib.ctx
             || ia.history != ib.history
+            || ia.deadlines != ib.deadlines
             || ia.pending != ib.pending
         {
             return false;

@@ -68,8 +68,8 @@ fn snapshot_round_trip_matches_full_fold() {
     assert_eq!(reopened.state.last_seq, folded.last_seq);
     assert_eq!(reopened.state.last_hash, folded.last_hash);
     assert_eq!(
-        reopened.state.instances.get("i1").map(|i| i.leaf.as_str()),
-        folded.instances.get("i1").map(|i| i.leaf.as_str())
+        reopened.state.instances.get("i1").map(|i| &i.configuration),
+        folded.instances.get("i1").map(|i| &i.configuration)
     );
     assert_eq!(
         reopened.state.instances.get("i1").map(|i| &i.ctx),
@@ -78,6 +78,10 @@ fn snapshot_round_trip_matches_full_fold() {
     assert_eq!(
         reopened.state.instances.get("i1").map(|i| &i.history),
         folded.instances.get("i1").map(|i| &i.history)
+    );
+    assert_eq!(
+        reopened.state.instances.get("i1").map(|i| &i.deadlines),
+        folded.instances.get("i1").map(|i| &i.deadlines)
     );
     assert_eq!(
         reopened.state.instances.get("i1").map(|i| &i.pending),

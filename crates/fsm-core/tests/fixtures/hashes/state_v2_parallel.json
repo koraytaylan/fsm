@@ -1,0 +1,1 @@
+{"configuration":{"kind":"parallel","leaves":{"audit":"checking","work":"waiting"}},"ctx":{"approved":"true","attempts":"-2"},"deadlines":{"expire":1200},"format":"fsm.state/2","history":{},"instance_id":"case-1","machine_id":"timed_parallel@sha256:d8921831c274663db25974be4c7bb4c9fcd6590a0357ed1bcd81d68384568811","pending":["effect-a","effect-z"],"seq":7,"status":"running"}

@@ -3,11 +3,12 @@
 # Linux, macOS and Windows, at stable and the minimum supported Rust version.
 #
 # Windows is a full test leg, not a `cargo check`, because the release ships a
-# Windows binary and an untested artifact is worse than an absent one. Nothing
-# in the workspace is Unix-specific: there is no `libc`, no `std::os`, and the
-# store's advisory lock is `std::fs::File::try_lock`, which is flock on Unix and
-# LockFileEx on Windows. `.gitattributes` pins LF so the byte-exact fixtures
-# survive a Windows checkout.
+# Windows binary and an untested artifact is worse than an absent one. There is
+# no `libc`; platform branches use `std` only. In particular, regular-file
+# identity uses Unix metadata under `cfg(unix)` with portable type checks on
+# other hosts, while the advisory lock uses `std::fs::File::try_lock` on every
+# platform. `.gitattributes` pins LF so the byte-exact fixtures survive a
+# Windows checkout.
 #
 # `RUSTUP_TOOLCHAIN` is what makes the matrix real. rust-toolchain.toml pins
 # 1.89.0, and that file outranks `rustup default`; without the environment

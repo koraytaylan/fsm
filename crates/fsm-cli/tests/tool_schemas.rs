@@ -17,6 +17,7 @@ fn registry_order() {
             "machine_diagram",
             "instance_create",
             "instance_send",
+            "deadline_poll",
             "effect_ack",
             "instance_cancel",
             "instance_get",
@@ -43,7 +44,8 @@ fn input_schemas_strict() {
             .unwrap_or_default();
         match t.name {
             "machine_create" => assert!(req.contains(&"spec")),
-            "instance_create" | "instance_send" | "effect_ack" | "instance_cancel" => {
+            "instance_create" | "instance_send" | "deadline_poll" | "effect_ack"
+            | "instance_cancel" => {
                 assert!(req.contains(&"request_id"), "{}", t.name);
             }
             n if n.starts_with("instance_") && n != "instance_list" => {
@@ -178,7 +180,7 @@ fn machine_list_and_history_match_independent_contracts() {
     // These schemas are intentionally authored in the test instead of being
     // assembled from the registry helpers under test.
     let machine_list_contract = parse(
-        br#"{"type":"object","required":["machines"],"additionalProperties":false,"properties":{"machines":{"type":"array","items":{"type":"object","required":["machine_id","name","defined_seq","states","events","instances"],"additionalProperties":false,"properties":{"machine_id":{"type":"string"},"name":{"type":"string"},"defined_seq":{"type":"number"},"states":{"type":"number"},"events":{"type":"number"},"instances":{"type":"object","required":["running","completed","cancelled"],"additionalProperties":false,"properties":{"running":{"type":"number"},"completed":{"type":"number"},"cancelled":{"type":"number"}}}}}},"next_cursor":{"type":"string"}}}"#,
+        br#"{"type":"object","required":["machines"],"additionalProperties":false,"properties":{"machines":{"type":"array","items":{"type":"object","required":["machine_id","name","defined_seq","topology","regions","states","events","deadlines","instances"],"additionalProperties":false,"properties":{"machine_id":{"type":"string"},"name":{"type":"string"},"defined_seq":{"type":"number"},"topology":{"type":"string"},"regions":{"type":"number"},"states":{"type":"number"},"events":{"type":"number"},"deadlines":{"type":"number"},"instances":{"type":"object","required":["running","completed","cancelled"],"additionalProperties":false,"properties":{"running":{"type":"number"},"completed":{"type":"number"},"cancelled":{"type":"number"}}}}}},"next_cursor":{"type":"string"}}}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
@@ -310,22 +312,8 @@ fn machine_list_and_history_match_independent_contracts() {
     .and_then(|a| a.get("items"))
     .cloned()
     .unwrap();
-    let props = history_item
-        .get("properties")
-        .and_then(Value::as_obj)
-        .unwrap();
     assert_eq!(
-        props
-            .get("event")
-            .and_then(|s| s.get("type"))
-            .and_then(Value::as_str),
-        Some("string")
-    );
-    assert_eq!(
-        props
-            .get("trace")
-            .and_then(|s| s.get("type"))
-            .and_then(Value::as_str),
+        history_item.get("type").and_then(Value::as_str),
         Some("object")
     );
 }

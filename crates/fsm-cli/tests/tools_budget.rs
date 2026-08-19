@@ -1,6 +1,6 @@
 use fsm_cli::mcp::descriptions::{
-    INSTANCE_CREATE, INSTANCE_GET, INSTANCE_LIST, INSTANCE_SEND, MACHINE_CREATE, MACHINE_GET,
-    MACHINE_LIST,
+    DEADLINE_POLL, INSTANCE_CREATE, INSTANCE_GET, INSTANCE_LIST, INSTANCE_SEND, MACHINE_CREATE,
+    MACHINE_GET, MACHINE_LIST,
 };
 use fsm_cli::mcp::tools::tools_list_result;
 use fsm_core::canon::canon_bytes;
@@ -16,6 +16,7 @@ fn per_description_caps() {
     assert!(!MACHINE_CREATE.is_empty());
     assert!(MACHINE_CREATE.split_whitespace().count() <= 190);
     assert!(INSTANCE_SEND.split_whitespace().count() <= 190);
+    assert!(DEADLINE_POLL.split_whitespace().count() <= 180);
     for (name, t) in [
         ("machine_list", MACHINE_LIST),
         ("machine_get", MACHINE_GET),
@@ -34,6 +35,8 @@ fn flow_and_invariants() {
     assert!(INSTANCE_SEND.contains("effect_ack"));
     assert!(INSTANCE_SEND.contains("enabled_events"));
     assert!(INSTANCE_SEND.contains("request_id"));
+    assert!(INSTANCE_SEND.contains("deadline_poll"));
+    assert!(DEADLINE_POLL.contains("request_id"));
     assert!(MACHINE_CREATE.contains("JSON strings"));
     assert!(MACHINE_CREATE.contains("dry_run"));
 }

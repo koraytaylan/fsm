@@ -10,13 +10,38 @@ use fsm_cli::store::Store;
 use fsm_core::json::Value;
 use fsm_core::replay::{NopSink, fold_with};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-fn tmp(seed: u64) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!("fsm-det-{}-{seed}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&p);
-    std::fs::create_dir_all(&p).unwrap();
-    p
+struct TestDirectory(PathBuf);
+
+impl TestDirectory {
+    fn new(seed: u64) -> Self {
+        let p = std::env::temp_dir().join(format!("fsm-det-{}-{seed}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        Self(p)
+    }
+}
+
+impl AsRef<Path> for TestDirectory {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for TestDirectory {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 #[test]
@@ -25,7 +50,7 @@ fn three_way_refold() {
     let mut saw_reject = false;
     for seed in 1u64..=50 {
         let mut clock = FixedClock::new(1_000 + seed as i64 * 100, 1);
-        let dir = tmp(seed);
+        let dir = TestDirectory::new(seed);
         let mut g = proputil::Gen(seed);
         let m = proputil::gen_machine(&mut g, 4);
         let evs = proputil::gen_events(&mut g, &m, 8);
@@ -202,7 +227,7 @@ fn generator_twice_byte_identical() {
 fn perf_smoke() {
     // tmp seeds are a process-wide namespace shared with three_way_refold's
     // 1..=50 loop; this seed must stay outside that range.
-    let dir = tmp(1_012);
+    let dir = TestDirectory::new(1_012);
     let mut clock = FixedClock::new(12_000, 1);
     let mut store = Store::open(&dir).unwrap();
     let spec = legal_limit_spec();
@@ -215,10 +240,13 @@ fn perf_smoke() {
         .define_machine_on(&mut clock, spec, false, false)
         .unwrap();
     let stored = store.state.machines.values().next().unwrap();
-    assert_eq!(
-        count_nodes(&stored.compiled.spec.states),
-        fsm_core::limits::MAX_STATES
-    );
+    let states = match &stored.compiled.spec.topology {
+        fsm_core::spec::Topology::Sequential { states, .. } => states,
+        fsm_core::spec::Topology::Parallel { .. } => {
+            panic!("limit performance fixture must remain sequential")
+        }
+    };
+    assert_eq!(count_nodes(states), fsm_core::limits::MAX_STATES);
     assert_eq!(
         stored.compiled.spec.events.len(),
         fsm_core::limits::MAX_EVENTS
@@ -235,8 +263,8 @@ fn perf_smoke() {
         stored.compiled.spec.invariants[0].expr.len(),
         fsm_core::expr::lexer::SOURCE_CAP
     );
-    assert_full_spine(&stored.compiled.spec.states[0]);
-    assert_full_spine(&stored.compiled.spec.states[1]);
+    assert_heavy_spine(&states[0]);
+    assert_heavy_spine(&states[1]);
     for transition in &stored.compiled.spec.transitions {
         assert_eq!(transition.sets.len(), fsm_core::limits::MAX_SETS_PER_BLOCK);
         assert_eq!(
@@ -244,6 +272,22 @@ fn perf_smoke() {
             fsm_core::limits::MAX_EMITS_PER_BLOCK
         );
     }
+    let evaluation_ticks: u32 = stored
+        .compiled
+        .compiled_exprs
+        .values()
+        .map(|compiled| fsm_core::expr::ast::node_count(&compiled.expr))
+        .sum();
+    assert!(
+        evaluation_ticks <= fsm_core::limits::MAX_EVAL_TICKS,
+        "fixture requires {evaluation_ticks} evaluation ticks"
+    );
+    let one_more_set_per_state_block =
+        4 * fsm_core::limits::MAX_NESTING * expression_ticks("ctx.n0 + 1");
+    assert!(
+        fsm_core::limits::MAX_EVAL_TICKS - evaluation_ticks < one_more_set_per_state_block,
+        "fixture should use the largest uniform state-block workload"
+    );
     store
         .create_instance_ctx_on(
             &mut clock,
@@ -255,7 +299,16 @@ fn perf_smoke() {
             &[],
         )
         .unwrap();
-    assert_eq!(store.state.instances.get("deep").unwrap().leaf, "a11");
+    assert_eq!(
+        store
+            .state
+            .instances
+            .get("deep")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("a11")
+    );
     let mut times = Vec::new();
     for i in 0..10 {
         if i == 5 {
@@ -347,9 +400,11 @@ fn block_do(sets: Vec<Value>, emits: Vec<Value>) -> Value {
 }
 
 fn full_sets() -> Vec<Value> {
-    (0..fsm_core::limits::MAX_SETS_PER_BLOCK)
-        .map(|i| inc(&format!("n{i}")))
-        .collect()
+    sets(fsm_core::limits::MAX_SETS_PER_BLOCK)
+}
+
+fn sets(count: usize) -> Vec<Value> {
+    (0..count).map(|i| inc(&format!("n{i}"))).collect()
 }
 
 fn full_emits() -> Vec<Value> {
@@ -363,34 +418,70 @@ fn full_emits() -> Vec<Value> {
         .collect()
 }
 
+fn expression_ticks(source: &str) -> u32 {
+    let expression = fsm_core::expr::parser::parse(source).expect("fixture expression parses");
+    fsm_core::expr::ast::node_count(&expression)
+}
+
+fn spine_sets_per_block() -> usize {
+    use fsm_core::limits::{
+        MAX_EMITS_PER_BLOCK, MAX_EVAL_TICKS, MAX_INVARIANTS, MAX_NESTING, MAX_SETS_PER_BLOCK,
+    };
+
+    let state_blocks = 4 * MAX_NESTING;
+    let assignment_ticks = expression_ticks("ctx.n0 + 1");
+    let emit_ticks = expression_ticks("ctx.n0");
+    let predicate_ticks = expression_ticks("ctx.n0 >= 0");
+    let transition_ticks = 2
+        * (predicate_ticks
+            + MAX_SETS_PER_BLOCK as u32 * assignment_ticks
+            + MAX_EMITS_PER_BLOCK as u32 * emit_ticks);
+    let invariant_ticks = MAX_INVARIANTS as u32 * predicate_ticks;
+    let state_emit_ticks = state_blocks * MAX_EMITS_PER_BLOCK as u32 * emit_ticks;
+    let fixed_ticks = transition_ticks + invariant_ticks + state_emit_ticks;
+    let available = MAX_EVAL_TICKS
+        .checked_sub(fixed_ticks)
+        .expect("fixed fixture workload fits the evaluation budget");
+    let count = available / state_blocks / assignment_ticks;
+    usize::try_from(count)
+        .expect("state assignment count fits usize")
+        .min(MAX_SETS_PER_BLOCK)
+}
+
 fn spine(prefix: char, depth: usize) -> Value {
     let last = depth - 1;
     let mut node = vobj(&[
         ("name", Value::Str(format!("{prefix}{last}"))),
-        ("entry", block_do(full_sets(), full_emits())),
-        ("exit", block_do(full_sets(), full_emits())),
+        (
+            "entry",
+            block_do(sets(spine_sets_per_block()), full_emits()),
+        ),
+        ("exit", block_do(sets(spine_sets_per_block()), full_emits())),
     ]);
     for i in (0..last).rev() {
         node = vobj(&[
             ("name", Value::Str(format!("{prefix}{i}"))),
             ("initial", Value::Str(format!("{prefix}{}", i + 1))),
-            ("entry", block_do(full_sets(), full_emits())),
-            ("exit", block_do(full_sets(), full_emits())),
+            (
+                "entry",
+                block_do(sets(spine_sets_per_block()), full_emits()),
+            ),
+            ("exit", block_do(sets(spine_sets_per_block()), full_emits())),
             ("states", Value::Arr(vec![node])),
         ]);
     }
     node
 }
 
-fn assert_full_spine(node: &fsm_core::spec::StateNode) {
+fn assert_heavy_spine(node: &fsm_core::spec::StateNode) {
     let entry = node.entry.as_ref().expect("entry block");
     let exit = node.exit.as_ref().expect("exit block");
-    assert_eq!(entry.sets.len(), fsm_core::limits::MAX_SETS_PER_BLOCK);
+    assert_eq!(entry.sets.len(), spine_sets_per_block());
     assert_eq!(entry.emits.len(), fsm_core::limits::MAX_EMITS_PER_BLOCK);
-    assert_eq!(exit.sets.len(), fsm_core::limits::MAX_SETS_PER_BLOCK);
+    assert_eq!(exit.sets.len(), spine_sets_per_block());
     assert_eq!(exit.emits.len(), fsm_core::limits::MAX_EMITS_PER_BLOCK);
     if let Some(child) = node.states.first() {
-        assert_full_spine(child);
+        assert_heavy_spine(child);
     }
 }
 

@@ -1,13 +1,17 @@
-//! Naive second interpreter: recursive spec walks, no Tree tables.
+//! Naive event and deadline interpreter: recursive spec walks, no `Tree`
+//! tables, compiled expression slots, transition lookup, or deadline selector.
 
 use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::{Bindings, Budget, Val, eval};
 use fsm_core::expr::parser;
 use fsm_core::json::Value;
-use fsm_core::machine::{CompiledMachine, EnforceMode, InstanceState, Status};
-use fsm_core::spec::{HistoryKind, MachineSpec, StateNode};
-use fsm_core::step::{Applied, EffectOut, Outcome, Rejection};
+use fsm_core::machine::{ActiveConfiguration, CompiledMachine, EnforceMode, InstanceState, Status};
+use fsm_core::spec::{Block, DeadlineSpec, HistoryKind, MachineSpec, StateNode, Topology};
+use fsm_core::step::{
+    Applied, DeadlineApplied, DeadlineOutcome, DeadlineRejected, EffectOut, Outcome,
+    PendingDeadline, Rejection,
+};
 
 fn find<'a>(nodes: &'a [StateNode], name: &str) -> Option<&'a StateNode> {
     for n in nodes {
@@ -19,6 +23,69 @@ fn find<'a>(nodes: &'a [StateNode], name: &str) -> Option<&'a StateNode> {
         }
     }
     None
+}
+
+fn sequential_topology(spec: &MachineSpec) -> (&[StateNode], &str) {
+    match &spec.topology {
+        Topology::Sequential { states, initial } => (states, initial),
+        Topology::Parallel { .. } => panic!("this oracle operation requires one region"),
+    }
+}
+
+struct ActiveLeaf<'a> {
+    region: Option<&'a str>,
+    states: &'a [StateNode],
+    leaf: String,
+}
+
+fn is_real_leaf(states: &[StateNode], name: &str) -> bool {
+    find(states, name).is_some_and(|node| node.states.is_empty() && node.history.is_none())
+}
+
+/// Reconstruct active leaves directly from the definition and tagged public
+/// configuration. This deliberately does not consult `Tree::active_leaves`.
+fn active_leaves<'a>(
+    spec: &'a MachineSpec,
+    configuration: &ActiveConfiguration,
+) -> Option<Vec<ActiveLeaf<'a>>> {
+    match (&spec.topology, configuration) {
+        (Topology::Sequential { states, .. }, ActiveConfiguration::Sequential { leaf })
+            if is_real_leaf(states, leaf) =>
+        {
+            Some(vec![ActiveLeaf {
+                region: None,
+                states,
+                leaf: leaf.clone(),
+            }])
+        }
+        (Topology::Parallel { regions }, ActiveConfiguration::Parallel { leaves })
+            if leaves.len() == regions.len() =>
+        {
+            let mut active = Vec::with_capacity(regions.len());
+            for region in regions {
+                let leaf = leaves.get(&region.name)?;
+                if !is_real_leaf(&region.states, leaf) {
+                    return None;
+                }
+                active.push(ActiveLeaf {
+                    region: Some(&region.name),
+                    states: &region.states,
+                    leaf: leaf.clone(),
+                });
+            }
+            Some(active)
+        }
+        _ => None,
+    }
+}
+
+fn configuration_is_terminal(spec: &MachineSpec, configuration: &ActiveConfiguration) -> bool {
+    active_leaves(spec, configuration).is_some_and(|active| {
+        !active.is_empty()
+            && active
+                .into_iter()
+                .all(|leaf| find(leaf.states, &leaf.leaf).is_some_and(|node| node.terminal))
+    })
 }
 
 fn parent_of(nodes: &[StateNode], name: &str) -> Option<String> {
@@ -133,7 +200,20 @@ fn eval_bool(
     budget: &mut Budget,
 ) -> Result<bool, Rejection> {
     match src {
-        None => Ok(true),
+        None => budget
+            .tick(fsm_core::expr::lexer::Span::new(0, 4))
+            .map(|()| true)
+            .map_err(|err| Rejection {
+                code: "run/guard_error",
+                message: err.message,
+                hint: err.hint,
+                source_state: None,
+                transition_idx: None,
+                block: None,
+                span: Some((err.span.start, err.span.end)),
+                trace: Default::default(),
+                cause: Some(err.code),
+            }),
         Some(s) => {
             let e = parser::parse(s).map_err(|err| Rejection {
                 code: "run/guard_error",
@@ -458,21 +538,21 @@ fn is_compound(n: &StateNode) -> bool {
 }
 
 fn apply_entry_chain(
-    spec: &MachineSpec,
+    states: &[StateNode],
     start: &str,
     ctx: &mut BTreeMap<String, Val>,
     budget: &mut Budget,
     effects: &mut Vec<EffectOut>,
 ) -> Result<Vec<String>, Rejection> {
     let mut entered = vec![start.to_string()];
-    if let Some(node) = find(&spec.states, start) {
+    if let Some(node) = find(states, start) {
         if let Some(b) = &node.entry {
             apply_block(b, ctx, &BTreeMap::new(), false, budget, effects)?;
         }
     }
-    entered.extend(initial_descent(&spec.states, start));
+    entered.extend(initial_descent(states, start));
     for name in entered.iter().skip(1) {
-        if let Some(node) = find(&spec.states, name) {
+        if let Some(node) = find(states, name) {
             if let Some(b) = &node.entry {
                 apply_block(b, ctx, &BTreeMap::new(), false, budget, effects)?;
             }
@@ -481,9 +561,144 @@ fn apply_entry_chain(
     Ok(entered)
 }
 
+fn deadline_rejection(
+    deadline: &DeadlineSpec,
+    message: String,
+    hint: String,
+    span: Option<(u32, u32)>,
+    cause: Option<&'static str>,
+) -> Rejection {
+    Rejection {
+        code: "run/action_error",
+        message,
+        hint,
+        source_state: Some(deadline.from.clone()),
+        transition_idx: None,
+        block: Some(format!("deadline({})", deadline.name)),
+        span,
+        trace: Default::default(),
+        cause,
+    }
+}
+
+fn evaluate_deadline_after(
+    deadline: &DeadlineSpec,
+    ctx: &BTreeMap<String, Val>,
+    budget: &mut Budget,
+) -> Result<i64, Rejection> {
+    let expression = parser::parse(&deadline.after).map_err(|error| {
+        deadline_rejection(
+            deadline,
+            error.message,
+            error.hint,
+            Some((error.span.start, error.span.end)),
+            Some(error.code),
+        )
+    })?;
+    let bindings = Bindings { ctx, evt: None };
+    match eval(&expression, &bindings, budget, false).0 {
+        Ok(Val::Dur(duration)) if duration >= 0 => Ok(duration),
+        Ok(Val::Dur(_)) => Err(deadline_rejection(
+            deadline,
+            "deadline duration is negative".into(),
+            "return a zero or positive duration".into(),
+            None,
+            Some("run/overflow"),
+        )),
+        Ok(_) => Err(deadline_rejection(
+            deadline,
+            "deadline expression did not return a duration".into(),
+            "return a duration".into(),
+            None,
+            None,
+        )),
+        Err(error) => Err(deadline_rejection(
+            deadline,
+            error.message,
+            error.hint,
+            Some((error.span.start, error.span.end)),
+            Some(error.code),
+        )),
+    }
+}
+
+/// Rebuild schedules by literally applying SPEC's exit cancellation followed
+/// by entry-order/document-order scheduling. This deliberately does not read
+/// production expression slots or deadline indices.
+fn update_deadline_schedules(
+    spec: &MachineSpec,
+    prior: &BTreeMap<String, i64>,
+    exited: &[String],
+    entered: &[String],
+    ctx: &BTreeMap<String, Val>,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Result<BTreeMap<String, i64>, Rejection> {
+    let mut schedules = prior.clone();
+    for state in exited {
+        for deadline in spec
+            .deadlines
+            .iter()
+            .filter(|deadline| deadline.from == *state)
+        {
+            schedules.remove(&deadline.name);
+        }
+    }
+    for state in entered {
+        for deadline in spec
+            .deadlines
+            .iter()
+            .filter(|deadline| deadline.from == *state)
+        {
+            let duration = evaluate_deadline_after(deadline, ctx, budget)?;
+            let due_ms = now_ms.checked_add(duration).ok_or_else(|| {
+                deadline_rejection(
+                    deadline,
+                    "deadline due timestamp overflowed".into(),
+                    "use a smaller timestamp or duration".into(),
+                    None,
+                    Some("run/overflow"),
+                )
+            })?;
+            schedules.insert(deadline.name.clone(), due_ms);
+        }
+    }
+    Ok(schedules)
+}
+
+fn clear_terminal_region_deadlines(
+    spec: &MachineSpec,
+    configuration: &ActiveConfiguration,
+    schedules: &mut BTreeMap<String, i64>,
+) {
+    let Some(active) = active_leaves(spec, configuration) else {
+        return;
+    };
+    for active_leaf in active {
+        if !find(active_leaf.states, &active_leaf.leaf).is_some_and(|node| node.terminal) {
+            continue;
+        }
+        let terminal_chain = chain(active_leaf.states, &active_leaf.leaf);
+        schedules.retain(|name, _| {
+            spec.deadlines
+                .iter()
+                .find(|deadline| deadline.name == *name)
+                .is_none_or(|deadline| !terminal_chain.contains(&deadline.from))
+        });
+    }
+}
+
 pub fn naive_create(
     m: &CompiledMachine,
     overrides: &BTreeMap<String, Val>,
+) -> Result<Applied, Rejection> {
+    naive_create_at(m, overrides, 0)
+}
+
+pub fn naive_create_at(
+    m: &CompiledMachine,
+    overrides: &BTreeMap<String, Val>,
+    now_ms: i64,
 ) -> Result<Applied, Rejection> {
     let mut ctx = BTreeMap::new();
     let mut budget = Budget::new(4096);
@@ -496,35 +711,61 @@ pub fn naive_create(
         ctx.insert(c.name.clone(), v);
     }
     let mut effects = Vec::new();
-    let entered = apply_entry_chain(
-        &m.spec,
-        &m.spec.initial,
-        &mut ctx,
-        &mut budget,
-        &mut effects,
-    )?;
-    let leaf = entered
-        .last()
-        .cloned()
-        .unwrap_or_else(|| m.spec.initial.clone());
-    let flags = eval_invariants(&m.spec, &ctx, &mut budget)?;
-    let status_after = find(&m.spec.states, &leaf)
-        .map(|n| {
-            if n.terminal {
-                Status::Completed
-            } else {
-                Status::Running
+    let mut entered = Vec::new();
+    let configuration_after = match &m.spec.topology {
+        Topology::Sequential { states, initial } => {
+            let path = apply_entry_chain(states, initial, &mut ctx, &mut budget, &mut effects)?;
+            let leaf = path.last().cloned().unwrap_or_else(|| initial.to_string());
+            entered.extend(path);
+            ActiveConfiguration::Sequential { leaf }
+        }
+        Topology::Parallel { regions } => {
+            let mut leaves = BTreeMap::new();
+            for region in regions {
+                let path = apply_entry_chain(
+                    &region.states,
+                    &region.initial,
+                    &mut ctx,
+                    &mut budget,
+                    &mut effects,
+                )?;
+                let leaf = path
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| region.initial.clone());
+                leaves.insert(region.name.clone(), leaf);
+                entered.extend(path);
             }
-        })
-        .unwrap_or(Status::Running);
+            ActiveConfiguration::Parallel { leaves }
+        }
+    };
+    let flags = eval_invariants(&m.spec, &ctx, &mut budget)?;
+    let mut deadlines_after = update_deadline_schedules(
+        &m.spec,
+        &BTreeMap::new(),
+        &[],
+        &entered,
+        &ctx,
+        now_ms,
+        &mut budget,
+    )?;
+    clear_terminal_region_deadlines(&m.spec, &configuration_after, &mut deadlines_after);
+    let status_after = if configuration_is_terminal(&m.spec, &configuration_after) {
+        deadlines_after.clear();
+        Status::Completed
+    } else {
+        Status::Running
+    };
     Ok(Applied {
-        leaf_after: leaf,
+        configuration_after,
         ctx_after: ctx,
         history_after: BTreeMap::new(),
+        deadlines_after,
         effects,
         monitor_flags: flags,
         status_after,
         internal: false,
+        region: None,
         source_state: String::new(),
         transition_idx: 0,
         exited: Vec::new(),
@@ -533,14 +774,87 @@ pub fn naive_create(
     })
 }
 
-fn own_transition_index(spec: &MachineSpec) -> BTreeMap<(String, String), Vec<usize>> {
-    let mut idx = BTreeMap::new();
-    for (i, tr) in spec.transitions.iter().enumerate() {
-        idx.entry((tr.from.clone(), tr.on.clone()))
-            .or_insert_with(Vec::new)
-            .push(i);
+struct SelectedCandidate {
+    region: Option<String>,
+    leaf: String,
+    source: String,
+    transition_index: usize,
+}
+
+/// Apply SPEC's global scan literally: regions in document order, then each
+/// recursive leaf-to-root chain, then transitions in document order.
+fn select_event_candidate(
+    spec: &MachineSpec,
+    active: &[ActiveLeaf<'_>],
+    state: &InstanceState,
+    event: &str,
+    fields: &BTreeMap<String, Val>,
+    budget: &mut Budget,
+) -> Result<(Option<SelectedCandidate>, bool), Rejection> {
+    let mut any_candidate = false;
+    for active_leaf in active {
+        if find(active_leaf.states, &active_leaf.leaf).is_some_and(|node| node.terminal) {
+            continue;
+        }
+        for source in chain(active_leaf.states, &active_leaf.leaf) {
+            for (transition_index, transition) in spec.transitions.iter().enumerate() {
+                if transition.from != source || transition.on != event {
+                    continue;
+                }
+                any_candidate = true;
+                match eval_bool(transition.guard.as_deref(), &state.ctx, fields, budget) {
+                    Ok(true) => {
+                        return Ok((
+                            Some(SelectedCandidate {
+                                region: active_leaf.region.map(str::to_string),
+                                leaf: active_leaf.leaf.clone(),
+                                source,
+                                transition_index,
+                            }),
+                            true,
+                        ));
+                    }
+                    Ok(false) => {}
+                    Err(rejection) => return Err(rejection),
+                }
+            }
+        }
     }
-    idx
+    Ok((None, any_candidate))
+}
+
+fn states_for_region<'a>(
+    spec: &'a MachineSpec,
+    region_name: Option<&str>,
+) -> Option<&'a [StateNode]> {
+    match (&spec.topology, region_name) {
+        (Topology::Sequential { states, .. }, None) => Some(states),
+        (Topology::Parallel { regions }, Some(region_name)) => regions
+            .iter()
+            .find(|region| region.name == region_name)
+            .map(|region| region.states.as_slice()),
+        _ => None,
+    }
+}
+
+fn configuration_with_leaf(
+    configuration: &ActiveConfiguration,
+    region_name: Option<&str>,
+    leaf: String,
+) -> Option<ActiveConfiguration> {
+    match (configuration, region_name) {
+        (ActiveConfiguration::Sequential { .. }, None) => {
+            Some(ActiveConfiguration::Sequential { leaf })
+        }
+        (ActiveConfiguration::Parallel { leaves }, Some(region_name))
+            if leaves.contains_key(region_name) =>
+        {
+            let mut leaves = leaves.clone();
+            leaves.insert(region_name.to_string(), leaf);
+            Some(ActiveConfiguration::Parallel { leaves })
+        }
+        _ => None,
+    }
 }
 
 pub fn naive_step(
@@ -548,6 +862,17 @@ pub fn naive_step(
     st: &InstanceState,
     event: &str,
     payload: &Value,
+    budget: &mut Budget,
+) -> Outcome {
+    naive_step_at(m, st, event, payload, 0, budget)
+}
+
+pub fn naive_step_at(
+    m: &CompiledMachine,
+    st: &InstanceState,
+    event: &str,
+    payload: &Value,
+    now_ms: i64,
     budget: &mut Budget,
 ) -> Outcome {
     if st.status != Status::Running {
@@ -571,37 +896,17 @@ pub fn naive_step(
         Ok(f) => f,
         Err(r) => return Outcome::Rejected(r),
     };
-    let states = &m.spec.states;
-    let index = own_transition_index(&m.spec);
-    let ch = chain(states, &st.leaf);
-    let mut winner = None;
-    for sname in &ch {
-        if let Some(idxs) = index.get(&(sname.clone(), event.to_string())) {
-            for &idx in idxs {
-                match eval_bool(
-                    m.spec.transitions[idx].guard.as_deref(),
-                    &st.ctx,
-                    &fields,
-                    budget,
-                ) {
-                    Ok(true) => {
-                        winner = Some((sname.clone(), idx));
-                        break;
-                    }
-                    Ok(false) => {}
-                    Err(r) => return Outcome::Rejected(r),
-                }
-            }
-        }
-        if winner.is_some() {
-            break;
-        }
-    }
-    let Some((src, tidx)) = winner else {
-        let any = ch
-            .iter()
-            .any(|s| index.contains_key(&(s.clone(), event.to_string())));
-        if !any {
+    let active = match active_leaves(&m.spec, &st.configuration) {
+        Some(active) => active,
+        None => return Outcome::Rejected(reject("run/unhandled", "invalid configuration")),
+    };
+    let (winner, any_candidate) =
+        match select_event_candidate(&m.spec, &active, st, event, &fields, budget) {
+            Ok(selection) => selection,
+            Err(rejection) => return Outcome::Rejected(rejection),
+        };
+    let Some(winner) = winner else {
+        if !any_candidate {
             return match m.spec.on_unhandled {
                 fsm_core::spec::Unhandled::Ignore => Outcome::Ignored,
                 fsm_core::spec::Unhandled::Reject => Outcome::Rejected(Rejection {
@@ -629,10 +934,13 @@ pub fn naive_step(
             cause: None,
         });
     };
-    let tr = &m.spec.transitions[tidx];
+    let Some(states) = states_for_region(&m.spec, winner.region.as_deref()) else {
+        return Outcome::Rejected(reject("run/unhandled", "invalid transition region"));
+    };
+    let tr = &m.spec.transitions[winner.transition_index];
     let internal = tr.to.is_none();
     let (exited, entered, new_leaf) = if internal {
-        (Vec::new(), Vec::new(), st.leaf.clone())
+        (Vec::new(), Vec::new(), winner.leaf.clone())
     } else {
         let mut target = tr.to.clone().unwrap();
         let mut extra = Vec::new();
@@ -643,13 +951,13 @@ pub fn naive_step(
                 target = owner;
             }
         }
-        let external_self = tr.to.as_deref() == Some(src.as_str());
+        let external_self = tr.to.as_deref() == Some(winner.source.as_str());
         let dom = if external_self {
-            parent_of(states, &src)
+            parent_of(states, &winner.source)
         } else {
-            lca(states, &src, &target)
+            lca(states, &winner.source, &target)
         };
-        let exited = exit_set(states, &st.leaf, &dom);
+        let exited = exit_set(states, &winner.leaf, &dom);
         let mut entered = entry_path(states, &dom, &target);
         if find(states, &target).is_some_and(is_compound) && extra.is_empty() {
             entered.extend(initial_descent(states, &target));
@@ -657,6 +965,11 @@ pub fn naive_step(
         entered.extend(extra);
         let leaf = entered.last().cloned().unwrap_or(target);
         (exited, entered, leaf)
+    };
+    let Some(configuration_after) =
+        configuration_with_leaf(&st.configuration, winner.region.as_deref(), new_leaf)
+    else {
+        return Outcome::Rejected(reject("run/unhandled", "invalid transition region"));
     };
     let mut ctx = st.ctx.clone();
     let mut effects = Vec::new();
@@ -692,11 +1005,11 @@ pub fn naive_step(
                 for ch in &node.states {
                     if let Some(hk) = ch.history {
                         let bound = match hk {
-                            HistoryKind::Deep => st.leaf.clone(),
-                            HistoryKind::Shallow => chain(states, &st.leaf)
+                            HistoryKind::Deep => winner.leaf.clone(),
+                            HistoryKind::Shallow => chain(states, &winner.leaf)
                                 .into_iter()
                                 .find(|n| parent_of(states, n).as_deref() == Some(name.as_str()))
-                                .unwrap_or_else(|| st.leaf.clone()),
+                                .unwrap_or_else(|| winner.leaf.clone()),
                         };
                         history_after.insert(name.clone(), bound);
                     }
@@ -708,33 +1021,291 @@ pub fn naive_step(
         Ok(f) => f,
         Err(r) => return Outcome::Rejected(r),
     };
-    let status_after = find(states, &new_leaf)
-        .map(|n| {
-            if n.terminal {
-                Status::Completed
-            } else {
-                Status::Running
-            }
-        })
-        .unwrap_or(Status::Running);
+    let mut deadlines_after = match update_deadline_schedules(
+        &m.spec,
+        &st.deadlines,
+        &exited,
+        &entered,
+        &ctx,
+        now_ms,
+        budget,
+    ) {
+        Ok(schedules) => schedules,
+        Err(rejection) => return Outcome::Rejected(rejection),
+    };
+    clear_terminal_region_deadlines(&m.spec, &configuration_after, &mut deadlines_after);
+    let status_after = if configuration_is_terminal(&m.spec, &configuration_after) {
+        deadlines_after.clear();
+        Status::Completed
+    } else {
+        Status::Running
+    };
     Outcome::Applied(Applied {
-        leaf_after: new_leaf,
+        configuration_after,
         ctx_after: ctx,
         history_after,
+        deadlines_after,
         effects,
         monitor_flags: flags,
         status_after,
         internal,
-        source_state: src,
-        transition_idx: tidx as u32,
+        region: winner.region,
+        source_state: winner.source,
+        transition_idx: winner.transition_index as u32,
         exited,
         entered,
         trace: Default::default(),
     })
 }
 
+struct SelectedDeadline {
+    due_ms: i64,
+    document_index: usize,
+    region: Option<String>,
+    leaf: String,
+    source: String,
+}
+
+/// Select the minimum active `(due_ms, document index)` by scanning the
+/// definition and recursive active chains directly. No production selector or
+/// compiled deadline index participates in this oracle.
+fn select_deadline(
+    spec: &MachineSpec,
+    active: &[ActiveLeaf<'_>],
+    schedules: &BTreeMap<String, i64>,
+) -> Option<SelectedDeadline> {
+    let mut selected: Option<SelectedDeadline> = None;
+    for (document_index, deadline) in spec.deadlines.iter().enumerate() {
+        let Some(&due_ms) = schedules.get(&deadline.name) else {
+            continue;
+        };
+        let source = active.iter().find_map(|active_leaf| {
+            if find(active_leaf.states, &active_leaf.leaf).is_some_and(|node| node.terminal) {
+                return None;
+            }
+            chain(active_leaf.states, &active_leaf.leaf)
+                .into_iter()
+                .find(|state| state == &deadline.from)
+                .map(|source| {
+                    (
+                        active_leaf.region.map(str::to_string),
+                        active_leaf.leaf.clone(),
+                        source,
+                    )
+                })
+        });
+        let Some((region, leaf, source)) = source else {
+            continue;
+        };
+        let candidate = SelectedDeadline {
+            due_ms,
+            document_index,
+            region,
+            leaf,
+            source,
+        };
+        if selected.as_ref().is_none_or(|current| {
+            (candidate.due_ms, candidate.document_index) < (current.due_ms, current.document_index)
+        }) {
+            selected = Some(candidate);
+        }
+    }
+    selected
+}
+
+fn apply_naive_deadline(
+    m: &CompiledMachine,
+    st: &InstanceState,
+    selected: &SelectedDeadline,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Outcome {
+    let Some(states) = states_for_region(&m.spec, selected.region.as_deref()) else {
+        return Outcome::Rejected(reject(
+            "run/configuration_invalid",
+            "invalid deadline region",
+        ));
+    };
+    let deadline = &m.spec.deadlines[selected.document_index];
+    let mut target = deadline.to.clone();
+    let mut extra = Vec::new();
+    if let Some(target_node) = find(states, &target)
+        && target_node.history.is_some()
+    {
+        let owner = parent_of(states, &target).expect("compiled history has an owner");
+        extra = hist_descent(states, &target, st.history.get(&owner).map(String::as_str));
+        target = owner;
+    }
+    let domain = if deadline.to == selected.source {
+        parent_of(states, &selected.source)
+    } else {
+        lca(states, &selected.source, &target)
+    };
+    let exited = exit_set(states, &selected.leaf, &domain);
+    let mut entered = entry_path(states, &domain, &target);
+    if find(states, &target).is_some_and(is_compound) && extra.is_empty() {
+        entered.extend(initial_descent(states, &target));
+    }
+    entered.extend(extra);
+    let new_leaf = entered.last().cloned().unwrap_or(target);
+    let Some(configuration_after) =
+        configuration_with_leaf(&st.configuration, selected.region.as_deref(), new_leaf)
+    else {
+        return Outcome::Rejected(reject(
+            "run/configuration_invalid",
+            "invalid deadline region",
+        ));
+    };
+
+    let mut ctx = st.ctx.clone();
+    let mut effects = Vec::new();
+    let no_event = BTreeMap::new();
+    for name in &exited {
+        if let Some(block) = find(states, name).and_then(|node| node.exit.as_ref())
+            && let Err(rejection) =
+                apply_block(block, &mut ctx, &no_event, false, budget, &mut effects)
+        {
+            return Outcome::Rejected(rejection);
+        }
+    }
+    let deadline_block = Block {
+        sets: deadline.sets.clone(),
+        emits: deadline.emits.clone(),
+    };
+    if let Err(rejection) = apply_block(
+        &deadline_block,
+        &mut ctx,
+        &no_event,
+        false,
+        budget,
+        &mut effects,
+    ) {
+        return Outcome::Rejected(rejection);
+    }
+    for name in &entered {
+        if let Some(block) = find(states, name).and_then(|node| node.entry.as_ref())
+            && let Err(rejection) =
+                apply_block(block, &mut ctx, &no_event, false, budget, &mut effects)
+        {
+            return Outcome::Rejected(rejection);
+        }
+    }
+
+    let mut history_after = st.history.clone();
+    for name in &exited {
+        if let Some(node) = find(states, name)
+            && is_compound(node)
+        {
+            for child in &node.states {
+                if let Some(kind) = child.history {
+                    let bound = match kind {
+                        HistoryKind::Deep => selected.leaf.clone(),
+                        HistoryKind::Shallow => chain(states, &selected.leaf)
+                            .into_iter()
+                            .find(|state| {
+                                parent_of(states, state).as_deref() == Some(name.as_str())
+                            })
+                            .unwrap_or_else(|| selected.leaf.clone()),
+                    };
+                    history_after.insert(name.clone(), bound);
+                }
+            }
+        }
+    }
+    let monitor_flags = match eval_invariants(&m.spec, &ctx, budget) {
+        Ok(flags) => flags,
+        Err(rejection) => return Outcome::Rejected(rejection),
+    };
+    let mut deadlines_after = match update_deadline_schedules(
+        &m.spec,
+        &st.deadlines,
+        &exited,
+        &entered,
+        &ctx,
+        now_ms,
+        budget,
+    ) {
+        Ok(schedules) => schedules,
+        Err(rejection) => return Outcome::Rejected(rejection),
+    };
+    clear_terminal_region_deadlines(&m.spec, &configuration_after, &mut deadlines_after);
+    let status_after = if configuration_is_terminal(&m.spec, &configuration_after) {
+        deadlines_after.clear();
+        Status::Completed
+    } else {
+        Status::Running
+    };
+    Outcome::Applied(Applied {
+        configuration_after,
+        ctx_after: ctx,
+        history_after,
+        deadlines_after,
+        effects,
+        monitor_flags,
+        status_after,
+        internal: false,
+        region: selected.region.clone(),
+        source_state: selected.source.clone(),
+        transition_idx: selected.document_index as u32,
+        exited,
+        entered,
+        trace: Default::default(),
+    })
+}
+
+pub fn naive_poll_deadline(
+    m: &CompiledMachine,
+    st: &InstanceState,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> DeadlineOutcome {
+    if st.status != Status::Running {
+        return DeadlineOutcome::Rejected(DeadlineRejected {
+            deadline: None,
+            rejection: reject(
+                if st.status == Status::Completed {
+                    "run/instance_completed"
+                } else {
+                    "run/instance_cancelled"
+                },
+                "instance is not running",
+            ),
+        });
+    }
+    let Some(active) = active_leaves(&m.spec, &st.configuration) else {
+        return DeadlineOutcome::Rejected(DeadlineRejected {
+            deadline: None,
+            rejection: reject("run/configuration_invalid", "invalid configuration"),
+        });
+    };
+    let Some(selected) = select_deadline(&m.spec, &active, &st.deadlines) else {
+        return DeadlineOutcome::NotDue { next: None };
+    };
+    let pending = PendingDeadline {
+        name: m.spec.deadlines[selected.document_index].name.clone(),
+        deadline_idx: selected.document_index as u32,
+        due_ms: selected.due_ms,
+    };
+    if selected.due_ms > now_ms {
+        return DeadlineOutcome::NotDue {
+            next: Some(pending),
+        };
+    }
+    match apply_naive_deadline(m, st, &selected, now_ms, budget) {
+        Outcome::Applied(transition) => DeadlineOutcome::Applied(DeadlineApplied {
+            deadline: pending,
+            transition,
+        }),
+        Outcome::Rejected(rejection) => DeadlineOutcome::Rejected(DeadlineRejected {
+            deadline: Some(pending),
+            rejection,
+        }),
+        Outcome::Ignored => panic!("a selected deadline is never ignored"),
+    }
+}
+
 pub fn brute_enterable(m: &CompiledMachine) -> std::collections::BTreeSet<String> {
-    let nodes = &m.spec.states;
+    let (nodes, initial) = sequential_topology(&m.spec);
     let mut out = std::collections::BTreeSet::new();
     fn add_initial_chain(
         nodes: &[StateNode],
@@ -749,7 +1320,7 @@ pub fn brute_enterable(m: &CompiledMachine) -> std::collections::BTreeSet<String
 
     // Creation enters the selected root and follows every declared initial.
     // History pseudostates are never configurations and therefore never enterable.
-    add_initial_chain(nodes, &m.spec.initial, &mut out);
+    add_initial_chain(nodes, initial, &mut out);
     let mut changed = true;
     while changed {
         changed = false;
@@ -794,7 +1365,7 @@ mod independence {
     use super::*;
     use fsm_core::json::{JsonLimits, parse};
     use fsm_core::spec::{compile, parse_machine};
-    use fsm_core::step::{create, step};
+    use fsm_core::step::{create, poll_deadline, step};
     use fsm_core::tree::Tree;
 
     fn tiny() -> CompiledMachine {
@@ -819,25 +1390,26 @@ mod independence {
         let src = br#"{"format":"fsm.machine/1","name":"h","states":[{"name":"q","initial":"a","states":[{"name":"a"},{"name":"b","entry":{"do":[{"target":"n","value":"ctx.n + 10"}]}}]}],"initial":"q","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b","do":[{"target":"n","value":"ctx.n + 1"}]}]}"#;
         let v = parse(src, &JsonLimits::DEFAULT).unwrap();
         let m = compile(parse_machine(&v).unwrap()).unwrap();
-        let t = Tree::build(&m.spec.states);
+        let t = Tree::for_machine(&m.spec);
         let a = naive_create(&m, &BTreeMap::new()).unwrap();
-        let e = create(&m, &t, &BTreeMap::new()).unwrap();
-        assert_eq!(a.leaf_after, e.leaf_after);
+        let e = create(&m, &t, &BTreeMap::new(), 0).unwrap();
+        assert_eq!(a.configuration_after, e.configuration_after);
         let st = InstanceState {
             status: a.status_after,
-            leaf: a.leaf_after,
+            configuration: a.configuration_after,
             ctx: a.ctx_after,
             history: a.history_after,
+            deadlines: BTreeMap::new(),
             pending: vec![],
         };
         let mut b1 = Budget::new(4096);
         let mut b2 = Budget::new(4096);
-        let engine = step(&m, &t, &st, "go", &Value::Obj(BTreeMap::new()), &mut b1);
+        let engine = step(&m, &t, &st, "go", &Value::Obj(BTreeMap::new()), 0, &mut b1);
         let naive = naive_step(&m, &st, "go", &Value::Obj(BTreeMap::new()), &mut b2);
         match (&engine, &naive) {
             (Outcome::Applied(x), Outcome::Applied(y)) => {
-                assert_eq!(x.leaf_after, "b");
-                assert_eq!(y.leaf_after, "b");
+                assert_eq!(x.configuration_after.sequential_leaf(), Some("b"));
+                assert_eq!(y.configuration_after.sequential_leaf(), Some("b"));
                 assert_eq!(x.ctx_after.get("n"), Some(&Val::Int(11)));
                 assert_eq!(y.ctx_after.get("n"), Some(&Val::Int(11)));
             }
@@ -850,18 +1422,19 @@ mod independence {
         let src = br#"{"format":"fsm.machine/1","name":"em","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"effects":[{"name":"fx","fields":[{"name":"v","ty":"int"}]}],"transitions":[{"from":"a","on":"e","do":[{"target":"n","value":"1"}],"emit":[{"effect":"fx","args":{"v":"ctx.n"}}]}]}"#;
         let v = parse(src, &JsonLimits::DEFAULT).unwrap();
         let m = compile(parse_machine(&v).unwrap()).unwrap();
-        let t = Tree::build(&m.spec.states);
-        let created = create(&m, &t, &BTreeMap::new()).unwrap();
+        let t = Tree::for_machine(&m.spec);
+        let created = create(&m, &t, &BTreeMap::new(), 0).unwrap();
         let st = InstanceState {
             status: created.status_after,
-            leaf: created.leaf_after,
+            configuration: created.configuration_after,
             ctx: created.ctx_after,
             history: created.history_after,
+            deadlines: BTreeMap::new(),
             pending: vec![],
         };
         let mut b1 = Budget::new(4096);
         let mut b2 = Budget::new(4096);
-        let engine = step(&m, &t, &st, "e", &Value::Obj(BTreeMap::new()), &mut b1);
+        let engine = step(&m, &t, &st, "e", &Value::Obj(BTreeMap::new()), 0, &mut b1);
         let naive = naive_step(&m, &st, "e", &Value::Obj(BTreeMap::new()), &mut b2);
         match (&engine, &naive) {
             (Outcome::Applied(x), Outcome::Applied(y)) => {
@@ -875,20 +1448,21 @@ mod independence {
     #[test]
     fn naive_step_matches_engine_and_not_wrong_apply() {
         let m = tiny();
-        let t = Tree::build(&m.spec.states);
+        let t = Tree::for_machine(&m.spec);
         let a = naive_create(&m, &BTreeMap::new()).unwrap();
-        let via_engine = create(&m, &t, &BTreeMap::new()).unwrap();
+        let via_engine = create(&m, &t, &BTreeMap::new(), 0).unwrap();
         assert_eq!(a.ctx_after.get("n"), via_engine.ctx_after.get("n"));
         let st = InstanceState {
             status: a.status_after,
-            leaf: a.leaf_after,
+            configuration: a.configuration_after,
             ctx: a.ctx_after,
             history: a.history_after,
+            deadlines: BTreeMap::new(),
             pending: vec![],
         };
         let mut b1 = Budget::new(4096);
         let mut b2 = Budget::new(4096);
-        let engine = step(&m, &t, &st, "e", &Value::Obj(BTreeMap::new()), &mut b1);
+        let engine = step(&m, &t, &st, "e", &Value::Obj(BTreeMap::new()), 0, &mut b1);
         let naive = naive_step(&m, &st, "e", &Value::Obj(BTreeMap::new()), &mut b2);
         match (&engine, &naive) {
             (Outcome::Applied(x), Outcome::Applied(y)) => {
@@ -906,5 +1480,63 @@ mod independence {
             },
             wrong.get("n").cloned()
         );
+    }
+
+    #[test]
+    fn deadline_oracle_selects_document_first_tie_without_production_tables() {
+        let src = br#"{"format":"fsm.machine/1","name":"timed","states":[{"name":"waiting"}],"initial":"waiting","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[],"deadlines":[{"name":"first","from":"waiting","after":"dur(5, ms)","to":"waiting","do":[{"target":"n","value":"1"}]},{"name":"second","from":"waiting","after":"dur(5, ms)","to":"waiting","do":[{"target":"n","value":"2"}]}]}"#;
+        let value = parse(src, &JsonLimits::DEFAULT).unwrap();
+        let machine = compile(parse_machine(&value).unwrap()).unwrap();
+        let tree = Tree::for_machine(&machine.spec);
+        let engine_created = create(&machine, &tree, &BTreeMap::new(), 10).unwrap();
+        let oracle_created = naive_create_at(&machine, &BTreeMap::new(), 10).unwrap();
+        assert_eq!(
+            engine_created.deadlines_after,
+            oracle_created.deadlines_after
+        );
+        let engine_state = InstanceState {
+            status: engine_created.status_after,
+            configuration: engine_created.configuration_after,
+            ctx: engine_created.ctx_after,
+            history: engine_created.history_after,
+            deadlines: engine_created.deadlines_after,
+            pending: Vec::new(),
+        };
+        let oracle_state = InstanceState {
+            status: oracle_created.status_after,
+            configuration: oracle_created.configuration_after,
+            ctx: oracle_created.ctx_after,
+            history: oracle_created.history_after,
+            deadlines: oracle_created.deadlines_after,
+            pending: Vec::new(),
+        };
+
+        let mut engine_budget = Budget::new(4096);
+        let mut oracle_budget = Budget::new(4096);
+        assert!(matches!(
+            (
+                poll_deadline(&machine, &tree, &engine_state, 14, &mut engine_budget),
+                naive_poll_deadline(&machine, &oracle_state, 14, &mut oracle_budget),
+            ),
+            (
+                DeadlineOutcome::NotDue { next: Some(ref engine) },
+                DeadlineOutcome::NotDue { next: Some(ref oracle) },
+            ) if engine == oracle && engine.deadline_idx == 0
+        ));
+
+        let mut engine_budget = Budget::new(4096);
+        let mut oracle_budget = Budget::new(4096);
+        match (
+            poll_deadline(&machine, &tree, &engine_state, 15, &mut engine_budget),
+            naive_poll_deadline(&machine, &oracle_state, 15, &mut oracle_budget),
+        ) {
+            (DeadlineOutcome::Applied(engine), DeadlineOutcome::Applied(oracle)) => {
+                assert_eq!(engine.deadline, oracle.deadline);
+                assert_eq!(engine.deadline.deadline_idx, 0);
+                assert_eq!(engine.transition.ctx_after, oracle.transition.ctx_after);
+                assert_eq!(engine.transition.ctx_after.get("n"), Some(&Val::Int(1)));
+            }
+            outcomes => panic!("{outcomes:?}"),
+        }
     }
 }

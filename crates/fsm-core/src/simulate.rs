@@ -1,79 +1,96 @@
-//! Pure what-if execution: create then step a sequence.
+//! Pure what-if execution: create then step an event sequence.
+//!
+//! Simulation preserves sequential or parallel active configurations and
+//! updates deadline schedules as events enter and exit states. It does not poll
+//! deadlines; hosts do that explicitly through [`crate::step::poll_deadline`].
 
-#![allow(unused_imports)]
+#![allow(clippy::result_large_err)]
 
 use std::collections::BTreeMap;
 
 use crate::expr::eval::{Budget, Val};
 use crate::json::Value;
-use crate::machine::{CompiledMachine, InstanceState, Status};
-use crate::step::{Applied, Outcome, create, step};
+use crate::machine::{ActiveConfiguration, CompiledMachine, InstanceState, Status};
+use crate::step::{Outcome, Rejection, create, step};
 use crate::tree::Tree;
 
+/// Policy for an event rejection after simulation has been created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnReject {
+    /// Stop after recording the rejected event.
     Stop,
+    /// Retain the unchanged state and continue with later events.
     Continue,
 }
 
+/// One attempted event in a simulation report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimStep {
+    /// Zero-based event index.
     pub index: usize,
+    /// Declared event name supplied by the caller.
     pub event: String,
+    /// Pure step outcome for this event.
     pub outcome: Outcome,
-    pub leaf_after: String,
+    /// Complete active configuration after this attempted event.
+    pub configuration_after: ActiveConfiguration,
+    /// Complete context after this attempted event.
     pub ctx_after: BTreeMap<String, Val>,
+    /// Effects emitted by an applied event, in deterministic order.
     pub effects: Vec<crate::step::EffectOut>,
 }
 
+/// Successful report from a simulation whose initial creation succeeded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimReport {
+    /// Attempted events, including a rejection that stopped the sequence.
     pub steps: Vec<SimStep>,
-    pub final_leaf: String,
+    /// Complete active configuration after the simulated sequence.
+    pub final_configuration: ActiveConfiguration,
+    /// Whether every active regional leaf is terminal after the sequence.
     pub terminal: bool,
+    /// First rejected event index when [`OnReject::Stop`] stopped execution.
     pub stopped_at: Option<usize>,
 }
 
+/// Create an in-memory instance and deliver `events` without journaling.
+///
+/// Creation uses timestamp zero and event `i` uses `i` milliseconds for
+/// deterministic deadline scheduling; no deadline is implicitly polled. A
+/// creation failure is returned as its typed [`Rejection`]; no report or
+/// placeholder active configuration is produced.
 pub fn simulate(
     m: &CompiledMachine,
     t: &Tree,
     overrides: &BTreeMap<String, Val>,
     events: &[(String, Value)],
     on_reject: OnReject,
-) -> SimReport {
-    let created = match create(m, t, overrides) {
-        Ok(a) => a,
-        Err(_) => {
-            return SimReport {
-                steps: Vec::new(),
-                final_leaf: String::new(),
-                terminal: false,
-                stopped_at: Some(0),
-            };
-        }
-    };
+) -> Result<SimReport, Rejection> {
+    let created = create(m, t, overrides, 0)?;
     let mut st = InstanceState {
         status: created.status_after,
-        leaf: created.leaf_after.clone(),
+        configuration: created.configuration_after.clone(),
         ctx: created.ctx_after.clone(),
         history: created.history_after.clone(),
+        deadlines: created.deadlines_after.clone(),
         pending: Vec::new(),
     };
     let mut steps = Vec::new();
     let mut stopped_at = None;
     for (i, (ev, payload)) in events.iter().enumerate() {
-        let mut budget = Budget::new(4096);
-        let out = step(m, t, &st, ev, payload, &mut budget);
+        let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+        let out = step(m, t, &st, ev, payload, i as i64, &mut budget);
         match &out {
             Outcome::Applied(a) => {
-                st.leaf = a.leaf_after.clone();
+                st.configuration = a.configuration_after.clone();
                 st.ctx = a.ctx_after.clone();
                 st.history = a.history_after.clone();
+                st.deadlines = a.deadlines_after.clone();
                 st.status = a.status_after;
                 steps.push(SimStep {
                     index: i,
                     event: ev.clone(),
-                    leaf_after: a.leaf_after.clone(),
+                    configuration_after: a.configuration_after.clone(),
                     ctx_after: a.ctx_after.clone(),
                     effects: a.effects.clone(),
                     outcome: out,
@@ -83,7 +100,7 @@ pub fn simulate(
                 steps.push(SimStep {
                     index: i,
                     event: ev.clone(),
-                    leaf_after: st.leaf.clone(),
+                    configuration_after: st.configuration.clone(),
                     ctx_after: st.ctx.clone(),
                     effects: Vec::new(),
                     outcome: out,
@@ -97,7 +114,7 @@ pub fn simulate(
                 steps.push(SimStep {
                     index: i,
                     event: ev.clone(),
-                    leaf_after: st.leaf.clone(),
+                    configuration_after: st.configuration.clone(),
                     ctx_after: st.ctx.clone(),
                     effects: Vec::new(),
                     outcome: out,
@@ -105,10 +122,10 @@ pub fn simulate(
             }
         }
     }
-    SimReport {
-        final_leaf: st.leaf.clone(),
+    Ok(SimReport {
+        final_configuration: st.configuration.clone(),
         terminal: st.status == Status::Completed,
         stopped_at,
         steps,
-    }
+    })
 }

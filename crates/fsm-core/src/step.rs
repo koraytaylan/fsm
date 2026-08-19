@@ -1,4 +1,8 @@
-//! Pure `step()` and `create()`.
+//! Pure instance creation, event stepping, and explicit deadline polling.
+//!
+//! All time enters as a caller-supplied millisecond timestamp. The engine does
+//! not read a clock, run background timers, or drain more than one deadline in
+//! a poll.
 
 #![allow(
     clippy::collapsible_if,
@@ -14,12 +18,13 @@ use crate::expr::parser;
 use crate::expr::typeck::{Scope, ScopeKind, Ty, annotate_if_widening};
 use crate::json::Value;
 use crate::machine::ExprSlot;
-use crate::machine::{CompiledMachine, EnforceMode, InstanceState, Status};
-use crate::spec::{Block, HistoryKind, MachineSpec, TransitionSpec, TySpec};
+use crate::machine::{ActiveConfiguration, CompiledMachine, EnforceMode, InstanceState, Status};
+use crate::spec::{Block, DeadlineSpec, HistoryKind, MachineSpec, TransitionSpec, TySpec};
 
 #[derive(Clone)]
 enum ExprSlotOwner {
     Transition(usize),
+    Deadline(usize),
     Entry(String),
     Exit(String),
 }
@@ -36,19 +41,39 @@ pub struct EffectOut {
     pub k: u32,
 }
 
+/// State and diagnostics produced by one successfully applied transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Applied {
-    pub leaf_after: String,
+    /// Complete active configuration after the transition.
+    pub configuration_after: ActiveConfiguration,
+    /// Typed context after all exit, transition, and entry actions.
     pub ctx_after: BTreeMap<String, Val>,
+    /// History bindings after exited compound states have been recorded.
     pub history_after: BTreeMap<String, String>,
+    /// Active deadline name to absolute due timestamp after rescheduling.
+    pub deadlines_after: BTreeMap<String, i64>,
+    /// Effects emitted by the accepted pipeline, in execution order.
     pub effects: Vec<EffectOut>,
+    /// Names of monitor-mode invariants that failed.
     pub monitor_flags: Vec<String>,
+    /// Lifecycle status after the transition.
+    ///
+    /// A parallel instance is completed only when every region is terminal.
     pub status_after: Status,
+    /// Whether the selected transition kept the same active state hierarchy.
     pub internal: bool,
+    /// Winning region for a parallel transition, or `None` for sequential flow
+    /// and instance creation.
+    pub region: Option<String>,
+    /// State that owned the selected transition or deadline.
     pub source_state: String,
+    /// Document index of the selected transition or deadline definition.
     pub transition_idx: u32,
+    /// States exited in leaf-to-root execution order.
     pub exited: Vec<String>,
+    /// States entered in root-to-leaf execution order.
     pub entered: Vec<String>,
+    /// Complete deterministic decision and action trace.
     pub trace: DecisionTrace,
 }
 
@@ -62,8 +87,10 @@ pub struct Rejection {
     pub block: Option<String>,
     pub span: Option<(u32, u32)>,
     pub trace: DecisionTrace,
-    /// Inner evaluator code (`run/overflow`, `run/div_zero`, …) when `code`
-    /// is the public `run/action_error` wrapper. Never used as the public code.
+    /// Underlying stable cause when `code` is the public `run/action_error`
+    /// wrapper: normally an evaluator code (`run/overflow`, `run/div_zero`,
+    /// …), or `def/shape` for a grandfathered malformed history target. Never
+    /// used as the public code.
     pub cause: Option<&'static str>,
 }
 
@@ -72,6 +99,49 @@ pub enum Outcome {
     Applied(Applied),
     Rejected(Rejection),
     Ignored,
+}
+
+/// A scheduled deadline visible to deterministic callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingDeadline {
+    /// Definition name.
+    pub name: String,
+    /// Zero-based definition document index.
+    pub deadline_idx: u32,
+    /// Absolute caller-supplied millisecond timestamp at which it becomes due.
+    pub due_ms: i64,
+}
+
+/// The result of applying one due deadline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeadlineApplied {
+    /// The selected schedule before it was applied.
+    pub deadline: PendingDeadline,
+    /// The ordinary transition pipeline result.
+    pub transition: Applied,
+}
+
+/// A rejected poll, optionally after selecting a due deadline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeadlineRejected {
+    /// The selected schedule, or `None` when the instance/configuration gate failed.
+    pub deadline: Option<PendingDeadline>,
+    /// Structured deterministic rejection.
+    pub rejection: Rejection,
+}
+
+/// Pure result of polling an instance at a caller-supplied timestamp.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeadlineOutcome {
+    /// One due deadline was applied.
+    Applied(DeadlineApplied),
+    /// Polling or application was rejected atomically.
+    Rejected(DeadlineRejected),
+    /// Nothing was due.
+    NotDue {
+        /// Earliest active schedule, if the configuration has one.
+        next: Option<PendingDeadline>,
+    },
 }
 
 pub fn validate_event(
@@ -143,6 +213,12 @@ fn reject(code: &'static str, what: &str) -> Rejection {
     }
 }
 
+fn invalid_state_rejection(detail: &str) -> Rejection {
+    let mut rejection = reject("run/configuration_invalid", detail);
+    rejection.hint = "reconstruct the state from a trusted create/step/poll result".into();
+    rejection
+}
+
 fn parse_typed(raw: &Value, ty: &TySpec) -> Result<Val, &'static str> {
     match ty {
         TySpec::Bool => raw.as_bool().map(Val::Bool).ok_or("req/field_type"),
@@ -189,14 +265,22 @@ fn parse_typed(raw: &Value, ty: &TySpec) -> Result<Val, &'static str> {
     }
 }
 
+/// Deliver one event and apply at most one globally selected transition.
+///
+/// Parallel regions are scanned in semantic region order; the input state is
+/// never mutated. `now_ms` is used only to schedule deadlines on state entry.
 pub fn step(
     m: &CompiledMachine,
     t: &Tree,
     st: &InstanceState,
     event: &str,
     payload: &Value,
+    now_ms: i64,
     budget: &mut Budget,
 ) -> Outcome {
+    if let Err(error) = t.validate_instance_state(m, st) {
+        return Outcome::Rejected(invalid_state_rejection(error.detail()));
+    }
     match st.status {
         Status::Completed => {
             return Outcome::Rejected(reject("run/instance_completed", "instance is completed"));
@@ -210,91 +294,103 @@ pub fn step(
         Ok(f) => f,
         Err(r) => return Outcome::Rejected(r),
     };
-    let leaf = match t.id(&st.leaf) {
-        Some(i) => i,
-        None => return Outcome::Rejected(reject("run/unhandled", "unknown leaf")),
+    let active_leaves = match t.active_leaves(&st.configuration) {
+        Some(active_leaves) => active_leaves,
+        None => {
+            return Outcome::Rejected(reject(
+                "run/configuration_invalid",
+                "supply a configuration matching the machine topology and real leaf states",
+            ));
+        }
     };
-    let chain = t.chain(leaf);
     let mut trace = DecisionTrace::default();
-    let mut winner: Option<(u16, usize)> = None;
-    for &sid in &chain {
-        let sname = t.names[sid as usize].clone();
-        let idxs = m
-            .transitions_by
-            .get(&(sname.clone(), event.to_string()))
-            .cloned()
-            .unwrap_or_default();
-        if idxs.is_empty() {
+    let mut winner: Option<(Option<String>, u16, u16, usize)> = None;
+    for (region, leaf) in active_leaves {
+        let leaf_name = &t.names[leaf as usize];
+        if find_node(&m.spec, leaf_name).is_some_and(|node| node.terminal) {
             continue;
         }
-        let mut level = LevelTrace {
-            source_state: sname.clone(),
-            transitions: Vec::new(),
-        };
-        for idx in idxs {
-            if winner.is_some() {
-                level.transitions.push(CandidateTrace {
-                    transition_idx: idx as u32,
-                    guard: GuardTrace::NotConsidered,
-                });
+        for sid in t.chain(leaf) {
+            let state_name = t.names[sid as usize].clone();
+            let indices = m
+                .transitions_by
+                .get(&(state_name.clone(), event.to_string()))
+                .cloned()
+                .unwrap_or_default();
+            if indices.is_empty() {
                 continue;
             }
-            let tr = &m.spec.transitions[idx];
-            match eval_guard(
-                tr,
-                &st.ctx,
-                &fields,
-                budget,
-                &m.spec,
-                event,
-                idx,
-                &m.compiled_exprs,
-            ) {
-                Ok((true, gtrace)) => {
+            let mut level = LevelTrace {
+                source_state: state_name.clone(),
+                transitions: Vec::new(),
+            };
+            for index in indices {
+                if winner.is_some() {
                     level.transitions.push(CandidateTrace {
-                        transition_idx: idx as u32,
-                        guard: GuardTrace::Evaluated(gtrace),
+                        transition_idx: index as u32,
+                        guard: GuardTrace::NotConsidered,
                     });
-                    winner = Some((sid, idx));
+                    continue;
                 }
-                Ok((false, gtrace)) => {
-                    level.transitions.push(CandidateTrace {
-                        transition_idx: idx as u32,
-                        guard: GuardTrace::Evaluated(gtrace),
-                    });
-                }
-                Err(mut r) => {
-                    r.source_state = Some(sname.clone());
-                    r.transition_idx = Some(idx as u32);
-                    if let Some(lvl) = r.trace.candidates.first_mut() {
-                        lvl.source_state = sname.clone();
+                let transition = &m.spec.transitions[index];
+                match eval_guard(
+                    transition,
+                    &st.ctx,
+                    &fields,
+                    budget,
+                    &m.spec,
+                    event,
+                    index,
+                    &m.compiled_exprs,
+                ) {
+                    Ok((true, guard_trace)) => {
+                        level.transitions.push(CandidateTrace {
+                            transition_idx: index as u32,
+                            guard: GuardTrace::Evaluated(guard_trace),
+                        });
+                        winner = Some((region.map(str::to_string), leaf, sid, index));
                     }
-                    if !level.transitions.is_empty() {
-                        if let Some(fail) = r.trace.candidates.first_mut() {
-                            let mut merged = level.transitions;
-                            merged.append(&mut fail.transitions);
-                            fail.transitions = merged;
-                        } else {
-                            r.trace.candidates.insert(0, level);
+                    Ok((false, guard_trace)) => {
+                        level.transitions.push(CandidateTrace {
+                            transition_idx: index as u32,
+                            guard: GuardTrace::Evaluated(guard_trace),
+                        });
+                    }
+                    Err(mut rejection) => {
+                        rejection.source_state = Some(state_name.clone());
+                        rejection.transition_idx = Some(index as u32);
+                        if let Some(failing_level) = rejection.trace.candidates.first_mut() {
+                            failing_level.source_state = state_name.clone();
                         }
+                        if !level.transitions.is_empty() {
+                            if let Some(failing_level) = rejection.trace.candidates.first_mut() {
+                                let mut evaluated = level.transitions;
+                                evaluated.append(&mut failing_level.transitions);
+                                failing_level.transitions = evaluated;
+                            } else {
+                                rejection.trace.candidates.insert(0, level);
+                            }
+                        }
+                        let mut prior_trace = trace;
+                        prior_trace
+                            .candidates
+                            .append(&mut rejection.trace.candidates);
+                        rejection.trace.candidates = prior_trace.candidates;
+                        return Outcome::Rejected(rejection);
                     }
-                    let mut prev = trace;
-                    prev.candidates.append(&mut r.trace.candidates);
-                    r.trace.candidates = prev.candidates;
-                    return Outcome::Rejected(r);
                 }
             }
+            trace.candidates.push(level);
         }
-        trace.candidates.push(level);
     }
-    let Some((src, tidx)) = winner else {
+    let Some((region, leaf, src, tidx)) = winner else {
         let any = trace.candidates.iter().any(|l| !l.transitions.is_empty());
         if !any {
             return match m.spec.on_unhandled {
                 crate::spec::Unhandled::Ignore => Outcome::Ignored,
                 crate::spec::Unhandled::Reject => Outcome::Rejected(Rejection {
                     code: "run/unhandled",
-                    message: format!("no handler for {event} at {}", st.leaf),
+                    message: format!("no handler for {event} in the active configuration"),
                     hint: "add a transition or send a handled event".into(),
                     source_state: None,
                     transition_idx: None,
@@ -317,236 +413,619 @@ pub fn step(
             cause: None,
         });
     };
-    let tr = &m.spec.transitions[tidx];
-    let internal = tr.to.is_none();
-    let (exited_ids, entered_ids, new_leaf) = if internal {
-        (Vec::new(), Vec::new(), st.leaf.clone())
-    } else {
-        let mut target_name = tr.to.clone().unwrap();
-        let mut extra_descent = Vec::new();
-        if let Some(tid) = t.id(&target_name) {
-            if matches!(t.kind[tid as usize], NodeKind::History(_)) {
-                let owner_name = &t.names[t.history_owner(tid).unwrap() as usize];
-                extra_descent =
-                    t.history_descent(tid, st.history.get(owner_name).map(String::as_str));
-                // owner for dom
-                target_name = t.names[t.history_owner(tid).unwrap() as usize].clone();
-            }
+    let transition = &m.spec.transitions[tidx];
+    apply_selected_transition(
+        m,
+        t,
+        st,
+        SelectedTransition {
+            region,
+            leaf,
+            source: src,
+            target: transition.to.as_deref(),
+            action: Block {
+                sets: transition.sets.clone(),
+                emits: transition.emits.clone(),
+            },
+            action_kind: BlockKind::Transition,
+            owner: ExprSlotOwner::Transition(tidx),
+            event_name: event,
+            event_fields: &fields,
+            sees_event: true,
+            public_index: tidx as u32,
+            trace,
+        },
+        now_ms,
+        budget,
+    )
+}
+
+/// Poll the active configuration and apply at most one due deadline.
+///
+/// Selection is stable by `(due_ms, deadline document index)`. Time is explicit
+/// caller input; this function never consults a clock and never loops to drain
+/// multiple schedules.
+pub fn poll_deadline(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    state: &InstanceState,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> DeadlineOutcome {
+    if let Err(error) = tree.validate_instance_state(machine, state) {
+        return DeadlineOutcome::Rejected(DeadlineRejected {
+            deadline: None,
+            rejection: invalid_state_rejection(error.detail()),
+        });
+    }
+    match state.status {
+        Status::Completed => {
+            return DeadlineOutcome::Rejected(DeadlineRejected {
+                deadline: None,
+                rejection: reject("run/instance_completed", "instance is completed"),
+            });
         }
-        let tid = t.id(&target_name).unwrap();
-        let src_for_dom = src;
-        let external_self = tr.to.as_deref() == Some(&t.names[src as usize]);
-        let dom = if external_self {
-            t.parent[src as usize]
-        } else {
-            t.proper_lca(src_for_dom, tid)
-        };
-        let exited = t.exit_set(leaf, dom);
-        let mut entered = t.entry_path(dom, tid);
-        // if target is compound, add initial descent
-        if matches!(t.kind[tid as usize], NodeKind::Compound) && extra_descent.is_empty() {
-            entered.extend(t.initial_descent(tid));
+        Status::Cancelled => {
+            return DeadlineOutcome::Rejected(DeadlineRejected {
+                deadline: None,
+                rejection: reject("run/instance_cancelled", "instance is cancelled"),
+            });
         }
-        entered.extend(extra_descent);
-        let leaf_after = entered.last().copied().unwrap_or(tid);
-        (exited, entered, t.names[leaf_after as usize].clone())
+        Status::Running => {}
+    }
+    let active_leaves = match tree.active_leaves(&state.configuration) {
+        Some(active_leaves) => active_leaves,
+        None => {
+            return DeadlineOutcome::Rejected(DeadlineRejected {
+                deadline: None,
+                rejection: reject(
+                    "run/configuration_invalid",
+                    "supply a configuration matching the machine topology and real leaf states",
+                ),
+            });
+        }
     };
 
-    let mut ctx = st.ctx.clone();
+    let mut selected: Option<(i64, usize, Option<String>, u16, u16)> = None;
+    for (deadline_index, deadline) in machine.spec.deadlines.iter().enumerate() {
+        let Some(&due_ms) = state.deadlines.get(&deadline.name) else {
+            continue;
+        };
+        let source_location = active_leaves.iter().find_map(|(region, leaf)| {
+            if find_node(&machine.spec, &tree.names[*leaf as usize])
+                .is_some_and(|node| node.terminal)
+            {
+                return None;
+            }
+            tree.chain(*leaf)
+                .into_iter()
+                .find(|source| tree.names[*source as usize] == deadline.from)
+                .map(|source| (region.map(str::to_string), *leaf, source))
+        });
+        let Some((region, leaf, source)) = source_location else {
+            continue;
+        };
+        let candidate = (due_ms, deadline_index, region, leaf, source);
+        if selected
+            .as_ref()
+            .is_none_or(|current| (candidate.0, candidate.1) < (current.0, current.1))
+        {
+            selected = Some(candidate);
+        }
+    }
+    let Some((due_ms, deadline_index, region, leaf, source)) = selected else {
+        return DeadlineOutcome::NotDue { next: None };
+    };
+    let deadline = &machine.spec.deadlines[deadline_index];
+    let pending = PendingDeadline {
+        name: deadline.name.clone(),
+        deadline_idx: deadline_index as u32,
+        due_ms,
+    };
+    if due_ms > now_ms {
+        return DeadlineOutcome::NotDue {
+            next: Some(pending),
+        };
+    }
+
+    let empty_event = BTreeMap::new();
+    let outcome = apply_selected_transition(
+        machine,
+        tree,
+        state,
+        SelectedTransition {
+            region,
+            leaf,
+            source,
+            target: Some(&deadline.to),
+            action: Block {
+                sets: deadline.sets.clone(),
+                emits: deadline.emits.clone(),
+            },
+            action_kind: BlockKind::Deadline(deadline.name.clone()),
+            owner: ExprSlotOwner::Deadline(deadline_index),
+            event_name: "",
+            event_fields: &empty_event,
+            sees_event: false,
+            public_index: deadline_index as u32,
+            trace: DecisionTrace::default(),
+        },
+        now_ms,
+        budget,
+    );
+    match outcome {
+        Outcome::Applied(transition) => DeadlineOutcome::Applied(DeadlineApplied {
+            deadline: pending,
+            transition,
+        }),
+        Outcome::Rejected(rejection) => DeadlineOutcome::Rejected(DeadlineRejected {
+            deadline: Some(pending),
+            rejection,
+        }),
+        Outcome::Ignored => unreachable!("a selected deadline cannot be ignored"),
+    }
+}
+
+struct SelectedTransition<'a> {
+    region: Option<String>,
+    leaf: u16,
+    source: u16,
+    target: Option<&'a str>,
+    action: Block,
+    action_kind: BlockKind,
+    owner: ExprSlotOwner,
+    event_name: &'a str,
+    event_fields: &'a BTreeMap<String, Val>,
+    sees_event: bool,
+    public_index: u32,
+    trace: DecisionTrace,
+}
+
+fn apply_selected_transition(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    state: &InstanceState,
+    selected: SelectedTransition<'_>,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Outcome {
+    let SelectedTransition {
+        region,
+        leaf,
+        source,
+        target,
+        action,
+        action_kind,
+        owner,
+        event_name,
+        event_fields,
+        sees_event,
+        public_index,
+        mut trace,
+    } = selected;
+    let internal = target.is_none();
+    let current_leaf = tree.names[leaf as usize].clone();
+    let (exited_ids, entered_ids, new_leaf) = if let Some(target) = target {
+        let mut target_name = target.to_string();
+        let mut extra_descent = Vec::new();
+        if let Some(target_id) = tree.id(&target_name) {
+            if matches!(tree.kind[target_id as usize], NodeKind::History(_)) {
+                let Some(owner_id) = tree.history_owner(target_id) else {
+                    let mut rejection = reject(
+                        "run/action_error",
+                        &format!("history target {target} has no compound owner"),
+                    );
+                    rejection.hint =
+                        "define a replacement machine with history under a compound state".into();
+                    rejection.source_state = Some(tree.names[source as usize].clone());
+                    rejection.transition_idx = Some(public_index);
+                    rejection.cause = Some("def/shape");
+                    rejection.trace = trace;
+                    return Outcome::Rejected(rejection);
+                };
+                let owner_name = &tree.names[owner_id as usize];
+                extra_descent = tree
+                    .history_descent(target_id, state.history.get(owner_name).map(String::as_str));
+                target_name = owner_name.clone();
+            }
+        }
+        let target_id = tree.id(&target_name).expect("validated transition target");
+        let external_self = target == tree.names[source as usize];
+        let domain = if external_self {
+            tree.parent[source as usize]
+        } else {
+            tree.proper_lca(source, target_id)
+        };
+        let exited = tree.exit_set(leaf, domain);
+        let mut entered = tree.entry_path(domain, target_id);
+        if matches!(tree.kind[target_id as usize], NodeKind::Compound) && extra_descent.is_empty() {
+            entered.extend(tree.initial_descent(target_id));
+        }
+        entered.extend(extra_descent);
+        let leaf_after = entered.last().copied().unwrap_or(target_id);
+        (exited, entered, tree.names[leaf_after as usize].clone())
+    } else {
+        (Vec::new(), Vec::new(), current_leaf.clone())
+    };
+    let configuration_after = match state.configuration.with_leaf(region.as_deref(), new_leaf) {
+        Some(configuration) => configuration,
+        None => {
+            return Outcome::Rejected(reject("run/unhandled", "transition region is not active"));
+        }
+    };
+
+    let mut context = state.ctx.clone();
     let mut effects = Vec::new();
-    let mut k = 0u32;
+    let mut effect_index = 0u32;
     let mut pipeline = Vec::new();
 
     let apply = |block: &Block,
                  kind: BlockKind,
-                 ctx: &mut BTreeMap<String, Val>,
+                 context: &mut BTreeMap<String, Val>,
                  effects: &mut Vec<EffectOut>,
-                 k: &mut u32,
-                 see_evt: bool,
-                 owner: ExprSlotOwner,
+                 effect_index: &mut u32,
+                 see_event: bool,
+                 block_owner: ExprSlotOwner,
                  budget: &mut Budget|
      -> Result<BlockTrace, Rejection> {
         apply_block(
             block,
             kind,
-            ctx,
+            context,
             effects,
-            k,
-            see_evt,
-            &fields,
+            effect_index,
+            see_event,
+            event_fields,
             budget,
-            &m.spec,
-            event,
-            &m.compiled_exprs,
-            owner,
+            &machine.spec,
+            event_name,
+            &machine.compiled_exprs,
+            block_owner,
         )
     };
 
-    // exit inner → outer
     for &id in &exited_ids {
-        let name = &t.names[id as usize];
-        if let Some(node) = find_node(&m.spec, name) {
-            if let Some(b) = &node.exit {
-                match apply(
-                    b,
-                    BlockKind::Exit(name.clone()),
-                    &mut ctx,
-                    &mut effects,
-                    &mut k,
-                    false,
-                    ExprSlotOwner::Exit(name.clone()),
-                    budget,
-                ) {
-                    Ok(bt) => pipeline.push(bt),
-                    Err(r) => {
-                        return Outcome::Rejected(reject_pipeline(r, pipeline, &trace));
-                    }
+        let name = &tree.names[id as usize];
+        if let Some(block) = find_node(&machine.spec, name).and_then(|node| node.exit.as_ref()) {
+            match apply(
+                block,
+                BlockKind::Exit(name.clone()),
+                &mut context,
+                &mut effects,
+                &mut effect_index,
+                false,
+                ExprSlotOwner::Exit(name.clone()),
+                budget,
+            ) {
+                Ok(block_trace) => pipeline.push(block_trace),
+                Err(rejection) => {
+                    return Outcome::Rejected(reject_pipeline(rejection, pipeline, &trace));
                 }
             }
         }
     }
-    // transition
-    let tblock = Block {
-        sets: tr.sets.clone(),
-        emits: tr.emits.clone(),
-    };
     match apply(
-        &tblock,
-        BlockKind::Transition,
-        &mut ctx,
+        &action,
+        action_kind,
+        &mut context,
         &mut effects,
-        &mut k,
-        true,
-        ExprSlotOwner::Transition(tidx),
+        &mut effect_index,
+        sees_event,
+        owner,
         budget,
     ) {
-        Ok(bt) => pipeline.push(bt),
-        Err(r) => {
-            return Outcome::Rejected(reject_pipeline(r, pipeline, &trace));
+        Ok(block_trace) => pipeline.push(block_trace),
+        Err(rejection) => {
+            return Outcome::Rejected(reject_pipeline(rejection, pipeline, &trace));
         }
     }
-    // entry outer → inner
     for &id in &entered_ids {
-        let name = &t.names[id as usize];
-        if let Some(node) = find_node(&m.spec, name) {
-            if let Some(b) = &node.entry {
-                match apply(
-                    b,
-                    BlockKind::Entry(name.clone()),
-                    &mut ctx,
-                    &mut effects,
-                    &mut k,
-                    false,
-                    ExprSlotOwner::Entry(name.clone()),
-                    budget,
-                ) {
-                    Ok(bt) => pipeline.push(bt),
-                    Err(r) => {
-                        return Outcome::Rejected(reject_pipeline(r, pipeline, &trace));
-                    }
+        let name = &tree.names[id as usize];
+        if let Some(block) = find_node(&machine.spec, name).and_then(|node| node.entry.as_ref()) {
+            match apply(
+                block,
+                BlockKind::Entry(name.clone()),
+                &mut context,
+                &mut effects,
+                &mut effect_index,
+                false,
+                ExprSlotOwner::Entry(name.clone()),
+                budget,
+            ) {
+                Ok(block_trace) => pipeline.push(block_trace),
+                Err(rejection) => {
+                    return Outcome::Rejected(reject_pipeline(rejection, pipeline, &trace));
                 }
             }
         }
     }
 
-    // history capture from pre-transition
-    let mut history_after = st.history.clone();
+    let mut history_after = state.history.clone();
     for &id in &exited_ids {
-        if matches!(t.kind[id as usize], NodeKind::Compound) {
-            // owns history?
-            for &ch in &t.children[id as usize] {
-                if let NodeKind::History(hk) = t.kind[ch as usize] {
-                    let bound = match hk {
-                        HistoryKind::Deep => st.leaf.clone(),
-                        HistoryKind::Shallow => {
-                            // owner's direct child on pre chain
-                            t.chain(leaf)
-                                .into_iter()
-                                .find(|&n| t.parent[n as usize] == Some(id))
-                                .map(|n| t.names[n as usize].clone())
-                                .unwrap_or_else(|| st.leaf.clone())
-                        }
+        if matches!(tree.kind[id as usize], NodeKind::Compound) {
+            for &child in &tree.children[id as usize] {
+                if let NodeKind::History(kind) = tree.kind[child as usize] {
+                    let bound = match kind {
+                        HistoryKind::Deep => current_leaf.clone(),
+                        HistoryKind::Shallow => tree
+                            .chain(leaf)
+                            .into_iter()
+                            .find(|&node| tree.parent[node as usize] == Some(id))
+                            .map(|node| tree.names[node as usize].clone())
+                            .unwrap_or_else(|| current_leaf.clone()),
                     };
-                    history_after.insert(t.names[id as usize].clone(), bound);
+                    history_after.insert(tree.names[id as usize].clone(), bound);
                 }
             }
         }
     }
 
-    // invariants
-    let (ok_inv, flags, inv_trace) = eval_invariants(&m.spec, &m.compiled_exprs, &ctx, budget);
-    if !ok_inv {
-        for p in &mut pipeline {
-            p.discarded = true;
+    let (ok_invariants, monitor_flags, invariant_trace) =
+        eval_invariants(&machine.spec, &machine.compiled_exprs, &context, budget);
+    if !ok_invariants {
+        for block in &mut pipeline {
+            block.discarded = true;
         }
-        let mut trc = trace;
-        trc.pipeline = pipeline;
-        trc.invariants = inv_trace;
-        let eval_err = trc.invariants.iter().find_map(|i| {
-            i.error
-                .as_ref()
-                .map(|e| (i.name.clone(), e.code, e.message.clone(), e.span))
+        trace.pipeline = pipeline;
+        trace.invariants = invariant_trace;
+        let evaluation_error = trace.invariants.iter().find_map(|invariant| {
+            invariant.error.as_ref().map(|error| {
+                (
+                    invariant.name.clone(),
+                    error.code,
+                    error.message.clone(),
+                    error.span,
+                )
+            })
         });
-        let failed_inv = eval_err
+        let failed_invariant = evaluation_error
             .as_ref()
             .map(|(name, _, _, _)| name.clone())
             .or_else(|| {
-                trc.invariants
+                trace
+                    .invariants
                     .iter()
-                    .zip(&m.spec.invariants)
-                    .find(|(trace, spec)| !trace.passed && spec.mode == EnforceMode::Enforce)
-                    .map(|(trace, _)| trace.name.clone())
+                    .zip(&machine.spec.invariants)
+                    .find(|(result, invariant)| {
+                        !result.passed && invariant.mode == EnforceMode::Enforce
+                    })
+                    .map(|(result, _)| result.name.clone())
             });
         return Outcome::Rejected(Rejection {
             code: "run/invariant",
-            message: eval_err
+            message: evaluation_error
                 .as_ref()
-                .map(|(n, _, msg, _)| format!("invariant {n}: {msg}"))
+                .map(|(name, _, message, _)| format!("invariant {name}: {message}"))
                 .unwrap_or_else(|| "enforce invariant failed".into()),
-            hint: failed_inv
+            hint: failed_invariant
                 .as_ref()
-                .map(|n| format!("adjust the action or invariant {n}"))
+                .map(|name| format!("adjust the action or invariant {name}"))
                 .unwrap_or_else(|| "adjust the action or the invariant".into()),
-            source_state: Some(t.names[src as usize].clone()),
-            transition_idx: Some(tidx as u32),
-            block: eval_err
+            source_state: Some(tree.names[source as usize].clone()),
+            transition_idx: Some(public_index),
+            block: evaluation_error
                 .as_ref()
-                .map(|(n, _, _, _)| format!("invariant({n})")),
-            span: eval_err.as_ref().and_then(|(_, _, _, s)| *s),
-            cause: eval_err.as_ref().map(|(_, c, _, _)| *c),
-            trace: trc,
+                .map(|(name, _, _, _)| format!("invariant({name})")),
+            span: evaluation_error.as_ref().and_then(|(_, _, _, span)| *span),
+            cause: evaluation_error.as_ref().map(|(_, cause, _, _)| *cause),
+            trace,
         });
     }
 
-    let status_after = {
-        let leaf_node = find_node(&m.spec, &new_leaf);
-        if leaf_node.map(|n| n.terminal).unwrap_or(false) {
-            Status::Completed
-        } else {
-            Status::Running
+    let mut deadlines_after = match update_deadline_schedules(
+        machine,
+        &state.deadlines,
+        &exited_ids,
+        &entered_ids,
+        tree,
+        &context,
+        now_ms,
+        budget,
+    ) {
+        Ok(deadlines) => deadlines,
+        Err(rejection) => {
+            let mut rejection = reject_pipeline(rejection, pipeline, &trace);
+            rejection.trace.invariants = invariant_trace;
+            return Outcome::Rejected(rejection);
         }
     };
+
+    clear_terminal_region_deadlines(machine, tree, &configuration_after, &mut deadlines_after);
+    let status_after = if configuration_is_terminal(machine, tree, &configuration_after) {
+        deadlines_after.clear();
+        Status::Completed
+    } else {
+        Status::Running
+    };
     trace.pipeline = pipeline;
-    trace.invariants = inv_trace;
+    trace.invariants = invariant_trace;
     Outcome::Applied(Applied {
-        leaf_after: new_leaf,
-        ctx_after: ctx,
+        configuration_after,
+        ctx_after: context,
         history_after,
+        deadlines_after,
         effects,
-        monitor_flags: flags,
+        monitor_flags,
         status_after,
         internal,
-        source_state: t.names[src as usize].clone(),
-        transition_idx: tidx as u32,
+        region,
+        source_state: tree.names[source as usize].clone(),
+        transition_idx: public_index,
         exited: exited_ids
             .iter()
-            .map(|&i| t.names[i as usize].clone())
+            .map(|&id| tree.names[id as usize].clone())
             .collect(),
         entered: entered_ids
             .iter()
-            .map(|&i| t.names[i as usize].clone())
+            .map(|&id| tree.names[id as usize].clone())
             .collect(),
         trace,
+    })
+}
+
+fn clear_terminal_region_deadlines(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    configuration: &ActiveConfiguration,
+    schedules: &mut BTreeMap<String, i64>,
+) {
+    let Some(active_leaves) = tree.active_leaves(configuration) else {
+        return;
+    };
+    for (_, leaf) in active_leaves {
+        if !find_node(&machine.spec, &tree.names[leaf as usize]).is_some_and(|node| node.terminal) {
+            continue;
+        }
+        let terminal_chain: std::collections::BTreeSet<&str> = tree
+            .chain(leaf)
+            .into_iter()
+            .map(|state| tree.names[state as usize].as_str())
+            .collect();
+        schedules.retain(|name, _| {
+            machine
+                .spec
+                .deadlines
+                .iter()
+                .find(|deadline| deadline.name == *name)
+                .is_none_or(|deadline| !terminal_chain.contains(deadline.from.as_str()))
+        });
+    }
+}
+
+fn update_deadline_schedules(
+    machine: &CompiledMachine,
+    prior: &BTreeMap<String, i64>,
+    exited: &[u16],
+    entered: &[u16],
+    tree: &Tree,
+    context: &BTreeMap<String, Val>,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Result<BTreeMap<String, i64>, Rejection> {
+    let mut schedules = prior.clone();
+    for state in exited {
+        let state_name = &tree.names[*state as usize];
+        for deadline in machine
+            .spec
+            .deadlines
+            .iter()
+            .filter(|deadline| deadline.from == *state_name)
+        {
+            schedules.remove(&deadline.name);
+        }
+    }
+    let context_types: BTreeMap<String, Ty> = machine
+        .spec
+        .context
+        .iter()
+        .map(|variable| (variable.name.clone(), variable.ty.to_ty()))
+        .collect();
+    let bindings = Bindings {
+        ctx: context,
+        evt: None,
+    };
+    for state in entered {
+        let state_name = &tree.names[*state as usize];
+        for (index, deadline) in machine.spec.deadlines.iter().enumerate() {
+            if deadline.from != *state_name {
+                continue;
+            }
+            let expression = if let Some(compiled) =
+                machine.compiled_exprs.get(&ExprSlot::DeadlineAfter(index))
+            {
+                compiled.expr.clone()
+            } else {
+                let mut expression = parser::parse(&deadline.after).map_err(|error| {
+                    deadline_schedule_rejection(
+                        deadline,
+                        error.message,
+                        error.hint,
+                        Some((error.span.start, error.span.end)),
+                        Some(error.code),
+                    )
+                })?;
+                annotate_if_widening(
+                    &mut expression,
+                    &spec_scope(&machine.spec, ScopeKind::Block, &context_types, None),
+                );
+                expression
+            };
+            let duration = match eval(&expression, &bindings, budget, false).0 {
+                Ok(Val::Dur(duration)) if duration >= 0 => duration,
+                Ok(Val::Dur(_)) => {
+                    return Err(deadline_schedule_rejection(
+                        deadline,
+                        "deadline duration is negative".into(),
+                        "return a zero or positive duration".into(),
+                        None,
+                        Some("run/overflow"),
+                    ));
+                }
+                Ok(_) => {
+                    return Err(deadline_schedule_rejection(
+                        deadline,
+                        "deadline expression did not return a duration".into(),
+                        "return a duration, for example dur(5, min)".into(),
+                        None,
+                        None,
+                    ));
+                }
+                Err(error) => {
+                    return Err(deadline_schedule_rejection(
+                        deadline,
+                        error.message,
+                        error.hint,
+                        Some((error.span.start, error.span.end)),
+                        Some(error.code),
+                    ));
+                }
+            };
+            let due_ms = now_ms.checked_add(duration).ok_or_else(|| {
+                deadline_schedule_rejection(
+                    deadline,
+                    "deadline due timestamp overflowed".into(),
+                    "use a smaller timestamp or duration".into(),
+                    None,
+                    Some("run/overflow"),
+                )
+            })?;
+            schedules.insert(deadline.name.clone(), due_ms);
+        }
+    }
+    Ok(schedules)
+}
+
+fn deadline_schedule_rejection(
+    deadline: &DeadlineSpec,
+    message: String,
+    hint: String,
+    span: Option<(u32, u32)>,
+    cause: Option<&'static str>,
+) -> Rejection {
+    Rejection {
+        code: "run/action_error",
+        message,
+        hint,
+        source_state: Some(deadline.from.clone()),
+        transition_idx: None,
+        block: Some(format!("deadline({})", deadline.name)),
+        span,
+        trace: DecisionTrace::default(),
+        cause,
+    }
+}
+
+fn configuration_is_terminal(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    configuration: &ActiveConfiguration,
+) -> bool {
+    tree.active_leaves(configuration).is_some_and(|active| {
+        !active.is_empty()
+            && active.iter().all(|(_, state)| {
+                find_node(&machine.spec, &tree.names[*state as usize])
+                    .is_some_and(|node| node.terminal)
+            })
     })
 }
 
@@ -562,20 +1041,47 @@ fn eval_guard(
 ) -> Result<(bool, crate::expr::eval::TraceNode), Rejection> {
     match &tr.guard {
         None => {
-            let dummy = parser::parse("true").unwrap();
-            let b = Bindings {
+            // Omitted guards have historically evaluated an implicit `true`.
+            // Keep that one-tick accounting for replay compatibility; the
+            // compiler includes the worst-case tick in `def/limit_eval`.
+            let dummy = parser::parse("true").expect("static guard expression");
+            let bindings = Bindings {
                 ctx,
                 evt: Some(evt),
             };
-            let (_v, t) = eval(&dummy, &b, budget, true);
-            Ok((
-                true,
-                t.unwrap_or(crate::expr::eval::TraceNode {
-                    span: crate::expr::lexer::Span::new(0, 0),
-                    outcome: crate::expr::eval::TraceOutcome::Value("true".into()),
-                    children: vec![],
+            match eval(&dummy, &bindings, budget, true) {
+                (Ok(Val::Bool(value)), Some(trace)) => Ok((value, trace)),
+                (Err(error), trace) => Err(Rejection {
+                    code: "run/guard_error",
+                    message: error.message,
+                    hint: error.hint,
+                    source_state: None,
+                    transition_idx: Some(tidx as u32),
+                    block: None,
+                    span: Some((error.span.start, error.span.end)),
+                    cause: Some(error.code),
+                    trace: DecisionTrace {
+                        candidates: vec![LevelTrace {
+                            source_state: String::new(),
+                            transitions: vec![CandidateTrace {
+                                transition_idx: tidx as u32,
+                                guard: GuardTrace::Evaluated(trace.unwrap_or(
+                                    crate::expr::eval::TraceNode {
+                                        span: error.span,
+                                        outcome: crate::expr::eval::TraceOutcome::Error {
+                                            code: error.code,
+                                            inputs: Vec::new(),
+                                        },
+                                        children: vec![],
+                                    },
+                                )),
+                            }],
+                        }],
+                        ..DecisionTrace::default()
+                    },
                 }),
-            ))
+                _ => Err(reject("run/guard_error", "guard not bool")),
+            }
         }
         Some(src) => {
             let e = if let Some(c) = compiled.get(&ExprSlot::TransitionGuard(tidx)) {
@@ -703,6 +1209,7 @@ fn compiled_or_annotate(
 fn owner_set_slot(owner: &ExprSlotOwner, i: usize) -> ExprSlot {
     match owner {
         ExprSlotOwner::Transition(t) => ExprSlot::TransitionSet(*t, i),
+        ExprSlotOwner::Deadline(deadline) => ExprSlot::DeadlineSet(*deadline, i),
         ExprSlotOwner::Entry(n) => ExprSlot::StateEntrySet(n.clone(), i),
         ExprSlotOwner::Exit(n) => ExprSlot::StateExitSet(n.clone(), i),
     }
@@ -711,6 +1218,7 @@ fn owner_set_slot(owner: &ExprSlotOwner, i: usize) -> ExprSlot {
 fn owner_emit_slot(owner: &ExprSlotOwner, i: usize, arg: &str) -> ExprSlot {
     match owner {
         ExprSlotOwner::Transition(t) => ExprSlot::TransitionEmitArg(*t, i, arg.into()),
+        ExprSlotOwner::Deadline(deadline) => ExprSlot::DeadlineEmitArg(*deadline, i, arg.into()),
         ExprSlotOwner::Entry(n) => ExprSlot::StateEntryEmitArg(n.clone(), i, arg.into()),
         ExprSlotOwner::Exit(n) => ExprSlot::StateExitEmitArg(n.clone(), i, arg.into()),
     }
@@ -1045,15 +1553,24 @@ fn find_node<'a>(spec: &'a MachineSpec, name: &str) -> Option<&'a crate::spec::S
         }
         None
     }
-    rec(&spec.states, name)
+    for (_, states, _) in spec.state_groups() {
+        if let Some(node) = rec(states, name) {
+            return Some(node);
+        }
+    }
+    None
 }
 
-/// Creation is a pure function of (definition, overrides). The shell NEVER
-/// journals a failed create and consumes no id or seq.
+/// Create an instance from a definition, context overrides, and caller time.
+///
+/// Every region enters its initial chain. Deadlines on those chains are
+/// scheduled relative to `now_ms`. Creation is pure; durable hosts must not
+/// journal a failed result or consume an instance id or sequence number.
 pub fn create(
     m: &CompiledMachine,
     t: &Tree,
     overrides: &BTreeMap<String, Val>,
+    now_ms: i64,
 ) -> Result<Applied, Rejection> {
     // validate overrides
     let ctx_map: BTreeMap<_, _> = m
@@ -1101,16 +1618,42 @@ pub fn create(
         }
         ctx.insert(c.name.clone(), v);
     }
-    let root_init = t
-        .id(&m.spec.initial)
-        .ok_or_else(|| reject("run/create_failed", "bad initial"))?;
-    let mut entered = vec![root_init];
-    entered.extend(t.initial_descent(root_init));
+    let mut entered = Vec::new();
+    let mut parallel_leaves = BTreeMap::new();
+    let mut sequential_leaf = None;
+    for (region, root_initial) in &t.root_initials {
+        let mut region_entry = vec![*root_initial];
+        region_entry.extend(t.initial_descent(*root_initial));
+        let leaf = region_entry
+            .last()
+            .map(|state| t.names[*state as usize].clone())
+            .ok_or_else(|| reject("run/create_failed", "empty initial descent"))?;
+        match region {
+            Some(region) => {
+                parallel_leaves.insert(region.clone(), leaf);
+            }
+            None => sequential_leaf = Some(leaf),
+        }
+        entered.extend(region_entry);
+    }
+    let configuration_after = match &m.spec.topology {
+        crate::spec::Topology::Sequential { .. } => ActiveConfiguration::Sequential {
+            leaf: sequential_leaf.ok_or_else(|| reject("run/create_failed", "bad initial"))?,
+        },
+        crate::spec::Topology::Parallel { regions } => {
+            if parallel_leaves.len() != regions.len() {
+                return Err(reject("run/create_failed", "bad region initial"));
+            }
+            ActiveConfiguration::Parallel {
+                leaves: parallel_leaves,
+            }
+        }
+    };
     let mut effects = Vec::new();
     let mut k = 0u32;
     let mut pipeline = Vec::new();
     let empty_evt = BTreeMap::new();
-    let mut budget = Budget::new(4096);
+    let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
     for &id in &entered {
         let name = &t.names[id as usize];
         if let Some(node) = find_node(&m.spec, name) {
@@ -1174,15 +1717,40 @@ pub fn create(
             },
         });
     }
-    let leaf = t.names[*entered.last().unwrap() as usize].clone();
+    let mut deadlines_after = match update_deadline_schedules(
+        m,
+        &BTreeMap::new(),
+        &[],
+        &entered,
+        t,
+        &ctx,
+        now_ms,
+        &mut budget,
+    ) {
+        Ok(deadlines) => deadlines,
+        Err(inner) => {
+            let mut rejection = reject_pipeline(inner, pipeline, &DecisionTrace::default());
+            rejection.trace.invariants = inv_trace;
+            rejection.code = "run/create_failed";
+            return Err(rejection);
+        }
+    };
+    let status_after = if configuration_is_terminal(m, t, &configuration_after) {
+        deadlines_after.clear();
+        Status::Completed
+    } else {
+        Status::Running
+    };
     Ok(Applied {
-        leaf_after: leaf,
+        configuration_after,
         ctx_after: ctx,
         history_after: BTreeMap::new(),
+        deadlines_after,
         effects,
         monitor_flags: flags,
-        status_after: Status::Running,
+        status_after,
         internal: false,
+        region: None,
         source_state: String::new(),
         transition_idx: 0,
         exited: Vec::new(),

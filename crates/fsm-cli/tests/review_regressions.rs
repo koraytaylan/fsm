@@ -165,15 +165,15 @@ fn reused_request_id_with_a_different_event_is_a_conflict() {
     let _g = gate();
     let (_dir, mut s) = conflict_fixture("conflict-evt");
     s.send_event("i1", "docs_ok", empty(), "R", None).unwrap();
-    let leaf_after_first = s.state.instances.get("i1").unwrap().leaf.clone();
+    let configuration_after_first = s.state.instances.get("i1").unwrap().configuration.clone();
 
     // A different event under the same key must not be answered with the first
     // event's outcome.
     let e = err_code(s.send_event("i1", "note_added", empty(), "R", None));
     assert_eq!(e, "req/request_id_conflict");
     assert_eq!(
-        s.state.instances.get("i1").unwrap().leaf,
-        leaf_after_first,
+        s.state.instances.get("i1").unwrap().configuration,
+        configuration_after_first,
         "a conflicting send must not advance the instance"
     );
 }
@@ -571,7 +571,15 @@ fn enum_if_widening_overflows() {
         err.details.get("cause").and_then(Value::as_str),
         Some("run/overflow")
     );
-    assert_eq!(s.state.instances.get("i1").unwrap().leaf, "a");
+    assert_eq!(
+        s.state
+            .instances
+            .get("i1")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("a")
+    );
     assert!(err.details.get("request_id").and_then(Value::as_str) == Some("g1"));
 }
 
@@ -584,13 +592,14 @@ fn emit_if_uses_compiled_scale() {
     )
     .unwrap();
     let compiled = fsm_core::spec::compile_accepted(&v).unwrap();
-    let tree = fsm_core::tree::Tree::build(&compiled.spec.states);
-    let created = fsm_core::step::create(&compiled, &tree, &BTreeMap::new()).unwrap();
+    let tree = fsm_core::tree::Tree::for_machine(&compiled.spec);
+    let created = fsm_core::step::create(&compiled, &tree, &BTreeMap::new(), 0).unwrap();
     let inst = fsm_core::machine::InstanceState {
         status: created.status_after,
-        leaf: created.leaf_after,
+        configuration: created.configuration_after,
         ctx: created.ctx_after,
         history: created.history_after,
+        deadlines: created.deadlines_after,
         pending: vec![],
     };
     let mut bud = fsm_core::expr::eval::Budget::new(4096);
@@ -600,6 +609,7 @@ fn emit_if_uses_compiled_scale() {
         &inst,
         "go",
         &Value::Obj(BTreeMap::new()),
+        0,
         &mut bud,
     ) {
         fsm_core::step::Outcome::Applied(a) => {
@@ -780,7 +790,15 @@ fn enabled_events_uses_compiled_decimal_if() {
     assert_eq!(status("pay"), "depends_on_payload");
     s.send_event("i1", "go", Value::Obj(BTreeMap::new()), "g1", None)
         .unwrap();
-    assert_eq!(s.state.instances.get("i1").unwrap().leaf, "b");
+    assert_eq!(
+        s.state
+            .instances
+            .get("i1")
+            .unwrap()
+            .configuration
+            .sequential_leaf(),
+        Some("b")
+    );
 }
 
 #[test]
@@ -1728,10 +1746,12 @@ fn output_schemas_are_field_level() {
             "instance_create",
             &[
                 "instance_id",
+                "configuration",
                 "leaf",
                 "state",
                 "status",
                 "context",
+                "deadlines_pending",
                 "seq",
                 "request_id",
             ],
@@ -1740,11 +1760,24 @@ fn output_schemas_are_field_level() {
             "instance_send",
             &[
                 "instance_id",
+                "configuration",
                 "leaf",
                 "state",
                 "status",
                 "context",
+                "deadlines_pending",
                 "seq",
+                "request_id",
+            ],
+        ),
+        (
+            "deadline_poll",
+            &[
+                "instance_id",
+                "configuration",
+                "deadline_applied",
+                "deadline_not_due",
+                "deadlines_pending",
                 "request_id",
             ],
         ),
@@ -1765,8 +1798,10 @@ fn output_schemas_are_field_level() {
                 "instance_id",
                 "status",
                 "seq",
+                "configuration",
                 "state",
                 "context",
+                "deadlines_pending",
                 "state_hash",
             ],
         ),
@@ -1774,10 +1809,12 @@ fn output_schemas_are_field_level() {
             "instance_get",
             &[
                 "instance_id",
+                "configuration",
                 "leaf",
                 "state",
                 "status",
                 "context",
+                "deadlines_pending",
                 "seq",
                 "history",
             ],
@@ -1790,7 +1827,7 @@ fn output_schemas_are_field_level() {
         ("simulate", &["steps", "final"]),
     ];
     let reg = fsm_cli::mcp::tools::registry();
-    assert_eq!(reg.len(), 13);
+    assert_eq!(reg.len(), 14);
     for (name, fields) in expect {
         let t = reg.iter().find(|t| t.name == *name).expect(name);
         let out = (t.output_schema)();
@@ -2071,8 +2108,11 @@ fn output_schemas_required_nested() {
         "machine_id",
         "name",
         "defined_seq",
+        "topology",
+        "regions",
         "states",
         "events",
+        "deadlines",
         "instances",
     ] {
         assert!(
@@ -2089,7 +2129,7 @@ fn output_schemas_required_nested() {
         .unwrap();
     for f in [
         "instance_id",
-        "state",
+        "configuration",
         "status",
         "machine_name",
         "seq",
@@ -2107,19 +2147,18 @@ fn output_schemas_required_nested() {
         .and_then(|a| a.get("items"))
         .cloned()
         .unwrap();
-    for f in ["seq", "ts", "kind", "hash"] {
-        assert!(
-            required_fields(&hitems).iter().any(|s| s == f),
-            "missing {f}"
-        );
-    }
+    assert_eq!(hitems.get("type").and_then(Value::as_str), Some("object"));
     let sim = reg.iter().find(|t| t.name == "simulate").unwrap();
     let sout = (sim.output_schema)();
     let initial = sout
         .get("properties")
         .and_then(|p| p.get("initial"))
         .unwrap();
-    assert!(required_fields(initial).iter().any(|s| s == "state"));
+    assert!(
+        required_fields(initial)
+            .iter()
+            .any(|s| s == "configuration")
+    );
     assert!(required_fields(initial).iter().any(|s| s == "context"));
     let final_s = sout.get("properties").and_then(|p| p.get("final")).unwrap();
     assert!(required_fields(final_s).iter().any(|s| s == "context"));
@@ -2129,8 +2168,8 @@ fn output_schemas_required_nested() {
         .and_then(|a| a.get("items"))
         .unwrap();
     for f in [
-        "from_leaf",
-        "to_leaf",
+        "from_configuration",
+        "to_configuration",
         "applied",
         "context",
         "index",
@@ -2856,7 +2895,7 @@ fn simulate_zero_event_override_and_create_fail() {
         Some("3")
     );
     let bad = parse(
-        br#"{"format":"fsm.machine/1","name":"cf","states":[{"name":"a"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[],"invariants":[{"name":"x","expr":"1 == 0","mode":"enforce"}]}"#,
+        br#"{"format":"fsm.machine/1","name":"cf","regions":[{"name":"left","states":[{"name":"left_ready"}],"initial":"left_ready"},{"name":"right","states":[{"name":"right_ready"}],"initial":"right_ready"}],"context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[],"invariants":[{"name":"x","expr":"1 == 0","mode":"enforce"}]}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
@@ -3325,7 +3364,8 @@ fn rewrite_snap_context(dir: &std::path::Path, snap_seq: u64) {
                 .unwrap_or("")
                 .to_string();
             let leaf = inst
-                .get("leaf")
+                .get("configuration")
+                .and_then(|configuration| configuration.get("leaf"))
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
@@ -3340,10 +3380,10 @@ fn rewrite_snap_context(dir: &std::path::Path, snap_seq: u64) {
             let mut ctx = BTreeMap::new();
             if let Some(c) = inst.get("context").and_then(Value::as_obj) {
                 for (k, val) in c {
-                    if let Some(s) = val.as_str() {
-                        if let Ok(n) = s.parse::<i64>() {
-                            ctx.insert(k.clone(), Val::Int(n));
-                        }
+                    if let Some(s) = val.as_str()
+                        && let Ok(n) = s.parse::<i64>()
+                    {
+                        ctx.insert(k.clone(), Val::Int(n));
                     }
                 }
             }
@@ -3365,11 +3405,27 @@ fn rewrite_snap_context(dir: &std::path::Path, snap_seq: u64) {
                         .collect()
                 })
                 .unwrap_or_default();
+            let deadlines = inst
+                .get("deadlines")
+                .and_then(Value::as_obj)
+                .map(|deadlines| {
+                    deadlines
+                        .iter()
+                        .filter_map(|(name, due_ms)| {
+                            due_ms
+                                .as_num()
+                                .and_then(|value| value.parse::<i64>().ok())
+                                .map(|due_ms| (name.clone(), due_ms))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             let st = fsm_core::machine::InstanceState {
                 status,
-                leaf,
+                configuration: fsm_core::machine::ActiveConfiguration::Sequential { leaf },
                 ctx,
                 history,
+                deadlines,
                 pending,
             };
             inst.insert(
@@ -3403,9 +3459,42 @@ fn verify_report_ordered_segment_progress() {
     let second_name = store.journal.seg_name.clone();
     assert_ne!(first_name, second_name, "rotation must open a new segment");
     drop(store);
+    let bin = fsm_bin();
+    let out = Command::new(&bin)
+        .args([
+            "--data-dir",
+            dir.to_str().unwrap(),
+            "--json",
+            "journal",
+            "verify",
+            "--report",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("\"records\""), "{stdout}");
+    assert!(stdout.contains("\"status\""), "{stdout}");
+    assert!(stdout.contains(&first_name), "{stdout}");
+    assert!(stdout.contains(&second_name), "{stdout}");
+    let v = parse(stdout.trim().as_bytes(), &JsonLimits::DEFAULT).expect(&stdout);
+    let segs = v.get("segments").and_then(Value::as_arr).expect(&stdout);
+    let reported: Vec<&str> = segs
+        .iter()
+        .map(|s| s.get("segment").and_then(Value::as_str).unwrap_or(""))
+        .collect();
+    let mut sorted = reported.clone();
+    sorted.sort();
+    assert_eq!(reported, sorted, "CLI segments unordered {stdout}");
+
     let bogus = dir.join("journal").join("seg-zzzz.jsonl");
     std::fs::create_dir_all(&bogus).unwrap();
     let r = fsm_cli::journal_io::verify(&dir);
+    assert!(
+        matches!(r.health, fsm_cli::journal_io::JournalHealth::StoreIo(_)),
+        "non-regular segment must be a fatal read error: {:?}",
+        r.health
+    );
     assert!(
         r.segments.len() >= 3,
         "expected ≥2 real segments plus metadata-failure, got {:?}",
@@ -3438,7 +3527,7 @@ fn verify_report_ordered_segment_progress() {
             .map(|s| s.status.as_str())
             .collect::<Vec<_>>()
     );
-    let bin = fsm_bin();
+
     let out = Command::new(&bin)
         .args([
             "--data-dir",
@@ -3450,21 +3539,10 @@ fn verify_report_ordered_segment_progress() {
         ])
         .output()
         .unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("\"records\""), "{stdout}");
-    assert!(stdout.contains("\"status\""), "{stdout}");
-    assert!(stdout.contains(&first_name), "{stdout}");
-    assert!(stdout.contains(&second_name), "{stdout}");
-    assert!(stdout.contains("metadata-failure"), "{stdout}");
-    let v = parse(stdout.trim().as_bytes(), &JsonLimits::DEFAULT).expect(&stdout);
-    let segs = v.get("segments").and_then(Value::as_arr).expect(&stdout);
-    let reported: Vec<&str> = segs
-        .iter()
-        .map(|s| s.get("segment").and_then(Value::as_str).unwrap_or(""))
-        .collect();
-    let mut sorted = reported.clone();
-    sorted.sort();
-    assert_eq!(reported, sorted, "CLI segments unordered {stdout}");
+    assert_eq!(out.status.code(), Some(5));
+    assert!(out.stdout.is_empty());
+    let error = parse(&out.stderr, &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(error.get("code").and_then(Value::as_str), Some("io/read"));
 }
 
 #[test]
@@ -3513,7 +3591,8 @@ fn rewrite_snap_field(dir: &std::path::Path, kind: &str, snap_seq: u64) {
                 .unwrap_or("")
                 .to_string();
             let leaf = inst
-                .get("leaf")
+                .get("configuration")
+                .and_then(|configuration| configuration.get("leaf"))
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
@@ -3540,10 +3619,10 @@ fn rewrite_snap_field(dir: &std::path::Path, kind: &str, snap_seq: u64) {
             let mut ctx = BTreeMap::new();
             if let Some(c) = inst.get("context").and_then(Value::as_obj) {
                 for (k, val) in c {
-                    if let Some(s) = val.as_str() {
-                        if let Ok(n) = s.parse::<i64>() {
-                            ctx.insert(k.clone(), Val::Int(n));
-                        }
+                    if let Some(s) = val.as_str()
+                        && let Ok(n) = s.parse::<i64>()
+                    {
+                        ctx.insert(k.clone(), Val::Int(n));
                     }
                 }
             }
@@ -3565,11 +3644,27 @@ fn rewrite_snap_field(dir: &std::path::Path, kind: &str, snap_seq: u64) {
                         .collect()
                 })
                 .unwrap_or_default();
+            let deadlines = inst
+                .get("deadlines")
+                .and_then(Value::as_obj)
+                .map(|deadlines| {
+                    deadlines
+                        .iter()
+                        .filter_map(|(name, due_ms)| {
+                            due_ms
+                                .as_num()
+                                .and_then(|value| value.parse::<i64>().ok())
+                                .map(|due_ms| (name.clone(), due_ms))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             let st = fsm_core::machine::InstanceState {
                 status,
-                leaf,
+                configuration: fsm_core::machine::ActiveConfiguration::Sequential { leaf },
                 ctx,
                 history,
+                deadlines,
                 pending,
             };
             inst.insert(

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::Budget;
 use fsm_core::json::Value;
-use fsm_core::machine::{InstanceState, Status};
+use fsm_core::machine::{ActiveConfiguration, InstanceState, Status};
 use fsm_core::spec::{compile, load_machine_json};
 use fsm_core::step::{Outcome, create, step};
 use fsm_core::tree::Tree;
@@ -10,7 +10,7 @@ use fsm_core::tree::Tree;
 fn case() -> (fsm_core::machine::CompiledMachine, Tree) {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     (m, t)
 }
 
@@ -24,6 +24,13 @@ fn scored(n: &str) -> Value {
     Value::Obj(m)
 }
 
+fn leaf(configuration: &ActiveConfiguration) -> &str {
+    match configuration {
+        ActiveConfiguration::Sequential { leaf } => leaf,
+        ActiveConfiguration::Parallel { .. } => panic!("expected sequential configuration"),
+    }
+}
+
 fn apply(
     m: &fsm_core::machine::CompiledMachine,
     t: &Tree,
@@ -32,11 +39,12 @@ fn apply(
     p: &Value,
 ) -> fsm_core::step::Applied {
     let mut b = Budget::new(4096);
-    match step(m, t, st, ev, p, &mut b) {
+    match step(m, t, st, ev, p, 0, &mut b) {
         Outcome::Applied(a) => {
-            st.leaf = a.leaf_after.clone();
+            st.configuration = a.configuration_after.clone();
             st.ctx = a.ctx_after.clone();
             st.history = a.history_after.clone();
+            st.deadlines = a.deadlines_after.clone();
             st.status = a.status_after;
             a
         }
@@ -47,17 +55,18 @@ fn apply(
 #[test]
 fn walkthrough_suspend_resume() {
     let (m, t) = case();
-    let c = create(&m, &t, &BTreeMap::new()).unwrap();
+    let c = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let mut st = InstanceState {
         status: c.status_after,
-        leaf: c.leaf_after,
+        configuration: c.configuration_after,
         ctx: c.ctx_after,
         history: c.history_after,
+        deadlines: c.deadlines_after,
         pending: vec![],
     };
     apply(&m, &t, &mut st, "docs_ok", &empty());
     apply(&m, &t, &mut st, "docs_ok", &empty());
-    assert_eq!(st.leaf, "risk_review");
+    assert_eq!(leaf(&st.configuration), "risk_review");
     let sus = apply(&m, &t, &mut st, "suspend", &empty());
     assert_eq!(sus.exited, ["risk_review", "in_review"]);
     assert_eq!(sus.entered, ["suspended"]);
@@ -71,23 +80,24 @@ fn walkthrough_suspend_resume() {
     assert_eq!(res.entered, ["in_review", "risk_review"]);
     assert_eq!(st.ctx.get("visits").unwrap().canonical_string(), "2");
     assert_eq!(st.ctx.get("score").unwrap().canonical_string(), "0");
-    assert_eq!(st.leaf, "risk_review");
+    assert_eq!(leaf(&st.configuration), "risk_review");
 }
 
 #[test]
 fn internal_note_added() {
     let (m, t) = case();
-    let c = create(&m, &t, &BTreeMap::new()).unwrap();
+    let c = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let mut st = InstanceState {
         status: c.status_after,
-        leaf: c.leaf_after,
+        configuration: c.configuration_after,
         ctx: c.ctx_after,
         history: c.history_after,
+        deadlines: c.deadlines_after,
         pending: vec![],
     };
     apply(&m, &t, &mut st, "docs_ok", &empty());
     let visits = st.ctx.get("visits").unwrap().clone();
-    let leaf = st.leaf.clone();
+    let configuration = st.configuration.clone();
     let hist = st.history.clone();
     let a = apply(&m, &t, &mut st, "note_added", &{
         let mut m = BTreeMap::new();
@@ -95,7 +105,7 @@ fn internal_note_added() {
         Value::Obj(m)
     });
     assert!(a.internal);
-    assert_eq!(st.leaf, leaf);
+    assert_eq!(st.configuration, configuration);
     assert_eq!(st.history, hist);
     assert_eq!(st.ctx.get("visits"), Some(&visits));
     assert_eq!(st.ctx.get("notes").unwrap().canonical_string(), "1");
@@ -104,27 +114,28 @@ fn internal_note_added() {
 #[test]
 fn scored_completes() {
     let (m, t) = case();
-    let c = create(&m, &t, &BTreeMap::new()).unwrap();
+    let c = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let mut st = InstanceState {
         status: c.status_after,
-        leaf: c.leaf_after,
+        configuration: c.configuration_after,
         ctx: c.ctx_after,
         history: c.history_after,
+        deadlines: c.deadlines_after,
         pending: vec![],
     };
     apply(&m, &t, &mut st, "docs_ok", &empty());
     apply(&m, &t, &mut st, "docs_ok", &empty());
     let a = apply(&m, &t, &mut st, "scored", &scored("700"));
-    assert_eq!(a.leaf_after, "approved");
+    assert_eq!(leaf(&a.configuration_after), "approved");
     assert_eq!(a.status_after, Status::Completed);
     let mut b = Budget::new(64);
-    match step(&m, &t, &st, "suspend", &empty(), &mut b) {
+    match step(&m, &t, &st, "suspend", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => assert_eq!(r.code, "run/instance_completed"),
         o => panic!("{o:?}"),
     }
     st.status = Status::Cancelled;
     let mut b = Budget::new(64);
-    match step(&m, &t, &st, "suspend", &empty(), &mut b) {
+    match step(&m, &t, &st, "suspend", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => assert_eq!(r.code, "run/instance_cancelled"),
         o => panic!("{o:?}"),
     }
@@ -138,13 +149,14 @@ fn monitor_does_not_block() {
     )
     .unwrap();
     let m = compile(spec).unwrap();
-    let t = Tree::build(&m.spec.states);
-    let c = create(&m, &t, &BTreeMap::new()).unwrap();
+    let t = Tree::for_machine(&m.spec);
+    let c = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let mut st = InstanceState {
         status: c.status_after,
-        leaf: c.leaf_after,
+        configuration: c.configuration_after,
         ctx: c.ctx_after,
         history: c.history_after,
+        deadlines: c.deadlines_after,
         pending: vec![],
     };
     let a = apply(&m, &t, &mut st, "e", &empty());
@@ -154,17 +166,18 @@ fn monitor_does_not_block() {
 fn compile_src(src: &str) -> (fsm_core::machine::CompiledMachine, Tree) {
     let v = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
     let m = fsm_core::spec::compile_accepted(&v).unwrap();
-    let t = Tree::build(&m.spec.states);
+    let t = Tree::for_machine(&m.spec);
     (m, t)
 }
 
 fn inst(m: &fsm_core::machine::CompiledMachine, t: &Tree) -> InstanceState {
-    let c = create(m, t, &BTreeMap::new()).unwrap();
+    let c = create(m, t, &BTreeMap::new(), 0).unwrap();
     InstanceState {
         status: c.status_after,
-        leaf: c.leaf_after,
+        configuration: c.configuration_after,
         ctx: c.ctx_after,
         history: c.history_after,
+        deadlines: c.deadlines_after,
         pending: vec![],
     }
 }
@@ -176,7 +189,7 @@ fn block_overflow_is_action_error() {
     let st = inst(&m, &t);
     let pre = st.clone();
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/action_error");
             assert_eq!(r.cause, Some("run/overflow"));
@@ -186,7 +199,7 @@ fn block_overflow_is_action_error() {
         o => panic!("{o:?}"),
     }
     assert_eq!(st.ctx, pre.ctx);
-    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.configuration, pre.configuration);
     assert_eq!(st.history, pre.history);
     assert!(st.pending.is_empty());
 
@@ -195,7 +208,7 @@ fn block_overflow_is_action_error() {
     let st = inst(&m, &t);
     let pre = st.clone();
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/action_error");
             assert_eq!(r.cause, Some("run/overflow"));
@@ -205,7 +218,7 @@ fn block_overflow_is_action_error() {
         o => panic!("{o:?}"),
     }
     assert_eq!(st.ctx, pre.ctx);
-    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.configuration, pre.configuration);
     assert_eq!(st.history, pre.history);
 
     let entry = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"},{"name":"y","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"a","exit":{"do":[{"target":"y","value":"ctx.x + 1"}]}},{"name":"b","terminal":true,"entry":{"do":[{"target":"x","value":"9223372036854775807 + 1"}]}}],"initial":"a","transitions":[{"from":"a","on":"go","to":"b"}]}"#;
@@ -213,7 +226,7 @@ fn block_overflow_is_action_error() {
     let st = inst(&m, &t);
     let pre = st.clone();
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/action_error");
             assert_eq!(r.cause, Some("run/overflow"));
@@ -232,7 +245,7 @@ fn block_overflow_is_action_error() {
         o => panic!("{o:?}"),
     }
     assert_eq!(st.ctx, pre.ctx);
-    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.configuration, pre.configuration);
 }
 
 #[test]
@@ -274,7 +287,7 @@ fn guard_and_invariant_atomicity() {
     let st = inst(&m, &t);
     let pre = st.clone();
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/guard_error");
             assert_eq!(r.source_state.as_deref(), Some("a"));
@@ -289,7 +302,7 @@ fn guard_and_invariant_atomicity() {
         o => panic!("{o:?}"),
     }
     assert_eq!(st.ctx, pre.ctx);
-    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.configuration, pre.configuration);
     assert_eq!(st.history, pre.history);
 
     let inv = r#"{"format":"fsm.machine/1","name":"m","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"states":[{"name":"p","initial":"a","states":[{"name":"h","history":"deep"},{"name":"a"},{"name":"b"}]},{"name":"out","terminal":true}],"initial":"p","transitions":[{"from":"a","on":"go","to":"out","do":[{"target":"x","value":"-1"}]}],"invariants":[{"name":"pos","expr":"ctx.x >= 0","mode":"enforce"},{"name":"zero","expr":"ctx.x == 0","mode":"enforce"}]}"#;
@@ -297,7 +310,7 @@ fn guard_and_invariant_atomicity() {
     let st = inst(&m, &t);
     let pre = st.clone();
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/invariant");
             let failed: Vec<_> = r
@@ -314,7 +327,7 @@ fn guard_and_invariant_atomicity() {
         o => panic!("{o:?}"),
     }
     assert_eq!(st.ctx, pre.ctx);
-    assert_eq!(st.leaf, pre.leaf);
+    assert_eq!(st.configuration, pre.configuration);
     assert_eq!(st.history, pre.history);
 }
 
@@ -324,7 +337,7 @@ fn step_invariant_eval_error_has_operands() {
     let (m, t) = compile_src(src);
     let st = inst(&m, &t);
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/invariant");
             let inv = r
@@ -370,7 +383,7 @@ fn step_ordinary_false_invariant_renders_expr() {
     let (m, t) = compile_src(src);
     let st = inst(&m, &t);
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/invariant");
             let rendered = r.trace.to_value();
@@ -399,7 +412,7 @@ fn later_guard_error_keeps_earlier_false_candidate() {
     let (m, t) = compile_src(src);
     let st = inst(&m, &t);
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/guard_error");
             let idxs: Vec<u32> = r
@@ -420,7 +433,7 @@ fn failing_emit_keeps_pipeline_trace() {
     let (m, t) = compile_src(src);
     let st = inst(&m, &t);
     let mut b = Budget::new(4096);
-    match step(&m, &t, &st, "go", &empty(), &mut b) {
+    match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
         Outcome::Rejected(r) => {
             assert_eq!(r.code, "run/action_error");
             assert_eq!(r.cause, Some("run/overflow"));

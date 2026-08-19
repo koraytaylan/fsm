@@ -27,17 +27,17 @@ fn scenario_goldens() {
             let spec =
                 load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
             let m = compile(spec).unwrap();
-            let t = Tree::build(&m.spec.states);
+            let t = Tree::for_machine(&m.spec);
             (m, t)
         } else {
             let src = rec.get("src").and_then(Value::as_str).unwrap();
             let spec =
                 parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
             let m = compile(spec).unwrap();
-            let t = Tree::build(&m.spec.states);
+            let t = Tree::for_machine(&m.spec);
             (m, t)
         };
-        let c = create(&m, &t, &BTreeMap::new()).unwrap();
+        let c = create(&m, &t, &BTreeMap::new(), 0).unwrap();
         if rec.get("check").and_then(Value::as_str) == Some("create") {
             let entered: Vec<_> = c.entered.iter().map(|s| Value::Str(s.clone())).collect();
             let want = rec.get("entered").and_then(Value::as_arr).unwrap();
@@ -46,9 +46,10 @@ fn scenario_goldens() {
         }
         let mut st = InstanceState {
             status: c.status_after,
-            leaf: c.leaf_after,
+            configuration: c.configuration_after,
             ctx: c.ctx_after,
             history: c.history_after,
+            deadlines: c.deadlines_after,
             pending: vec![],
         };
         let events = rec.get("events").and_then(Value::as_arr).unwrap();
@@ -60,11 +61,12 @@ fn scenario_goldens() {
                 .cloned()
                 .unwrap_or(Value::Obj(BTreeMap::new()));
             let mut b = Budget::new(4096);
-            match step(&m, &t, &st, on, &payload, &mut b) {
+            match step(&m, &t, &st, on, &payload, 0, &mut b) {
                 Outcome::Applied(a) => {
-                    st.leaf = a.leaf_after.clone();
+                    st.configuration = a.configuration_after.clone();
                     st.ctx = a.ctx_after.clone();
                     st.history = a.history_after.clone();
+                    st.deadlines = a.deadlines_after.clone();
                     st.status = a.status_after;
                     last = Some(a);
                 }

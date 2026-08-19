@@ -14,6 +14,10 @@ fn open(ctx: &Ctx) -> Result<Store, ErrorObj> {
     Store::open(&ctx.data_dir)
 }
 
+fn open_read_only(ctx: &Ctx) -> Result<Store, ErrorObj> {
+    Store::open_read_only(&ctx.data_dir)
+}
+
 fn fail(ctx: &Ctx, e: ErrorObj, rid: &str) -> u8 {
     emit_error(ctx, &e.request_id(rid))
 }
@@ -136,6 +140,47 @@ fn send(ctx: &mut Ctx, args: &Args) -> u8 {
     }
 }
 
+fn poll_deadline(ctx: &mut Ctx, args: &Args) -> u8 {
+    let Some(instance_id) = args.positionals.first() else {
+        return emit_error(
+            ctx,
+            &ErrorObj::new("req/args_invalid", "instance poll requires an instance id")
+                .hint("use: instance poll <id>"),
+        );
+    };
+    let expect_seq = match args.flags.get("expect-seq") {
+        None => None,
+        Some(raw) => match raw.parse::<u64>() {
+            Ok(sequence) => Some(sequence),
+            Err(_) => {
+                return emit_error(
+                    ctx,
+                    &ErrorObj::new("req/args_invalid", "expect-seq must be a u64")
+                        .hint("pass an integer sequence"),
+                );
+            }
+        },
+    };
+    let mut store = match open(ctx) {
+        Ok(store) => store,
+        Err(error) => return emit_error(ctx, &error),
+    };
+    let request_id = match args.flags.get("request-id").cloned() {
+        Some(request_id) => request_id,
+        None => match store.allocate_request_id() {
+            Ok(request_id) => request_id,
+            Err(error) => return emit_error(ctx, &error),
+        },
+    };
+    match store.poll_instance_deadline(instance_id, &request_id, expect_seq) {
+        Ok(value) => {
+            emit_success(ctx, &value);
+            0
+        }
+        Err(error) => fail(ctx, error, &request_id),
+    }
+}
+
 fn ack(ctx: &mut Ctx, args: &Args) -> u8 {
     if args.positionals.len() < 2 {
         return emit_error(ctx, &ErrorObj::new("args", "instance ack <id> <effect>"));
@@ -243,7 +288,7 @@ fn show(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(id) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "instance show <id>"));
     };
-    let store = match open(ctx) {
+    let store = match open_read_only(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
@@ -257,7 +302,7 @@ fn show(ctx: &mut Ctx, args: &Args) -> u8 {
 }
 
 fn ls(ctx: &mut Ctx, args: &Args) -> u8 {
-    let store = match open(ctx) {
+    let store = match open_read_only(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
@@ -272,7 +317,13 @@ fn ls(ctx: &mut Ctx, args: &Args) -> u8 {
             }
         }
         if let Some(sf) = &state_f {
-            if &inst.leaf != sf {
+            let matches = match &inst.configuration {
+                fsm_core::machine::ActiveConfiguration::Sequential { leaf } => leaf == sf,
+                fsm_core::machine::ActiveConfiguration::Parallel { leaves } => {
+                    leaves.values().any(|leaf| leaf == sf)
+                }
+            };
+            if !matches {
                 continue;
             }
         }
@@ -284,7 +335,26 @@ fn ls(ctx: &mut Ctx, args: &Args) -> u8 {
         }
         let mut row = BTreeMap::new();
         row.insert("instance_id".into(), Value::Str(id.clone()));
-        row.insert("state".into(), Value::Str(inst.leaf.clone()));
+        row.insert(
+            "configuration".into(),
+            fsm_core::hashes::configuration_value(&inst.configuration),
+        );
+        match &inst.configuration {
+            fsm_core::machine::ActiveConfiguration::Sequential { leaf } => {
+                row.insert("state".into(), Value::Str(leaf.clone()));
+            }
+            fsm_core::machine::ActiveConfiguration::Parallel { leaves } => {
+                row.insert(
+                    "regions".into(),
+                    Value::Obj(
+                        leaves
+                            .iter()
+                            .map(|(region, leaf)| (region.clone(), Value::Str(leaf.clone())))
+                            .collect(),
+                    ),
+                );
+            }
+        }
         row.insert("status".into(), Value::Str(inst.status.as_str().into()));
         rows.push(Value::Obj(row));
     }
@@ -299,7 +369,7 @@ fn history(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(id) = args.positionals.first() else {
         return emit_error(ctx, &ErrorObj::new("args", "instance history <id>"));
     };
-    let store = match open(ctx) {
+    let store = match open_read_only(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
@@ -331,7 +401,7 @@ fn explain(ctx: &mut Ctx, args: &Args) -> u8 {
     let Some(seq) = args.flags.get("seq").and_then(|s| s.parse::<u64>().ok()) else {
         return emit_error(ctx, &ErrorObj::new("args", "explain --seq N"));
     };
-    let store = match open(ctx) {
+    let store = match open_read_only(ctx) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
@@ -360,6 +430,14 @@ pub static SPECS: &[CmdSpec] = &[
         switches: &[],
         help: "Send event",
         run: send,
+    },
+    CmdSpec {
+        path: &["instance", "poll"],
+        positionals: &["instance"],
+        flags: &["request-id", "expect-seq"],
+        switches: &[],
+        help: "Poll one due deadline",
+        run: poll_deadline,
     },
     CmdSpec {
         path: &["instance", "ack"],
@@ -498,7 +576,7 @@ mod tests {
         assert_eq!(code, 0);
         let store = Store::open(&dir).unwrap();
         let inst = store.state.instances.values().next().unwrap();
-        assert_eq!(inst.leaf, "intake");
+        assert_eq!(inst.configuration.sequential_leaf(), Some("intake"));
     }
 
     #[test]

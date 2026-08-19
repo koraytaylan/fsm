@@ -18,16 +18,26 @@ fn diagram(ctx: &mut Ctx, args: &Args) -> u8 {
     if fmt != "mermaid" && fmt != "dot" {
         return emit_error(ctx, &ErrorObj::new("args", "unknown --format"));
     }
-    let store = match Store::open(&ctx.data_dir) {
+    let store = match Store::open_read_only(&ctx.data_dir) {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
     let overlay = if let Some(iid) = args.flags.get("instance") {
         match store.state.instances.get(iid) {
-            Some(inst) => Some(InstanceOverlay {
-                current_leaf: inst.leaf.clone(),
-                visited: BTreeSet::from([inst.leaf.clone()]),
-            }),
+            Some(inst) => {
+                let current_leaves = match &inst.configuration {
+                    fsm_core::machine::ActiveConfiguration::Sequential { leaf } => {
+                        BTreeSet::from([leaf.clone()])
+                    }
+                    fsm_core::machine::ActiveConfiguration::Parallel { leaves } => {
+                        leaves.values().cloned().collect()
+                    }
+                };
+                Some(InstanceOverlay {
+                    visited: current_leaves.clone(),
+                    current_leaves,
+                })
+            }
             None => return emit_error(ctx, &ErrorObj::new("req/instance_not_found", iid.clone())),
         }
     } else {
