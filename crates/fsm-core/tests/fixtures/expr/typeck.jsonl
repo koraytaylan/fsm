@@ -34,3 +34,6 @@
 {"enums":{"Risk":["low","high"]},"err":"expr/unknown_variant","hint_contains":"low","src":"Risk.lo"}
 {"ctx":{"r":"decimal(2)"},"err":"expr/unknown_builtin","hint_contains":"min","src":"nope(ctx.r)"}
 {"ctx":{"total":"decimal(2)"},"err":"expr/mixed_class","hint_contains":"1.00","src":"ctx.total + 1"}
+{"states":["a","b"],"scope":"invariant","src":"in(a)","ty":"bool"}
+{"states":["a"],"err":"expr/state_out_of_scope","scope":"guard","src":"in(a)"}
+{"states":["a"],"err":"expr/unknown_state","hint_contains":"legal states","scope":"invariant","src":"in(nope)"}

@@ -32,6 +32,7 @@ pub(super) fn apply_block(
     let b = Bindings {
         ctx: &snapshot,
         evt: evt_ref,
+        active: None,
     };
     let ctx_tys: BTreeMap<String, Ty> = spec
         .context
@@ -45,6 +46,7 @@ pub(super) fn apply_block(
                 .map(|f| (f.name.clone(), f.ty.to_ty()))
                 .collect()
         });
+    let state_names = spec.state_names();
     let scope_kind = if see_evt {
         ScopeKind::TransitionAction
     } else {
@@ -59,6 +61,7 @@ pub(super) fn apply_block(
             scope_kind,
             &ctx_tys,
             evt_tys.as_ref(),
+            &state_names,
             &kind,
         )?;
         match eval(&e, &b, budget, true) {
@@ -124,6 +127,7 @@ pub(super) fn apply_block(
                 scope_kind,
                 &ctx_tys,
                 evt_tys.as_ref(),
+                &state_names,
                 &kind,
             )?;
             match eval(&e, &b, budget, true) {
@@ -241,17 +245,23 @@ pub(super) fn eval_invariants(
     spec: &MachineSpec,
     compiled: &BTreeMap<ExprSlot, crate::machine::CompiledExpr>,
     ctx: &BTreeMap<String, Val>,
+    active: &std::collections::BTreeSet<String>,
     budget: &mut Budget,
 ) -> (bool, Vec<String>, Vec<InvariantTrace>) {
     let mut ok = true;
     let mut flags = Vec::new();
     let mut traces = Vec::new();
-    let b = Bindings { ctx, evt: None };
+    let b = Bindings {
+        ctx,
+        evt: None,
+        active: Some(active),
+    };
     let ctx_tys: BTreeMap<String, Ty> = spec
         .context
         .iter()
         .map(|c| (c.name.clone(), c.ty.to_ty()))
         .collect();
+    let state_names = spec.state_names();
     for (i, inv) in spec.invariants.iter().enumerate() {
         let e = if let Some(c) = compiled.get(&ExprSlot::Invariant(i)) {
             c.expr.clone()
@@ -260,7 +270,7 @@ pub(super) fn eval_invariants(
                 Ok(mut e) => {
                     annotate_if_widening(
                         &mut e,
-                        &spec_scope(spec, ScopeKind::Invariant, &ctx_tys, None),
+                        &spec_scope(spec, ScopeKind::Invariant, &ctx_tys, None, &state_names),
                     );
                     e
                 }

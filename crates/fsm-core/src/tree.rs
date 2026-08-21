@@ -546,6 +546,25 @@ impl Tree {
         names.join(".")
     }
 
+    /// Every state name on the active configuration path: each active leaf
+    /// plus its compound ancestors, unioned across all regions.
+    ///
+    /// This is the membership set the `in(state)` invariant predicate tests.
+    pub fn active_state_names(&self, configuration: &ActiveConfiguration) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        match configuration {
+            ActiveConfiguration::Sequential { leaf } => {
+                out.extend(self.configuration(leaf));
+            }
+            ActiveConfiguration::Parallel { leaves } => {
+                for leaf in leaves.values() {
+                    out.extend(self.configuration(leaf));
+                }
+            }
+        }
+        out
+    }
+
     /// Active configuration: ancestors then leaf, root-first, excluding history nodes.
     pub fn configuration(&self, leaf: &str) -> Vec<String> {
         let Some(id) = self.id(leaf) else {

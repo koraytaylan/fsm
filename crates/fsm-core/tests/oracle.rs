@@ -79,6 +79,22 @@ fn active_leaves<'a>(
     }
 }
 
+/// Every state name on the active configuration path, unioned across
+/// regions. Independent of `Tree::active_state_names`: walks the spec
+/// directly via this module's own `active_leaves`/`chain`.
+fn active_state_names(
+    spec: &MachineSpec,
+    configuration: &ActiveConfiguration,
+) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    if let Some(active) = active_leaves(spec, configuration) {
+        for leaf in active {
+            out.extend(chain(leaf.states, &leaf.leaf));
+        }
+    }
+    out
+}
+
 fn configuration_is_terminal(spec: &MachineSpec, configuration: &ActiveConfiguration) -> bool {
     active_leaves(spec, configuration).is_some_and(|active| {
         !active.is_empty()

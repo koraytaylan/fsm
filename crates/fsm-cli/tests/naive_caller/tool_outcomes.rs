@@ -410,6 +410,8 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         r#"{"format":"fsm.machine/1","name":"m50","regions":[{"name":"left","states":[{"name":"a"}],"initial":"a"},{"name":"right","states":[{"name":"b"}],"initial":"b"}],"context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"}]}"#,
         r#"{"format":"fsm.machine/1","name":"m51","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"1","to":"a"}]}"#,
         r#"{"format":"fsm.machine/1","name":"m52","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"deadlines":[{"name":"later","from":"a","after":"dur(1, s)","to":"a"},{"name":"later","from":"a","after":"dur(2, s)","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"m53","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"in(a)"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"m54","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"invariants":[{"name":"i","expr":"in(nope)","mode":"enforce"}]}"#,
     ];
     for src in create_specs {
         drive_create(&mut st, &mut clock, src, &mut out);

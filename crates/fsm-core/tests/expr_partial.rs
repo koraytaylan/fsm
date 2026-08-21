@@ -9,6 +9,8 @@ use fsm_core::expr::partial::{Truth, partial_eval_bool};
 use fsm_core::expr::typeck::{Scope, ScopeKind, Ty};
 use fsm_core::json::{JsonLimits, Value, parse as json_parse};
 
+static EMPTY_STATES: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
 fn s<'a>(v: &'a Value, k: &str) -> Option<&'a str> {
     v.get(k).and_then(Value::as_str)
 }
@@ -55,6 +57,7 @@ fn partial_jsonl() {
             ctx: &ctx_tys,
             evt: None,
             enums: &enums,
+            states: &EMPTY_STATES,
         };
         let got = partial_eval_bool(&e, &ctx, &scope, &mut bud);
         let want = match s(&rec, "truth").unwrap() {
@@ -78,6 +81,7 @@ fn public_partial_eval_types_decimal_if() {
         ctx: &ctx_tys,
         evt: None,
         enums: &enums,
+        states: &EMPTY_STATES,
     };
     assert_eq!(
         partial_eval_bool(&e, &BTreeMap::new(), &scope, &mut bud),
@@ -105,6 +109,7 @@ fn public_partial_eval_enum_decimal_if() {
         ctx: &ctx_tys,
         evt: None,
         enums: &enums,
+        states: &EMPTY_STATES,
     };
     let mut bud = Budget::new(4096);
     assert_eq!(partial_eval_bool(&e, &ctx, &scope, &mut bud), Truth::True);
@@ -122,6 +127,7 @@ fn public_partial_eval_unreachable_event_if() {
         ctx: &ctx_tys,
         evt: Some(&evt),
         enums: &enums,
+        states: &EMPTY_STATES,
     };
     let mut bud = Budget::new(4096);
     assert_eq!(
@@ -139,6 +145,7 @@ fn empty_scope<'a>(
         ctx: ctx_tys,
         evt: None,
         enums,
+        states: &EMPTY_STATES,
     }
 }
 
@@ -212,6 +219,7 @@ fn unknown_if_does_not_charge_branches() {
         ctx: &ctx_tys,
         evt: Some(&evt),
         enums: &enums,
+        states: &EMPTY_STATES,
     };
     let mut bud = Budget::new(2);
     assert_eq!(
@@ -231,6 +239,7 @@ fn evt_int_scope<'a>(
         ctx: ctx_tys,
         evt: Some(evt),
         enums,
+        states: &EMPTY_STATES,
     }
 }
 

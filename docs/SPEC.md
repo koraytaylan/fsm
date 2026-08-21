@@ -134,7 +134,7 @@ states entered by this step.
 5. **Target / dom.** Absent `to` is internal (no exit/entry). A history target resolves through `history_descent` (owner used for dom). External self-transition uses `dom = parent(from)` and exits/re-enters. Otherwise `dom = properLCA(source, target)`. A parallel transition changes only its source region; every other active leaf is retained byte-for-byte.
 6. **Block pipeline.** Exit blocks inner→outer, then the transition or selected deadline block (only an event transition block sees `evt`), then entry blocks outer→inner. Each block is snapshot-internal: all RHS evaluate against the ctx left by the previous block, then apply atomically. Staging idiom: `transition` sets `ctx.x = evt.y`; an entry block consumes `ctx.x`. Emits collect under one global `k`. Any evaluation error is `run/action_error` naming `exit(state)` / `transition` / `deadline(name)` / `entry(state)`; computed-but-discarded values of completed blocks stay in the trace.
 7. **History capture.** For each exited compound that owns a history pseudostate, bind from the **pre-transition** configuration (deep = pre leaf; shallow = owner's direct child on the pre chain). Unbound history later descends the owner's initial chain. Restore re-runs entry blocks. Bindings are retained after completion/cancel. History may only be targeted from outside its owner.
-8. **Invariants.** All evaluated on the final ctx. Enforce failure or eval error → `run/invariant`. Monitor failures collect into `monitor_flags` and never block.
+8. **Invariants.** All evaluated on the final ctx and the final active configuration (every entered-but-not-exited state name, `in(state)`). Enforce failure or eval error → `run/invariant`. Monitor failures collect into `monitor_flags` and never block.
 9. **Deadlines.** Remove schedules whose source is exited. For every newly
    entered state, in entry order and then deadline document order, evaluate
    its deadlines' `after` expressions against the final context and set
@@ -491,7 +491,7 @@ Rendered as `bool`, `int`, `decimal(N)`, `str`, `enum Name`, `timestamp`,
 | `if c then a else b` | `c: Bool`; branches unify in the same class; two `Dec` branches widen exactly to `Dec(max scale)` |
 | `CtxRef`/`EvtRef` | declared name, else `expr/unknown_var`/`expr/unknown_field` with a Levenshtein suggestion (distance ≤ 2) plus the legal list; `EvtRef` in an invariant is `expr/evt_in_invariant`; in an entry/exit block is `expr/evt_in_block` |
 | `EnumLit T.v` | `T` declared (`expr/unknown_enum`), `v` a variant (`expr/unknown_variant`); result `Enum(T)` |
-| `Call` | signatures below; unknown name → `expr/unknown_builtin` listing the seven legal names |
+| `Call` | signatures below; unknown name → `expr/unknown_builtin` listing the eight legal names |
 
 ### Builtins
 
@@ -507,6 +507,7 @@ be literal words. Otherwise the result *type* would depend on a runtime value
 | `round(x, S, M)` | `Dec(s0) → Dec(S)`, `M` mandatory; warns `expr/round_widens` when `S ≥ s0` | `Dec::round` |
 | `div(a, b, S, M)` | `a`, `b` each `Int` or `Dec` → `Dec(S)` | `Dec::div`; `b = 0` → `run/div_zero` |
 | `dur(n, U)` | `n: Int`, `U ∈ ms s min h d` → `Dur` | checked multiply to milliseconds |
+| `in(S)` | `S` a literal word naming a declared (non-history) state → `Bool`; only legal in an invariant, else `expr/state_out_of_scope`; `S` not a declared state is `expr/unknown_state` with a Levenshtein suggestion plus the legal list | `true` iff `S` is the active leaf or a compound ancestor of it in the final configuration, in any region |
 
 `M ∈ {down, up, floor, ceiling, half_up, half_down, half_even}`.
 
@@ -561,10 +562,12 @@ failure (`run/guard_error`) happens at send time.
 | `expr/unknown_field` | unknown `evt` name | Levenshtein ≤ 2 plus legal list |
 | `expr/unknown_enum` | unknown enum type | suggestion plus legal list |
 | `expr/unknown_variant` | unknown variant | suggestion plus legal list |
-| `expr/unknown_builtin` | unknown call name | the seven legal names |
+| `expr/unknown_builtin` | unknown call name | the eight legal names |
 | `expr/cmp_unordered` | `<`/`>` on `Str`/`Enum`/`Bool` | use `==` or `!=` |
 | `expr/evt_in_invariant` | `evt` in an invariant | invariants read `ctx` only |
 | `expr/evt_in_block` | `evt` in an entry/exit block | blocks read/write `ctx` only |
+| `expr/state_out_of_scope` | `in(state)` outside an invariant | guards, blocks, and actions cannot reference the active state |
+| `expr/unknown_state` | `in(state)` names an undeclared or non-literal state | Levenshtein ≤ 2 plus legal list |
 | `expr/scale_narrow` | `dec` would drop scale | use `round` |
 | `expr/scale_not_literal` | scale is not an integer literal `0..=12` | types cannot depend on runtime values |
 | `expr/mode_invalid` | bad or non-literal mode/unit | list the legal words |
@@ -637,12 +640,14 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `expr/scale_cap` — Dec×Dec scale sum > 12
 - `expr/scale_narrow` — dec would drop scale
 - `expr/scale_not_literal` — scale is not a literal
+- `expr/state_out_of_scope` — in(state) outside an invariant
 - `expr/too_deep` — nesting beyond 32
 - `expr/too_long` — source or AST too large
 - `expr/type_mismatch` — operand class mismatch
 - `expr/unknown_builtin` — unknown call
 - `expr/unknown_enum` — unknown enum in expression
 - `expr/unknown_field` — unknown evt field
+- `expr/unknown_state` — in(state) names an undeclared state
 - `expr/unknown_var` — unknown ctx name
 - `expr/unknown_variant` — unknown enum variant
 - `internal/budget` — evaluation budget exhausted

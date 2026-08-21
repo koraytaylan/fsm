@@ -53,7 +53,8 @@ pub fn naive_create_at(
             ActiveConfiguration::Parallel { leaves }
         }
     };
-    let flags = eval_invariants(&m.spec, &ctx, &mut budget)?;
+    let active = active_state_names(&m.spec, &configuration_after);
+    let flags = eval_invariants(&m.spec, &ctx, &active, &mut budget)?;
     let mut deadlines_after = update_deadline_schedules(
         &m.spec,
         &BTreeMap::new(),

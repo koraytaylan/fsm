@@ -497,6 +497,7 @@ fn enabled_events_with_guard_accounting(
     omitted_guard_accounting: OmittedGuardAccounting,
 ) -> Vec<EventReport> {
     let active_leaves = t.active_leaves(&st.configuration).unwrap_or_default();
+    let state_names = m.spec.state_names();
     let ctx_tys: BTreeMap<String, crate::expr::typeck::Ty> = m
         .spec
         .context
@@ -547,6 +548,7 @@ fn enabled_events_with_guard_accounting(
                                         ctx: &ctx_tys,
                                         evt: Some(&evt_tys),
                                         enums: &m.spec.enums,
+                                        states: &state_names,
                                     },
                                     budget,
                                 ) {
@@ -571,6 +573,7 @@ fn enabled_events_with_guard_accounting(
                                             ctx: &ctx_tys,
                                             evt: Some(&evt_tys),
                                             enums: &m.spec.enums,
+                                            states: &state_names,
                                         },
                                         budget,
                                     ) {

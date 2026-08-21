@@ -133,7 +133,9 @@ pub fn create(
             }
         }
     }
-    let (ok_inv, flags, inv_trace) = eval_invariants(&m.spec, &m.compiled_exprs, &ctx, &mut budget);
+    let active = t.active_state_names(&configuration_after);
+    let (ok_inv, flags, inv_trace) =
+        eval_invariants(&m.spec, &m.compiled_exprs, &ctx, &active, &mut budget);
     if !ok_inv {
         for p in &mut pipeline {
             p.discarded = true;

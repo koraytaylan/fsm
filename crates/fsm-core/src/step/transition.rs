@@ -209,8 +209,14 @@ pub(super) fn apply_selected_transition(
         }
     }
 
-    let (ok_invariants, monitor_flags, invariant_trace) =
-        eval_invariants(&machine.spec, &machine.compiled_exprs, &context, budget);
+    let active = tree.active_state_names(&configuration_after);
+    let (ok_invariants, monitor_flags, invariant_trace) = eval_invariants(
+        &machine.spec,
+        &machine.compiled_exprs,
+        &context,
+        &active,
+        budget,
+    );
     if !ok_invariants {
         for block in &mut pipeline {
             block.discarded = true;
@@ -372,7 +378,9 @@ pub(super) fn update_deadline_schedules(
     let bindings = Bindings {
         ctx: context,
         evt: None,
+        active: None,
     };
+    let state_names = machine.spec.state_names();
     for state in entered {
         let state_name = &tree.names[*state as usize];
         for (index, deadline) in machine.spec.deadlines.iter().enumerate() {
@@ -395,7 +403,13 @@ pub(super) fn update_deadline_schedules(
                 })?;
                 annotate_if_widening(
                     &mut expression,
-                    &spec_scope(&machine.spec, ScopeKind::Block, &context_types, None),
+                    &spec_scope(
+                        &machine.spec,
+                        ScopeKind::Block,
+                        &context_types,
+                        None,
+                        &state_names,
+                    ),
                 );
                 expression
             };

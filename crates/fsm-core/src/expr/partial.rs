@@ -231,7 +231,11 @@ fn partial_eval_val(e: &Expr, ctx: &BTreeMap<String, Val>, budget: &mut Budget) 
         }
         _ if has_evt(e) => None,
         _ => {
-            let b = Bindings { ctx, evt: None };
+            let b = Bindings {
+                ctx,
+                evt: None,
+                active: None,
+            };
             eval(e, &b, budget, false).0.ok()
         }
     }
@@ -246,15 +250,18 @@ fn unused_span() -> Span {
 mod tests {
     use super::*;
     use crate::expr::typeck::{Scope, ScopeKind, Ty};
+    use std::collections::BTreeSet;
 
     fn pe(e: &Expr, ctx: &BTreeMap<String, Val>, bud: &mut Budget) -> Truth {
         let ctx_tys: BTreeMap<String, Ty> = BTreeMap::new();
         let enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let states: BTreeSet<String> = BTreeSet::new();
         let scope = Scope {
             kind: ScopeKind::Guard,
             ctx: &ctx_tys,
             evt: None,
             enums: &enums,
+            states: &states,
         };
         partial_eval_bool(e, ctx, &scope, bud)
     }
@@ -317,6 +324,7 @@ mod tests {
         let b = Bindings {
             ctx: &ctx,
             evt: None,
+            active: None,
         };
         assert!(eval(&e, &b, &mut bud, false).0.is_ok());
         assert!(eval(&e, &b, &mut bud, false).0.is_err());

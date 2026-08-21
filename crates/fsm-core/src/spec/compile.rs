@@ -25,6 +25,7 @@ pub(super) fn compile_with_compatibility(
         .iter()
         .map(|c| (c.name.clone(), c.ty.to_ty()))
         .collect();
+    let state_names = spec.state_names();
     let enums = spec.enums.clone();
     let event_map: BTreeMap<String, BTreeMap<String, Ty>> = spec
         .events
@@ -233,6 +234,7 @@ pub(super) fn compile_with_compatibility(
         ctx: &ctx_tys,
         evt: None,
         enums: &enums,
+        states: &state_names,
     };
     for (_, states, _) in spec.state_groups() {
         walk_blocks(
@@ -280,6 +282,7 @@ pub(super) fn compile_with_compatibility(
         ctx: &ctx_tys,
         evt: None,
         enums: &enums,
+        states: &state_names,
     };
     for (i, inv) in spec.invariants.iter().enumerate() {
         if let Some(ty) = bind(
@@ -314,6 +317,7 @@ pub(super) fn compile_with_compatibility(
             ctx: &ctx_tys,
             evt: evt_tys,
             enums: &enums,
+            states: &state_names,
         };
         if let Some(g) = &t.guard {
             if let Some(ty) = bind(
@@ -339,6 +343,7 @@ pub(super) fn compile_with_compatibility(
             ctx: &ctx_tys,
             evt: evt_tys,
             enums: &enums,
+            states: &state_names,
         };
         let block = Block {
             sets: t.sets.clone(),

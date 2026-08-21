@@ -30,6 +30,7 @@ pub(super) fn eval_guard(
             let bindings = Bindings {
                 ctx,
                 evt: Some(evt),
+                active: None,
             };
             match eval(&dummy, &bindings, budget, true) {
                 (Ok(Val::Bool(value)), Some(trace)) => Ok((value, trace)),
@@ -85,6 +86,7 @@ pub(super) fn eval_guard(
                             .collect()
                     })
                     .unwrap_or_default();
+                let state_names = spec.state_names();
                 let mut e = parser::parse(src).map_err(|err| Rejection {
                     code: "run/guard_error",
                     message: err.message,
@@ -98,13 +100,20 @@ pub(super) fn eval_guard(
                 })?;
                 annotate_if_widening(
                     &mut e,
-                    &spec_scope(spec, ScopeKind::Guard, &ctx_tys, Some(&evt_tys)),
+                    &spec_scope(
+                        spec,
+                        ScopeKind::Guard,
+                        &ctx_tys,
+                        Some(&evt_tys),
+                        &state_names,
+                    ),
                 );
                 e
             };
             let b = Bindings {
                 ctx,
                 evt: Some(evt),
+                active: None,
             };
             match eval(&e, &b, budget, true) {
                 (Ok(Val::Bool(v)), t) => Ok((v, t.unwrap())),
@@ -161,12 +170,14 @@ pub(super) fn spec_scope<'a>(
     kind: ScopeKind,
     ctx_tys: &'a BTreeMap<String, Ty>,
     evt_tys: Option<&'a BTreeMap<String, Ty>>,
+    states: &'a std::collections::BTreeSet<String>,
 ) -> Scope<'a> {
     Scope {
         kind,
         ctx: ctx_tys,
         evt: evt_tys,
         enums: &spec.enums,
+        states,
     }
 }
 
@@ -178,13 +189,14 @@ pub(super) fn compiled_or_annotate(
     kind: ScopeKind,
     ctx_tys: &BTreeMap<String, Ty>,
     evt_tys: Option<&BTreeMap<String, Ty>>,
+    states: &std::collections::BTreeSet<String>,
     block: &BlockKind,
 ) -> Result<crate::expr::ast::Expr, Rejection> {
     if let Some(c) = compiled.get(slot) {
         return Ok(c.expr.clone());
     }
     let mut e = parser::parse(src).map_err(|err| action_err(block, err.message, err.hint))?;
-    annotate_if_widening(&mut e, &spec_scope(spec, kind, ctx_tys, evt_tys));
+    annotate_if_widening(&mut e, &spec_scope(spec, kind, ctx_tys, evt_tys, states));
     Ok(e)
 }
 

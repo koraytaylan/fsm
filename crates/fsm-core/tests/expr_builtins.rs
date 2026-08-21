@@ -76,11 +76,13 @@ fn builtins_jsonl_and_coverage() {
         } else {
             None
         };
+        let states: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         let scope = Scope {
             kind: ScopeKind::Guard,
             ctx: &ctx_ty,
             evt: evt_ref,
             enums: &enums,
+            states: &states,
         };
         let typed = typecheck(&e, &scope);
         if let Some(code) = s(&rec, "err") {
@@ -96,6 +98,7 @@ fn builtins_jsonl_and_coverage() {
                 let b = Bindings {
                     ctx: &ctx,
                     evt: evt_r,
+                    active: None,
                 };
                 let mut bud = Budget::new(4096);
                 let expr = annotated.as_ref().unwrap_or(&e);
@@ -141,6 +144,7 @@ fn builtins_jsonl_and_coverage() {
             let b = Bindings {
                 ctx: &ctx,
                 evt: evt_r,
+                active: None,
             };
             let mut bud = Budget::new(4096);
             let v = eval(&annotated, &b, &mut bud, false).0.unwrap();

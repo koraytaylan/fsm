@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::json::Value;
 use crate::machine::EnforceMode;
@@ -281,6 +281,18 @@ impl MachineSpec {
             }
         }
         out
+    }
+
+    /// Every real (non-history) state name across all topologies.
+    ///
+    /// This is the set of names the `in(state)` invariant predicate may
+    /// legally name.
+    pub fn state_names(&self) -> BTreeSet<String> {
+        self.walk_states()
+            .into_iter()
+            .filter(|(node, _)| node.history.is_none())
+            .map(|(node, _)| node.name.clone())
+            .collect()
     }
 
     /// Top-level state trees with their optional region and initial state, in

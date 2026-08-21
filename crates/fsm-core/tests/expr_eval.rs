@@ -70,6 +70,7 @@ fn eval_jsonl() {
         let b = Bindings {
             ctx: &ctx,
             evt: evt_ref,
+            active: None,
         };
         let mut bud = Budget::new(4096);
         let (res, _) = eval(&e, &b, &mut bud, false);
@@ -112,6 +113,7 @@ fn trace_golden() {
     let b = Bindings {
         ctx: &ctx,
         evt: Some(&evt),
+        active: None,
     };
     let mut bud = Budget::new(64);
     let (res, tr) = eval(&e, &b, &mut bud, true);
@@ -135,11 +137,13 @@ fn public_typecheck_eval_widens_decimal_if() {
     let e = parse("if false then 2.50 else 1.0").unwrap();
     let ctx_tys = BTreeMap::new();
     let enums: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let states: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let scope = Scope {
         kind: ScopeKind::Block,
         ctx: &ctx_tys,
         evt: None,
         enums: &enums,
+        states: &states,
     };
     let (ty, typed, _) = typecheck(&e, &scope).unwrap();
     assert_eq!(ty, Ty::Dec(2));
@@ -147,6 +151,7 @@ fn public_typecheck_eval_widens_decimal_if() {
     let b = Bindings {
         ctx: &vals,
         evt: None,
+        active: None,
     };
     let (v, _) = eval(&typed, &b, &mut Budget::new(64), false);
     assert_eq!(v.unwrap().canonical_string(), "1.00");

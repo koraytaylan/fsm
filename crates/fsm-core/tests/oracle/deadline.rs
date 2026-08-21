@@ -36,7 +36,11 @@ fn evaluate_deadline_after(
             Some(error.code),
         )
     })?;
-    let bindings = Bindings { ctx, evt: None };
+    let bindings = Bindings {
+        ctx,
+        evt: None,
+        active: None,
+    };
     match eval(&expression, &bindings, budget, false).0 {
         Ok(Val::Dur(duration)) if duration >= 0 => Ok(duration),
         Ok(Val::Dur(_)) => Err(deadline_rejection(
@@ -283,7 +287,8 @@ fn apply_naive_deadline(
             }
         }
     }
-    let monitor_flags = match eval_invariants(&m.spec, &ctx, budget) {
+    let active = active_state_names(&m.spec, &configuration_after);
+    let monitor_flags = match eval_invariants(&m.spec, &ctx, &active, budget) {
         Ok(flags) => flags,
         Err(rejection) => return Outcome::Rejected(rejection),
     };

@@ -2,7 +2,7 @@
 
 #![allow(clippy::result_large_err)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::ExprError;
 use super::ast::{Arg, BinOp, CmpOp, Expr};
@@ -44,6 +44,9 @@ impl Val {
 pub struct Bindings<'a> {
     pub ctx: &'a BTreeMap<String, Val>,
     pub evt: Option<&'a BTreeMap<String, Val>>,
+    /// Active state names, populated only for invariant evaluation. `in()`
+    /// typechecks to only appear there, so every other scope leaves it unset.
+    pub active: Option<&'a BTreeSet<String>>,
 }
 
 pub struct Budget {
@@ -348,6 +351,10 @@ fn eval_call(
     budget: &mut Budget,
     trace: bool,
 ) -> Result<EvalOk, EvalErr> {
+    if name == "in" {
+        let out = eval_in(args, span, b)?;
+        return ok(out, span, trace, Vec::new());
+    }
     let mut children = Vec::new();
     let mut vals = Vec::new();
     for a in args {
@@ -364,6 +371,38 @@ fn eval_call(
     }
     let out = apply_builtin(name, &vals, span)?;
     ok(out, span, trace, children)
+}
+
+/// Typecheck guarantees exactly one `Arg::Word` naming a declared state and
+/// a populated `Bindings::active`; a malformed compat-path expression that
+/// skipped typecheck is rejected the same way as any other unknown state.
+fn eval_in(args: &[Arg], span: Span, b: &Bindings<'_>) -> Result<Val, EvalErr> {
+    let name = match args.first() {
+        Some(Arg::Word { name, .. }) => name,
+        _ => {
+            return Err((
+                ExprError::new(
+                    "expr/unknown_state",
+                    span,
+                    "in() requires a literal state name",
+                    "name a declared state, e.g. in(awaiting_review)",
+                ),
+                Some(err_node(span, "expr/unknown_state", vec![])),
+            ));
+        }
+    };
+    let Some(active) = b.active else {
+        return Err((
+            ExprError::new(
+                "expr/state_out_of_scope",
+                span,
+                "in() is only usable inside an invariant",
+                "guards, blocks, and transition actions cannot reference the active state",
+            ),
+            Some(err_node(span, "expr/state_out_of_scope", vec![])),
+        ));
+    };
+    Ok(Val::Bool(active.contains(name.as_str())))
 }
 
 pub(crate) fn apply_builtin(name: &str, vals: &[Val], span: Span) -> Result<Val, EvalErr> {
@@ -798,6 +837,7 @@ mod tests {
         let b = Bindings {
             ctx: &ctx,
             evt: None,
+            active: None,
         };
         let mut bud = Budget::new(3);
         assert!(eval(&e, &b, &mut bud, false).0.is_ok());
@@ -813,6 +853,7 @@ mod tests {
         let b = Bindings {
             ctx: &ctx,
             evt: None,
+            active: None,
         };
         let mut bud = Budget::new(2);
         assert!(eval(&e, &b, &mut bud, false).0.is_ok());

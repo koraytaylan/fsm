@@ -30,7 +30,13 @@ fn select_event_candidate(
                     continue;
                 }
                 any_candidate = true;
-                match eval_bool(transition.guard.as_deref(), &state.ctx, fields, budget) {
+                match eval_bool(
+                    transition.guard.as_deref(),
+                    &state.ctx,
+                    fields,
+                    None,
+                    budget,
+                ) {
                     Ok(true) => {
                         return Ok((
                             Some(SelectedCandidate {
@@ -245,7 +251,8 @@ pub fn naive_step_at(
             }
         }
     }
-    let flags = match eval_invariants(&m.spec, &ctx, budget) {
+    let active = active_state_names(&m.spec, &configuration_after);
+    let flags = match eval_invariants(&m.spec, &ctx, &active, budget) {
         Ok(f) => f,
         Err(r) => return Outcome::Rejected(r),
     };

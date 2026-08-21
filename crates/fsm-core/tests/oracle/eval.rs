@@ -4,6 +4,7 @@ pub(super) fn eval_bool(
     src: Option<&str>,
     ctx: &BTreeMap<String, Val>,
     evt: &BTreeMap<String, Val>,
+    active: Option<&std::collections::BTreeSet<String>>,
     budget: &mut Budget,
 ) -> Result<bool, Rejection> {
     match src {
@@ -36,6 +37,7 @@ pub(super) fn eval_bool(
             let b = Bindings {
                 ctx,
                 evt: Some(evt),
+                active,
             };
             match eval(&e, &b, budget, false).0 {
                 Ok(Val::Bool(v)) => Ok(v),
@@ -106,6 +108,7 @@ pub(super) fn apply_sets(
     let b = Bindings {
         ctx: &snapshot,
         evt: if see_evt { Some(evt) } else { None },
+        active: None,
     };
     let mut next = ctx.clone();
     for s in sets {
@@ -149,6 +152,7 @@ pub(super) fn apply_emits(
     let b = Bindings {
         ctx,
         evt: if see_evt { Some(evt) } else { None },
+        active: None,
     };
     for em in emits {
         let mut args = BTreeMap::new();
@@ -312,11 +316,18 @@ pub(super) fn reject(code: &'static str, what: &str) -> Rejection {
 pub(super) fn eval_invariants(
     spec: &MachineSpec,
     ctx: &BTreeMap<String, Val>,
+    active: &std::collections::BTreeSet<String>,
     budget: &mut Budget,
 ) -> Result<Vec<String>, Rejection> {
     let mut flags = Vec::new();
     for inv in &spec.invariants {
-        match eval_bool(Some(inv.expr.as_str()), ctx, &BTreeMap::new(), budget) {
+        match eval_bool(
+            Some(inv.expr.as_str()),
+            ctx,
+            &BTreeMap::new(),
+            Some(active),
+            budget,
+        ) {
             Ok(true) => {}
             Ok(false) => match inv.mode {
                 EnforceMode::Monitor => flags.push(inv.name.clone()),

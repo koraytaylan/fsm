@@ -1,6 +1,6 @@
 //! Static typing for `expr/1`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use super::ExprError;
@@ -60,6 +60,8 @@ pub struct Scope<'a> {
     pub ctx: &'a BTreeMap<String, Ty>,
     pub evt: Option<&'a BTreeMap<String, Ty>>,
     pub enums: &'a BTreeMap<String, Vec<String>>,
+    /// Every declared (non-history) state name, legal as an `in(state)` argument.
+    pub states: &'a BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -357,7 +359,7 @@ fn unify_branches(a: &Ty, b: &Ty, span: Span) -> Result<Ty, ExprError> {
     }
 }
 
-const BUILTINS: &[&str] = &["min", "max", "abs", "dec", "round", "div", "dur"];
+const BUILTINS: &[&str] = &["min", "max", "abs", "dec", "round", "div", "dur", "in"];
 
 fn builtin_list() -> String {
     BUILTINS.join(" ")
@@ -459,6 +461,19 @@ fn check_call(
                 return Err(mismatch(span, &t, "int"));
             }
             Ok(Ty::Dur)
+        }
+        "in" => {
+            if scope.kind != ScopeKind::Invariant {
+                return Err(ExprError::new(
+                    "expr/state_out_of_scope",
+                    name_span,
+                    "in() is only usable inside an invariant",
+                    "guards, blocks, and transition actions cannot reference the active state",
+                ));
+            }
+            arity(name, args, 1, span)?;
+            state_word(&args[0], span, scope.states)?;
+            Ok(Ty::Bool)
         }
         _ => unreachable!(),
     }
@@ -566,6 +581,31 @@ fn unit_word(arg: &Arg, span: Span) -> Result<(), ExprError> {
             "unit must be a literal word",
             format!("legal units: {}", UNITS.join(" ")),
         )),
+    }
+}
+
+fn state_word(arg: &Arg, span: Span, states: &BTreeSet<String>) -> Result<(), ExprError> {
+    let name = match arg {
+        Arg::Word { name, .. } => name,
+        Arg::Expr(_) => {
+            return Err(ExprError::new(
+                "expr/unknown_state",
+                span,
+                "in() requires a literal state name",
+                "name a declared state, e.g. in(awaiting_review)",
+            ));
+        }
+    };
+    if states.contains(name.as_str()) {
+        Ok(())
+    } else {
+        let names: Vec<&str> = states.iter().map(String::as_str).collect();
+        Err(ExprError::new(
+            "expr/unknown_state",
+            span,
+            format!("unknown state {name}"),
+            unknown_hint("state", name, &names),
+        ))
     }
 }
 

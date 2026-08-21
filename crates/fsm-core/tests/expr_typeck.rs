@@ -24,6 +24,16 @@ fn map_tys(v: Option<&Value>) -> BTreeMap<String, Ty> {
     out
 }
 
+fn map_states(v: Option<&Value>) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    if let Some(arr) = v.and_then(Value::as_arr) {
+        for val in arr {
+            out.insert(val.as_str().expect("state name").to_string());
+        }
+    }
+    out
+}
+
 fn map_enums(v: Option<&Value>) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();
     if let Some(obj) = v.and_then(Value::as_obj) {
@@ -60,6 +70,8 @@ fn typeck_jsonl() {
         "expr/cmp_unordered",
         "expr/evt_in_invariant",
         "expr/evt_in_block",
+        "expr/unknown_state",
+        "expr/state_out_of_scope",
     ];
     for (idx, line) in text.lines().enumerate() {
         if line.is_empty() || line.starts_with('#') {
@@ -72,6 +84,7 @@ fn typeck_jsonl() {
         let ctx = map_tys(rec.get("ctx"));
         let evt = map_tys(rec.get("evt"));
         let enums = map_enums(rec.get("enums"));
+        let states = map_states(rec.get("states"));
         let kind = match s(&rec, "scope").unwrap_or("guard") {
             "invariant" => ScopeKind::Invariant,
             "block" => ScopeKind::Block,
@@ -88,6 +101,7 @@ fn typeck_jsonl() {
             ctx: &ctx,
             evt: evt_ref,
             enums: &enums,
+            states: &states,
         };
         match typecheck(&e, &scope) {
             Ok((ty, _, _)) => {
