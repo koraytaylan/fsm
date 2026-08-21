@@ -126,6 +126,12 @@ migration paths from historical untagged builds:
   not a supported way to author a new machine. Current-valid parallel and
   deadline definitions later appended to that journal remain replayable and do
   not receive the malformed-history exception.
+- `expr::typeck::Scope` gains a `states` field and `expr::eval::Bindings`
+  gains an `active` field, both exhaustive-match breaks, backing the new
+  `in(state)` invariant predicate: true iff `state` is the active leaf or a
+  compound ancestor of it, unioned across parallel regions. It typechecks to
+  only appear inside an invariant; elsewhere it is `expr/state_out_of_scope`,
+  and an undeclared or non-literal state name is `expr/unknown_state`.
 
 Changes a compiling downstream would notice include:
 

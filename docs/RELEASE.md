@@ -14,8 +14,9 @@ late is superseded by a new patch version, never by rewriting the tag.
 ## Initial release compatibility note
 
 This first tagged release establishes the public surface at the workspace
-version declared in the root `Cargo.toml`, including parallel regions and
-explicit deadline polling. The migration list remains relevant to consumers of
+version declared in the root `Cargo.toml`, including parallel regions,
+explicit deadline polling, and the `in(state)` invariant predicate. The
+migration list remains relevant to consumers of
 historical untagged builds: `MachineSpec` now carries
 `topology` and `deadlines`; `Tree::build` takes the sequential initial (with
 `Tree::for_machine` preferred); `InstanceState` and `Applied` now carry tagged
