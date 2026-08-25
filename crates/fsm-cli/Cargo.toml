@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 fsm-core = { path = "../fsm-core" }
+fsm-execute = { path = "../fsm-execute" }
 fsm-store = { path = "../fsm-store" }
 
 [lints]

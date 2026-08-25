@@ -55,6 +55,18 @@ pub fn tick_with(
     plan.lines
 }
 
+/// What one tick did, for a driver that has to react to more than its lines.
+pub struct TickOutcome {
+    /// One line per action, identifiers only.
+    pub lines: Vec<String>,
+    /// This tick had writes to do and could not take the writer.
+    ///
+    /// Ordinary in paired mode — the MCP host or the CLI holds the lock for a
+    /// moment — and a contradiction in exclusive mode, where the operator said
+    /// nothing else writes here.
+    pub writer_unavailable: bool,
+}
+
 /// Run one tick, opening the writer only if the tick has something to write.
 ///
 /// `Store::open` folds the journal (or loads the newest snapshot and folds the
@@ -71,9 +83,30 @@ pub fn tick(
     clock: &mut dyn Clock,
     now_ms: i64,
 ) -> Vec<String> {
+    tick_reporting(
+        watcher, scheduler, runner, pipeline, data_dir, clock, now_ms,
+    )
+    .lines
+}
+
+/// [`tick`], with the one fact a driver cannot read off the lines.
+pub fn tick_reporting(
+    watcher: &mut Watcher,
+    scheduler: &mut Scheduler,
+    runner: &mut Runner,
+    pipeline: &mut Pipeline,
+    data_dir: &Path,
+    clock: &mut dyn Clock,
+    now_ms: i64,
+) -> TickOutcome {
     let mut plan = match plan(watcher, scheduler, now_ms) {
         Ok(plan) => plan,
-        Err(lines) => return lines,
+        Err(lines) => {
+            return TickOutcome {
+                lines,
+                writer_unavailable: false,
+            };
+        }
     };
     // Starting and stopping handlers writes nothing, so both happen before the
     // writer is even considered. A kill in particular must not wait on the
@@ -82,7 +115,10 @@ pub fn tick(
     let settles = prepare(scheduler, runner, &mut plan);
     let finished = runner.finished_effects();
     if !writes_anything(&plan.directives, &settles, &finished) {
-        return plan.lines;
+        return TickOutcome {
+            lines: plan.lines,
+            writer_unavailable: false,
+        };
     }
     let mut store = match Store::open(data_dir) {
         Ok(store) => store,
@@ -98,13 +134,19 @@ pub fn tick(
             for settle in &settles {
                 scheduler.complete(&settle.effect.effect_id);
             }
-            return plan.lines;
+            return TickOutcome {
+                lines: plan.lines,
+                writer_unavailable: true,
+            };
         }
     };
     plan.lines.extend(settle_phase(
         scheduler, runner, pipeline, &mut store, clock, &plan, settles, finished,
     ));
-    plan.lines
+    TickOutcome {
+        lines: plan.lines,
+        writer_unavailable: false,
+    }
 }
 
 /// Tick, emit, sleep, repeat — the whole executor loop, with no async runtime.
@@ -119,35 +161,68 @@ pub fn tick(
 /// workspace lints deny `print_stdout` and `print_stderr` in libraries, and
 /// the CLI owns the output frame anyway.
 pub fn run(
-    data_dir: &Path,
-    table: HandlerTable,
-    poll_interval_ms: u64,
+    config: RunConfig<'_>,
     clock: &mut dyn Clock,
     emit: &mut dyn FnMut(&str),
 ) -> Result<(), ExecError> {
-    let mut watcher = Watcher::new(data_dir.to_path_buf());
-    let mut scheduler = Scheduler::new(table);
+    let mut watcher = Watcher::new(config.data_dir.to_path_buf());
+    let mut scheduler = Scheduler::new(config.table);
     let mut runner = Runner::new()?;
     let mut pipeline = Pipeline;
-    let interval = std::time::Duration::from_millis(poll_interval_ms);
+    let interval = std::time::Duration::from_millis(config.poll_interval_ms);
     loop {
         // One `now_ms` per tick, read once: every decision in a tick sees the
         // same instant, while the store's own mutators go on consuming clock
         // ticks as they journal.
         let now_ms = clock.now_ms();
-        for line in tick(
+        let outcome = tick_reporting(
             &mut watcher,
             &mut scheduler,
             &mut runner,
             &mut pipeline,
-            data_dir,
+            config.data_dir,
             clock,
             now_ms,
-        ) {
-            emit(&line);
+        );
+        for line in &outcome.lines {
+            emit(line);
+        }
+        if outcome.writer_unavailable && config.contention == Contention::Fail {
+            // The pre-flight check at startup is a fast failure for the usual
+            // case; this is the one that cannot be raced, because the check is
+            // the write itself.
+            return Err(ExecError::new(
+                "exec/mode",
+                format!(
+                    "another writer holds {} while this executor is running exclusive",
+                    config.data_dir.display()
+                ),
+            )
+            .hint("stop the other writer, or drop --exclusive to run paired beside it"));
         }
         std::thread::sleep(interval);
     }
+}
+
+/// What the loop does when it cannot take the writer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Contention {
+    /// Another writer holds the lock for a moment. Back off and try again.
+    Retry,
+    /// The operator said nothing else writes here. Stop and say so.
+    Fail,
+}
+
+/// Everything [`run`] needs that is not the clock or the output sink.
+pub struct RunConfig<'a> {
+    /// The data directory to watch and write.
+    pub data_dir: &'a Path,
+    /// The validated handler table.
+    pub table: HandlerTable,
+    /// Milliseconds between ticks.
+    pub poll_interval_ms: u64,
+    /// What to do about another writer.
+    pub contention: Contention,
 }
 
 /// Scan, then decide. Nothing here writes or spawns.

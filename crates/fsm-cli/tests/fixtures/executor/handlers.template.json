@@ -1,0 +1,12 @@
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "request_confirmation",
+      "argv": ["%STUB%", "stub_handler", "--exact", "--nocapture", "stub:ok", "{order}"],
+      "timeout_ms": 30000,
+      "on_ok": {"event": "confirmed", "payload": {}, "stamps": ["at"]},
+      "on_failed": {"event": "confirmation_failed", "payload": {}}
+    }
+  ]
+}

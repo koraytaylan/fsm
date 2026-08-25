@@ -124,6 +124,7 @@ pub fn all_specs() -> Vec<&'static CmdSpec> {
     v.extend(crate::cli::instance::SPECS.iter());
     v.extend(crate::cli::ops::SPECS.iter());
     v.extend(crate::cli::diagram::SPECS.iter());
+    v.extend(crate::cli::execute::SPECS.iter());
     v.push(&SERVE);
     v
 }

@@ -13,7 +13,7 @@ touches:
   - crates/fsm-cli/src/cli/execute.rs
   - crates/fsm-cli/Cargo.toml
   - crates/fsm-cli/tests/execute_cmd.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Execute Subcommand

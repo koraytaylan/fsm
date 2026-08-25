@@ -1,0 +1,35 @@
+{
+  "format": "fsm.machine/1",
+  "name": "order_confirmation",
+  "description": "One emitted effect, one operator-configured handler, one stamped confirmation.",
+  "context": [
+    {"name": "order_id", "ty": "str", "init": "order-0"}
+  ],
+  "events": [
+    {"name": "submit", "fields": []},
+    {"name": "confirmed", "fields": [{"name": "at", "ty": "timestamp"}]},
+    {"name": "confirmation_failed", "fields": []}
+  ],
+  "effects": [
+    {"name": "request_confirmation", "fields": [{"name": "order", "ty": "str"}]}
+  ],
+  "states": [
+    {"name": "placed"},
+    {
+      "name": "awaiting_confirmation",
+      "entry": {
+        "emit": [
+          {"effect": "request_confirmation", "args": {"order": "ctx.order_id"}}
+        ]
+      }
+    },
+    {"name": "confirmed_order", "terminal": true},
+    {"name": "unconfirmed", "terminal": true}
+  ],
+  "initial": "placed",
+  "transitions": [
+    {"from": "placed", "on": "submit", "to": "awaiting_confirmation"},
+    {"from": "awaiting_confirmation", "on": "confirmed", "to": "confirmed_order"},
+    {"from": "awaiting_confirmation", "on": "confirmation_failed", "to": "unconfirmed"}
+  ]
+}
