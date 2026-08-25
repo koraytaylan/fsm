@@ -9,11 +9,12 @@
 //!
 //! Two validation rules exist purely to keep that boundary closed:
 //!
-//! * **`argv[0]` is a literal.** Effect arguments are expressions over context
-//!   and event payload, so a `{placeholder}` in the command position would let
-//!   whoever sends an event choose which binary runs. Placeholders are allowed
-//!   in every later element, where they are arguments to a command the
-//!   operator already named.
+//! * **`argv[0]` is a literal absolute path.** Effect arguments are
+//!   expressions over context and event payload, so a `{placeholder}` in the
+//!   command position would let whoever sends an event choose which binary
+//!   runs, and a bare name would let the executor's inherited `PATH` choose
+//!   it. Placeholders are allowed in every later element, where they are
+//!   arguments to a command the operator already named.
 //! * **Unknown keys are refused.** A table that validated while silently
 //!   ignoring `on_okay` would ack effects and never advance, and a deliberate
 //!   stall is indistinguishable from that bug at run time. The machine
@@ -215,21 +216,33 @@ fn parse_argv(index: usize, raw: Option<&Value>) -> Result<Vec<String>, ExecErro
                 ],
             )
         })?;
-        // The command position must be a literal. Effect arguments are
-        // expressions over context and event payload, so a placeholder here
-        // would hand the choice of binary to whoever sends the event — which
-        // is exactly the boundary this table exists to close.
-        if argv_index == 0
-            && segments
+        // The command position must be a literal absolute path. A placeholder
+        // would hand the choice of binary to whoever sends the event, and a
+        // bare name would hand it to whatever `PATH` the executor inherits —
+        // rarely the operator's own shell. Both are the boundary this table
+        // exists to close.
+        if argv_index == 0 {
+            if segments
                 .iter()
-                .any(|s| matches!(s, Segment::Placeholder(_)))
-        {
-            return Err(handler_error(
-                index,
-                "argv",
-                "argv[0] names the command and must be a literal path, not a {placeholder}",
-                vec![("argv_index", Value::Num(argv_index.to_string()))],
-            ));
+                .any(|segment| matches!(segment, Segment::Placeholder(_)))
+            {
+                return Err(handler_error(
+                    index,
+                    "argv",
+                    "argv[0] names the command and must be a literal path, not a {placeholder}",
+                    vec![("argv_index", Value::Num(argv_index.to_string()))],
+                ));
+            }
+            if !std::path::Path::new(text).is_absolute() {
+                return Err(handler_error(
+                    index,
+                    "argv",
+                    format!(
+                        "argv[0] must be an absolute path; {text} would be resolved through PATH"
+                    ),
+                    vec![("argv_index", Value::Num(argv_index.to_string()))],
+                ));
+            }
         }
         argv.push(text.to_string());
     }

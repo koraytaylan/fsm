@@ -219,6 +219,21 @@ fn a_placeholder_may_never_choose_the_command() {
 }
 
 #[test]
+fn a_bare_command_name_is_refused_because_path_would_choose_the_binary() {
+    let error = rejected(
+        r#"{"format":"fsm.handlers/1","handlers":[{"effect":"run_report","argv":["notify-supplier","--quiet"],"timeout_ms":1000}]}"#,
+    );
+    assert_eq!(detail(&error, "field"), "argv");
+    assert_eq!(detail(&error, "argv_index"), "0");
+    assert!(error.message.contains("PATH"), "{error:?}");
+
+    let relative = rejected(
+        r#"{"format":"fsm.handlers/1","handlers":[{"effect":"run_report","argv":["./notify-supplier"],"timeout_ms":1000}]}"#,
+    );
+    assert_eq!(detail(&relative, "argv_index"), "0");
+}
+
+#[test]
 fn an_unknown_key_is_refused_rather_than_silently_ignored() {
     // `on_okay` would validate and then never advance, which is
     // indistinguishable at run time from a deliberately undeclared advance.
