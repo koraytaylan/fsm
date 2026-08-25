@@ -3,19 +3,35 @@
 //! Two entry points, because two callers own the writer differently.
 //! [`tick_with`] works against a writer handle it is *lent*, which is how an
 //! embedded MCP server drives the same loop on the handle it already holds;
-//! [`tick`] opens the writer itself and drops it before returning, so the
-//! executor never holds the single-writer lock across a sleep.
+//! [`tick`] opens the writer itself, only for the ticks that write, and drops
+//! it before returning, so the executor never holds the single-writer lock
+//! across a sleep.
+//!
+//! Every action produces one line, and those lines carry **identifiers only** —
+//! effect name, effect id, request id, event, outcome. Never a path, a pid, a
+//! temporary directory, or a duration: those differ per machine and per run,
+//! and the golden session byte-compares this stream.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use fsm_store::clock::Clock;
 use fsm_store::store::Store;
 
-use crate::config::HandlerTable;
+use crate::config::{Advance, HandlerTable};
+use crate::effect::PendingEffect;
 use crate::error::ExecError;
-use crate::run::{Pipeline, Runner};
-use crate::sched::Scheduler;
-use crate::watch::Watcher;
+use crate::run::{KillReason, Pipeline, RunOutcome, Runner, SettleOutcome};
+use crate::sched::{Directive, Scheduler};
+use crate::watch::{Observation, Watcher};
+
+/// The read-only half of a tick: what the journal says, and what to do about
+/// it.
+struct Plan {
+    observation: Observation,
+    directives: Vec<Directive>,
+    lines: Vec<String>,
+}
 
 /// Run one tick against a writer the caller owns, returning its action lines.
 pub fn tick_with(
@@ -27,11 +43,25 @@ pub fn tick_with(
     clock: &mut dyn Clock,
     now_ms: i64,
 ) -> Vec<String> {
-    let _ = (watcher, scheduler, runner, pipeline, store, clock, now_ms);
-    unimplemented!("task 3802")
+    let mut plan = match plan(watcher, scheduler, now_ms) {
+        Ok(plan) => plan,
+        Err(lines) => return lines,
+    };
+    let settles = prepare(scheduler, runner, &mut plan);
+    let finished = runner.finished_effects();
+    plan.lines.extend(settle_phase(
+        scheduler, runner, pipeline, store, clock, &plan, settles, finished,
+    ));
+    plan.lines
 }
 
 /// Run one tick, opening the writer only if the tick has something to write.
+///
+/// `Store::open` folds the journal (or loads the newest snapshot and folds the
+/// tail) and `Drop` writes a snapshot, so a tick that settles ten directives
+/// pays one fold and one snapshot rather than ten. A tick with nothing to
+/// write opens no writer at all — which is also what leaves the lock free for
+/// the CLI or an MCP writer between ticks.
 pub fn tick(
     watcher: &mut Watcher,
     scheduler: &mut Scheduler,
@@ -41,19 +71,390 @@ pub fn tick(
     clock: &mut dyn Clock,
     now_ms: i64,
 ) -> Vec<String> {
-    let _ = (
-        watcher, scheduler, runner, pipeline, data_dir, clock, now_ms,
-    );
-    unimplemented!("task 3802")
+    let mut plan = match plan(watcher, scheduler, now_ms) {
+        Ok(plan) => plan,
+        Err(lines) => return lines,
+    };
+    // Starting and stopping handlers writes nothing, so both happen before the
+    // writer is even considered. A kill in particular must not wait on the
+    // lock: a handler past its timeout has to stop whether or not this tick
+    // can journal the fact.
+    let settles = prepare(scheduler, runner, &mut plan);
+    let finished = runner.finished_effects();
+    if !writes_anything(&plan.directives, &settles, &finished) {
+        return plan.lines;
+    }
+    let mut store = match Store::open(data_dir) {
+        Ok(store) => store,
+        Err(error) => {
+            // Contention with another writer is expected in paired mode: back
+            // off and let the next tick try, rather than failing the run.
+            plan.lines.push(error_line(&ExecError::store(&error)));
+            // Nothing was journaled, so nothing may stay marked in flight:
+            // an entry no tick can clear is invisible to the start rule for
+            // the life of the process. Clearing it means the next tick runs
+            // the handler again — the at-least-once boundary, taken
+            // deliberately rather than wedging the loop.
+            for settle in &settles {
+                scheduler.complete(&settle.effect.effect_id);
+            }
+            return plan.lines;
+        }
+    };
+    plan.lines.extend(settle_phase(
+        scheduler, runner, pipeline, &mut store, clock, &plan, settles, finished,
+    ));
+    plan.lines
 }
 
 /// Tick, emit, sleep, repeat — the whole executor loop, with no async runtime.
+///
+/// A plain `loop` with `std::thread::sleep`, matching the blocking posture of
+/// the rest of the workspace. It runs until the process is stopped: a tick
+/// that cannot open the writer, or whose scan fails, reports the fact and lets
+/// the next tick try again, because contention with another writer is expected
+/// rather than fatal.
+///
+/// Lines go to the caller's `emit` because this crate may not print: the
+/// workspace lints deny `print_stdout` and `print_stderr` in libraries, and
+/// the CLI owns the output frame anyway.
 pub fn run(
     data_dir: &Path,
     table: HandlerTable,
     poll_interval_ms: u64,
     clock: &mut dyn Clock,
+    emit: &mut dyn FnMut(&str),
 ) -> Result<(), ExecError> {
-    let _ = (data_dir, table, poll_interval_ms, clock);
-    unimplemented!("task 3901")
+    let mut watcher = Watcher::new(data_dir.to_path_buf());
+    let mut scheduler = Scheduler::new(table);
+    let mut runner = Runner::new()?;
+    let mut pipeline = Pipeline;
+    let interval = std::time::Duration::from_millis(poll_interval_ms);
+    loop {
+        // One `now_ms` per tick, read once: every decision in a tick sees the
+        // same instant, while the store's own mutators go on consuming clock
+        // ticks as they journal.
+        let now_ms = clock.now_ms();
+        for line in tick(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            data_dir,
+            clock,
+            now_ms,
+        ) {
+            emit(&line);
+        }
+        std::thread::sleep(interval);
+    }
+}
+
+/// Scan, then decide. Nothing here writes or spawns.
+fn plan(
+    watcher: &mut Watcher,
+    scheduler: &mut Scheduler,
+    now_ms: i64,
+) -> Result<Plan, Vec<String>> {
+    let observation = match watcher.scan(now_ms) {
+        Ok(observation) => observation,
+        Err(error) => return Err(vec![error_line(&error)]),
+    };
+    let mut lines: Vec<String> = observation.unresolved.iter().map(error_line).collect();
+    let directives = scheduler.on_observation(&observation, now_ms);
+    lines.extend(
+        scheduler
+            .unhandled()
+            .iter()
+            .map(|effect_id| format!("unhandled effect {effect_id}")),
+    );
+    lines.extend(
+        scheduler
+            .stalled()
+            .iter()
+            .map(|effect_id| format!("stalled effect {effect_id}")),
+    );
+    Ok(Plan {
+        observation,
+        directives,
+        lines,
+    })
+}
+
+/// A run that is over — or never began — and now needs journaling.
+struct PendingSettle {
+    effect: PendingEffect,
+    outcome: RunOutcome,
+}
+
+/// Start and stop handlers. This phase never writes, which is what lets a
+/// timed-out handler be stopped even on a tick that cannot take the writer.
+fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> Vec<PendingSettle> {
+    let mut settles = Vec::new();
+    // An effect whose argv could not be built never reaches the runner; it is
+    // a run that failed before it began, and is acked as one.
+    for unstartable in scheduler.unstartable().to_vec() {
+        plan.lines.push(error_line(&unstartable.error));
+        settles.push(PendingSettle {
+            outcome: RunOutcome::SpawnFailed {
+                argv0: unstartable.effect.effect_name.clone(),
+            },
+            effect: unstartable.effect,
+        });
+    }
+    for directive in &plan.directives {
+        match directive {
+            Directive::Start { effect, argv, .. } => {
+                plan.lines.push(format!(
+                    "observed pending {} {}",
+                    effect.effect_name, effect.effect_id
+                ));
+                match runner.spawn(effect.effect_id.clone(), argv) {
+                    Ok(()) => plan.lines.push(format!(
+                        "spawned handler {} {}",
+                        effect.effect_name, effect.effect_id
+                    )),
+                    Err(error) => {
+                        plan.lines.push(error_line(&error));
+                        settles.push(PendingSettle {
+                            effect: effect.clone(),
+                            outcome: RunOutcome::SpawnFailed {
+                                argv0: argv.first().cloned().unwrap_or_default(),
+                            },
+                        });
+                    }
+                }
+            }
+            Directive::Kill { effect_id, reason } => {
+                let effect = scheduler.inflight_effect(effect_id).cloned().or_else(|| {
+                    plan.observation
+                        .pending
+                        .iter()
+                        .find(|effect| &effect.effect_id == effect_id)
+                        .cloned()
+                });
+                let outcome = runner.kill(effect_id, *reason);
+                plan.lines
+                    .push(format!("killed {} {effect_id}", kill_word(*reason)));
+                match effect {
+                    Some(effect) => settles.push(PendingSettle { effect, outcome }),
+                    None => scheduler.complete(effect_id),
+                }
+            }
+            Directive::SendEvent { .. } | Directive::PollDeadline { .. } => {}
+        }
+    }
+    settles
+}
+
+fn writes_anything(
+    directives: &[Directive],
+    settles: &[PendingSettle],
+    finished: &[String],
+) -> bool {
+    !settles.is_empty()
+        || !finished.is_empty()
+        || directives.iter().any(|directive| {
+            matches!(
+                directive,
+                Directive::SendEvent { .. } | Directive::PollDeadline { .. }
+            )
+        })
+}
+
+/// Everything that touches the journal, under one writer handle.
+#[allow(clippy::too_many_arguments)]
+fn settle_phase(
+    scheduler: &mut Scheduler,
+    runner: &mut Runner,
+    pipeline: &mut Pipeline,
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    plan: &Plan,
+    settles: Vec<PendingSettle>,
+    finished: Vec<String>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let pending: BTreeMap<&str, &PendingEffect> = plan
+        .observation
+        .pending
+        .iter()
+        .map(|effect| (effect.effect_id.as_str(), effect))
+        .collect();
+
+    for pending_settle in settles {
+        lines.extend(settle(
+            scheduler,
+            pipeline,
+            store,
+            clock,
+            &pending_settle.effect,
+            pending_settle.outcome,
+        ));
+    }
+
+    for directive in &plan.directives {
+        match directive {
+            Directive::Start { .. } | Directive::Kill { .. } => {}
+            Directive::SendEvent {
+                instance_id,
+                effect_id,
+                event,
+                payload,
+                stamps,
+                request_id,
+            } => {
+                let advance = Advance {
+                    event: event.clone(),
+                    payload: payload.clone(),
+                    stamps: stamps.clone(),
+                };
+                match pipeline.advance_only(store, clock, effect_id, instance_id, &advance) {
+                    Ok(SettleOutcome::Advanced) => {
+                        lines.push(format!(
+                            "sent {event} {instance_id} request_id={request_id}"
+                        ));
+                        lines.extend(terminal_line(store, instance_id));
+                    }
+                    Ok(_) => lines.push(format!("no-advance {effect_id} {event}")),
+                    Err(error) => lines.push(error_line(&error)),
+                }
+            }
+            Directive::PollDeadline {
+                instance_id,
+                deadline,
+                due_ms,
+                request_id,
+            } => match pipeline.poll(store, clock, instance_id, deadline, *due_ms) {
+                Ok(_) => {
+                    // Marked only now: a poll that was decided but never
+                    // journaled has to be decided again, or the deadline is
+                    // silenced for the life of the process.
+                    scheduler.poll_issued(instance_id, deadline, *due_ms);
+                    lines.push(format!(
+                        "polled deadline {deadline} {instance_id} request_id={request_id}"
+                    ));
+                    lines.extend(terminal_line(store, instance_id));
+                }
+                Err(error) => {
+                    // A rejected poll journals its rejection and claims the
+                    // key, so the journal — not this set — stops the retry.
+                    lines.push(error_line(&error));
+                }
+            },
+        }
+    }
+
+    for effect_id in finished {
+        let Some(outcome) = runner.poll(&effect_id) else {
+            continue;
+        };
+        let effect = scheduler.inflight_effect(&effect_id).cloned().or_else(|| {
+            pending
+                .get(effect_id.as_str())
+                .map(|effect| (*effect).clone())
+        });
+        match effect {
+            Some(effect) => {
+                lines.extend(settle(scheduler, pipeline, store, clock, &effect, outcome))
+            }
+            None => scheduler.complete(&effect_id),
+        }
+    }
+    lines
+}
+
+/// Ack one outcome and report what the journal now says.
+///
+/// `scheduler.complete` runs on **every** path out of here — advanced, acked
+/// without an advance, already settled, or a store failure. An effect left
+/// marked in flight is invisible to the start rule for the life of the
+/// process, which is the one way this loop can wedge itself.
+fn settle(
+    scheduler: &mut Scheduler,
+    pipeline: &mut Pipeline,
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    effect: &PendingEffect,
+    outcome: RunOutcome,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let Some(handler) = scheduler.handler(&effect.effect_name).cloned() else {
+        // The table changed under a restart, or a human acked something this
+        // executor has no handler for. Either way there is nothing to write.
+        scheduler.complete(&effect.effect_id);
+        return vec![format!("unhandled effect {}", effect.effect_id)];
+    };
+    let acked = if outcome.succeeded() { "ok" } else { "failed" };
+    let advance = if outcome.succeeded() {
+        handler.on_ok.as_ref()
+    } else {
+        handler.on_failed.as_ref()
+    };
+    let event = advance.map(|advance| advance.event.clone());
+    match pipeline.settle(store, clock, effect, outcome, &handler) {
+        Ok(settled) => {
+            if settled != SettleOutcome::AlreadySettled {
+                lines.push(format!(
+                    "acked {acked} {} request_id={}",
+                    effect.effect_id,
+                    crate::rid::ack_rid(&effect.effect_id)
+                ));
+            } else {
+                lines.push(format!("already-settled {}", effect.effect_id));
+            }
+            match (settled, event) {
+                (SettleOutcome::Advanced, Some(event)) => {
+                    lines.push(format!(
+                        "sent {event} {} request_id={}",
+                        effect.instance_id,
+                        crate::rid::event_rid(&effect.effect_id, &event)
+                    ));
+                    lines.extend(terminal_line(store, &effect.instance_id));
+                }
+                (SettleOutcome::AckedNoAdvance, Some(event)) => {
+                    lines.push(format!("no-advance {} {event}", effect.effect_id));
+                }
+                _ => {}
+            }
+        }
+        Err(error) => lines.push(error_line(&error)),
+    }
+    scheduler.complete(&effect.effect_id);
+    lines
+}
+
+/// One line when an instance has reached the end of its life, and nothing when
+/// it has not.
+fn terminal_line(store: &Store, instance_id: &str) -> Option<String> {
+    let status = store.state.instances.get(instance_id)?.status;
+    match status {
+        fsm_core::machine::Status::Running => None,
+        other => Some(format!("instance {instance_id} {}", other.as_str())),
+    }
+}
+
+fn kill_word(reason: KillReason) -> &'static str {
+    match reason {
+        KillReason::Timeout => "timeout",
+        KillReason::Cancelled => "cancelled",
+    }
+}
+
+/// Errors reach the trace as codes and identifiers, never as messages: a
+/// message can carry a path or a temporary directory, and this stream is
+/// byte-compared.
+fn error_line(error: &ExecError) -> String {
+    match (error.code, error.store_code()) {
+        (code, Some(store_code)) => format!("error {code} {store_code}"),
+        (code, None) => match error
+            .details
+            .as_ref()
+            .and_then(|details| details.get("effect_id"))
+            .and_then(fsm_core::json::Value::as_str)
+        {
+            Some(effect_id) => format!("error {code} {effect_id}"),
+            None => format!("error {code}"),
+        },
+    }
 }

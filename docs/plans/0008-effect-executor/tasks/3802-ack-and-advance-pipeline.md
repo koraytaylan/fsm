@@ -11,7 +11,7 @@ touches:
   - crates/fsm-execute/src/run.rs
   - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/tests/pipeline.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Ack And Advance Pipeline
