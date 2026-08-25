@@ -581,6 +581,11 @@ failure (`run/guard_error`) happens at send time.
 
 Every stable code in `fsm_core::error::ALL_CODES`:
 
+> These are the engine's codes. The effect executor has its own namespace,
+> `exec/*`, which is deliberately not part of this appendix: nothing under it
+> is a statement about statechart semantics. It is listed in
+> [EMBEDDING.md](EMBEDDING.md#executor-error-codes).
+
 - `def/ancestor_shadowed` — ancestor handler globally dead
 - `def/assign_type` — set target type ≠ RHS
 - `def/create_always_fails` — creation fails on declared inits

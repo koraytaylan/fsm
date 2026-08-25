@@ -78,7 +78,7 @@ both hooks when abandoned reservations must not advance them.
   exercises stable at all.
 - `manual:` the host matrix below has been run against the candidate build.
 - `manual:` live-model acceptance has been run against the candidate build.
-- `manual:` if the `fsm-core` or `fsm-store` public API changed, the version
+- `manual:` if the `fsm-core`, `fsm-store`, or `fsm-execute` public API changed, the version
   bump matches the semver rules in [`API-POLICY.md`](API-POLICY.md). While both
   major and minor remain zero, each release advances the patch and is a Cargo
   compatibility boundary; with a nonzero minor before `1.0`, the minor becomes
@@ -144,6 +144,12 @@ The pipeline cannot run these; do them before tagging.
 - `manual:` replay [`EXAMPLES.md`](EXAMPLES.md) transcripts under `FSM_CLOCK_MS`
   and compare output.
 - `manual:` `cargo install --path crates/fsm-cli --locked && fsm version && fsm docs spec`
+- `manual:` the executor runs a real workflow unattended: validate a table
+  (`fsm execute --check --handlers examples/order_lifecycle.handlers.json`),
+  point `fsm execute` at a scratch data dir whose instance has a pending
+  effect, and watch `fsm instance history` show the ack and the advance the
+  table declares. The suite proves the loop against a stub; this proves the
+  shipped binary against a handler an operator would actually write.
 - `manual:` re-run the latency harness and update the measured table in
   [`EMBEDDING.md`](EMBEDDING.md) if the numbers have moved materially:
   `FSM_BENCH_ROOT=/path/on/filesystem-under-test cargo +stable test --release -p fsm-store --test append_latency -- --ignored --nocapture`
