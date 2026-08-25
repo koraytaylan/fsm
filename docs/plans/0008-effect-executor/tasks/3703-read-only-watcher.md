@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-execute/src/watch.rs
   - crates/fsm-execute/tests/watch.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Read Only Watcher
