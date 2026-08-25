@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-execute/src/rid.rs
   - crates/fsm-execute/tests/request_ids.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Request Id And Idempotency
