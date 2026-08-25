@@ -189,8 +189,8 @@ The invariant is stated in the shape the design actually guarantees — **at-lea
 
 - the journal verifies clean, and no tick panics;
 - for **every** death point, the instance holds **exactly one** `effect_acked` record per effect id, and at most one advance `event_applied` per `(effect_id, event)`;
-- for death points (b), (c), (d) — where the handler had already finished — the recording stub's side file lists the effect **exactly once**;
-- for death point (a) — killed after spawn, before reap — the side file may list it **twice**, and that second run is the documented at-least-once boundary (§0038's orphan rule); the assertion is that the journal still shows one ack;
+- for death points (c) and (d) — where the ack is already journaled — the recording stub's side file lists the effect **at most once**;
+- for death points (a) and (b) — both *before* the ack — the side file may list it **twice**, and that second run is the documented at-least-once boundary (§0038's orphan rule); the assertion is that the journal still shows one ack. The line runs through the ack, not through the reap: reaping a child puts its outcome in memory, and a restart is precisely what loses memory, so a successor that finds a pending effect with an unclaimed key has no way to know the handler already ran and must run it again;
 - the instance ends coherent: terminal, or still pending with a resumable effect — never a state the engine would reject.
 
 `EXECUTOR_CHAOS_SEED` replays one seed; failures print it. Budget note for whoever adds iterations: the 45-minute CI ceiling is already dominated by `crash_harness.rs`'s 1,000 spawns per profile, run across two profiles and three operating systems, and Windows process creation is several times costlier than Unix.

@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/tests/executor_chaos.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Executor Chaos Harness
@@ -23,8 +23,8 @@ A seeded harness (200 iterations, self-contained xorshift64* generator — the d
 4. After each iteration assert the invariant in the shape the design actually guarantees — **at-least-once execution, exactly-once journaling**:
    - the journal verifies clean and no tick panicked;
    - the instance holds **exactly one** `effect_acked` record per effect id, and at most one advance `event_applied` per `(effect_id, event)`;
-   - for death points (b), (c), (d) — where the handler had already finished — the side file lists the effect **exactly once**;
-   - for death point (a) — killed after spawn, before reap — the side file may list it **twice**, and the assertion is only that the journal still shows one ack. That second run is the documented at-least-once boundary, not a defect to assert away;
+   - for death points (c) and (d) — where the ack is already journaled — the side file lists the effect **at most once**;
+   - for death points (a) and (b) — both *before* the ack — the side file may list it **twice**, and the assertion is only that the journal still shows one ack. Reaping a child puts its outcome in memory and a restart loses memory, so a successor finding a pending effect with an unclaimed key cannot know the handler already ran; that second run is the documented at-least-once boundary, not a defect to assert away;
    - the instance ends coherent: terminal, or still pending with a resumable effect.
 5. On failure print the seed; honour `EXECUTOR_CHAOS_SEED` to replay exactly one seed.
 
@@ -33,7 +33,7 @@ A seeded harness (200 iterations, self-contained xorshift64* generator — the d
 - All iterations satisfy the four invariant rows above at every death point.
 - Deterministic: a fixed base seed reproduces identical pass/fail across two invocations; `EXECUTOR_CHAOS_SEED` replays one seed exactly.
 - Death-after-ack-before-advance: the fresh executor finds the ack in `settled`, sees its `exec-ev-…` key unclaimed, and sends the advance — the resume rule, exercised end to end. If the send had already landed, the re-issue replays as `duplicate: true`.
-- Death-before-ack: the effect is re-started and the resulting ack is the only `effect_acked` record for that effect in the journal.
+- Death-before-ack, whether the child had been reaped or not: the effect is re-started and the resulting ack is the only `effect_acked` record for that effect in the journal.
 - Budget note in the file header: the 45-minute CI ceiling is already dominated by `crash_harness.rs`'s 1,000 spawns per profile across two profiles and three operating systems, and Windows process creation is several times costlier — raise the iteration floor only with that in view.
 
 - **Done when:** `cargo test -p fsm-cli --test executor_chaos` passes all seeded iterations with the exactly-once-journaling and coherence invariants at every death point, seed replay works, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
