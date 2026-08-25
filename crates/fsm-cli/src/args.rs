@@ -129,8 +129,12 @@ pub fn all_specs() -> Vec<&'static CmdSpec> {
     v
 }
 
-fn serve_run(ctx: &mut Ctx, _args: &Args) -> u8 {
-    match crate::mcp::serve::run_with_dir(&ctx.data_dir) {
+fn serve_run(ctx: &mut Ctx, args: &Args) -> u8 {
+    let mode = match crate::cli::execute::serve_mode(ctx, args) {
+        Ok(mode) => mode,
+        Err(code) => return code,
+    };
+    match crate::mcp::serve::run_with_mode(&ctx.data_dir, mode) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -139,8 +143,8 @@ fn serve_run(ctx: &mut Ctx, _args: &Args) -> u8 {
 static SERVE: CmdSpec = CmdSpec {
     path: &["serve"],
     positionals: &[],
-    flags: &[],
-    switches: &[],
+    flags: &["handlers"],
+    switches: &["read-only", "execute"],
     help: "Run the MCP stdio server",
     run: serve_run,
 };

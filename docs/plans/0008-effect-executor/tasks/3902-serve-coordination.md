@@ -13,7 +13,7 @@ touches:
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - crates/fsm-cli/src/cli/execute.rs
   - crates/fsm-cli/tests/serve_modes.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Serve Coordination

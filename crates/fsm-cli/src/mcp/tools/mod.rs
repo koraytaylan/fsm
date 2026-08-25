@@ -43,6 +43,25 @@ use schema_out::{
     schema_machine_list_out, schema_simulate_out,
 };
 
+/// Every tool that reaches a store mutator, and therefore every tool a
+/// read-only server must refuse.
+///
+/// Counted from the store code — `store/lifecycle.rs` and
+/// `store/instance/*.rs` — rather than from memory. `machine_create` is the
+/// easy one to forget, and it is the *authoring* path, so forgetting it means
+/// the model gets an unexplained failure at the moment it is being most
+/// useful. `dispatch` consults this table instead of six match arms, and the
+/// documentation test imports the same constant, so the gate and the docs
+/// cannot drift apart.
+pub const MUTATING_TOOLS: &[&str] = &[
+    "machine_create",
+    "instance_create",
+    "instance_send",
+    "deadline_poll",
+    "effect_ack",
+    "instance_cancel",
+];
+
 pub struct ToolSpec {
     pub name: &'static str,
     pub description: &'static str,

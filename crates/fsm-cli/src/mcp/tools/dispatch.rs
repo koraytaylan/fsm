@@ -3,8 +3,8 @@ use fsm_core::json::Value;
 use crate::clock::Clock;
 use crate::store::{ErrorObj, Store};
 
-use super::registry;
 use super::validate::{type_name, validate_args};
+use super::{MUTATING_TOOLS, registry};
 
 pub fn dispatch(
     store: &mut Store,
@@ -16,6 +16,9 @@ pub fn dispatch(
         .into_iter()
         .find(|t| t.name == name)
         .ok_or_else(|| ErrorObj::new("req/args_invalid", format!("unknown tool {name}")))?;
+    if let Some(refusal) = read_only_refusal(store, name, args) {
+        return Err(attach_request_id(refusal, args));
+    }
     if name == "instance_create" {
         if let Some(ctx) = args.get("context") {
             if !ctx.is_obj() {
@@ -42,6 +45,31 @@ pub fn dispatch(
         return Err(attach_request_id(e, args));
     }
     (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))
+}
+
+/// Refuse a mutator on a server that holds no writer.
+///
+/// The refusal happens here, before the handler runs, so the model gets one
+/// sentence naming the mode rather than an `io/write` from deep inside the
+/// store. A `dry_run` create is the documented exception: it validates a
+/// definition without writing anything, and that is exactly what an author
+/// wants from a monitoring session.
+fn read_only_refusal(store: &Store, name: &str, args: &Value) -> Option<ErrorObj> {
+    if !store.journal.is_read_only() || !MUTATING_TOOLS.contains(&name) {
+        return None;
+    }
+    if name == "machine_create" && args.get("dry_run").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    Some(
+        ErrorObj::new(
+            "io/write",
+            format!("{name} needs a writable store; this server is read-only"),
+        )
+        .hint(
+            "this fsm serve runs read-only so the executor owns writes: author and trigger from the command line, or restart serve without --read-only",
+        ),
+    )
 }
 
 fn attach_request_id(e: ErrorObj, args: &Value) -> ErrorObj {

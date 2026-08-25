@@ -87,15 +87,77 @@ fn install_panic_hook() {
     }
 }
 
+/// How this server relates to the writer lock and to the executor.
+///
+/// The mode is a deployment decision, not a protocol one: it decides who may
+/// write to the data directory while the server is up. See `docs/EMBEDDING.md`
+/// for the decision rule.
+pub enum ServeMode {
+    /// This process holds the writer and runs no handlers. The default.
+    Writer,
+    /// The executor owns the writer; this process watches. Every tool in
+    /// `MUTATING_TOOLS` is refused with a sentence naming the mode.
+    ReadOnly,
+    /// This process holds the writer *and* runs the executor loop inline, one
+    /// tick per protocol iteration.
+    Embedded(Box<ExecutorLoop>),
+}
+
+/// The executor's own components, held by an embedded server.
+///
+/// Bundled rather than passed separately because `serve` owns the writer and
+/// lends it: `service::tick` would open a second `Store` on the same data
+/// directory and collide with the lock this process already holds.
+pub struct ExecutorLoop {
+    watcher: fsm_execute::watch::Watcher,
+    scheduler: fsm_execute::sched::Scheduler,
+    runner: fsm_execute::run::Runner,
+    pipeline: fsm_execute::run::Pipeline,
+}
+
+impl ExecutorLoop {
+    /// Build the loop for one data directory and one validated table.
+    pub fn new(
+        data_dir: &std::path::Path,
+        table: fsm_execute::config::HandlerTable,
+    ) -> Result<Self, fsm_execute::error::ExecError> {
+        Ok(Self {
+            watcher: fsm_execute::watch::Watcher::new(data_dir.to_path_buf()),
+            scheduler: fsm_execute::sched::Scheduler::new(table),
+            runner: fsm_execute::run::Runner::new()?,
+            pipeline: fsm_execute::run::Pipeline,
+        })
+    }
+
+    /// One tick against the writer this server already holds.
+    fn tick(&mut self, store: &mut Store, clock: &mut dyn Clock) -> Vec<String> {
+        let now_ms = clock.now_ms();
+        fsm_execute::service::tick_with(
+            &mut self.watcher,
+            &mut self.scheduler,
+            &mut self.runner,
+            &mut self.pipeline,
+            store,
+            clock,
+            now_ms,
+        )
+    }
+}
+
 pub fn run() -> std::io::Result<()> {
     run_with_dir(&resolve_data_dir(None))
 }
 
 pub fn run_with_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    run_with_mode(dir, ServeMode::Writer)
+}
+
+/// Run the server over stdio in one of the three modes.
+pub fn run_with_mode(dir: &std::path::Path, mode: ServeMode) -> std::io::Result<()> {
     install_panic_hook();
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
-    serve_dir(dir, stdin.lock(), stdout.lock())
+    serve_dir_with(dir, mode, stdin.lock(), stdout.lock())
 }
 
 pub fn serve(input: impl BufRead, output: impl Write) -> std::io::Result<()> {
@@ -107,20 +169,90 @@ pub fn serve_dir(
     input: impl BufRead,
     output: impl Write,
 ) -> std::io::Result<()> {
-    let mut store = match Store::open(dir) {
+    serve_dir_with(dir, ServeMode::Writer, input, output)
+}
+
+pub fn serve_dir_with(
+    dir: &std::path::Path,
+    mode: ServeMode,
+    input: impl BufRead,
+    output: impl Write,
+) -> std::io::Result<()> {
+    let opened = match &mode {
+        // A read-only open takes no lock and creates nothing, which is what
+        // lets this process watch a data directory the executor is writing.
+        ServeMode::ReadOnly => Store::open_read_only(dir),
+        ServeMode::Writer | ServeMode::Embedded(_) => Store::open(dir),
+    };
+    let mut store = match opened {
         Ok(s) => Some(s),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "fsm store open failed: {}", e.message);
             return Err(std::io::Error::other(e.message));
         }
     };
+    // One startup line per process, on stderr: stdout is the protocol stream,
+    // and no tick trace may depend on this line.
+    let _ = writeln!(
+        std::io::stderr(),
+        "fsm serve: mode={} data_dir={}",
+        mode_name(&mode),
+        dir.display()
+    );
     let mut clock = SystemClock;
-    serve_session(store.as_mut(), &mut clock, input, output)
+    // A read-only handle is one consistent prefix, frozen at the moment it was
+    // opened. For a monitoring session that is useless: the whole point of the
+    // mode is to watch the executor's acks and transitions arrive, so the
+    // session reopens before each request.
+    let refresh = match mode {
+        ServeMode::ReadOnly => Some(dir.to_path_buf()),
+        ServeMode::Writer | ServeMode::Embedded(_) => None,
+    };
+    let mut executor = match mode {
+        ServeMode::Embedded(loop_) => Some(loop_),
+        ServeMode::Writer | ServeMode::ReadOnly => None,
+    };
+    serve_session_with(
+        store.as_mut(),
+        &mut clock,
+        executor.as_deref_mut(),
+        refresh.as_deref(),
+        input,
+        output,
+    )
+}
+
+/// The name that appears in the startup line and in `instructions`.
+pub fn mode_name(mode: &ServeMode) -> &'static str {
+    match mode {
+        ServeMode::Writer => "writer",
+        ServeMode::ReadOnly => "read-only",
+        ServeMode::Embedded(_) => "embedded",
+    }
 }
 
 pub fn serve_session(
+    store: Option<&mut Store>,
+    clock: &mut dyn Clock,
+    input: impl BufRead,
+    output: impl Write,
+) -> std::io::Result<()> {
+    serve_session_with(store, clock, None, None, input, output)
+}
+
+/// The protocol loop, optionally driving the executor between client lines.
+///
+/// Two limits of embedded mode live here because this is where they bite: a
+/// long-running handler blocks the protocol, and — because this loop blocks in
+/// `read_capped_line` until the client sends a line — **a tick happens only
+/// when the client speaks**. Embedded mode advances a workflow during a
+/// conversation, never overnight; that is why it is not the default and why
+/// the unattended claim belongs to a separate executor process.
+pub fn serve_session_with(
     mut store: Option<&mut Store>,
     clock: &mut dyn Clock,
+    mut executor: Option<&mut ExecutorLoop>,
+    refresh: Option<&std::path::Path>,
     mut input: impl BufRead,
     mut output: impl Write,
 ) -> std::io::Result<()> {
@@ -128,6 +260,10 @@ pub fn serve_session(
         install_panic_hook();
         panic!("deliberate serve panic");
     }
+    // Derived once: the mode is a property of how this session was started,
+    // and an operator reading a transcript should be able to tell which one
+    // ran without reading the launch command.
+    let mode_note = mode_note(store.as_deref(), executor.is_some());
     let mut initialized = false;
     let mut initialized_notified = false;
     loop {
@@ -195,6 +331,7 @@ pub fn serve_session(
                                 "fsm warn: {method} before notifications/initialized"
                             );
                         }
+                        refresh_read_only(store.as_deref_mut(), refresh);
                         handle_request(
                             &mut output,
                             store.as_deref_mut(),
@@ -203,7 +340,9 @@ pub fn serve_session(
                             id,
                             &method,
                             params,
+                            mode_note,
                         )?;
+                        drive_executor(executor.as_deref_mut(), store.as_deref_mut(), clock);
                     }
                 }
             }
@@ -211,6 +350,39 @@ pub fn serve_session(
     }
 }
 
+/// Re-open the read-only prefix so this request answers from the journal as
+/// it is now, not as it was when the server started.
+///
+/// A failed reopen keeps the handle it already has: answering from a slightly
+/// old prefix beats refusing to answer at all, and the next request tries
+/// again.
+fn refresh_read_only(store: Option<&mut Store>, refresh: Option<&std::path::Path>) {
+    let (Some(store), Some(dir)) = (store, refresh) else {
+        return;
+    };
+    if let Ok(reopened) = Store::open_read_only(dir) {
+        *store = reopened;
+    }
+}
+
+/// Run one executor tick against the writer this session holds.
+///
+/// Tick lines go to stderr: stdout carries the JSON-RPC stream, and one stray
+/// line there is a protocol error rather than a log entry.
+fn drive_executor(
+    executor: Option<&mut ExecutorLoop>,
+    store: Option<&mut Store>,
+    clock: &mut dyn Clock,
+) {
+    let (Some(executor), Some(store)) = (executor, store) else {
+        return;
+    };
+    for line in executor.tick(store, clock) {
+        let _ = writeln!(std::io::stderr(), "fsm execute: {line}");
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn handle_request(
     output: &mut impl Write,
     store: Option<&mut Store>,
@@ -219,6 +391,7 @@ fn handle_request(
     id: Value,
     method: &str,
     params: Option<Value>,
+    mode_note: &'static str,
 ) -> std::io::Result<()> {
     match method {
         "ping" => send_line(output, &result_response(id, Value::Obj(Default::default()))),
@@ -229,7 +402,10 @@ fn handle_request(
                 .and_then(Value::as_str);
             let version = negotiate(offered);
             *initialized = true;
-            send_line(output, &result_response(id, initialize_result(version)))
+            send_line(
+                output,
+                &result_response(id, initialize_result(version, mode_note)),
+            )
         }
         _ if !*initialized => send_line(
             output,
@@ -312,7 +488,23 @@ fn handle_request(
     }
 }
 
-fn initialize_result(version: &str) -> Value {
+/// The sentence appended to `instructions` when this server is not the plain
+/// writer, so a model can tell what it is allowed to do here.
+///
+/// The default mode adds nothing at all: the instructions are part of a
+/// byte-compared transcript, and a mode that changes them would move that
+/// golden for every existing deployment.
+fn mode_note(store: Option<&Store>, embedded: bool) -> &'static str {
+    if store.is_some_and(|store| store.journal.is_read_only()) {
+        "\n\nThis server is running read-only (mode=read-only): the effect executor owns the writer, so machine_create, instance_create, instance_send, deadline_poll, effect_ack, and instance_cancel are refused here. Read tools work normally, and a machine_create with dry_run still validates."
+    } else if embedded {
+        "\n\nThis server runs the effect executor inline (mode=embedded): handlers run on this thread, one tick per request you send, so a workflow advances while you are talking to it and pauses when you stop."
+    } else {
+        ""
+    }
+}
+
+fn initialize_result(version: &str, mode_note: &'static str) -> Value {
     let mut tools = std::collections::BTreeMap::new();
     tools.insert("listChanged".into(), Value::Bool(false));
     let mut resources = std::collections::BTreeMap::new();
@@ -340,7 +532,7 @@ fn initialize_result(version: &str) -> Value {
     result.insert("serverInfo".into(), Value::Obj(info));
     result.insert(
         "instructions".into(),
-        Value::Str(super::prompts::INSTRUCTIONS.into()),
+        Value::Str(format!("{}{mode_note}", super::prompts::INSTRUCTIONS)),
     );
     Value::Obj(result)
 }
