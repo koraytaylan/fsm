@@ -219,6 +219,17 @@ fn a_placeholder_may_never_choose_the_command() {
 }
 
 #[test]
+fn a_rooted_posix_command_is_accepted_on_every_platform() {
+    // `is_absolute` would demand a drive prefix on Windows and refuse the same
+    // table there; a rooted path is what keeps PATH out of the decision.
+    let table = HandlerTable::parse(include_str!("fixtures/handlers/valid_min.json")).unwrap();
+    assert_eq!(
+        table.handlers["request_confirmation"].argv[0],
+        "/usr/local/bin/notify-supplier"
+    );
+}
+
+#[test]
 fn a_bare_command_name_is_refused_because_path_would_choose_the_binary() {
     let error = rejected(
         r#"{"format":"fsm.handlers/1","handlers":[{"effect":"run_report","argv":["notify-supplier","--quiet"],"timeout_ms":1000}]}"#,
