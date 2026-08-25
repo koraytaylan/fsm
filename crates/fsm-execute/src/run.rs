@@ -25,6 +25,16 @@ use crate::rid::{ack_rid, event_rid, poll_rid};
 /// Bytes of one captured stream that reach the journal.
 pub const ACK_OUTPUT_CAP: usize = 4096;
 
+/// Bytes of one captured stream the runner will read at all.
+///
+/// The cap above bounds what is *journaled*; this one bounds what is *read*,
+/// because the digest is taken over the whole stream and a handler in a
+/// `yes`-style loop can write a capture file faster than any timeout stops it.
+/// Past this bound the capture is reported as truncated with no digest — the
+/// honest statement that this is a prefix and the rest cannot be proved —
+/// rather than hashing gigabytes on the tick thread.
+pub const MAX_CAPTURE_READ_BYTES: usize = 1024 * 1024;
+
 /// A capped capture of one output stream, digested when it overflows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundedBytes {
@@ -80,6 +90,12 @@ impl BoundedBytes {
                     if bytes.len() < ACK_OUTPUT_CAP {
                         let room = ACK_OUTPUT_CAP - bytes.len();
                         bytes.extend_from_slice(&chunk[..read.min(room)]);
+                    }
+                    if total >= MAX_CAPTURE_READ_BYTES {
+                        // A runaway handler must not turn one tick into a
+                        // multi-gigabyte hash.
+                        complete = false;
+                        break;
                     }
                 }
                 Err(_) => {

@@ -971,7 +971,7 @@ fn a_poll_that_finds_nothing_due_is_journaled_as_an_observation() {
         store
             .state
             .dedup
-            .contains_key("exec-poll-order-1-confirmation_timeout-9999"),
+            .contains_key("exec-poll-7-order-1-confirmation_timeout-9999"),
         "the observation claims its key, so a repeat replays"
     );
 }

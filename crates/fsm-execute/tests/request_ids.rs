@@ -128,7 +128,7 @@ fn every_derivation_is_a_pure_function_of_its_inputs() {
         );
         assert_eq!(
             poll_rid("order-1", "review_timeout", 1_700_000_000_000),
-            "exec-poll-order-1-review_timeout-1700000000000"
+            "exec-poll-7-order-1-review_timeout-1700000000000"
         );
     }
 }
@@ -150,6 +150,12 @@ fn keys_differ_whenever_the_observation_differs() {
     assert_ne!(
         poll_rid("order-1", "review_timeout", 1_000),
         poll_rid("order-1", "escalation_timeout", 1_000)
+    );
+    // The parts are concatenated, so the instance id is length-prefixed: these
+    // two would otherwise compose the same key and silence one deadline.
+    assert_ne!(
+        poll_rid("order-1", "expire", 1_000),
+        poll_rid("order", "1-expire", 1_000)
     );
 }
 

@@ -53,6 +53,15 @@ pub fn event_rid(effect_id: &str, event: &str) -> String {
 /// whichever deadline is next due by `(due_ms, document index)` and takes no
 /// name, so two due deadlines mean two directives under two keys, each of
 /// which polls once.
+/// The instance id is length-prefixed because the parts are concatenated and
+/// an instance id may contain the separator. Without it, instance `order-1`
+/// with deadline `expire` and instance `order` with deadline `1-expire`
+/// compose the same key: whichever polled first would claim it, and the
+/// other's deadline would look already-observed on every later tick — a
+/// workflow that silently never times out.
 pub fn poll_rid(instance_id: &str, deadline: &str, due_ms: i64) -> String {
-    format!("exec-poll-{instance_id}-{deadline}-{due_ms}")
+    format!(
+        "exec-poll-{}-{instance_id}-{deadline}-{due_ms}",
+        instance_id.len()
+    )
 }
