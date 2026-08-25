@@ -1,0 +1,10 @@
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "archive_case",
+      "argv": [],
+      "timeout_ms": 5000
+    }
+  ]
+}

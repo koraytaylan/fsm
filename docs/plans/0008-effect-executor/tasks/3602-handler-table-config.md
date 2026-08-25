@@ -16,7 +16,7 @@ touches:
   - crates/fsm-execute/tests/fixtures/handlers/empty_argv.json
   - crates/fsm-execute/tests/fixtures/handlers/bad_timeout.json
   - crates/fsm-execute/tests/fixtures/handlers/bad_advance.json
-status: planned
+status: done
 merged_as: ""
 ---
 # Handler Table Config

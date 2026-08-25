@@ -1,0 +1,14 @@
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "request_approval",
+      "argv": ["/usr/local/bin/request-approval", "--expense", "{expense_id}"],
+      "timeout_ms": 0
+    },
+    {
+      "effect": "escalate_approval",
+      "argv": ["/usr/local/bin/escalate-approval", "--expense", "{expense_id}"]
+    }
+  ]
+}

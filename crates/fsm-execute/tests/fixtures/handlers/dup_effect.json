@@ -1,0 +1,15 @@
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "match_invoice",
+      "argv": ["/usr/local/bin/match-invoice", "--invoice", "{invoice_id}"],
+      "timeout_ms": 30000
+    },
+    {
+      "effect": "match_invoice",
+      "argv": ["/usr/local/bin/match-invoice-v2", "--invoice", "{invoice_id}"],
+      "timeout_ms": 30000
+    }
+  ]
+}

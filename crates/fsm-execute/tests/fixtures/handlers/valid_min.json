@@ -1,0 +1,17 @@
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "request_confirmation",
+      "argv": [
+        "/usr/local/bin/notify-supplier",
+        "--order",
+        "{order_id}",
+        "--reviewer",
+        "{reviewer}",
+        "--quiet"
+      ],
+      "timeout_ms": 120000
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "request_confirmation",
+      "argv": [
+        "/usr/local/bin/notify-supplier",
+        "--order",
+        "{order_id}",
+        "--reviewer",
+        "{reviewer}",
+        "--quiet"
+      ],
+      "timeout_ms": 120000,
+      "on_ok": {
+        "event": "confirmed",
+        "payload": { "channel": "supplier" },
+        "stamps": ["at"]
+      },
+      "on_failed": {
+        "event": "confirmation_failed"
+      }
+    }
+  ]
+}

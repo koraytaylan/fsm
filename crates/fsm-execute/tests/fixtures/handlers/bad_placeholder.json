@@ -1,0 +1,15 @@
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "assign_reviewer",
+      "argv": ["/usr/local/bin/assign-reviewer", "--case", "{case_id"],
+      "timeout_ms": 15000
+    },
+    {
+      "effect": "notify_reviewer",
+      "argv": ["/usr/local/bin/notify-reviewer", "--to", "{bad name}"],
+      "timeout_ms": 15000
+    }
+  ]
+}
