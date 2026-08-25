@@ -22,6 +22,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsm-execute"
+version = "0.1.0"
+dependencies = [
+ "fsm-core",
+ "fsm-store",
+]
+
+[[package]]
 name = "fsm-store"
 version = "0.1.0"
 dependencies = [

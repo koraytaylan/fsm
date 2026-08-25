@@ -2,6 +2,7 @@
 members = [
     "crates/fsm-core",
     "crates/fsm-store",
+    "crates/fsm-execute",
     "crates/fsm-cli",
     "crates/fsm-embed-acceptance",
 ]

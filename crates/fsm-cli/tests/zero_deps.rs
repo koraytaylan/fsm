@@ -8,7 +8,13 @@ use fsm_core::json::{JsonLimits, parse}; // drives fsm_core::json::parse
 /// Every package in the resolved graph. Adding a first-party crate means
 /// adding it here; anything else appearing is a third-party dependency and
 /// breaks the zero-dependency guarantee.
-const WORKSPACE_CRATES: &[&str] = &["fsm-core", "fsm-store", "fsm-cli", "fsm-embed-acceptance"];
+const WORKSPACE_CRATES: &[&str] = &[
+    "fsm-core",
+    "fsm-store",
+    "fsm-execute",
+    "fsm-cli",
+    "fsm-embed-acceptance",
+];
 
 #[test]
 fn workspace_package_set_is_exactly_our_own_crates() {

@@ -19,7 +19,7 @@ touches:
   - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/src/error.rs
   - crates/fsm-cli/tests/zero_deps.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Crate Scaffold And Skeleton
