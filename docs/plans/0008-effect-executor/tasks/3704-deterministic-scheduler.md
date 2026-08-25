@@ -11,7 +11,7 @@ gated: false
 touches:
   - crates/fsm-execute/src/sched.rs
   - crates/fsm-execute/tests/sched.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Deterministic Scheduler
