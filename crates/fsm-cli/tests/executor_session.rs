@@ -76,6 +76,25 @@ fn stub_handler() {
     }
 }
 
+/// Open a writer, tolerating a lock this process itself just released.
+///
+/// Spawning a handler forks, and between `fork` and `exec` the child holds a
+/// copy of every open descriptor — so an advisory lock dropped a moment ago
+/// can still be held for the length of that window. The property under test is
+/// that the executor does not *keep* the lock, not that a fork never happened.
+fn open_writer(path: &Path) -> Store {
+    for _ in 0..50 {
+        match Store::open(path) {
+            Ok(store) => return store,
+            Err(error) if error.code == "store/lock" => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("open writer {}: {error:?}", path.display()),
+        }
+    }
+    panic!("the writer lock on {} never became free", path.display())
+}
+
 fn machine() -> Value {
     parse(
         include_bytes!("fixtures/executor/machine.json"),
@@ -100,7 +119,7 @@ fn materialize_table(directory: &TestDirectory) -> HandlerTable {
 /// The scripted half: define, create, trigger. Exactly what a chat session
 /// would do before going away.
 fn writer_half(directory: &TestDirectory) {
-    let mut store = Store::open(directory.path()).expect("open writer");
+    let mut store = open_writer(directory.path());
     let mut clock = FixedClock::new(1_700_000_000_000, 1);
     store
         .define_machine_on(&mut clock, machine(), false, false)
@@ -140,7 +159,10 @@ fn writer_half(directory: &TestDirectory) {
 
 /// The emergent half: ticks, and nothing else.
 fn executor_half(directory: &TestDirectory, table: HandlerTable) -> Vec<String> {
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        fsm_execute::service::advancing_effects(&table),
+    );
     let mut scheduler = Scheduler::new(table);
     let mut runner = Runner::new().unwrap();
     let mut pipeline = Pipeline;

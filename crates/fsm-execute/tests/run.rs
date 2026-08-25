@@ -196,6 +196,45 @@ fn a_killed_run_reports_the_reason_it_was_given_and_leaves_no_child() {
 }
 
 #[test]
+fn killing_a_run_that_already_finished_reports_the_completion() {
+    // A deadline is decided from the tick's `now_ms`, so a handler that exited
+    // cleanly a moment before its timeout is still in the map when the kill is
+    // directed. Journaling `exec/timeout` for it would send the machine down
+    // its failure path for a run that succeeded.
+    let mut runner = Runner::new().unwrap();
+    runner.spawn("case-1/3/0".into(), &stub_argv("ok")).unwrap();
+    for _ in 0..400 {
+        if !runner.finished_effects().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    match runner.kill("case-1/3/0", KillReason::Timeout) {
+        RunOutcome::Completed { status, .. } => assert_eq!(status, 0),
+        other => panic!("a finished run is a completion, not a kill: {other:?}"),
+    }
+    assert!(runner.running_effects().is_empty());
+}
+
+#[test]
+fn an_unstartable_run_is_journaled_under_its_own_code() {
+    let outcome = RunOutcome::NotStarted {
+        code: "exec/config",
+        detail: "order_id".into(),
+    };
+    let result = outcome.ack_result();
+    assert_eq!(
+        result.get("error"),
+        Some(&Value::Str("exec/config".into())),
+        "the permanent record says which fault it was"
+    );
+    assert_eq!(result.get("detail"), Some(&Value::Str("order_id".into())));
+    assert_eq!(result.get("status"), Some(&Value::Num("-1".into())));
+    assert_eq!(outcome.ack_result(), result);
+    assert!(!outcome.succeeded());
+}
+
+#[test]
 fn an_ack_result_is_deterministic_and_carries_no_varying_field() {
     let mut runner = Runner::new().unwrap();
     runner.spawn("case-1/3/0".into(), &stub_argv("ok")).unwrap();

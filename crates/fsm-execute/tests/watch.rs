@@ -2,7 +2,7 @@
 //! one scan reports from a journal nobody locked — and about what it keeps
 //! reporting, since pending work is a state rather than an edge.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -181,6 +181,21 @@ impl Writer {
     }
 }
 
+/// Every effect this file's machines emit declares an advance in the tables
+/// these tests stand in for, so an ack of any of them is one the executor
+/// would still have work to do about.
+fn advancing() -> BTreeSet<String> {
+    [
+        "assign_reviewer",
+        "notify_manager",
+        "archive_case",
+        "open_case",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 fn scan(watcher: &mut Watcher) -> Observation {
     watcher.scan(10_000).expect("scan succeeds")
 }
@@ -188,7 +203,7 @@ fn scan(watcher: &mut Watcher) -> Observation {
 #[test]
 fn an_empty_data_directory_observes_nothing_and_does_not_panic() {
     let directory = TestDirectory::create("watch-empty");
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert_eq!(observation.to_seq, 0);
     assert_eq!(observation.from_seq, 0);
@@ -203,7 +218,7 @@ fn a_data_directory_that_is_not_a_directory_is_a_store_error() {
     let directory = TestDirectory::create("watch-not-a-dir");
     let file = directory.path().join("journal");
     fs::write(&file, b"not a store").unwrap();
-    let mut watcher = Watcher::new(file);
+    let mut watcher = Watcher::new(file, advancing());
     let error = watcher.scan(0).unwrap_err();
     assert_eq!(error.code, "exec/store");
 }
@@ -218,7 +233,7 @@ fn one_scan_reports_the_pending_effect_with_its_name_and_args() {
     let expected_ids = writer.pending("case-1");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert_eq!(observation.to_seq, expected_last_seq);
     assert_eq!(observation.pending.len(), 1);
@@ -239,7 +254,7 @@ fn a_still_pending_effect_is_reported_again_without_a_second_fold() {
     writer.send("case-1", "submit");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let first = scan(&mut watcher);
     assert_eq!(watcher.resolved_count(), 1);
     let second = scan(&mut watcher);
@@ -266,7 +281,7 @@ fn an_effect_emitted_on_entering_a_terminal_state_is_still_reported() {
     writer.send("case-1", "close");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert_eq!(observation.instance_states["case-1"].status, "completed");
     assert_eq!(observation.pending.len(), 1);
@@ -282,7 +297,7 @@ fn two_pending_effects_are_both_reported() {
     writer.send("case-1", "escalate");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     let names: Vec<&str> = observation
         .pending
@@ -303,7 +318,7 @@ fn only_the_executors_own_keys_are_carried_from_the_dedup_map() {
     writer.ack("case-1", &assigned, "exec-ack-case-1/2/0");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert!(
         observation
@@ -331,7 +346,7 @@ fn an_acked_effect_leaves_pending_and_appears_as_settled() {
     let ack_seq = writer.store.journal.last_seq;
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert!(observation.pending.is_empty());
     assert_eq!(observation.settled.len(), 1);
@@ -354,7 +369,7 @@ fn a_settled_effect_whose_advance_is_journaled_is_dropped() {
     writer.ack("case-1", &assigned, "exec-ack-advanced");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     assert_eq!(scan(&mut watcher).settled.len(), 1);
 
     // The advance the executor would send, under the key it derives.
@@ -386,7 +401,7 @@ fn an_ack_overtaken_by_an_unrelated_event_is_still_offered_for_recovery() {
     writer.send("case-1", "escalate");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert_eq!(observation.settled.len(), 1);
     assert_eq!(observation.settled[0].effect_id, assigned);
@@ -436,7 +451,7 @@ fn a_creation_time_effect_is_re_resolved_rather_than_remembered() {
         .unwrap();
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let first = scan(&mut watcher);
     assert_eq!(ctx_val_string(&first.pending[0].args["case"]), "case-first");
     assert_eq!(
@@ -470,6 +485,31 @@ fn a_creation_time_effect_is_re_resolved_rather_than_remembered() {
 }
 
 #[test]
+fn an_ack_whose_handler_declares_no_advance_is_not_outstanding() {
+    // Nothing will ever retire such an ack — no advance means no key is ever
+    // claimed — so listing it would fill the bounded window with acks nobody
+    // will act on and crowd out a genuinely interrupted advance.
+    let directory = TestDirectory::create("watch-no-advance");
+    let mut writer = Writer::open(&directory);
+    writer.define_and_create("case-1");
+    writer.send("case-1", "submit");
+    let assigned = writer.pending("case-1")[0].clone();
+    writer.ack("case-1", &assigned, "exec-ack-no-advance");
+    drop(writer);
+
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        BTreeSet::from(["notify_manager".to_string()]),
+    );
+    let observation = watcher.scan(10_000).expect("scan succeeds");
+    assert!(
+        observation.settled.is_empty(),
+        "assign_reviewer declares no advance in this table: {:?}",
+        observation.settled
+    );
+}
+
+#[test]
 fn one_instance_contributes_a_bounded_number_of_settled_acks() {
     // A handler with no declared advance never claims an advance key, so
     // nothing would ever retire these acks. The newest few are the only ones
@@ -488,7 +528,7 @@ fn one_instance_contributes_a_bounded_number_of_settled_acks() {
     }
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert_eq!(observation.settled.len(), 8);
     assert!(
@@ -517,7 +557,7 @@ fn a_cancelled_instances_pending_effects_are_not_offered_to_run() {
     writer.cancel("case-1");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert!(observation.pending.is_empty());
     assert_eq!(
@@ -539,7 +579,7 @@ fn an_ack_on_a_finished_instance_is_never_listed_as_settled() {
     writer.ack("case-1", &archived, "exec-ack-b");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = scan(&mut watcher);
     assert_eq!(observation.instance_states["case-1"].status, "completed");
     assert!(
@@ -551,7 +591,7 @@ fn an_ack_on_a_finished_instance_is_never_listed_as_settled() {
 #[test]
 fn a_writer_may_append_between_scans_without_locking_the_watcher_out() {
     let directory = TestDirectory::create("watch-concurrent");
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
 
     // The writer stays open across both scans: the watcher takes no lock, so
     // this is exactly the paired-mode arrangement.
@@ -577,7 +617,7 @@ fn a_cancellation_is_reported_once_and_not_on_every_later_scan() {
     writer.send("case-1", "submit");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let running = scan(&mut watcher);
     assert!(running.cancellations.is_empty());
 
@@ -643,7 +683,7 @@ fn a_deadline_at_or_past_the_observed_time_is_due() {
     let due_ms = writer.store.state.instances["case-1"].deadlines["review_timeout"];
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let early = watcher.scan(due_ms - 1).unwrap();
     assert!(early.due_deadlines.is_empty());
     let due = watcher.scan(due_ms).unwrap();
@@ -660,7 +700,7 @@ fn a_cancelled_instances_deadlines_are_never_due() {
     writer.cancel("case-1");
     drop(writer);
 
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), advancing());
     let observation = watcher.scan(i64::MAX).unwrap();
     assert!(observation.due_deadlines.is_empty());
 }

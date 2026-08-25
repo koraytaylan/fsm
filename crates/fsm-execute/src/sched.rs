@@ -108,6 +108,7 @@ pub struct Scheduler {
     unstartable: Vec<Unstartable>,
     stalled: Vec<String>,
     reported_stalls: BTreeSet<String>,
+    parked_advances: BTreeMap<(String, String), u64>,
 }
 
 impl Scheduler {
@@ -122,6 +123,7 @@ impl Scheduler {
             unstartable: Vec::new(),
             stalled: Vec::new(),
             reported_stalls: BTreeSet::new(),
+            parked_advances: BTreeMap::new(),
         }
     }
 
@@ -227,6 +229,17 @@ impl Scheduler {
             if obs.claimed_request_ids.contains(&request_id) {
                 continue;
             }
+            // An advance the engine will not accept claims no key, so the ack
+            // stays outstanding and this rule would re-derive the same
+            // directive on every tick — and every one of those ticks would
+            // open the writer, fold the journal, and write a snapshot on drop.
+            // Park it until something new is journaled: a guard that is false
+            // now can only become true through a record, so nothing to
+            // re-evaluate means nothing to retry.
+            let parked = (settled.effect_id.clone(), advance.event.clone());
+            if self.parked_advances.get(&parked) == Some(&obs.to_seq) {
+                continue;
+            }
             directives.push(Directive::SendEvent {
                 instance_id: settled.instance_id.clone(),
                 effect_id: settled.effect_id.clone(),
@@ -319,6 +332,16 @@ impl Scheduler {
     /// already claimed, reported once each.
     pub fn stalled(&self) -> &[String] {
         &self.stalled
+    }
+
+    /// Record that the engine declined an advance at this journal position.
+    ///
+    /// The pair is retried once the journal moves, and not before: the
+    /// executor never fires an event it expects to be rejected, and never
+    /// spins asking.
+    pub fn park_advance(&mut self, effect_id: &str, event: &str, at_seq: u64) {
+        self.parked_advances
+            .insert((effect_id.to_string(), event.to_string()), at_seq);
     }
 
     /// Record that a deadline poll actually landed.

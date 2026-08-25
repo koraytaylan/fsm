@@ -192,6 +192,33 @@ fn an_advance_that_already_landed_is_not_sent_again() {
 }
 
 #[test]
+fn an_advance_the_engine_declines_is_parked_until_the_journal_moves() {
+    // A declined advance claims no key, so the ack stays outstanding and this
+    // rule would re-derive the same directive on every tick — and every one of
+    // those ticks would open the writer, fold, and snapshot on drop.
+    let mut scheduler = Scheduler::new(table());
+    let observation = Observation {
+        to_seq: 7,
+        settled: vec![settled("case-1/3/0", "assign_reviewer", "ok")],
+        ..Observation::default()
+    };
+    assert_eq!(scheduler.on_observation(&observation, NOW).len(), 1);
+
+    scheduler.park_advance("case-1/3/0", "assigned", 7);
+    assert!(
+        scheduler.on_observation(&observation, NOW + 1).is_empty(),
+        "nothing was journaled, so nothing could have changed the guard"
+    );
+
+    // A record landed: the guard may read context some other event changed.
+    let moved = Observation {
+        to_seq: 8,
+        ..observation
+    };
+    assert_eq!(scheduler.on_observation(&moved, NOW + 2).len(), 1);
+}
+
+#[test]
 fn a_handler_declaring_no_advance_leaves_the_instance_where_it_is() {
     let mut scheduler = Scheduler::new(table());
     let observation = Observation {

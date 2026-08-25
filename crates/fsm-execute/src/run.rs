@@ -198,6 +198,19 @@ pub enum RunOutcome {
         /// The command that could not be spawned.
         argv0: String,
     },
+    /// It could not even be assembled — an argv the effect's own arguments
+    /// cannot fill.
+    ///
+    /// Distinct from [`RunOutcome::SpawnFailed`] because the journal is
+    /// permanent: recording `exec/spawn` and a command that was never chosen
+    /// would tell a later reader the wrong story about a fault that is really
+    /// in the handler table.
+    NotStarted {
+        /// The `exec/*` code for the fault.
+        code: &'static str,
+        /// What could not be resolved, in one identifier.
+        detail: String,
+    },
 }
 
 impl RunOutcome {
@@ -231,6 +244,11 @@ impl RunOutcome {
                 result.insert("status".into(), Value::Num("-1".into()));
                 result.insert("error".into(), Value::Str("exec/spawn".into()));
                 result.insert("argv0".into(), Value::Str(argv0.clone()));
+            }
+            RunOutcome::NotStarted { code, detail } => {
+                result.insert("status".into(), Value::Num("-1".into()));
+                result.insert("error".into(), Value::Str((*code).into()));
+                result.insert("detail".into(), Value::Str(detail.clone()));
             }
         }
         Value::Obj(result)
@@ -431,7 +449,17 @@ impl Runner {
     }
 
     /// Stop an in-flight child and reap it.
+    ///
+    /// A child that has *already* exited is reported as the completion it was,
+    /// not as a kill. The window is real: a deadline is decided from the tick's
+    /// `now_ms`, so a handler that finished cleanly a moment before its timeout
+    /// is still in the map when the kill is directed, and journaling
+    /// `exec/timeout` for it would send the machine down its failure path for a
+    /// run that succeeded.
     pub fn kill(&mut self, effect_id: &str, reason: KillReason) -> RunOutcome {
+        if let Some(completed) = self.poll(effect_id) {
+            return completed;
+        }
         if let Some(mut running) = self.children.remove(effect_id) {
             let _ = running.child.kill();
             let _ = running.child.wait();

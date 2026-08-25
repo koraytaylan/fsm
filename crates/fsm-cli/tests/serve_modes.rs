@@ -105,9 +105,30 @@ fn stub_table_json() -> String {
     )
 }
 
+/// Open a writer, tolerating a lock this process itself just released.
+///
+/// Several tests here spawn child processes, and spawning forks: between
+/// `fork` and `exec` the child holds a copy of every open descriptor, so an
+/// advisory lock dropped a moment ago can still be held for the length of that
+/// window. That is a real property of a process-spawning executor — the
+/// executor's own loop retries for the same reason — and not something a test
+/// should assert away by being lucky.
+fn open_writer(path: &Path) -> Store {
+    for _ in 0..50 {
+        match Store::open(path) {
+            Ok(store) => return store,
+            Err(error) if error.code == "store/lock" => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("open writer {}: {error:?}", path.display()),
+        }
+    }
+    panic!("the writer lock on {} never became free", path.display())
+}
+
 /// Define the machine and create one instance, then release the writer.
 fn seeded(directory: &TestDirectory) {
-    let mut store = Store::open(directory.path()).unwrap();
+    let mut store = open_writer(directory.path());
     let mut clock = FixedClock::new(1_000, 1);
     store
         .define_machine_on(&mut clock, machine(), false, false)
@@ -282,7 +303,7 @@ fn a_read_only_server_sees_writes_that_land_after_it_started() {
     .unwrap();
 
     // Something else advances the instance while the session is up.
-    let mut writer = Store::open(directory.path()).unwrap();
+    let mut writer = open_writer(directory.path());
     let mut writer_clock = FixedClock::new(9_000, 1);
     writer
         .send_event_stamp_on(
@@ -327,7 +348,7 @@ fn a_read_only_server_reads_a_store_a_writer_is_changing() {
     seeded(&directory);
 
     // The writer stays open for the whole session: this is paired mode.
-    let mut writer = Store::open(directory.path()).unwrap();
+    let mut writer = open_writer(directory.path());
     let mut store = Store::open_read_only(directory.path()).expect("read-only takes no lock");
     let input = initialize_lines()
         + &call(2, "instance_get", r#"{"instance_id":"order-1"}"#)
@@ -363,7 +384,7 @@ fn a_read_only_server_reads_a_store_a_writer_is_changing() {
 fn a_second_writer_is_still_refused_within_one_process() {
     let directory = TestDirectory::create("writer-contention");
     seeded(&directory);
-    let held = Store::open(directory.path()).unwrap();
+    let held = open_writer(directory.path());
     match Store::open(directory.path()) {
         Ok(_) => panic!("a second writer must not open the same data dir"),
         Err(error) => assert_eq!(error.code, "store/lock"),
@@ -377,7 +398,7 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
     seeded(&directory);
     let table = HandlerTable::parse(&stub_table_json()).unwrap();
     let mut executor = ExecutorLoop::new(directory.path(), table).unwrap();
-    let mut store = Store::open(directory.path()).unwrap();
+    let mut store = open_writer(directory.path());
     let mut clock = SystemClock;
 
     // One line: advance into the state that emits. The tick that follows it
@@ -474,7 +495,7 @@ fn the_instructions_adjunct_names_a_non_default_mode() {
 
     // The default mode adds nothing: those instructions are byte-compared by
     // the MCP transcripts.
-    let mut writer = Store::open(directory.path()).unwrap();
+    let mut writer = open_writer(directory.path());
     let mut output = Vec::new();
     serve_session(
         Some(&mut writer),
@@ -501,7 +522,7 @@ fn exclusive_refuses_to_start_beside_another_writer() {
     seeded(&directory);
     let handlers = directory.path().join("handlers.json");
     fs::write(&handlers, stub_table_json()).unwrap();
-    let held = Store::open(directory.path()).unwrap();
+    let held = open_writer(directory.path());
 
     let output = Command::new(binary())
         .args([
@@ -521,12 +542,57 @@ fn exclusive_refuses_to_start_beside_another_writer() {
 }
 
 #[test]
+fn an_exclusive_loop_stops_the_moment_it_is_actually_blocked() {
+    // The startup check is a fast failure and inherently raceable — the lock
+    // it takes is released again before the loop starts. This is the check
+    // that cannot be raced, because it *is* the write: a tick that has
+    // something to journal and cannot take the writer ends an exclusive run.
+    let directory = TestDirectory::create("exclusive-loop");
+    seeded(&directory);
+    let mut writer = open_writer(directory.path());
+    let mut writer_clock = FixedClock::new(9_000, 1);
+    writer
+        .send_event_stamp_on(
+            &mut writer_clock,
+            "order-1",
+            "submit",
+            &mut Value::Obj(BTreeMap::new()),
+            "req-submit",
+            None,
+            &[],
+        )
+        .unwrap();
+
+    // The writer stays open, so every settling tick finds the lock taken.
+    let mut clock = FixedClock::new(50_000, 1);
+    let mut lines = Vec::new();
+    let error = fsm_execute::service::run(
+        fsm_execute::service::RunConfig {
+            data_dir: directory.path(),
+            table: HandlerTable::parse(&stub_table_json()).unwrap(),
+            poll_interval_ms: 20,
+            contention: fsm_execute::service::Contention::Fail,
+        },
+        &mut clock,
+        &mut |line: &str| lines.push(line.to_string()),
+    )
+    .expect_err("an exclusive run does not continue past a held writer");
+    assert_eq!(error.code, "exec/mode");
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("error exec/store")),
+        "the blocked tick says why before the run ends: {lines:?}"
+    );
+}
+
+#[test]
 fn paired_keeps_retrying_instead_of_exiting_when_the_writer_is_held() {
     let directory = TestDirectory::create("paired-contention");
     seeded(&directory);
     let handlers = directory.path().join("handlers.json");
     fs::write(&handlers, stub_table_json()).unwrap();
-    let held = Store::open(directory.path()).unwrap();
+    let held = open_writer(directory.path());
 
     let mut child = Command::new(binary())
         .args([

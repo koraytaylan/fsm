@@ -95,16 +95,32 @@ pub struct Watcher {
     /// What each instance's status was at the previous scan, so a cancellation
     /// is reported on the scan that observes it and not on every scan after.
     previous_statuses: BTreeMap<String, String>,
+    /// Effect names whose handler declares an advance for some outcome.
+    ///
+    /// An ack for anything else can never retire — no advance means no key is
+    /// ever claimed — so listing it as outstanding would fill the bounded
+    /// window with acks nobody will ever act on and push a genuinely
+    /// interrupted advance out of it.
+    advancing_effects: BTreeSet<String>,
+    /// Effect ids already reported as unresolvable, so a broken id is one line
+    /// rather than one line per tick forever.
+    reported_unresolved: BTreeSet<String>,
 }
 
 impl Watcher {
     /// Watch the store in `data_dir` without opening it yet.
-    pub fn new(data_dir: PathBuf) -> Self {
+    ///
+    /// `advancing_effects` names the effects whose handler declares an advance
+    /// event; the driver takes it from the handler table. An empty set is
+    /// honest for a watcher that only observes.
+    pub fn new(data_dir: PathBuf, advancing_effects: BTreeSet<String>) -> Self {
         Self {
             data_dir,
             last_seq: 0,
             resolved: BTreeMap::new(),
             previous_statuses: BTreeMap::new(),
+            advancing_effects,
+            reported_unresolved: BTreeSet::new(),
         }
     }
 
@@ -128,6 +144,7 @@ impl Watcher {
             ..Observation::default()
         };
         let mut memo = BTreeMap::new();
+        let mut unresolved: Vec<(String, ExecError)> = Vec::new();
 
         for (instance_id, instance) in &store.state.instances {
             observation.instance_states.insert(
@@ -157,7 +174,7 @@ impl Watcher {
                 for effect_id in &instance.pending {
                     match self.resolve_once(&store, effect_id, &mut memo) {
                         Ok(effect) => observation.pending.push(effect),
-                        Err(error) => observation.unresolved.push(error),
+                        Err(error) => unresolved.push((effect_id.clone(), error)),
                     }
                 }
             }
@@ -178,14 +195,27 @@ impl Watcher {
 
         for ack in outstanding_acks(&store, &observation.claimed_request_ids) {
             match self.resolve_once(&store, &ack.effect_id, &mut memo) {
-                Ok(effect) => observation.settled.push(SettledEffect {
-                    instance_id: ack.instance_id,
-                    effect_id: ack.effect_id,
-                    effect_name: effect.effect_name,
-                    outcome: ack.outcome,
-                    seq: ack.seq,
-                }),
-                Err(error) => observation.unresolved.push(error),
+                Ok(effect) if self.advancing_effects.contains(&effect.effect_name) => {
+                    observation.settled.push(SettledEffect {
+                        instance_id: ack.instance_id,
+                        effect_id: ack.effect_id,
+                        effect_name: effect.effect_name,
+                        outcome: ack.outcome,
+                        seq: ack.seq,
+                    });
+                }
+                // An ack whose handler declares no advance needs nothing from
+                // anyone; carrying it would only crowd the window.
+                Ok(_) => {}
+                Err(error) => unresolved.push((ack.effect_id.clone(), error)),
+            }
+        }
+
+        // One line per broken id, not one per tick: an id that cannot be
+        // resolved this scan cannot be resolved by the next one either.
+        for (effect_id, error) in unresolved {
+            if self.reported_unresolved.insert(effect_id) {
+                observation.unresolved.push(error);
             }
         }
 

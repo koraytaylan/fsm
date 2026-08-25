@@ -165,11 +165,15 @@ pub fn run(
     clock: &mut dyn Clock,
     emit: &mut dyn FnMut(&str),
 ) -> Result<(), ExecError> {
-    let mut watcher = Watcher::new(config.data_dir.to_path_buf());
+    let mut watcher = Watcher::new(
+        config.data_dir.to_path_buf(),
+        advancing_effects(&config.table),
+    );
     let mut scheduler = Scheduler::new(config.table);
     let mut runner = Runner::new()?;
     let mut pipeline = Pipeline;
     let interval = std::time::Duration::from_millis(config.poll_interval_ms);
+    let mut blocked_ticks = 0;
     loop {
         // One `now_ms` per tick, read once: every decision in a tick sees the
         // same instant, while the store's own mutators go on consuming clock
@@ -187,14 +191,19 @@ pub fn run(
         for line in &outcome.lines {
             emit(line);
         }
-        if outcome.writer_unavailable && config.contention == Contention::Fail {
+        blocked_ticks = if outcome.writer_unavailable {
+            blocked_ticks + 1
+        } else {
+            0
+        };
+        if config.contention == Contention::Fail && blocked_ticks >= BLOCKED_TICKS_BEFORE_FAIL {
             // The pre-flight check at startup is a fast failure for the usual
             // case; this is the one that cannot be raced, because the check is
             // the write itself.
             return Err(ExecError::new(
                 "exec/mode",
                 format!(
-                    "another writer holds {} while this executor is running exclusive",
+                    "another writer has held {} for {blocked_ticks} consecutive ticks while this executor is running exclusive",
                     config.data_dir.display()
                 ),
             )
@@ -209,8 +218,32 @@ pub fn run(
 pub enum Contention {
     /// Another writer holds the lock for a moment. Back off and try again.
     Retry,
-    /// The operator said nothing else writes here. Stop and say so.
+    /// The operator said nothing else writes here. Stop and say so — but only
+    /// on evidence, not on one blocked tick. See [`BLOCKED_TICKS_BEFORE_FAIL`].
     Fail,
+}
+
+/// Consecutive blocked ticks an exclusive run tolerates before ending.
+///
+/// One is not evidence of another writer. An advisory lock is released when
+/// the last file descriptor for it closes, and this process forks to spawn
+/// every handler: between `fork` and `exec` the child holds a copy of whatever
+/// was open, so a lock this process just dropped can stay held for the length
+/// of that window. Ending a run over a microsecond of its own making would be
+/// worse than useless.
+pub const BLOCKED_TICKS_BEFORE_FAIL: u32 = 3;
+
+/// The effect names whose handler declares an advance for some outcome.
+///
+/// The watcher uses it to keep acks that can never need an advance out of its
+/// outstanding list; the table is the only place that knows.
+pub fn advancing_effects(table: &HandlerTable) -> std::collections::BTreeSet<String> {
+    table
+        .handlers
+        .values()
+        .filter(|handler| handler.on_ok.is_some() || handler.on_failed.is_some())
+        .map(|handler| handler.effect.clone())
+        .collect()
 }
 
 /// Everything [`run`] needs that is not the clock or the output sink.
@@ -237,12 +270,18 @@ fn plan(
     };
     let mut lines: Vec<String> = observation.unresolved.iter().map(error_line).collect();
     let directives = scheduler.on_observation(&observation, now_ms);
-    lines.extend(
-        scheduler
-            .unhandled()
-            .iter()
-            .map(|effect_id| format!("unhandled effect {effect_id}")),
-    );
+    lines.extend(scheduler.unhandled().iter().map(|effect_id| {
+        error_line(
+            &ExecError::new(
+                "exec/unhandled_effect",
+                format!("no handler declares {effect_id}'s effect"),
+            )
+            .details(fsm_core::json::Value::Obj(BTreeMap::from([(
+                "effect_id".to_string(),
+                fsm_core::json::Value::Str(effect_id.clone()),
+            )]))),
+        )
+    }));
     lines.extend(
         scheduler
             .stalled()
@@ -271,8 +310,16 @@ fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> V
     for unstartable in scheduler.unstartable().to_vec() {
         plan.lines.push(error_line(&unstartable.error));
         settles.push(PendingSettle {
-            outcome: RunOutcome::SpawnFailed {
-                argv0: unstartable.effect.effect_name.clone(),
+            outcome: RunOutcome::NotStarted {
+                code: unstartable.error.code,
+                detail: unstartable
+                    .error
+                    .details
+                    .as_ref()
+                    .and_then(|details| details.get("placeholder"))
+                    .and_then(fsm_core::json::Value::as_str)
+                    .unwrap_or(unstartable.effect.effect_name.as_str())
+                    .to_string(),
             },
             effect: unstartable.effect,
         });
@@ -365,6 +412,7 @@ fn settle_phase(
             clock,
             &pending_settle.effect,
             pending_settle.outcome,
+            plan.observation.to_seq,
         ));
     }
 
@@ -430,9 +478,15 @@ fn settle_phase(
                 .map(|effect| (*effect).clone())
         });
         match effect {
-            Some(effect) => {
-                lines.extend(settle(scheduler, pipeline, store, clock, &effect, outcome))
-            }
+            Some(effect) => lines.extend(settle(
+                scheduler,
+                pipeline,
+                store,
+                clock,
+                &effect,
+                outcome,
+                plan.observation.to_seq,
+            )),
             None => scheduler.complete(&effect_id),
         }
     }
@@ -452,6 +506,7 @@ fn settle(
     clock: &mut dyn Clock,
     effect: &PendingEffect,
     outcome: RunOutcome,
+    parked_at_seq: u64,
 ) -> Vec<String> {
     let mut lines = Vec::new();
     let Some(handler) = scheduler.handler(&effect.effect_name).cloned() else {
@@ -488,6 +543,7 @@ fn settle(
                     lines.extend(terminal_line(store, &effect.instance_id));
                 }
                 (SettleOutcome::AckedNoAdvance, Some(event)) => {
+                    scheduler.park_advance(&effect.effect_id, &event, parked_at_seq);
                     lines.push(format!("no-advance {} {event}", effect.effect_id));
                 }
                 _ => {}

@@ -53,6 +53,25 @@ impl Drop for TestDirectory {
     }
 }
 
+/// Open a writer, tolerating a lock this process itself just released.
+///
+/// Spawning a handler forks, and between `fork` and `exec` the child holds a
+/// copy of every open descriptor — so an advisory lock dropped a moment ago
+/// can still be held for the length of that window. The property under test is
+/// that the executor does not *keep* the lock, not that a fork never happened.
+fn open_writer(path: &Path) -> Store {
+    for _ in 0..50 {
+        match Store::open(path) {
+            Ok(store) => return store,
+            Err(error) if error.code == "store/lock" => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("open writer {}: {error:?}", path.display()),
+        }
+    }
+    panic!("the writer lock on {} never became free", path.display())
+}
+
 /// The stub handler: this test binary re-executed with a marker argument the
 /// harness ignores.
 #[test]
@@ -228,7 +247,7 @@ fn driven_ticks_journal_the_ack_and_the_advance_without_holding_the_lock() {
     // The sleeping loop is not what is under test — the tick is. Driving it
     // directly keeps the test wall-clock-free.
     let directory = TestDirectory::create("driven");
-    let mut store = Store::open(directory.path()).unwrap();
+    let mut store = open_writer(directory.path());
     let mut clock = FixedClock::new(1_000, 1);
     store
         .define_machine_on(&mut clock, machine(), false, false)
@@ -260,7 +279,10 @@ fn driven_ticks_journal_the_ack_and_the_advance_without_holding_the_lock() {
     drop(store);
 
     let table = HandlerTable::parse(&stub_table_json()).unwrap();
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        fsm_execute::service::advancing_effects(&table),
+    );
     let mut scheduler = Scheduler::new(table);
     let mut runner = Runner::new().unwrap();
     let mut pipeline = Pipeline;
@@ -279,7 +301,7 @@ fn driven_ticks_journal_the_ack_and_the_advance_without_holding_the_lock() {
         );
         // Between ticks the lock is free — this open would fail with
         // `store/lock` if the loop held it across the interval.
-        let opened = Store::open(directory.path()).expect("the writer lock is free");
+        let opened = open_writer(directory.path());
         let done = opened.state.instances["order-1"].status.as_str() == "completed";
         drop(opened);
         if done {

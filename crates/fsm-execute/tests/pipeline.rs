@@ -47,6 +47,25 @@ impl Drop for TestDirectory {
     }
 }
 
+/// Open a writer, tolerating a lock this process itself just released.
+///
+/// Spawning a handler forks, and between `fork` and `exec` the child holds a
+/// copy of every open descriptor — so an advisory lock dropped a moment ago
+/// can still be held for the length of that window. The property under test is
+/// that the executor does not *keep* the lock, not that a fork never happened.
+fn open_writer(path: &Path) -> Store {
+    for _ in 0..50 {
+        match Store::open(path) {
+            Ok(store) => return store,
+            Err(error) if error.code == "store/lock" => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("open writer {}: {error:?}", path.display()),
+        }
+    }
+    panic!("the writer lock on {} never became free", path.display())
+}
+
 fn machine() -> Value {
     parse(
         br#"{
@@ -810,7 +829,7 @@ fn tick_machine() -> Value {
 /// data dir rather than per process.
 fn triggered_instance(test_name: &str) -> (TestDirectory, String) {
     let directory = TestDirectory::create(test_name);
-    let mut store = Store::open(directory.path()).unwrap();
+    let mut store = open_writer(directory.path());
     let mut clock = FixedClock::new(1_000, 1);
     store
         .define_machine_on(&mut clock, tick_machine(), false, false)
@@ -863,7 +882,10 @@ fn ticking_drives_a_triggered_instance_to_terminal_and_frees_the_lock() {
     use fsm_execute::watch::Watcher;
 
     let (directory, effect_id) = triggered_instance("pipe-tick");
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        fsm_execute::service::advancing_effects(&stub_table()),
+    );
     let mut scheduler = Scheduler::new(stub_table());
     let mut runner = Runner::new().unwrap();
     let mut pipeline = Pipeline;
@@ -884,7 +906,7 @@ fn ticking_drives_a_triggered_instance_to_terminal_and_frees_the_lock() {
         // Immediately after a tick returns, the writer lock is free: nothing
         // is held across the interval, which is what lets the CLI or an MCP
         // writer act between ticks.
-        drop(Store::open(directory.path()).expect("the executor released the writer"));
+        drop(open_writer(directory.path()));
         if lines.iter().any(|line| line.starts_with("instance ")) {
             break;
         }
@@ -901,7 +923,10 @@ fn a_lent_writer_produces_the_identical_trace_without_opening_anything() {
     use fsm_execute::watch::Watcher;
 
     let (directory, effect_id) = triggered_instance("pipe-tick-embedded");
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        fsm_execute::service::advancing_effects(&stub_table()),
+    );
     let mut scheduler = Scheduler::new(stub_table());
     let mut runner = Runner::new().unwrap();
     let mut pipeline = Pipeline;

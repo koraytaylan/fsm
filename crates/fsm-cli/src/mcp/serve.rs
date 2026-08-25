@@ -122,7 +122,10 @@ impl ExecutorLoop {
         table: fsm_execute::config::HandlerTable,
     ) -> Result<Self, fsm_execute::error::ExecError> {
         Ok(Self {
-            watcher: fsm_execute::watch::Watcher::new(data_dir.to_path_buf()),
+            watcher: fsm_execute::watch::Watcher::new(
+                data_dir.to_path_buf(),
+                fsm_execute::service::advancing_effects(&table),
+            ),
             scheduler: fsm_execute::sched::Scheduler::new(table),
             runner: fsm_execute::run::Runner::new()?,
             pipeline: fsm_execute::run::Pipeline,

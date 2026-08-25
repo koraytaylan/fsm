@@ -10,6 +10,13 @@ pub fn journal_dir(data: &Path) -> PathBuf {
     data.join("journal")
 }
 
+/// How many interrupted `flock` calls to ride out before giving up.
+///
+/// An interruption is a signal, not contention, so retrying is the correct
+/// answer and a small bound is enough: signals do not arrive in unbounded
+/// bursts, and a bound keeps a pathological host from spinning here forever.
+const LOCK_INTERRUPTION_RETRIES: u32 = 8;
+
 /// Attach the operation and path to an IO failure.
 ///
 /// `io::Error` alone renders as bare OS text — "Access is denied. (os error 5)"
@@ -29,18 +36,42 @@ pub(super) fn acquire_lock(jdir: &Path) -> Result<File, JournalIoError> {
         crate::PersistenceWriteMode::Update,
     )
     .map_err(|e| io_err("open lock", &path, e))?;
-    if f.try_lock().is_err() {
-        let buf = crate::read_open_file_capped(&mut f, &path, crate::PERSISTENCE_READ_CAP)
-            .unwrap_or_default();
-        let pid = parse(&buf, &JsonLimits::DEFAULT)
-            .ok()
-            .and_then(|v| {
-                v.get("pid")
-                    .and_then(Value::as_num)
-                    .and_then(|s| s.parse().ok())
-            })
-            .unwrap_or(0);
-        return Err(JournalIoError::Locked { pid });
+    // `try_lock` reports three different things, and collapsing them tells an
+    // operator the store is busy when it is not. "Someone holds it" is
+    // `WouldBlock`; anything else is the *call* failing. In particular, a
+    // signal arriving while the process reaps a child interrupts `flock`, and
+    // that became reachable the moment an executor started spawning handlers
+    // beside its own writer: reporting `store/lock` for it would blame a
+    // second writer that does not exist, and would end an `--exclusive`
+    // executor run outright. An interrupted call is retried; a real I/O
+    // failure is reported as one.
+    let mut interruptions = 0;
+    loop {
+        match f.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {
+                let buf = crate::read_open_file_capped(&mut f, &path, crate::PERSISTENCE_READ_CAP)
+                    .unwrap_or_default();
+                let pid = parse(&buf, &JsonLimits::DEFAULT)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("pid")
+                            .and_then(Value::as_num)
+                            .and_then(|s| s.parse().ok())
+                    })
+                    .unwrap_or(0);
+                return Err(JournalIoError::Locked { pid });
+            }
+            Err(std::fs::TryLockError::Error(error))
+                if error.kind() == std::io::ErrorKind::Interrupted
+                    && interruptions < LOCK_INTERRUPTION_RETRIES =>
+            {
+                interruptions += 1;
+            }
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(io_err("lock", &path, error));
+            }
+        }
     }
     f.set_len(0)
         .map_err(|e| io_err("truncate lock", &path, e))?;

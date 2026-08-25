@@ -110,6 +110,25 @@ impl Drop for TestDirectory {
     }
 }
 
+/// Open a writer, tolerating a lock this process itself just released.
+///
+/// Spawning a handler forks, and between `fork` and `exec` the child holds a
+/// copy of every open descriptor — so an advisory lock dropped a moment ago
+/// can still be held for the length of that window. The property under test is
+/// that the executor does not *keep* the lock, not that a fork never happened.
+fn open_writer(path: &Path) -> Store {
+    for _ in 0..50 {
+        match Store::open(path) {
+            Ok(store) => return store,
+            Err(error) if error.code == "store/lock" => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(error) => panic!("open writer {}: {error:?}", path.display()),
+        }
+    }
+    panic!("the writer lock on {} never became free", path.display())
+}
+
 /// The recording stub: append one line, exit zero.
 #[test]
 fn stub_handler() {
@@ -198,7 +217,7 @@ fn escaped(path: &str) -> String {
 
 /// Trigger one workflow and release the writer.
 fn triggered(directory: &TestDirectory) -> String {
-    let mut store = Store::open(directory.path()).expect("open writer");
+    let mut store = open_writer(directory.path());
     let mut clock = FixedClock::new(BASE_MS, 1);
     store
         .define_machine_on(&mut clock, machine(), false, false)
@@ -261,7 +280,7 @@ fn die_at(point: DeathPoint, directory: &TestDirectory, effect_id: &str, table: 
             // The ack is journaled under the key the executor derives, and the
             // advance never happens. This is the interruption the resume rule
             // exists for.
-            let mut store = Store::open(directory.path()).unwrap();
+            let mut store = open_writer(directory.path());
             let mut clock = FixedClock::new(BASE_MS + 1_000, 1);
             store
                 .ack_effect_outcome_on(
@@ -284,7 +303,7 @@ fn die_at(point: DeathPoint, directory: &TestDirectory, effect_id: &str, table: 
         DeathPoint::AfterPoll => {
             // A due deadline poll lands, and the process dies before the tick
             // that would have observed its result.
-            let mut store = Store::open(directory.path()).unwrap();
+            let mut store = open_writer(directory.path());
             let mut clock = FixedClock::new(BASE_MS + DEADLINE_MS + 5_000, 1);
             let due_ms = store.state.instances["order-1"].deadlines["confirmation_timeout"];
             let _ = Pipeline.poll(
@@ -303,7 +322,10 @@ fn die_at(point: DeathPoint, directory: &TestDirectory, effect_id: &str, table: 
 
 /// Run a fresh executor to completion against a store somebody else started.
 fn resume(directory: &TestDirectory, table: HandlerTable, now_ms: i64) {
-    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        fsm_execute::service::advancing_effects(&table),
+    );
     let mut scheduler = Scheduler::new(table);
     let mut runner = Runner::new().unwrap();
     let mut pipeline = Pipeline;
