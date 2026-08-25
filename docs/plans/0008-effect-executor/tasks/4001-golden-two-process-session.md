@@ -12,7 +12,7 @@ touches:
   - crates/fsm-cli/tests/fixtures/executor/machine.json
   - crates/fsm-cli/tests/fixtures/executor/handlers.template.json
   - crates/fsm-cli/tests/fixtures/executor/session.expected.txt
-status: planned
+status: done
 merged_as: ""
 ---
 # Golden Two Process Session

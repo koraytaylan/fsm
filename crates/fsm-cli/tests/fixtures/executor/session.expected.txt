@@ -1,0 +1,5 @@
+observed pending request_confirmation order-1/3/0
+spawned handler request_confirmation order-1/3/0
+acked ok order-1/3/0 request_id=exec-ack-order-1/3/0
+sent confirmed order-1 request_id=exec-ev-order-1/3/0-confirmed
+instance order-1 completed
