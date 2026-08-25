@@ -8,8 +8,9 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/args.rs
-  - crates/fsm-cli/src/main.rs
   - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/src/mcp/tools/mod.rs
+  - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - crates/fsm-cli/src/cli/execute.rs
   - crates/fsm-cli/tests/serve_modes.rs
 status: planned
@@ -21,19 +22,19 @@ Resolves the plan's only real fork — who may write while the executor runs —
 
 **Steps:**
 
-1. In `args.rs`, add `fsm serve --read-only` and `fsm serve --execute --handlers <file>`.
-2. `serve --read-only` opens `Store::open_read_only` instead of `Store::open`. Thread a `read_only: bool` (or the store variant) through `serve` so the four mutating tools and `deadline_poll` — whose `run` fns call `ensure_writable()`-gated mutators — return a clean tool error (mapping `io/write` → a `req/`-style object) whose `hint` reads that this serve is read-only and the executor owns writes. Read tools (`instance_get`, `instance_history`, `instance_list`, `simulate`, `machine_*`) work unchanged.
-3. `serve --execute --handlers <file>` (embedded mode) runs the *same* `fsm_execute` scheduler/runner/pipeline on the serve thread between input reads: it starts effects inline and documents that a long-running handler blocks the protocol. It reuses 100% of the library — only the driver differs (an embedded tick invoked per serve-loop iteration against serve's own writer handle, which it already holds while initialized).
-4. `fsm execute` (from task 3901) gains explicit mode selection: default `paired` (expects a read-only serve to be the only concurrent reader; acquires writer per-tick) and `--exclusive` (asserts it is the sole process; still uses per-tick writer acquisition). Both log the mode at startup; `paired` + `exclusive` differ only in the startup assertion and log line.
-5. Record the mode in one startup log line per process and in `serve`'s `serverInfo`/`instructions` adjunct so the proof transcript can assert which mode ran.
+1. In `args.rs`, add `--read-only` and `--execute` switches plus a `--handlers` flag to the existing `SERVE` `CmdSpec`.
+2. `serve --read-only` opens `Store::open_read_only` instead of `Store::open`. Declare the gated set once as `pub const MUTATING_TOOLS: &[&str]` next to the tool registry and have `dispatch` consult it, so the read-only gate is a table rather than six match arms and task `4101`'s doc test can import the same constant instead of restating the list. Thread the read-only fact through `serve` so that **all six** `ensure_writable()`-gated tools — `machine_create`, `instance_create`, `instance_send`, `deadline_poll`, `effect_ack`, `instance_cancel` — return a clean tool error (mapping `io/write`) whose hint says this serve is read-only and the executor owns writes. Count them from the code, not from memory: `machine_create` is the authoring path and the easy one to miss, though a `dry_run` create still validates without writing. The eight read tools (`machine_list`, `machine_get`, `machine_analyze`, `machine_diagram`, `instance_get`, `instance_list`, `instance_history`, `simulate`) work unchanged.
+3. `serve --execute --handlers <file>` (embedded mode) calls `fsm_execute::service::tick_with` once per serve-loop iteration, passing serve's own writer handle — the lent-writer entry point exists precisely for this, since `tick`'s own `Store::open` would collide with the lock serve already holds. Document both limits in the code where they bite: a long-running handler blocks the protocol, and because `serve_session` blocks in `read_capped_line` until a client line arrives, **a tick happens only when the client speaks**, so embedded mode advances a workflow during a conversation, never overnight.
+4. `fsm execute` (task `3901`) gains explicit mode selection: default `paired` (expects a read-only serve as the only other reader; acquires the writer per tick) and `--exclusive`, which additionally asserts at startup that it can take the writer lock and exits with `exec/mode` if something else already holds it instead of backing off. Both log the mode at startup.
+5. Record the mode in one startup log line per process and in `serve`'s `instructions` adjunct, so an operator reading a transcript can tell which mode ran. That line is not part of any tick trace.
 
 **Tests:**
 
-- Read-only serve: `tools/call instance_send` → a clean tool error whose text/hint names read-only mode and that the executor owns writes; `tools/call instance_get` and `instance_history` return normal results against a data dir the executor is concurrently writing (opened from the same test process on separate handles).
+- Read-only serve: `tools/call` for each name in `MUTATING_TOOLS` returns a clean tool error whose text/hint names read-only mode and that the executor owns writes; `machine_create` with `dry_run` still validates; `instance_get` and `instance_history` return normal results against a data dir the executor is concurrently writing (separate handles from the same test process).
 - Read-only serve coexists with a writer: open serve `--read-only` and a writer `Store` in the same test → no `store/lock`.
-- Non-read-only serve against a data dir the executor already holds the writer on → the second opener gets `store/lock` and renders it as the existing lock error (regression guard, proving single-writer still holds).
-- Embedded mode: serve initialized with a machine whose instance emits an effect; after driving the input lines that advance into the effect, the serve process itself journals the `effect_acked` using the fixture stub handler — no external executor involved.
-- Mode visibility: each of the three startups logs its mode line; the proof fixture strings are present.
-- `store/lock` contention inside `fsm execute` (another writer holds it at tick time) is logged as `exec/store` and retried on a later tick, not a fatal exit.
+- Non-read-only serve against a data dir the executor already holds the writer on → the second opener gets `store/lock` and renders it as the existing lock error (regression guard, proving single-writer still holds even within one process).
+- Embedded mode: serve initialized with a machine whose instance emits an effect; after driving the input lines that advance into the effect, the serve process itself journals the `effect_acked` using the test-binary stub handler — no external executor involved. One further line drives the tick that sends the advance event, demonstrating the tick-on-traffic limit rather than hiding it.
+- `--exclusive` against a data dir whose lock is already held exits with `exec/mode`; plain `paired` in the same situation logs `exec/store` and retries on a later tick rather than exiting.
+- Mode visibility: each of the three startups logs its mode line, and the line is absent from `tick`'s action lines.
 
-- **Done when:** `cargo test -p fsm-cli --test serve_modes` passes the read-only, embedded, exclusive, contention, and mode-visibility rows, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+- **Done when:** `cargo test -p fsm-cli --test serve_modes` passes the `MUTATING_TOOLS` read-only, embedded, exclusive-assertion, contention, and mode-visibility rows, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
