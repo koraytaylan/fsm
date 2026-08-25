@@ -13,6 +13,24 @@ fsm instance send inst-demo submit --payload '{"amount":"10.00"}' --request-id d
 fsm instance history inst-demo
 ```
 
+## Running it unattended
+
+The 60-second demo advances the workflow by hand. `fsm execute` does it for
+you: it watches the outbox, runs an operator-configured table of handlers, and
+acks each outcome into the journal, so a workflow triggered in a chat proceeds
+gate to gate with nobody watching.
+
+```
+fsm execute --check --handlers examples/order_lifecycle.handlers.json
+fsm execute --data-dir ./data --handlers examples/order_lifecycle.handlers.json &
+fsm serve --read-only --data-dir ./data
+```
+
+The pairing is the point: only the executor writes, and `fsm serve --read-only`
+lets the model watch its acks and transitions arrive live. See
+[docs/EMBEDDING.md](docs/EMBEDDING.md#executing-workflows) for the handler-table
+format and the three run modes.
+
 ## Install
 
 ```
@@ -21,13 +39,14 @@ cargo install --path crates/fsm-cli --locked
 
 ## Embedding it
 
-`fsm` is three crates. Depend on the one you need — the CLI binary is not a
+`fsm` is four crates. Depend on the one you need — the CLI binary is not a
 library:
 
 | Crate | Use it for |
 |---|---|
 | `fsm-core` | the pure engine: parse, compile, analyse, step, and poll caller-timed deadlines. No I/O, no clock. |
 | `fsm-store` | the durable journal-backed store, if you want ours rather than yours. |
+| `fsm-execute` | the effect executor loop, if you are hosting it yourself rather than running `fsm execute`. |
 | `fsm-cli` | the `fsm` binary and MCP server. Not a supported library dependency. |
 
 ```toml
@@ -77,10 +96,13 @@ Claude Desktop `mcpServers` JSON:
 | platform independence | no OS-specific semantics in core |
 | crash safety | torn tails are classified and repaired |
 | auditable implementation | zero dependencies, no unsafe |
+| unattended execution | `fsm execute` is a separate one-node process with **at-least-once** execution at the process boundary and exactly-once journaling: one ack per effect, whatever it survived |
 
 Honest non-claims: this is a **single-node** single-writer engine. There is no
 HA/replication or autonomous real-time scheduler; a deadline fires only when a
-caller polls. The throughput ceiling is a feature.
+caller polls. The throughput ceiling is a feature. The executor inherits that
+ceiling, and a handler killed mid-run is re-run by the next executor rather
+than rolled back — model the undo as a compensating effect in the machine.
 
 See [docs/SPEC.md](docs/SPEC.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), [docs/EMBEDDING.md](docs/EMBEDDING.md), [docs/API-POLICY.md](docs/API-POLICY.md), and [docs/RELEASE.md](docs/RELEASE.md).
 

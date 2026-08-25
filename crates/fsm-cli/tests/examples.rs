@@ -323,6 +323,13 @@ fn extract_fsm_line(line: &str) -> Option<(String, Option<String>)> {
     if rest.starts_with("version") || rest.starts_with("docs ") || rest.starts_with("help") {
         return None;
     }
+    // `serve` and `execute` are loops, not commands: they run until the
+    // operator stops them, so an exit-code harness cannot execute them. Their
+    // one-shot pre-flight (`execute --check`) is run like everything else, so
+    // the documented table still has to validate.
+    if rest.starts_with("serve") || (rest.starts_with("execute") && !rest.contains("--check")) {
+        return None;
+    }
     Some((rest.to_string(), clock_ms))
 }
 

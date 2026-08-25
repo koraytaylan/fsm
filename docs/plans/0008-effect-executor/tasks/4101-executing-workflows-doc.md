@@ -12,7 +12,7 @@ touches:
   - docs/API-POLICY.md
   - README.md
   - crates/fsm-cli/tests/executor_doc.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Executing Workflows Doc

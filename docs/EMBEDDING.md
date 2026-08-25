@@ -9,11 +9,14 @@ for the third consumer: a Rust program that drives the engine in process.
 |---|---|---|
 | `fsm-core` | The engine. Pure: no I/O, no clock reads, no `HashMap`, no floats. Parses and compiles specs, steps instances, polls caller-timed deadlines, analyses machines, hashes state. | You keep your own persistence and supply timestamps. |
 | `fsm-store` | The durable shell. Append-only hash-chained journal, fsync per record, snapshots, and wall-clock reads at mutation boundaries. | You want the journal as your store. |
+| `fsm-execute` | The effect executor: watches a store's outbox, runs operator-configured handlers as subprocesses, acks outcomes, polls deadlines. | You are building your own executor host and want the loop rather than the binary. |
 | `fsm-cli` | The `fsm` binary: CLI plus MCP server. | You are a host, not an embedder. |
 
 `fsm-core` and `fsm-store` are supported embedding targets and are covered by
-the release acceptance criteria. `fsm-cli` is a binary crate; do not depend on
-it as a library — `fsm-store` exists so you do not have to.
+the release acceptance criteria. `fsm-execute` is a library too, but its surface
+is younger than theirs — see [API-POLICY.md](API-POLICY.md) before depending on
+it. `fsm-cli` is a binary crate; do not depend on it as a library — `fsm-store`
+exists so you do not have to.
 
 See [API-POLICY.md](API-POLICY.md) for what "supported" commits us to, and for
 how to pin a version.
@@ -304,6 +307,174 @@ can correct the payload and resend under the same key.
 - There are still no hidden events and no hidden clock reads. Advancement is
   caused only by an explicit event step or deadline poll, both with caller-owned
   time in the pure core.
+
+## Executing workflows
+
+Everything above leaves the *running* of effects to you. `fsm execute` is the
+process that does it: it watches a store's outbox, runs an operator-configured
+table of handlers as subprocesses, acknowledges each outcome into the journal,
+and polls due deadlines — so a workflow triggered in a chat this morning
+proceeds gate to gate this afternoon with nobody watching.
+
+### The outbox contract, restated for operators
+
+A transition emits a named effect into `effects_pending` and stops there. The
+executor runs it and acks it, and **the ack does not transition anything**. The
+instance moves only when a domain event the machine itself declares is sent, so
+every advance the executor makes is an event your definition already allows —
+named in the handler table, never improvised. An effect whose name has no
+handler is a deliberate stall: the executor logs `exec/unhandled_effect` once
+and takes no other action, because the alternative is guessing what to run
+against the world's computers.
+
+### The handler table: `fsm.handlers/1`
+
+One operator-owned JSON file, read once at startup, before any store is opened.
+It is the security boundary of the whole design: it closes the set of commands
+the executor can ever run.
+
+```json
+{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {
+      "effect": "request_confirmation",
+      "argv": ["/usr/local/bin/notify-supplier", "--order", "{order_id}", "--quiet"],
+      "timeout_ms": 120000,
+      "on_ok": { "event": "confirmed", "payload": {}, "stamps": ["at"] },
+      "on_failed": { "event": "confirmation_failed", "payload": { "reason": "handler" } }
+    }
+  ]
+}
+```
+
+| Field | Rule |
+|---|---|
+| `format` | exactly `fsm.handlers/1` |
+| `effect` | a non-empty effect name the machine declares; unique across the table |
+| `argv` | non-empty array of strings. `argv[0]` is the command and must be a **literal rooted path** — no `{placeholder}`, no bare name |
+| `timeout_ms` | a whole number of milliseconds, `1` to `86400000`; the run is killed past it |
+| `on_ok` / `on_failed` | optional. An object with a non-empty `event`, an optional `payload` **object** (default `{}`), and an optional `stamps` array of field names (default `[]`) the store fills from the clock |
+
+Every other key is refused. A misspelled `on_okay` that validated would ack
+effects and never advance, which at run time is indistinguishable from a
+deliberately undeclared advance.
+
+`{placeholder}` in any element after `argv[0]` is replaced by the effect
+argument of that name, rendered in the same canonical form the engine persists
+context with — an int is exact, a decimal keeps its scale, a string is
+verbatim. **No shell is involved anywhere.** One template element always
+produces exactly one argv element, so a value containing spaces, `;`, or
+`$(…)` is one opaque argument; nothing re-splits it and no glob expands. A
+placeholder naming an argument the emit did not produce is a run-time failure
+of that effect — acked `failed` so the machine's own failure path can fire —
+not a table error. There is no escape for a literal brace: values may contain
+`{` and `}`, templates may not.
+
+Handler output is captured and bounded. At most 4 KiB of each stream reaches
+the journal; when the stream was longer the ack also carries a SHA-256 of the
+whole thing, so a permanent record keeps a tamper-evident reference to output
+it does not store. Bytes that are not valid UTF-8 survive as replacement
+characters, and a character the cap cut in half is dropped rather than
+rendered, so an ack never fails to journal because of what a handler printed.
+
+Validate a table before pointing it at a store:
+
+```console
+$ fsm execute --check --handlers ./handlers.json
+```
+
+### Idempotency: why a restarted executor is safe
+
+The executor never invents a `request_id`. Every key is derived from content
+the journal already holds:
+
+| Write | Key |
+|---|---|
+| ack | `exec-ack-{effect_id}` |
+| advance event | `exec-ev-{effect_id}-{event}` |
+| deadline poll | `exec-poll-{len}-{instance_id}-{deadline}-{due_ms}` |
+
+The store keys idempotency on the pair `(request_id, request fingerprint)`, and
+both halves derive from journaled state, so a restarted executor recomputes the
+identical key for the identical intent and the store answers `duplicate: true`
+instead of applying it twice. A key re-used for *different* content is refused
+with `req/request_id_conflict` rather than replayed — that refusal is the
+design working, and it is what makes derivation safe rather than merely
+convenient. The due time is part of the poll key because a rescheduled deadline
+is a new observation, and replaying the old key would answer with the old
+poll's outcome.
+
+### Three run modes, and which one you want
+
+| Mode | Who writes acks | `fsm serve` while it runs | Use it for |
+|---|---|---|---|
+| `paired` (default) | the executor | read-only, for monitoring | the headline case: the model watches progress while the executor drives the workflow unattended |
+| `embedded` | the serve process itself | holds the writer, runs handlers inline | one ad-hoc session, at a keyboard |
+| `exclusive` | the executor | not running | unattended batch or CI where nothing else touches the store |
+
+`paired` is the default. Start the MCP host read-only against the same data
+directory and it can call `machine_list`, `machine_get`, `machine_analyze`,
+`machine_diagram`, `instance_get`, `instance_list`, `instance_history`, and
+`simulate` while the executor writes.
+
+What it cannot do there is write. These six refuse with a message naming the
+mode: `machine_create`, `instance_create`, `instance_send`, `deadline_poll`,
+`effect_ack`, `instance_cancel`. A `machine_create` with `dry_run` still
+validates, because checking a definition is reading, not writing.
+
+That is the one real ergonomic price of a single-writer store, and it decides
+the order you do things in: **author and trigger through a writer, then let the
+executor run while the model watches.** Define the machine and send the trigger
+event before starting the executor, or from a terminal (`fsm machine add`,
+`fsm instance new`, `fsm instance send`) while it runs — those contend for one
+tick at worst — or use `embedded` mode.
+
+`embedded` (`fsm serve --execute --handlers ./handlers.json`) runs the same
+loop on the serve thread. Two limits, stated rather than papered over: a
+long-running handler blocks the protocol, and because the server blocks waiting
+for the next client line, **a tick happens only when the client speaks**.
+Embedded mode advances a workflow during a conversation, never overnight.
+
+Each process announces its mode once on stderr, and a non-default mode says so
+in the MCP `instructions` as well.
+
+### What this does not promise
+
+The guarantee, stated in the shape the design actually holds:
+**at-least-once execution, exactly-once journaling.**
+
+- **Single-node.** The executor is single-node and inherits the store's
+  single-writer ceiling.
+  There is no HA, no multi-writer coordination, and no distribution of handlers
+  across machines.
+- **At-least-once at the process boundary.** What the journal knows, a
+  successor honours; what it does not, a successor repeats. An ack that was
+  journaled but whose advance was lost is re-derived and replayed, never
+  double-applied. A handler that was running when the executor was killed is
+  re-run by the next one, because nothing in the journal says it ever started.
+- **No rollback.** A handler that already reached the outside world is not
+  undone by `fsm`. Model the undo as an explicit **compensating** effect the
+  machine's failure path emits, and let the engine decide when it fires.
+- A clean shutdown kills and reaps every handler it started. A signalled one —
+  `kill -9`, or Ctrl-C — cannot: those children are orphaned and keep running,
+  and the next executor starts fresh ones rather than adopting them.
+
+### Executor error codes
+
+These live under `exec/` and are the executor's own; they are not engine codes
+and do not appear in SPEC.md's appendix.
+
+| Code | Raised when |
+|---|---|
+| `exec/config` | the handler table is malformed, or an argv placeholder names an argument the emit did not produce |
+| `exec/effect_unresolved` | a pending effect id whose name and args cannot be re-derived from the journal |
+| `exec/unhandled_effect` | a pending effect with no handler — logged once, and nothing else happens |
+| `exec/spawn` | the command could not be started |
+| `exec/timeout` | a run was killed for passing its `timeout_ms` |
+| `exec/cancelled` | a run was killed because its instance was cancelled |
+| `exec/store` | a store operation failed; the original code is preserved in `details` |
+| `exec/mode` | `--exclusive` found another writer holding the data directory |
 
 ## Errors
 

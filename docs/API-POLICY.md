@@ -10,6 +10,7 @@ What a downstream crate can rely on, and what it must expect to change.
 | `fsm serve` MCP tools (14 tools, schemas) | supported |
 | `fsm-core` as a library dependency | supported |
 | `fsm-store` as a library dependency | supported |
+| `fsm-execute` as a library dependency | **provisional** — the effect executor's own surface. It ships with the `fsm execute` subcommand and is covered by that command's tests, but it has no outside-workspace acceptance check, and its types may change with the patch while the executor's design settles. Depend on it if you are hosting the loop yourself; pin a tag and expect to read the release notes. |
 | `fsm-cli` as a library dependency | **not** supported — it is a binary crate; its `lib` target exists only for its own tests |
 
 Each supported path has an acceptance check in [RELEASE.md](RELEASE.md).
@@ -41,8 +42,9 @@ The commitments that make a tag safe to pin:
   or deleted. If a tag is wrong, the fix is a new tag.
 - **Always pin a `tag`, never a branch.** `develop` is not a stable surface and
   carries no compatibility promise.
-- **Tags name a whole workspace.** All crates share one version, so `fsm-core`
-  and `fsm-store` from the same tag always agree. Do not mix tags.
+- **Tags name a whole workspace.** All crates share one version, so `fsm-core`,
+  `fsm-store`, and `fsm-execute` from the same tag always agree. Do not mix
+  tags.
 - **A tag is a green commit.** `cargo test && cargo clippy --workspace -- -D
   warnings && cargo fmt --check` passes and the RELEASE.md checklist is complete
   at every tag, including the library acceptance check.
@@ -213,6 +215,10 @@ Rules:
 SHA-256, decimals, and JSON-RPC are all in-tree, so the whole surface is
 auditable and there is no transitive supply chain. `crates/fsm-cli/tests/zero_deps.rs`
 enforces this against the resolved cargo graph.
+
+The workspace is five crates — `fsm-core`, `fsm-store`, `fsm-execute`,
+`fsm-cli`, and `fsm-embed-acceptance` — and that set is exactly what the
+resolved graph may contain.
 
 The practical consequence for an embedder: adding `fsm-core` adds one crate to
 your build, not a subtree.

@@ -48,7 +48,7 @@ fn readme_and_licenses() {
         .lines()
         .filter(|l| l.starts_with("|") && !l.contains("---") && !l.contains("Guarantee"))
         .count();
-    assert_eq!(rows, 18, "{rows}");
+    assert_eq!(rows, 19, "{rows}");
     assert!(readme.contains("single-node"));
     let mit = std::fs::read_to_string(root.join("LICENSE-MIT")).unwrap();
     let ap = std::fs::read_to_string(root.join("LICENSE-APACHE")).unwrap();
