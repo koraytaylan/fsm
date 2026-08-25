@@ -6,10 +6,14 @@
 //! no policy, and the pipeline spawns nothing.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::process::Child;
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use fsm_core::json::Value;
+use fsm_core::sha256::{Sha256, to_hex};
 use fsm_store::clock::Clock;
 use fsm_store::store::Store;
 
@@ -32,13 +36,107 @@ pub struct BoundedBytes {
 }
 
 impl BoundedBytes {
-    /// Render the capture as a valid JSON string, lossily and on a character
-    /// boundary. Handler output is arbitrary bytes; a record body is canonical
-    /// JSON. This conversion must never fail.
-    pub fn to_json_string(&self) -> String {
-        let _ = (&self.bytes, self.truncated, &self.sha256);
-        unimplemented!("task 3801")
+    /// An empty capture, for a stream that produced nothing.
+    pub fn empty() -> Self {
+        Self {
+            bytes: Vec::new(),
+            truncated: false,
+            sha256: None,
+        }
     }
+
+    /// Read a capture file, keeping the first [`ACK_OUTPUT_CAP`] bytes and
+    /// digesting the whole stream when it is longer.
+    ///
+    /// The digest is what keeps a large output tamper-evident without storing
+    /// it: journal records are permanent, and a handler that prints a megabyte
+    /// must not put a megabyte in the chain. Mirrors SPEC §Payload size's
+    /// "journal a digest" rule.
+    ///
+    /// A file that cannot be read yields an empty capture rather than an
+    /// error. The ack has to be journaled either way — refusing to write it
+    /// because a temporary file vanished would leave the effect pending
+    /// forever, which is strictly worse than an ack with an empty `stdout`.
+    /// A read that fails *part way* is marked `truncated` with no digest,
+    /// which is this type's way of saying "this is a prefix, and I cannot
+    /// prove what the rest was": presenting a partial capture as the whole
+    /// output would put a falsehood in a permanent record.
+    fn read_capped(path: &Path) -> Self {
+        let Ok(mut file) = File::open(path) else {
+            return Self::empty();
+        };
+        let mut bytes = Vec::new();
+        let mut hasher = Sha256::new();
+        let mut total = 0usize;
+        let mut chunk = [0u8; 8192];
+        let mut complete = true;
+        loop {
+            match file.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => {
+                    hasher.update(&chunk[..read]);
+                    total = total.saturating_add(read);
+                    if bytes.len() < ACK_OUTPUT_CAP {
+                        let room = ACK_OUTPUT_CAP - bytes.len();
+                        bytes.extend_from_slice(&chunk[..read.min(room)]);
+                    }
+                }
+                Err(_) => {
+                    complete = false;
+                    break;
+                }
+            }
+        }
+        let over_cap = total > ACK_OUTPUT_CAP;
+        Self {
+            bytes,
+            truncated: over_cap || !complete,
+            sha256: (over_cap && complete).then(|| to_hex(&hasher.finalize())),
+        }
+    }
+
+    /// Render the capture as a valid JSON string, lossily and on a character
+    /// boundary.
+    ///
+    /// Handler output is arbitrary bytes and a record body is canonical JSON;
+    /// this is the one conversion between them, and it must never fail. A
+    /// multi-byte character straddling the cap is dropped rather than rendered
+    /// as a replacement character, because it is a *truncation* artefact
+    /// rather than something the handler wrote; a genuinely invalid byte the
+    /// handler did write survives as U+FFFD.
+    pub fn to_json_string(&self) -> String {
+        String::from_utf8_lossy(without_partial_tail(&self.bytes)).into_owned()
+    }
+}
+
+/// Drop a final UTF-8 sequence the cap cut in half.
+///
+/// Only the tail is inspected, and deliberately so: an invalid byte earlier in
+/// the stream is something the handler wrote and stays as U+FFFD, while an
+/// incomplete sequence at the very end is an artefact of where the capture
+/// stopped and is not the handler's output at all.
+fn without_partial_tail(bytes: &[u8]) -> &[u8] {
+    let earliest_lead = bytes.len().saturating_sub(4);
+    for index in (earliest_lead..bytes.len()).rev() {
+        let byte = bytes[index];
+        if byte & 0xC0 == 0x80 {
+            continue; // a continuation byte: keep walking back to its lead
+        }
+        let needed = match byte {
+            0x00..=0x7F => 1,
+            0xC0..=0xDF => 2,
+            0xE0..=0xEF => 3,
+            0xF0..=0xF7 => 4,
+            // Not a lead byte at all; lossy rendering turns it into U+FFFD.
+            _ => 1,
+        };
+        return if bytes.len() - index < needed {
+            &bytes[..index]
+        } else {
+            bytes
+        };
+    }
+    bytes
 }
 
 /// Why an in-flight handler was killed. A timeout and a cancel are different
@@ -49,6 +147,16 @@ pub enum KillReason {
     Timeout,
     /// The instance was cancelled while the run was in flight.
     Cancelled,
+}
+
+impl KillReason {
+    /// The `exec/*` code this reason is journaled as.
+    pub fn code(self) -> &'static str {
+        match self {
+            KillReason::Timeout => "exec/timeout",
+            KillReason::Cancelled => "exec/cancelled",
+        }
+    }
 }
 
 /// What one handler run did.
@@ -76,45 +184,328 @@ pub enum RunOutcome {
 }
 
 impl RunOutcome {
+    /// Whether this outcome acks `ok`. Only a clean exit does.
+    pub fn succeeded(&self) -> bool {
+        matches!(self, RunOutcome::Completed { status: 0, .. })
+    }
+
     /// The deterministic `result` the ack is fingerprinted over.
     ///
     /// No timestamp, duration, or pid may enter it: the store keys idempotency
     /// on the content, so anything varying between the write and a later
     /// re-issue turns a replay into a conflict.
     pub fn ack_result(&self) -> Value {
-        unimplemented!("task 3801")
+        let mut result = BTreeMap::new();
+        match self {
+            RunOutcome::Completed {
+                status,
+                stdout,
+                stderr,
+            } => {
+                result.insert("status".into(), Value::Num(status.to_string()));
+                insert_stream(&mut result, "stdout", stdout);
+                insert_stream(&mut result, "stderr", stderr);
+            }
+            RunOutcome::Killed { reason } => {
+                result.insert("status".into(), Value::Num("-1".into()));
+                result.insert("error".into(), Value::Str(reason.code().into()));
+            }
+            RunOutcome::SpawnFailed { argv0 } => {
+                result.insert("status".into(), Value::Num("-1".into()));
+                result.insert("error".into(), Value::Str("exec/spawn".into()));
+                result.insert("argv0".into(), Value::Str(argv0.clone()));
+            }
+        }
+        Value::Obj(result)
     }
 }
+
+/// Put one captured stream into the ack, with its digest when the capture is
+/// only a prefix. The digest's presence is what tells a later reader that the
+/// text is not the whole output.
+fn insert_stream(result: &mut BTreeMap<String, Value>, name: &str, stream: &BoundedBytes) {
+    result.insert(name.into(), Value::Str(stream.to_json_string()));
+    if let Some(digest) = &stream.sha256 {
+        result.insert(format!("{name}_sha256"), Value::Str(digest.clone()));
+    }
+}
+
+/// One child and the two files its output is going into.
+struct Running {
+    child: Child,
+    stdout_path: PathBuf,
+    stderr_path: PathBuf,
+}
+
+/// Distinguishes the scratch directories of two runners in one process, which
+/// the chaos harness creates when it restarts an executor: a shared directory
+/// would be removed by the first `Drop` out from under the second runner.
+static RUNNER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// Per-run capture file names, so no two runs can name the same file whatever
+/// characters an instance id contains.
+static SPAWN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// The only component that spawns processes.
 pub struct Runner {
     scratch: PathBuf,
-    children: BTreeMap<String, Child>,
+    children: BTreeMap<String, Running>,
 }
 
 impl Runner {
     /// Create the capture directory this runner owns.
+    ///
+    /// Created exclusively, never adopted. The temporary directory is world
+    /// writable on a Unix host, so a guessable name that `create_dir_all`
+    /// accepts when it already exists would let a local account pre-create it
+    /// — as a symlink, say — and read every handler's captured output, or have
+    /// this process's `Drop` remove a directory of their choosing. An
+    /// exclusive create refuses both, and on Unix the directory is made 0700
+    /// so the captures are unreadable by anyone else even while they exist.
     pub fn new() -> Result<Self, ExecError> {
-        unimplemented!("task 3801")
+        let mut attempt = 0u32;
+        loop {
+            let scratch = std::env::temp_dir().join(format!(
+                "fsm-exec-{}-{}-{}",
+                std::process::id(),
+                RUNNER_SEQUENCE.fetch_add(1, Ordering::Relaxed),
+                unique_suffix(attempt)
+            ));
+            match private_directory().create(&scratch) {
+                Ok(()) => {
+                    return Ok(Self {
+                        scratch,
+                        children: BTreeMap::new(),
+                    });
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && attempt < 8 => {
+                    attempt += 1;
+                }
+                Err(error) => {
+                    return Err(ExecError::new(
+                        "exec/spawn",
+                        format!(
+                            "cannot create the capture directory {}: {error}",
+                            scratch.display()
+                        ),
+                    )
+                    .hint("point TMPDIR at a writable directory this user owns"));
+                }
+            }
+        }
+    }
+
+    /// The directory this runner captures handler output into.
+    pub fn scratch_dir(&self) -> &Path {
+        &self.scratch
+    }
+
+    /// The effects this runner currently has a child for.
+    pub fn running_effects(&self) -> Vec<String> {
+        self.children.keys().cloned().collect()
+    }
+
+    /// The effects whose child has exited and is waiting to be collected.
+    ///
+    /// Separate from [`Runner::poll`] because the driver has to know whether a
+    /// tick needs the writer *before* it takes the outcome: collecting an
+    /// outcome it then cannot journal would throw away a completed run.
+    /// `try_wait` remembers the exit status, so asking here and taking it
+    /// afterwards reaps exactly once.
+    pub fn finished_effects(&mut self) -> Vec<String> {
+        let mut finished = Vec::new();
+        for (effect_id, running) in &mut self.children {
+            match running.child.try_wait() {
+                Ok(Some(_)) | Err(_) => finished.push(effect_id.clone()),
+                Ok(None) => {}
+            }
+        }
+        finished
     }
 
     /// Start one handler, capturing both streams to files.
+    ///
+    /// **Files, not pipes.** A child that writes past the OS pipe buffer
+    /// (~64 KiB) blocks until someone reads, and this runner only reads after
+    /// `try_wait` reports exit — so a chatty handler would hang until its
+    /// timeout killed it, and the output cap guarantees somebody eventually
+    /// writes that much. Draining incrementally would need a reader thread per
+    /// stream; a file needs neither.
+    ///
+    /// **No shell, ever.** The command is `argv[0]` and the arguments are the
+    /// rest, passed as they are, so a substituted value can never be re-split
+    /// or glob-expanded. Standard input is `/dev/null`: a handler must not be
+    /// able to read the executor's own stdin, which under `fsm serve` is the
+    /// MCP protocol stream.
     pub fn spawn(&mut self, effect_id: String, argv: &[String]) -> Result<(), ExecError> {
-        let _ = (&self.scratch, &self.children, effect_id, argv);
-        unimplemented!("task 3801")
+        let Some((command, arguments)) = argv.split_first() else {
+            return Err(spawn_error("", "a handler must name a command"));
+        };
+        // Two children for one effect could produce two acks over the same
+        // derived key with different captured output — the one collision the
+        // whole design refuses. Displacing the entry would also orphan the
+        // first child, since dropping a `Child` neither kills nor reaps it.
+        if self.children.contains_key(&effect_id) {
+            return Err(spawn_error(
+                command,
+                &format!("a run for {effect_id} is already in flight"),
+            ));
+        }
+        let run = SPAWN_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let stdout_path = self.capture_path(&effect_id, run, "out");
+        let stderr_path = self.capture_path(&effect_id, run, "err");
+        let spawned = create_capture(&stdout_path, command).and_then(|stdout| {
+            let stderr = create_capture(&stderr_path, command)?;
+            Command::new(command)
+                .args(arguments)
+                .stdin(Stdio::null())
+                .stdout(Stdio::from(stdout))
+                .stderr(Stdio::from(stderr))
+                .spawn()
+                .map_err(|error| spawn_error(command, &error.to_string()))
+        });
+        let child = match spawned {
+            Ok(child) => child,
+            Err(error) => {
+                // Nothing is running, so nothing will ever collect these.
+                let _ = std::fs::remove_file(&stdout_path);
+                let _ = std::fs::remove_file(&stderr_path);
+                return Err(error);
+            }
+        };
+        self.children.insert(
+            effect_id,
+            Running {
+                child,
+                stdout_path,
+                stderr_path,
+            },
+        );
+        Ok(())
     }
 
     /// Reap a finished child, non-blocking. The only caller of `try_wait`.
+    ///
+    /// A child killed by a signal has no exit code; it is reported as
+    /// `status: -1` so the pipeline acks it `failed` rather than unwrapping a
+    /// `None`.
     pub fn poll(&mut self, effect_id: &str) -> Option<RunOutcome> {
-        let _ = effect_id;
-        unimplemented!("task 3801")
+        let waited = self.children.get_mut(effect_id)?.child.try_wait();
+        let status = match waited {
+            Ok(Some(status)) => status.code().unwrap_or(-1),
+            Ok(None) => return None,
+            Err(_) => {
+                // The child cannot be waited on at all. Stop it before letting
+                // go of the handle, or the run is both reported failed and
+                // left running with nothing able to reach it again.
+                if let Some(running) = self.children.get_mut(effect_id) {
+                    let _ = running.child.kill();
+                    let _ = running.child.wait();
+                }
+                -1
+            }
+        };
+        let running = self.children.remove(effect_id)?;
+        Some(RunOutcome::Completed {
+            status,
+            stdout: take_capture(&running.stdout_path),
+            stderr: take_capture(&running.stderr_path),
+        })
     }
 
     /// Stop an in-flight child and reap it.
     pub fn kill(&mut self, effect_id: &str, reason: KillReason) -> RunOutcome {
-        let _ = (effect_id, reason);
-        unimplemented!("task 3801")
+        if let Some(mut running) = self.children.remove(effect_id) {
+            let _ = running.child.kill();
+            let _ = running.child.wait();
+            let _ = std::fs::remove_file(&running.stdout_path);
+            let _ = std::fs::remove_file(&running.stderr_path);
+        }
+        RunOutcome::Killed { reason }
     }
+
+    fn capture_path(&self, effect_id: &str, run: u64, extension: &str) -> PathBuf {
+        let stem: String = effect_id
+            .chars()
+            .map(|character| {
+                if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                    character
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+        self.scratch.join(format!("{stem}-{run}.{extension}"))
+    }
+}
+
+/// Kill and reap every remaining child, then remove the capture directory.
+///
+/// No *signalled* shutdown runs this. Not `kill -9`, and not Ctrl-C either,
+/// because Rust's default handler terminates without unwinding: the children
+/// are re-parented and keep running, the capture files stay, and the next
+/// executor **cannot adopt them** — it sees the effect still pending and
+/// starts a fresh run. That is precisely the at-least-once boundary this plan
+/// claims, stated where the code makes it true. There is no pid file and no
+/// adoption protocol; a handler whose work already reached the outside world
+/// is undone by a compensating effect the machine emits, or not at all.
+impl Drop for Runner {
+    fn drop(&mut self) {
+        for (_, mut running) in std::mem::take(&mut self.children) {
+            let _ = running.child.kill();
+            let _ = running.child.wait();
+        }
+        let _ = std::fs::remove_dir_all(&self.scratch);
+    }
+}
+
+/// A directory builder that creates the leaf itself and refuses an existing
+/// one, private to this user where the platform can express that.
+fn private_directory() -> std::fs::DirBuilder {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+}
+
+/// Enough entropy to make the capture directory's name unguessable in
+/// practice, without a random-number generator this workspace does not have.
+/// The nanosecond clock is the same source `crash_harness.rs` uses to make its
+/// run roots invocation-unique.
+fn unique_suffix(attempt: u32) -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or(0)
+        .wrapping_add(u128::from(attempt))
+}
+
+fn create_capture(path: &Path, command: &str) -> Result<File, ExecError> {
+    File::create(path).map_err(|error| {
+        spawn_error(
+            command,
+            &format!("cannot open the capture file {}: {error}", path.display()),
+        )
+    })
+}
+
+fn take_capture(path: &Path) -> BoundedBytes {
+    let captured = BoundedBytes::read_capped(path);
+    let _ = std::fs::remove_file(path);
+    captured
+}
+
+fn spawn_error(argv0: &str, reason: &str) -> ExecError {
+    ExecError::new("exec/spawn", format!("cannot run {argv0}: {reason}"))
+        .hint("check that the handler's argv[0] exists and is executable")
+        .details(Value::Obj(BTreeMap::from([(
+            "argv0".into(),
+            Value::Str(argv0.into()),
+        )])))
 }
 
 /// What settling one outcome did to the journal.

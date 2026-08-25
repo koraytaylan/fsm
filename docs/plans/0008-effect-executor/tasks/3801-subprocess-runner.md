@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-execute/src/run.rs
   - crates/fsm-execute/tests/run.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Subprocess Runner
