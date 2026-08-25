@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-execute/src/effect.rs
   - crates/fsm-execute/tests/effect.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Pending Effect Metadata
