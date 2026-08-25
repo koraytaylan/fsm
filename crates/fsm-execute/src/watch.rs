@@ -209,6 +209,13 @@ impl Watcher {
 
     /// Resolve through the memo: one prefix fold per effect id, ever, rather
     /// than one per scan for as long as the effect stays pending.
+    ///
+    /// A creation-time id is never memoized across scans. `{instance}/0/{k}`
+    /// carries a literal zero rather than the record's seq, so re-using an
+    /// instance id produces the same id for a different emit; the resolver
+    /// deliberately reads the *newest* `instance_created` record, and a memo
+    /// keyed on the id alone would hand back the previous life's arguments and
+    /// run the handler against values the instance no longer holds.
     fn resolve_once(
         &self,
         store: &Store,
@@ -219,10 +226,12 @@ impl Watcher {
             return Ok(known.clone());
         }
         let effect = match self.resolved.get(effect_id) {
-            Some(known) => known.clone(),
-            None => resolve(store, effect_id)?,
+            Some(known) if !is_creation_time(effect_id) => known.clone(),
+            _ => resolve(store, effect_id)?,
         };
-        memo.insert(effect_id.to_string(), effect.clone());
+        if !is_creation_time(effect_id) {
+            memo.insert(effect_id.to_string(), effect.clone());
+        }
         Ok(effect)
     }
 }
@@ -332,4 +341,13 @@ fn claimed_executor_keys(store: &Store) -> BTreeSet<String> {
 
 fn instance_of(record: &fsm_core::record::Record) -> Option<&str> {
     record.body.get("instance_id").and_then(Value::as_str)
+}
+
+/// Whether an effect id names a creation-time emit, whose `seq` component is a
+/// literal zero and therefore repeats if an instance id is re-used.
+fn is_creation_time(effect_id: &str) -> bool {
+    effect_id
+        .rsplit_once('/')
+        .and_then(|(head, _)| head.rsplit_once('/'))
+        .is_some_and(|(_, seq)| seq == "0")
 }

@@ -230,9 +230,16 @@ fn a_due_deadline_is_polled_once_under_its_derived_key() {
         other => panic!("expected a PollDeadline, got {other:?}"),
     }
 
+    // A poll that was decided but never journaled is decided again: the
+    // driver, not the decision, is what records that one landed. Marking it
+    // here would silence the deadline for the life of the process whenever a
+    // tick could not take the writer.
+    assert_eq!(scheduler.on_observation(&observation, NOW + 1).len(), 1);
+
+    scheduler.poll_issued("case-1", "review_timeout", NOW - 5);
     assert!(
-        scheduler.on_observation(&observation, NOW + 1).is_empty(),
-        "the same due observation is polled once per process"
+        scheduler.on_observation(&observation, NOW + 2).is_empty(),
+        "a poll that landed is not repeated"
     );
 }
 
@@ -263,6 +270,7 @@ fn a_rescheduled_deadline_is_a_new_observation_and_is_polled_again() {
         ..Observation::default()
     };
     assert_eq!(scheduler.on_observation(&first, NOW).len(), 1);
+    scheduler.poll_issued("case-1", "review_timeout", NOW - 5);
     let second = Observation {
         due_deadlines: vec![DueDeadline {
             instance_id: "case-1".into(),
@@ -347,6 +355,68 @@ fn a_cancel_and_a_timeout_together_report_the_cancel() {
         Directive::Kill { reason, .. } => assert_eq!(*reason, KillReason::Cancelled),
         other => panic!("expected a Kill, got {other:?}"),
     }
+}
+
+#[test]
+fn an_argv_that_cannot_be_built_is_reported_rather_than_dropped() {
+    // The handler's argv names `{case}`; this emit produced no such argument,
+    // so the run has failed before it began. Silently skipping it would leave
+    // the effect pending forever with no diagnostic anywhere.
+    let mut scheduler = Scheduler::new(table());
+    let mut effect = effect("case-1/3/0", "assign_reviewer");
+    effect.args = BTreeMap::new();
+    let observation = observation_with_pending(vec![effect]);
+
+    assert!(scheduler.on_observation(&observation, NOW).is_empty());
+    let unstartable = scheduler.unstartable();
+    assert_eq!(unstartable.len(), 1);
+    assert_eq!(unstartable[0].effect.effect_id, "case-1/3/0");
+    assert_eq!(unstartable[0].error.code, "exec/config");
+}
+
+#[test]
+fn a_pending_effect_whose_key_is_already_claimed_is_reported_as_stalled() {
+    let mut scheduler = Scheduler::new(table());
+    let observation = Observation {
+        pending: vec![effect("case-1/0/0", "assign_reviewer")],
+        claimed_request_ids: claimed(&[ack_rid("case-1/0/0")]),
+        ..Observation::default()
+    };
+    assert!(scheduler.on_observation(&observation, NOW).is_empty());
+    assert_eq!(scheduler.stalled(), ["case-1/0/0"]);
+    // Reported once, not on every tick.
+    assert!(scheduler.on_observation(&observation, NOW + 1).is_empty());
+    assert!(scheduler.stalled().is_empty());
+}
+
+#[test]
+fn an_effect_advanced_by_another_writer_is_not_also_killed_in_the_same_tick() {
+    // A human acks the effect from the CLI while this executor's handler is
+    // still running, and the run then passes its deadline. Both rules match;
+    // one directive per effect per tick, and the kill waits a tick.
+    let mut scheduler = Scheduler::new(table());
+    let running = observation_with_pending(vec![effect("case-1/3/0", "assign_reviewer")]);
+    assert_eq!(scheduler.on_observation(&running, NOW).len(), 1);
+
+    let acked_elsewhere = Observation {
+        settled: vec![settled("case-1/3/0", "assign_reviewer", "ok")],
+        ..Observation::default()
+    };
+    let directives = scheduler.on_observation(&acked_elsewhere, NOW + 90_000);
+    assert_eq!(directives.len(), 1);
+    assert!(matches!(directives[0], Directive::SendEvent { .. }));
+
+    let after = Observation {
+        claimed_request_ids: claimed(&[event_rid("case-1/3/0", "assigned")]),
+        ..Observation::default()
+    };
+    assert_eq!(
+        scheduler.on_observation(&after, NOW + 90_001),
+        [Directive::Kill {
+            effect_id: "case-1/3/0".into(),
+            reason: KillReason::Timeout,
+        }]
+    );
 }
 
 #[test]

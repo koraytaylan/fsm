@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use fsm_core::expr::eval::Val;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::replay::ctx_val_string;
 use fsm_execute::watch::{Observation, Watcher};
@@ -389,6 +390,83 @@ fn an_ack_overtaken_by_an_unrelated_event_is_still_offered_for_recovery() {
     let observation = scan(&mut watcher);
     assert_eq!(observation.settled.len(), 1);
     assert_eq!(observation.settled[0].effect_id, assigned);
+}
+
+#[test]
+fn a_creation_time_effect_is_re_resolved_rather_than_remembered() {
+    // `{instance}/0/{k}` repeats if an instance id is re-used, so a memo keyed
+    // on the id alone would hand back the first life's arguments.
+    let directory = TestDirectory::create("watch-creation-memo");
+    let mut writer = Writer::open(&directory);
+    let definition = parse(
+        br#"{
+            "format":"fsm.machine/1",
+            "name":"case_intake_effects",
+            "context":[{"name":"case_id","ty":"str","init":"case-0"}],
+            "events":[{"name":"close","fields":[]}],
+            "effects":[{"name":"open_case","fields":[{"name":"case","ty":"str"}]}],
+            "states":[
+                {"name":"intake","entry":{"emit":[
+                    {"effect":"open_case","args":{"case":"ctx.case_id"}}
+                ]}},
+                {"name":"closed","terminal":true}
+            ],
+            "initial":"intake",
+            "transitions":[{"from":"intake","on":"close","to":"closed"}]
+        }"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    writer
+        .store
+        .define_machine_on(&mut writer.clock, definition, false, false)
+        .unwrap();
+    let first_request = writer.request_id();
+    writer
+        .store
+        .create_instance_ctx_on(
+            &mut writer.clock,
+            "case_intake_effects",
+            "case-1",
+            &first_request,
+            None,
+            &BTreeMap::from([("case_id".to_string(), Val::Str("case-first".into()))]),
+            &[],
+        )
+        .unwrap();
+    drop(writer);
+
+    let mut watcher = Watcher::new(directory.path().to_path_buf());
+    let first = scan(&mut watcher);
+    assert_eq!(ctx_val_string(&first.pending[0].args["case"]), "case-first");
+    assert_eq!(
+        watcher.resolved_count(),
+        0,
+        "a creation-time id is deliberately not remembered"
+    );
+
+    let mut writer = Writer::open(&directory);
+    let second_request = writer.request_id();
+    writer
+        .store
+        .create_instance_ctx_on(
+            &mut writer.clock,
+            "case_intake_effects",
+            "case-1",
+            &second_request,
+            None,
+            &BTreeMap::from([("case_id".to_string(), Val::Str("case-second".into()))]),
+            &[],
+        )
+        .unwrap();
+    drop(writer);
+
+    let second = scan(&mut watcher);
+    assert_eq!(
+        ctx_val_string(&second.pending[0].args["case"]),
+        "case-second",
+        "the scan follows the instance's current life"
+    );
 }
 
 #[test]

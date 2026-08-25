@@ -12,6 +12,7 @@ use fsm_core::json::Value;
 
 use crate::config::{Advance, HandlerSpec, HandlerTable, substitute};
 use crate::effect::PendingEffect;
+use crate::error::ExecError;
 use crate::rid::{ack_rid, event_rid, poll_rid};
 use crate::run::KillReason;
 use crate::watch::Observation;
@@ -87,6 +88,16 @@ pub struct Inflight {
     pub killed: bool,
 }
 
+/// A pending effect whose handler cannot be started at all, so the run has
+/// failed before it began.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unstartable {
+    /// The effect that cannot be run.
+    pub effect: PendingEffect,
+    /// Why — an `exec/config` fault in the argv substitution.
+    pub error: ExecError,
+}
+
 /// The executor's brain.
 pub struct Scheduler {
     table: HandlerTable,
@@ -94,6 +105,9 @@ pub struct Scheduler {
     issued_polls: BTreeSet<(String, String, i64)>,
     unhandled: Vec<String>,
     reported_unhandled: BTreeSet<String>,
+    unstartable: Vec<Unstartable>,
+    stalled: Vec<String>,
+    reported_stalls: BTreeSet<String>,
 }
 
 impl Scheduler {
@@ -105,12 +119,27 @@ impl Scheduler {
             issued_polls: BTreeSet::new(),
             unhandled: Vec::new(),
             reported_unhandled: BTreeSet::new(),
+            unstartable: Vec::new(),
+            stalled: Vec::new(),
+            reported_stalls: BTreeSet::new(),
         }
     }
 
     /// The handler for an effect name, for the driver that has to settle a run.
     pub fn handler(&self, effect_name: &str) -> Option<&HandlerSpec> {
         self.table.handlers.get(effect_name)
+    }
+
+    /// The effect behind an in-flight run.
+    ///
+    /// Settling a run needs the effect's name and args, and an observation is
+    /// not always the place to find them: a cancelled instance stops offering
+    /// its pending effects the moment the cancel is journaled, which is
+    /// exactly when the run that must be killed still needs settling.
+    pub fn inflight_effect(&self, effect_id: &str) -> Option<&PendingEffect> {
+        self.inflight
+            .get(effect_id)
+            .map(|inflight| &inflight.effect)
     }
 
     /// Apply the decision table to one observation at one time.
@@ -121,6 +150,8 @@ impl Scheduler {
     /// journal, not this process's memory, is what prevents a repeat.
     pub fn on_observation(&mut self, obs: &Observation, now_ms: i64) -> Vec<Directive> {
         self.unhandled.clear();
+        self.unstartable.clear();
+        self.stalled.clear();
         let mut directives: Vec<Directive> = Vec::new();
 
         // 1. Start a handler for pending work nobody has claimed or started.
@@ -137,20 +168,35 @@ impl Scheduler {
                 continue;
             }
             // A claimed ack key means some writer already settled this effect,
-            // or burned the key on a rejection. Either way, running the
-            // handler again could never be journaled.
+            // or burned the key on a rejection — or, for a creation-time id
+            // after an instance id was re-used, that a *previous* life's
+            // identical id claimed it. Running the handler again could never
+            // be journaled, so the effect is stalled, and it says so out loud
+            // rather than being skipped in silence.
             if obs
                 .claimed_request_ids
                 .contains(&ack_rid(&effect.effect_id))
             {
+                if self.reported_stalls.insert(effect.effect_id.clone()) {
+                    self.stalled.push(effect.effect_id.clone());
+                }
                 continue;
             }
-            let Ok(argv) = substitute(&handler.argv, &effect.args) else {
-                // A placeholder with no matching effect argument is a run-time
-                // failure of *this* effect, not a config error the loop can
-                // fix; the pipeline acks it failed once the runner reports the
-                // spawn failure, so leave it for the runner to attempt.
-                continue;
+            let argv = match substitute(&handler.argv, &effect.args) {
+                Ok(argv) => argv,
+                Err(error) => {
+                    // A placeholder naming an argument this emit did not
+                    // produce is a run-time failure of *this* effect, not a
+                    // table the loop can repair. The driver acks it `failed`
+                    // so the machine's own failure path can fire; skipping it
+                    // silently would leave the effect pending forever with no
+                    // diagnostic anywhere.
+                    self.unstartable.push(Unstartable {
+                        effect: effect.clone(),
+                        error,
+                    });
+                    continue;
+                }
             };
             self.inflight.insert(
                 effect.effect_id.clone(),
@@ -192,7 +238,11 @@ impl Scheduler {
         }
 
         // 4. Poll each due deadline once. `inflight` is keyed by effect and
-        // holds no deadlines, so same-tick de-duplication needs its own set.
+        // holds no deadlines, so this needs its own set — and that set is
+        // marked by the driver *after* a poll actually lands, never here.
+        // Marking at decision time would silence the deadline forever if the
+        // tick could not open the writer, and a deadline that never fires
+        // again is a workflow that never times out.
         for due in &obs.due_deadlines {
             let key = (
                 due.instance_id.clone(),
@@ -203,7 +253,6 @@ impl Scheduler {
             if obs.claimed_request_ids.contains(&request_id) || self.issued_polls.contains(&key) {
                 continue;
             }
-            self.issued_polls.insert(key);
             directives.push(Directive::PollDeadline {
                 instance_id: due.instance_id.clone(),
                 deadline: due.deadline_name.clone(),
@@ -216,8 +265,19 @@ impl Scheduler {
         // checked first: a run killed because its instance was cancelled says
         // so in its ack, and collapsing it into a timeout would journal a lie.
         let cancelled: BTreeSet<&str> = obs.cancellations.iter().map(String::as_str).collect();
+        let already_directed: BTreeSet<String> = directives
+            .iter()
+            .filter_map(|directive| directive.effect_id().map(str::to_string))
+            .collect();
         for (effect_id, inflight) in &mut self.inflight {
             if inflight.killed {
+                continue;
+            }
+            // An effect can be acked by another writer while this process's
+            // handler is still running, which puts it in `settled` and in
+            // `inflight` at once. One directive per effect per tick: the kill
+            // waits for the next one, by which time the advance is journaled.
+            if already_directed.contains(effect_id) {
                 continue;
             }
             let reason = if cancelled.contains(inflight.effect.instance_id.as_str()) {
@@ -244,6 +304,30 @@ impl Scheduler {
     /// Pending effects seen with no handler, for the loop to log once each.
     pub fn unhandled(&self) -> &[String] {
         &self.unhandled
+    }
+
+    /// Effects whose argv could not be built from what the emit produced.
+    ///
+    /// The driver acks these `failed` — the run failed before it began — which
+    /// is what lets the machine's own failure path fire instead of the
+    /// instance waiting on a handler that can never start.
+    pub fn unstartable(&self) -> &[Unstartable] {
+        &self.unstartable
+    }
+
+    /// Pending effects that can never be acked because their derived key is
+    /// already claimed, reported once each.
+    pub fn stalled(&self) -> &[String] {
+        &self.stalled
+    }
+
+    /// Record that a deadline poll actually landed.
+    ///
+    /// Called by the driver rather than by the decision, so a poll that was
+    /// decided but never executed is decided again on the next tick.
+    pub fn poll_issued(&mut self, instance_id: &str, deadline: &str, due_ms: i64) {
+        self.issued_polls
+            .insert((instance_id.to_string(), deadline.to_string(), due_ms));
     }
 
     /// Clear an in-flight entry once its run reached a terminal path.
