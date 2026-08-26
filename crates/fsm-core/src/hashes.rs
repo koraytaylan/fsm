@@ -142,6 +142,12 @@ pub const STATE_FORMAT_V3: &str = "fsm.state/3";
 /// Domain-separation tag paired with [`STATE_FORMAT_V3`].
 pub const STATE_DOMAIN_V3: &str = "fsm:state:3";
 
+/// The 64-hex digest half of a `machine_id`, which is what an `invoke` slot
+/// names: `name@sha256:<digest>`.
+pub fn digest_of(machine_id: &str) -> Option<&str> {
+    machine_id.rsplit_once("sha256:").map(|(_, digest)| digest)
+}
+
 /// Domain tag of the derived child instance id.
 pub const CHILD_DOMAIN: &str = "fsm:child:1";
 

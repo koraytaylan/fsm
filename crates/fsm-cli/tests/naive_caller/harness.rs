@@ -642,7 +642,7 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 &mut v,
                 "/states/0/invoke/0/machine",
                 Value::Str(
-                    "9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c".into(),
+                    "a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071".into(),
                 ),
             );
         }
@@ -653,9 +653,11 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             delete_pointer(&mut v, "/states/1/invoke");
         }
         "def/invoke_evt" => {
+            // The hint's correction: `with` sees ctx, so read the staged
+            // context variable instead of the event field.
             set_pointer(
                 &mut v,
-                "/states/0/invoke/0/with/x",
+                "/states/0/invoke/0/with/amount",
                 Value::Str("ctx.n".into()),
             );
         }

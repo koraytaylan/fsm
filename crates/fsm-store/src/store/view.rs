@@ -109,8 +109,10 @@ impl Store {
         let mut entries = Vec::new();
         let mut next_from_seq = None;
         for rec in self.records.iter().filter(|r| {
-            r.body.get("instance_id").and_then(Value::as_str) == Some(instance_id)
-                && r.seq >= from_seq
+            // Every kind's own answer to "which instances is this about":
+            // a composition record names a parent and a child, and neither
+            // is called `instance_id`.
+            fsm_core::record::instances_touched(r).contains(&instance_id) && r.seq >= from_seq
         }) {
             if !include_rejected
                 && matches!(
@@ -149,7 +151,7 @@ impl Store {
             .iter()
             .find(|r| r.seq == seq)
             .ok_or_else(|| ErrorObj::new("req/field_missing", "seq"))?;
-        if rec.body.get("instance_id").and_then(Value::as_str) != Some(instance_id)
+        if !fsm_core::record::instances_touched(rec).contains(&instance_id)
             && rec.kind != RecordKind::Genesis
             && rec.kind != RecordKind::MachineDefined
         {

@@ -417,6 +417,7 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         drive_create(&mut st, &mut clock, src, &mut out);
     }
     crate::reactive_flows::drive_reactive_outcomes(&mut st, &mut clock, &mut out);
+    crate::composition_flows::drive_composition_outcomes(&mut st, &mut clock, &mut out);
     let long = format!(
         r#"{{"format":"fsm.machine/1","name":"mlong","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","if":"{}"}}]}}"#,
         "1+".repeat(2500) + "1"
@@ -866,6 +867,10 @@ fn all_codes_hygiene() {
         "internal/budget",
         "internal/unimplemented",
         "run/configuration_invalid",
+        // A cycle would need each machine's digest inside the other's
+        // document — a hash preimage cycle. The rule is defence in depth
+        // for a later plan that resolves a slot some other way.
+        "def/invoke_cycle",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");

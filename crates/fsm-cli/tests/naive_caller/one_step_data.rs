@@ -1,3 +1,13 @@
+/// The child machine the `def/invoke_*` rows name by digest. The one-step
+/// suite defines it before the rows run, because a content-addressed
+/// reference can only be repaired into a definition that exists.
+pub(crate) const INVOKE_CHILD: &str = r#"{"format":"fsm.machine/1","name":"invoked_child","states":[{"name":"working"},{"name":"done","terminal":true}],"initial":"working","context":[{"name":"amount","ty":"int","init":"0"}],"events":[{"name":"finish","fields":[]}],"transitions":[{"from":"working","on":"finish","to":"done"}]}"#;
+
+/// Its digest, pinned so a change to the document above cannot silently
+/// leave the rows naming a machine nobody holds.
+pub(crate) const INVOKE_CHILD_DIGEST: &str =
+    "a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071";
+
 pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
     (
         "def/shape",
@@ -47,27 +57,27 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
     (
         "def/invoke_machine_ref",
         r#"{"format":"fsm.machine/1","name":"inv1","states":[{"name":"a","invoke":[{"id":"child","machine":"review"}]},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-        r#"{"format":"fsm.machine/1","name":"inv1b","states":[{"name":"a","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv1b","states":[{"name":"a","invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
     ),
     (
         "def/invoke_dup_slot",
-        r#"{"format":"fsm.machine/1","name":"inv2","states":[{"name":"a","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]},{"name":"b","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-        r#"{"format":"fsm.machine/1","name":"inv2b","states":[{"name":"a","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv2","states":[{"name":"a","invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]},{"name":"b","invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv2b","states":[{"name":"a","invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
     ),
     (
         "def/invoke_on_terminal",
-        r#"{"format":"fsm.machine/1","name":"inv3","states":[{"name":"a"},{"name":"t","terminal":true,"invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv3","states":[{"name":"a"},{"name":"t","terminal":true,"invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
         r#"{"format":"fsm.machine/1","name":"inv3b","states":[{"name":"a"},{"name":"t","terminal":true}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
     ),
     (
         "def/invoke_evt",
-        r#"{"format":"fsm.machine/1","name":"inv4","states":[{"name":"a","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c","with":{"x":"evt.n"}}]}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#,
-        r#"{"format":"fsm.machine/1","name":"inv4b","states":[{"name":"a","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c","with":{"x":"ctx.n"}}]}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv4","states":[{"name":"a","invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071","with":{"amount":"evt.n"}}]}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv4b","states":[{"name":"a","invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071","with":{"amount":"ctx.n"}}]}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#,
     ),
     (
         "def/limit_invokes",
-        r#"{"format":"fsm.machine/1","name":"inv5","states":[{"name":"a","invoke":[{"id":"c1","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c2","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c3","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c4","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c5","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
-        r#"{"format":"fsm.machine/1","name":"inv5b","states":[{"name":"a","invoke":[{"id":"c1","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv5","states":[{"name":"a","invoke":[{"id":"c1","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"},{"id":"c2","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"},{"id":"c3","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"},{"id":"c4","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"},{"id":"c5","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"inv5b","states":[{"name":"a","invoke":[{"id":"c1","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
     ),
     (
         "def/final_at_root",

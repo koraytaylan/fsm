@@ -22,10 +22,12 @@ mod serialize;
 mod validate;
 
 pub use compat::{
-    accepted_identity, compile_accepted, compile_accepted_historical_unchecked, load_machine_json,
+    accepted_identity, compile_accepted, compile_accepted_historical_unchecked,
+    compile_accepted_with_catalogue, load_machine_json,
 };
 pub use compile::{compile, compile_with_catalogue};
 pub use parse::parse_machine;
+pub use validate::invoke::{Catalogue, validate_catalogue};
 pub use validate::{generated_event_names, validate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

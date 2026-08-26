@@ -24,10 +24,47 @@ pub enum RecordKind {
     /// An explicit poll found no due deadline but durably claimed its request id.
     DeadlineNotDue,
     EffectAcked,
+    /// One record creates a child instance for an invocation slot: the
+    /// child's whole existence is derived from this record's body and `ts`,
+    /// so there is no separate `instance_created` for it.
+    InstanceInvoked,
     RequestRejected,
     InstanceCancelled,
     Annotated,
     StateCheckpoint,
+}
+
+/// Every instance a record is about, in the order a reader should see them.
+///
+/// The composition records name their instances `parent_instance_id` and
+/// `child_instance_id`; **none of them has a field called `instance_id`**, so
+/// every `body.get("instance_id")` probe would silently drop them and a
+/// parent's history would show the event that entered the invoking state and
+/// then nothing about the child ever existing. Matching exhaustively over the
+/// kinds, here where they are defined, is what forces each later plan to
+/// answer this question for the kinds it adds.
+pub fn instances_touched(record: &Record) -> Vec<&str> {
+    let field = |name: &str| record.body.get(name).and_then(Value::as_str);
+    match record.kind {
+        RecordKind::Genesis | RecordKind::MachineDefined | RecordKind::StateCheckpoint => {
+            Vec::new()
+        }
+        RecordKind::InstanceCreated
+        | RecordKind::EventApplied
+        | RecordKind::EventRejected
+        | RecordKind::EventIgnored
+        | RecordKind::DeadlineApplied
+        | RecordKind::DeadlineRejected
+        | RecordKind::DeadlineNotDue
+        | RecordKind::EffectAcked
+        | RecordKind::RequestRejected
+        | RecordKind::InstanceCancelled
+        | RecordKind::Annotated => field("instance_id").into_iter().collect(),
+        RecordKind::InstanceInvoked => field("parent_instance_id")
+            .into_iter()
+            .chain(field("child_instance_id"))
+            .collect(),
+    }
 }
 
 impl RecordKind {
@@ -43,6 +80,7 @@ impl RecordKind {
             RecordKind::DeadlineRejected => "deadline_rejected",
             RecordKind::DeadlineNotDue => "deadline_not_due",
             RecordKind::EffectAcked => "effect_acked",
+            RecordKind::InstanceInvoked => "instance_invoked",
             RecordKind::RequestRejected => "request_rejected",
             RecordKind::InstanceCancelled => "instance_cancelled",
             RecordKind::Annotated => "annotated",
@@ -62,6 +100,7 @@ impl RecordKind {
             "deadline_rejected" => Self::DeadlineRejected,
             "deadline_not_due" => Self::DeadlineNotDue,
             "effect_acked" => Self::EffectAcked,
+            "instance_invoked" => Self::InstanceInvoked,
             "request_rejected" => Self::RequestRejected,
             "instance_cancelled" => Self::InstanceCancelled,
             "annotated" => Self::Annotated,
@@ -71,7 +110,7 @@ impl RecordKind {
     }
 
     /// Every recognized record kind in stable protocol order.
-    pub fn all() -> [RecordKind; 14] {
+    pub fn all() -> [RecordKind; 15] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -83,6 +122,7 @@ impl RecordKind {
             Self::DeadlineRejected,
             Self::DeadlineNotDue,
             Self::EffectAcked,
+            Self::InstanceInvoked,
             Self::RequestRejected,
             Self::InstanceCancelled,
             Self::Annotated,
@@ -587,6 +627,16 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "request_id")
                 && req_str(body, "reason")
                 && is_state_hash(body.get("state_hash"))
+        }
+        RecordKind::InstanceInvoked => {
+            req_str(body, "parent_instance_id")
+                && req_str(body, "slot")
+                && req_str(body, "child_instance_id")
+                && req_str(body, "child_machine_id")
+                && req_str(body, "request_id")
+                && is_state_hash(body.get("state_hash"))
+                && is_state_hash(body.get("child_state_hash"))
+                && body.get("overrides").and_then(Value::as_obj).is_some()
         }
         RecordKind::Annotated => {
             req_str(body, "instance_id") && req_str(body, "request_id") && req_str(body, "note")

@@ -8,7 +8,7 @@ use crate::harness::{case, obj, payload_field_for, repair_spec, store};
 use crate::infra_support::{
     INFRA, create_err, create_ok, create_repaired, err_from_analyze, first_detail_str, send_err,
 };
-use crate::one_step_data::{ANALYZE_ROWS, SPEC_ROWS};
+use crate::one_step_data::{ANALYZE_ROWS, INVOKE_CHILD, INVOKE_CHILD_DIGEST, SPEC_ROWS};
 use crate::tool_outcomes::{over_eval_limit_spec, spec};
 
 #[test]
@@ -19,6 +19,22 @@ fn one_step_every_non_infra_code() {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");
         assert!(!reason.is_empty(), "{c}");
     }
+
+    // The `def/invoke_*` rows name a child machine by digest, and a
+    // content-addressed reference can only be repaired into a definition
+    // that exists — so the store holds it before the rows run.
+    assert_eq!(
+        fsm_core::hashes::digest_of(&fsm_core::hashes::machine_id(&spec(INVOKE_CHILD))),
+        Some(INVOKE_CHILD_DIGEST),
+        "the pinned digest still matches the child document"
+    );
+    dispatch(
+        &mut st,
+        &mut clock,
+        "machine_create",
+        &obj(&[("spec", spec(INVOKE_CHILD))]),
+    )
+    .unwrap();
 
     let spec_rows: &[(&str, &str, &str)] = SPEC_ROWS;
     let mut spec_fails = Vec::new();
@@ -737,6 +753,7 @@ fn one_step_every_non_infra_code() {
     seen.insert("run/invariant");
 
     crate::reactive_flows::one_step_reactive(&mut st, &mut clock, &mut seen);
+    crate::composition_flows::one_step_composition(&mut st, &mut clock, &mut seen);
 
     create_ok(
         &mut st,

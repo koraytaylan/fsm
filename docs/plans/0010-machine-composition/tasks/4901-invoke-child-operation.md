@@ -14,8 +14,14 @@ touches:
   - crates/fsm-store/src/store/view.rs
   - crates/fsm-store/src/store/mod.rs
   - crates/fsm-core/src/record.rs
+  - crates/fsm-core/src/replay/apply.rs
+  - crates/fsm-core/src/spec/validate/invoke.rs
+  - crates/fsm-core/src/spec/compat.rs
+  - crates/fsm-core/src/error.rs
   - crates/fsm-store/tests/invoke_child.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/composition_flows.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Invoke Child Operation
@@ -61,3 +67,7 @@ One record creates a child, and fold derives the child's whole existence from it
 - Read-only: `invoke_child` on a read-only store refuses with `io/write`.
 
 - **Done when:** `cargo test -p fsm-store --test invoke_child` passes every case above including the unjournaled-failure, fold-derivation, and cold-path-replay rules, the five catalogue checks fire at `define_machine`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `invoke_child_on` in the three-arity mutator style, the `instance_invoked` kind with its body shape and read-time validation, fold's derivation of the child (including that the record's `child_instance_id` must equal the derived one and that the parent's slot must have been `Pending`), the `req/invoke_slot_state` refusal with its journaled `request_rejected`, the unjournaled `run/invoke_create_failed`, `fp_invoke` keyed on `(parent, slot)` — every other field being derived from them and the state — and the cold-path replay arm. `instances_touched` is exhaustive over `RecordKind` and all five resolution sites route through it.
+
+**Corrections.** (1) Step 9 puts the catalogue rules in `store/lifecycle.rs`; they live in `fsm-core`'s `spec/validate/invoke.rs` as `validate_catalogue(compiled, catalogue)` and the store calls them. The rules judge a definition, so they belong beside the definition, and as a pure function they are testable without a store; the store's contribution is the catalogue, which is exactly what it has and the core does not. Typing a done-invoke payload needs the same catalogue, so `define_machine_on` also compiles through `compile_accepted_with_catalogue`. (2) The cycle walk keys on the **digest**, not the machine name: two machines may share a name and differ in content, and treating that as a cycle would refuse an ordinary revision invoking its predecessor. (3) `def/invoke_cycle` is unreachable by construction — a cycle needs each machine's digest inside the other's document, a hash preimage cycle — so it joins the two every-code allowlists with that reason, and the rule stays as defence in depth for a later plan that resolves a slot some other way. Its unreachability is the payoff of the content-addressed ruling, and worth stating where the ruling is. (4) The operations have no MCP tool until `5102`, so their one-step corrections and outcomes drive the store directly, one layer below a tool call; `composition_flows.rs` carries them and moves to `dispatch` when the tools land. (5) `4801`'s one-step rows named a fabricated digest, which this task's catalogue check turns into `def/invoke_unknown_machine`; the rows now name a pinned child document the suite defines first, with its digest asserted against `machine_id` so the two cannot drift apart. (6) The applier pushed `replay/apply.rs` to 1004 lines, so it is split into `replay/apply/{mod,event,deadline_records,instance,invoke}.rs` — one module per record subject behind the same dispatcher — following the rule `4801` step 5 states for `reactive.rs`: split at the seams when an addition crosses the cap, and say so in the commit message.

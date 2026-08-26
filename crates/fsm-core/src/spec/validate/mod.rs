@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 use super::{Finding, MachineSpec, Topology};
 
 mod blocks;
+pub mod invoke;
 mod reactive;
 mod structure;
 

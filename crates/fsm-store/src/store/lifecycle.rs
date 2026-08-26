@@ -46,7 +46,7 @@ impl Store {
         let records = journal_io::load_records(data_dir).unwrap_or(sink.records);
         let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
         for rec in &records {
-            if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
+            for iid in fsm_core::record::instances_touched(rec) {
                 history.entry(iid.into()).or_default().push(rec.seq);
             }
         }
@@ -94,7 +94,7 @@ impl Store {
             };
         let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
         for record in &records {
-            if let Some(instance_id) = record.body.get("instance_id").and_then(Value::as_str) {
+            for instance_id in fsm_core::record::instances_touched(record) {
                 history
                     .entry(instance_id.into())
                     .or_default()
@@ -154,6 +154,19 @@ impl Store {
         )
     }
 
+    /// The machines this store holds, keyed by the 64-hex digest an `invoke`
+    /// slot names.
+    pub(crate) fn invoke_catalogue(&self) -> fsm_core::spec::Catalogue {
+        self.state
+            .machines
+            .iter()
+            .filter_map(|(machine_id, stored)| {
+                fsm_core::hashes::digest_of(machine_id)
+                    .map(|digest| (digest.to_string(), stored.compiled.spec.clone()))
+            })
+            .collect()
+    }
+
     pub fn define_machine_on(
         &mut self,
         clock: &mut dyn crate::clock::Clock,
@@ -195,7 +208,17 @@ impl Store {
                 name: existing.compiled.spec.name.clone(),
             });
         }
-        let compiled = fsm_core::spec::compile_accepted(&def).map_err(ErrorObj::from_findings)?;
+        // A definition that invokes is compiled against the machines this
+        // store holds: the child's declarations type its done-event payload,
+        // and the five catalogue rules `4801` deferred are decidable only
+        // here, where the child definitions exist.
+        let catalogue = self.invoke_catalogue();
+        let compiled = fsm_core::spec::compile_accepted_with_catalogue(&def, &catalogue)
+            .map_err(ErrorObj::from_findings)?;
+        let catalogue_findings = fsm_core::spec::validate_catalogue(&compiled, &catalogue);
+        if !catalogue_findings.is_empty() {
+            return Err(ErrorObj::from_findings(catalogue_findings));
+        }
         let id = compiled.machine_id.clone();
         if machine_id(&def) != id {
             return Err(ErrorObj::new(

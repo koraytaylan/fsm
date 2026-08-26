@@ -79,7 +79,7 @@ struct HistSink {
 impl RecordSink for HistSink {
     fn on_record(&mut self, record: &Record, _state: &StoreState) {
         self.records.push(record.clone());
-        if let Some(iid) = record.body.get("instance_id").and_then(Value::as_str) {
+        for iid in fsm_core::record::instances_touched(record) {
             self.history.entry(iid.into()).or_default().push(record.seq);
         }
     }

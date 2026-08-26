@@ -122,6 +122,11 @@ entered; the core NEVER reads a clock.
 | `def/invoke_on_terminal` | an `invoke` on a `terminal` or `final` state, whose result nothing could consume |
 | `def/invoke_evt` | an `invoke` `with` expression reads `evt`; an invocation starts on state entry and sees `ctx` only |
 | `def/limit_invokes` | more than 4 `invoke` slots on one state (`MAX_INVOKES_PER_STATE`) |
+| `def/invoke_unknown_machine` | an `invoke` names a machine this store does not hold (checked where the catalogue is, not in the pure core) |
+| `def/invoke_unknown_ctx` | a `with` key or `returns` value names a context variable the child does not declare |
+| `def/invoke_type` | a `with` expression's type does not match the child's declaration exactly, scale included |
+| `def/invoke_cycle` | the invocation graph closes a cycle |
+| `def/invoke_depth` | the invocation graph is more than 4 machines deep (`MAX_INVOKE_DEPTH`) |
 | `def/unreachable_state` | warning: state never enterable |
 | `def/ancestor_shadowed` | warning: ancestor handler globally dead |
 | `def/create_always_fails` | creation fails on declared inits |
@@ -311,6 +316,8 @@ each microstep's candidates and pipeline.
 | `run/overflow` | checked arithmetic in an action/guard | operand strings |
 | `req/event_unknown` | undeclared event | — |
 | `req/event_internal` | an event declared `internal`, or a `$`-prefixed generated name, sent from outside | name where the machine raises it and list the sendable events |
+| `req/invoke_slot_state` | `invoke_child` against a slot that is not `pending` | name the slot's current status and the slots the instance has |
+| `run/invoke_create_failed` | creating an invoked child failed; nothing is journaled and the slot stays `pending` | carry the child's own rejection as the cause |
 | `req/field_missing` | declared field absent | — |
 | `req/field_unknown` | extra field | — |
 | `req/field_type` | value does not match declared type | — |
@@ -732,6 +739,8 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/final_has_transitions` — a transition or deadline from a final state
 - `def/final_is_initial` — a compound that starts in its final child
 - `def/final_not_leaf` — a final state with children
+- `def/invoke_cycle` — the invocation graph closes a cycle
+- `def/invoke_depth` — the invocation graph is deeper than four machines
 - `def/invoke_dup_slot` — two invoke slots share an id
 - `def/invoke_evt` — an invoke `with` expression reads evt
 - `def/invoke_machine_ref` — an invoke names its machine other than by 64-hex digest
@@ -741,6 +750,9 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/initial_is_history` — initial names a history node
 - `def/initial_not_child` — initial is not a direct child
 - `def/initial_terminal` — creation chain lands on a terminal
+- `def/invoke_type` — a with projection type-mismatches the child's declaration
+- `def/invoke_unknown_ctx` — a projection names a context variable the child does not declare
+- `def/invoke_unknown_machine` — an invoke names a machine the store does not hold
 - `def/limit_bytes` — definition exceeds 256 KiB
 - `def/limit_cell` — more than 32 transitions per (state, event)
 - `def/limit_ctx` — more than 64 context variables
@@ -810,6 +822,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `req/field_type` — value does not match type
 - `req/field_unknown` — extra field
 - `req/instance_not_found` — unknown instance
+- `req/invoke_slot_state` — an invocation slot is not pending
 - `req/machine_ambiguous` — bare name matches several versions
 - `req/machine_exists` — define refused because the spec exists
 - `req/machine_not_found` — unknown machine
@@ -825,6 +838,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `run/guard_error` — guard evaluation failed
 - `run/instance_cancelled` — event or deadline poll against a cancelled instance
 - `run/instance_completed` — event or deadline poll against a completed instance
+- `run/invoke_create_failed` — creating an invoked child failed; nothing was journaled
 - `run/invariant` — enforce invariant failed
 - `run/microstep_limit` — a macrostep did not quiesce within 64 reactions
 - `run/not_enabled` — all guards false

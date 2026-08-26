@@ -185,6 +185,26 @@ impl Store {
             }
             return Some(Ok(Value::Obj(m)));
         }
+        // Rebuilt from the journal, not from the response cache: the cold
+        // path is the one the executor's resumption and every second client
+        // depend on, and a missing arm falls through this chain silently.
+        if rec.kind == RecordKind::InstanceInvoked {
+            let field = |name: &str| {
+                rec.body
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            };
+            return Some(Ok(super::instance::invoke::invoked_response(
+                field("parent_instance_id"),
+                field("slot"),
+                field("child_instance_id"),
+                field("child_machine_id"),
+                request_id,
+                rec.seq,
+                true,
+            )));
+        }
         if rec.kind == RecordKind::Annotated {
             let mut m = BTreeMap::new();
             m.insert("ok".into(), Value::Str("true".into()));
@@ -340,6 +360,19 @@ impl Store {
                 ("effect_id".into(), Value::Str(effect_id.into())),
                 ("outcome".into(), Value::Str(outcome.into())),
                 ("result".into(), result.cloned().unwrap_or(Value::Null)),
+            ]),
+        )
+    }
+
+    /// An invocation's key is the parent and the slot: the child id, the
+    /// machine, and the overrides are all derived from them and the state, so
+    /// a retry with the same key is the same request by construction.
+    pub(super) fn fp_invoke(parent_id: &str, slot: &str) -> String {
+        fsm_core::hashes::request_fp(
+            "invoke",
+            &BTreeMap::from([
+                ("parent_instance_id".into(), Value::Str(parent_id.into())),
+                ("slot".into(), Value::Str(slot.into())),
             ]),
         )
     }

@@ -50,6 +50,10 @@ pub(crate) const INFRA: &[(&str, &str)] = &[
         "evaluator cause; public block-evaluation code is run/action_error",
     ),
     (
+        "def/invoke_cycle",
+        "unreachable by construction: a cycle needs each machine's digest inside the other's document",
+    ),
+    (
         "run/div_zero",
         "evaluator cause; public block-evaluation code is run/action_error",
     ),

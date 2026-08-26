@@ -46,6 +46,24 @@ pub fn compile_accepted(source: &Value) -> Result<CompiledMachine, Vec<Finding>>
     compile_accepted_with_compatibility(source, DefinitionCompatibility::Current)
 }
 
+/// [`compile_accepted`] with the invoked machines in hand, so a
+/// `$done.invoke.<slot>` payload types against the child's declarations.
+pub fn compile_accepted_with_catalogue(
+    source: &Value,
+    catalogue: &super::Catalogue,
+) -> Result<CompiledMachine, Vec<Finding>> {
+    if crate::canon::canon_bytes(source).len() > limits::MAX_DEF_BYTES {
+        return Err(vec![Finding::err(
+            "def/limit_bytes",
+            "/",
+            "definition exceeds 256 KiB",
+            "shrink the definition",
+        )]);
+    }
+    let spec = super::parse_machine(source)?;
+    super::compile_with_catalogue(spec, catalogue)
+}
+
 fn compile_accepted_with_compatibility(
     source: &Value,
     compatibility: DefinitionCompatibility,
