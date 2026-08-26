@@ -1,6 +1,7 @@
 //! Structured logging, at a level the client sets.
 //!
-//! A skeleton: plan 0012 task 6001 fills it.
+//! The level itself lands with the routing (task 5702); `6001` adds the
+//! notifications that respect it.
 
 use fsm_core::json::Value;
 
@@ -20,13 +21,32 @@ pub enum Level {
 impl Level {
     /// The wire name a client sends and this server echoes.
     pub fn as_str(&self) -> &'static str {
-        unimplemented!("plan 0012 task 6001")
+        match self {
+            Level::Emergency => "emergency",
+            Level::Alert => "alert",
+            Level::Critical => "critical",
+            Level::Error => "error",
+            Level::Warning => "warning",
+            Level::Notice => "notice",
+            Level::Info => "info",
+            Level::Debug => "debug",
+        }
     }
 
     /// Parse a client's level, or `None` if it names no level this server
     /// knows.
-    pub fn parse(_name: &str) -> Option<Self> {
-        unimplemented!("plan 0012 task 6001")
+    pub fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "emergency" => Level::Emergency,
+            "alert" => Level::Alert,
+            "critical" => Level::Critical,
+            "error" => Level::Error,
+            "warning" => Level::Warning,
+            "notice" => Level::Notice,
+            "info" => Level::Info,
+            "debug" => Level::Debug,
+            _ => return None,
+        })
     }
 }
 

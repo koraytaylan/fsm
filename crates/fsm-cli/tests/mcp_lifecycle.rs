@@ -223,7 +223,83 @@ fn capabilities_shape() {
     let got = run(
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
     );
-    assert!(got.contains("\"listChanged\":false"));
-    assert!(got.contains("\"subscribe\":false"));
+    // An instance is a live object, so resources are watchable; the tool and
+    // prompt sets are static, so nothing there can change under a client.
+    assert!(
+        got.contains(r#""resources":{"listChanged":true,"subscribe":true}"#),
+        "{got}"
+    );
+    assert!(got.contains(r#""tools":{"listChanged":false}"#), "{got}");
+    assert!(got.contains(r#""prompts":{"listChanged":false}"#), "{got}");
+    assert!(got.contains(r#""logging":{}"#), "{got}");
     assert!(got.contains("instructions"));
+}
+
+/// Every method this plan needs is routed, and none of them answers
+/// `METHOD_NOT_FOUND`. The bodies each task fills come later; the routing is
+/// finished here, so no later task has to edit the match.
+#[test]
+fn every_live_surface_method_is_routed() {
+    let session = |lines: &str| -> String {
+        run(&format!(
+            "{}\n{lines}",
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#
+        ))
+    };
+    for (id, line) in [
+        (
+            2,
+            r#"{"jsonrpc":"2.0","id":2,"method":"resources/subscribe","params":{"uri":"fsm://instance/inst-1"}}"#,
+        ),
+        (
+            3,
+            r#"{"jsonrpc":"2.0","id":3,"method":"resources/unsubscribe","params":{"uri":"fsm://instance/inst-1"}}"#,
+        ),
+        (
+            4,
+            r#"{"jsonrpc":"2.0","id":4,"method":"logging/setLevel","params":{"level":"info"}}"#,
+        ),
+    ] {
+        let got = session(line);
+        assert!(
+            !got.contains("Method not found") && !got.contains("-32601"),
+            "id {id} was not routed: {got}"
+        );
+        assert!(got.contains(&format!("\"id\":{id}")), "id {id}: {got}");
+    }
+
+    // A cancellation is a notification: no response, and no complaint.
+    let got = session(
+        r#"{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":2,"reason":"user"}}"#,
+    );
+    assert_eq!(
+        got.lines().count(),
+        1,
+        "a notification answers nothing: {got}"
+    );
+}
+
+/// The two arms that take a URI say so when it is missing, rather than
+/// silently succeeding.
+#[test]
+fn subscribing_without_a_uri_is_an_invalid_request() {
+    let got = run(&format!(
+        "{}\n{}",
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"resources/subscribe","params":{}}"#
+    ));
+    assert!(got.contains("uri is required"), "{got}");
+}
+
+/// A level this server does not know is refused with the list of levels it
+/// does, rather than being silently ignored.
+#[test]
+fn an_unknown_log_level_names_the_levels_that_exist() {
+    let got = run(&format!(
+        "{}\n{}",
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"logging/setLevel","params":{"level":"chatty"}}"#
+    ));
+    assert!(got.contains("emergency"), "{got}");
+    assert!(got.contains("debug"), "{got}");
 }

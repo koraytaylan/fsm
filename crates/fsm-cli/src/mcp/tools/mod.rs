@@ -20,7 +20,7 @@ mod validate;
 #[cfg(test)]
 mod tests;
 
-pub use dispatch::dispatch;
+pub use dispatch::{ToolCtx, dispatch, dispatch_with};
 pub use handlers::machine_summary;
 pub use validate::validate_args;
 

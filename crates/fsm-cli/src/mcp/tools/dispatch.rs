@@ -6,12 +6,42 @@ use crate::store::{ErrorObj, Store};
 use super::validate::{type_name, validate_args};
 use super::{MUTATING_TOOLS, registry};
 
+/// What a tool call knows about the request that made it.
+///
+/// `dispatch` cannot see the request's `params`, so it cannot reach
+/// `_meta.progressToken` and cannot consult a cancellation flag. This is what
+/// carries both — built and threaded now, consumed by `6002` and `6003`, so
+/// neither has to reshape a signature to do its own job.
+#[derive(Default)]
+pub struct ToolCtx<'a> {
+    /// The one writer, for a tool that reports progress.
+    pub notifier: Option<&'a crate::mcp::notify::Notifier>,
+    /// The request's own id, which a cancellation names.
+    pub request_id: Option<Value>,
+    /// The request's `_meta`, where a progress token lives.
+    pub meta: Option<Value>,
+}
+
+/// Dispatch with no request context: the CLI and every test that is not a
+/// protocol session.
 pub fn dispatch(
     store: &mut Store,
     clock: &mut dyn Clock,
     name: &str,
     args: &Value,
 ) -> Result<Value, ErrorObj> {
+    dispatch_with(store, clock, name, args, &ToolCtx::default())
+}
+
+/// Dispatch a call that came from a protocol request.
+pub fn dispatch_with(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    name: &str,
+    args: &Value,
+    ctx: &ToolCtx<'_>,
+) -> Result<Value, ErrorObj> {
+    let _ = ctx;
     let spec = registry()
         .into_iter()
         .find(|t| t.name == name)

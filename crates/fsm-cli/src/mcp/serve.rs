@@ -16,6 +16,7 @@ use super::jsonrpc::{
 };
 use super::notify::Notifier;
 use super::tools;
+use super::{cancel, logging, subscribe};
 
 const LINE_CAP: usize = 16 * 1024 * 1024;
 const KNOWN_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -245,6 +246,15 @@ pub fn serve_session(
     serve_session_with(store, clock, None, None, input, output)
 }
 
+/// What one session knows that outlives a single request: what it watches,
+/// how loudly it wants to be told, and which requests the client withdrew.
+#[derive(Default)]
+struct Live {
+    subscriptions: subscribe::Subscriptions,
+    level: Option<logging::Level>,
+    cancellations: cancel::Cancellations,
+}
+
 /// The protocol loop, optionally driving the executor between client lines.
 ///
 /// Two limits of embedded mode live here because this is where they bite: a
@@ -274,6 +284,7 @@ pub fn serve_session_with(
     let mode_note = mode_note(store.as_deref(), executor.is_some());
     let mut initialized = false;
     let mut initialized_notified = false;
+    let mut live = Live::default();
     loop {
         match read_capped_line(&mut input, LINE_CAP)? {
             Line::Eof => {
@@ -317,14 +328,19 @@ pub fn serve_session_with(
                             &rpc_error(Value::Null, INVALID_REQUEST, "invalid request"),
                         )?;
                     }
-                    Ok(Incoming::Notification { method, .. }) => {
+                    Ok(Incoming::Notification { method, params }) => {
                         if method == "notifications/initialized" {
                             initialized_notified = true;
                         } else if method == "notifications/cancelled" {
-                            let _ = writeln!(
-                                std::io::stderr(),
-                                "fsm info: cancelled notification ignored"
-                            );
+                            // Recorded rather than discarded. What this
+                            // server can actually interrupt is `6003`'s
+                            // subject; losing the notification entirely was
+                            // never the honest answer.
+                            if let Some(requested) =
+                                params.as_ref().and_then(|p| p.get("requestId"))
+                            {
+                                live.cancellations.cancel(requested);
+                            }
                         }
                     }
                     Ok(Incoming::Request { id, method, params }) => {
@@ -340,6 +356,7 @@ pub fn serve_session_with(
                             store.as_deref_mut(),
                             clock,
                             &mut initialized,
+                            &mut live,
                             id,
                             &method,
                             params,
@@ -391,6 +408,7 @@ fn handle_request(
     store: Option<&mut Store>,
     clock: &mut dyn Clock,
     initialized: &mut bool,
+    live: &mut Live,
     id: Value,
     method: &str,
     params: Option<Value>,
@@ -421,6 +439,55 @@ fn handle_request(
         ),
         "resources/templates/list" => {
             send_line(output, &result_response(id, super::resources::templates()))
+        }
+        // Every arm this plan adds is routed here and only here: five tasks
+        // each adding one would serialise the plan behind one file for no
+        // benefit. The registries below are real; what the later tasks add
+        // is the notification each one produces.
+        "resources/subscribe" => {
+            let uri = params
+                .as_ref()
+                .and_then(|p| p.get("uri"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if uri.is_empty() {
+                return send_line(output, &rpc_error(id, INVALID_PARAMS, "uri is required"));
+            }
+            live.subscriptions.subscribe(uri);
+            send_line(output, &result_response(id, Value::Obj(Default::default())))
+        }
+        "resources/unsubscribe" => {
+            let uri = params
+                .as_ref()
+                .and_then(|p| p.get("uri"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if uri.is_empty() {
+                return send_line(output, &rpc_error(id, INVALID_PARAMS, "uri is required"));
+            }
+            live.subscriptions.unsubscribe(uri);
+            send_line(output, &result_response(id, Value::Obj(Default::default())))
+        }
+        "logging/setLevel" => {
+            let named = params
+                .as_ref()
+                .and_then(|p| p.get("level"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            match logging::Level::parse(named) {
+                Some(level) => {
+                    live.level = Some(level);
+                    send_line(output, &result_response(id, Value::Obj(Default::default())))
+                }
+                None => send_line(
+                    output,
+                    &rpc_error(
+                        id,
+                        INVALID_PARAMS,
+                        "level must be one of emergency, alert, critical, error, warning, notice, info, debug",
+                    ),
+                ),
+            }
         }
         "resources/read" => {
             let uri = params
@@ -460,6 +527,14 @@ fn handle_request(
                 );
             }
             let args = raw_args.cloned().unwrap_or(Value::Obj(Default::default()));
+            // What the call knows about its own request: the writer, the id
+            // a cancellation would name, and the `_meta` a progress token
+            // lives in. Threaded now; `6002` and `6003` are the consumers.
+            let ctx = tools::ToolCtx {
+                notifier: Some(output),
+                request_id: Some(id.clone()),
+                meta: params.as_ref().and_then(|p| p.get("_meta")).cloned(),
+            };
             if name == "fsm_ping" {
                 send_line(output, &result_response(id, fsm_ping_result()))
             } else if !tools::names().contains(&name) {
@@ -473,7 +548,7 @@ fn handle_request(
                 )
             } else {
                 match store {
-                    Some(st) => match tools::dispatch(st, clock, name, &args) {
+                    Some(st) => match tools::dispatch_with(st, clock, name, &args, &ctx) {
                         Ok(v) => send_line(output, &result_response(id, tool_ok(v))),
                         Err(e) => send_line(output, &result_response(id, tool_error(&e))),
                     },
@@ -511,14 +586,22 @@ fn initialize_result(version: &str, mode_note: &'static str) -> Value {
     let mut tools = std::collections::BTreeMap::new();
     tools.insert("listChanged".into(), Value::Bool(false));
     let mut resources = std::collections::BTreeMap::new();
-    resources.insert("subscribe".into(), Value::Bool(false));
-    resources.insert("listChanged".into(), Value::Bool(false));
+    resources.insert("subscribe".into(), Value::Bool(true));
+    resources.insert("listChanged".into(), Value::Bool(true));
     let mut prompts = std::collections::BTreeMap::new();
     prompts.insert("listChanged".into(), Value::Bool(false));
     let mut caps = std::collections::BTreeMap::new();
+    // `tools` and `prompts` stay false because both sets are static: a
+    // per-machine tool surface would make `tools/list` depend on store
+    // contents, and no client is obliged to re-read a list that cannot
+    // change. `resources` is the opposite — an instance is a live object.
     caps.insert("tools".into(), Value::Obj(tools));
     caps.insert("resources".into(), Value::Obj(resources));
     caps.insert("prompts".into(), Value::Obj(prompts));
+    caps.insert(
+        "logging".into(),
+        Value::Obj(std::collections::BTreeMap::new()),
+    );
     let mut info = std::collections::BTreeMap::new();
     info.insert("name".into(), Value::Str("fsm".into()));
     info.insert(

@@ -11,7 +11,13 @@ touches:
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - crates/fsm-cli/tests/mcp_lifecycle.rs
   - crates/fsm-cli/tests/mcp_skeleton.rs
-status: planned
+  - crates/fsm-cli/src/mcp/tools/dispatch.rs
+  - crates/fsm-cli/src/mcp/tools/mod.rs
+  - crates/fsm-cli/src/mcp/subscribe.rs
+  - crates/fsm-cli/src/mcp/logging.rs
+  - crates/fsm-cli/src/mcp/cancel.rs
+  - crates/fsm-cli/tests/mcp_lifecycle.rs
+status: done
 merged_as: ""
 ---
 # Capability Negotiation And Routing
@@ -44,3 +50,7 @@ This is the one task in the plan allowed to move the `initialize` golden, and it
 - A session that uses none of the new capabilities produces a byte-identical transcript to the pre-plan build apart from the `initialize` line itself — assert this against a committed fixture, since it is the plan's inertness claim.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_lifecycle --test mcp_skeleton` passes with the updated `initialize` golden, every method arm this plan adds is routed here, `dispatch` takes a `ToolCtx`, all responses flow through the `Notifier`, the instructions string is unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the four capabilities with their reasons, the four routed arms with a `Live` session state carrying the watch set, the level, and the cancellation registry, `ToolCtx` and `dispatch_with`, the regenerated transcripts, and tests that every plan method is routed, that a missing URI and an unknown level are refused by name, and that a cancellation answers nothing.
+
+**Corrections.** (1) The routed arms call registries that *work*, not `unimplemented!()` bodies: an arm routed at a panic is a landmine rather than routing, and the test the task asks for — "reaches its module rather than returning `METHOD_NOT_FOUND`" — would have had to catch a panic to pass. The registries are small data structures; what each later task adds is the notification it produces, which is the part that needs its own task. (2) `dispatch` keeps its signature and gains `dispatch_with`: the plain form has around a hundred call sites in the CLI and the suites, none of which has anything to say about progress or cancellation, and rewriting them all to pass an empty context would be churn with no reader.
