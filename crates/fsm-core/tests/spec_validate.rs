@@ -239,3 +239,184 @@ fn fixtures_dir_named() {
         assert_eq!(errs.iter().filter(|e| e.code == code).count(), 1);
     }
 }
+
+// Plan 0009 task 4302: an eventless transition is the one construct that can
+// fire without anybody asking, so the rules that keep it honest — no `evt`,
+// no terminal source, no silent shadowing — belong at admission.
+
+fn findings_of(src: &str) -> Vec<fsm_core::spec::Finding> {
+    let spec = parse_s(src);
+    validate(&spec).err().unwrap_or_default()
+}
+
+fn analysis_of(src: &str) -> Vec<fsm_core::spec::Finding> {
+    let spec = parse_s(src);
+    let compiled = fsm_core::spec::compile(spec).unwrap_or_else(|e| panic!("{e:?}"));
+    let tree = fsm_core::tree::Tree::for_machine(&compiled.spec);
+    fsm_core::analyze::analyze_all(&compiled, &tree)
+}
+
+fn reactive(transitions: &str) -> String {
+    format!(
+        r#"{{"format":"fsm.machine/1","name":"m","states":[{{"name":"a"}},{{"name":"b"}},{{"name":"t","terminal":true}}],"initial":"a","context":[{{"name":"x","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[{{"name":"amount","ty":"int"}}]}}],"effects":[{{"name":"fx","fields":[{{"name":"v","ty":"int"}}]}}],"transitions":[{transitions}]}}"#
+    )
+}
+
+#[test]
+fn an_eventless_guard_may_not_read_evt() {
+    let findings = findings_of(&reactive(r#"{"from":"a","if":"evt.amount > 0","to":"b"}"#));
+    let finding = findings
+        .iter()
+        .find(|f| f.code == "def/eventless_evt")
+        .expect("def/eventless_evt");
+    assert_eq!(finding.path, "/transitions/0/if");
+    let span = finding.span.expect("span covers the reference");
+    assert_eq!((span.start, span.end), (0, 10), "the span is `evt.amount`");
+    assert!(finding.hint.contains("ctx"), "{}", finding.hint);
+    // The same guard on an evented transition is accepted.
+    assert!(
+        codes_of(&reactive(
+            r#"{"from":"a","on":"e","if":"evt.amount > 0","to":"b"}"#
+        ))
+        .is_empty()
+    );
+}
+
+#[test]
+fn an_eventless_block_may_not_read_evt_but_may_read_ctx() {
+    let bad = reactive(
+        r#"{"from":"a","to":"b","do":[{"target":"x","value":"evt.amount"}],"emit":[{"effect":"fx","args":{"v":"evt.amount + 1"}}]}"#,
+    );
+    let findings = findings_of(&bad);
+    let paths: Vec<&str> = findings
+        .iter()
+        .filter(|f| f.code == "def/eventless_evt")
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(
+        paths,
+        ["/transitions/0/do/0/value", "/transitions/0/emit/0/args/v"]
+    );
+    let good = reactive(
+        r#"{"from":"a","to":"b","do":[{"target":"x","value":"ctx.x + 1"}],"emit":[{"effect":"fx","args":{"v":"ctx.x"}}]}"#,
+    );
+    assert!(codes_of(&good).is_empty(), "{:?}", codes_of(&good));
+}
+
+#[test]
+fn an_eventless_transition_from_a_terminal_state_has_its_own_code() {
+    let eventless = codes_of(&reactive(r#"{"from":"t","to":"a"}"#));
+    assert!(
+        eventless.contains(&"def/eventless_from_terminal"),
+        "{eventless:?}"
+    );
+    assert!(
+        !eventless.contains(&"def/terminal_has_transitions"),
+        "{eventless:?}"
+    );
+    let evented = codes_of(&reactive(r#"{"from":"t","on":"e","to":"a"}"#));
+    assert!(
+        evented.contains(&"def/terminal_has_transitions"),
+        "{evented:?}"
+    );
+    assert!(
+        !evented.contains(&"def/eventless_from_terminal"),
+        "{evented:?}"
+    );
+}
+
+#[test]
+fn a_guardless_eventless_transition_shadows_its_later_siblings() {
+    let shadowed = analysis_of(&reactive(
+        r#"{"from":"a","to":"b"},{"from":"a","if":"ctx.x > 0","to":"b"}"#,
+    ));
+    let finding = shadowed
+        .iter()
+        .find(|f| f.code == "def/eventless_shadowed")
+        .expect("def/eventless_shadowed");
+    assert_eq!(finding.path, "/transitions/0");
+    assert_eq!(
+        finding.hint, "indices 0 then 1",
+        "the same shape as def/shadowed"
+    );
+    assert!(!shadowed.iter().any(|f| f.code == "def/shadowed"));
+    let reversed = analysis_of(&reactive(
+        r#"{"from":"a","if":"ctx.x > 0","to":"b"},{"from":"a","to":"b"}"#,
+    ));
+    assert!(
+        !reversed.iter().any(|f| f.code == "def/eventless_shadowed"),
+        "{reversed:?}"
+    );
+}
+
+#[test]
+fn an_eventless_transition_that_can_only_burn_a_microstep_is_a_warning() {
+    let src = reactive(r#"{"from":"a","on":"e","to":"b"},{"from":"b","if":"ctx.x > 0"}"#);
+    assert!(
+        codes_of(&src).is_empty(),
+        "still accepted: {:?}",
+        codes_of(&src)
+    );
+    let finding = analysis_of(&src)
+        .into_iter()
+        .find(|f| f.code == "def/eventless_internal_noop")
+        .expect("def/eventless_internal_noop");
+    assert_eq!(finding.severity, fsm_core::spec::Severity::Warning);
+    assert_eq!(finding.path, "/transitions/1");
+    for doing_something in [
+        r#"{"from":"a","on":"e","to":"b"},{"from":"b","if":"ctx.x > 0","to":"a"}"#,
+        r#"{"from":"a","on":"e","to":"b"},{"from":"b","if":"ctx.x > 0","do":[{"target":"x","value":"0"}]}"#,
+        r#"{"from":"a","on":"e","to":"b"},{"from":"b","if":"ctx.x > 0","emit":[{"effect":"fx","args":{"v":"1"}}]}"#,
+    ] {
+        let findings = analysis_of(&reactive(doing_something));
+        assert!(
+            !findings
+                .iter()
+                .any(|f| f.code == "def/eventless_internal_noop"),
+            "{findings:?}"
+        );
+    }
+}
+
+#[test]
+fn identical_eventless_guards_reuse_duplicate_guard() {
+    let findings = analysis_of(&reactive(
+        r#"{"from":"a","if":"ctx.x > 0","to":"b"},{"from":"a","if":"ctx.x > 0","to":"b"}"#,
+    ));
+    assert!(
+        findings.iter().any(|f| f.code == "def/duplicate_guard"),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn eventless_findings_are_stable_and_non_eventless_findings_are_unchanged() {
+    let malformed = reactive(
+        r#"{"from":"t","if":"evt.amount > 0","to":"nowhere"},{"from":"a","on":"nope","to":"b"}"#,
+    );
+    let first = codes_of(&malformed);
+    let second = codes_of(&malformed);
+    assert_eq!(first, second);
+    assert_eq!(
+        first,
+        [
+            "def/unknown_state",
+            "def/unknown_event",
+            "def/eventless_evt",
+            "def/eventless_from_terminal",
+        ],
+        "structural findings first, per transition in document order, then the reactive ones"
+    );
+    // A definition with no eventless transition reports exactly what it did
+    // before the reactive rules existed.
+    let evented =
+        reactive(r#"{"from":"t","on":"e","to":"nowhere"},{"from":"a","on":"nope","to":"b"}"#);
+    assert_eq!(
+        codes_of(&evented),
+        [
+            "def/terminal_has_transitions",
+            "def/unknown_state",
+            "def/unknown_event",
+        ]
+    );
+}

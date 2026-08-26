@@ -35,6 +35,16 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
         r#"{"format":"fsm.machine/1","name":"ri2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
     ),
     (
+        "def/eventless_evt",
+        r#"{"format":"fsm.machine/1","name":"eevt","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[{"from":"a","if":"evt.x > 0","to":"b"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"eevt2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[{"from":"a","on":"e","if":"evt.x > 0","to":"b"}]}"#,
+    ),
+    (
+        "def/eventless_from_terminal",
+        r#"{"format":"fsm.machine/1","name":"eft","states":[{"name":"a"},{"name":"t","terminal":true}],"initial":"a","context":[],"events":[],"transitions":[{"from":"t","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"eft2","states":[{"name":"a"},{"name":"t"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","to":"t"}]}"#,
+    ),
+    (
         "def/unknown_state",
         r#"{"format":"fsm.machine/1","name":"us","states":[{"name":"a"}],"initial":"missing","context":[],"events":[],"transitions":[]}"#,
         r#"{"format":"fsm.machine/1","name":"us2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
@@ -237,6 +247,14 @@ pub(crate) const ANALYZE_ROWS: &[(&str, &str)] = &[
     (
         "def/unreachable_state",
         r#"{"format":"fsm.machine/1","name":"ur","states":[{"name":"a"},{"name":"ghost"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    ),
+    (
+        "def/eventless_shadowed",
+        r#"{"format":"fsm.machine/1","name":"esh","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"a","if":"ctx.x > 0","to":"b"}]}"#,
+    ),
+    (
+        "def/eventless_internal_noop",
+        r#"{"format":"fsm.machine/1","name":"enoop","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"},{"from":"b","if":"ctx.x > 0"}]}"#,
     ),
     (
         "def/create_always_fails",

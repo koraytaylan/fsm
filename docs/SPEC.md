@@ -82,7 +82,11 @@ entered; the core NEVER reads a clock.
 | `def/assign_type` | set target type equals RHS exactly, scale included |
 | `def/dup_set` | duplicate set targets in one block |
 | `def/shadowed` | guardless/`true` transition precedes later same `(from,on)` |
-| `def/duplicate_guard` | structurally identical guards in one group |
+| `def/duplicate_guard` | structurally identical guards in one group, the eventless group included |
+| `def/eventless_evt` | an eventless transition's guard or block references `evt` |
+| `def/eventless_from_terminal` | an eventless transition's `from` is terminal |
+| `def/eventless_shadowed` | guardless/`true` eventless transition precedes a later eventless transition from the same state |
+| `def/eventless_internal_noop` | warning: an eventless transition with no `to`, `do`, `emit`, or `raise` |
 | `def/unreachable_state` | warning: state never enterable |
 | `def/ancestor_shadowed` | warning: ancestor handler globally dead |
 | `def/create_always_fails` | creation fails on declared inits |
@@ -600,6 +604,10 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/dup_set` — duplicate set targets in one block
 - `def/duplicate_deadline` — duplicate deadline name
 - `def/duplicate_guard` — identical guards in one (from, on) group
+- `def/eventless_evt` — an eventless transition references evt
+- `def/eventless_from_terminal` — an eventless transition leaves a terminal state
+- `def/eventless_internal_noop` — warning: an eventless transition that can only burn a microstep
+- `def/eventless_shadowed` — a guardless eventless transition hides later eventless siblings
 - `def/from_history` — history used as a transition source
 - `def/history_target_from_inside` — history targeted from inside its owner
 - `def/initial_is_history` — initial names a history node

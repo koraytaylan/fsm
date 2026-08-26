@@ -171,10 +171,20 @@ pub fn shadowing_findings(m: &CompiledMachine) -> Vec<Finding> {
     for ((from, on), idxs) in &m.transitions_by {
         for (i, &idx) in idxs.iter().enumerate() {
             let g = &m.spec.transitions[idx].guard;
-            // The eventless cell has its own mirror rule, `def/eventless_shadowed`;
-            // `def/duplicate_guard` below applies to both alike.
-            if is_true_guard(g) && on != ALWAYS_KEY {
-                if i + 1 < idxs.len() {
+            if is_true_guard(g) && i + 1 < idxs.len() {
+                // Same rule, two spellings: a guardless eventless transition
+                // masks every later eventless transition from its state just
+                // as a guardless handler masks its `(from, on)` siblings.
+                if on == ALWAYS_KEY {
+                    out.push(Finding::err(
+                        "def/eventless_shadowed",
+                        format!("/transitions/{idx}"),
+                        format!(
+                            "eventless transition {idx} shadows later eventless transitions from {from}"
+                        ),
+                        format!("indices {idx} then {}", idxs[i + 1]),
+                    ));
+                } else {
                     out.push(Finding::err(
                         "def/shadowed",
                         format!("/transitions/{idx}"),
@@ -676,10 +686,41 @@ fn collect_evt_refs(e: &crate::expr::ast::Expr, out: &mut Vec<String>) {
     }
 }
 
+/// `def/eventless_internal_noop`: an eventless transition with no target and
+/// no actions can only spend a microstep.
+///
+/// A warning, not an error: a definition may be mid-authoring, but in a
+/// shipped machine such a transition is always a mistake.
+pub fn eventless_noop_findings(m: &CompiledMachine) -> Vec<Finding> {
+    m.spec
+        .transitions
+        .iter()
+        .enumerate()
+        .filter(|(_, transition)| {
+            transition.is_eventless()
+                && transition.to.is_none()
+                && transition.sets.is_empty()
+                && transition.emits.is_empty()
+        })
+        .map(|(index, transition)| {
+            Finding::warn(
+                "def/eventless_internal_noop",
+                format!("/transitions/{index}"),
+                format!(
+                    "eventless transition {index} from {} has no to, do, or emit",
+                    transition.from
+                ),
+                "give it a target or an action; as written it can only burn a microstep",
+            )
+        })
+        .collect()
+}
+
 pub fn analyze_all(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     let mut out = reachability_findings(m, t);
     out.extend(shadowing_findings(m));
     out.extend(ancestor_shadowed(m, t));
     out.extend(create_always_fails(m, t));
+    out.extend(eventless_noop_findings(m));
     out
 }

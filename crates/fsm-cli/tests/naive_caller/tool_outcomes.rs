@@ -416,6 +416,18 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
     for src in create_specs {
         drive_create(&mut st, &mut clock, src, &mut out);
     }
+    // Plan 0009: every definition-shaped code lands with the task that first
+    // produces it, and its outcome is driven here so the catalogue stays
+    // honest. Eventless transitions (task 4302).
+    let reactive_specs: &[&str] = &[
+        r#"{"format":"fsm.machine/1","name":"r01","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[{"from":"a","if":"evt.x > 0","to":"b"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"r02","states":[{"name":"a"},{"name":"t","terminal":true}],"initial":"a","context":[],"events":[],"transitions":[{"from":"t","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"r03","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"a","if":"ctx.x > 0","to":"b"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"r04","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"b"},{"from":"b","if":"ctx.x > 0"}]}"#,
+    ];
+    for src in reactive_specs {
+        drive_create(&mut st, &mut clock, src, &mut out);
+    }
     let long = format!(
         r#"{{"format":"fsm.machine/1","name":"mlong","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","if":"{}"}}]}}"#,
         "1+".repeat(2500) + "1"

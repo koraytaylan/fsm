@@ -10,8 +10,15 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-core/src/spec/validate/reactive.rs
+  - crates/fsm-core/src/spec/validate/blocks.rs
+  - crates/fsm-core/src/analyze.rs
+  - crates/fsm-core/src/error.rs
   - crates/fsm-core/tests/spec_validate.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/one_step_data.rs
+  - crates/fsm-cli/tests/naive_caller/harness.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Eventless Validation
@@ -38,3 +45,5 @@ An eventless transition is the one construct in this engine that can fire withou
 - Finding order is stable across two runs of the same malformed definition, and a definition with no eventless transitions produces byte-identical findings to the pre-change behaviour.
 
 - **Done when:** `cargo test -p fsm-core --test spec_validate` covers every rule above including the accepted counter-cases, findings for non-eventless definitions are unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the two refusals — `def/eventless_evt` (an AST walk over the guard, `do`, and `emit` sources with the reference's own span, at `/transitions/{i}/if`, `/do/{j}/value`, and `/emit/{j}/args/{k}`) and `def/eventless_from_terminal` (with `blocks.rs` leaving eventless transitions to it, so `def/terminal_has_transitions` keeps its evented meaning) — live in `validate/reactive.rs`. The two advisory rules do not: `validate` has no warning channel (any finding refuses), and `def/shadowed`, the rule `def/eventless_shadowed` mirrors, is itself an `analyze_all` finding that `machine_create` reports as a warning and never refuses. So `def/eventless_shadowed` lands beside `def/shadowed` in `analyze::shadowing_findings` with the same message shape and severity, and `def/eventless_internal_noop` is `analyze::eventless_noop_findings`, appended last in `analyze_all` so non-reactive analysis output is byte-identical. `def/duplicate_guard` covers the `$always` cell unchanged. Each code landed with its `ALL_CODES` entry, SPEC rows, naive-caller row, and outcome drive, per the `4201` correction; the cycle rules stay with `4304`.

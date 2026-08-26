@@ -331,6 +331,29 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
         "def/initial_terminal" | "def/terminal_not_leaf" => {
             delete_pointer(&mut v, "/states/0/terminal");
         }
+        "def/eventless_evt" => {
+            // The hint offers two fixes; the caller takes the second and
+            // names the declared event that supplies `evt`.
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                if let Some(Value::Obj(t)) = tr.first_mut() {
+                    t.insert("on".into(), Value::Str("e".into()));
+                }
+            }
+        }
+        "def/eventless_from_terminal" => {
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
+                for state in st.iter_mut() {
+                    if let Value::Obj(o) = state {
+                        o.remove("terminal");
+                    }
+                }
+            }
+        }
+        "def/eventless_internal_noop" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                tr.retain(|t| t.get("on").is_some() || t.get("to").is_some());
+            }
+        }
         "def/terminal_has_transitions" => {
             if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
                 if let Some(Value::Obj(t)) = tr.first_mut() {
@@ -595,7 +618,10 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 truncate_array(&mut v, p, 1);
             }
         },
-        "def/shadowed" | "def/duplicate_guard" | "def/ancestor_shadowed" => {
+        "def/shadowed"
+        | "def/eventless_shadowed"
+        | "def/duplicate_guard"
+        | "def/ancestor_shadowed" => {
             if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
                 tr.truncate(1);
             }

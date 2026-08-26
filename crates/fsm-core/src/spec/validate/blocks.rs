@@ -67,7 +67,10 @@ pub(super) fn check_transitions(
             ));
         } else {
             let src = by_name[&t.from];
-            if src.terminal {
+            // An eventless transition from a terminal state is
+            // `def/eventless_from_terminal` (validate/reactive.rs), whose hint
+            // can say what a terminal state means for a transition nobody sends.
+            if src.terminal && !t.is_eventless() {
                 errs.push(Finding::err(
                     "def/terminal_has_transitions",
                     format!("{p}/from"),
