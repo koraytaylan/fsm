@@ -131,6 +131,16 @@ entered; the core NEVER reads a clock.
 | `def/invoke_type` | a `with` expression's type does not match the child's declaration exactly, scale included |
 | `def/invoke_cycle` | the invocation graph closes a cycle |
 | `def/invoke_depth` | the invocation graph is more than 4 machines deep (`MAX_INVOKE_DEPTH`) |
+| `def/supersedes_machine_ref` | `supersedes.machine` is not a 64-lowercase-hex digest |
+| `def/supersedes_self` | a definition supersedes itself, which its own hash makes unsatisfiable |
+| `def/supersedes_unknown_machine` | `supersedes` names a machine this store does not hold (checked at admission) |
+| `def/supersedes_unknown_state` | a `states` mapping names a state one of the two definitions does not have |
+| `def/supersedes_target_not_leaf` | a `states` mapping targets a state that is not a leaf |
+| `def/supersedes_target_terminal` | a `states` mapping targets a terminal state |
+| `def/supersedes_region` | a `states` mapping crosses parallel regions incoherently |
+| `def/supersedes_ctx_unknown` | a `context` mapping names a variable the new definition does not declare |
+| `def/supersedes_ctx_type` | a `context` expression's type does not match the new declaration |
+| `def/supersedes_slot` | a `states` mapping moves an instance onto a state whose invoke slots it cannot carry |
 | `def/unreachable_state` | warning: state never enterable |
 | `def/ancestor_shadowed` | warning: ancestor handler globally dead |
 | `def/create_always_fails` | creation fails on declared inits |
@@ -325,6 +335,10 @@ each microstep's candidates and pipeline.
 | `req/event_internal` | an event declared `internal`, or a `$`-prefixed generated name, sent from outside | name where the machine raises it and list the sendable events |
 | `req/invoke_slot_state` | `invoke_child` against a slot that is not `pending` | name the slot's current status and the slots the instance has |
 | `req/signal_target` | a `signal` addressed to its own sender | name `raise` as the construct for an event to this instance |
+| `req/migrate_settled` | migrating an instance that is completed or cancelled | say which status it holds; a settled instance has nothing to migrate |
+| `req/migrate_unmapped` | the instance's active state has no entry in the mapping | name the state and the mapping's keys |
+| `req/migrate_not_superseded` | the target definition does not supersede the instance's current one | name both machine ids |
+| `req/migrate_slot` | the instance holds an invocation slot the migration cannot carry | name the slot and its status |
 | `run/invoke_create_failed` | creating an invoked child failed; nothing is journaled and the slot stays `pending` | carry the child's own rejection as the cause |
 | `req/field_missing` | declared field absent | — |
 | `req/field_unknown` | extra field | — |
@@ -911,6 +925,16 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/reserved_ident` — `$`-prefixed identifier
 - `def/shadowed` — guardless transition hides later siblings
 - `def/shape` — wrong JSON type, missing field, or malformed history pseudostate shape
+- `def/supersedes_ctx_type` — a context expression type-mismatches the new declaration
+- `def/supersedes_ctx_unknown` — a context mapping names a variable the new definition does not declare
+- `def/supersedes_machine_ref` — a supersedes block names its machine other than by 64-hex digest
+- `def/supersedes_region` — a state mapping crosses parallel regions incoherently
+- `def/supersedes_self` — a definition supersedes itself
+- `def/supersedes_slot` — a state mapping cannot carry the instance's invocation slots
+- `def/supersedes_target_not_leaf` — a state mapping targets a state that is not a leaf
+- `def/supersedes_target_terminal` — a state mapping targets a terminal state
+- `def/supersedes_unknown_machine` — a supersedes block names a machine this store does not hold
+- `def/supersedes_unknown_state` — a state mapping names a state that does not exist
 - `def/terminal_has_transitions` — transition from a terminal
 - `def/terminal_not_leaf` — terminal is not a leaf
 - `def/unknown_effect` — emit names an unknown effect
@@ -961,6 +985,10 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `req/machine_ambiguous` — bare name matches several versions
 - `req/machine_exists` — define refused because the spec exists
 - `req/machine_not_found` — unknown machine
+- `req/migrate_not_superseded` — the target definition does not supersede the instance's current one
+- `req/migrate_settled` — migrating an instance that has settled
+- `req/migrate_slot` — the instance holds an invocation slot the migration cannot carry
+- `req/migrate_unmapped` — the instance's active state has no mapping entry
 - `req/number_token` — raw JSON number where a string is required
 - `req/payload_too_large` — journalled payload exceeds 64 KiB
 - `req/request_id_conflict` — request_id reused for different content

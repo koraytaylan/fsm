@@ -871,6 +871,25 @@ fn all_codes_hygiene() {
         // document — a hash preimage cycle. The rule is defence in depth
         // for a later plan that resolves a slot some other way.
         "def/invoke_cycle",
+        // Same shape: a definition would have to contain its own hash.
+        "def/supersedes_self",
+        // Plan 0011 registers its closed set of codes in one task so no
+        // later task edits `error.rs`. Each line below names the task that
+        // makes its code reachable and is removed by that task's commit.
+        // Task 5302 — migration admission checks:
+        "def/supersedes_unknown_machine",
+        "def/supersedes_unknown_state",
+        "def/supersedes_target_not_leaf",
+        "def/supersedes_target_terminal",
+        "def/supersedes_region",
+        "def/supersedes_ctx_unknown",
+        "def/supersedes_ctx_type",
+        "def/supersedes_slot",
+        // Task 5501 — the instance migrate operation:
+        "req/migrate_settled",
+        "req/migrate_unmapped",
+        "req/migrate_not_superseded",
+        "req/migrate_slot",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");

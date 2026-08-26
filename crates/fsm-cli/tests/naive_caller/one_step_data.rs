@@ -55,6 +55,11 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
         r#"{"format":"fsm.machine/1","name":"fnl2","states":[{"name":"p","initial":"w","states":[{"name":"w"},{"name":"q","initial":"r","states":[{"name":"r"}]}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
     ),
     (
+        "def/supersedes_machine_ref",
+        r#"{"format":"fsm.machine/1","name":"supref","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"supersedes":{"machine":"case_review"}}"#,
+        r#"{"format":"fsm.machine/1","name":"supref2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"supersedes":{"machine":"7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c"}}"#,
+    ),
+    (
         "def/limit_signals",
         r#"{"format":"fsm.machine/1","name":"sig5","states":[{"name":"a","entry":{"signal":[{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"}]}}],"initial":"a","context":[{"name":"target","ty":"str","init":""}],"events":[],"transitions":[]}"#,
         r#"{"format":"fsm.machine/1","name":"sig5b","states":[{"name":"a","entry":{"signal":[{"to":"ctx.target","event":"e"}]}}],"initial":"a","context":[{"name":"target","ty":"str","init":""}],"events":[],"transitions":[]}"#,

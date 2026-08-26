@@ -160,6 +160,28 @@ pub struct RaiseSpec {
     pub with: Vec<(String, String)>,
 }
 
+/// The mapping from a superseded definition onto this one.
+///
+/// It lives **in** the new definition, and therefore inside its
+/// `machine_id`: a reader holding the new hash holds the mapping too, and a
+/// migration can never be reinterpreted after the fact. Every other optional
+/// key in this workspace is omitted from the canonical form to *protect*
+/// identity; this one is included to *establish* it.
+///
+/// At most one per definition. A three-definition chain migrates in two
+/// journaled hops: a transitive closure computed by the engine would be a
+/// mapping nobody wrote, and this engine does not invent one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupersedesSpec {
+    /// The 64-lowercase-hex digest of the definition this one replaces.
+    pub machine: String,
+    /// Old state name to new state name, in document order.
+    pub states: Vec<(String, String)>,
+    /// New context variable to the `expr/1` source that computes it, in
+    /// document order.
+    pub context: Vec<(String, String)>,
+}
+
 /// A `signal` in a block: one event sent to exactly one other instance,
 /// named by an expression evaluated when the block runs.
 ///
@@ -352,6 +374,9 @@ pub struct MachineSpec {
     pub invariants: Vec<InvariantSpec>,
     /// Accepted document when parsed; not part of the public mutation surface.
     pub(crate) source: Option<Value>,
+    /// The definition this one replaces, and how to move an instance onto
+    /// it. Part of `machine_id` by design.
+    pub supersedes: Option<SupersedesSpec>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

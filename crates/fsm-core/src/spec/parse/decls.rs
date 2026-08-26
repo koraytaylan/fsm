@@ -1,6 +1,6 @@
 use crate::json::Value;
 
-use super::super::{CtxVar, EffectDecl, EventDecl, FieldDecl, Finding};
+use super::super::{CtxVar, EffectDecl, EventDecl, FieldDecl, Finding, SupersedesSpec};
 use super::transitions::parse_ty_spec;
 use super::{check_keys, req_str};
 
@@ -212,6 +212,65 @@ fn parse_named_list(
             }
         },
     }
+}
+
+/// The optional top-level `supersedes` block.
+///
+/// `machine` is required; `states` and `context` are optional objects and an
+/// empty one is legal — a mapping that covers nothing migrates nothing, which
+/// is a coherent thing for an author to say.
+pub(super) fn parse_supersedes(
+    v: Option<&Value>,
+    errs: &mut Vec<Finding>,
+) -> Option<SupersedesSpec> {
+    let v = v?;
+    let Some(obj) = v.as_obj() else {
+        errs.push(Finding::err(
+            "def/shape",
+            "/supersedes",
+            "supersedes must be an object",
+            "use {machine, states?, context?}",
+        ));
+        return None;
+    };
+    super::check_keys(obj, &["machine", "states", "context"], "/supersedes", errs);
+    let machine = super::req_str(obj, "machine", "/supersedes/machine", errs)
+        .unwrap_or("")
+        .to_string();
+    let pairs = |key: &str, errs: &mut Vec<Finding>| -> Vec<(String, String)> {
+        let Some(value) = obj.get(key) else {
+            return Vec::new();
+        };
+        let Some(map) = value.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                format!("/supersedes/{key}"),
+                format!("{key} must be an object"),
+                "map each name to a string",
+            ));
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (from, to) in map {
+            match to {
+                Value::Str(text) => out.push((from.clone(), text.clone())),
+                _ => errs.push(Finding::err(
+                    "def/shape",
+                    format!("/supersedes/{key}/{from}"),
+                    "value must be a string",
+                    "quote it",
+                )),
+            }
+        }
+        out
+    };
+    let states = pairs("states", errs);
+    let context = pairs("context", errs);
+    Some(SupersedesSpec {
+        machine,
+        states,
+        context,
+    })
 }
 
 pub(super) fn parse_events(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<EventDecl> {

@@ -8,7 +8,11 @@
 //! catalogue-dependent ones — `def/invoke_unknown_ctx`, `def/invoke_type`,
 //! `def/invoke_cycle`, `def/invoke_depth`, `def/invoke_unknown_machine` —
 //! need the child definitions in hand and run in the store's
-//! `define_machine_on` (task 4901), not here.
+//! `define_machine_on` (task 4901), not here. Plan 0011's workstream 0053
+//! adds the two `supersedes` rules decidable from this definition alone
+//! (`def/supersedes_machine_ref`, `def/supersedes_self`); every other
+//! `def/supersedes_*` rule needs the superseded definition in hand and runs
+//! at admission.
 //! [`validate_reactive`] runs last in [`super::validate_with_compatibility`],
 //! so every finding it adds lands after the structural findings and existing
 //! golden order is untouched. Only refusals live here: the advisory eventless
@@ -25,7 +29,42 @@ use crate::expr::parser;
 
 use super::super::{Finding, MachineSpec, Topology, TransitionSpec};
 
+/// The `supersedes` rules that need nothing but this definition.
+///
+/// `def/supersedes_self` is unsatisfiable rather than merely wrong: the block
+/// is part of the canonical bytes the hash covers, so a definition naming its
+/// own hash would have to contain a hash of itself.
+fn validate_supersedes(spec: &MachineSpec, errs: &mut Vec<Finding>) {
+    let Some(supersedes) = &spec.supersedes else {
+        return;
+    };
+    let machine = &supersedes.machine;
+    if machine.len() != 64
+        || !machine.bytes().all(|b| b.is_ascii_hexdigit())
+        || machine.bytes().any(|b| b.is_ascii_uppercase())
+    {
+        errs.push(Finding::err(
+            "def/supersedes_machine_ref",
+            "/supersedes/machine",
+            "supersedes names a machine other than by 64-lowercase-hex digest",
+            "use the superseded definition's machine_id digest, without the name@sha256: prefix",
+        ));
+        return;
+    }
+    if crate::hashes::digest_of(&crate::hashes::machine_id(&spec.to_value()))
+        == Some(machine.as_str())
+    {
+        errs.push(Finding::err(
+            "def/supersedes_self",
+            "/supersedes/machine",
+            "a definition supersedes itself",
+            "name the definition this one replaces; a machine cannot contain its own hash",
+        ));
+    }
+}
+
 pub(super) fn validate_reactive(spec: &MachineSpec, errs: &mut Vec<Finding>) {
+    validate_supersedes(spec, errs);
     check_final_states(spec, errs);
     check_invokes(spec, errs);
     check_generated_event_names(spec, errs);

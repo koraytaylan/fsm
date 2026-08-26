@@ -7,6 +7,58 @@ use crate::harness::{obj, repair_spec};
 use crate::tool_outcomes::spec;
 
 pub(crate) const INFRA: &[(&str, &str)] = &[
+    (
+        "def/supersedes_self",
+        "unreachable by construction: a definition would have to contain its own hash; the rule stands as defence in depth, like def/invoke_cycle",
+    ),
+    (
+        "def/supersedes_unknown_machine",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "def/supersedes_unknown_state",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "def/supersedes_target_not_leaf",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "def/supersedes_target_terminal",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "def/supersedes_region",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "def/supersedes_ctx_unknown",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "def/supersedes_ctx_type",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "def/supersedes_slot",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5302",
+    ),
+    (
+        "req/migrate_settled",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
+    ),
+    (
+        "req/migrate_unmapped",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
+    ),
+    (
+        "req/migrate_not_superseded",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
+    ),
+    (
+        "req/migrate_slot",
+        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
+    ),
     ("io/read", "filesystem failure is not a caller-shaped retry"),
     (
         "io/write",

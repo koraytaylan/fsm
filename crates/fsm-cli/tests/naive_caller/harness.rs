@@ -590,18 +590,6 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 // The reactive rules address states by name, not by pointer.
                 truncate_array(&mut v, "/states/0/invoke", 1);
             }
-            // The hint says to handle the result; the correction adds the
-            // transition it names.
-            "def/invoke_result_unhandled" => {
-                push_transition(
-                    &mut v,
-                    r#"{"from":"busy","on":"$done.invoke.review","to":"out"}"#,
-                );
-            }
-            // The hint says to give the state another way out.
-            "def/invoke_only_exit" => {
-                push_transition(&mut v, r#"{"from":"busy","on":"done","to":"out"}"#);
-            }
             "def/limit_signals" => {
                 // The block rules address a state by name, not by index.
                 truncate_array(&mut v, "/states/0/entry/signal", 1);
@@ -714,6 +702,28 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
                 st.truncate(1);
             }
+        }
+        // The hint says to handle the result; the correction adds the
+        // transition it names.
+        "def/invoke_result_unhandled" => {
+            push_transition(
+                &mut v,
+                r#"{"from":"busy","on":"$done.invoke.review","to":"out"}"#,
+            );
+        }
+        // The hint says to give the state another way out.
+        "def/invoke_only_exit" => {
+            push_transition(&mut v, r#"{"from":"busy","on":"done","to":"out"}"#);
+        }
+        // The hint says to name the superseded machine by digest.
+        "def/supersedes_machine_ref" => {
+            set_pointer(
+                &mut v,
+                "/supersedes/machine",
+                Value::Str(
+                    "7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c".into(),
+                ),
+            );
         }
         "def/create_always_fails" => {
             set_pointer(&mut v, "/invariants", Value::Arr(vec![]));

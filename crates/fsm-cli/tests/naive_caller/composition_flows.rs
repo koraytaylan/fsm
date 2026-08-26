@@ -296,6 +296,33 @@ pub(crate) fn one_step_composition(
     )
     .unwrap();
     seen.insert("req/signal_target");
+
+    // def/supersedes_machine_ref (plan 0011 task 5301): the mapping names the
+    // machine it replaces by digest, because a name is a mutable pointer.
+    let by_name = r#"{"format":"fsm.machine/1","name":"os_supref","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"supersedes":{"machine":"case_review"}}"#;
+    match dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(by_name))]),
+    ) {
+        Ok(_) => panic!("a name is not a digest"),
+        Err(error) => {
+            assert_eq!(error.code, "def/supersedes_machine_ref");
+        }
+    }
+    let by_digest = by_name.replace(
+        r#""machine":"case_review""#,
+        r#""machine":"7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c""#,
+    );
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&by_digest))]),
+    )
+    .unwrap();
+    seen.insert("def/supersedes_machine_ref");
 }
 
 /// Every composition code, produced through a real outcome.
@@ -395,6 +422,19 @@ pub(crate) fn drive_composition_outcomes(
         .expect("the entry block signalled");
     if let Err(e) = st.signal_deliver("inst-selfsig", &signal_id, "selfsig-deliver") {
         note_err(&e, out);
+    }
+
+    // def/supersedes_machine_ref (plan 0011 task 5301): the mapping names the
+    // machine it replaces by digest, because a name is a mutable pointer.
+    let by_name = r#"{"format":"fsm.machine/1","name":"tv_supref","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"supersedes":{"machine":"case_review"}}"#;
+    match dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(by_name))]),
+    ) {
+        Ok(v) => note_ok(&v, out),
+        Err(e) => note_err(&e, out),
     }
 
     // The two run-time refusals.

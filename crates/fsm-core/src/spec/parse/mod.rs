@@ -42,6 +42,7 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
             "invariants",
             "regions",
             "deadlines",
+            "supersedes",
         ],
         "",
         &mut errs,
@@ -205,6 +206,7 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
     let transitions = parse_transitions(obj.get("transitions"), &mut errs);
     let deadlines = parse_deadlines(obj.get("deadlines"), &mut errs);
     let invariants = parse_invariants(obj.get("invariants"), &mut errs);
+    let supersedes = decls::parse_supersedes(obj.get("supersedes"), &mut errs);
     if !errs.is_empty() {
         return Err(errs);
     }
@@ -222,6 +224,7 @@ pub fn parse_machine(v: &Value) -> Result<MachineSpec, Vec<Finding>> {
         transitions,
         invariants,
         source: Some(v.clone()),
+        supersedes,
     })
 }
 

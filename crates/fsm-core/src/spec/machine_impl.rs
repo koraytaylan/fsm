@@ -14,6 +14,38 @@ impl MachineSpec {
         let mut m = BTreeMap::new();
         m.insert("format".into(), v_str(self.format.clone()));
         m.insert("name".into(), v_str(self.name.clone()));
+        // Included in the canonical form whenever present, and therefore in
+        // `machine_id`. Every other optional key here is omitted when empty
+        // to *protect* identity — this one is included to *establish* it: a
+        // reader holding the hash holds the mapping, so a migration cannot be
+        // reinterpreted after the fact.
+        if let Some(supersedes) = &self.supersedes {
+            let mut block = BTreeMap::new();
+            block.insert("machine".into(), v_str(supersedes.machine.clone()));
+            if !supersedes.states.is_empty() {
+                block.insert(
+                    "states".into(),
+                    v_obj(
+                        supersedes
+                            .states
+                            .iter()
+                            .map(|(from, to)| (from.clone(), v_str(to.clone()))),
+                    ),
+                );
+            }
+            if !supersedes.context.is_empty() {
+                block.insert(
+                    "context".into(),
+                    v_obj(
+                        supersedes
+                            .context
+                            .iter()
+                            .map(|(name, source)| (name.clone(), v_str(source.clone()))),
+                    ),
+                );
+            }
+            m.insert("supersedes".into(), Value::Obj(block));
+        }
         if let Some(d) = &self.description {
             m.insert("description".into(), v_str(d.clone()));
         }

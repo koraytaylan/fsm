@@ -12,7 +12,11 @@ touches:
   - crates/fsm-core/src/spec/validate/reactive.rs
   - crates/fsm-core/src/error.rs
   - crates/fsm-core/tests/supersedes_declaration.rs
-status: planned
+  - crates/fsm-core/src/spec/machine_impl.rs
+  - crates/fsm-core/src/spec/parse/mod.rs
+  - crates/fsm-cli/tests/naive_caller/*.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Supersedes Declaration
@@ -40,3 +44,7 @@ The mapping lives in the new definition and therefore inside its `machine_id`, w
 - `ALL_CODES` entries are unique, non-empty, and carry one of the four namespace prefixes.
 
 - **Done when:** `cargo test -p fsm-core --test supersedes_declaration` passes every case above including the differing-`machine_id` property, every `examples/` machine keeps its committed identity, the fourteen codes are registered, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `SupersedesSpec` on `MachineSpec`, parsed from the optional top-level key with `def/unknown_key` at the right pointer and `def/shape` for a non-object at either level, serialized into the canonical form whenever present, the two locally decidable rules in `validate/reactive.rs`, all fourteen codes in `ALL_CODES` and in SPEC, and the suite — including the founding property, the round-trip stability of a definition carrying the block, and the assertion that no shipped example carries the key so none of their identities move.
+
+**Corrections.** (1) Registering fourteen codes at once collides with the every-code gates, which require each code to be reachable through a real tool outcome. Rather than deferring registration — which the step explicitly forbids, to keep `error.rs` out of later commits — the twelve not-yet-reachable codes carry an allowlist line each naming the task that makes them reachable, and `def/supersedes_self` carries a permanent one for the same reason `def/invoke_cycle` does: a definition would have to contain its own hash. The churn moves from `error.rs` to the harness, where the reason belongs. (2) `def/supersedes_self` cannot be exercised by construction, so the test searches for a fixed point, documents that none exists, and drives the rule directly instead of pretending to reach it. (3) Task 5103's two repair arms were written into a nested `def/limit_*` match and never ran; they are moved to the outer match with this task's, since a repair that cannot fire is a gate that is not testing anything.
