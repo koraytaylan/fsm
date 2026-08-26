@@ -215,7 +215,7 @@ fn create_failed(mut rejection: Rejection, m: &CompiledMachine) -> Rejection {
     rejection
 }
 
-fn parse_init(s: &str, ty: &TySpec) -> Result<Val, &'static str> {
+pub(super) fn parse_init(s: &str, ty: &TySpec) -> Result<Val, &'static str> {
     match ty {
         TySpec::Int => s.parse::<i64>().map(Val::Int).map_err(|_| "req/field_type"),
         TySpec::Bool => match s {

@@ -499,3 +499,71 @@ pub(super) fn scan_candidates(
     }
     Ok(Scan { winner, candidates })
 }
+
+/// One declared `init`, parsed to its typed value.
+///
+/// Public for [`crate::migrate`]: a migration gives an unmapped variable its
+/// declared init, which is the same value a creation would have given it, and
+/// re-deriving that here rather than re-implementing it keeps one answer.
+pub fn parse_init_for(init: &str, ty: &crate::spec::TySpec) -> Result<Val, &'static str> {
+    create::parse_init(init, ty)
+}
+
+/// Evaluate a machine's invariants against a context and an active set.
+///
+/// Public for [`crate::migrate`]: a migration checks the new definition's
+/// invariants on the mapped state *before* it reacts, and the answer must be
+/// the engine's, not a second implementation of it.
+pub fn eval_invariants_for(
+    spec: &crate::spec::MachineSpec,
+    compiled: &BTreeMap<crate::machine::ExprSlot, crate::machine::CompiledExpr>,
+    ctx: &BTreeMap<String, Val>,
+    active: &std::collections::BTreeSet<String>,
+    budget: &mut Budget,
+) -> (bool, Vec<String>, Vec<crate::trace::InvariantTrace>) {
+    block::eval_invariants(spec, compiled, ctx, active, budget)
+}
+
+/// Run the reaction phase from a state nobody transitioned into.
+///
+/// Public for [`crate::migrate`]: an instance that has just been mapped onto
+/// a new definition is in exactly the position a freshly created one is —
+/// sitting in a configuration whose eventless transitions have not run yet —
+/// and plan 0009's driver is what settles that. The trigger carries no
+/// exits, no entries, and no pipeline, because a migration is not a
+/// transition: nothing was exited and no entry action belongs to it.
+pub fn react_from(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    state: &InstanceState,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Result<Applied, Rejection> {
+    let trigger = transition::Transitioned {
+        configuration_after: state.configuration.clone(),
+        context: state.ctx.clone(),
+        history_after: state.history.clone(),
+        effects: Vec::new(),
+        raises: Vec::new(),
+        signals: Vec::new(),
+        pipeline: Vec::new(),
+        candidates: Vec::new(),
+        exited: Vec::new(),
+        entered: Vec::new(),
+        invocations: state.invocations.clone(),
+        cancelled_children: Vec::new(),
+        internal: false,
+        region: None,
+        source_state: String::new(),
+        public_index: 0,
+    };
+    micro::run_to_quiescence(
+        machine,
+        tree,
+        state,
+        trigger,
+        now_ms,
+        budget,
+        &mut EngineSelector,
+    )
+}

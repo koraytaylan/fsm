@@ -9,7 +9,11 @@ gated: false
 touches:
   - crates/fsm-core/src/migrate/apply.rs
   - crates/fsm-core/tests/migrate_apply.rs
-status: planned
+  - crates/fsm-core/src/migrate/carryover.rs
+  - crates/fsm-core/src/step/mod.rs
+  - crates/fsm-core/src/step/create.rs
+  - crates/fsm-core/tests/migrate_apply.rs
+status: done
 merged_as: ""
 ---
 # Pure Migrate Function
@@ -43,3 +47,7 @@ Migration is where a workflow engine is most tempted to guess, so the pure funct
 - Budget: a projection whose expressions exhaust the supplied budget refuses rather than looping.
 
 - **Done when:** `cargo test -p fsm-core --test migrate_apply` passes every case above with each refusal atomic and named, the seven-step order matches the architecture and a migrated instance runs its reaction phase, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `migrate` with `Migrated`/`MigrationReport`, the seven steps in the architecture's order, and the suite covering each — the mapped sequential leaf, both parallel cases, both settled statuses, the projection's three outcomes, the overflow that names the `migration` block, both invariant modes, the reaction that advances and the one that completes, the ceiling that rejects atomically, determinism across two runs, and a spent budget refusing rather than looping. `step::parse_init_for`, `step::eval_invariants_for`, and `step::react_from` are the three seams migration needs from the engine; each is a thin re-export of the engine's own answer rather than a second implementation.
+
+**Corrections.** (1) A `to` machine with no `supersedes` block is refused with `req/migrate_not_superseded` here rather than only at the store: the pure function is the one place that can say it without a journal, and a caller that skipped the check would otherwise migrate onto an empty mapping and get `req/migrate_unmapped`, which names the wrong problem. (2) The ceiling test needs a *guarded* eventless cycle — an unguarded one is refused at admission by `def/eventless_cycle`, so the run-time ceiling can only be reached by a definition that admission accepts.
