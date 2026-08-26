@@ -9,13 +9,15 @@ touches:
   - crates/fsm-core/src/step/micro.rs
   - crates/fsm-core/src/step/mod.rs
   - crates/fsm-core/src/step/transition.rs
+  - crates/fsm-core/src/step/block.rs
   - crates/fsm-core/src/step/create.rs
   - crates/fsm-core/src/step/deadline.rs
   - crates/fsm-core/src/limits.rs
-  - crates/fsm-core/src/error.rs
+  - crates/fsm-core/src/trace.rs
   - docs/SPEC.md
+  - docs/plans/0009-reactive-semantics/ARCHITECTURE.md
   - crates/fsm-core/tests/macrostep_loop.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Macrostep Driver
@@ -51,4 +53,13 @@ The macrostep is the one new control flow this plan adds: a pure loop around the
 - Regression: `step_golden`, `create_chain`, `select_golden`, and `record_replay_deadlines` pass with no fixture edits, proving the invariant refactor changed no semantics for non-reactive machines.
 - `ALL_CODES` entries are unique, non-empty, and each carries one of the four namespace prefixes; `cargo test -p fsm-cli --test spec_appendix` passes with the appendix rows added.
 
-- **Done when:** `cargo test -p fsm-core --test macrostep_loop` passes every case above, `step`/`create`/`poll_deadline` all run macrosteps, invariants are evaluated exactly once per macrostep at quiescence, `cargo test -p fsm-cli --test spec_appendix` is green with the fourteen new codes and two new limits documented, the existing `step_golden`, `create_chain`, `select_golden`, and `record_golden` suites pass with no fixture edits, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+- **Done when:** `cargo test -p fsm-core --test macrostep_loop` passes every case above, `step`/`create`/`poll_deadline` all run macrosteps, invariants are evaluated exactly once per macrostep at quiescence, `cargo test -p fsm-cli --test spec_appendix` is green with the two new limits documented (the codes land per producing task; see *Landed*), the existing `step_golden`, `create_chain`, `select_golden`, and `record_golden` suites pass with no fixture edits, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the driver, the ceiling, atomicity, the budget constants, and all three entry points routed through `run_to_quiescence`, with `step_with` / `create_with` / `poll_deadline_with` taking a `ReactionSelector` so the loop is testable before any reactive shape exists. Corrections the implementation forced, each also written into ARCHITECTURE §0042:
+
+- **Step 6 did not land here.** Two naive-caller gates (`tool_outcomes::all_codes_hygiene`, `one_step_every_non_infra_code`) fail for any `ALL_CODES` entry that no real tool outcome produces, so cataloguing fifteen codes the engine cannot yet raise would have left `cargo test` red until `4501`. Each code lands in `error.rs`, SPEC Appendix A, and the naive-caller rows in the task that first produces it; `run/microstep_limit` lands with `4303`. Appendix B's two limit rows landed here as step 7 asked.
+- **`MACROSTEP_EVAL_TICKS` is `MAX_EVAL_TICKS * (MAX_MICROSTEPS + 2)`**, and a discarded internal event counts against `MAX_MICROSTEPS`. The `+ 1` draft left the closing quiescence scan uncounted and let unhandled events buy unbounded scans, both breaking SPEC's never-exhausts guarantee; the budget test pins `4096 × 66`.
+- **`trace.rs` is in the footprint.** The per-microstep candidates and pipelines need a home the later tasks (`4403` fills discards, `4701` renders) can share without editing `micro.rs` and `trace.rs` at once; the one `MicrostepTrace` struct replaces the draft's `MicrostepRecord` + `MicrostepTrace` pair.
+- **Invariants evaluated once means monitor flags are one list**, not an accumulation; the "failing in two microsteps appears once" case is pinned as a monitor that fails on the intermediate and final configurations and is reported once.
+- **Settlement is deferred** so a non-reactive macrostep keeps SPEC's invariants-before-schedules order byte for byte (a deadline-schedule failure's trace carries the invariant traces, and replay checks that trace).
+- The "both seams live, eventless taken first" test needs a non-empty queue, which nothing can fill until `4402`; it moves to `4403`'s `internal_queue.rs`. This task pins the call order instead: the eventless seam is consulted on every iteration and the queue seam never while the queue is empty.

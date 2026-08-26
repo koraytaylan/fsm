@@ -2,13 +2,15 @@ use std::collections::BTreeMap;
 
 use crate::expr::eval::{Budget, Val};
 use crate::json::Value;
-use crate::machine::{ActiveConfiguration, CompiledMachine, EnforceMode, Status};
+use crate::machine::{ActiveConfiguration, CompiledMachine, InstanceState, Status};
 use crate::spec::TySpec;
-use crate::trace::{BlockKind, DecisionTrace};
+use crate::trace::BlockKind;
 use crate::tree::Tree;
 
-use super::block::{apply_block, eval_invariants, find_node, reject_pipeline};
+use super::block::{apply_block, find_node, reject_pipeline};
 use super::guard::val_matches;
+use super::micro::{EngineSelector, ReactionSelector, invariant_failure, run_to_quiescence};
+use super::transition::Transitioned;
 use super::validate::reject;
 use super::{Applied, ExprSlotOwner, Rejection};
 
@@ -17,11 +19,24 @@ use super::{Applied, ExprSlotOwner, Rejection};
 /// Every region enters its initial chain. Deadlines on those chains are
 /// scheduled relative to `now_ms`. Creation is pure; durable hosts must not
 /// journal a failed result or consume an instance id or sequence number.
+/// Creation is a macrostep like any other: a machine whose initial state has
+/// an eventless exit reacts before its first sealed state.
 pub fn create(
     m: &CompiledMachine,
     t: &Tree,
     overrides: &BTreeMap<String, Val>,
     now_ms: i64,
+) -> Result<Applied, Rejection> {
+    create_with(m, t, overrides, now_ms, &mut EngineSelector)
+}
+
+/// [`create`] with an explicit reaction selector; tests script the reactions.
+pub fn create_with(
+    m: &CompiledMachine,
+    t: &Tree,
+    overrides: &BTreeMap<String, Val>,
+    now_ms: i64,
+    selector: &mut dyn ReactionSelector,
 ) -> Result<Applied, Rejection> {
     // validate overrides
     let ctx_map: BTreeMap<_, _> = m
@@ -104,7 +119,7 @@ pub fn create(
     let mut k = 0u32;
     let mut pipeline = Vec::new();
     let empty_evt = BTreeMap::new();
-    let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+    let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
     for &id in &entered {
         let name = &t.names[id as usize];
         if let Some(node) = find_node(&m.spec, name) {
@@ -125,7 +140,7 @@ pub fn create(
                 ) {
                     Ok(bt) => pipeline.push(bt),
                     Err(inner) => {
-                        let mut r = reject_pipeline(inner, pipeline, &DecisionTrace::default());
+                        let mut r = reject_pipeline(inner, pipeline, &[]);
                         r.code = "run/create_failed";
                         return Err(r);
                     }
@@ -133,90 +148,55 @@ pub fn create(
             }
         }
     }
-    let active = t.active_state_names(&configuration_after);
-    let (ok_inv, flags, inv_trace) =
-        eval_invariants(&m.spec, &m.compiled_exprs, &ctx, &active, &mut budget);
-    if !ok_inv {
-        for p in &mut pipeline {
-            p.discarded = true;
-        }
-        let eval_err = inv_trace
-            .iter()
-            .find_map(|i| i.error.as_ref().map(|e| (i.name.as_str(), e)));
-        let failed_inv = eval_err.map(|(name, _)| name).or_else(|| {
-            inv_trace
-                .iter()
-                .zip(&m.spec.invariants)
-                .find(|(trace, spec)| !trace.passed && spec.mode == EnforceMode::Enforce)
-                .map(|(trace, _)| trace.name.as_str())
-        });
-        return Err(Rejection {
-            code: "run/create_failed",
-            message: eval_err
-                .map(|(n, e)| format!("invariant {n}: {}", e.message))
-                .unwrap_or_else(|| "invariant failed at create".into()),
-            hint: failed_inv
-                .map(|n| format!("fix inits or invariant {n}"))
-                .unwrap_or_else(|| "fix inits or the invariant".into()),
-            source_state: None,
-            transition_idx: None,
-            block: eval_err.map(|(n, _)| format!("invariant({n})")),
-            span: eval_err.and_then(|(_, e)| e.span),
-            cause: eval_err.map(|(_, e)| e.code),
-            trace: DecisionTrace {
-                pipeline,
-                invariants: inv_trace,
-                ..DecisionTrace::default()
-            },
-        });
-    }
-    let mut deadlines_after = match super::transition::update_deadline_schedules(
-        m,
-        &BTreeMap::new(),
-        &[],
-        &entered,
-        t,
-        &ctx,
-        now_ms,
-        &mut budget,
-    ) {
-        Ok(deadlines) => deadlines,
-        Err(inner) => {
-            let mut rejection = reject_pipeline(inner, pipeline, &DecisionTrace::default());
-            rejection.trace.invariants = inv_trace;
-            rejection.code = "run/create_failed";
-            return Err(rejection);
-        }
-    };
-    let status_after = if super::transition::configuration_is_terminal(m, t, &configuration_after) {
-        deadlines_after.clear();
-        Status::Completed
-    } else {
-        Status::Running
-    };
-    Ok(Applied {
+    // Creation's trigger microstep is the initial entry itself: no source, no
+    // exits, and the whole entered chain. From here it is an ordinary
+    // macrostep.
+    let trigger = Transitioned {
         configuration_after,
-        ctx_after: ctx,
+        context: ctx,
         history_after: BTreeMap::new(),
-        deadlines_after,
         effects,
-        monitor_flags: flags,
-        status_after,
+        pipeline,
+        candidates: Vec::new(),
+        exited: Vec::new(),
+        entered,
         internal: false,
         region: None,
         source_state: String::new(),
-        transition_idx: 0,
-        exited: Vec::new(),
-        entered: entered
-            .iter()
-            .map(|&i| t.names[i as usize].clone())
-            .collect(),
-        trace: DecisionTrace {
-            pipeline,
-            invariants: inv_trace,
-            ..DecisionTrace::default()
-        },
-    })
+        public_index: 0,
+    };
+    let nothing_yet = InstanceState {
+        status: Status::Running,
+        configuration: trigger.configuration_after.clone(),
+        ctx: BTreeMap::new(),
+        history: BTreeMap::new(),
+        deadlines: BTreeMap::new(),
+        pending: Vec::new(),
+    };
+    run_to_quiescence(m, t, &nothing_yet, trigger, now_ms, &mut budget, selector)
+        .map_err(|rejection| create_failed(rejection, m))
+}
+
+/// Every creation failure is `run/create_failed`; an invariant failure keeps
+/// its identity but tells the caller to fix the inits rather than an action.
+fn create_failed(mut rejection: Rejection, m: &CompiledMachine) -> Rejection {
+    if rejection.code == "run/invariant" {
+        let failure = invariant_failure(&m.spec, &rejection.trace.invariants);
+        rejection.message = failure
+            .evaluation_error
+            .as_ref()
+            .map(|error| format!("invariant {}: {}", error.name, error.message))
+            .unwrap_or_else(|| "invariant failed at create".into());
+        rejection.hint = failure
+            .failed_invariant
+            .as_ref()
+            .map(|name| format!("fix inits or invariant {name}"))
+            .unwrap_or_else(|| "fix inits or the invariant".into());
+        rejection.source_state = None;
+        rejection.transition_idx = None;
+    }
+    rejection.code = "run/create_failed";
+    rejection
 }
 
 fn parse_init(s: &str, ty: &TySpec) -> Result<Val, &'static str> {

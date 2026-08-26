@@ -3,16 +3,16 @@ use std::collections::BTreeMap;
 use crate::expr::eval::Budget;
 use crate::machine::{CompiledMachine, InstanceState, Status};
 use crate::spec::Block;
-use crate::trace::{BlockKind, DecisionTrace};
+use crate::trace::BlockKind;
 use crate::tree::Tree;
 
+use super::micro::{EngineSelector, ReactionSelector, run_to_quiescence};
 use super::transition::{SelectedTransition, apply_selected_transition};
 use super::validate::{invalid_state_rejection, reject};
-use super::{
-    DeadlineApplied, DeadlineOutcome, DeadlineRejected, ExprSlotOwner, Outcome, PendingDeadline,
-};
+use super::{DeadlineApplied, DeadlineOutcome, DeadlineRejected, ExprSlotOwner, PendingDeadline};
 
-/// Poll the active configuration and apply at most one due deadline.
+/// Poll the active configuration and apply at most one due deadline, then
+/// run the machine's reactions to quiescence as one atomic macrostep.
 ///
 /// Selection is stable by `(due_ms, deadline document index)`. Time is explicit
 /// caller input; this function never consults a clock and never loops to drain
@@ -23,6 +23,19 @@ pub fn poll_deadline(
     state: &InstanceState,
     now_ms: i64,
     budget: &mut Budget,
+) -> DeadlineOutcome {
+    poll_deadline_with(machine, tree, state, now_ms, budget, &mut EngineSelector)
+}
+
+/// [`poll_deadline`] with an explicit reaction selector; tests script the
+/// reactions.
+pub fn poll_deadline_with(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    state: &InstanceState,
+    now_ms: i64,
+    budget: &mut Budget,
+    selector: &mut dyn ReactionSelector,
 ) -> DeadlineOutcome {
     if let Err(error) = tree.validate_instance_state(machine, state) {
         return DeadlineOutcome::Rejected(DeadlineRejected {
@@ -101,7 +114,7 @@ pub fn poll_deadline(
     }
 
     let empty_event = BTreeMap::new();
-    let outcome = apply_selected_transition(
+    let trigger = apply_selected_transition(
         machine,
         tree,
         state,
@@ -120,20 +133,21 @@ pub fn poll_deadline(
             event_fields: &empty_event,
             sees_event: false,
             public_index: deadline_index as u32,
-            trace: DecisionTrace::default(),
+            candidates: Vec::new(),
+            first_effect_index: 0,
         },
-        now_ms,
         budget,
     );
-    match outcome {
-        Outcome::Applied(transition) => DeadlineOutcome::Applied(DeadlineApplied {
+    match trigger.and_then(|trigger| {
+        run_to_quiescence(machine, tree, state, trigger, now_ms, budget, selector)
+    }) {
+        Ok(transition) => DeadlineOutcome::Applied(DeadlineApplied {
             deadline: pending,
             transition,
         }),
-        Outcome::Rejected(rejection) => DeadlineOutcome::Rejected(DeadlineRejected {
+        Err(rejection) => DeadlineOutcome::Rejected(DeadlineRejected {
             deadline: Some(pending),
             rejection,
         }),
-        Outcome::Ignored => unreachable!("a selected deadline cannot be ignored"),
     }
 }

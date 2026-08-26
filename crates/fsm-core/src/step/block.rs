@@ -4,7 +4,9 @@ use crate::expr::eval::{Bindings, Budget, Val, eval};
 use crate::expr::typeck::{ScopeKind, Ty, annotate_if_widening};
 use crate::machine::{EnforceMode, ExprSlot};
 use crate::spec::{Block, MachineSpec};
-use crate::trace::{BlockKind, BlockTrace, DecisionTrace, EmitTrace, InvariantTrace, SetTrace};
+use crate::trace::{
+    BlockKind, BlockTrace, DecisionTrace, EmitTrace, InvariantTrace, LevelTrace, SetTrace,
+};
 
 use super::guard::{
     coerce_to_ty, compiled_or_annotate, owner_emit_slot, owner_set_slot, spec_scope,
@@ -183,7 +185,7 @@ pub(super) fn apply_block(
 pub(super) fn reject_pipeline(
     mut r: Rejection,
     mut done: Vec<BlockTrace>,
-    trace: &DecisionTrace,
+    candidates: &[LevelTrace],
 ) -> Rejection {
     for p in &mut done {
         p.discarded = true;
@@ -193,7 +195,7 @@ pub(super) fn reject_pipeline(
     }
     done.append(&mut r.trace.pipeline);
     r.trace.pipeline = done;
-    r.trace.candidates = trace.candidates.clone();
+    r.trace.candidates = candidates.to_vec();
     r
 }
 

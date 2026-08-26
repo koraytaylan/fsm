@@ -38,48 +38,51 @@ A **macrostep** is: one triggering step (the *trigger microstep*), followed by z
 New file `crates/fsm-core/src/step/micro.rs` (task `4201`) owns the loop. It is the only new control flow in the engine.
 
 ```rust
-pub struct Macrostep {
-    pub queue: std::collections::VecDeque<InternalEvent>,
-    pub microsteps: Vec<MicrostepRecord>,
-    pub monitor_flags: Vec<String>,
-    pub effects: Vec<EffectOut>,
-}
-
-pub struct InternalEvent {
-    pub name: String,
-    pub payload: BTreeMap<String, Val>,
-    pub origin: InternalOrigin,
-}
-
-pub enum InternalOrigin { Raise { block: BlockKind }, DoneState { compound: String }, DoneRegion { region: String } }
-
-pub struct MicrostepRecord {
-    pub index: u32,
+// trace.rs — one struct serves the trace, the record projection (§0046), and replay (§0046)
+pub enum MicrostepTrigger { Eventless, Internal(String) }
+pub struct MicrostepTrace {
+    pub index: u32,                 // 1-based; the trigger is index 0 and is the trace's own fields
     pub trigger: MicrostepTrigger,
     pub source_state: String,
     pub transition_idx: u32,
+    pub region: Option<String>,
     pub exited: Vec<String>,
     pub entered: Vec<String>,
-    pub region: Option<String>,
+    pub candidates: Vec<LevelTrace>,
+    pub pipeline: Vec<BlockTrace>,
 }
+pub struct UnhandledInternalTrace { pub event: String, pub after_microstep: u32 }
+// DecisionTrace gains `microsteps: Vec<MicrostepTrace>` and `internal_unhandled`, both emitted only when non-empty
 
-pub enum MicrostepTrigger { Event(String), Eventless, Internal(String) }
+// micro.rs
+pub struct InternalEvent { pub name: String, pub payload: BTreeMap<String, Val>, pub origin: InternalOrigin }
+pub enum InternalOrigin { Raise { block: BlockKind }, DoneState { compound: String }, DoneRegion { region: String } }
+pub struct ReactionSelection { pub region: Option<String>, pub leaf: u16, pub source: u16, pub transition_idx: usize, pub candidates: Vec<LevelTrace> }
+pub trait ReactionSelector {
+    fn select_eventless(&mut self, m, t, working: &InstanceState, budget) -> Result<Option<ReactionSelection>, Rejection>;
+    fn select_internal(&mut self, m, t, working, event: &InternalEvent, budget) -> Result<Option<ReactionSelection>, Rejection>;
+}
+pub struct EngineSelector;   // the engine's scans: 4303 fills the eventless one, 4403 the internal one
 ```
 
-`pub fn run_to_quiescence(m, t, st_after_trigger, macro_state, now_ms, budget) -> Result<Quiesced, Rejection>` is the loop. One iteration, in exactly this order — the order is a normative ruling and belongs in SPEC:
+The plan's first draft put a `MicrostepRecord` in `micro.rs` beside a `MicrostepTrace` in `trace.rs`; implementation collapsed them into the one `MicrostepTrace` above because the record shape is a projection of the trace shape and two structs carrying the same six fields would have been pure duplication. `Macrostep` (queue, microsteps, effects, reaction count) is the driver's private working aggregate, and the queue is a `VecDeque<InternalEvent>` held in a stack frame only — **it is never added to `InstanceState`**. The seam a test uses is the `ReactionSelector` trait, reached through `step_with`, `create_with`, and `poll_deadline_with`; `step`, `create`, and `poll_deadline` pass `EngineSelector`.
+
+`pub(super) fn run_to_quiescence(m, t, state, trigger: Transitioned, now_ms, budget, selector) -> Result<Applied, Rejection>` is the loop; `Transitioned` is a microstep's pipeline result before its deadline schedules settle (see *Settlement order* below). One iteration, in exactly this order — the order is a normative ruling and belongs in SPEC:
 
 1. **Eventless first.** Attempt an eventless selection over the current working configuration (§0043). If a transition is selected, apply it through the existing pipeline and continue to the next iteration.
 2. **Then the internal queue.** If no eventless transition was selected and `queue` is non-empty, pop the **front** and attempt selection for that event name over the current configuration. If a transition is selected, apply it and continue.
-3. **An unhandled internal event is discarded, not rejected.** If the popped event selects nothing, record it in the trace as `internal_unhandled` and continue the loop with the next queue entry. This is a ruling, and the reason is structural: rejecting would have to unwind an already-applied trigger microstep, and `on_unhandled: reject` is a statement about *callers* sending events the machine does not model — an engine-generated `$done.*` nobody listens for is not a caller error. **`on_unhandled` governs the trigger microstep only.** SPEC says so in §0047's edit.
+3. **An unhandled internal event is discarded, not rejected — and it counts against the ceiling.** If the popped event selects nothing, record it in the trace as `internal_unhandled` and continue the loop with the next queue entry. The discard still charges one reaction against `MAX_MICROSTEPS`, because every iteration scans guards and the ceiling is what bounds the scans a macrostep can spend (see *The ceiling and the budget*). This is a ruling, and the reason is structural: rejecting would have to unwind an already-applied trigger microstep, and `on_unhandled: reject` is a statement about *callers* sending events the machine does not model — an engine-generated `$done.*` nobody listens for is not a caller error. **`on_unhandled` governs the trigger microstep only.** SPEC says so in §0047's edit.
 4. **Quiescence.** No eventless transition selected and an empty queue ends the macrostep.
 
 Ordering rule 1-before-2 matches SCXML's `selectEventlessTransitions` preceding the internal queue and, more importantly, makes the loop's fixpoint independent of how many events a block raised: eventless transitions describe the *shape* of the configuration, and draining them first means an internal event is always delivered to a settled configuration.
 
 **Guards, blocks, history, deadlines, and invariants inside a microstep.** A reaction microstep runs the *same* `apply_selected_transition` pipeline the trigger microstep runs — exit blocks inner→outer, transition block, entry blocks outer→inner, history capture from the pre-*microstep* configuration, deadline rescheduling from the macrostep's single `now_ms`. Three deliberate exceptions, each a ruling:
 
-- **Invariants are evaluated once, at quiescence** — not per microstep. An intermediate configuration is by definition mid-reaction, and tripping an enforce invariant on a state the machine was about to leave would make a correct machine unrunnable. `monitor_flags` accumulate across microsteps and are de-duplicated in first-failure order at the end. **This requires moving an existing call:** `eval_invariants` runs inside `apply_selected_transition` today (`crates/fsm-core/src/step/transition.rs:213`), and a reaction microstep runs that same pipeline, so the call must move up into the driver — task `4201` owns that refactor and `transition.rs` is in its `touches` for exactly this reason.
+- **Invariants are evaluated once, at quiescence** — not per microstep. An intermediate configuration is by definition mid-reaction, and tripping an enforce invariant on a state the machine was about to leave would make a correct machine unrunnable. Because there is exactly one evaluation, `monitor_flags` is that evaluation's list — a monitor that would have failed on an intermediate configuration and passes on the final one is not reported, and one that fails on the final configuration is reported once. **This requires moving an existing call:** `eval_invariants` runs inside `apply_selected_transition` today (`crates/fsm-core/src/step/transition.rs:213`), and a reaction microstep runs that same pipeline, so the call must move up into the driver — task `4201` owns that refactor and `transition.rs` is in its `touches` for exactly this reason.
 - **`evt` binds only in the microstep whose trigger supplied it.** SPEC already says "only an event transition block sees `evt`". An eventless transition's block sees no `evt`; an internal event's block sees the raised payload as `evt`. A block that names `evt.x` in an eventless transition is a *compile-time* error (`def/eventless_evt`), caught by the existing expression scope machinery, not a runtime one.
 - **`now_ms` is read once for the whole macrostep** and every microstep schedules from that same value. A macrostep is one instant. A state entered and then exited within one macrostep has its deadline scheduled and then removed; the net effect on `deadlines_after` is nothing, which falls out of the existing per-microstep rules and needs no special case — but the tests pin it, because "falls out" is a claim.
+
+**Settlement order.** SPEC §Semantics orders invariants (8) before deadline scheduling (9), and a deadline-schedule failure's trace carries the invariant traces that were evaluated first; replay verifies those traces byte for byte. Moving invariants to quiescence must not reorder them past the trigger's own schedules on a non-reactive machine, so the driver defers each microstep's schedule settlement (`settle_schedules`: §9 rescheduling, terminal-region clearing, §10 status) until it knows another reaction follows; the last microstep settles after the invariants. A one-microstep macrostep therefore runs pipeline → invariants → schedules exactly as before, and a reactive one runs pipeline₀ → schedules₀ → pipeline₁ → … → invariants → schedulesₙ. Each microstep's deadlines are evaluated against the context that microstep left, which is the ruling SPEC's macrostep section records.
 
 **Atomicity.** `run_to_quiescence` works on a *clone* of the post-trigger state. Any `Rejection` from any microstep — a guard error, an action error, an invariant failure at quiescence, or the ceiling below — returns that `Rejection` from the whole `step` call, and the caller's state is untouched. The `Rejection.trace` carries the microsteps that ran before the failure, because a permanent record that says only "microstep 4 failed" without showing microsteps 0-3 is a worse audit trail than the one we have today.
 
@@ -88,16 +91,22 @@ Ordering rule 1-before-2 matches SCXML's `selectEventlessTransitions` preceding 
 `limits.rs` (task `4201`) gains two constants and the doc comment that justifies them:
 
 ```rust
-/// Reaction microsteps allowed after the trigger microstep of one macrostep.
+/// Reactions allowed after the trigger microstep of one macrostep: applied
+/// eventless transitions, applied internal-event transitions, and discarded
+/// internal events all count.
 pub const MAX_MICROSTEPS: u32 = 64;
 
-/// Expression-evaluation ticks a whole macrostep may spend.
-pub const MACROSTEP_EVAL_TICKS: u32 = MAX_EVAL_TICKS * (MAX_MICROSTEPS + 1);
+/// Expression-evaluation ticks a whole macrostep may spend: one standard
+/// budget for the trigger, one per reaction, and one for the closing scan
+/// that proves quiescence and evaluates the invariants.
+pub const MACROSTEP_EVAL_TICKS: u32 = MAX_EVAL_TICKS * (MAX_MICROSTEPS + 2);
 ```
+
+The first draft wrote `MAX_MICROSTEPS + 1` and counted only applied microsteps. Both were unsound against SPEC's guarantee that an accepted definition never exhausts a fresh budget: the loop's closing iteration — the eventless scan that finds nothing, plus the invariants — is a full iteration's worth of ticks on top of the trigger and the reactions, and a discarded internal event costs a selection scan without producing a microstep, so unbounded discards would have been unbounded scans. Counting discards makes every iteration a reaction, `MAX_MICROSTEPS + 2` iterations is then an exact upper bound, and admission's per-iteration bound (every compiled slot at most once, plus one implicit `true` per omitted-guard event, all of which are distinct slots within one iteration) multiplies out.
 
 **The ceiling is shared across regions, and that is not obvious.** Selection picks **one global winner** per microstep — for a parallel machine, across every region's chain in region document order — so two regions each wanting an eventless transition consume two microsteps, not one. A parallel machine's reaction budget is therefore divided among up to `MAX_REGIONS` = 8 regions: eight regions each running a three-step eventless cascade is 24 microsteps, not 3. Sixty-four is comfortable for that shape and tight for a pathological one, and an author who hits it deserves to find out at admission rather than at run time — which is why `4304` also reports a **static depth warning** (`def/eventless_depth`) when the longest acyclic eventless path times the region count approaches the ceiling. The analysis cannot know which branches a guard will take, so it is a warning and never a refusal.
 
-Exceeding `MAX_MICROSTEPS` rejects the macrostep with the new code `run/microstep_limit` (added to `fsm_core::error::ALL_CODES`, whose exhaustive appendix test lives in `crates/fsm-cli/tests/spec_appendix.rs`). Its hint names the highest-index microstep and the transition that kept firing, because "it looped" is useless and "state `route` re-entered itself 64 times via transition 12" is a bug report.
+Exceeding `MAX_MICROSTEPS` rejects the macrostep with the new code `run/microstep_limit`. **Every new code lands in `fsm_core::error::ALL_CODES`, SPEC Appendix A, and the naive-caller suites in the task that first makes the engine produce it** — `crates/fsm-cli/tests/naive_caller/tool_outcomes.rs::all_codes_hygiene` and `one_step_every_non_infra_code.rs` both fail for any catalogued code that no real tool outcome produces, so the first draft's plan to catalogue the whole closed set in `4201` would have left those gates red for the length of the plan. `run/microstep_limit` itself lands with `4303`, the first task whose definitions can loop. Its hint names the highest-index microstep and the transition that kept firing, because "it looped" is useless and "state `route` re-entered itself 64 times via transition 12" is a bug report.
 
 **Why the budget is multiplied rather than the admission relaxed.** `def/limit_eval` continues to charge exactly what it charges today: the worst-case cost of **one** microstep. A macrostep is at most `MAX_MICROSTEPS + 1` microsteps, so `MACROSTEP_EVAL_TICKS` is a sound ceiling, and SPEC's guarantee — an accepted definition never exhausts a fresh standard budget — survives unchanged with "standard" now meaning the macrostep budget for a macrostep entry point. Do **not** raise `MAX_EVAL_TICKS`, and do **not** charge admission `nodes × 65`: the first weakens per-microstep bounds, and the second refuses every real machine.
 

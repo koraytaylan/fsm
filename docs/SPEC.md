@@ -700,8 +700,9 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 | journalled payload | 64 KiB (`MAX_PAYLOAD_BYTES`) |
 | persistence read unit | 16 MiB (`JsonLimits::DEFAULT.max_bytes`); one VERSION file, journal record excluding LF, or snapshot cache |
 | nesting depth | 12 (`MAX_NESTING`) |
-| eval budget | 4096 ticks per create, event, deadline poll, or enabled-event scan |
+| eval budget | 4096 ticks per microstep (`MAX_EVAL_TICKS`); a create, event, or deadline poll runs a macrostep of at most the trigger, 64 reactions, and one closing quiescence scan, so its budget is 4096 × 66 = 270336 ticks (`MACROSTEP_EVAL_TICKS`); an enabled-event scan keeps the 4096-tick budget |
 | definition eval cost | ≤ 4096 compiled AST nodes plus one per distinct event with an omitted `if` (`MAX_EVAL_TICKS`) |
+| reactions per macrostep | 64 (`MAX_MICROSTEPS`): applied eventless transitions, applied internal-event transitions, and discarded internal events all count; the 65th is refused as `run/microstep_limit`. Deliberately not in the genesis `limits` block, which is hash-verified on fold |
 | states | 256 |
 | events | 128 |
 | transitions | 2048 |

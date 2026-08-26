@@ -29,6 +29,36 @@ pub const MAX_DEF_BYTES: usize = 256 * 1024;
 /// host supplies a fresh budget of this size.
 pub const MAX_EVAL_TICKS: u32 = 4096;
 
+/// Reactions allowed after the trigger microstep of one macrostep.
+///
+/// A reaction is one iteration of the run-to-quiescence loop that did work:
+/// an applied eventless transition, an applied internal-event transition, or
+/// a popped internal event that no transition handled. Discards count because
+/// every iteration scans guards, and the ceiling is what bounds the number of
+/// scans a macrostep can spend — a machine that raises more unhandled events
+/// than this is refused as `run/microstep_limit` rather than allowed to spend
+/// an unbounded budget deciding nothing.
+///
+/// The ceiling is shared across regions: selection picks one global winner
+/// per microstep, so eight regions each running a three-step eventless
+/// cascade spend 24 reactions, not 3.
+pub const MAX_MICROSTEPS: u32 = 64;
+
+/// Expression-evaluation ticks a whole macrostep may spend.
+///
+/// Admission keeps charging exactly one microstep's worth: `def/limit_eval`
+/// bounds the cost of visiting every compiled slot once plus one implicit
+/// `true` per distinct omitted-guard event, which is the most a single loop
+/// iteration — one selection scan, one pipeline, and the deadline schedules
+/// it settles — can cost. A macrostep is at most the trigger, `MAX_MICROSTEPS`
+/// reactions, and one closing scan that proves quiescence (and evaluates the
+/// invariants), so multiplying the standard budget by that iteration count is
+/// what keeps SPEC's guarantee that an accepted definition never exhausts a
+/// fresh budget. Widening the *operation* budget is deliberate: raising
+/// `MAX_EVAL_TICKS` would weaken the per-microstep bound, and charging
+/// admission for every possible reaction would refuse every real machine.
+pub const MACROSTEP_EVAL_TICKS: u32 = MAX_EVAL_TICKS * (MAX_MICROSTEPS + 2);
+
 /// Canonical bytes allowed in one journalled request payload: an event
 /// payload, an effect-ack `result`, or an annotation note.
 ///

@@ -1,19 +1,26 @@
+//! The transition pipeline of one microstep and the schedule settlement that
+//! follows it.
+//!
+//! [`apply_selected_transition`] performs SPEC §Semantics 5–7 for one selected
+//! transition — target and domain, exit/transition/entry blocks, history
+//! capture — and returns the result unsettled. Invariants (§8) are evaluated
+//! once per macrostep by the driver in `micro.rs`, and [`settle_schedules`]
+//! performs §9–10 when the driver knows this microstep's context is final.
+
 use std::collections::BTreeMap;
 
 use crate::expr::eval::{Bindings, Budget, Val, eval};
 use crate::expr::parser;
 use crate::expr::typeck::{ScopeKind, Ty, annotate_if_widening};
-use crate::machine::{
-    ActiveConfiguration, CompiledMachine, EnforceMode, ExprSlot, InstanceState, Status,
-};
+use crate::machine::{ActiveConfiguration, CompiledMachine, ExprSlot, InstanceState, Status};
 use crate::spec::{Block, DeadlineSpec, HistoryKind};
-use crate::trace::{BlockKind, BlockTrace, DecisionTrace};
+use crate::trace::{BlockKind, BlockTrace, DecisionTrace, LevelTrace};
 use crate::tree::{NodeKind, Tree};
 
-use super::block::{apply_block, eval_invariants, find_node, reject_pipeline};
+use super::block::{apply_block, find_node, reject_pipeline};
 use super::guard::spec_scope;
 use super::validate::reject;
-use super::{Applied, EffectOut, ExprSlotOwner, Outcome, Rejection};
+use super::{EffectOut, ExprSlotOwner, Rejection};
 
 pub(super) struct SelectedTransition<'a> {
     pub(super) region: Option<String>,
@@ -27,7 +34,47 @@ pub(super) struct SelectedTransition<'a> {
     pub(super) event_fields: &'a BTreeMap<String, Val>,
     pub(super) sees_event: bool,
     pub(super) public_index: u32,
-    pub(super) trace: DecisionTrace,
+    /// The candidate scan that selected this transition.
+    pub(super) candidates: Vec<LevelTrace>,
+    /// Global effect index the first emit of this pipeline takes; effects
+    /// number continuously across every microstep of one macrostep.
+    pub(super) first_effect_index: u32,
+}
+
+/// One microstep's transition result before its deadline schedules settle.
+///
+/// The driver keeps the last of these unsettled until it knows whether another
+/// reaction follows, so that invariants are evaluated before the final
+/// microstep's schedules exactly as SPEC §Semantics orders 8 before 9.
+pub(super) struct Transitioned {
+    pub(super) configuration_after: ActiveConfiguration,
+    pub(super) context: BTreeMap<String, Val>,
+    pub(super) history_after: BTreeMap<String, String>,
+    pub(super) effects: Vec<EffectOut>,
+    pub(super) pipeline: Vec<BlockTrace>,
+    pub(super) candidates: Vec<LevelTrace>,
+    pub(super) exited: Vec<u16>,
+    pub(super) entered: Vec<u16>,
+    pub(super) internal: bool,
+    pub(super) region: Option<String>,
+    pub(super) source_state: String,
+    pub(super) public_index: u32,
+}
+
+impl Transitioned {
+    pub(super) fn exited_names(&self, tree: &Tree) -> Vec<String> {
+        self.exited
+            .iter()
+            .map(|&id| tree.names[id as usize].clone())
+            .collect()
+    }
+
+    pub(super) fn entered_names(&self, tree: &Tree) -> Vec<String> {
+        self.entered
+            .iter()
+            .map(|&id| tree.names[id as usize].clone())
+            .collect()
+    }
 }
 
 pub(super) fn apply_selected_transition(
@@ -35,9 +82,8 @@ pub(super) fn apply_selected_transition(
     tree: &Tree,
     state: &InstanceState,
     selected: SelectedTransition<'_>,
-    now_ms: i64,
     budget: &mut Budget,
-) -> Outcome {
+) -> Result<Transitioned, Rejection> {
     let SelectedTransition {
         region,
         leaf,
@@ -50,7 +96,8 @@ pub(super) fn apply_selected_transition(
         event_fields,
         sees_event,
         public_index,
-        mut trace,
+        candidates,
+        first_effect_index,
     } = selected;
     let internal = target.is_none();
     let current_leaf = tree.names[leaf as usize].clone();
@@ -69,8 +116,11 @@ pub(super) fn apply_selected_transition(
                     rejection.source_state = Some(tree.names[source as usize].clone());
                     rejection.transition_idx = Some(public_index);
                     rejection.cause = Some("def/shape");
-                    rejection.trace = trace;
-                    return Outcome::Rejected(rejection);
+                    rejection.trace = DecisionTrace {
+                        candidates,
+                        ..DecisionTrace::default()
+                    };
+                    return Err(rejection);
                 };
                 let owner_name = &tree.names[owner_id as usize];
                 extra_descent = tree
@@ -99,13 +149,13 @@ pub(super) fn apply_selected_transition(
     let configuration_after = match state.configuration.with_leaf(region.as_deref(), new_leaf) {
         Some(configuration) => configuration,
         None => {
-            return Outcome::Rejected(reject("run/unhandled", "transition region is not active"));
+            return Err(reject("run/unhandled", "transition region is not active"));
         }
     };
 
     let mut context = state.ctx.clone();
     let mut effects = Vec::new();
-    let mut effect_index = 0u32;
+    let mut effect_index = first_effect_index;
     let mut pipeline = Vec::new();
 
     let apply = |block: &Block,
@@ -148,7 +198,7 @@ pub(super) fn apply_selected_transition(
             ) {
                 Ok(block_trace) => pipeline.push(block_trace),
                 Err(rejection) => {
-                    return Outcome::Rejected(reject_pipeline(rejection, pipeline, &trace));
+                    return Err(reject_pipeline(rejection, pipeline, &candidates));
                 }
             }
         }
@@ -165,7 +215,7 @@ pub(super) fn apply_selected_transition(
     ) {
         Ok(block_trace) => pipeline.push(block_trace),
         Err(rejection) => {
-            return Outcome::Rejected(reject_pipeline(rejection, pipeline, &trace));
+            return Err(reject_pipeline(rejection, pipeline, &candidates));
         }
     }
     for &id in &entered_ids {
@@ -183,12 +233,14 @@ pub(super) fn apply_selected_transition(
             ) {
                 Ok(block_trace) => pipeline.push(block_trace),
                 Err(rejection) => {
-                    return Outcome::Rejected(reject_pipeline(rejection, pipeline, &trace));
+                    return Err(reject_pipeline(rejection, pipeline, &candidates));
                 }
             }
         }
     }
 
+    // SPEC §Semantics 7: history binds from the pre-transition configuration,
+    // which for a reaction microstep means the configuration it started from.
     let mut history_after = state.history.clone();
     for &id in &exited_ids {
         if matches!(tree.kind[id as usize], NodeKind::Compound) {
@@ -209,113 +261,56 @@ pub(super) fn apply_selected_transition(
         }
     }
 
-    let active = tree.active_state_names(&configuration_after);
-    let (ok_invariants, monitor_flags, invariant_trace) = eval_invariants(
-        &machine.spec,
-        &machine.compiled_exprs,
-        &context,
-        &active,
-        budget,
-    );
-    if !ok_invariants {
-        for block in &mut pipeline {
-            block.discarded = true;
-        }
-        trace.pipeline = pipeline;
-        trace.invariants = invariant_trace;
-        let evaluation_error = trace.invariants.iter().find_map(|invariant| {
-            invariant.error.as_ref().map(|error| {
-                (
-                    invariant.name.clone(),
-                    error.code,
-                    error.message.clone(),
-                    error.span,
-                )
-            })
-        });
-        let failed_invariant = evaluation_error
-            .as_ref()
-            .map(|(name, _, _, _)| name.clone())
-            .or_else(|| {
-                trace
-                    .invariants
-                    .iter()
-                    .zip(&machine.spec.invariants)
-                    .find(|(result, invariant)| {
-                        !result.passed && invariant.mode == EnforceMode::Enforce
-                    })
-                    .map(|(result, _)| result.name.clone())
-            });
-        return Outcome::Rejected(Rejection {
-            code: "run/invariant",
-            message: evaluation_error
-                .as_ref()
-                .map(|(name, _, message, _)| format!("invariant {name}: {message}"))
-                .unwrap_or_else(|| "enforce invariant failed".into()),
-            hint: failed_invariant
-                .as_ref()
-                .map(|name| format!("adjust the action or invariant {name}"))
-                .unwrap_or_else(|| "adjust the action or the invariant".into()),
-            source_state: Some(tree.names[source as usize].clone()),
-            transition_idx: Some(public_index),
-            block: evaluation_error
-                .as_ref()
-                .map(|(name, _, _, _)| format!("invariant({name})")),
-            span: evaluation_error.as_ref().and_then(|(_, _, _, span)| *span),
-            cause: evaluation_error.as_ref().map(|(_, cause, _, _)| *cause),
-            trace,
-        });
-    }
+    Ok(Transitioned {
+        configuration_after,
+        context,
+        history_after,
+        effects,
+        pipeline,
+        candidates,
+        exited: exited_ids,
+        entered: entered_ids,
+        internal,
+        region,
+        source_state: tree.names[source as usize].clone(),
+        public_index,
+    })
+}
 
-    let mut deadlines_after = match update_deadline_schedules(
+/// SPEC §Semantics 9–10 for one microstep: reschedule the deadlines its exit
+/// and entry sets own from the context it left, clear the schedules of any
+/// region it completed, and settle the lifecycle status.
+pub(super) fn settle_schedules(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    prior: &BTreeMap<String, i64>,
+    transitioned: &Transitioned,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Result<(BTreeMap<String, i64>, Status), Rejection> {
+    let mut deadlines = update_deadline_schedules(
         machine,
-        &state.deadlines,
-        &exited_ids,
-        &entered_ids,
+        prior,
+        &transitioned.exited,
+        &transitioned.entered,
         tree,
-        &context,
+        &transitioned.context,
         now_ms,
         budget,
-    ) {
-        Ok(deadlines) => deadlines,
-        Err(rejection) => {
-            let mut rejection = reject_pipeline(rejection, pipeline, &trace);
-            rejection.trace.invariants = invariant_trace;
-            return Outcome::Rejected(rejection);
-        }
-    };
-
-    clear_terminal_region_deadlines(machine, tree, &configuration_after, &mut deadlines_after);
-    let status_after = if configuration_is_terminal(machine, tree, &configuration_after) {
-        deadlines_after.clear();
+    )?;
+    clear_terminal_region_deadlines(
+        machine,
+        tree,
+        &transitioned.configuration_after,
+        &mut deadlines,
+    );
+    let status = if configuration_is_terminal(machine, tree, &transitioned.configuration_after) {
+        deadlines.clear();
         Status::Completed
     } else {
         Status::Running
     };
-    trace.pipeline = pipeline;
-    trace.invariants = invariant_trace;
-    Outcome::Applied(Applied {
-        configuration_after,
-        ctx_after: context,
-        history_after,
-        deadlines_after,
-        effects,
-        monitor_flags,
-        status_after,
-        internal,
-        region,
-        source_state: tree.names[source as usize].clone(),
-        transition_idx: public_index,
-        exited: exited_ids
-            .iter()
-            .map(|&id| tree.names[id as usize].clone())
-            .collect(),
-        entered: entered_ids
-            .iter()
-            .map(|&id| tree.names[id as usize].clone())
-            .collect(),
-        trace,
-    })
+    Ok((deadlines, status))
 }
 
 pub(super) fn clear_terminal_region_deadlines(

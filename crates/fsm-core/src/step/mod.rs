@@ -2,7 +2,9 @@
 //!
 //! All time enters as a caller-supplied millisecond timestamp. The engine does
 //! not read a clock, run background timers, or drain more than one deadline in
-//! a poll.
+//! a poll. Each entry point applies one trigger microstep and then hands the
+//! result to the macrostep driver in `micro.rs`, which runs the machine's own
+//! reactions to quiescence inside the same atomic result.
 
 #![allow(
     clippy::collapsible_if,
@@ -15,11 +17,15 @@ mod block;
 mod create;
 mod deadline;
 mod guard;
+mod micro;
 mod transition;
 mod validate;
 
-pub use create::{create, payload_from_pairs};
-pub use deadline::poll_deadline;
+pub use create::{create, create_with, payload_from_pairs};
+pub use deadline::{poll_deadline, poll_deadline_with};
+pub use micro::{
+    EngineSelector, InternalEvent, InternalOrigin, ReactionSelection, ReactionSelector,
+};
 pub use validate::validate_event;
 
 use std::collections::BTreeMap;
@@ -39,6 +45,7 @@ pub(super) enum ExprSlotOwner {
 use crate::trace::{BlockKind, CandidateTrace, DecisionTrace, GuardTrace, LevelTrace};
 use crate::tree::Tree;
 
+use micro::run_to_quiescence;
 use transition::{SelectedTransition, apply_selected_transition};
 use validate::{invalid_state_rejection, reject};
 
@@ -152,10 +159,12 @@ pub enum DeadlineOutcome {
     },
 }
 
-/// Deliver one event and apply at most one globally selected transition.
+/// Deliver one event: apply at most one globally selected transition, then
+/// run the machine's reactions to quiescence as one atomic macrostep.
 ///
 /// Parallel regions are scanned in semantic region order; the input state is
-/// never mutated. `now_ms` is used only to schedule deadlines on state entry.
+/// never mutated. `now_ms` is used only to schedule deadlines on state entry,
+/// and is read once for the whole macrostep.
 pub fn step(
     m: &CompiledMachine,
     t: &Tree,
@@ -164,6 +173,29 @@ pub fn step(
     payload: &Value,
     now_ms: i64,
     budget: &mut Budget,
+) -> Outcome {
+    step_with(
+        m,
+        t,
+        st,
+        event,
+        payload,
+        now_ms,
+        budget,
+        &mut EngineSelector,
+    )
+}
+
+/// [`step`] with an explicit reaction selector; tests script the reactions.
+pub fn step_with(
+    m: &CompiledMachine,
+    t: &Tree,
+    st: &InstanceState,
+    event: &str,
+    payload: &Value,
+    now_ms: i64,
+    budget: &mut Budget,
+    selector: &mut dyn ReactionSelector,
 ) -> Outcome {
     if let Err(error) = t.validate_instance_state(m, st) {
         return Outcome::Rejected(invalid_state_rejection(error.detail()));
@@ -301,7 +333,7 @@ pub fn step(
         });
     };
     let transition = &m.spec.transitions[tidx];
-    apply_selected_transition(
+    let trigger = apply_selected_transition(
         m,
         t,
         st,
@@ -320,9 +352,14 @@ pub fn step(
             event_fields: &fields,
             sees_event: true,
             public_index: tidx as u32,
-            trace,
+            candidates: trace.candidates,
+            first_effect_index: 0,
         },
-        now_ms,
         budget,
-    )
+    );
+    match trigger.and_then(|trigger| run_to_quiescence(m, t, st, trigger, now_ms, budget, selector))
+    {
+        Ok(applied) => Outcome::Applied(applied),
+        Err(rejection) => Outcome::Rejected(rejection),
+    }
 }
