@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/spec/validate/structure.rs
   - crates/fsm-core/src/spec/validate/blocks.rs
   - crates/fsm-core/src/spec/validate/reactive.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Validate Module Split
@@ -35,3 +35,5 @@ merged_as: ""
 - A diff review step, not an assertion: `git show --stat` for this commit must show only moves plus the new `mod.rs` wiring — if the diff contains a changed string literal or a changed push order, the split is wrong.
 
 - **Done when:** `crates/fsm-core/src/spec/validate/` replaces the single file with four modules, the whole existing suite passes with **no** fixture or golden edits, `scripts/oversized-files.sh` is green, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the four modules exist and every existing test passes with no fixture edit. One correction to step 3: the assignment and duplicate-set rules (`def/assign_type`, `def/dup_set`) never lived in `validate.rs` — they are compile-time checks in `spec/compile.rs` — so `blocks.rs` holds what the original file actually had beside `check_block_limits`: the transition, deadline, entry/exit block-limit, and `(from, on)` cell-ceiling phases. `structure.rs` holds regions, name tables, node rules, initial chains, declaration limits, field counts, and enum references. The original function became fifteen phase functions called in its exact order from `mod.rs`; every phase body moved verbatim.
