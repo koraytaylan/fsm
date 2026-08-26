@@ -149,6 +149,11 @@ pub(in crate::mcp::tools) fn run_simulate(
                     m.insert("region".into(), Value::Str(region.clone()));
                 }
                 m.insert("trace".into(), a.trace.to_value());
+                // The record shape, so a model sees one vocabulary for a
+                // cascade across simulate, instance_history, and explain.
+                if let Some(microsteps) = fsm_core::record::microsteps_value(&a.trace.microsteps) {
+                    m.insert("microsteps".into(), microsteps);
+                }
             }
             fsm_core::step::Outcome::Rejected(r) => {
                 let mut err = BTreeMap::new();

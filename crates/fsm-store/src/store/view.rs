@@ -50,9 +50,21 @@ impl Store {
                 "deadlines_pending".into(),
                 pending_deadlines_value(st, inst),
             );
+            // A scan selects and never applies a pipeline: the standard budget.
             let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
             let evs = enabled_events(&st.compiled, &st.tree, inst, &mut bud);
             m.insert("enabled_events".into(), enabled_json(&evs));
+            let internal: Vec<Value> = st
+                .compiled
+                .spec
+                .events
+                .iter()
+                .filter(|event| event.internal)
+                .map(|event| Value::Str(event.name.clone()))
+                .collect();
+            if !internal.is_empty() {
+                m.insert("internal_events".into(), Value::Arr(internal));
+            }
             let mut mac = BTreeMap::new();
             mac.insert("machine_id".into(), Value::Str(mid.clone()));
             mac.insert("name".into(), Value::Str(st.compiled.spec.name.clone()));

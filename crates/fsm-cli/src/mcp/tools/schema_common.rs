@@ -126,6 +126,7 @@ pub(super) fn simulate_step_obj() -> Value {
     p.insert("error".into(), ty("object"));
     p.insert("ignored".into(), ty("boolean"));
     p.insert("trace".into(), ty("object"));
+    p.insert("microsteps".into(), ty("array"));
     schema_obj(
         p,
         &[
@@ -253,6 +254,7 @@ pub(super) fn instance_core_props() -> BTreeMap<String, Value> {
     p.insert("effects_pending".into(), ty("array"));
     p.insert("deadlines_pending".into(), ty("array"));
     p.insert("enabled_events".into(), ty("array"));
+    p.insert("internal_events".into(), ty("array"));
     p.insert("state_hash".into(), ty("string"));
     p.insert("state_format".into(), ty("string"));
     p

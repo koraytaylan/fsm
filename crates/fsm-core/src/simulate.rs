@@ -3,6 +3,10 @@
 //! Simulation preserves sequential or parallel active configurations and
 //! updates deadline schedules as events enter and exit states. It does not poll
 //! deadlines; hosts do that explicitly through [`crate::step::poll_deadline`].
+//! Every event runs a macrostep exactly as a live send would, so the cascade
+//! one event causes is visible in its step's trace — the main authoring
+//! affordance of a reactive definition — and a rejection is the whole
+//! macrostep rejected, atomically.
 
 #![allow(clippy::result_large_err)]
 
@@ -78,7 +82,7 @@ pub fn simulate(
     let mut steps = Vec::new();
     let mut stopped_at = None;
     for (i, (ev, payload)) in events.iter().enumerate() {
-        let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+        let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
         let out = step(m, t, &st, ev, payload, i as i64, &mut budget);
         match &out {
             Outcome::Applied(a) => {

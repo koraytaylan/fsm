@@ -10,12 +10,15 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-core/src/simulate.rs
-  - crates/fsm-core/src/analyze.rs
+  - crates/fsm-core/src/analyze/enabled_events.rs
   - crates/fsm-cli/src/mcp/tools/handlers/simulate.rs
-  - crates/fsm-cli/src/mcp/tools/schema_out.rs
+  - crates/fsm-cli/src/mcp/tools/schema_common.rs
+  - crates/fsm-store/src/store/view.rs
   - crates/fsm-core/tests/simulate_runs.rs
   - crates/fsm-core/tests/enabled_events.rs
-status: planned
+  - crates/fsm-cli/tests/fixtures/transcripts/skeleton.out.jsonl
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Simulate And Enabled Events
@@ -43,3 +46,5 @@ merged_as: ""
 - The `simulate` tool's structured output validates against its declared output schema.
 
 - **Done when:** `cargo test -p fsm-core --test simulate_runs` and `--test enabled_events` pass with cascades reported and internal/generated events excluded, non-reactive goldens are unchanged, the scan budget is unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `simulate.rs` budgets each event at `MACROSTEP_EVAL_TICKS` — the step it calls already runs a macrostep — and its module comment says what that makes visible; the `simulate` tool copies `record::microsteps_value` of each applied step's trace into the report step, absent when there was no reaction, so the cascade vocabulary is the one `instance_history` and `explain` use, and `schema_common.rs` declares it. `analyze/enabled_events.rs` skips events declared `internal` (absent, never `disabled`) with the sentence step 3 asked for beside the loop; generated names were never declared, so they never appeared. The instance view lists `internal_events` beside `enabled_events` when a machine declares any, declared in the same schema, and its scan keeps the standard budget with a comment saying why. SPEC's scan paragraph states the exclusions. Tests: `simulate_runs.rs` pins the cascade report against a real `step`, the ceiling rejection under both `on_reject` modes, and that no deadline fires; `enabled_events.rs` pins the exclusions, the eventless-only exit reporting nothing enabled while `reactive_summary` shows the exit, and the standard budget; the existing `enabled_events` and view goldens pin plain machines. The MCP skeleton transcript was regenerated for the two schema lines (`tools/list` is 20 345 bytes under the 21 000 ceiling 4702 set).

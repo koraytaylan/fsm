@@ -77,7 +77,16 @@ fn enabled_events_with_guard_accounting(
         .map(|c| (c.name.clone(), c.ty.to_ty()))
         .collect();
     let mut reports = Vec::new();
-    for ev in &m.spec.events {
+    // A caller reading this list is deciding what to send. An event declared
+    // internal can never be sent, so it is absent rather than `disabled`;
+    // `machine_analyze` lists it under `internal_events`. Generated `$done.*`
+    // names are never declared and so never appear. The meaning of what is
+    // listed does not change: which events, sent now, would select a
+    // transition in the trigger microstep. The scan does not predict the
+    // cascade — that would mean running a speculative macrostep per event
+    // under a scan budget — and the honest answer to "what will happen" is
+    // `simulate`.
+    for ev in m.spec.events.iter().filter(|ev| !ev.internal) {
         let evt_tys: BTreeMap<String, crate::expr::typeck::Ty> = ev
             .fields
             .iter()

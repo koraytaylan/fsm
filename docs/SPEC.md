@@ -147,7 +147,10 @@ step can additionally evaluate at most one omitted guard's implicit `true`:
 that transition immediately wins the one global selection, so later candidates
 are not evaluated. An enabled-event scan performs that selection separately for
 every declared event and can therefore evaluate one omitted guard for each
-affected event. Admission charges the sum of every compiled AST's node count,
+affected event. The scan reports sendable events only — an event declared
+`internal` and a generated `$done.*` name are absent from it, not listed as
+disabled — and it never predicts the reactions a send would cause; `simulate`
+answers that. Admission charges the sum of every compiled AST's node count,
 plus one tick per distinct event that has an omitted guard. A definition
 accepted by the current compiler MUST NOT exhaust a fresh standard 4096-tick
 budget.
