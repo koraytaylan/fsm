@@ -115,7 +115,7 @@ fn readme_and_licenses() {
         .lines()
         .filter(|l| l.starts_with("|") && !l.contains("---") && !l.contains("Guarantee"))
         .count();
-    assert_eq!(rows, 20, "{rows}");
+    assert_eq!(rows, 21, "{rows}");
     assert!(readme.contains("single-node"));
     let mit = std::fs::read_to_string(root.join("LICENSE-MIT")).unwrap();
     let ap = std::fs::read_to_string(root.join("LICENSE-APACHE")).unwrap();
@@ -452,5 +452,51 @@ fn spec_pins_the_child_id_scheme_and_the_single_target_rule() {
     assert!(
         signals.contains("MUST NOT be added"),
         "and the rule that a query-targeted delivery is refused"
+    );
+}
+
+/// Every code this plan's namespaces define, in both directions: SPEC's
+/// appendix and `ALL_CODES` must name the same set, so an evolution rule can
+/// neither ship undocumented nor linger in prose after it is gone.
+#[test]
+fn every_evolution_code_is_documented_and_every_documented_one_exists() {
+    let appendix = SPEC
+        .split("## Appendix A — Error codes")
+        .nth(1)
+        .expect("SPEC has an error-code appendix");
+    let documented: std::collections::BTreeSet<&str> = appendix
+        .lines()
+        .filter_map(|line| line.strip_prefix("- `"))
+        .filter_map(|line| line.split('`').next())
+        .filter(|code| code.starts_with("def/supersedes_") || code.starts_with("req/migrate_"))
+        .collect();
+    let defined: std::collections::BTreeSet<&str> = fsm_core::error::ALL_CODES
+        .iter()
+        .copied()
+        .filter(|code| code.starts_with("def/supersedes_") || code.starts_with("req/migrate_"))
+        .collect();
+    assert_eq!(defined.len(), 14, "the plan's closed set: {defined:?}");
+    assert_eq!(documented, defined);
+}
+
+/// The two rules a reader will otherwise meet in production are pinned to
+/// prose, not only to code.
+#[test]
+fn spec_states_the_two_evolution_surprises() {
+    let evolution = SPEC
+        .split("## Evolution")
+        .nth(1)
+        .expect("SPEC has an evolution section");
+    assert!(
+        evolution.contains("therefore **MUST** be\ninside `machine_id`"),
+        "the mapping's place in the identity is the property everything rests on"
+    );
+    assert!(
+        evolution.contains("**Migration reschedules every deadline from the migration instant.**"),
+        "the deadline consequence has to be in prose, not only in a comment"
+    );
+    assert!(
+        evolution.contains("**not atomic**"),
+        "a cohort migration's non-atomicity is a promise nobody should have to infer"
     );
 }

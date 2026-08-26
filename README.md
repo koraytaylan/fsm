@@ -98,6 +98,7 @@ Claude Desktop `mcpServers` JSON:
 | auditable implementation | zero dependencies, no unsafe |
 | unattended execution | `fsm execute` is a separate one-node process with **at-least-once** execution at the process boundary and exactly-once journaling: one ack per effect, whatever it survived |
 | explicit composition | a child instance exists because a record says so, and its id is derived from its parent and slot — never allocated, never guessed |
+| explicit evolution | an instance changes definition because a record says so, under a mapping the new definition declares and its hash covers |
 
 Honest non-claims: this is a **single-node** single-writer engine. There is no
 HA/replication or autonomous real-time scheduler; a deadline fires only when a
@@ -108,7 +109,10 @@ Reaction is bounded at 64 microsteps per event: a machine that needs more is
 refused at run time, not truncated. Composition is single-store and
 single-writer too — a parent and its children live in one journal — and a
 signal reaches **exactly one** instance by design, because a query-targeted
-delivery would match a different set on replay.
+delivery would match a different set on replay. Migrating an instance
+restarts every one of its timers from the migration instant, and migrating a
+cohort is not atomic — it is N idempotent operations that resume, not a
+transaction that cannot exist.
 
 See [docs/SPEC.md](docs/SPEC.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), [docs/EMBEDDING.md](docs/EMBEDDING.md), [docs/API-POLICY.md](docs/API-POLICY.md), and [docs/RELEASE.md](docs/RELEASE.md).
 

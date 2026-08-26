@@ -177,6 +177,13 @@ The versioned formats are independent of the crate version:
 | state hash | `fsm.state/3` (records written before composition carry `fsm.state/2` and verify under it) | state-bearing records and views |
 | state root | `fsm.state-root/3` | checkpoints and snapshots |
 
+Adding a `supersedes` block to a definition produces a **new** machine and
+never changes an existing one: the block is inside the canonical bytes, so
+its presence changes the hash. No published `machine_id` can change meaning,
+which is the property that makes migration safe to add at all — a consumer
+holding a hash holds exactly the definition they held before.
+
+
 Rules:
 
 - **Journals are migrated forward, never rewritten.** A store written by an older

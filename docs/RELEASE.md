@@ -162,6 +162,11 @@ enforced by jobs in `release.yml`, not by this list.
   natural-language brief, unaided, in a bounded number of tool calls.
 - `manual:` replay [`EXAMPLES.md`](EXAMPLES.md) transcripts under `FSM_CLOCK_MS`
   and compare output.
+- `manual:` preview and then migrate a live cohort whose instances are in
+  more than one state, and confirm the grouped refusal summary reads
+  correctly to a person: the counts, the codes, and the state responsible for
+  each exclusion. A cohort preview is an operator-facing report and the
+  pipeline cannot judge whether it is legible.
 - `manual:` drive a parent-and-child workflow through a live MCP host: define
   both machines, create the parent, `invocation_start` the slot, drive the
   child to completion, `invocation_return` it, and confirm the parent advanced

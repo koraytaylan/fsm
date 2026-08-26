@@ -466,6 +466,126 @@ Delivery is NOT a transition of the sender, and MUST NOT advance its
 configuration. A signal addressed to its own sender is `req/signal_target` and
 journals nothing; `raise` is the construct for an event to this instance.
 
+## Evolution
+
+`machine_id` is a content hash, so editing a definition mints a different
+machine and every in-flight instance stays bound to the old one. A machine
+MAY therefore declare one optional top-level `supersedes` block —
+`{machine, states?, context?}` — naming by 64-lowercase-hex digest the
+definition it replaces, mapping old state names to new ones, and mapping new
+context variables to `expr/1` expressions.
+
+The block is part of the canonical definition and therefore **MUST** be
+inside `machine_id`. Two definitions differing only in their mapping are
+different machines. This is the property the whole feature rests on: a
+reader holding the new hash holds the mapping too, so a migration can never
+be reinterpreted after the fact. It also means adding `supersedes` to a
+definition produces a *new* machine and never changes an existing one.
+
+At most one block per definition. A three-definition chain migrates in two
+journaled hops; a transitive closure computed by the engine would be a
+mapping nobody wrote.
+
+### Admission
+
+Two rules are decidable from the definition alone:
+`def/supersedes_machine_ref` (not a bare lowercase digest — a name is a
+mutable pointer, and a store whose migrations depend on what a name means
+today is not replayable) and `def/supersedes_self`, which its own hash makes
+unsatisfiable. The rest need both definitions and run at `define_machine`,
+so an author learns their mapping is wrong when they write it:
+
+| Code | Trigger |
+|---|---|
+| `def/supersedes_unknown_machine` | this store holds no such machine; the definition is refused rather than accepted and failed later |
+| `def/supersedes_unknown_state` | a mapping key or value names a state its definition does not have |
+| `def/supersedes_target_not_leaf` | a value names a compound or a history pseudostate; an active configuration only ever holds leaves |
+| `def/supersedes_target_terminal` | a value names a terminal or `final` state; completing a workflow by migrating it hides the completion from its own history |
+| `def/supersedes_region` | the two machines disagree on shape or on their region-name set; region topology is not mappable |
+| `def/supersedes_ctx_unknown` | a mapping key names a variable the new definition does not declare, or an expression reads one the old definition does not |
+| `def/supersedes_ctx_type` | an expression's type differs from the new declaration, decimal scale included |
+| `def/supersedes_slot` | the old machine has an invoke slot the new one does not |
+
+A `context` expression is typed with the **old** machine's context in scope
+and the **new** machine's variable as the target: it reads what the instance
+holds today and writes what it will hold tomorrow.
+
+### The migration
+
+Migrating one instance runs seven steps, in this order:
+
+1. **Gate.** A `Completed` or `Cancelled` instance is `req/migrate_settled`.
+2. **Map the configuration.** Every active leaf — the one for a sequential
+   instance, each region's for a parallel one — must have a mapping entry, or
+   the whole migration is `req/migrate_unmapped` naming the leaf and its
+   region. Partial migration is never performed and no leaf is ever guessed.
+   The target machine MUST supersede the machine the instance is on, or the
+   migration is `req/migrate_not_superseded`; there is no override.
+3. **Project the context.** Each mapping expression is evaluated against the
+   **old** context. A new variable nobody mapped takes its declared `init`;
+   an old variable nobody references is dropped. An evaluation failure is
+   `run/action_error` with the block named `migration`.
+4. **Carry over** (§Carry-over).
+5. **Invariants.** The new definition's invariants are evaluated on the
+   migrated state, before any reaction: an enforce failure is `run/invariant`
+   and monitor failures are reported without blocking.
+6. **React to quiescence.** A migrated instance runs its reaction phase
+   exactly as a freshly created one does, so a mapped leaf with an eventless
+   exit does not park in a state its own machine says it should have left.
+   `instance_migrated` therefore carries a `microsteps` array under the same
+   absent-when-empty rule every other record uses.
+7. **Return.** Status stays `Running` unless the reaction reached a terminal
+   leaf.
+
+Every refusal is atomic: the instance is untouched and no partial state
+escapes.
+
+### Carry-over
+
+| What | Ruling |
+|---|---|
+| history | remapped when both ends are mapped, **dropped** otherwise and listed in the report — a binding concerns a state the instance is not in, so losing one degrades a future re-entry rather than corrupting the present |
+| deadlines | **recomputed, never carried** |
+| pending effects | retained verbatim; an effect id names the record that emitted it, and that record's machine is still in the catalogue |
+| invocation slots | carried when the new definition declares the same slot with the same child machine; otherwise `req/migrate_slot` for a `Running` slot, and a `Returned` slot is dropped with a report entry |
+| pending signals | retained verbatim; a signal's event belongs to the *target's* machine, so neither mapping bears on it |
+
+Two of those an operator **MUST** know before migrating anything:
+
+- **Migration reschedules every deadline from the migration instant.** Every
+  existing schedule is dropped and the new machine's are computed for the
+  mapped configuration from the migration's own `now_ms`. A deadline that was
+  about to fire starts over. Carrying an old due time would keep a promise
+  the new definition never made.
+- **A `Running` invocation slot with no counterpart refuses the whole
+  migration** (`req/migrate_slot`). A running child is a live instance doing
+  work and cannot be dropped the way a history binding can.
+
+### Replay
+
+An instance's records legitimately span two definitions. A fold tracks the
+**current machine per instance** and switches it on an `instance_migrated`
+record; every subsequent record for that instance replays against the new
+definition, and every earlier one against the old. The record's
+`from_machine_id` MUST equal the machine the fold holds for that instance, or
+the fold fails: a record claiming to migrate from a machine the instance was
+not on is corruption, not a reinterpretation.
+
+A superseded machine is **never** removed from the catalogue. Records written
+before a migration replay against it, and a pending effect's name re-derives
+from the machine that emitted it.
+
+A migration is journaled at the record's own `ts`, which is the `now_ms` the
+pure function received, so the deadline rescheduling a record describes is
+reproducible without a clock. Replay re-runs the migration and checks
+`state_hash`, `configuration_after`, `dropped_history`,
+`rescheduled_deadlines`, and `microsteps` in both directions.
+
+A cohort migration is **not atomic**: it is N idempotent operations, each
+keyed on `migrate-{instance_id}-{to_machine_id}`, both halves derived from
+journaled content. A crash halfway leaves half the cohort migrated, and
+re-running finishes it.
+
 ## Journal
 
 ### Idempotency

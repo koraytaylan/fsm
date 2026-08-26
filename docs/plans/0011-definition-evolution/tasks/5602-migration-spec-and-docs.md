@@ -13,7 +13,12 @@ touches:
   - docs/API-POLICY.md
   - README.md
   - crates/fsm-cli/tests/spec_appendix.rs
-status: planned
+  - docs/EMBEDDING.md
+  - docs/API-POLICY.md
+  - docs/RELEASE.md
+  - README.md
+  - crates/fsm-cli/tests/spec_appendix.rs
+status: done
 merged_as: ""
 ---
 # Migration Spec And Docs
@@ -45,3 +50,7 @@ Every rule in this plan is a refusal or a ruling, and a ruling that only exists 
 - `cargo doc --workspace --no-deps` is warning-free under `RUSTDOCFLAGS=-D warnings`.
 
 - **Done when:** SPEC is normative about `supersedes`, the seven-step order, all five carry-over rulings, the record kind, and the two-definition replay rule; EMBEDDING carries the runbook; API-POLICY states the compatibility consequence; README carries the guarantee and both non-claims; `cargo test -p fsm-cli --test spec_appendix --test policy` passes; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** SPEC's `## Evolution` with its admission table, seven-step order, carry-over table, and replay rules; the two MUST-know consequences called out; EMBEDDING's runbook; API-POLICY's compatibility note; README's guarantee row and two non-claims; RELEASE's acceptance row; and three documentation tests — the codes in both directions, and the identity, deadline, and non-atomicity statements pinned to prose.
+
+**Corrections.** Step 4 asks for the `instance_migrated` row in `### Record kinds`; `5501` already added it, since a record kind that ships undocumented fails the appendix gate in the commit that adds it. Nothing was added twice.

@@ -481,6 +481,35 @@ and do not appear in SPEC.md's appendix.
 | `exec/invoke` | creating a child or returning its result failed; the store's own code is preserved in `details` |
 | `exec/signal` | delivering a signal failed; the store's own code is preserved in `details` |
 
+### Migrating a cohort
+
+A definition bug found on day thirty is fixed for the instances still
+running, and the order of operations is the whole of the discipline:
+
+1. **Preview.** `fsm migrate --from <old> --to <new> --dry-run` reads the
+   store — it opens read-only, so a monitoring session can ask without
+   holding the writer — and prints the cohort grouped by outcome.
+2. **Read the refusals.** Each group names its code and the state
+   responsible: "four are in `awaiting_countersign`, which your map does not
+   cover". Decide whether to widen the mapping, which means a new definition
+   and a new hash, or to accept the exclusion and leave those instances where
+   they are.
+3. **Migrate in batches.** `--limit N` moves N and stops, so a cohort can be
+   watched rather than launched.
+4. **Re-run after any interruption.** The command is **not atomic**: it is N
+   idempotent operations, not a transaction, so a crash halfway leaves half
+   the cohort migrated. Every `request_id` derives as
+   `migrate-{instance_id}-{to_machine_id}` from content the journal already
+   holds, so re-running re-derives the identical key and the store replays
+   what it already did instead of migrating twice. Resumption is free; it is
+   not a feature somebody has to remember to use.
+
+The consequence to say out loud before step 3: **migration reschedules every
+deadline from the migration instant.** A workflow whose timer was about to
+fire gets a fresh one. That is the correct behaviour — an old due time would
+be a promise the new definition never made — but it is not what an operator
+expects unless somebody tells them.
+
 ### Composition without a human
 
 The executor enacts composition the same way it enacts effects: from the
