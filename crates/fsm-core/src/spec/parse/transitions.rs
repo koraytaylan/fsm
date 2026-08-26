@@ -127,14 +127,39 @@ pub(super) fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> V
             continue;
         };
         check_keys(obj, &["from", "on", "if", "do", "emit", "to"], &p, errs);
-        if obj.get("on").is_none() {
-            errs.push(Finding::err(
-                "def/shape",
-                format!("{p}/on"),
-                "transition missing on",
-                "set on",
-            ));
-        }
+        // An absent `on` is an eventless transition. An explicit null is a
+        // typo, not an intention, and says so.
+        let on = match obj.get("on") {
+            None => None,
+            Some(Value::Str(s)) => Some(s.clone()),
+            Some(Value::Null) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/on"),
+                    "on is null",
+                    "omit on entirely for an eventless transition; null is not a trigger",
+                ));
+                None
+            }
+            Some(Value::Num(_)) => {
+                errs.push(Finding::err(
+                    "req/number_token",
+                    format!("{p}/on"),
+                    "numeric values must be strings",
+                    "quote the number",
+                ));
+                None
+            }
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/on"),
+                    "on must be a string",
+                    "name a declared event, or omit on for an eventless transition",
+                ));
+                None
+            }
+        };
         if obj.get("from").is_none() {
             errs.push(Finding::err(
                 "def/shape",
@@ -200,9 +225,7 @@ pub(super) fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> V
             from: req_str(obj, "from", &format!("{p}/from"), errs)
                 .unwrap_or("")
                 .to_string(),
-            on: req_str(obj, "on", &format!("{p}/on"), errs)
-                .unwrap_or("")
-                .to_string(),
+            on,
             guard,
             sets: block.sets,
             emits: block.emits,

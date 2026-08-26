@@ -1,1 +1,1 @@
-{"format":"fsm.machine/1","name":"x","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a"}]}
+{"format":"fsm.machine/1","name":"x","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[1]}

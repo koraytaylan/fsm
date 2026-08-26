@@ -8,10 +8,17 @@ gated: false
 touches:
   - crates/fsm-core/src/spec/mod.rs
   - crates/fsm-core/src/spec/parse/transitions.rs
-  - crates/fsm-core/src/spec/serialize.rs
+  - crates/fsm-core/src/spec/machine_impl.rs
   - crates/fsm-core/src/spec/compile.rs
+  - crates/fsm-core/src/spec/validate/blocks.rs
+  - crates/fsm-core/src/analyze.rs
+  - crates/fsm-core/src/diagram.rs
   - crates/fsm-core/tests/spec_parse.rs
-status: planned
+  - crates/fsm-core/tests/oracle/step.rs
+  - crates/fsm-core/tests/fixtures/hashes/identity.jsonl
+  - crates/fsm-core/tests/fixtures/machines/malformed/def_shape__transitions_0.json
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Eventless Transition Shape
@@ -35,3 +42,5 @@ Making `on` optional is the smallest possible change that lets a machine express
 - A declared event named `$always` is still refused by the existing `def/reserved_ident` rule — assert it, so the collision argument in the doc comment is load-bearing rather than decorative.
 
 - **Done when:** `cargo test -p fsm-core --test spec_parse` covers the optional-`on`, null-rejection, round-trip, and identity-invariance cases, every `examples/` machine keeps its committed `machine_id`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `on` is `Option<String>` with `TransitionSpec::is_eventless` and `cell_key()` beside `ALWAYS_KEY`, so every consumer asks the transition for its cell instead of reading the field. Corrections to the footprint: transition serialization lives in `machine_impl.rs`, not `serialize.rs`; and because `on` is read by every module that keys transitions, `validate/blocks.rs` (unknown-event and cell checks), `analyze.rs` (`def/shadowed` skips the `$always` cell, which `4302`'s mirror rule owns, while `def/duplicate_guard` keeps applying to it; the ancestor-shadowing lookup and message), `diagram.rs` (an eventless edge renders with an empty event label until `4702` dashes it), and the naive oracle's event match all changed with it. The malformed fixture `def_shape__transitions_0.json` had pinned a *missing* `on` as `def/shape`; that document is now a legal eventless transition, so the fixture pins a non-object transition at the same pointer instead. The four `examples/` ids computed by the pre-change build are recorded in `fixtures/hashes/identity.jsonl` and checked by both `hashes_golden` and the new `spec_parse` identity test. SPEC's definition paragraph gained the normative sentence for the optional key ahead of `4705`'s restatement.

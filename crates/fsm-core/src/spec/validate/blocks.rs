@@ -84,13 +84,15 @@ pub(super) fn check_transitions(
                 ));
             }
         }
-        if !event_names.contains(t.on.as_str()) {
-            errs.push(Finding::err(
-                "def/unknown_event",
-                format!("{p}/on"),
-                format!("unknown event {}", t.on),
-                "declare the event",
-            ));
+        if let Some(on) = &t.on {
+            if !event_names.contains(on.as_str()) {
+                errs.push(Finding::err(
+                    "def/unknown_event",
+                    format!("{p}/on"),
+                    format!("unknown event {on}"),
+                    "declare the event",
+                ));
+            }
         }
         if let Some(to) = &t.to {
             if !by_name.contains_key(to) {
@@ -143,7 +145,9 @@ pub(super) fn check_transitions(
             }
         }
         check_block_limits(&t.sets, &t.emits, effect_names, &p, errs);
-        *cell.entry((t.from.clone(), t.on.clone())).or_insert(0) += 1;
+        *cell
+            .entry((t.from.clone(), t.cell_key().to_string()))
+            .or_insert(0) += 1;
     }
     cell
 }

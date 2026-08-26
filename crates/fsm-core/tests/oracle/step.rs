@@ -26,7 +26,7 @@ fn select_event_candidate(
         }
         for source in chain(active_leaf.states, &active_leaf.leaf) {
             for (transition_index, transition) in spec.transitions.iter().enumerate() {
-                if transition.from != source || transition.on != event {
+                if transition.from != source || transition.on.as_deref() != Some(event) {
                     continue;
                 }
                 any_candidate = true;

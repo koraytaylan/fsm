@@ -215,14 +215,35 @@ pub fn terminal_states(nodes: &[StateNode]) -> Vec<&str> {
     out
 }
 
+/// Cell key under which an eventless transition is compiled and selected.
+///
+/// `def/reserved_ident` forbids `$`-prefixed declared names, so no user event
+/// can collide with it; the sentinel never appears in a definition document
+/// and never reaches a journal record — an omitted `on` is the whole syntax.
+pub const ALWAYS_KEY: &str = "$always";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransitionSpec {
     pub from: String,
-    pub on: String,
+    /// Triggering event, or `None` for an eventless transition, which the
+    /// macrostep runs whenever its guard holds on the working configuration.
+    pub on: Option<String>,
     pub guard: Option<String>,
     pub sets: Vec<SetSpec>,
     pub emits: Vec<EmitSpec>,
     pub to: Option<String>,
+}
+
+impl TransitionSpec {
+    /// Whether this transition fires without an event.
+    pub fn is_eventless(&self) -> bool {
+        self.on.is_none()
+    }
+
+    /// The `(from, on)` cell key: the event name, or [`ALWAYS_KEY`].
+    pub fn cell_key(&self) -> &str {
+        self.on.as_deref().unwrap_or(ALWAYS_KEY)
+    }
 }
 
 /// A timed transition scheduled whenever its source state is entered.

@@ -1,2 +1,6 @@
 {"file":"../machines/case_review.json","id":"case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c"}
 {"inline":{"context":[],"events":[],"format":"fsm.machine/1","initial":"only","name":"mini","states":[{"name":"only"}],"transitions":[]},"id":"mini@sha256:fbdc3f2128e9c4c98bfa1fc3dd5c4c505993e10f4f8d1ed01e709a7b9accbc2c"}
+{"file":"../../../../../examples/expense_approval.json","id":"expense_approval@sha256:4db18b9c182299ba9bacc68911524781db393e23ecacdf2cfc138823d3ac3cc7"}
+{"file":"../../../../../examples/invoice_matching.json","id":"invoice_matching@sha256:98f002c3357d789ea9e6b128d8f9b15d347626f70b5aa2107cad6195b726b39f"}
+{"file":"../../../../../examples/order_lifecycle.json","id":"order_lifecycle@sha256:ad7f2ac39d9dc2ca5880049807d9232dd1892964e28e5dfec2b1d2d40def108d"}
+{"file":"../../../../../examples/parallel_review_deadline.json","id":"parallel_review_deadline@sha256:a08aebb6553e0f0f72bcab793132d251118f644e1c5f3ce0cac531259cedb17f"}

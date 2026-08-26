@@ -18,9 +18,10 @@ pub struct InstanceOverlay {
 /// transitions on one event render as the same arrow and the diagram silently
 /// misstates the machine.
 fn edge_label(tr: &crate::spec::TransitionSpec, escape: fn(&str) -> String) -> String {
+    let event = tr.on.as_deref().unwrap_or("");
     match &tr.guard {
-        Some(g) => format!("{} [{}]", escape(&tr.on), escape(g)),
-        None => escape(&tr.on),
+        Some(g) => format!("{} [{}]", escape(event), escape(g)),
+        None => escape(event),
     }
 }
 

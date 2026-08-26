@@ -111,7 +111,12 @@ impl MachineSpec {
                     .map(|t| {
                         let mut o = BTreeMap::new();
                         o.insert("from".into(), v_str(t.from.clone()));
-                        o.insert("on".into(), v_str(t.on.clone()));
+                        // Omitted, never null: `machine_id` hashes the
+                        // canonical definition, and an eventless transition
+                        // is spelled by the key's absence.
+                        if let Some(on) = &t.on {
+                            o.insert("on".into(), v_str(on.clone()));
+                        }
                         if let Some(g) = &t.guard {
                             o.insert("if".into(), v_str(g.clone()));
                         }

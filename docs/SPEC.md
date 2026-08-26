@@ -40,8 +40,13 @@ Context variables: `{name, ty, init}`. Types: `int`, `str`, `bool`,
 effects declare `fields`. States are recursive trees; a child with
 `history: "deep"|"shallow"` is a history pseudostate. It MUST be owned by a
 compound parent and MUST be childless, nonterminal, and have no `initial` of
-its own. Blocks use `do` (sets) and `emit`. Transitions use `from`, `on`,
-optional `if` (guard), optional `to` (absent = internal), optional `do`/`emit`.
+its own. Blocks use `do` (sets) and `emit`. Transitions use `from`, optional
+`on` (absent = an eventless transition, keyed internally under the reserved
+`$always` sentinel and run by the macrostep whenever its guard holds; an
+explicit `null` is `def/shape`), optional `if` (guard), optional `to` (absent =
+internal), optional `do`/`emit`. An eventless transition's guard and block see
+no `evt`. Admission charges an omitted `if` on an eventless transition one
+implicit-`true` tick under the `$always` key exactly as it does for an event.
 
 Deadlines are document-ordered timed transitions
 `{name, from, after, to, optional do, optional emit}`. `name` is unique among

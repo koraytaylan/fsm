@@ -7,7 +7,7 @@ use crate::machine::{CompiledExpr, CompiledMachine, ExprSlot};
 
 use super::compat::{accepted_identity, identity_document};
 use super::validate::{DefinitionCompatibility, validate_with_compatibility};
-use super::{Block, Finding, MachineSpec, Severity, StateNode};
+use super::{Block, Finding, MachineSpec, Severity, StateNode, TransitionSpec};
 
 pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
     compile_with_compatibility(spec, DefinitionCompatibility::Current)
@@ -307,10 +307,12 @@ pub(super) fn compile_with_compatibility(
     let mut transitions_by: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
     for (i, t) in spec.transitions.iter().enumerate() {
         transitions_by
-            .entry((t.from.clone(), t.on.clone()))
+            .entry((t.from.clone(), t.cell_key().to_string()))
             .or_default()
             .push(i);
-        let evt_tys = event_map.get(&t.on);
+        // An eventless transition has no `evt` in scope, in its guard or its
+        // block; validation already refused any reference (`def/eventless_evt`).
+        let evt_tys = t.on.as_ref().and_then(|on| event_map.get(on));
         let empty: BTreeMap<String, Ty> = BTreeMap::new();
         let guard_scope = Scope {
             kind: ScopeKind::Guard,
@@ -377,7 +379,7 @@ pub(super) fn compile_with_compatibility(
         .transitions
         .iter()
         .filter(|transition| transition.guard.is_none())
-        .map(|transition| transition.on.as_str())
+        .map(TransitionSpec::cell_key)
         .collect::<BTreeSet<_>>()
         .len() as u64;
     let evaluation_ticks = compiled_ticks + implicit_guard_ticks;

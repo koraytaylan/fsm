@@ -8,7 +8,7 @@ use crate::expr::eval::{Budget, Val};
 use crate::expr::parser;
 use crate::expr::partial::{Truth, partial_eval_bool};
 use crate::machine::{CompiledMachine, InstanceState};
-use crate::spec::{Finding, HistoryKind, MachineSpec, Severity, TransitionSpec};
+use crate::spec::{ALWAYS_KEY, Finding, HistoryKind, MachineSpec, Severity, TransitionSpec};
 use crate::tree::{NodeKind, Tree};
 
 pub use crate::spec::Finding as AnalyzeFinding;
@@ -171,7 +171,9 @@ pub fn shadowing_findings(m: &CompiledMachine) -> Vec<Finding> {
     for ((from, on), idxs) in &m.transitions_by {
         for (i, &idx) in idxs.iter().enumerate() {
             let g = &m.spec.transitions[idx].guard;
-            if is_true_guard(g) {
+            // The eventless cell has its own mirror rule, `def/eventless_shadowed`;
+            // `def/duplicate_guard` below applies to both alike.
+            if is_true_guard(g) && on != ALWAYS_KEY {
                 if i + 1 < idxs.len() {
                     out.push(Finding::err(
                         "def/shadowed",
@@ -231,7 +233,10 @@ pub fn ancestor_shadowed(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
                     break;
                 }
                 let sname = &t.names[sid as usize];
-                if let Some(idxs) = m.transitions_by.get(&(sname.clone(), tr.on.clone())) {
+                if let Some(idxs) = m
+                    .transitions_by
+                    .get(&(sname.clone(), tr.cell_key().to_string()))
+                {
                     for &idx in idxs {
                         let g = &m.spec.transitions[idx].guard;
                         if is_true_guard(g)
@@ -253,7 +258,10 @@ pub fn ancestor_shadowed(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
             out.push(Finding::warn(
                 "def/ancestor_shadowed",
                 format!("/transitions/{i}"),
-                format!("ancestor handler on {} is globally dead", tr.on),
+                match &tr.on {
+                    Some(on) => format!("ancestor handler on {on} is globally dead"),
+                    None => "eventless ancestor handler is globally dead".to_string(),
+                },
                 "every leaf under this compound masks the ancestor",
             ));
         }

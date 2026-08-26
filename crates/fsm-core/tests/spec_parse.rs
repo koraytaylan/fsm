@@ -1,6 +1,6 @@
 //! Parse `fsm.machine/1` and malformed variants.
 
-use fsm_core::json::{JsonLimits, parse};
+use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::spec::{Topology, parse_machine};
 
 fn load_case() -> fsm_core::json::Value {
@@ -102,4 +102,143 @@ fn reconstruct_path(stem: &str) -> String {
         "states_1_entry_emit_0_args_total" => "/states/1/entry/emit/0/args/total".into(),
         other => format!("/{other}"),
     }
+}
+
+// Plan 0009 task 4301: `on` is optional, and its absence is the whole syntax
+// of an eventless transition. The risk is identity — `machine_id` hashes the
+// canonical definition — so the serializer must never invent the key.
+
+fn parse_src(src: &str) -> Result<fsm_core::spec::MachineSpec, Vec<fsm_core::spec::Finding>> {
+    parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap())
+}
+
+fn with_transitions(transitions: &str) -> String {
+    format!(
+        r#"{{"format":"fsm.machine/1","name":"m","states":[{{"name":"a"}},{{"name":"b"}}],"initial":"a","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":{transitions}}}"#
+    )
+}
+
+#[test]
+fn an_omitted_on_parses_as_an_eventless_transition() {
+    let spec = parse_src(&with_transitions(r#"[{"from":"a","to":"b"}]"#)).unwrap();
+    assert_eq!(spec.transitions[0].on, None);
+    assert!(spec.transitions[0].is_eventless());
+    assert_eq!(spec.transitions[0].cell_key(), fsm_core::spec::ALWAYS_KEY);
+    let evented = parse_src(&with_transitions(r#"[{"from":"a","on":"go","to":"b"}]"#)).unwrap();
+    assert_eq!(evented.transitions[0].on.as_deref(), Some("go"));
+    assert_eq!(evented.transitions[0].cell_key(), "go");
+}
+
+#[test]
+fn an_explicit_null_on_is_def_shape_at_the_pointer() {
+    let errs = parse_src(&with_transitions(r#"[{"from":"a","on":null,"to":"b"}]"#)).unwrap_err();
+    let finding = errs
+        .iter()
+        .find(|f| f.code == "def/shape")
+        .expect("def/shape for a null on");
+    assert_eq!(finding.path, "/transitions/0/on");
+    assert!(
+        finding.hint.contains("omit on"),
+        "the hint says to omit the key: {}",
+        finding.hint
+    );
+}
+
+#[test]
+fn an_empty_on_keeps_the_unknown_event_rule() {
+    let spec = parse_src(&with_transitions(r#"[{"from":"a","on":"","to":"b"}]"#)).unwrap();
+    assert_eq!(spec.transitions[0].on.as_deref(), Some(""));
+    let errs = fsm_core::spec::validate(&spec).unwrap_err();
+    assert!(
+        errs.iter().any(|f| f.code == "def/unknown_event"),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn round_trip_keeps_an_eventless_transition_without_an_on_key() {
+    let src =
+        with_transitions(r#"[{"from":"a","on":"go","to":"b"},{"from":"b","if":"true","to":"a"}]"#);
+    let spec = parse_src(&src).unwrap();
+    let rendered = spec.to_value();
+    let transitions = rendered.get("transitions").and_then(Value::as_arr).unwrap();
+    assert_eq!(transitions[0].get("on").and_then(Value::as_str), Some("go"));
+    assert!(
+        transitions[1].get("on").is_none(),
+        "no on key for an eventless transition"
+    );
+    let again = parse_machine(&rendered).unwrap();
+    assert_eq!(again.transitions, spec.transitions);
+    assert_eq!(
+        fsm_core::canon::canon_bytes(&again.to_value()),
+        fsm_core::canon::canon_bytes(&rendered),
+        "parse → serialize → parse is byte-stable"
+    );
+}
+
+/// The compatibility anchor: every committed example keeps the machine id the
+/// pre-change build computed, recorded in `fixtures/hashes/identity.jsonl`.
+#[test]
+fn every_example_keeps_its_committed_machine_id() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let identities = include_str!("fixtures/hashes/identity.jsonl");
+    let mut checked = 0;
+    for line in identities.lines().filter(|l| !l.is_empty()) {
+        let record = parse(line.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+        let Some(file) = record.get("file").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(example) = file.strip_prefix("../../../../../examples/") else {
+            continue;
+        };
+        let bytes = std::fs::read(root.join("examples").join(example)).unwrap();
+        let document = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
+        let compiled = fsm_core::spec::compile_accepted(&document).unwrap();
+        assert_eq!(
+            compiled.machine_id,
+            record.get("id").and_then(Value::as_str).unwrap(),
+            "{example}"
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 4, "every example is pinned");
+}
+
+#[test]
+fn an_eventless_transition_compiles_under_the_always_cell() {
+    let spec = parse_src(&with_transitions(
+        r#"[{"from":"a","on":"go","to":"b"},{"from":"a","if":"true","to":"b"}]"#,
+    ))
+    .unwrap();
+    let compiled = fsm_core::spec::compile(spec).unwrap();
+    assert_eq!(
+        compiled.transitions_by.get(&("a".into(), "go".into())),
+        Some(&vec![0])
+    );
+    assert_eq!(
+        compiled
+            .transitions_by
+            .get(&("a".into(), fsm_core::spec::ALWAYS_KEY.into())),
+        Some(&vec![1])
+    );
+}
+
+#[test]
+fn thirty_three_eventless_transitions_from_one_state_exceed_the_cell() {
+    let transitions: Vec<String> = (0..33)
+        .map(|i| format!(r#"{{"from":"a","if":"{i} > 0","to":"b"}}"#))
+        .collect();
+    let spec = parse_src(&with_transitions(&format!("[{}]", transitions.join(",")))).unwrap();
+    let errs = fsm_core::spec::validate(&spec).unwrap_err();
+    assert!(errs.iter().any(|f| f.code == "def/limit_cell"), "{errs:?}");
+}
+
+#[test]
+fn a_declared_event_named_always_is_reserved() {
+    let src = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"$always","fields":[]}],"transitions":[]}"#;
+    let errs = parse_src(src).unwrap_err();
+    assert!(
+        errs.iter().any(|f| f.code == "def/reserved_ident"),
+        "the collision argument in ALWAYS_KEY's doc is load-bearing: {errs:?}"
+    );
 }
