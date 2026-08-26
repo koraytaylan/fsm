@@ -10,7 +10,10 @@ gated: false
 touches:
   - crates/fsm-core/tests/migrate_props.rs
   - crates/fsm-cli/tests/migration_chaos.rs
-status: planned
+  - crates/fsm-core/src/replay/apply/instance.rs
+  - crates/fsm-store/src/store/instance/migrate.rs
+  - crates/fsm-store/tests/invoke_child.rs
+status: done
 merged_as: ""
 ---
 # Migration Properties And Chaos
@@ -37,3 +40,7 @@ Migration is judged by one property above all others: an instance that migrates 
 - Iteration count is configurable via the env override, and the committed default is the one the wall-time measurement justified — stated in the commit message alongside the measurement.
 
 - **Done when:** `cargo test -p fsm-core --test migrate_props` and `cargo test -p fsm-cli --test migration_chaos` both pass, the equivalence property holds over every generated pair with deadlines compared separately, interrupted cohorts resume to exactly one record per instance, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** both suites with their seeded generators, env overrides, and seed-printing failures; the equivalence property verified by mutation; and the defect the chaos leg found — `request_rejected` records for the `invoke` and `migrate` operations were unfoldable, so a store that had refused either could not reopen. Both now re-derive their refusal, and the migration refusal record names its target machine so replay can re-run the function that refused.
+
+**Corrections.** (1) The equivalence property synthesises the comparison instance rather than calling `create`: `create` always starts at a machine's initial state, so "an instance that started life in the state it landed in" cannot be built that way — it is built as the state itself and settled the same way, which is what the comparison actually means. (2) The generated pairs are built by this suite rather than by `proputil::gen_machine`, which generates one machine rather than a pair with a mapping; `history_props.rs` sets the precedent of a local generator for a property that needs its own shapes.

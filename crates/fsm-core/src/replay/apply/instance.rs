@@ -276,6 +276,75 @@ pub(super) fn apply_request_rejected(st: &mut StoreState, rec: &Record) -> Resul
                 }
             }
         }
+        // An invocation refused for the slot's state: decidable from the
+        // parent's own slots, so replay re-derives it rather than trusting
+        // the record's word for it.
+        Some("invoke") => {
+            let slot =
+                rec.body
+                    .get("slot")
+                    .and_then(Value::as_str)
+                    .ok_or(ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "slot",
+                    })?;
+            let still_pending = inst.invocations.get(slot).is_some_and(|invocation| {
+                invocation.status == crate::machine::InvokeStatus::Pending
+            });
+            if still_pending {
+                return Err(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "slot",
+                });
+            }
+            if rec.body.get("code").and_then(Value::as_str) != Some("req/invoke_slot_state") {
+                return Err(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "code",
+                });
+            }
+        }
+        // A migration the store refused: re-run it and require the same
+        // refusal. The record names its target for exactly this reason.
+        Some("migrate") => {
+            let to_machine_id = rec
+                .body
+                .get("to_machine_id")
+                .and_then(Value::as_str)
+                .ok_or(ReplayError::FieldMismatch {
+                    seq: rec.seq,
+                    field: "to_machine_id",
+                })?;
+            let from = st
+                .machines
+                .get(&mid)
+                .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?
+                .clone();
+            let to = st
+                .machines
+                .get(to_machine_id)
+                .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?
+                .clone();
+            let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
+            let refused = crate::migrate::apply::migrate(
+                &from.compiled,
+                &to.compiled,
+                &to.tree,
+                inst,
+                rec.ts,
+                &mut budget,
+            );
+            match refused {
+                Err(rejection)
+                    if rec.body.get("code").and_then(Value::as_str) == Some(rejection.code) => {}
+                _ => {
+                    return Err(ReplayError::FieldMismatch {
+                        seq: rec.seq,
+                        field: "code",
+                    });
+                }
+            }
+        }
         _ => {
             return Err(ReplayError::FieldMismatch {
                 seq: rec.seq,

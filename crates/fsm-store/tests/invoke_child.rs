@@ -220,6 +220,26 @@ fn a_slot_that_is_not_pending_is_refused_and_the_refusal_replays() {
     assert_eq!(unknown.code, "req/invoke_slot_state");
 }
 
+/// A journaled refusal has to fold, or the store cannot reopen after one.
+#[test]
+fn a_journaled_slot_refusal_folds() {
+    let directory = TestDirectory::create();
+    let mut store = opened(&directory);
+    // Refuse an invocation for the slot's state, which journals a rejection.
+    store.invoke_child("p1", "review", "inv-1").unwrap();
+    let error = store
+        .invoke_child("p1", "review", "inv-2")
+        .expect_err("the slot is running");
+    assert_eq!(error.code, "req/invoke_slot_state");
+    let records = store.records.clone();
+    let expected = store.state.instances.clone();
+    drop(store);
+    let folded = fsm_core::replay::fold_with(records, &mut fsm_core::replay::NopSink)
+        .expect("a journaled refusal folds");
+    assert_eq!(folded.instances, expected);
+    Store::open(directory.path()).expect("and the store reopens");
+}
+
 #[test]
 fn a_failed_child_creation_journals_nothing_and_leaves_the_slot_pending() {
     // The child's invariant refuses the projection the parent supplies.

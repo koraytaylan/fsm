@@ -87,6 +87,7 @@ impl Store {
                     .request_id(request_id);
                 return Err(self.journal_migration_refusal(
                     instance_id,
+                    &to_machine_id,
                     request_id,
                     error,
                     commit_ts,
@@ -172,6 +173,7 @@ impl Store {
     fn journal_migration_refusal(
         &mut self,
         instance_id: &str,
+        to_machine_id: &str,
         request_id: &str,
         error: ErrorObj,
         commit_ts: i64,
@@ -184,6 +186,10 @@ impl Store {
         body.insert("hint".into(), Value::Str(error.hint.clone()));
         body.insert("details".into(), error.details.clone());
         body.insert("operation".into(), Value::Str("migrate".into()));
+        // The target is part of the claim: without it replay cannot re-run
+        // the migration that was refused, and a refusal nobody can re-derive
+        // is a record nobody can check.
+        body.insert("to_machine_id".into(), Value::Str(to_machine_id.into()));
         if let Some(instance) = self.state.instances.get(instance_id) {
             let machine_id = self
                 .state
