@@ -11,7 +11,10 @@ touches:
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - crates/fsm-cli/tests/mcp_full.rs
   - crates/fsm-cli/tests/mcp_structured_parity.rs
-status: planned
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/src/mcp/tools/mod.rs
+  - crates/fsm-cli/tests/mcp_full.rs
+status: done
 merged_as: ""
 ---
 # Resource Links In Tool Results
@@ -39,3 +42,7 @@ A model that creates a workflow should get a handle to it, not a string it has t
 - `tools_budget.rs` still passes — the added element does not push any result past the response budget.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_full --test mcp_structured_parity --test tools_budget` passes with updated goldens for exactly six tools, `structuredContent` and every error result are unchanged, CLI parity holds, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `LINKED_TOOLS`, the link appended in `tool_ok` from the result's own `instance_id`, the regenerated transcripts, and tests that the six tools link, that the link resolves through `resources/read` in the same session, that a listing and a failure carry none, and that the linked id is the one in the structured result rather than the one in the arguments.
+
+**Corrections.** The task describes the result as three content elements — "text, then the structured object, then the resource link" — but the structured object has never been a content element here: it is the sibling `structuredContent` field, which step 4 forbids touching. A successful linked call therefore carries **two** content elements, text and the link, beside that field. Adding the structured object to `content` as well would change what every existing client parses, for no reader.

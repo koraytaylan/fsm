@@ -59,12 +59,33 @@ pub fn tool_error(err: &ErrorObj) -> Value {
     Value::Obj(result)
 }
 
-pub fn tool_ok(structured: Value) -> Value {
+pub fn tool_ok(name: &str, structured: Value) -> Value {
     let mut item = std::collections::BTreeMap::new();
     item.insert("type".into(), Value::Str("text".into()));
     item.insert("text".into(), Value::Str(render_human(&structured)));
+    let mut content = vec![Value::Obj(item)];
+    // A model that creates a workflow gets a handle to it rather than a
+    // string it has to reassemble into a URI — and the link is what makes
+    // the resource it can subscribe to discoverable at the moment it becomes
+    // relevant. The id comes from the *result*, so a tool that resolved or
+    // defaulted one links to what it actually acted on.
+    if tools::LINKED_TOOLS.contains(&name)
+        && let Some(instance_id) = structured.get("instance_id").and_then(Value::as_str)
+    {
+        content.push(Value::Obj(std::collections::BTreeMap::from([
+            ("type".into(), Value::Str("resource_link".into())),
+            (
+                "uri".into(),
+                Value::Str(format!("fsm://instance/{instance_id}")),
+            ),
+            ("name".into(), Value::Str(instance_id.into())),
+            ("mimeType".into(), Value::Str("application/json".into())),
+        ])));
+    }
     let mut result = std::collections::BTreeMap::new();
-    result.insert("content".into(), Value::Arr(vec![Value::Obj(item)]));
+    result.insert("content".into(), Value::Arr(content));
+    // Untouched: this is what the parity suites compare against the CLI's
+    // `--json`, and a cosmetic addition to `content` must not move it.
     result.insert("structuredContent".into(), structured);
     Value::Obj(result)
 }
@@ -604,7 +625,7 @@ fn handle_request(
             } else {
                 match store {
                     Some(st) => match tools::dispatch_with(st, clock, name, &args, &ctx) {
-                        Ok(v) => send_line(output, &result_response(id, tool_ok(v))),
+                        Ok(v) => send_line(output, &result_response(id, tool_ok(name, v))),
                         Err(e) => send_line(output, &result_response(id, tool_error(&e))),
                     },
                     None => send_line(

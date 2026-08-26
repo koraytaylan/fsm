@@ -69,6 +69,23 @@ pub const MUTATING_TOOLS: &[&str] = &[
     "signal_deliver",
 ];
 
+/// The tools whose result names exactly one instance, and therefore carries
+/// a link to it.
+///
+/// One list rather than six match arms, beside `MUTATING_TOOLS` for the same
+/// reason: membership is a fact about the tool, and a fact kept in one place
+/// cannot disagree with itself. `instance_list` is deliberately absent — a
+/// list result would carry N links and bury the text — and so is every
+/// machine and simulate tool, which name no instance.
+pub const LINKED_TOOLS: &[&str] = &[
+    "instance_create",
+    "instance_send",
+    "deadline_poll",
+    "effect_ack",
+    "instance_cancel",
+    "instance_get",
+];
+
 pub struct ToolSpec {
     pub name: &'static str,
     pub description: &'static str,
