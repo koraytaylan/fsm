@@ -248,6 +248,34 @@ impl Store {
         if !catalogue_findings.is_empty() {
             return Err(ErrorObj::from_findings(catalogue_findings));
         }
+        // A `supersedes` mapping is checked here for the same reason: the
+        // superseded definition has to be in hand. A definition that names a
+        // machine this store does not hold is refused rather than accepted
+        // and failed later, because a mapping nobody can check is a mapping
+        // nobody should trust.
+        if let Some(supersedes) = &compiled.spec.supersedes {
+            let Some(old_spec) = catalogue.get(&supersedes.machine) else {
+                return Err(ErrorObj::from_findings(vec![fsm_core::spec::Finding::err(
+                    "def/supersedes_unknown_machine",
+                    "/supersedes/machine",
+                    format!("this store holds no machine {}", supersedes.machine),
+                    "define the superseded machine first; a mapping is checked against it",
+                )]));
+            };
+            let old_compiled =
+                fsm_core::spec::compile(old_spec.clone()).map_err(ErrorObj::from_findings)?;
+            let old_tree = Tree::for_machine(&old_compiled.spec);
+            let new_tree = Tree::for_machine(&compiled.spec);
+            let findings = fsm_core::migrate::validate::validate_supersedes(
+                &old_compiled,
+                &old_tree,
+                &compiled,
+                &new_tree,
+            );
+            if !findings.is_empty() {
+                return Err(ErrorObj::from_findings(findings));
+            }
+        }
         let id = compiled.machine_id.clone();
         if machine_id(&def) != id {
             return Err(ErrorObj::new(

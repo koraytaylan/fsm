@@ -323,6 +323,148 @@ pub(crate) fn one_step_composition(
     )
     .unwrap();
     seen.insert("def/supersedes_machine_ref");
+
+    // Plan 0011 task 5302: every `supersedes` rule that needs both
+    // definitions, driven through real definitions and corrected from the
+    // hint each one gives.
+    let old = r#"{"format":"fsm.machine/1","name":"mig_v1","states":[{"name":"intake"},{"name":"triage"}],"initial":"intake","context":[{"name":"score","ty":"int","init":"0"},{"name":"total","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"intake","on":"go","to":"triage"}]}"#;
+    dispatch(st, clock, "machine_create", &obj(&[("spec", value(old))])).unwrap();
+    let old_digest = digest_of(&machine_id(&value(old)))
+        .expect("a machine id names a digest")
+        .to_string();
+    let superseding = |name: &str,
+                       states: &str,
+                       context: &str,
+                       extra_states: &str,
+                       extra_ctx: &str| {
+        format!(
+            r#"{{"format":"fsm.machine/1","name":"{name}","states":[{{"name":"intake"}},{{"name":"triage"}}{extra_states}],"initial":"intake","context":[{{"name":"score","ty":"int","init":"0"}},{{"name":"total","ty":{{"decimal":"2"}},"init":"0.00"}}{extra_ctx}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"triage"}}],"supersedes":{{"machine":"{old_digest}","states":{states},"context":{context}}}}}"#
+        )
+    };
+    let cases: &[(&str, String)] = &[
+        (
+            "def/supersedes_unknown_machine",
+            superseding("mig_unknown", "{}", "{}", "", "").replace(&old_digest, &"a".repeat(64)),
+        ),
+        (
+            "def/supersedes_unknown_state",
+            superseding("mig_state", r#"{"ghost":"triage"}"#, "{}", "", ""),
+        ),
+        (
+            "def/supersedes_target_not_leaf",
+            superseding(
+                "mig_leaf",
+                r#"{"intake":"box"}"#,
+                "{}",
+                r#",{"name":"box","initial":"inner","states":[{"name":"inner"}]}"#,
+                "",
+            ),
+        ),
+        (
+            "def/supersedes_target_terminal",
+            superseding(
+                "mig_term",
+                r#"{"intake":"done"}"#,
+                "{}",
+                r#",{"name":"done","terminal":true}"#,
+                "",
+            ),
+        ),
+        (
+            "def/supersedes_ctx_unknown",
+            superseding("mig_ctx", "{}", r#"{"score":"ctx.ghost"}"#, "", ""),
+        ),
+        (
+            "def/supersedes_ctx_type",
+            superseding("mig_type", "{}", r#"{"total":"ctx.score"}"#, "", ""),
+        ),
+    ];
+    for (code, candidate) in cases {
+        match dispatch(
+            st,
+            clock,
+            "machine_create",
+            &obj(&[("spec", value(candidate))]),
+        ) {
+            Ok(_) => panic!("{code} was not reported"),
+            Err(error) => assert_eq!(&error.code, code, "{candidate}"),
+        }
+        // The corrected mapping, per each hint: drop the bad entry.
+        let fixed = candidate
+            .replace(r#""states":{"ghost":"triage"}"#, r#""states":{}"#)
+            .replace(r#""states":{"intake":"box"}"#, r#""states":{}"#)
+            .replace(r#""states":{"intake":"done"}"#, r#""states":{}"#)
+            .replace(r#""context":{"score":"ctx.ghost"}"#, r#""context":{}"#)
+            .replace(r#""context":{"total":"ctx.score"}"#, r#""context":{}"#)
+            .replace(&"a".repeat(64), &old_digest);
+        dispatch(
+            st,
+            clock,
+            "machine_create",
+            &obj(&[("spec", value(&fixed))]),
+        )
+        .unwrap();
+        seen.insert(*code);
+    }
+
+    // A parallel machine cannot supersede a sequential one: region topology
+    // is not mappable, and the correction is to keep the shape.
+    let regioned = format!(
+        r#"{{"format":"fsm.machine/1","name":"mig_region","regions":[{{"name":"left","states":[{{"name":"a"}}],"initial":"a"}},{{"name":"right","states":[{{"name":"b"}}],"initial":"b"}}],"context":[],"events":[],"transitions":[],"supersedes":{{"machine":"{old_digest}","states":{{}},"context":{{}}}}}}"#
+    );
+    match dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&regioned))]),
+    ) {
+        Ok(_) => panic!("def/supersedes_region was not reported"),
+        Err(error) => assert_eq!(error.code, "def/supersedes_region"),
+    }
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[(
+            "spec",
+            value(&superseding("mig_region_fix", "{}", "{}", "", "")),
+        )]),
+    )
+    .unwrap();
+    seen.insert("def/supersedes_region");
+
+    // A slot the new definition drops is work with nowhere to go.
+    let child = child_digest();
+    let slotted = r#"{"format":"fsm.machine/1","name":"mig_slot_v1","states":[{"name":"intake","invoke":[{"id":"check","machine":"CHILD_DIGEST"}]},{"name":"out"}],"initial":"intake","context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"intake","on":"go","to":"out"}]}"#
+        .replace("CHILD_DIGEST", &child);
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&slotted))]),
+    )
+    .unwrap();
+    let slot_digest = digest_of(&machine_id(&value(&slotted)))
+        .unwrap()
+        .to_string();
+    let dropped = format!(
+        r#"{{"format":"fsm.machine/1","name":"mig_slot_v2","states":[{{"name":"intake"}},{{"name":"out"}}],"initial":"intake","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"out"}}],"supersedes":{{"machine":"{slot_digest}","states":{{}},"context":{{}}}}}}"#
+    );
+    match dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&dropped))]),
+    ) {
+        Ok(_) => panic!("def/supersedes_slot was not reported"),
+        Err(error) => assert_eq!(error.code, "def/supersedes_slot"),
+    }
+    let kept = dropped.replace(
+        r#"{"name":"intake"}"#,
+        &format!(r#"{{"name":"intake","invoke":[{{"id":"check","machine":"{child}"}}]}}"#),
+    );
+    dispatch(st, clock, "machine_create", &obj(&[("spec", value(&kept))])).unwrap();
+    seen.insert("def/supersedes_slot");
 }
 
 /// Every composition code, produced through a real outcome.
@@ -432,6 +574,78 @@ pub(crate) fn drive_composition_outcomes(
         clock,
         "machine_create",
         &obj(&[("spec", value(by_name))]),
+    ) {
+        Ok(v) => note_ok(&v, out),
+        Err(e) => note_err(&e, out),
+    }
+
+    // Plan 0011 task 5302: the supersedes rules, as real tool outcomes.
+    let old = r#"{"format":"fsm.machine/1","name":"mig_v1","states":[{"name":"intake"},{"name":"triage"}],"initial":"intake","context":[{"name":"score","ty":"int","init":"0"},{"name":"total","ty":{"decimal":"2"},"init":"0.00"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"intake","on":"go","to":"triage"}]}"#;
+    let _ = dispatch(st, clock, "machine_create", &obj(&[("spec", value(old))]));
+    let old_digest = digest_of(&machine_id(&value(old))).unwrap().to_string();
+    let superseding = |name: &str,
+                       states: &str,
+                       context: &str,
+                       extra_states: &str,
+                       extra_ctx: &str| {
+        format!(
+            r#"{{"format":"fsm.machine/1","name":"{name}","states":[{{"name":"intake"}},{{"name":"triage"}}{extra_states}],"initial":"intake","context":[{{"name":"score","ty":"int","init":"0"}},{{"name":"total","ty":{{"decimal":"2"}},"init":"0.00"}}{extra_ctx}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"triage"}}],"supersedes":{{"machine":"{old_digest}","states":{states},"context":{context}}}}}"#
+        )
+    };
+    let probes = [
+        superseding("tv_unknown", "{}", "{}", "", "").replace(&old_digest, &"a".repeat(64)),
+        superseding("tv_state", r#"{"ghost":"triage"}"#, "{}", "", ""),
+        superseding(
+            "tv_leaf",
+            r#"{"intake":"box"}"#,
+            "{}",
+            r#",{"name":"box","initial":"inner","states":[{"name":"inner"}]}"#,
+            "",
+        ),
+        superseding(
+            "tv_term",
+            r#"{"intake":"done"}"#,
+            "{}",
+            r#",{"name":"done","terminal":true}"#,
+            "",
+        ),
+        superseding("tv_ctx", "{}", r#"{"score":"ctx.ghost"}"#, "", ""),
+        superseding("tv_type", "{}", r#"{"total":"ctx.score"}"#, "", ""),
+        format!(
+            r#"{{"format":"fsm.machine/1","name":"tv_region","regions":[{{"name":"left","states":[{{"name":"a"}}],"initial":"a"}},{{"name":"right","states":[{{"name":"b"}}],"initial":"b"}}],"context":[],"events":[],"transitions":[],"supersedes":{{"machine":"{old_digest}","states":{{}},"context":{{}}}}}}"#
+        ),
+    ];
+    for candidate in &probes {
+        match dispatch(
+            st,
+            clock,
+            "machine_create",
+            &obj(&[("spec", value(candidate))]),
+        ) {
+            Ok(v) => note_ok(&v, out),
+            Err(e) => note_err(&e, out),
+        }
+    }
+    let child = child_digest();
+    let slotted = r#"{"format":"fsm.machine/1","name":"tv_slot_v1","states":[{"name":"intake","invoke":[{"id":"check","machine":"CHILD_DIGEST"}]},{"name":"out"}],"initial":"intake","context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"intake","on":"go","to":"out"}]}"#
+        .replace("CHILD_DIGEST", &child);
+    let _ = dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&slotted))]),
+    );
+    let slot_digest = digest_of(&machine_id(&value(&slotted)))
+        .unwrap()
+        .to_string();
+    let dropped = format!(
+        r#"{{"format":"fsm.machine/1","name":"tv_slot_v2","states":[{{"name":"intake"}},{{"name":"out"}}],"initial":"intake","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"out"}}],"supersedes":{{"machine":"{slot_digest}","states":{{}},"context":{{}}}}}}"#
+    );
+    match dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&dropped))]),
     ) {
         Ok(v) => note_ok(&v, out),
         Err(e) => note_err(&e, out),

@@ -12,7 +12,10 @@ touches:
   - crates/fsm-core/src/lib.rs
   - crates/fsm-store/src/store/lifecycle.rs
   - crates/fsm-store/tests/migration_admission.rs
-status: planned
+  - crates/fsm-core/src/lib.rs
+  - crates/fsm-store/tests/migration_admission.rs
+  - crates/fsm-cli/tests/naive_caller/*.rs
+status: done
 merged_as: ""
 ---
 # Migration Admission Checks
@@ -48,3 +51,7 @@ An operator should learn their mapping is wrong when they write it, not when the
 - Findings are reported in a stable order across two runs, and a definition without `supersedes` produces byte-identical findings to the pre-change behaviour.
 
 - **Done when:** `cargo test -p fsm-store --test migration_admission` covers all eight rules plus the accepted pair, an unresolvable supersede is refused at definition time with no record written, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `crates/fsm-core/src/migrate/` with `validate.rs` implementing all eight catalogue-dependent rules in a stable order (region shape, then the state mapping in document order, then the context mapping, then slots) and empty stubs for the three modules later tasks fill; the admission hook in `define_machine_on` that resolves the superseded machine from the same catalogue the invoke rules use and refuses `def/supersedes_unknown_machine` when it is absent; and `migration_admission.rs` covering every rule plus the accepted pair, each asserting that a refused definition writes no record.
+
+**Corrections.** (1) An expression naming an unknown variable surfaces as `expr/unknown_var` from the type checker, not `expr/unknown_field`; both are mapped onto `def/supersedes_ctx_unknown`, because the operator's mistake is in the mapping and should read as one finding rather than as an expression bug they did not write. (2) The plan's step 3 says to reuse the `def/assign_type` machinery; the reusable half is `typecheck` against a `Scope`, which is what this does — the comparison itself is one exact-equality check, and a second code would have been a second vocabulary for the same mistake.

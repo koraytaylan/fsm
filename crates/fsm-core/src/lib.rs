@@ -17,6 +17,7 @@ pub mod ident;
 pub mod json;
 pub mod limits;
 pub mod machine;
+pub mod migrate;
 pub mod record;
 pub mod replay;
 pub mod sha256;

@@ -720,9 +720,9 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             set_pointer(
                 &mut v,
                 "/supersedes/machine",
-                Value::Str(
-                    "7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c".into(),
-                ),
+                // The suite defines this child before the rows run, so the
+                // corrected reference names a machine the store holds.
+                Value::Str(crate::one_step_data::INVOKE_CHILD_DIGEST.into()),
             );
         }
         "def/create_always_fails" => {

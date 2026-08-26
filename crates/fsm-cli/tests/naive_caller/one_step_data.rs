@@ -57,7 +57,7 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
     (
         "def/supersedes_machine_ref",
         r#"{"format":"fsm.machine/1","name":"supref","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"supersedes":{"machine":"case_review"}}"#,
-        r#"{"format":"fsm.machine/1","name":"supref2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"supersedes":{"machine":"7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c"}}"#,
+        r#"{"format":"fsm.machine/1","name":"supref2","states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[],"supersedes":{"machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}}"#,
     ),
     (
         "def/limit_signals",
