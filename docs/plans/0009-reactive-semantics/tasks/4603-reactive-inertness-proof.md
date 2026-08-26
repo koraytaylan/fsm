@@ -9,8 +9,11 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-core/tests/reactive_inertness.rs
+  - crates/fsm-core/tests/fixtures/inertness/drives.json
   - crates/fsm-cli/tests/reactive_inertness_store.rs
-status: planned
+  - crates/fsm-cli/tests/fixtures/inertness/preplan_session.journal
+  - crates/fsm-cli/tests/fixtures/inertness/preplan_session.meta.json
+status: done
 merged_as: ""
 ---
 # Reactive Inertness Proof
@@ -35,3 +38,5 @@ The plan's central promise is that a definition using none of these features pro
 - The suite runs on all three CI operating systems without a path or line-ending dependency in any fixture.
 
 - **Done when:** `cargo test -p fsm-core --test reactive_inertness` and `cargo test -p fsm-cli --test reactive_inertness_store` both pass, every `examples/` machine keeps its committed `machine_id` and `state_hash` values, a pre-plan journal fixture folds to an unchanged `state_root`, the genesis limits block is unmoved, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** both goldens were written by the pre-plan build itself — a worktree at commit `c5b5620` ran the same test files with `FSM_REGEN_FIXTURES=1` — rather than by the current build, so "byte-identical to before the plan" is checked against the plan's actual baseline. `reactive_inertness.rs` walks each committed machine's document for reactive syntax (an `on`-less transition, `raise`, `final`), checks its id against `identity.jsonl`, and drives it — create, every declared event with a zero payload, a far-future deadline poll — comparing machine id, state hashes, decision traces, tick counts, and the genesis limits block with `fixtures/inertness/drives.json`; it also pins `fsm.state/2` as the only current state format named anywhere in the workspace and carries the reactive negative control. The "temporarily force the guard unconditional" control from the task's test list was exercised the honest way: the suite failed for real on first run, because the driver raised `$done.region.<region>` for a plain parallel machine and recorded the discard as `internal_unhandled` — the contract breach the task exists to catch — and that became the preceding fix (`a generated event nobody handles is never raised`). `reactive_inertness_store.rs` lays the pre-plan journal into a data directory, opens it, checks the folded `last_hash` and state root the pre-plan build recorded, appends the same continuation through today's store, and requires the resulting journal to be the pre-plan bytes, chain-verified. Creation's tick cost is not in the golden: `create` sizes its own budget. The pre-plan generator for the store leg lives outside the tree (it only runs in a pre-plan checkout); the core suite is its own generator.
