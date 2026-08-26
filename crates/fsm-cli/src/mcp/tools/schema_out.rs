@@ -175,6 +175,7 @@ pub(super) fn schema_instance_get_out() -> Value {
     p.insert("parent".into(), ty_nullable("object"));
     p.insert("children".into(), ty("array"));
     p.insert("created_seq".into(), ty("number"));
+    p.insert("machine_history".into(), ty("array"));
     schema_obj(
         p,
         &[
@@ -211,6 +212,31 @@ pub(super) fn schema_instance_cancel_out() -> Value {
             "state_hash",
             "state_format",
         ],
+        true,
+    )
+}
+
+/// Either the preview or the post-migration instance view: a dry run and a
+/// migration answer the same question at two different moments.
+pub(super) fn schema_instance_migrate_out() -> Value {
+    let mut p = instance_core_props();
+    p.insert("dry_run".into(), ty("boolean"));
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("from_machine_id".into(), ty("string"));
+    p.insert("to_machine_id".into(), ty("string"));
+    p.insert("migrated".into(), ty("boolean"));
+    p.insert("would_migrate".into(), ty("boolean"));
+    p.insert("configuration_mapped".into(), ty("object"));
+    p.insert("configuration_after".into(), ty("object"));
+    p.insert("context_changes".into(), ty("array"));
+    p.insert("dropped_history".into(), ty("array"));
+    p.insert("rescheduled_deadlines".into(), ty("array"));
+    p.insert("dropped_slots".into(), ty("array"));
+    p.insert("retained_effects".into(), ty("array"));
+    p.insert("refusal".into(), ty("object"));
+    schema_obj(
+        p,
+        &["instance_id", "from_machine_id", "to_machine_id", "dry_run"],
         true,
     )
 }

@@ -58,7 +58,13 @@ fn read_only_refusal(store: &Store, name: &str, args: &Value) -> Option<ErrorObj
     if !store.journal.is_read_only() || !MUTATING_TOOLS.contains(&name) {
         return None;
     }
-    if name == "machine_create" && args.get("dry_run").and_then(Value::as_bool) == Some(true) {
+    // Two tools have a legal read-only path, and both are the same shape: a
+    // dry run answers a question without writing an answer down. A migration
+    // preview is exactly what a monitoring session should be able to ask
+    // before anybody decides to write.
+    if matches!(name, "machine_create" | "instance_migrate")
+        && args.get("dry_run").and_then(Value::as_bool) == Some(true)
+    {
         return None;
     }
     Some(

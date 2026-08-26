@@ -152,11 +152,11 @@ about a release candidate (the `ci.yml` gate re-run as `verify`, the downstream
 git-dependency build, decimal-vector regeneration, and the fuzz seed corpus) is
 enforced by jobs in `release.yml`, not by this list.
 
-- `manual:` Claude Code: connect, list all 17 tools, run the golden loop
+- `manual:` Claude Code: connect, list all 18 tools, run the golden loop
   end-to-end.
-- `manual:` Claude Desktop: connect, list all 17 tools, run the golden loop
+- `manual:` Claude Desktop: connect, list all 18 tools, run the golden loop
   end-to-end.
-- `manual:` MCP Inspector: connect, list all 17 tools, run the golden loop
+- `manual:` MCP Inspector: connect, list all 18 tools, run the golden loop
   end-to-end.
 - `manual:` an LLM authors and drives the case-review machine from a
   natural-language brief, unaided, in a bounded number of tool calls.

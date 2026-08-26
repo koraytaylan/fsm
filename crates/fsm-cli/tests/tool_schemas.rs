@@ -20,6 +20,7 @@ fn registry_order() {
             "deadline_poll",
             "effect_ack",
             "instance_cancel",
+            "instance_migrate",
             "invocation_start",
             "invocation_return",
             "signal_deliver",

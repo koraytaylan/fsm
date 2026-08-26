@@ -170,12 +170,16 @@ fn output_schemas_are_field_level() {
             &["parent_instance_id", "slot", "outcome"],
         ),
         (
+            "instance_migrate",
+            &["instance_id", "from_machine_id", "to_machine_id", "dry_run"],
+        ),
+        (
             "signal_deliver",
             &["sender_instance_id", "target_instance_id", "outcome"],
         ),
     ];
     let reg = fsm_cli::mcp::tools::registry();
-    assert_eq!(reg.len(), 17);
+    assert_eq!(reg.len(), 18);
     for (name, fields) in expect {
         let t = reg.iter().find(|t| t.name == *name).expect(name);
         let out = (t.output_schema)();

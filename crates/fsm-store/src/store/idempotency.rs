@@ -269,9 +269,14 @@ impl Store {
         if rec.kind == RecordKind::EventIgnored {
             if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                 if let Ok(folded) = fold_prefix(&self.records, rec.seq) {
-                    if let Some(mut v) =
-                        reconstruct_ignored(&folded, rec, iid, request_id, self.created_seq(iid))
-                    {
+                    if let Some(mut v) = reconstruct_ignored(
+                        &folded,
+                        rec,
+                        iid,
+                        request_id,
+                        self.created_seq(iid),
+                        self.machine_history(iid),
+                    ) {
                         if let Value::Obj(o) = &mut v {
                             o.insert("duplicate".into(), Value::Bool(true));
                         }
@@ -290,6 +295,7 @@ impl Store {
                         Some(true),
                         rec.seq,
                         self.created_seq(iid),
+                        self.machine_history(iid),
                     ) {
                         if let Value::Obj(output) = &mut value {
                             output.insert("deadline_applied".into(), Value::Bool(false));
@@ -316,9 +322,14 @@ impl Store {
         if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
             if rec.kind == RecordKind::EventApplied {
                 if let Ok(pre) = fold_prefix(&self.records, rec.seq.saturating_sub(1)) {
-                    if let Some(mut v) =
-                        reconstruct_applied(&pre, rec, iid, request_id, self.created_seq(iid))
-                    {
+                    if let Some(mut v) = reconstruct_applied(
+                        &pre,
+                        rec,
+                        iid,
+                        request_id,
+                        self.created_seq(iid),
+                        self.machine_history(iid),
+                    ) {
                         if let Value::Obj(o) = &mut v {
                             o.insert("duplicate".into(), Value::Bool(true));
                         }
@@ -334,6 +345,7 @@ impl Store {
                         iid,
                         request_id,
                         self.created_seq(iid),
+                        self.machine_history(iid),
                     ) {
                         if let Value::Obj(output) = &mut value {
                             output.insert("duplicate".into(), Value::Bool(true));
@@ -350,6 +362,7 @@ impl Store {
                     Some(true),
                     rec.seq,
                     self.created_seq(iid),
+                    self.machine_history(iid),
                 ) {
                     if let Value::Obj(o) = &mut v {
                         o.insert("duplicate".into(), Value::Bool(true));

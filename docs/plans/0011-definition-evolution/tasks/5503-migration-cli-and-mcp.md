@@ -15,7 +15,14 @@ touches:
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/src/mcp/descriptions.rs
   - crates/fsm-cli/tests/migration_tools.rs
-status: planned
+  - crates/fsm-cli/src/mcp/tools/dispatch.rs
+  - crates/fsm-cli/src/mcp/descriptions.rs
+  - crates/fsm-store/src/store/view.rs
+  - crates/fsm-store/src/store/reconstruct.rs
+  - crates/fsm-cli/tests/migration_tools.rs
+  - docs/EMBEDDING.md
+  - crates/fsm-cli/src/cli/instance/tests.rs
+status: done
 merged_as: ""
 ---
 # Migration CLI And MCP
@@ -46,3 +53,7 @@ The dry run is the important half of this surface: an operator or a model should
 - `tools/list` stays under the response budget `tools_budget.rs` enforces, and the tool-count assertions in the MCP golden suites are updated in this commit.
 
 - **Done when:** `cargo test -p fsm-cli --test migration_tools --test tool_schemas --test read_only` passes, the dry run works on a read-only server while the writing form is refused, `machine_history` is exposed, parity holds, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the CLI subcommand, the `instance_migrate` tool with both input and output schemas, the read-only exception generalized to the two tools that have one, the description carrying the rescheduling consequence, the grouped refusal in the structured output, `machine_history` on the instance view and on every reconstructed one, and a suite covering the preview, the write, the read-only split, the key rules, the refusal-as-data, the history, and CLI/MCP parity in both forms.
+
+**Corrections.** (1) The preview's before/after pairs are `context_changes`, not `context`: the instance view already uses `context` for the map of current values, and one field name cannot mean two shapes on one tool's output. (2) `request_id` cannot be in the schema's `required` list, because a dry run must not carry one; the writing form checks for it in the handler instead, with the argument error a required field would have produced. (3) Adding the subcommand took `cli/instance.rs` to 1012 lines, so its tests moved to `cli/instance/tests.rs` — the split the oversized-file gate asks for, and the one its own message names first.

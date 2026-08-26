@@ -70,6 +70,9 @@ leaf:              intake
 machine:
   machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
+machine_history:
+  -     from_seq:   2
+    machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 ok:                true
 parent:            null
 request_id:        new-1
@@ -115,6 +118,9 @@ leaf:              docs_review
 machine:
   machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
+machine_history:
+  -     from_seq:   2
+    machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 monitor_flags:
 ok:                true
 parent:            null
@@ -236,6 +242,9 @@ leaf:              risk_review
 machine:
   machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
   name:       case_review
+machine_history:
+  -     from_seq:   2
+    machine_id: case_review@sha256:7cce6eb1f19d8e47d73d7d1e57a73538160be84fed961c46636be0ecd4808d9c
 monitor_flags:
 ok:                true
 parent:            null

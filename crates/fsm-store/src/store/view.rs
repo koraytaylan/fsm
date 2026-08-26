@@ -89,6 +89,10 @@ impl Store {
             "created_seq".into(),
             Value::Num(self.created_seq(instance_id).to_string()),
         );
+        m.insert(
+            "machine_history".into(),
+            Value::Arr(self.machine_history(instance_id)),
+        );
         m.insert("seq".into(), Value::Num(self.journal.last_seq.to_string()));
         m.insert(
             "state_hash".into(),
@@ -102,6 +106,38 @@ impl Store {
             m.insert("duplicate".into(), Value::Bool(d));
         }
         Ok(Value::Obj(m))
+    }
+
+    /// The definitions this instance has been on, oldest first, each with the
+    /// seq from which it applied.
+    ///
+    /// A reader sees that an instance has changed definitions without paging
+    /// its journal — and a migrated instance's pre-migration records are
+    /// legible only against the definition named beside them.
+    pub fn machine_history(&self, instance_id: &str) -> Vec<Value> {
+        let mut out = Vec::new();
+        for record in &self.records {
+            let field = |name: &str| record.body.get(name).and_then(Value::as_str);
+            let entry = match record.kind {
+                RecordKind::InstanceCreated if field("instance_id") == Some(instance_id) => {
+                    field("machine_id").map(|id| (id.to_string(), record.seq))
+                }
+                RecordKind::InstanceInvoked if field("child_instance_id") == Some(instance_id) => {
+                    field("child_machine_id").map(|id| (id.to_string(), record.seq))
+                }
+                RecordKind::InstanceMigrated if field("instance_id") == Some(instance_id) => {
+                    field("to_machine_id").map(|id| (id.to_string(), record.seq))
+                }
+                _ => None,
+            };
+            if let Some((machine_id, from_seq)) = entry {
+                out.push(Value::Obj(BTreeMap::from([
+                    ("machine_id".into(), Value::Str(machine_id)),
+                    ("from_seq".into(), Value::Num(from_seq.to_string())),
+                ])));
+            }
+        }
+        out
     }
 
     /// The record that brought an instance into existence: an

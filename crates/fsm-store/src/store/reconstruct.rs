@@ -120,6 +120,7 @@ pub(super) fn reconstruct_applied(
     iid: &str,
     request_id: &str,
     created_seq: u64,
+    machine_history: Vec<Value>,
 ) -> Option<Value> {
     let ev = rec.body.get("event").and_then(Value::as_str)?;
     let payload = rec
@@ -158,6 +159,7 @@ pub(super) fn reconstruct_applied(
                 Some(true),
                 rec.seq,
                 created_seq,
+                machine_history,
             )
             .ok()?;
             if let Value::Obj(o) = &mut v {
@@ -206,6 +208,7 @@ pub(super) fn reconstruct_deadline_applied(
     instance_id: &str,
     request_id: &str,
     created_seq: u64,
+    machine_history: Vec<Value>,
 ) -> Option<Value> {
     let machine_id = pre.instance_machines.get(instance_id)?;
     let machine = pre.machines.get(machine_id)?;
@@ -244,6 +247,7 @@ pub(super) fn reconstruct_deadline_applied(
         Some(true),
         record.seq,
         created_seq,
+        machine_history,
     )
     .ok()?;
     if let Value::Obj(output) = &mut response {
@@ -308,6 +312,7 @@ pub(super) fn reconstruct_ignored(
     iid: &str,
     request_id: &str,
     created_seq: u64,
+    machine_history: Vec<Value>,
 ) -> Option<Value> {
     let inst = folded.instances.get(iid)?;
     let mid = folded.instance_machines.get(iid)?;
@@ -319,6 +324,7 @@ pub(super) fn reconstruct_ignored(
         Some(true),
         rec.seq,
         created_seq,
+        machine_history,
     )
     .ok()?;
     if let Value::Obj(o) = &mut v {
@@ -468,9 +474,14 @@ pub(super) fn history_entry(
             if include_trace && rec.kind == RecordKind::EventApplied {
                 if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                     if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                        if let Some(v) =
-                            reconstruct_applied(&pre, rec, iid, rid, store.created_seq(iid))
-                        {
+                        if let Some(v) = reconstruct_applied(
+                            &pre,
+                            rec,
+                            iid,
+                            rid,
+                            store.created_seq(iid),
+                            store.machine_history(iid),
+                        ) {
                             if let Some(tr) = v.get("trace") {
                                 e.insert("trace".into(), tr.clone());
                             }
@@ -486,6 +497,7 @@ pub(super) fn history_entry(
                             iid,
                             rid,
                             store.created_seq(iid),
+                            store.machine_history(iid),
                         ) {
                             if let Some(trace) = value.get("trace") {
                                 e.insert("trace".into(), trace.clone());
@@ -620,6 +632,9 @@ pub(super) fn view_at(
     // cannot derive it — a creation is a record, not a state — so the caller,
     // which holds the history index, supplies it.
     created_seq: u64,
+    // The definitions this instance has been on, for the same reason: they
+    // are read from records, and a reconstruction sees only a folded state.
+    machine_history: Vec<Value>,
 ) -> Result<Value, ErrorObj> {
     let inst = state
         .instances
@@ -662,6 +677,7 @@ pub(super) fn view_at(
         Value::Arr(children_at(state, instance_id, inst)),
     );
     mobj.insert("created_seq".into(), Value::Num(created_seq.to_string()));
+    mobj.insert("machine_history".into(), Value::Arr(machine_history));
     mobj.insert("seq".into(), Value::Num(seq.to_string()));
     mobj.insert(
         "state_hash".into(),

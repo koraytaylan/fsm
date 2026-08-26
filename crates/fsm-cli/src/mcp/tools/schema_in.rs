@@ -66,6 +66,21 @@ pub(super) fn schema_deadline_poll_in() -> Value {
 /// An invocation slot: the parent and the slot name, which are the whole of
 /// the request — the child id, the machine, and the overrides all derive
 /// from them and the parent's state.
+/// A migration: the instance, the target, and whether to only ask.
+///
+/// `request_id` is required for the writing form and must be **absent** for
+/// a dry run: a preview claims no idempotency key because it changes
+/// nothing, and requiring one would teach a caller to burn keys on
+/// questions.
+pub(super) fn schema_instance_migrate_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("to_machine".into(), ty("string"));
+    p.insert("dry_run".into(), ty("boolean"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(p, &["instance_id", "to_machine"], false)
+}
+
 pub(super) fn schema_invocation_slot_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

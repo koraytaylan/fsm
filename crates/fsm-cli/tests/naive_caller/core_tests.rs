@@ -21,6 +21,7 @@ fn current_regions_deadlines_public_contract() {
             "deadline_poll",
             "effect_ack",
             "instance_cancel",
+            "instance_migrate",
             "invocation_start",
             "invocation_return",
             "signal_deliver",

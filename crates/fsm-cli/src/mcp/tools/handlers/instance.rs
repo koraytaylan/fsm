@@ -94,6 +94,173 @@ pub(in crate::mcp::tools) fn run_effect_ack(
     store.ack_effect_outcome_on(clock, iid, eid, rid, outcome, result)
 }
 
+pub(in crate::mcp::tools) fn run_instance_migrate(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+) -> Result<Value, ErrorObj> {
+    let instance_id = str_arg(args, "instance_id").unwrap_or("");
+    let to_machine = str_arg(args, "to_machine").unwrap_or("");
+    if args.get("dry_run").and_then(Value::as_bool) == Some(true) {
+        return migration_preview(store, instance_id, to_machine);
+    }
+    let request_id = str_arg(args, "request_id").unwrap_or("");
+    if request_id.is_empty() {
+        // The schema cannot require it — a dry run must not carry one — so
+        // the writing form checks here, with the same message shape a
+        // required argument would have given.
+        return Err(ErrorObj::new("args", "request_id is required to migrate")
+            .hint("pass request_id, or dry_run: true to ask without writing"));
+    }
+    let response = store.migrate_instance_on(clock, instance_id, to_machine, request_id)?;
+    let mut view = store.instance_view(instance_id, Some(request_id), Some(false))?;
+    if let (Value::Obj(fields), Value::Obj(migrated)) = (&mut view, &response) {
+        for key in ["from_machine_id", "to_machine_id", "migrated", "seq"] {
+            if let Some(value) = migrated.get(key) {
+                fields.insert(key.into(), value.clone());
+            }
+        }
+        fields.insert("dry_run".into(), Value::Bool(false));
+    }
+    Ok(view)
+}
+
+/// What the migration would do, answered without writing anything.
+fn migration_preview(
+    store: &Store,
+    instance_id: &str,
+    to_machine: &str,
+) -> Result<Value, ErrorObj> {
+    let target = store.resolve_machine(to_machine)?.clone();
+    let from_machine_id = store
+        .state
+        .instance_machines
+        .get(instance_id)
+        .cloned()
+        .ok_or_else(|| ErrorObj::new("req/instance_not_found", instance_id))?;
+    let from = store
+        .state
+        .machines
+        .get(&from_machine_id)
+        .cloned()
+        .ok_or_else(|| ErrorObj::new("req/machine_not_found", from_machine_id.clone()))?;
+    let state = store.state.instances[instance_id].clone();
+    let mut budget = fsm_core::expr::eval::Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
+    // A preview reads the clock only to answer "what would the timers become
+    // if this happened now", which is the question an operator is asking.
+    let now_ms = clock_now();
+    let outcome = fsm_core::migrate::preview::preview(
+        &from.compiled,
+        &target.compiled,
+        &target.tree,
+        &state,
+        now_ms,
+        &mut budget,
+    );
+    let mut out = BTreeMap::new();
+    out.insert("ok".into(), Value::Str("true".into()));
+    out.insert("dry_run".into(), Value::Bool(true));
+    out.insert("instance_id".into(), Value::Str(instance_id.into()));
+    out.insert("from_machine_id".into(), Value::Str(from_machine_id));
+    out.insert(
+        "to_machine_id".into(),
+        Value::Str(target.compiled.machine_id.clone()),
+    );
+    out.insert("would_migrate".into(), Value::Bool(outcome.clean()));
+    if let Some(configuration) = &outcome.mapped_configuration {
+        out.insert(
+            "configuration_mapped".into(),
+            fsm_core::hashes::configuration_value(configuration),
+        );
+    }
+    if let Some(configuration) = &outcome.settled_configuration {
+        out.insert(
+            "configuration_after".into(),
+            fsm_core::hashes::configuration_value(configuration),
+        );
+    }
+    // Named apart from the instance view's `context`, which is a map of
+    // current values: one field name cannot mean two shapes.
+    out.insert(
+        "context_changes".into(),
+        Value::Arr(
+            outcome
+                .context
+                .iter()
+                .map(|(name, before, after)| {
+                    let mut entry =
+                        BTreeMap::from([("name".to_string(), Value::Str(name.clone()))]);
+                    if let Some(before) = before {
+                        entry.insert("before".into(), Value::Str(before.clone()));
+                    }
+                    if let Some(after) = after {
+                        entry.insert("after".into(), Value::Str(after.clone()));
+                    }
+                    Value::Obj(entry)
+                })
+                .collect(),
+        ),
+    );
+    out.insert(
+        "dropped_history".into(),
+        Value::Arr(
+            outcome
+                .report
+                .dropped_history
+                .iter()
+                .cloned()
+                .map(Value::Str)
+                .collect(),
+        ),
+    );
+    out.insert(
+        "rescheduled_deadlines".into(),
+        fsm_core::migrate::apply::rescheduled_value(&outcome.report.rescheduled_deadlines),
+    );
+    out.insert(
+        "dropped_slots".into(),
+        Value::Arr(
+            outcome
+                .report
+                .dropped_slots
+                .iter()
+                .cloned()
+                .map(Value::Str)
+                .collect(),
+        ),
+    );
+    out.insert(
+        "retained_effects".into(),
+        Value::Arr(
+            outcome
+                .report
+                .retained_effects
+                .iter()
+                .cloned()
+                .map(Value::Str)
+                .collect(),
+        ),
+    );
+    // The refusal is data, not a transport failure: a model acts on the code
+    // without parsing prose.
+    if let Some(rejection) = &outcome.refusal {
+        out.insert(
+            "refusal".into(),
+            Value::Obj(BTreeMap::from([
+                ("code".to_string(), Value::Str(rejection.code.into())),
+                ("message".into(), Value::Str(rejection.message.clone())),
+                ("hint".into(), Value::Str(rejection.hint.clone())),
+            ])),
+        );
+    }
+    Ok(Value::Obj(out))
+}
+
+/// The wall clock, for a preview's "if this happened now".
+fn clock_now() -> i64 {
+    crate::clock::SystemClock.now_ms()
+}
+
 pub(in crate::mcp::tools) fn run_invocation_start(
     store: &mut Store,
     clock: &mut dyn Clock,
