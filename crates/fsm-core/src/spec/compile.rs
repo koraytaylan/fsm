@@ -27,7 +27,7 @@ pub(super) fn compile_with_compatibility(
         .collect();
     let state_names = spec.state_names();
     let enums = spec.enums.clone();
-    let event_map: BTreeMap<String, BTreeMap<String, Ty>> = spec
+    let mut event_map: BTreeMap<String, BTreeMap<String, Ty>> = spec
         .events
         .iter()
         .map(|e| {
@@ -40,6 +40,14 @@ pub(super) fn compile_with_compatibility(
             )
         })
         .collect();
+    // A generated `$done.*` event is in scope for its handler's guard and
+    // block exactly like a declared fieldless event: `evt` binds to an empty
+    // object, so a field reference is `expr/unknown_field`, not "no event".
+    // A join that needs data reads `ctx`, which the finishing sub-workflow
+    // already wrote.
+    for name in super::generated_event_names(&spec) {
+        event_map.entry(name).or_default();
+    }
     let effect_map: BTreeMap<String, BTreeMap<String, Ty>> = spec
         .effects
         .iter()

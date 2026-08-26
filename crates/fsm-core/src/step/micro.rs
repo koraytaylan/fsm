@@ -43,6 +43,33 @@ use super::transition::{
 use super::validate::reject;
 use super::{Applied, EffectOut, ExprSlotOwner, Rejection, scan_candidates};
 
+/// Prefix of every engine-generated event name.
+pub const DONE_STATE_PREFIX: &str = "$done.state.";
+
+/// The `$done.state.<compound>` events a microstep's entry set generates, in
+/// entry order.
+///
+/// Enqueued after the whole entry pipeline — after every entry block ran and
+/// after any raises those blocks produced — because `$done.state.X` asserts
+/// that X's inner workflow finished *including its final state's actions*,
+/// so anything the final state did must already be visible to the handler.
+/// The payload is empty; a join that needs data reads `ctx`, which the
+/// finishing sub-workflow already wrote. There is no `$done.machine`: a
+/// completed instance has no region left to handle it.
+fn done_state_events(tree: &Tree, entered: &[u16]) -> Vec<InternalEvent> {
+    entered
+        .iter()
+        .filter_map(|&state| tree.final_owner(state))
+        .map(|compound| InternalEvent {
+            name: format!("{DONE_STATE_PREFIX}{}", tree.names[compound as usize]),
+            payload: BTreeMap::new(),
+            origin: InternalOrigin::DoneState {
+                compound: tree.names[compound as usize].clone(),
+            },
+        })
+        .collect()
+}
+
 /// An event raised inside a macrostep and delivered to this instance only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InternalEvent {
@@ -215,9 +242,11 @@ struct Macrostep {
 }
 
 impl Macrostep {
-    fn after_trigger(trigger: &mut Transitioned) -> Self {
+    fn after_trigger(trigger: &mut Transitioned, tree: &Tree) -> Self {
+        let mut queue: VecDeque<InternalEvent> = std::mem::take(&mut trigger.raises).into();
+        queue.extend(done_state_events(tree, &trigger.entered));
         Self {
-            queue: std::mem::take(&mut trigger.raises).into(),
+            queue,
             microsteps: Vec::new(),
             internal_unhandled: Vec::new(),
             effects: std::mem::take(&mut trigger.effects),
@@ -338,7 +367,7 @@ pub(super) fn run_to_quiescence(
     selector: &mut dyn ReactionSelector,
 ) -> Result<Applied, Rejection> {
     let summary = TriggerSummary::take_from(&mut trigger, tree);
-    let mut macrostep = Macrostep::after_trigger(&mut trigger);
+    let mut macrostep = Macrostep::after_trigger(&mut trigger, tree);
     let mut working = InstanceState {
         status: state.status,
         configuration: trigger.configuration_after.clone(),
@@ -433,8 +462,12 @@ pub(super) fn run_to_quiescence(
         macrostep.effects.append(&mut next.effects);
         // Breadth-first: an event raised while handling another lands behind
         // every event already waiting, which is the only order under which
-        // "raised together, delivered together" is true.
+        // "raised together, delivered together" is true. Generated done
+        // events follow the microstep's own raises.
         macrostep.queue.extend(next.raises.drain(..));
+        macrostep
+            .queue
+            .extend(done_state_events(tree, &next.entered));
         macrostep.microsteps.push(MicrostepTrace {
             index,
             trigger: kind,

@@ -11,8 +11,10 @@ touches:
   - crates/fsm-core/src/step/micro.rs
   - crates/fsm-core/src/tree.rs
   - crates/fsm-core/src/spec/validate/reactive.rs
+  - crates/fsm-core/src/spec/compile.rs
   - crates/fsm-core/tests/done_state_events.rs
-status: planned
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Done State Events
@@ -41,3 +43,5 @@ merged_as: ""
 - A machine with `final` states but no `$done.` transitions runs to quiescence with one discarded internal event and no reaction microsteps in the record.
 
 - **Done when:** `cargo test -p fsm-core --test done_state_events` passes every case above including the entry-action-visibility ordering and the non-completion rule, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `Tree.final_owner` — each state's owning compound when it is a `final` leaf, filled in the same build pass as the name and chain tables — with `final_owner()` and `final_children()` accessors. `micro.rs::done_state_events` appends `$done.state.<parent>` for every entered final leaf, with an empty payload and `InternalOrigin::DoneState`, *after* the microstep's own raises for the trigger and for every reaction alike, so the entry pipeline is complete and its writes are visible before a handler's guard runs. `validate/reactive.rs::generated_event_names` is the one list of names a machine generates (`$done.state.<compound>` per compound owning a final child, then `$done.region.<region>` per region, for 4503); `on: "$done…"` resolves only against it, and any other `$`-shaped name is `def/unknown_event` whose hint prints that list. Step 6 needed `compile.rs` as well: generated names enter the compile-time event table with no fields, so a done handler's guard and block see an empty `evt` and a field reference is `expr/unknown_field` exactly as for a declared fieldless event, rather than the "this scope has no event" refusal a scope without any event produces. Step 3's several-finals-in-one-microstep case is unreachable in practice — a microstep enters one leaf per region and only leaves are final — but the code follows entry order regardless. A creation that lands in a final state through an eventless reaction raises the done event before the first sealed state (`creation_that_lands_in_a_final_state_reacts_before_the_first_sealed_state`).

@@ -30,6 +30,9 @@ pub struct Tree {
     ///
     /// A sequential tree has one entry whose region is `None`.
     pub root_initials: Vec<(Option<String>, u16)>,
+    /// For a `final` leaf, the compound it finishes; `None` elsewhere.
+    /// Computed once here so the macrostep loop never walks the spec.
+    pub final_owner: Vec<Option<u16>>,
 }
 
 /// Why a public [`InstanceState`] does not describe a coherent state of its
@@ -85,6 +88,7 @@ impl Tree {
         let mut kind = Vec::new();
         let mut region = Vec::new();
         let mut children: Vec<Vec<u16>> = Vec::new();
+        let mut final_owner = Vec::new();
         let mut index = BTreeMap::new();
         let mut stack: Vec<(&StateNode, Option<u16>, Option<String>)> = Vec::new();
         for (region_name, states, _) in groups.iter().rev() {
@@ -111,6 +115,11 @@ impl Tree {
             };
             kind.push(k);
             children.push(Vec::new());
+            final_owner.push(if node.final_state && node.history.is_none() {
+                par
+            } else {
+                None
+            });
             index.insert(node.name.clone(), idx);
             if let Some(p) = par {
                 children[p as usize].push(idx);
@@ -170,7 +179,21 @@ impl Tree {
             index,
             region,
             root_initials,
+            final_owner,
         }
+    }
+
+    /// The compound this `final` leaf finishes, if it is one.
+    pub fn final_owner(&self, state: u16) -> Option<u16> {
+        self.final_owner[state as usize]
+    }
+
+    /// Direct `final` children of `compound`, in document order.
+    pub fn final_children(&self, compound: u16) -> impl Iterator<Item = u16> + '_ {
+        self.children[compound as usize]
+            .iter()
+            .copied()
+            .filter(move |&child| self.final_owner[child as usize] == Some(compound))
     }
 
     pub fn id(&self, name: &str) -> Option<u16> {

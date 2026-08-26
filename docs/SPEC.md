@@ -49,7 +49,11 @@ without ending the machine or region; `terminal` does that. A `final` state
 MUST be a leaf under a compound, MUST NOT also be `terminal`, MUST NOT be its
 compound's `initial`, and MUST NOT be the `from` of any transition or
 deadline; it is otherwise an ordinary leaf with blocks, a target, and a
-history binding. Blocks use `do` (sets), `emit`, and `raise`: a `raise` is
+history binding. A transition's `on` may name `$done.state.<compound>` for a
+compound that owns a `final` child (`def/unknown_event` otherwise, with a
+hint listing the names this machine generates); such events are never
+declared, carry no fields — `evt` binds to an empty object — and are never
+sendable (`req/event_internal`). Blocks use `do` (sets), `emit`, and `raise`: a `raise` is
 `{event, with}`, where `event` names a declared event (never a generated
 `$done` name) and `with` maps every one of its declared fields — no more, no
 fewer — to an `expr/1` source typed exactly like a context assignment, scale

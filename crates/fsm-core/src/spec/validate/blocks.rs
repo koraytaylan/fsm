@@ -143,8 +143,10 @@ pub(super) fn check_transitions(
                 ));
             }
         }
-        if let Some(on) = &t.on {
-            if !event_names.contains(on.as_str()) {
+        // `$done.*` names are generated, never declared; validate/reactive.rs
+        // resolves them against what this machine can actually produce.
+        if let Some(on) = t.on.as_deref().filter(|on| !on.starts_with('$')) {
+            if !event_names.contains(on) {
                 errs.push(Finding::err(
                     "def/unknown_event",
                     format!("{p}/on"),

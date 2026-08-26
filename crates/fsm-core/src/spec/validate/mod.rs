@@ -16,6 +16,8 @@ mod blocks;
 mod reactive;
 mod structure;
 
+pub use reactive::generated_event_names;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DefinitionCompatibility {
     Current,

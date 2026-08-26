@@ -16,10 +16,11 @@ use crate::expr::ast::{Arg, Expr};
 use crate::expr::lexer::Span;
 use crate::expr::parser;
 
-use super::super::{Finding, MachineSpec, TransitionSpec};
+use super::super::{Finding, MachineSpec, Topology, TransitionSpec};
 
 pub(super) fn validate_reactive(spec: &MachineSpec, errs: &mut Vec<Finding>) {
     check_final_states(spec, errs);
+    check_generated_event_names(spec, errs);
     let terminal_states: BTreeSet<&str> = spec
         .walk_states()
         .into_iter()
@@ -42,6 +43,55 @@ pub(super) fn validate_reactive(spec: &MachineSpec, errs: &mut Vec<Finding>) {
                 "a terminal state ends its machine or region and nothing runs after it; remove the transition or move it to a state that is not terminal",
             ));
         }
+    }
+}
+
+/// Every generated event name this machine can produce, in document order:
+/// `$done.state.<compound>` for each compound owning a `final` child, then
+/// `$done.region.<region>` for each region.
+pub fn generated_event_names(spec: &MachineSpec) -> Vec<String> {
+    let mut names = Vec::new();
+    for (node, _) in spec.walk_states() {
+        if node.history.is_none()
+            && node
+                .states
+                .iter()
+                .any(|child| child.final_state && child.history.is_none())
+        {
+            names.push(format!("$done.state.{}", node.name));
+        }
+    }
+    if let Topology::Parallel { regions } = &spec.topology {
+        for region in regions {
+            names.push(format!("$done.region.{}", region.name));
+        }
+    }
+    names
+}
+
+/// `on: "$done…"` resolves only to a name this machine generates; anything
+/// else `$`-shaped is `def/unknown_event` whose hint lists the real names —
+/// that list is the feature's discoverability.
+fn check_generated_event_names(spec: &MachineSpec, errs: &mut Vec<Finding>) {
+    let generated = generated_event_names(spec);
+    for (index, transition) in spec.transitions.iter().enumerate() {
+        let Some(on) = transition.on.as_deref().filter(|on| on.starts_with('$')) else {
+            continue;
+        };
+        if generated.iter().any(|name| name == on) {
+            continue;
+        }
+        let hint = if generated.is_empty() {
+            "this machine generates no done events: mark a compound's leaf final, or declare regions".to_string()
+        } else {
+            format!("this machine generates only: {}", generated.join(", "))
+        };
+        errs.push(Finding::err(
+            "def/unknown_event",
+            format!("/transitions/{index}/on"),
+            format!("{on} is not an event this machine generates"),
+            hint,
+        ));
     }
 }
 

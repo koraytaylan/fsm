@@ -26,7 +26,7 @@ pub use compat::{
 };
 pub use compile::compile;
 pub use parse::parse_machine;
-pub use validate::validate;
+pub use validate::{generated_event_names, validate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
