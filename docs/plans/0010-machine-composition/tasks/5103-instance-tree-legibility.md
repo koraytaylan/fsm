@@ -13,7 +13,14 @@ touches:
   - crates/fsm-cli/src/mcp/tools/handlers/instance.rs
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/tests/instance_tree.rs
-status: planned
+  - crates/fsm-store/src/store/lifecycle.rs
+  - crates/fsm-store/src/store/reconstruct.rs
+  - crates/fsm-store/src/store/instance/invoke.rs
+  - crates/fsm-store/src/store/instance/cancel.rs
+  - crates/fsm-core/src/analyze/invoke.rs
+  - crates/fsm-cli/tests/instance_tree.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Instance Tree Legibility
@@ -44,3 +51,7 @@ A store where every listing is flat is a store nobody can navigate: once instanc
 - `instance_get`'s structured output validates against its declared output schema.
 
 - **Done when:** `cargo test -p fsm-cli --test instance_tree --test tool_schemas` passes every case above, a depth-3 tree is fully navigable from the tool surface, non-composing goldens are unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `parent`, `children`, and `created_seq` on the instance view and on every reconstructed one (a replayed response must be the response, so `view_at` grew the same three fields and takes the creation seq from the caller that holds the index); `parent` and `roots_only` filters applied before the cursor so they compose with pagination; the slot rendering in both diagram formats; `invoke_findings` with its two warnings, wired into `analyze_all` and into the analyze half of the every-code gate; and the `parents` index beside `history`, built from the complete record vector at open and extended by `invoke_child` so a live store agrees with what its own reopen would say.
+
+**Corrections.** (1) Step 2 says to put `created_seq` on the folded instance state. `InstanceState` is the *hashed* state, so a field there either moves the `fsm.state/3` payload — a format bump this plan already spent, and one this task must not spend again — or sits inside a hashed struct unhashed, which is a trap for the next reader. `StoreState` would need the snapshot to carry it, bumping that format instead. The history index already holds exactly this fact at its first entry, for roots and children alike, and reading it is the O(1) lookup the step asks for. (2) Step 5 says Mermaid should draw a slot as a nested subgraph. `stateDiagram-v2` has no subgraph, and a composite state means something else in this renderer; the annotation form it already uses for `<<final>>` and `<<deep-history>>` says the same thing in the vocabulary a reader knows. DOT does get the `shape=box3d` child node the step names. (3) The two analysis codes are warnings, so they belong in the every-code gate's analyze table rather than its refusal table — `machine_create` accepts these machines, which is the point of a warning.

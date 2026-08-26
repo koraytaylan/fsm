@@ -124,6 +124,8 @@ entered; the core NEVER reads a clock.
 | `def/invoke_evt` | an `invoke` `with` expression reads `evt`; an invocation starts on state entry and sees `ctx` only |
 | `def/limit_invokes` | more than 4 `invoke` slots on one state (`MAX_INVOKES_PER_STATE`) |
 | `def/limit_signals` | more than 4 `signal` entries in one block (`MAX_SIGNALS_PER_BLOCK`) |
+| `def/invoke_result_unhandled` | warning: nothing handles a slot's `$done.invoke.<slot>` |
+| `def/invoke_only_exit` | warning: a state whose only exit is an invoked child returning |
 | `def/invoke_unknown_machine` | an `invoke` names a machine this store does not hold (checked where the catalogue is, not in the pure core) |
 | `def/invoke_unknown_ctx` | a `with` key or `returns` value names a context variable the child does not declare |
 | `def/invoke_type` | a `with` expression's type does not match the child's declaration exactly, scale included |
@@ -778,6 +780,8 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/limit_sets` — more than 32 sets per block
 - `def/limit_states` — more than 256 states
 - `def/limit_signals` — more than 4 signals in one block
+- `def/invoke_only_exit` — a state that leaves only when an invoked child returns
+- `def/invoke_result_unhandled` — nothing handles a slot's generated result event
 - `def/limit_transitions` — more than 2048 transitions
 - `def/limit_variants` — more than 64 variants
 - `def/multiple_history` — more than one history per compound

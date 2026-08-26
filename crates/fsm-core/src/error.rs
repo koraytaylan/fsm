@@ -37,6 +37,8 @@ pub const ALL_CODES: &[&str] = &[
     "def/invoke_evt",
     "def/invoke_machine_ref",
     "def/invoke_on_terminal",
+    "def/invoke_only_exit",
+    "def/invoke_result_unhandled",
     "def/invoke_type",
     "def/invoke_unknown_ctx",
     "def/invoke_unknown_machine",

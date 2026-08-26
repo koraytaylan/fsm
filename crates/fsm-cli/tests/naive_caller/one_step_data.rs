@@ -308,6 +308,14 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
 
 pub(crate) const ANALYZE_ROWS: &[(&str, &str)] = &[
     (
+        "def/invoke_result_unhandled",
+        r#"{"format":"fsm.machine/1","name":"iru","states":[{"name":"idle"},{"name":"busy","invoke":[{"id":"review","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]},{"name":"out"}],"initial":"idle","context":[],"events":[{"name":"go","fields":[]},{"name":"done","fields":[]}],"transitions":[{"from":"idle","on":"go","to":"busy"},{"from":"busy","on":"done","to":"out"}]}"#,
+    ),
+    (
+        "def/invoke_only_exit",
+        r#"{"format":"fsm.machine/1","name":"ioe","states":[{"name":"idle"},{"name":"busy","invoke":[{"id":"review","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]},{"name":"out"}],"initial":"idle","context":[],"events":[{"name":"go","fields":[]},{"name":"done","fields":[]}],"transitions":[{"from":"idle","on":"go","to":"busy"},{"from":"busy","on":"$done.invoke.review","to":"out"}]}"#,
+    ),
+    (
         "def/shadowed",
         r#"{"format":"fsm.machine/1","name":"sh","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","if":"true","to":"b"},{"from":"a","on":"e","if":"false","to":"b"}]}"#,
     ),

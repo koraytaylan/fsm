@@ -17,6 +17,7 @@ mod completeness;
 mod creation;
 mod enabled_events;
 mod eventless;
+mod invoke;
 mod reachability;
 mod shadowing;
 
@@ -27,6 +28,7 @@ pub(crate) use enabled_events::enabled_events_historical;
 pub use enabled_events::{CandidateReport, EventReport, EventStatus, enabled_events};
 pub use eventless::{ReactiveSummary, reactive_summary};
 pub use eventless::{eventless_cycle_findings, eventless_noop_findings};
+pub use invoke::invoke_findings;
 pub use reachability::{enterable, reachability_findings};
 pub use shadowing::{ancestor_shadowed, shadowing_findings};
 
@@ -61,5 +63,6 @@ pub fn analyze_all(m: &CompiledMachine, t: &Tree) -> Vec<Finding> {
     out.extend(create_always_fails(m, t));
     out.extend(eventless_noop_findings(m));
     out.extend(eventless_cycle_findings(m, t));
+    out.extend(invoke_findings(m));
     out
 }

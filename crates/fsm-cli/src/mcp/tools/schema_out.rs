@@ -5,7 +5,7 @@ use fsm_core::json::Value;
 use super::schema_common::{
     completeness_obj, instance_core_props, instance_row, machine_row, reachability_obj, schema_obj,
     simulate_final_obj, simulate_initial_obj, simulate_step_obj, summary_obj, transition_obj, ty,
-    ty_array_of,
+    ty_array_of, ty_nullable,
 };
 
 pub(super) fn schema_machine_create_out() -> Value {
@@ -170,6 +170,11 @@ pub(super) fn schema_deadline_poll_out() -> Value {
 pub(super) fn schema_instance_get_out() -> Value {
     let mut p = instance_core_props();
     p.insert("history".into(), ty("object"));
+    // Additive: the tree an existing caller never asked for and whose parse
+    // is unaffected by its arrival.
+    p.insert("parent".into(), ty_nullable("object"));
+    p.insert("children".into(), ty("array"));
+    p.insert("created_seq".into(), ty("number"));
     schema_obj(
         p,
         &[

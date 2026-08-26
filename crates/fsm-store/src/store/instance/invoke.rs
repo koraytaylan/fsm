@@ -159,6 +159,11 @@ impl Store {
         for id in [parent_id, child_id.as_str()] {
             self.history.entry(id.into()).or_default().push(record.seq);
         }
+        // The derived indexes are extended here for the same reason the
+        // history index is: an open rebuilds them from the journal, and a
+        // live store must agree with what its own reopen would say.
+        self.parents
+            .insert(child_id.clone(), (parent_id.to_string(), slot.to_string()));
         self.note_record(&record);
         let response = invoked_response(
             parent_id, slot, &child_id, &child_mid, request_id, record.seq, false,

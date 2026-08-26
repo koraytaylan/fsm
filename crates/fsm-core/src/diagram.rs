@@ -224,6 +224,13 @@ pub fn mermaid(m: &CompiledMachine, overlay: Option<&InstanceOverlay>) -> String
     s
 }
 
+/// The first eight hex of a child machine's digest: enough to tell two slots
+/// apart at a glance without opening either definition.
+fn invoke_digest(machine: &str) -> String {
+    let digest = crate::hashes::digest_of(machine).unwrap_or(machine);
+    digest.chars().take(8).collect()
+}
+
 fn write_mermaid_states(
     nodes: &[StateNode],
     s: &mut String,
@@ -277,6 +284,17 @@ fn write_mermaid_states(
             }
             write_mermaid_states(&n.states, s, ids, indent + 1);
             s.push_str(&format!("{pad}}}\n"));
+        }
+        // stateDiagram-v2 has no subgraph and a composite state means
+        // something else here, so a slot is annotated the way this renderer
+        // already annotates `<<final>>` and `<<deep-history>>`: a description
+        // line on the state that holds it.
+        for invoke in &n.invokes {
+            s.push_str(&format!(
+                "{pad}{id} : <<invoke {} → {}>>\n",
+                mermaid_escape(&invoke.id),
+                invoke_digest(&invoke.machine)
+            ));
         }
     }
 }
@@ -434,6 +452,17 @@ fn write_dot_states(
             ));
             write_dot_states(&n.states, s, overlay, ids, indent + 1);
             s.push_str(&format!("{pad}}}\n"));
+        }
+        // A slot is a child node hanging off its state: `box3d` says "this is
+        // another machine" without claiming to be a state of this one.
+        for invoke in &n.invokes {
+            let slot_id = dot_identifier(&format!("{raw_id}__invoke__{}", invoke.id));
+            s.push_str(&format!(
+                "{pad}{slot_id} [label=\"{} · {}\" shape=box3d];\n",
+                dot_escape(&invoke.id),
+                invoke_digest(&invoke.machine)
+            ));
+            s.push_str(&format!("{pad}{id} -> {slot_id} [style=dotted];\n"));
         }
     }
 }

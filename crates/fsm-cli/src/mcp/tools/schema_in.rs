@@ -119,6 +119,10 @@ pub(super) fn schema_instance_list_in() -> Value {
         enum_str(&["running", "completed", "cancelled", "all"]),
     );
     p.insert("tag".into(), ty("string"));
+    // The tree filters: one instance's children, or every root. Both compose
+    // with the cursor rather than replacing it.
+    p.insert("parent".into(), ty("string"));
+    p.insert("roots_only".into(), ty("boolean"));
     p.insert("limit".into(), ty_num(1, 200));
     p.insert("cursor".into(), ty("string"));
     schema_obj(p, &[], false)

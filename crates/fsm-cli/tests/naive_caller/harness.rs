@@ -590,6 +590,18 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 // The reactive rules address states by name, not by pointer.
                 truncate_array(&mut v, "/states/0/invoke", 1);
             }
+            // The hint says to handle the result; the correction adds the
+            // transition it names.
+            "def/invoke_result_unhandled" => {
+                push_transition(
+                    &mut v,
+                    r#"{"from":"busy","on":"$done.invoke.review","to":"out"}"#,
+                );
+            }
+            // The hint says to give the state another way out.
+            "def/invoke_only_exit" => {
+                push_transition(&mut v, r#"{"from":"busy","on":"done","to":"out"}"#);
+            }
             "def/limit_signals" => {
                 // The block rules address a state by name, not by index.
                 truncate_array(&mut v, "/states/0/entry/signal", 1);
@@ -721,5 +733,14 @@ impl AsObjMut for Value {
             Value::Obj(o) => Some(o),
             _ => None,
         }
+    }
+}
+
+/// Append one transition, authored as JSON text, to a machine under repair.
+fn push_transition(v: &mut Value, source: &str) {
+    let parsed = fsm_core::json::parse(source.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT)
+        .expect("a repair's transition is valid JSON");
+    if let Some(Value::Arr(transitions)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+        transitions.push(parsed);
     }
 }

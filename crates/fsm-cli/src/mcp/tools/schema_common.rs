@@ -22,6 +22,15 @@ pub(super) fn ty(t: &str) -> Value {
     Value::Obj(BTreeMap::from([("type".into(), Value::Str(t.into()))]))
 }
 
+/// A field that is either the named type or explicitly null — the shape a
+/// reader needs when "absent" and "there is none" are different answers.
+pub(super) fn ty_nullable(t: &str) -> Value {
+    Value::Obj(BTreeMap::from([(
+        "type".into(),
+        Value::Arr(vec![Value::Str(t.into()), Value::Str("null".into())]),
+    )]))
+}
+
 pub(super) fn ty_num(min: i64, max: i64) -> Value {
     Value::Obj(BTreeMap::from([
         ("type".into(), Value::Str("integer".into())),
@@ -95,6 +104,8 @@ pub(super) fn instance_row() -> Value {
     p.insert("status".into(), ty("string"));
     p.insert("machine_name".into(), ty("string"));
     p.insert("seq".into(), ty("number"));
+    p.insert("created_seq".into(), ty("number"));
+    p.insert("parent".into(), ty("object"));
     p.insert("tags".into(), ty("array"));
     schema_obj(
         p,

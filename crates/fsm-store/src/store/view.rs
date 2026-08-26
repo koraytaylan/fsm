@@ -82,6 +82,13 @@ impl Store {
             "effects_pending".into(),
             Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
         );
+        // The tree, from the derived indexes rather than a read-time scan.
+        m.insert("parent".into(), self.parent_value(instance_id));
+        m.insert("children".into(), Value::Arr(self.children_of(instance_id)));
+        m.insert(
+            "created_seq".into(),
+            Value::Num(self.created_seq(instance_id).to_string()),
+        );
         m.insert("seq".into(), Value::Num(self.journal.last_seq.to_string()));
         m.insert(
             "state_hash".into(),
@@ -95,6 +102,73 @@ impl Store {
             m.insert("duplicate".into(), Value::Bool(d));
         }
         Ok(Value::Obj(m))
+    }
+
+    /// The record that brought an instance into existence: an
+    /// `instance_created` for a root, an `instance_invoked` for a child.
+    ///
+    /// Read from the history index, whose first entry is that record by
+    /// construction — nothing can touch an instance before it exists — so
+    /// ordering by it includes children, which ordering by a scan for
+    /// `instance_created` silently would not.
+    pub fn created_seq(&self, instance_id: &str) -> u64 {
+        self.history
+            .get(instance_id)
+            .and_then(|seqs| seqs.first())
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The parent and slot that invoked this instance, or null for a root.
+    fn parent_value(&self, instance_id: &str) -> Value {
+        match self.parents.get(instance_id) {
+            None => Value::Null,
+            Some((parent, slot)) => Value::Obj(BTreeMap::from([
+                ("instance_id".into(), Value::Str(parent.clone())),
+                ("slot".into(), Value::Str(slot.clone())),
+            ])),
+        }
+    }
+
+    /// Every slot this instance holds, with the child it names.
+    ///
+    /// Derived from the instance's own `invocations`, so a slot appears from
+    /// the moment it is pending — before any child exists — and a reader can
+    /// see what the instance is about to wait for.
+    fn children_of(&self, instance_id: &str) -> Vec<Value> {
+        let Some(instance) = self.state.instances.get(instance_id) else {
+            return Vec::new();
+        };
+        instance
+            .invocations
+            .iter()
+            .map(|(slot, invocation)| {
+                let child_id = fsm_core::hashes::child_instance_id(instance_id, slot);
+                let status = self
+                    .state
+                    .instances
+                    .get(&child_id)
+                    .map(|child| child.status.as_str().to_string());
+                let mut entry = BTreeMap::from([
+                    ("slot".into(), Value::Str(slot.clone())),
+                    ("child_instance_id".into(), Value::Str(child_id)),
+                    (
+                        "child_machine_id".into(),
+                        Value::Str(invocation.child_machine_id.clone()),
+                    ),
+                    (
+                        "invocation_status".into(),
+                        Value::Str(invocation.status.as_str().into()),
+                    ),
+                ]);
+                // Absent while the slot is pending: there is no child yet, and
+                // an invented "running" would be a lie a reader would act on.
+                if let Some(status) = status {
+                    entry.insert("status".into(), Value::Str(status));
+                }
+                Value::Obj(entry)
+            })
+            .collect()
     }
 
     pub fn history_page(

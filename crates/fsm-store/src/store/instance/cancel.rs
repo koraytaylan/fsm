@@ -244,21 +244,12 @@ impl Store {
         orphans
     }
 
-    /// The parent and slot an instance was invoked from, read out of the
-    /// journal rather than inferred from its id.
+    /// The parent and slot an instance was invoked from.
+    ///
+    /// Read from the index the journal built, never inferred from the id: an
+    /// instance whose id merely looks derived is not a child.
     pub fn parent_of(&self, child_id: &str) -> Option<(String, String)> {
-        self.records.iter().rev().find_map(|record| {
-            if record.kind != RecordKind::InstanceInvoked {
-                return None;
-            }
-            let field = |name: &str| record.body.get(name).and_then(Value::as_str);
-            (field("child_instance_id") == Some(child_id)).then(|| {
-                (
-                    field("parent_instance_id").unwrap_or_default().to_string(),
-                    field("slot").unwrap_or_default().to_string(),
-                )
-            })
-        })
+        self.parents.get(child_id).cloned()
     }
 
     /// Cancel every orphan, one record each. Explicit: never at open.

@@ -56,6 +56,14 @@ pub struct Store {
     pub journal: Journal,
     pub state: StoreState,
     pub history: BTreeMap<String, Vec<u64>>,
+    /// Child instance id to the parent and slot that invoked it.
+    ///
+    /// A store-side index like `history`, rebuilt from the journal on open
+    /// and extended on write. It is not part of the hashed state and not in
+    /// the snapshot: a child id derives from its parent and slot, but the
+    /// derivation is a hash and does not invert, so the edge has to be
+    /// remembered somewhere — and remembering it here costs no format.
+    pub parents: BTreeMap<String, (String, String)>,
     pub records: Vec<Record>,
     pub data_dir: PathBuf,
     pub last_responses: BTreeMap<String, Value>,

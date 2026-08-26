@@ -199,6 +199,19 @@ pub(in crate::mcp::tools) fn run_instance_list(
         {
             continue;
         }
+        // The tree filters, applied before the cursor so they compose with
+        // pagination rather than replacing it: `parent` is one instance's
+        // children, `roots_only` is every instance nobody invoked.
+        if let Some(parent) = str_arg(args, "parent")
+            && store.parents.get(id).map(|(p, _)| p.as_str()) != Some(parent)
+        {
+            continue;
+        }
+        if args.get("roots_only").and_then(Value::as_bool) == Some(true)
+            && store.parents.contains_key(id)
+        {
+            continue;
+        }
         if let Some(tag) = str_arg(args, "tag") {
             let tagged = store
                 .tags
@@ -246,6 +259,19 @@ pub(in crate::mcp::tools) fn run_instance_list(
             }
         }
         row.insert("status".into(), Value::Str(inst.status.as_str().into()));
+        row.insert(
+            "created_seq".into(),
+            Value::Num(store.created_seq(id).to_string()),
+        );
+        if let Some((parent, slot)) = store.parents.get(id) {
+            row.insert(
+                "parent".into(),
+                Value::Obj(BTreeMap::from([
+                    ("instance_id".into(), Value::Str(parent.clone())),
+                    ("slot".into(), Value::Str(slot.clone())),
+                ])),
+            );
+        }
         let mid = store
             .state
             .instance_machines

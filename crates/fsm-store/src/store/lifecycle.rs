@@ -21,7 +21,46 @@ pub struct DefineOutcome {
     pub name: String,
 }
 
+/// The two derived indexes an open builds.
+struct Indexes {
+    history: BTreeMap<String, Vec<u64>>,
+    parents: BTreeMap<String, (String, String)>,
+}
+
 impl Store {
+    /// The two store-side indexes, built from one complete record vector.
+    ///
+    /// Both are derived, never journaled: `history` is every record touching
+    /// an instance, in seq order, so its first entry is the record that
+    /// brought the instance into existence — an `instance_created` for a
+    /// root, an `instance_invoked` for a child, which is the only uniform
+    /// answer to "when did this appear" once children exist. `parents` is the
+    /// invocation edge, which has to be remembered because a child id derives
+    /// from its parent through a hash and a hash does not invert.
+    fn index_records(records: &[fsm_core::record::Record]) -> Indexes {
+        let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+        let mut parents: BTreeMap<String, (String, String)> = BTreeMap::new();
+        for record in records {
+            for instance_id in fsm_core::record::instances_touched(record) {
+                history
+                    .entry(instance_id.into())
+                    .or_default()
+                    .push(record.seq);
+            }
+            if record.kind == fsm_core::record::RecordKind::InstanceInvoked {
+                let field = |name: &str| record.body.get(name).and_then(Value::as_str);
+                if let (Some(parent), Some(slot), Some(child)) = (
+                    field("parent_instance_id"),
+                    field("slot"),
+                    field("child_instance_id"),
+                ) {
+                    parents.insert(child.into(), (parent.into(), slot.into()));
+                }
+            }
+        }
+        Indexes { history, parents }
+    }
+
     pub fn open(data_dir: &Path) -> Result<Self, ErrorObj> {
         fs::create_dir_all(data_dir).map_err(|e| ErrorObj::new("io/write", e.to_string()))?;
         let snapshot_directory = data_dir.join("snapshots");
@@ -44,17 +83,13 @@ impl Store {
         crate::ensure_persistence_directory(&snapshot_directory)
             .map_err(|error| ErrorObj::new("io/write", error.to_string()))?;
         let records = journal_io::load_records(data_dir).unwrap_or(sink.records);
-        let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
-        for rec in &records {
-            for iid in fsm_core::record::instances_touched(rec) {
-                history.entry(iid.into()).or_default().push(rec.seq);
-            }
-        }
+        let Indexes { history, parents } = Self::index_records(&records);
         let tags = load_tags_from_records(&records);
         Ok(Store {
             journal,
             state,
             history,
+            parents,
             records,
             data_dir: data_dir.to_path_buf(),
             last_responses: BTreeMap::new(),
@@ -92,20 +127,13 @@ impl Store {
                     return Err(ErrorObj::new("io/read", message));
                 }
             };
-        let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
-        for record in &records {
-            for instance_id in fsm_core::record::instances_touched(record) {
-                history
-                    .entry(instance_id.into())
-                    .or_default()
-                    .push(record.seq);
-            }
-        }
+        let Indexes { history, parents } = Self::index_records(&records);
         let tags = load_tags_from_records(&records);
         Ok(Store {
             journal,
             state,
             history,
+            parents,
             records,
             data_dir: data_dir.to_path_buf(),
             last_responses: BTreeMap::new(),
@@ -128,6 +156,7 @@ impl Store {
             journal,
             state,
             history: BTreeMap::new(),
+            parents: BTreeMap::new(),
             records,
             data_dir: PathBuf::from("<memory>"),
             last_responses: BTreeMap::new(),

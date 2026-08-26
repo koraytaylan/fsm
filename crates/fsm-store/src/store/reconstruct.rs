@@ -119,6 +119,7 @@ pub(super) fn reconstruct_applied(
     rec: &Record,
     iid: &str,
     request_id: &str,
+    created_seq: u64,
 ) -> Option<Value> {
     let ev = rec.body.get("event").and_then(Value::as_str)?;
     let payload = rec
@@ -150,7 +151,15 @@ pub(super) fn reconstruct_applied(
             post.instances.insert(iid.into(), post_inst);
             post.last_seq = rec.seq;
             post.last_hash = rec.hash.clone();
-            let mut v = view_at(&post, iid, Some(request_id), Some(true), rec.seq).ok()?;
+            let mut v = view_at(
+                &post,
+                iid,
+                Some(request_id),
+                Some(true),
+                rec.seq,
+                created_seq,
+            )
+            .ok()?;
             if let Value::Obj(o) = &mut v {
                 o.insert("applied".into(), Value::Bool(true));
                 o.insert("ok".into(), Value::Str("true".into()));
@@ -196,6 +205,7 @@ pub(super) fn reconstruct_deadline_applied(
     record: &Record,
     instance_id: &str,
     request_id: &str,
+    created_seq: u64,
 ) -> Option<Value> {
     let machine_id = pre.instance_machines.get(instance_id)?;
     let machine = pre.machines.get(machine_id)?;
@@ -227,8 +237,15 @@ pub(super) fn reconstruct_deadline_applied(
     post.instances.insert(instance_id.into(), post_instance);
     post.last_seq = record.seq;
     post.last_hash = record.hash.clone();
-    let mut response =
-        view_at(&post, instance_id, Some(request_id), Some(true), record.seq).ok()?;
+    let mut response = view_at(
+        &post,
+        instance_id,
+        Some(request_id),
+        Some(true),
+        record.seq,
+        created_seq,
+    )
+    .ok()?;
     if let Value::Obj(output) = &mut response {
         output.insert("deadline_applied".into(), Value::Bool(true));
         output.insert("deadline_not_due".into(), Value::Bool(false));
@@ -290,11 +307,20 @@ pub(super) fn reconstruct_ignored(
     rec: &Record,
     iid: &str,
     request_id: &str,
+    created_seq: u64,
 ) -> Option<Value> {
     let inst = folded.instances.get(iid)?;
     let mid = folded.instance_machines.get(iid)?;
     let m = folded.machines.get(mid)?;
-    let mut v = view_at(folded, iid, Some(request_id), Some(true), rec.seq).ok()?;
+    let mut v = view_at(
+        folded,
+        iid,
+        Some(request_id),
+        Some(true),
+        rec.seq,
+        created_seq,
+    )
+    .ok()?;
     if let Value::Obj(o) = &mut v {
         o.insert("ok".into(), Value::Str("true".into()));
         o.insert("ignored".into(), Value::Bool(true));
@@ -442,7 +468,9 @@ pub(super) fn history_entry(
             if include_trace && rec.kind == RecordKind::EventApplied {
                 if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                     if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                        if let Some(v) = reconstruct_applied(&pre, rec, iid, rid) {
+                        if let Some(v) =
+                            reconstruct_applied(&pre, rec, iid, rid, store.created_seq(iid))
+                        {
                             if let Some(tr) = v.get("trace") {
                                 e.insert("trace".into(), tr.clone());
                             }
@@ -452,7 +480,13 @@ pub(super) fn history_entry(
             } else if include_trace && rec.kind == RecordKind::DeadlineApplied {
                 if let Some(iid) = rec.body.get("instance_id").and_then(Value::as_str) {
                     if let Some(rid) = rec.body.get("request_id").and_then(Value::as_str) {
-                        if let Some(value) = reconstruct_deadline_applied(&pre, rec, iid, rid) {
+                        if let Some(value) = reconstruct_deadline_applied(
+                            &pre,
+                            rec,
+                            iid,
+                            rid,
+                            store.created_seq(iid),
+                        ) {
                             if let Some(trace) = value.get("trace") {
                                 e.insert("trace".into(), trace.clone());
                             }
@@ -521,12 +555,71 @@ pub(super) fn fold_prefix(records: &[Record], through: u64) -> Result<StoreState
         .map_err(|e| ErrorObj::new("store/state_hash_mismatch", format!("{e:?}")))
 }
 
+/// The parent edge as the folded prefix knows it.
+///
+/// A child's id derives from its parent and slot through a hash, which does
+/// not invert, so the edge is found by asking every instance whose slots
+/// could name this one — bounded by the number of slots in the store, which
+/// `MAX_INVOKES_PER_STATE` and `MAX_INVOKE_DEPTH` keep small.
+fn parent_at(state: &StoreState, instance_id: &str) -> Value {
+    for (candidate, instance) in &state.instances {
+        for slot in instance.invocations.keys() {
+            if fsm_core::hashes::child_instance_id(candidate, slot) == instance_id {
+                return Value::Obj(BTreeMap::from([
+                    ("instance_id".into(), Value::Str(candidate.clone())),
+                    ("slot".into(), Value::Str(slot.clone())),
+                ]));
+            }
+        }
+    }
+    Value::Null
+}
+
+/// The slots this instance holds at the reconstructed point.
+fn children_at(
+    state: &StoreState,
+    instance_id: &str,
+    instance: &fsm_core::machine::InstanceState,
+) -> Vec<Value> {
+    instance
+        .invocations
+        .iter()
+        .map(|(slot, invocation)| {
+            let child_id = fsm_core::hashes::child_instance_id(instance_id, slot);
+            let status = state
+                .instances
+                .get(&child_id)
+                .map(|child| child.status.as_str().to_string());
+            let mut entry = BTreeMap::from([
+                ("slot".into(), Value::Str(slot.clone())),
+                ("child_instance_id".into(), Value::Str(child_id)),
+                (
+                    "child_machine_id".into(),
+                    Value::Str(invocation.child_machine_id.clone()),
+                ),
+                (
+                    "invocation_status".into(),
+                    Value::Str(invocation.status.as_str().into()),
+                ),
+            ]);
+            if let Some(status) = status {
+                entry.insert("status".into(), Value::Str(status));
+            }
+            Value::Obj(entry)
+        })
+        .collect()
+}
+
 pub(super) fn view_at(
     state: &StoreState,
     instance_id: &str,
     request_id: Option<&str>,
     duplicate: Option<bool>,
     seq: u64,
+    // The record that brought this instance into existence. A folded prefix
+    // cannot derive it — a creation is a record, not a state — so the caller,
+    // which holds the history index, supplies it.
+    created_seq: u64,
 ) -> Result<Value, ErrorObj> {
     let inst = state
         .instances
@@ -560,6 +653,15 @@ pub(super) fn view_at(
         "effects_pending".into(),
         Value::Arr(inst.pending.iter().cloned().map(Value::Str).collect()),
     );
+    // The same three fields the live view carries, so a replayed response is
+    // the response — derived from the folded prefix rather than from a live
+    // index, because that prefix is all a reconstruction may look at.
+    mobj.insert("parent".into(), parent_at(state, instance_id));
+    mobj.insert(
+        "children".into(),
+        Value::Arr(children_at(state, instance_id, inst)),
+    );
+    mobj.insert("created_seq".into(), Value::Num(created_seq.to_string()));
     mobj.insert("seq".into(), Value::Num(seq.to_string()));
     mobj.insert(
         "state_hash".into(),
