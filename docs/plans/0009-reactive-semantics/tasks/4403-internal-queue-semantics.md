@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-core/src/step/micro.rs
   - crates/fsm-core/tests/internal_queue.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Internal Queue Semantics
@@ -38,3 +38,5 @@ The queue is where determinism is won or lost: FIFO, breadth-first, drained from
 - After a macrostep with a non-empty queue during its run, the sealed `InstanceState` has exactly its six fields and no queue residue; the `fsm.state/2` hash matches a hand-computed value for the final configuration.
 
 - **Done when:** `cargo test -p fsm-core --test internal_queue` passes every case above including the `on_unhandled` ruling and the ceiling, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `EngineSelector::select_internal` in `micro.rs` calls `scan_candidates` with the event's name and payload; the drain, discard, breadth-first refill, and ceiling were already the driver's from `4201`, so this task is the scan plus the proof. The ceiling test as written in the plan — "a raise chain of 64 rejects, 63 completes" — was off by one against `4201`'s ruling that 64 reactions are allowed and the 65th is refused; the test pins 65 → `run/microstep_limit`, 64 → settles, counting a final discarded delivery as a reaction. The "both seams live" ordering test moved here from `4201` as that task's note said it would.

@@ -115,11 +115,9 @@ pub trait ReactionSelector {
     ) -> Result<Option<ReactionSelection>, Rejection>;
 }
 
-/// The engine's own reaction scan.
-///
-/// The eventless scan is the trigger's candidate scan with the `$always` cell
-/// key. The internal-event scan is a seam until workstream 0044 fills it, so
-/// a raised event cannot yet select anything.
+/// The engine's own reaction scan: the trigger's candidate scan, keyed by
+/// `$always` for an eventless reaction and by the event's name for an
+/// internal one.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct EngineSelector;
 
@@ -167,13 +165,39 @@ impl ReactionSelector for EngineSelector {
 
     fn select_internal(
         &mut self,
-        _machine: &CompiledMachine,
-        _tree: &Tree,
-        _working: &InstanceState,
-        _event: &InternalEvent,
-        _budget: &mut Budget,
+        machine: &CompiledMachine,
+        tree: &Tree,
+        working: &InstanceState,
+        event: &InternalEvent,
+        budget: &mut Budget,
     ) -> Result<Option<ReactionSelection>, Rejection> {
-        Ok(None)
+        let Some(active_leaves) = tree.active_leaves(&working.configuration) else {
+            return Err(reject(
+                "run/configuration_invalid",
+                "the working configuration no longer matches the machine topology",
+            ));
+        };
+        // The raised payload binds as `evt`, typed by the declaration, so a
+        // handling guard reads `evt.field` exactly as it would for an event a
+        // caller sent. "No winner" — no candidate, or every guard false — is
+        // a discard, which the driver records; `on_unhandled` never applies
+        // to an event the machine raised itself.
+        let scan = scan_candidates(
+            machine,
+            tree,
+            &active_leaves,
+            &event.name,
+            &working.ctx,
+            Some(&event.payload),
+            budget,
+        )?;
+        Ok(scan.winner.map(|winner| ReactionSelection {
+            region: winner.region,
+            leaf: winner.leaf,
+            source: winner.source,
+            transition_idx: winner.transition_idx,
+            candidates: scan.candidates,
+        }))
     }
 }
 
@@ -183,7 +207,10 @@ struct Macrostep {
     microsteps: Vec<MicrostepTrace>,
     internal_unhandled: Vec<UnhandledInternalTrace>,
     effects: Vec<EffectOut>,
-    /// Reactions performed so far, applied and discarded alike.
+    /// Reactions performed so far, applied and discarded alike. There is
+    /// deliberately no separate queue-length limit: the ceiling already
+    /// bounds every iteration that pops an event, so a second constant could
+    /// only fire in cases this one already catches.
     reactions: u32,
 }
 
