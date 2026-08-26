@@ -103,3 +103,21 @@ $ fsm instance send inst-inv1 receive --payload '{"amount":"60.00"}' --request-i
 $ fsm instance send inst-inv1 match --request-id inv-m2
 leaf: matched
 ```
+
+## order_lifecycle.handlers (executor table)
+
+`order_lifecycle` has a companion handler table,
+`examples/order_lifecycle.handlers.json`, for the `fsm execute` loop. When the
+instance enters `fulfilment`, the machine emits the `request_confirmation`
+effect; the table maps that effect to a supplier-notification subprocess and
+names the advance event (`confirmed`, with the `at` stamp from the ack) plus
+the failure event (`cancel`). Run it unattended with:
+
+```
+$ fsm execute --check --handlers examples/order_lifecycle.handlers.json
+ok: true
+$ fsm execute --data-dir ./data --handlers examples/order_lifecycle.handlers.json
+```
+
+See the *Executing workflows* section of [EMBEDDING.md](EMBEDDING.md#executing-workflows)
+for the full `fsm.handlers/1` format and the three run modes.

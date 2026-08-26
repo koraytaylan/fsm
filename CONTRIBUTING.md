@@ -310,8 +310,12 @@ apply:
    `chaos.rs` seeds a deterministic workload and asserts verify holds. Never
    lower the 1,000-iteration floor; if the harness is slow, fix the harness.
 8. **Fuzz targets.** `fuzz/fuzz_targets/` covers JSON, expression, decimal,
-   canonical, record-line, and JSON-RPC parsing. A fuzzer finding is a test
-   gap to add as a regression before the fix lands.
+   canonical, record-line, and JSON-RPC parsing. A fuzzer finding is a test gap
+   to add as a regression before the fix lands. Two layers enforce this: the
+   in-workspace `fuzz_isolated` and `isolated_fuzz_targets` tests run the
+   target subjects on every PR through `cargo test --workspace`, and the
+   release workflow's `fuzz-smoke` job requires every shipped target to build
+   on nightly and run its committed seed corpus before a tag can publish.
 
 ### Tests are first-class code
 
