@@ -162,7 +162,12 @@ fn two_regions_finishing_in_one_macrostep_enqueue_as_they_finish() {
 
 #[test]
 fn an_already_terminal_region_does_not_re_raise() {
-    let (m, t) = machine(&fork_join(""));
+    // Region a names `$done.region.b` so that b's event is raised at all;
+    // by then a is inert, so the event is discarded, and a — terminal since
+    // the previous macrostep — raises nothing again.
+    let (m, t) = machine(&fork_join(
+        r#",{"from":"a_work","on":"$done.region.b","to":"a_work"}"#,
+    ));
     let created = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let joined = applied(send(&m, &t, &instance(&created), "finish_a"));
     let done = applied(send(&m, &t, &instance(&joined), "finish_b"));
@@ -182,7 +187,9 @@ fn an_already_terminal_region_does_not_re_raise() {
 
 #[test]
 fn every_region_finishing_at_once_generates_exactly_the_region_events() {
-    let src = r#"{"format":"fsm.machine/1","name":"m","regions":[{"name":"p","states":[{"name":"p0"},{"name":"p_done","terminal":true}],"initial":"p0"},{"name":"q","states":[{"name":"q0"},{"name":"q_done","terminal":true}],"initial":"q0"}],"context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"p0","on":"go","to":"p_done"},{"from":"q0","on":"$done.region.p","to":"q_done"}]}"#;
+    let src = r#"{"format":"fsm.machine/1","name":"m","regions":[{"name":"p","states":[{"name":"p0"},{"name":"p_done","terminal":true}],"initial":"p0"},{"name":"q","states":[{"name":"q0"},{"name":"q_done","terminal":true}],"initial":"q0"}],"context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"p0","on":"go","to":"p_done"},{"from":"q0","on":"$done.region.p","to":"q_done"},{"from":"p0","on":"$done.region.q","to":"p0"}]}"#;
+    // p names q's event so it is raised; p is inert by then, so it is
+    // discarded, and nothing else — no `$done.machine` — follows.
     let (m, t) = machine(src);
     let created = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let out = applied(send(&m, &t, &instance(&created), "go"));

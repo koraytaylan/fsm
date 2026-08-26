@@ -56,7 +56,7 @@ declared, carry no fields — `evt` binds to an empty object — and are never
 sendable (`req/event_internal`). Likewise `on: "$done.region.<region>"` for
 a declared region: the macrostep raises it when that region's active leaf
 becomes terminal, and only a transition in another region can handle it,
-because a completed region is inert. There is no `$done.machine`. Blocks use `do` (sets), `emit`, and `raise`: a `raise` is
+because a completed region is inert. A generated event is raised only when some transition names it in `on`; one nobody handles is never raised, so a definition that never names it sees nothing of it — not in the trace, not in the microstep count. There is no `$done.machine`. Blocks use `do` (sets), `emit`, and `raise`: a `raise` is
 `{event, with}`, where `event` names a declared event (never a generated
 `$done` name) and `with` maps every one of its declared fields — no more, no
 fewer — to an `expr/1` source typed exactly like a context assignment, scale

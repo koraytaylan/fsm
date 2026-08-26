@@ -227,7 +227,9 @@ When a **region's** active leaf becomes `terminal`, the engine enqueues `$done.r
 
 Both are enqueued into the same FIFO from 0044 and are indistinguishable from a user `raise` once queued, except that `InternalOrigin` records which they were, for the trace.
 
-Four rulings, all of which belong in SPEC:
+Five rulings, all of which belong in SPEC:
+
+- **A generated event nobody handles is never raised.** (Added by `4603`, whose inertness suite found a plain parallel machine's trace gaining `internal_unhandled` the moment a region finished.) The driver raises `$done.state.X` or `$done.region.X` only when some transition names it in `on`; otherwise the event could only be discarded, and the discard would show in the trace and count toward the microstep ceiling of a definition that never asked for it. Discovering an unhandled generated name is `analyze`'s job, not the trace's.
 
 - **`$done.machine` does not exist.** A sequential instance whose leaf is terminal, or a parallel instance whose every region is terminal, is `Completed`, and the status carries that fact. There is nothing left to handle it — every region is inert — so generating it would be a queue entry that is guaranteed to be discarded. Say so in SPEC rather than leaving the reader to wonder.
 - **A completed region is inert, and that is unchanged.** SPEC §Semantics 9 already removes schedules sourced from a terminal region's chain and makes completed regions inert to events and deadline polls. `$done.region.X` is delivered to the *other* regions; a transition sourced inside region X cannot handle its own region's done event, and the existing region-skipping in the candidate scan enforces that without new code. `def/cross_region` still forbids a transition targeting another region, so a join moves region B's own leaf — it does not reach into A.

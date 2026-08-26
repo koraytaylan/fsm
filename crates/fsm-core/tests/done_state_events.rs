@@ -168,8 +168,14 @@ fn nesting_raises_only_the_immediate_parent_unless_it_too_finishes() {
         &mut budget,
     ));
     assert!(out.trace.microsteps.is_empty());
-    assert_eq!(out.trace.internal_unhandled.len(), 1);
-    assert_eq!(out.trace.internal_unhandled[0].event, "$done.state.inner");
+    assert!(
+        out.trace.internal_unhandled.is_empty(),
+        "inner's event has no handler and is not raised; outer never finished"
+    );
+    assert_eq!(
+        out.configuration_after.sequential_leaf(),
+        Some("inner_done")
+    );
 }
 
 #[test]
@@ -208,15 +214,23 @@ fn an_unknown_done_name_lists_the_real_generated_names() {
 }
 
 #[test]
-fn an_unhandled_done_event_is_discarded_and_the_macrostep_applies() {
+fn a_done_event_nobody_handles_is_never_raised() {
+    // The compound finishes, but no transition names `$done.state.review`,
+    // so nothing is raised: the macrostep applies with no reaction, no
+    // discard in the trace, and nothing counted toward the ceiling. A
+    // definition that never names a generated event sees nothing of it.
     let (m, t) = machine(&definition(
         r#"[{"from":"pending","on":"approve","to":"approved"}]"#,
     ));
     let out = applied(approve(&m, &t));
     assert!(out.trace.microsteps.is_empty());
-    assert_eq!(out.trace.internal_unhandled.len(), 1);
-    assert_eq!(out.trace.internal_unhandled[0].event, "$done.state.review");
+    assert!(out.trace.internal_unhandled.is_empty());
     assert_eq!(out.configuration_after.sequential_leaf(), Some("approved"));
+    assert!(
+        !String::from_utf8(fsm_core::canon::canon_bytes(&out.trace.to_value()))
+            .unwrap()
+            .contains("internal_unhandled")
+    );
 }
 
 #[test]

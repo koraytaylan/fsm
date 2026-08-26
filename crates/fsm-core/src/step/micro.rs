@@ -75,6 +75,7 @@ fn done_region_events(
         .filter(|region| {
             is_terminal(after.leaf(Some(region))) && !is_terminal(before.leaf(Some(region)))
         })
+        .filter(|region| handles(machine, &format!("{DONE_REGION_PREFIX}{region}")))
         .map(|region| InternalEvent {
             name: format!("{DONE_REGION_PREFIX}{region}"),
             payload: BTreeMap::new(),
@@ -95,10 +96,20 @@ fn done_region_events(
 /// The payload is empty; a join that needs data reads `ctx`, which the
 /// finishing sub-workflow already wrote. There is no `$done.machine`: a
 /// completed instance has no region left to handle it.
-fn done_state_events(tree: &Tree, entered: &[u16]) -> Vec<InternalEvent> {
+fn done_state_events(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    entered: &[u16],
+) -> Vec<InternalEvent> {
     entered
         .iter()
         .filter_map(|&state| tree.final_owner(state))
+        .filter(|&compound| {
+            handles(
+                machine,
+                &format!("{DONE_STATE_PREFIX}{}", tree.names[compound as usize]),
+            )
+        })
         .map(|compound| InternalEvent {
             name: format!("{DONE_STATE_PREFIX}{}", tree.names[compound as usize]),
             payload: BTreeMap::new(),
@@ -107,6 +118,21 @@ fn done_state_events(tree: &Tree, entered: &[u16]) -> Vec<InternalEvent> {
             },
         })
         .collect()
+}
+
+/// Whether some transition handles the generated event `name`.
+///
+/// A generated event nobody handles is never raised: it could only be
+/// discarded, and the discard would show in the trace and count toward the
+/// microstep ceiling of a definition that never asked for it — a plain
+/// parallel machine whose region finishes must keep its bytes. Discovery of
+/// an unhandled generated name belongs to `analyze`, not to the trace.
+fn handles(machine: &CompiledMachine, name: &str) -> bool {
+    machine
+        .spec
+        .transitions
+        .iter()
+        .any(|transition| transition.on.as_deref() == Some(name))
 }
 
 /// An event raised inside a macrostep and delivered to this instance only.
@@ -288,7 +314,7 @@ impl Macrostep {
         before: &crate::machine::ActiveConfiguration,
     ) -> Self {
         let mut queue: VecDeque<InternalEvent> = std::mem::take(&mut trigger.raises).into();
-        queue.extend(done_state_events(tree, &trigger.entered));
+        queue.extend(done_state_events(machine, tree, &trigger.entered));
         queue.extend(done_region_events(
             machine,
             tree,
@@ -514,7 +540,7 @@ pub(super) fn run_to_quiescence(
         macrostep.queue.extend(next.raises.drain(..));
         macrostep
             .queue
-            .extend(done_state_events(tree, &next.entered));
+            .extend(done_state_events(machine, tree, &next.entered));
         macrostep.queue.extend(done_region_events(
             machine,
             tree,
@@ -808,7 +834,7 @@ mod tests {
     use crate::spec::{compile, parse_machine};
 
     fn three_regions() -> (CompiledMachine, Tree) {
-        let src = r#"{"format":"fsm.machine/1","name":"m","regions":[{"name":"x","states":[{"name":"x0"},{"name":"x_done","terminal":true}],"initial":"x0"},{"name":"y","states":[{"name":"y0"},{"name":"y_done","terminal":true}],"initial":"y0"},{"name":"z","states":[{"name":"z0"},{"name":"z_done","terminal":true}],"initial":"z0"}],"context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"x0","on":"go","to":"x_done"},{"from":"y0","on":"go","to":"y_done"},{"from":"z0","on":"go","to":"z_done"}]}"#;
+        let src = r#"{"format":"fsm.machine/1","name":"m","regions":[{"name":"x","states":[{"name":"x0"},{"name":"x_done","terminal":true}],"initial":"x0"},{"name":"y","states":[{"name":"y0"},{"name":"y_done","terminal":true}],"initial":"y0"},{"name":"z","states":[{"name":"z0"},{"name":"z_done","terminal":true}],"initial":"z0"}],"context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"x0","on":"go","to":"x_done"},{"from":"y0","on":"go","to":"y_done"},{"from":"z0","on":"go","to":"z_done"},{"from":"z0","on":"$done.region.x","to":"z0"},{"from":"z0","on":"$done.region.y","to":"z0"}]}"#;
         let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
         let machine = compile(spec).unwrap();
         let tree = Tree::for_machine(&machine.spec);
@@ -829,7 +855,8 @@ mod tests {
         // A transition changes one region, so no microstep finishes two at
         // once; the same-microstep order is pinned on the function alone:
         // region document order, with a region that was already terminal
-        // before the microstep silent.
+        // before the microstep silent. Region z handles x's and y's events,
+        // which is what makes them raised at all.
         let (machine, tree) = three_regions();
         let before = leaves(&[("x", "x0"), ("y", "y0"), ("z", "z_done")]);
         let after = leaves(&[("x", "x_done"), ("y", "y_done"), ("z", "z_done")]);
@@ -839,5 +866,9 @@ mod tests {
             .collect();
         assert_eq!(names, ["$done.region.x", "$done.region.y"]);
         assert!(done_region_events(&machine, &tree, &after, &after).is_empty());
+        // z's own event has no handler anywhere, so z finishing raises nothing.
+        let z_before = leaves(&[("x", "x0"), ("y", "y0"), ("z", "z0")]);
+        let z_after = leaves(&[("x", "x0"), ("y", "y0"), ("z", "z_done")]);
+        assert!(done_region_events(&machine, &tree, &z_before, &z_after).is_empty());
     }
 }
