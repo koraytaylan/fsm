@@ -34,11 +34,14 @@ use crate::trace::{
 };
 use crate::tree::Tree;
 
+use crate::spec::ALWAYS_KEY;
+
 use super::block::eval_invariants;
 use super::transition::{
     SelectedTransition, Transitioned, apply_selected_transition, settle_schedules,
 };
-use super::{Applied, EffectOut, ExprSlotOwner, Rejection};
+use super::validate::reject;
+use super::{Applied, EffectOut, ExprSlotOwner, Rejection, scan_candidates};
 
 /// An event raised inside a macrostep and delivered to this instance only.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,21 +117,52 @@ pub trait ReactionSelector {
 
 /// The engine's own reaction scan.
 ///
-/// Both scans are seams at this stage of plan 0009: workstream 0043 fills the
-/// eventless scan and 0044 the internal-event scan. Until then a macrostep is
-/// exactly its trigger microstep, which is what every existing golden pins.
+/// The eventless scan is the trigger's candidate scan with the `$always` cell
+/// key. The internal-event scan is a seam until workstream 0044 fills it, so
+/// a raised event cannot yet select anything.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct EngineSelector;
 
 impl ReactionSelector for EngineSelector {
     fn select_eventless(
         &mut self,
-        _machine: &CompiledMachine,
-        _tree: &Tree,
-        _working: &InstanceState,
-        _budget: &mut Budget,
+        machine: &CompiledMachine,
+        tree: &Tree,
+        working: &InstanceState,
+        budget: &mut Budget,
     ) -> Result<Option<ReactionSelection>, Rejection> {
-        Ok(None)
+        let Some(active_leaves) = tree.active_leaves(&working.configuration) else {
+            return Err(reject(
+                "run/configuration_invalid",
+                "the working configuration no longer matches the machine topology",
+            ));
+        };
+        // No `evt`: an eventless guard reads ctx alone, and admission refused
+        // any reference (`def/eventless_evt`).
+        let scan = scan_candidates(
+            machine,
+            tree,
+            &active_leaves,
+            ALWAYS_KEY,
+            &working.ctx,
+            None,
+            budget,
+        )?;
+        // The asymmetry with the trigger scan, and the likeliest thing to get
+        // wrong: for an event, "candidates but every guard false" is
+        // `run/not_enabled` because a caller asked and deserves an answer.
+        // For the eventless scan both "no candidates" and "all false" mean
+        // quiescence with respect to eventless transitions, and the loop
+        // moves on to the internal queue. Neither is an error. Only a guard
+        // that failed to evaluate rejected above, exactly as it does for an
+        // event.
+        Ok(scan.winner.map(|winner| ReactionSelection {
+            region: winner.region,
+            leaf: winner.leaf,
+            source: winner.source,
+            transition_idx: winner.transition_idx,
+            candidates: scan.candidates,
+        }))
     }
 
     fn select_internal(

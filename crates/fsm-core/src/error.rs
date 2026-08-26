@@ -104,6 +104,7 @@ pub const ALL_CODES: &[&str] = &[
     "run/instance_cancelled",
     "run/instance_completed",
     "run/invariant",
+    "run/microstep_limit",
     "run/not_enabled",
     "run/overflow",
     "run/unhandled",

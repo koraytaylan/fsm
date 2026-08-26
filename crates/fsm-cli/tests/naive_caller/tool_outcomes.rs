@@ -428,6 +428,35 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
     for src in reactive_specs {
         drive_create(&mut st, &mut clock, src, &mut out);
     }
+    // A guarded eventless cycle that never settles (task 4303).
+    drive_create(
+        &mut st,
+        &mut clock,
+        r#"{"format":"fsm.machine/1","name":"spin","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b"},{"from":"b","if":"ctx.n >= 0","to":"b"}]}"#,
+        &mut out,
+    );
+    let _ = dispatch(
+        &mut st,
+        &mut clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("spin".into())),
+            ("request_id", Value::Str("spin-c".into())),
+        ]),
+    );
+    match dispatch(
+        &mut st,
+        &mut clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-spin-c".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("spin-s".into())),
+        ]),
+    ) {
+        Ok(v) => note_ok(&v, &mut out),
+        Err(e) => note_err(&e, &mut out),
+    }
     let long = format!(
         r#"{{"format":"fsm.machine/1","name":"mlong","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"transitions":[{{"from":"a","on":"e","if":"{}"}}]}}"#,
         "1+".repeat(2500) + "1"

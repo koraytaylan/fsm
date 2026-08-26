@@ -195,6 +195,9 @@ fn create_failed(mut rejection: Rejection, m: &CompiledMachine) -> Rejection {
         rejection.source_state = None;
         rejection.transition_idx = None;
     }
+    if rejection.code == "run/microstep_limit" {
+        rejection.cause = Some("run/microstep_limit");
+    }
     rejection.code = "run/create_failed";
     rejection
 }

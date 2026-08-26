@@ -222,87 +222,21 @@ pub fn step_with(
             ));
         }
     };
-    let mut trace = DecisionTrace::default();
-    let mut winner: Option<(Option<String>, u16, u16, usize)> = None;
-    for (region, leaf) in active_leaves {
-        let leaf_name = &t.names[leaf as usize];
-        if block::find_node(&m.spec, leaf_name).is_some_and(|node| node.terminal) {
-            continue;
-        }
-        for sid in t.chain(leaf) {
-            let state_name = t.names[sid as usize].clone();
-            let indices = m
-                .transitions_by
-                .get(&(state_name.clone(), event.to_string()))
-                .cloned()
-                .unwrap_or_default();
-            if indices.is_empty() {
-                continue;
-            }
-            let mut level = LevelTrace {
-                source_state: state_name.clone(),
-                transitions: Vec::new(),
-            };
-            for index in indices {
-                if winner.is_some() {
-                    level.transitions.push(CandidateTrace {
-                        transition_idx: index as u32,
-                        guard: GuardTrace::NotConsidered,
-                    });
-                    continue;
-                }
-                let transition = &m.spec.transitions[index];
-                match guard::eval_guard(
-                    transition,
-                    &st.ctx,
-                    &fields,
-                    budget,
-                    &m.spec,
-                    event,
-                    index,
-                    &m.compiled_exprs,
-                ) {
-                    Ok((true, guard_trace)) => {
-                        level.transitions.push(CandidateTrace {
-                            transition_idx: index as u32,
-                            guard: GuardTrace::Evaluated(guard_trace),
-                        });
-                        winner = Some((region.map(str::to_string), leaf, sid, index));
-                    }
-                    Ok((false, guard_trace)) => {
-                        level.transitions.push(CandidateTrace {
-                            transition_idx: index as u32,
-                            guard: GuardTrace::Evaluated(guard_trace),
-                        });
-                    }
-                    Err(mut rejection) => {
-                        rejection.source_state = Some(state_name.clone());
-                        rejection.transition_idx = Some(index as u32);
-                        if let Some(failing_level) = rejection.trace.candidates.first_mut() {
-                            failing_level.source_state = state_name.clone();
-                        }
-                        if !level.transitions.is_empty() {
-                            if let Some(failing_level) = rejection.trace.candidates.first_mut() {
-                                let mut evaluated = level.transitions;
-                                evaluated.append(&mut failing_level.transitions);
-                                failing_level.transitions = evaluated;
-                            } else {
-                                rejection.trace.candidates.insert(0, level);
-                            }
-                        }
-                        let mut prior_trace = trace;
-                        prior_trace
-                            .candidates
-                            .append(&mut rejection.trace.candidates);
-                        rejection.trace.candidates = prior_trace.candidates;
-                        return Outcome::Rejected(rejection);
-                    }
-                }
-            }
-            trace.candidates.push(level);
-        }
-    }
-    let Some((region, leaf, src, tidx)) = winner else {
+    let scan = match scan_candidates(m, t, &active_leaves, event, &st.ctx, Some(&fields), budget) {
+        Ok(scan) => scan,
+        Err(rejection) => return Outcome::Rejected(rejection),
+    };
+    let trace = DecisionTrace {
+        candidates: scan.candidates,
+        ..DecisionTrace::default()
+    };
+    let Some(Winner {
+        region,
+        leaf,
+        source: src,
+        transition_idx: tidx,
+    }) = scan.winner
+    else {
         let any = trace.candidates.iter().any(|l| !l.transitions.is_empty());
         if !any {
             return match m.spec.on_unhandled {
@@ -362,4 +296,122 @@ pub fn step_with(
         Ok(applied) => Outcome::Applied(applied),
         Err(rejection) => Outcome::Rejected(rejection),
     }
+}
+
+/// The transition one candidate scan selected.
+pub(super) struct Winner {
+    pub(super) region: Option<String>,
+    pub(super) leaf: u16,
+    pub(super) source: u16,
+    pub(super) transition_idx: usize,
+}
+
+/// One complete candidate scan: the global winner, if any, and the trace of
+/// every candidate the scan considered.
+pub(super) struct Scan {
+    pub(super) winner: Option<Winner>,
+    pub(super) candidates: Vec<LevelTrace>,
+}
+
+/// SPEC §Semantics 3–4 for one cell key: walk each active region's leaf-to-root
+/// chain in region document order, skipping a region whose active leaf is
+/// terminal, and at each state take the document-ordered transitions in the
+/// `(state, key)` cell. The first true guard wins globally; every later
+/// candidate is `not_considered`. A guard that fails to evaluate rejects —
+/// never treat-as-false — with the levels scanned so far in its trace.
+///
+/// The key is an event name for the trigger scan and [`ALWAYS_KEY`] for the
+/// eventless scan; `fields` is `None` when no event supplies `evt`.
+pub(super) fn scan_candidates(
+    m: &CompiledMachine,
+    t: &Tree,
+    active_leaves: &[(Option<&str>, u16)],
+    key: &str,
+    ctx: &BTreeMap<String, Val>,
+    fields: Option<&BTreeMap<String, Val>>,
+    budget: &mut Budget,
+) -> Result<Scan, Rejection> {
+    let mut candidates: Vec<LevelTrace> = Vec::new();
+    let mut winner: Option<Winner> = None;
+    for &(region, leaf) in active_leaves {
+        let leaf_name = &t.names[leaf as usize];
+        if block::find_node(&m.spec, leaf_name).is_some_and(|node| node.terminal) {
+            continue;
+        }
+        for sid in t.chain(leaf) {
+            let state_name = t.names[sid as usize].clone();
+            let indices = m
+                .transitions_by
+                .get(&(state_name.clone(), key.to_string()))
+                .cloned()
+                .unwrap_or_default();
+            if indices.is_empty() {
+                continue;
+            }
+            let mut level = LevelTrace {
+                source_state: state_name.clone(),
+                transitions: Vec::new(),
+            };
+            for index in indices {
+                if winner.is_some() {
+                    level.transitions.push(CandidateTrace {
+                        transition_idx: index as u32,
+                        guard: GuardTrace::NotConsidered,
+                    });
+                    continue;
+                }
+                let transition = &m.spec.transitions[index];
+                match guard::eval_guard(
+                    transition,
+                    ctx,
+                    fields,
+                    budget,
+                    &m.spec,
+                    key,
+                    index,
+                    &m.compiled_exprs,
+                ) {
+                    Ok((true, guard_trace)) => {
+                        level.transitions.push(CandidateTrace {
+                            transition_idx: index as u32,
+                            guard: GuardTrace::Evaluated(guard_trace),
+                        });
+                        winner = Some(Winner {
+                            region: region.map(str::to_string),
+                            leaf,
+                            source: sid,
+                            transition_idx: index,
+                        });
+                    }
+                    Ok((false, guard_trace)) => {
+                        level.transitions.push(CandidateTrace {
+                            transition_idx: index as u32,
+                            guard: GuardTrace::Evaluated(guard_trace),
+                        });
+                    }
+                    Err(mut rejection) => {
+                        rejection.source_state = Some(state_name.clone());
+                        rejection.transition_idx = Some(index as u32);
+                        if let Some(failing_level) = rejection.trace.candidates.first_mut() {
+                            failing_level.source_state = state_name.clone();
+                        }
+                        if !level.transitions.is_empty() {
+                            if let Some(failing_level) = rejection.trace.candidates.first_mut() {
+                                let mut evaluated = level.transitions;
+                                evaluated.append(&mut failing_level.transitions);
+                                failing_level.transitions = evaluated;
+                            } else {
+                                rejection.trace.candidates.insert(0, level);
+                            }
+                        }
+                        candidates.append(&mut rejection.trace.candidates);
+                        rejection.trace.candidates = candidates;
+                        return Err(rejection);
+                    }
+                }
+            }
+            candidates.push(level);
+        }
+    }
+    Ok(Scan { winner, candidates })
 }

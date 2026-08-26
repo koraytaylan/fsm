@@ -9,9 +9,15 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-core/src/step/mod.rs
-  - crates/fsm-core/src/step/transition.rs
+  - crates/fsm-core/src/step/micro.rs
+  - crates/fsm-core/src/step/guard.rs
+  - crates/fsm-core/src/step/create.rs
+  - crates/fsm-core/src/error.rs
   - crates/fsm-core/tests/eventless_selection.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/one_step_every_non_infra_code.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Eventless Selection
@@ -40,3 +46,5 @@ Eventless selection is the existing candidate scan with one substitution — the
 - Event-path regression: the whole existing `step_golden.rs` and `select_golden.rs` suites pass unchanged after the `scan_candidates` refactor.
 
 - **Done when:** `cargo test -p fsm-core --test eventless_selection` passes every case above, `step_golden` and `select_golden` are unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `scan_candidates` in `step/mod.rs` is the one scan for both paths, returning the winner and the candidate trace; `EngineSelector::select_eventless` (in `micro.rs`, which `4201` created for exactly this fill-in) calls it with `ALWAYS_KEY` and maps "no winner" to quiescence whether or not candidates existed. `guard.rs` joined the footprint so an eventless guard binds no `evt` at all rather than an empty object. `run/microstep_limit` landed here rather than in `4201`, per that task's correction, with `create` recording it as the `cause` of its `run/create_failed`; the naive-caller flow sends an event into a guarded eventless self-loop, reads the hint, and redefines the machine with a guard that becomes false.

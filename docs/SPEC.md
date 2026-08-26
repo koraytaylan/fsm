@@ -217,6 +217,7 @@ is sorted before hashing.
 | `run/guard_error` | guard evaluation failed | source state, index, span |
 | `run/action_error` | a transition/deadline pipeline action failed; a grandfathered ownerless history target reports cause `def/shape` | name the block or replace the grandfathered definition |
 | `run/invariant` | enforce invariant failed | list every failing invariant |
+| `run/microstep_limit` | the macrostep's reactions reached `MAX_MICROSTEPS`; nothing applied | name the last microstep's source state and transition, and say which guard to make false |
 | `run/instance_completed` | event or deadline poll against a completed instance | — |
 | `run/instance_cancelled` | event or deadline poll against a cancelled instance | — |
 | `run/create_failed` | creation failed; **unjournaled** | wrap the inner error |
@@ -695,6 +696,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `run/instance_cancelled` — event or deadline poll against a cancelled instance
 - `run/instance_completed` — event or deadline poll against a completed instance
 - `run/invariant` — enforce invariant failed
+- `run/microstep_limit` — a macrostep did not quiesce within 64 reactions
 - `run/not_enabled` — all guards false
 - `run/overflow` — checked arithmetic overflow
 - `run/unhandled` — no candidate on the chain

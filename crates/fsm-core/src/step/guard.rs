@@ -14,7 +14,7 @@ use super::{ExprSlotOwner, Rejection};
 pub(super) fn eval_guard(
     tr: &TransitionSpec,
     ctx: &BTreeMap<String, Val>,
-    evt: &BTreeMap<String, Val>,
+    evt: Option<&BTreeMap<String, Val>>,
     budget: &mut Budget,
     spec: &MachineSpec,
     event_name: &str,
@@ -29,7 +29,7 @@ pub(super) fn eval_guard(
             let dummy = parser::parse("true").expect("static guard expression");
             let bindings = Bindings {
                 ctx,
-                evt: Some(evt),
+                evt,
                 active: None,
             };
             match eval(&dummy, &bindings, budget, true) {
@@ -112,7 +112,7 @@ pub(super) fn eval_guard(
             };
             let b = Bindings {
                 ctx,
-                evt: Some(evt),
+                evt,
                 active: None,
             };
             match eval(&e, &b, budget, true) {
