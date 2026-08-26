@@ -47,6 +47,9 @@ use super::{Applied, EffectOut, ExprSlotOwner, Rejection, scan_candidates};
 pub const DONE_STATE_PREFIX: &str = "$done.state.";
 /// Prefix of the generated event a finished region raises.
 pub const DONE_REGION_PREFIX: &str = "$done.region.";
+/// Prefix of the generated event a returned invocation delivers. Unlike its
+/// siblings the store raises it, so the driver never generates one.
+pub const DONE_INVOKE_PREFIX: &str = "$done.invoke.";
 
 /// The `$done.region.<region>` events a microstep generates: one for each
 /// region whose active leaf *became* terminal in it, in region document

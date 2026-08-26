@@ -25,7 +25,8 @@ mod validate;
 pub use create::{create, create_with, payload_from_pairs};
 pub use deadline::{poll_deadline, poll_deadline_with};
 pub use micro::{
-    EngineSelector, InternalEvent, InternalOrigin, ReactionSelection, ReactionSelector,
+    DONE_INVOKE_PREFIX, EngineSelector, InternalEvent, InternalOrigin, ReactionSelection,
+    ReactionSelector,
 };
 pub use validate::validate_event;
 

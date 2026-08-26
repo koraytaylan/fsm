@@ -205,6 +205,23 @@ impl Store {
                 true,
             )));
         }
+        if rec.kind == RecordKind::InvocationReturned {
+            let field = |name: &str| {
+                rec.body
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            };
+            return Some(Ok(super::instance::invoke::returned_response(
+                field("parent_instance_id"),
+                field("slot"),
+                field("child_instance_id"),
+                field("outcome"),
+                request_id,
+                rec.seq,
+                true,
+            )));
+        }
         if rec.kind == RecordKind::Annotated {
             let mut m = BTreeMap::new();
             m.insert("ok".into(), Value::Str("true".into()));
@@ -370,6 +387,17 @@ impl Store {
     pub(super) fn fp_invoke(parent_id: &str, slot: &str) -> String {
         fsm_core::hashes::request_fp(
             "invoke",
+            &BTreeMap::from([
+                ("parent_instance_id".into(), Value::Str(parent_id.into())),
+                ("slot".into(), Value::Str(slot.into())),
+            ]),
+        )
+    }
+
+    /// A return's key is the parent and the slot, like an invocation's.
+    pub(super) fn fp_return(parent_id: &str, slot: &str) -> String {
+        fsm_core::hashes::request_fp(
+            "invocation_return",
             &BTreeMap::from([
                 ("parent_instance_id".into(), Value::Str(parent_id.into())),
                 ("slot".into(), Value::Str(slot.into())),

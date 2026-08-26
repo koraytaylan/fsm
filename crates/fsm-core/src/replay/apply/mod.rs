@@ -37,7 +37,7 @@ use instance::{
     apply_annotated, apply_effect_acked, apply_instance_cancelled, apply_instance_created,
     apply_request_rejected,
 };
-use invoke::apply_instance_invoked;
+use invoke::{apply_instance_invoked, apply_invocation_returned};
 
 pub(super) fn apply(
     st: &mut StoreState,
@@ -57,6 +57,7 @@ pub(super) fn apply(
         RecordKind::DeadlineNotDue => apply_deadline_not_due(st, rec),
         RecordKind::EffectAcked => apply_effect_acked(st, rec),
         RecordKind::InstanceInvoked => apply_instance_invoked(st, rec),
+        RecordKind::InvocationReturned => apply_invocation_returned(st, rec),
         RecordKind::RequestRejected => apply_request_rejected(st, rec),
         RecordKind::InstanceCancelled => apply_instance_cancelled(st, rec),
         RecordKind::Annotated => apply_annotated(st, rec),
@@ -98,8 +99,22 @@ fn apply_machine_defined(
         .get("def")
         .cloned()
         .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+    // A definition that invokes is compiled against the machines already
+    // folded, exactly as `define_machine` compiled it against the ones the
+    // store held: a done-invoke payload types against the child's
+    // declarations, and without them the parent would not compile at all.
+    let catalogue: crate::spec::Catalogue = st
+        .machines
+        .iter()
+        .filter_map(|(machine_id, stored)| {
+            crate::hashes::digest_of(machine_id)
+                .map(|digest| (digest.to_string(), stored.compiled.spec.clone()))
+        })
+        .collect();
     let compiled = match compile_mode {
-        DefinitionCompileMode::Current => crate::spec::compile_accepted(&def),
+        DefinitionCompileMode::Current => {
+            crate::spec::compile_accepted_with_catalogue(&def, &catalogue)
+        }
         DefinitionCompileMode::HistoricalPersistence => {
             crate::spec::compile_accepted_historical_unchecked(&def)
         }

@@ -10,8 +10,11 @@ touches:
   - crates/fsm-store/src/store/instance/invoke.rs
   - crates/fsm-store/src/store/idempotency.rs
   - crates/fsm-core/src/record.rs
+  - crates/fsm-core/src/replay/apply/invoke.rs
+  - crates/fsm-core/src/replay/apply/mod.rs
+  - crates/fsm-core/src/step/micro.rs
   - crates/fsm-store/tests/invocation_return.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Invocation Return Operation
@@ -43,3 +46,7 @@ Returning is where a child's result becomes the parent's event, and it is a sepa
 - The parent's `state_hash` commits the post-macrostep state and folds identically on replay.
 
 - **Done when:** `cargo test -p fsm-store --test invocation_return` passes every case above including both outcomes, the unhandled path, and cold-path replay, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `invocation_return_on` with both gates (the slot is `Running`, the child has settled), the `invocation_returned` kind and its read-time validation, the projection out of the child's final context, delivery through `deliver_generated` so the parent's reaction seals in the same record, `fp_return` over `(parent, slot)`, the cold-path replay arm, and the fold arm that re-derives the macrostep from the journaled payload — typed against the child machine the record names, never re-projected from the child's present, because the child may have moved on since and replay must be a function of the journal.
+
+**Corrections.** (1) Step 5 says the slot moves to `Returned` and is not removed; that is true only while the parent stays in the invoking state. A handler that leaves it exits the state, and `4802`'s exit rule removes the slot — both rules are right and they interact, so the tests pin each case separately: a handler with a `to` leaves and the slot goes with it, an internal handler stays and the slot survives as `Returned` (and a second return is then refused by status rather than by absence). (2) Fold had to learn the catalogue: `apply_machine_defined` compiled with `compile_accepted`, so a parent whose transition reads `evt` from a done-invoke event failed to compile on replay and the whole journal was `UnknownMachine`. It now builds the catalogue from the machines already folded, which is the same information `define_machine` had when it accepted the definition, in the same order.

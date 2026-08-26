@@ -28,6 +28,10 @@ pub enum RecordKind {
     /// child's whole existence is derived from this record's body and `ts`,
     /// so there is no separate `instance_created` for it.
     InstanceInvoked,
+    /// An invocation's result reached its parent: the child settled, its
+    /// `returns` projection became `$done.invoke.<slot>`, and the parent's
+    /// whole macrostep sealed in this record.
+    InvocationReturned,
     RequestRejected,
     InstanceCancelled,
     Annotated,
@@ -60,7 +64,7 @@ pub fn instances_touched(record: &Record) -> Vec<&str> {
         | RecordKind::RequestRejected
         | RecordKind::InstanceCancelled
         | RecordKind::Annotated => field("instance_id").into_iter().collect(),
-        RecordKind::InstanceInvoked => field("parent_instance_id")
+        RecordKind::InstanceInvoked | RecordKind::InvocationReturned => field("parent_instance_id")
             .into_iter()
             .chain(field("child_instance_id"))
             .collect(),
@@ -81,6 +85,7 @@ impl RecordKind {
             RecordKind::DeadlineNotDue => "deadline_not_due",
             RecordKind::EffectAcked => "effect_acked",
             RecordKind::InstanceInvoked => "instance_invoked",
+            RecordKind::InvocationReturned => "invocation_returned",
             RecordKind::RequestRejected => "request_rejected",
             RecordKind::InstanceCancelled => "instance_cancelled",
             RecordKind::Annotated => "annotated",
@@ -101,6 +106,7 @@ impl RecordKind {
             "deadline_not_due" => Self::DeadlineNotDue,
             "effect_acked" => Self::EffectAcked,
             "instance_invoked" => Self::InstanceInvoked,
+            "invocation_returned" => Self::InvocationReturned,
             "request_rejected" => Self::RequestRejected,
             "instance_cancelled" => Self::InstanceCancelled,
             "annotated" => Self::Annotated,
@@ -110,7 +116,7 @@ impl RecordKind {
     }
 
     /// Every recognized record kind in stable protocol order.
-    pub fn all() -> [RecordKind; 15] {
+    pub fn all() -> [RecordKind; 16] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -123,6 +129,7 @@ impl RecordKind {
             Self::DeadlineNotDue,
             Self::EffectAcked,
             Self::InstanceInvoked,
+            Self::InvocationReturned,
             Self::RequestRejected,
             Self::InstanceCancelled,
             Self::Annotated,
@@ -626,6 +633,18 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
             req_str(body, "instance_id")
                 && req_str(body, "request_id")
                 && req_str(body, "reason")
+                && is_state_hash(body.get("state_hash"))
+        }
+        RecordKind::InvocationReturned => {
+            req_str(body, "parent_instance_id")
+                && req_str(body, "slot")
+                && req_str(body, "child_instance_id")
+                && req_str(body, "request_id")
+                && matches!(
+                    body.get("outcome").and_then(Value::as_str),
+                    Some("completed") | Some("cancelled")
+                )
+                && body.get("payload").and_then(Value::as_obj).is_some()
                 && is_state_hash(body.get("state_hash"))
         }
         RecordKind::InstanceInvoked => {

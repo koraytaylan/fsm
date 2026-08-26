@@ -146,3 +146,150 @@ pub(super) fn apply_instance_invoked(st: &mut StoreState, rec: &Record) -> Resul
     claim_request_id(st, rec)?;
     Ok(())
 }
+
+/// A returned invocation re-derives the parent's macrostep.
+///
+/// The payload is the record's, not a fresh projection of the child: the
+/// child may have moved on since — nothing stops a cancelled child being
+/// cancelled again, or a completed one being read later — and the parent's
+/// state was computed from the values that were in hand when the record was
+/// written. Re-projecting would make replay a function of the child's
+/// present rather than of the journal.
+pub(super) fn apply_invocation_returned(
+    st: &mut StoreState,
+    rec: &Record,
+) -> Result<(), ReplayError> {
+    let parent_id = rec
+        .body
+        .get("parent_instance_id")
+        .and_then(Value::as_str)
+        .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+    let slot = rec
+        .body
+        .get("slot")
+        .and_then(Value::as_str)
+        .ok_or(ReplayError::FieldMismatch {
+            seq: rec.seq,
+            field: "slot",
+        })?;
+    let mid = st
+        .instance_machines
+        .get(parent_id)
+        .cloned()
+        .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+    let machine = st
+        .machines
+        .get(&mid)
+        .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+    let parent = st
+        .instances
+        .get(parent_id)
+        .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+    let payload = payload_from(st, &machine.compiled, slot, rec)?;
+    let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
+    let outcome = crate::step::deliver_generated(
+        &machine.compiled,
+        &machine.tree,
+        parent,
+        &format!("{}{slot}", crate::step::DONE_INVOKE_PREFIX),
+        &payload,
+        rec.ts,
+        &mut budget,
+    );
+    let Outcome::Applied(applied) = outcome else {
+        return Err(ReplayError::FieldMismatch {
+            seq: rec.seq,
+            field: "outcome",
+        });
+    };
+    let mut post = InstanceState {
+        status: applied.status_after,
+        configuration: applied.configuration_after,
+        ctx: applied.ctx_after,
+        history: applied.history_after,
+        deadlines: applied.deadlines_after,
+        pending: parent.pending.clone(),
+        invocations: applied.invocations_after,
+        signals: parent.signals.clone(),
+    };
+    post.pending.extend(
+        applied
+            .effects
+            .iter()
+            .map(|effect| format!("{parent_id}/{}/{}", rec.seq, effect.k)),
+    );
+    if let Some(invocation) = post.invocations.get_mut(slot) {
+        invocation.status = crate::machine::InvokeStatus::Returned;
+    }
+    verify_record_state_hash(rec, &mid, parent_id, &post)?;
+    verify_microsteps(rec, &applied.trace.microsteps)?;
+    st.instances.insert(parent_id.into(), post);
+    claim_request_id(st, rec)?;
+    Ok(())
+}
+
+/// The journaled payload, typed against the **child's** declarations.
+///
+/// The types come from the child machine the journal already names, reached
+/// through `child_instance_id`, because the projection's types are the
+/// child's — the parent declares only which of them it wants.
+fn payload_from(
+    st: &StoreState,
+    parent: &crate::machine::CompiledMachine,
+    slot: &str,
+    rec: &Record,
+) -> Result<BTreeMap<String, crate::expr::eval::Val>, ReplayError> {
+    let mismatch = |field: &'static str| ReplayError::FieldMismatch {
+        seq: rec.seq,
+        field,
+    };
+    let returns = parent
+        .spec
+        .walk_states()
+        .into_iter()
+        .find_map(|(node, _)| {
+            node.invokes
+                .iter()
+                .find(|invoke| invoke.id == slot)
+                .map(|invoke| invoke.returns.clone())
+        })
+        .ok_or_else(|| mismatch("slot"))?;
+    let child_id = rec
+        .body
+        .get("child_instance_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| mismatch("child_instance_id"))?;
+    let child_mid = st
+        .instance_machines
+        .get(child_id)
+        .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+    let child = st
+        .machines
+        .get(child_mid)
+        .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
+    let journaled = rec
+        .body
+        .get("payload")
+        .and_then(Value::as_obj)
+        .ok_or_else(|| mismatch("payload"))?;
+    let mut payload = BTreeMap::new();
+    for (field, raw) in journaled {
+        let child_var = returns
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, var)| var.as_str())
+            .ok_or_else(|| mismatch("payload"))?;
+        let declared = child
+            .compiled
+            .spec
+            .context
+            .iter()
+            .find(|c| c.name == child_var)
+            .ok_or_else(|| mismatch("payload"))?;
+        let text = raw.as_str().ok_or_else(|| mismatch("payload"))?;
+        let value =
+            crate::replay::parse_ctx_val(&declared.ty, text).ok_or_else(|| mismatch("payload"))?;
+        payload.insert(field.clone(), value);
+    }
+    Ok(payload)
+}
