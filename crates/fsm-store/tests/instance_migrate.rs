@@ -12,7 +12,6 @@ use fsm_core::expr::eval::Budget;
 use fsm_core::hashes::{digest_of, machine_id};
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::limits::MACROSTEP_EVAL_TICKS;
-use fsm_core::machine::Status;
 use fsm_core::migrate::preview::preview;
 use fsm_core::record::{Record, RecordKind};
 use fsm_core::replay::{NopSink, fold_with};

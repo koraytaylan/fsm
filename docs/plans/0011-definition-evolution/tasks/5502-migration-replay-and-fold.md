@@ -11,7 +11,9 @@ touches:
   - crates/fsm-core/src/replay/verify.rs
   - crates/fsm-store/src/store/reconstruct.rs
   - crates/fsm-core/tests/migrate_replay.rs
-status: planned
+  - crates/fsm-store/tests/migrate_replay.rs
+  - crates/fsm-store/src/store/lifecycle.rs
+status: done
 merged_as: ""
 ---
 # Migration Replay And Fold
@@ -40,3 +42,7 @@ One instance's records now legitimately span two definitions, and the only struc
 - `replay_determinism.rs` and `crates/fsm-cli/tests/replay_determinism.rs` pass unchanged for journals without migrations.
 
 - **Done when:** `cargo test -p fsm-core --test migrate_replay` passes every case above including all four tamper cases, an instance's records span two definitions correctly, superseded machines stay resolvable, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the replay suite — a journal spanning two definitions folding clean, the superseded machine staying resolvable with its effect still re-derivable, five tamper cases plus the microsteps-deletion case, the post-migration payload validated by the new declarations, the view reporting the definition the instance is actually on, and the from-machine link assertion — plus the comment in `invoke_catalogue` telling a future cleanup why superseded machines stay.
+
+**Corrections.** (1) The suite lives in `crates/fsm-store/tests/migrate_replay.rs`, not `fsm-core`'s: a migration journal can only be produced by the store's own operations, and `fsm-core` cannot depend on `fsm-store`. (2) Steps 1 through 4 landed with `5501`, which needed them to fold its own cold-path replay test — per-instance machine tracking, the link assertion, the claim verification, and the view's resolution were all required before a migrated store could be reopened at all. This task is what proves they hold.

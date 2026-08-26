@@ -185,6 +185,13 @@ impl Store {
 
     /// The machines this store holds, keyed by the 64-hex digest an `invoke`
     /// slot names.
+    ///
+    /// A superseded machine is **never** removed from this catalogue, and a
+    /// future cleanup that wants to collect them starts here and must stop:
+    /// every record an instance wrote before it migrated replays against the
+    /// definition it was on, and a pending effect's name re-derives from the
+    /// machine that emitted it. A store that garbage-collected superseded
+    /// definitions would be a store that cannot fold its own journal.
     pub fn invoke_catalogue(&self) -> fsm_core::spec::Catalogue {
         self.state
             .machines
