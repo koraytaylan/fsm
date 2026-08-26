@@ -222,6 +222,22 @@ impl Store {
                 true,
             )));
         }
+        if rec.kind == RecordKind::InstanceMigrated {
+            let field = |name: &str| {
+                rec.body
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            };
+            return Some(Ok(super::instance::migrate::migrated_response(
+                field("instance_id"),
+                field("from_machine_id"),
+                field("to_machine_id"),
+                request_id,
+                rec.seq,
+                true,
+            )));
+        }
         if rec.kind == RecordKind::SignalDelivered {
             let field = |name: &str| {
                 rec.body
@@ -451,6 +467,19 @@ impl Store {
             &BTreeMap::from([
                 ("sender_instance_id".into(), Value::Str(sender_id.into())),
                 ("signal_id".into(), Value::Str(signal_id.into())),
+            ]),
+        )
+    }
+
+    /// A migration's key is the instance and the target machine: the same
+    /// instance under the same key to a *different* machine is a different
+    /// request and is refused rather than replayed.
+    pub(super) fn fp_migrate(instance_id: &str, to_machine: &str) -> String {
+        fsm_core::hashes::request_fp(
+            "migrate",
+            &BTreeMap::from([
+                ("instance_id".into(), Value::Str(instance_id.into())),
+                ("to_machine".into(), Value::Str(to_machine.into())),
             ]),
         )
     }

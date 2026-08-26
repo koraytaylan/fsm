@@ -876,11 +876,6 @@ fn all_codes_hygiene() {
         // Plan 0011 registers its closed set of codes in one task so no
         // later task edits `error.rs`. Each line below names the task that
         // makes its code reachable and is removed by that task's commit.
-        // Task 5501 — the instance migrate operation:
-        "req/migrate_settled",
-        "req/migrate_unmapped",
-        "req/migrate_not_superseded",
-        "req/migrate_slot",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");

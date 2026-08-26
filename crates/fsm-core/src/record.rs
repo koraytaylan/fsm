@@ -36,6 +36,11 @@ pub enum RecordKind {
     /// that are not parent and child, and the sender's proof of what it
     /// tried, whatever the target did with it.
     SignalDelivered,
+    /// One instance moved onto a definition that declared it supersedes the
+    /// one the instance was on. The record carries both machine ids, so an
+    /// instance's records legitimately span two definitions and a reader can
+    /// tell exactly where the boundary is.
+    InstanceMigrated,
     RequestRejected,
     InstanceCancelled,
     Annotated,
@@ -72,6 +77,7 @@ pub fn instances_touched(record: &Record) -> Vec<&str> {
             .into_iter()
             .chain(field("child_instance_id"))
             .collect(),
+        RecordKind::InstanceMigrated => field("instance_id").into_iter().collect(),
         RecordKind::SignalDelivered => field("sender_instance_id")
             .into_iter()
             .chain(field("target_instance_id"))
@@ -95,6 +101,7 @@ impl RecordKind {
             RecordKind::InstanceInvoked => "instance_invoked",
             RecordKind::InvocationReturned => "invocation_returned",
             RecordKind::SignalDelivered => "signal_delivered",
+            RecordKind::InstanceMigrated => "instance_migrated",
             RecordKind::RequestRejected => "request_rejected",
             RecordKind::InstanceCancelled => "instance_cancelled",
             RecordKind::Annotated => "annotated",
@@ -117,6 +124,7 @@ impl RecordKind {
             "instance_invoked" => Self::InstanceInvoked,
             "invocation_returned" => Self::InvocationReturned,
             "signal_delivered" => Self::SignalDelivered,
+            "instance_migrated" => Self::InstanceMigrated,
             "request_rejected" => Self::RequestRejected,
             "instance_cancelled" => Self::InstanceCancelled,
             "annotated" => Self::Annotated,
@@ -126,7 +134,7 @@ impl RecordKind {
     }
 
     /// Every recognized record kind in stable protocol order.
-    pub fn all() -> [RecordKind; 17] {
+    pub fn all() -> [RecordKind; 18] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -141,6 +149,7 @@ impl RecordKind {
             Self::InstanceInvoked,
             Self::InvocationReturned,
             Self::SignalDelivered,
+            Self::InstanceMigrated,
             Self::RequestRejected,
             Self::InstanceCancelled,
             Self::Annotated,
@@ -649,6 +658,23 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
             req_str(body, "instance_id")
                 && req_str(body, "request_id")
                 && req_str(body, "reason")
+                && is_state_hash(body.get("state_hash"))
+        }
+        RecordKind::InstanceMigrated => {
+            req_str(body, "instance_id")
+                && req_str(body, "from_machine_id")
+                && req_str(body, "to_machine_id")
+                && req_str(body, "request_id")
+                && body.get("configuration_before").is_some()
+                && body.get("configuration_after").is_some()
+                && body
+                    .get("dropped_history")
+                    .and_then(Value::as_arr)
+                    .is_some()
+                && body
+                    .get("rescheduled_deadlines")
+                    .and_then(Value::as_arr)
+                    .is_some()
                 && is_state_hash(body.get("state_hash"))
         }
         RecordKind::SignalDelivered => {

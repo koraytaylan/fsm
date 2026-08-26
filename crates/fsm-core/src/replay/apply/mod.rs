@@ -36,6 +36,7 @@ mod deadline_records;
 mod event;
 mod instance;
 mod invoke;
+mod migrate;
 mod signal;
 
 use deadline_records::{apply_deadline_applied, apply_deadline_not_due, apply_deadline_rejected};
@@ -45,6 +46,7 @@ use instance::{
     apply_request_rejected,
 };
 use invoke::{apply_instance_invoked, apply_invocation_returned};
+use migrate::apply_instance_migrated;
 use signal::apply_signal_delivered;
 
 pub(super) fn apply(
@@ -67,6 +69,7 @@ pub(super) fn apply(
         RecordKind::InstanceInvoked => apply_instance_invoked(st, rec),
         RecordKind::InvocationReturned => apply_invocation_returned(st, rec),
         RecordKind::SignalDelivered => apply_signal_delivered(st, rec),
+        RecordKind::InstanceMigrated => apply_instance_migrated(st, rec),
         RecordKind::RequestRejected => apply_request_rejected(st, rec),
         RecordKind::InstanceCancelled => apply_instance_cancelled(st, rec),
         RecordKind::Annotated => apply_annotated(st, rec),

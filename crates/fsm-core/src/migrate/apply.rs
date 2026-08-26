@@ -56,6 +56,9 @@ pub struct MigrationReport {
     pub retained_signals: Vec<String>,
     /// Slots dropped because their result was already delivered.
     pub dropped_slots: Vec<String>,
+    /// The configuration the instance lands on, after the reaction. Absent
+    /// on a report from an attempt that refused before it got there.
+    pub settled: Option<ActiveConfiguration>,
     /// The reaction the migrated instance ran, if any.
     pub microsteps: Vec<crate::trace::MicrostepTrace>,
 }
@@ -288,6 +291,7 @@ pub(crate) fn attempt(
         Err(rejection) => refuse!(rejection),
     };
     report.microsteps = applied.trace.microsteps.clone();
+    report.settled = Some(applied.configuration_after.clone());
 
     // Step seven — return. `seq` is the store's business, and a pure function
     // that invented one would be lying about ordering.
@@ -376,4 +380,32 @@ fn reject(code: &'static str, message: impl Into<String>, hint: impl Into<String
         trace: Default::default(),
         cause: None,
     }
+}
+
+/// The canonical encoding of a report's rescheduled deadlines.
+///
+/// One encoder for the record writer and the replay checker: a claim written
+/// one way and checked another is a claim nobody is really checking.
+pub fn rescheduled_value(entries: &[(String, Option<i64>, Option<i64>)]) -> crate::json::Value {
+    crate::json::Value::Arr(
+        entries
+            .iter()
+            .map(|(name, before, after)| {
+                let mut fields = BTreeMap::from([(
+                    "deadline".to_string(),
+                    crate::json::Value::Str(name.clone()),
+                )]);
+                if let Some(before) = before {
+                    fields.insert(
+                        "was_due_ms".into(),
+                        crate::json::Value::Num(before.to_string()),
+                    );
+                }
+                if let Some(after) = after {
+                    fields.insert("due_ms".into(), crate::json::Value::Num(after.to_string()));
+                }
+                crate::json::Value::Obj(fields)
+            })
+            .collect(),
+    )
 }

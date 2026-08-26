@@ -11,22 +11,6 @@ pub(crate) const INFRA: &[(&str, &str)] = &[
         "def/supersedes_self",
         "unreachable by construction: a definition would have to contain its own hash; the rule stands as defence in depth, like def/invoke_cycle",
     ),
-    (
-        "req/migrate_settled",
-        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
-    ),
-    (
-        "req/migrate_unmapped",
-        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
-    ),
-    (
-        "req/migrate_not_superseded",
-        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
-    ),
-    (
-        "req/migrate_slot",
-        "declared by plan 0011 task 5301 with its closed set; reachable from task 5501",
-    ),
     ("io/read", "filesystem failure is not a caller-shaped retry"),
     (
         "io/write",

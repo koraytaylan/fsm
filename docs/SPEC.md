@@ -584,6 +584,7 @@ because a deadline poll visits no event guard.
 | `instance_invoked` | `parent_instance_id`, `slot`, `child_instance_id`, `child_machine_id`, `overrides`, `request_id`, `state_hash`, `child_state_hash`, `state_format` |
 | `invocation_returned` | `parent_instance_id`, `slot`, `child_instance_id`, `outcome` (`completed` or `cancelled`), `payload`, `request_id`, `state_hash`, `state_format`, optional `microsteps` |
 | `signal_delivered` | `sender_instance_id`, `signal_id`, `target_instance_id`, `event`, `payload`, `outcome`, `request_id`, `sender_state_hash`, `state_format`, optional `target_state_hash`, optional `microsteps` |
+| `instance_migrated` | `instance_id`, `from_machine_id`, `to_machine_id`, `configuration_before`, `configuration_after`, `dropped_history`, `rescheduled_deadlines`, `request_id`, `state_hash`, `state_format`, optional `microsteps` |
 | `annotated` | `instance_id`, `request_id`, `note` |
 | `state_checkpoint` | `state_root`, `state_root_format` |
 

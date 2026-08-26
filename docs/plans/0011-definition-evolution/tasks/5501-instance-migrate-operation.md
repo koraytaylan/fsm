@@ -12,7 +12,15 @@ touches:
   - crates/fsm-store/src/store/instance/mod.rs
   - crates/fsm-core/src/record.rs
   - crates/fsm-store/tests/instance_migrate.rs
-status: planned
+  - crates/fsm-core/src/replay/apply/migrate.rs
+  - crates/fsm-core/src/replay/apply/mod.rs
+  - crates/fsm-core/src/migrate/apply.rs
+  - crates/fsm-store/src/store/instance/mod.rs
+  - crates/fsm-store/src/store/idempotency.rs
+  - crates/fsm-store/tests/instance_migrate.rs
+  - crates/fsm-cli/tests/naive_caller/*.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Instance Migrate Operation
@@ -47,3 +55,7 @@ One record moves one instance, carrying both machine ids and the full report —
 - A subsequent `instance_send` against the migrated instance is validated against the **new** machine's declarations.
 
 - **Done when:** `cargo test -p fsm-store --test instance_migrate` passes every case above, the supersede link is unconditional with no override, refusals are journaled, cold-path replay reconstructs from the journal, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `migrate_instance_on` in the established mutator style, the `instance_migrated` kind with its body shape and its `instances_touched` arm, the journaled refusal path, `fp_migrate` over `(instance, target)`, the cold-path replay arm, and a suite covering the record's contents, the supersede-link refusal, both journaled refusals with their replays, idempotency including the different-target conflict, cold-path replay after a restart, the record agreeing with the preview at the same `ts`, a carried effect that still acks, the reacting and quiet cases, the fold, and the read-only refusal.
+
+**Corrections.** (1) The plan leaves the fold arm to `5502`, but this task's own cold-path replay test reopens a store that holds an `instance_migrated` record — which cannot be folded without one. The arm lands here, including the per-instance machine tracking that makes it correct, and `5502` verifies the journaled claims and adds the properties. (2) `MigrationReport` gained `settled` (the configuration at quiescence) and a shared `rescheduled_value` encoder, so the record writer and the replay checker encode the claim the same way: a claim written one way and checked another is a claim nobody is really checking.

@@ -465,6 +465,167 @@ pub(crate) fn one_step_composition(
     );
     dispatch(st, clock, "machine_create", &obj(&[("spec", value(&kept))])).unwrap();
     seen.insert("def/supersedes_slot");
+
+    // Plan 0011 task 5501: the four run-time migration refusals, each driven
+    // through `instance_migrate` and corrected the way its hint says.
+    let old_machine = r#"{"format":"fsm.machine/1","name":"mg_v1","states":[{"name":"intake"},{"name":"stuck"}],"initial":"intake","context":[{"name":"score","ty":"int","init":"1"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"intake","on":"go","to":"stuck"}]}"#;
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(old_machine))]),
+    )
+    .unwrap();
+    let old_digest = digest_of(&machine_id(&value(old_machine)))
+        .unwrap()
+        .to_string();
+    let mapped = format!(
+        r#"{{"format":"fsm.machine/1","name":"mg_v2","states":[{{"name":"intake"}},{{"name":"stuck"}}],"initial":"intake","context":[{{"name":"score","ty":"int","init":"0"}}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"stuck"}}],"supersedes":{{"machine":"{old_digest}","states":{{"intake":"intake"}},"context":{{"score":"ctx.score"}}}}}}"#
+    );
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&mapped))]),
+    )
+    .unwrap();
+    dispatch(
+        st,
+        clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("mg_v1".into())),
+            ("request_id", Value::Str("mg-create".into())),
+        ]),
+    )
+    .unwrap();
+
+    // req/migrate_not_superseded: a target that never claimed this machine.
+    let error = st
+        .migrate_instance("inst-mg-create", "mg_v1", "mg-not-sup")
+        .expect_err("mg_v1 supersedes nothing");
+    assert_eq!(error.code, "req/migrate_not_superseded");
+    st.migrate_instance("inst-mg-create", "mg_v2", "mg-fixed")
+        .expect("the definition that does supersede it");
+    seen.insert("req/migrate_not_superseded");
+
+    // req/migrate_unmapped: an instance in a leaf the map does not cover.
+    dispatch(
+        st,
+        clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("mg_v1".into())),
+            ("request_id", Value::Str("mg-stuck".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        st,
+        clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-mg-stuck".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("mg-stuck-go".into())),
+        ]),
+    )
+    .unwrap();
+    let error = st
+        .migrate_instance("inst-mg-stuck", "mg_v2", "mg-unmapped")
+        .expect_err("stuck is unmapped");
+    assert_eq!(error.code, "req/migrate_unmapped");
+    let covering = mapped
+        .replace(
+            r#""states":{"intake":"intake"}"#,
+            r#""states":{"intake":"intake","stuck":"stuck"}"#,
+        )
+        .replace("mg_v2", "mg_v3");
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&covering))]),
+    )
+    .unwrap();
+    st.migrate_instance("inst-mg-stuck", "mg_v3", "mg-unmapped-fixed")
+        .expect("a map that covers the leaf");
+    seen.insert("req/migrate_unmapped");
+
+    // req/migrate_settled: nothing to migrate.
+    dispatch(
+        st,
+        clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("mg_v1".into())),
+            ("request_id", Value::Str("mg-done".into())),
+        ]),
+    )
+    .unwrap();
+    st.cancel_instance("inst-mg-done", "mg-done-cancel")
+        .unwrap();
+    let error = st
+        .migrate_instance("inst-mg-done", "mg_v2", "mg-settled")
+        .expect_err("a settled instance");
+    assert_eq!(error.code, "req/migrate_settled");
+    seen.insert("req/migrate_settled");
+
+    // req/migrate_slot: a live invocation the new definition cannot carry.
+    // Admission refuses a definition that drops a slot outright, so the
+    // reachable shape is a slot re-pointed at a *different* child machine:
+    // the id still exists, and the running child is not the one it names.
+    let slot_v1 = format!(
+        r#"{{"format":"fsm.machine/1","name":"mg_slot_v1","states":[{{"name":"intake","invoke":[{{"id":"check","machine":"{digest}"}}]}},{{"name":"out"}}],"initial":"intake","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"out"}}]}}"#
+    );
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&slot_v1))]),
+    )
+    .unwrap();
+    let slot_digest = digest_of(&machine_id(&value(&slot_v1)))
+        .unwrap()
+        .to_string();
+    let other_child = r#"{"format":"fsm.machine/1","name":"mg_other_child","states":[{"name":"w"},{"name":"d","terminal":true}],"initial":"w","context":[],"events":[{"name":"f","fields":[]}],"transitions":[{"from":"w","on":"f","to":"d"}]}"#;
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(other_child))]),
+    )
+    .unwrap();
+    let other_digest = digest_of(&machine_id(&value(other_child)))
+        .unwrap()
+        .to_string();
+    let slot_v2 = format!(
+        r#"{{"format":"fsm.machine/1","name":"mg_slot_v2","states":[{{"name":"intake","invoke":[{{"id":"check","machine":"{other_digest}"}}]}},{{"name":"out"}}],"initial":"intake","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"out"}}],"supersedes":{{"machine":"{slot_digest}","states":{{"intake":"intake"}},"context":{{}}}}}}"#
+    );
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&slot_v2))]),
+    )
+    .unwrap();
+    dispatch(
+        st,
+        clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("mg_slot_v1".into())),
+            ("request_id", Value::Str("mg-slot".into())),
+        ]),
+    )
+    .unwrap();
+    st.invoke_child("inst-mg-slot", "check", "mg-slot-inv")
+        .unwrap();
+    let error = st
+        .migrate_instance("inst-mg-slot", "mg_slot_v2", "mg-slot-move")
+        .expect_err("the target maps intake onto a state with no slot");
+    assert_eq!(error.code, "req/migrate_slot");
+    seen.insert("req/migrate_slot");
 }
 
 /// Every composition code, produced through a real outcome.
@@ -647,6 +808,110 @@ pub(crate) fn drive_composition_outcomes(
         "machine_create",
         &obj(&[("spec", value(&dropped))]),
     ) {
+        Ok(v) => note_ok(&v, out),
+        Err(e) => note_err(&e, out),
+    }
+
+    // Plan 0011 task 5501: the four migration refusals, as real outcomes.
+    let old_machine = r#"{"format":"fsm.machine/1","name":"tv_mg_v1","states":[{"name":"intake"},{"name":"stuck"}],"initial":"intake","context":[{"name":"score","ty":"int","init":"1"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"intake","on":"go","to":"stuck"}]}"#;
+    let _ = dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(old_machine))]),
+    );
+    let old_digest = digest_of(&machine_id(&value(old_machine)))
+        .unwrap()
+        .to_string();
+    let mapped = format!(
+        r#"{{"format":"fsm.machine/1","name":"tv_mg_v2","states":[{{"name":"intake"}},{{"name":"stuck"}}],"initial":"intake","context":[{{"name":"score","ty":"int","init":"0"}}],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"stuck"}}],"supersedes":{{"machine":"{old_digest}","states":{{"intake":"intake"}},"context":{{"score":"ctx.score"}}}}}}"#
+    );
+    let _ = dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&mapped))]),
+    );
+    for (id, request) in [("tv-mg-a", "tv-mg-a"), ("tv-mg-b", "tv-mg-b")] {
+        let _ = dispatch(
+            st,
+            clock,
+            "instance_create",
+            &obj(&[
+                ("machine", Value::Str("tv_mg_v1".into())),
+                ("request_id", Value::Str(id.into())),
+            ]),
+        );
+        let _ = request;
+    }
+    // Not superseded, unmapped, and settled — one probe each.
+    match st.migrate_instance("inst-tv-mg-a", "tv_mg_v1", "tv-mg-not-sup") {
+        Ok(v) => note_ok(&v, out),
+        Err(e) => note_err(&e, out),
+    }
+    let _ = dispatch(
+        st,
+        clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-tv-mg-b".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("tv-mg-b-go".into())),
+        ]),
+    );
+    match st.migrate_instance("inst-tv-mg-b", "tv_mg_v2", "tv-mg-unmapped") {
+        Ok(v) => note_ok(&v, out),
+        Err(e) => note_err(&e, out),
+    }
+    let _ = st.cancel_instance("inst-tv-mg-a", "tv-mg-a-cancel");
+    match st.migrate_instance("inst-tv-mg-a", "tv_mg_v2", "tv-mg-settled") {
+        Ok(v) => note_ok(&v, out),
+        Err(e) => note_err(&e, out),
+    }
+    // And a live slot the new definition points somewhere else.
+    let slot_v1 = format!(
+        r#"{{"format":"fsm.machine/1","name":"tv_mg_slot_v1","states":[{{"name":"intake","invoke":[{{"id":"check","machine":"{child}"}}]}},{{"name":"out"}}],"initial":"intake","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"out"}}]}}"#,
+        child = child_digest()
+    );
+    let _ = dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&slot_v1))]),
+    );
+    let slot_digest = digest_of(&machine_id(&value(&slot_v1)))
+        .unwrap()
+        .to_string();
+    let other_child = r#"{"format":"fsm.machine/1","name":"tv_mg_other","states":[{"name":"w"},{"name":"d","terminal":true}],"initial":"w","context":[],"events":[{"name":"f","fields":[]}],"transitions":[{"from":"w","on":"f","to":"d"}]}"#;
+    let _ = dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(other_child))]),
+    );
+    let other_digest = digest_of(&machine_id(&value(other_child)))
+        .unwrap()
+        .to_string();
+    let slot_v2 = format!(
+        r#"{{"format":"fsm.machine/1","name":"tv_mg_slot_v2","states":[{{"name":"intake","invoke":[{{"id":"check","machine":"{other_digest}"}}]}},{{"name":"out"}}],"initial":"intake","context":[],"events":[{{"name":"go","fields":[]}}],"transitions":[{{"from":"intake","on":"go","to":"out"}}],"supersedes":{{"machine":"{slot_digest}","states":{{"intake":"intake"}},"context":{{}}}}}}"#
+    );
+    let _ = dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&slot_v2))]),
+    );
+    let _ = dispatch(
+        st,
+        clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("tv_mg_slot_v1".into())),
+            ("request_id", Value::Str("tv-mg-slot".into())),
+        ]),
+    );
+    let _ = st.invoke_child("inst-tv-mg-slot", "check", "tv-mg-slot-inv");
+    match st.migrate_instance("inst-tv-mg-slot", "tv_mg_slot_v2", "tv-mg-slot-move") {
         Ok(v) => note_ok(&v, out),
         Err(e) => note_err(&e, out),
     }
