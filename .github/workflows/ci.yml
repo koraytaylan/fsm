@@ -59,6 +59,16 @@ jobs:
       # paid, and keep docs/RELEASE.md in step.
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo doc --workspace --no-deps
+      # Committed decimal vectors must be reproducible from the generator on
+      # every leg; a stale fixture fails before it can mislead a release.
+      - name: Decimal vectors regenerate byte-identically
+        shell: bash
+        run: |
+          work="$(mktemp -d)"
+          python3 tools/gen_decimal_vectors.py "$work/dec-a.jsonl"
+          python3 tools/gen_decimal_vectors.py "$work/dec-b.jsonl"
+          cmp "$work/dec-a.jsonl" "$work/dec-b.jsonl"
+          cmp "$work/dec-a.jsonl" crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl
 
   # The zero-dependency guarantee and the core-only embed boundary are
   # properties of the resolved graph, so keep explicit cheap checks that do

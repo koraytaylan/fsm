@@ -131,7 +131,12 @@ gate once that debt is paid, and update `ci.yml` and `release.yml` together.
 
 ## Manual acceptance
 
-The pipeline cannot run these; do them before tagging.
+The pipeline cannot run these; do them before tagging. This list is honor-system
+by design — each item requires a live MCP host, a human reviewer, or a physical
+filesystem, none of which a workflow can stand in for. What *is* machine-checkable
+about a release candidate (the `ci.yml` gate re-run as `verify`, the downstream
+git-dependency build, decimal-vector regeneration, and the fuzz seed corpus) is
+enforced by jobs in `release.yml`, not by this list.
 
 - `manual:` Claude Code: connect, list all 14 tools, run the golden loop
   end-to-end.
@@ -153,9 +158,15 @@ The pipeline cannot run these; do them before tagging.
 - `manual:` re-run the latency harness and update the measured table in
   [`EMBEDDING.md`](EMBEDDING.md) if the numbers have moved materially:
   `FSM_BENCH_ROOT=/path/on/filesystem-under-test cargo +stable test --release -p fsm-store --test append_latency -- --ignored --nocapture`
-- `manual:` regenerate the decimal vectors and confirm they are byte-identical:
+- regenerate the decimal vectors and confirm they are byte-identical — enforced
+  as a CI step on every gate leg and again in the release `verify` job, so a
+  stale fixture fails long before a tag. Command (also run by CI):
   `python3 tools/gen_decimal_vectors.py /tmp/dec-a.jsonl && python3 tools/gen_decimal_vectors.py /tmp/dec-b.jsonl && cmp /tmp/dec-a.jsonl /tmp/dec-b.jsonl && cmp /tmp/dec-a.jsonl crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl`
-- `cargo metadata --manifest-path fuzz/Cargo.toml --format-version 1`
+- every shipped cargo-fuzz target builds and runs its committed seed corpus on
+  nightly — gated by the release workflow's `fuzz-smoke` job on every tag push.
+  Locally:
+  `rustup toolchain install nightly && cargo install cargo-fuzz && cargo +nightly fuzz run --fuzz-dir fuzz json_parse -- -runs=2048`
+  (repeat for each target, or run the job by pushing a tag candidate).
 
 ## Tagging and pushing
 

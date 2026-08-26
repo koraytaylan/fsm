@@ -4,8 +4,9 @@
 # tagged commit — on
 # Linux, macOS and Windows, at stable and the minimum supported Rust version, so
 # every supported operating-system family is tested — and that
-# a downstream crate can actually depend on the tag, because a git tag *is* the
-# distribution artifact here (docs/API-POLICY.md). Then it generates the
+# a downstream crate can actually depend on the tag (docs/API-POLICY.md), and
+# that every shipped cargo-fuzz target builds and runs its committed seeds on
+# nightly. Then it regenerates the
 # changelog from the conventional-commit history with git-cliff, builds the CLI
 # for the most compatible target of each platform, publishes a GitHub release
 # with the binaries and checksums, and fast-forwards `main` to the released
@@ -97,6 +98,16 @@ jobs:
       - run: cargo test --workspace --release
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo doc --workspace --no-deps
+      # Mirror of ci.yml's gate: committed decimal vectors must regenerate
+      # byte-identically at the tag, not just at branch time.
+      - name: Decimal vectors regenerate byte-identically
+        shell: bash
+        run: |
+          work="$(mktemp -d)"
+          python3 tools/gen_decimal_vectors.py "$work/dec-a.jsonl"
+          python3 tools/gen_decimal_vectors.py "$work/dec-b.jsonl"
+          cmp "$work/dec-a.jsonl" "$work/dec-b.jsonl"
+          cmp "$work/dec-a.jsonl" crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl
       - name: Embed acceptance depends on fsm-core alone
         shell: bash
         run: |
@@ -107,6 +118,44 @@ jobs:
           [[ $(printf '%s\n' "$packages" | awk 'END { print NR }') -eq 2 ]]
           [[ $(printf '%s\n' "$packages" | sed -n '1p') == fsm-embed-acceptance\ v* ]]
           [[ $(printf '%s\n' "$packages" | sed -n '2p') == fsm-core\ v* ]]
+
+  # The release gate for the fuzz layer: builds and seeds every shipped
+  # cargo-fuzz target on nightly, bounded by -runs so it is a smoke test, not
+  # open-ended fuzzing. A release tag must not ship a target that does not
+  # build or that crashes on its own committed corpus seeds. The in-workspace
+  # `fuzz_isolated` and `isolated_fuzz_targets` tests (which run in the normal
+  # workspace test sweep on every PR) cover the subjects; this job covers the
+  # libfuzzer harness and the nightly-only build, which nothing else exercises.
+  fuzz-smoke:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install nightly --profile minimal
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: Build every target, then seed-run it to a fixed input count
+        shell: bash
+        env:
+          RUSTUP_TOOLCHAIN: nightly
+        run: |
+          set -euo pipefail
+          seed() {  # copy a fixture tree into the target's corpus if present
+            [ -d "$2" ] && mkdir -p "fuzz/corpus/$1" && cp -r "$2"/* "fuzz/corpus/$1/" || true
+          }
+          seed json_parse       crates/fsm-core/tests/fixtures/json
+          seed expr_parse       crates/fsm-core/tests/fixtures/expr
+          seed decimal_parse    crates/fsm-core/tests/fixtures/decimal
+          seed canon_roundtrip  crates/fsm-core/tests/fixtures/canon
+          seed record_line      crates/fsm-core/tests/fixtures/records
+          seed jsonrpc_loop     crates/fsm-cli/tests/fixtures/transcripts
+          for t in json_parse expr_parse decimal_parse canon_roundtrip record_line jsonrpc_loop; do
+            echo "== fuzz-smoke: $t"
+            cargo fuzz run --fuzz-dir fuzz "$t" -- -runs=2048
+          done
 
   # What `cargo publish` is for a registry project: proof that the thing
   # consumers are told to depend on actually resolves and builds. README.md and
@@ -309,7 +358,7 @@ jobs:
             fsm-*.zip
 
   release:
-    needs: [verify, git-dep, changelog, build]
+    needs: [verify, git-dep, changelog, build, fuzz-smoke]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
