@@ -15,7 +15,13 @@ touches:
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/src/mcp/descriptions.rs
   - crates/fsm-cli/tests/composition_tools.rs
-status: planned
+  - crates/fsm-cli/src/mcp/descriptions.rs
+  - crates/fsm-cli/src/mcp/tools/handlers/instance.rs
+  - crates/fsm-cli/tests/composition_tools.rs
+  - docs/EMBEDDING.md
+  - docs/API-POLICY.md
+  - docs/RELEASE.md
+status: done
 merged_as: ""
 ---
 # CLI And MCP Composition Tools
@@ -43,3 +49,5 @@ The executor is the default path for composition, not the only one: a session wi
 - `tools/list` stays under the response budget `tools_budget.rs` enforces.
 
 - **Done when:** `cargo test -p fsm-cli --test composition_tools --test tool_schemas --test read_only` passes, all three tools are in `MUTATING_TOOLS`, CLI/MCP parity holds, the tool-count and budget assertions are updated, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** three CLI subcommands sharing one `composition` helper (they differ only in which mutator they call), three tools with input and output schemas, three descriptions in the existing voice, all three in `MUTATING_TOOLS` and in `EMBEDDING.md`'s read-only list — which `executor_doc.rs` requires — and a suite covering each operation, the schema validation, the mutating-and-request_id contract, duplicate replay, the CLI/MCP byte parity, and the usage diagnostic. Step 6's instruction to leave `prompts.rs` alone is honoured and the commit message says why. The counts the golden suites assert moved from fourteen to seventeen in five places, and the `tools/list` ceiling from 21 000 to 24 000 bytes: three tools with schemas are a real capability, and the per-description word caps — which are what actually bound a model's reading cost — are unchanged and now cover the new descriptions.

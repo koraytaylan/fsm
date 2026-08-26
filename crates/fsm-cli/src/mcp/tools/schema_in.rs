@@ -63,6 +63,25 @@ pub(super) fn schema_deadline_poll_in() -> Value {
     schema_obj(p, &["instance_id", "request_id"], false)
 }
 
+/// An invocation slot: the parent and the slot name, which are the whole of
+/// the request — the child id, the machine, and the overrides all derive
+/// from them and the parent's state.
+pub(super) fn schema_invocation_slot_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("slot".into(), ty("string"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(p, &["instance_id", "slot", "request_id"], false)
+}
+
+pub(super) fn schema_signal_deliver_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("signal_id".into(), ty("string"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(p, &["instance_id", "signal_id", "request_id"], false)
+}
+
 pub(super) fn schema_effect_ack_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

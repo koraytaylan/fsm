@@ -24,6 +24,9 @@ pub const MACHINE_DIAGRAM: &str =
     "Render Mermaid or DOT; an instance overlay marks every active regional leaf.";
 pub const INSTANCE_CREATE: &str = "When a definition is ready, create an instance with request_id; then use instance_send and deadline_poll. Decimals are JSON strings; `$` names are reserved.";
 pub const EFFECT_ACK: &str = "When effects_pending is non-empty, acknowledge each executed effect with request_id, then instance_send a domain event. An ack only clears the pending effect — it never fires a transition, and `outcome: \"failed\"` is no exception: report the failure with an explicit domain event.";
+pub const INVOCATION_START: &str = "When an instance is waiting on an invocation slot, create its child with request_id. The executor normally does this unattended; call it when none is running. The child id is derived from the parent and the slot, so a retry is a replay.";
+pub const INVOCATION_RETURN: &str = "When an invoked child has completed or been cancelled, hand its result to the parent with request_id. Legal only once the child has settled; the result arrives at the parent as $done.invoke.<slot>, which its transition handles.";
+pub const SIGNAL_DELIVER: &str = "When signals_pending is non-empty, deliver each signal with request_id. It reaches exactly one instance, the target's own machine validates the event, and whatever happens is journaled — a signal is fire-and-forget.";
 pub const INSTANCE_CANCEL: &str = "When work must stop, cancel an instance with a reason and request_id; further sends fail and pending deadlines are cleared.";
 pub const INSTANCE_GET: &str = "When you need an instance's tagged configuration, context, deadlines, effects, and enabled_events, get it by id.";
 pub const INSTANCE_LIST: &str =

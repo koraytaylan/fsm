@@ -210,6 +210,79 @@ pub(super) fn schema_instance_cancel_out() -> Value {
     )
 }
 
+pub(super) fn schema_invocation_start_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("parent_instance_id".into(), ty("string"));
+    p.insert("slot".into(), ty("string"));
+    p.insert("child_instance_id".into(), ty("string"));
+    p.insert("child_machine_id".into(), ty("string"));
+    p.insert("status".into(), ty("string"));
+    p.insert("invoked".into(), ty("boolean"));
+    p.insert("duplicate".into(), ty("boolean"));
+    p.insert("seq".into(), ty("number"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(
+        p,
+        &[
+            "parent_instance_id",
+            "slot",
+            "child_instance_id",
+            "child_machine_id",
+            "request_id",
+        ],
+        true,
+    )
+}
+
+pub(super) fn schema_invocation_return_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("parent_instance_id".into(), ty("string"));
+    p.insert("slot".into(), ty("string"));
+    p.insert("child_instance_id".into(), ty("string"));
+    p.insert("outcome".into(), ty("string"));
+    p.insert("status".into(), ty("string"));
+    p.insert("returned".into(), ty("boolean"));
+    p.insert("duplicate".into(), ty("boolean"));
+    p.insert("seq".into(), ty("number"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(
+        p,
+        &[
+            "parent_instance_id",
+            "slot",
+            "child_instance_id",
+            "outcome",
+            "request_id",
+        ],
+        true,
+    )
+}
+
+pub(super) fn schema_signal_deliver_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("sender_instance_id".into(), ty("string"));
+    p.insert("signal_id".into(), ty("string"));
+    p.insert("target_instance_id".into(), ty("string"));
+    p.insert("event".into(), ty("string"));
+    p.insert("outcome".into(), ty("string"));
+    p.insert("delivered".into(), ty("boolean"));
+    p.insert("duplicate".into(), ty("boolean"));
+    p.insert("seq".into(), ty("number"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(
+        p,
+        &[
+            "sender_instance_id",
+            "signal_id",
+            "target_instance_id",
+            "event",
+            "outcome",
+            "request_id",
+        ],
+        true,
+    )
+}
+
 pub(super) fn schema_effect_ack_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

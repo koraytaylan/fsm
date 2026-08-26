@@ -71,7 +71,7 @@ fn assert_transcript(ver: &str) {
 }
 
 #[test]
-fn fourteen_tools_in_order() {
+fn seventeen_tools_in_order() {
     assert_eq!(
         names(),
         [
@@ -85,6 +85,9 @@ fn fourteen_tools_in_order() {
             "deadline_poll",
             "effect_ack",
             "instance_cancel",
+            "invocation_start",
+            "invocation_return",
+            "signal_deliver",
             "instance_get",
             "instance_list",
             "instance_history",

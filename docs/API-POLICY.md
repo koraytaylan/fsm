@@ -7,7 +7,7 @@ What a downstream crate can rely on, and what it must expect to change.
 | Path | Status |
 |---|---|
 | `fsm` CLI (stdout contracts, exit codes) | supported |
-| `fsm serve` MCP tools (14 tools, schemas) | supported |
+| `fsm serve` MCP tools (17 tools, schemas) | supported |
 | `fsm-core` as a library dependency | supported |
 | `fsm-store` as a library dependency | supported |
 | `fsm-execute` as a library dependency | **provisional** — the effect executor's own surface. It ships with the `fsm execute` subcommand and is covered by that command's tests, but it has no outside-workspace acceptance check, and its types may change with the patch while the executor's design settles. Depend on it if you are hosting the loop yourself; pin a tag and expect to read the release notes. |

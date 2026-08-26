@@ -94,6 +94,39 @@ pub(in crate::mcp::tools) fn run_effect_ack(
     store.ack_effect_outcome_on(clock, iid, eid, rid, outcome, result)
 }
 
+pub(in crate::mcp::tools) fn run_invocation_start(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+) -> Result<Value, ErrorObj> {
+    let parent = str_arg(args, "instance_id").unwrap_or("");
+    let slot = str_arg(args, "slot").unwrap_or("");
+    let rid = str_arg(args, "request_id").unwrap_or("");
+    store.invoke_child_on(clock, parent, slot, rid)
+}
+
+pub(in crate::mcp::tools) fn run_invocation_return(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+) -> Result<Value, ErrorObj> {
+    let parent = str_arg(args, "instance_id").unwrap_or("");
+    let slot = str_arg(args, "slot").unwrap_or("");
+    let rid = str_arg(args, "request_id").unwrap_or("");
+    store.invocation_return_on(clock, parent, slot, rid)
+}
+
+pub(in crate::mcp::tools) fn run_signal_deliver(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+) -> Result<Value, ErrorObj> {
+    let sender = str_arg(args, "instance_id").unwrap_or("");
+    let signal_id = str_arg(args, "signal_id").unwrap_or("");
+    let rid = str_arg(args, "request_id").unwrap_or("");
+    store.signal_deliver_on(clock, sender, signal_id, rid)
+}
+
 pub(in crate::mcp::tools) fn run_instance_cancel(
     store: &mut Store,
     clock: &mut dyn Clock,

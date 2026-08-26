@@ -161,9 +161,21 @@ fn output_schemas_are_field_level() {
             &["instance_id", "entries", "chain_verified"],
         ),
         ("simulate", &["steps", "final"]),
+        (
+            "invocation_start",
+            &["parent_instance_id", "slot", "child_instance_id"],
+        ),
+        (
+            "invocation_return",
+            &["parent_instance_id", "slot", "outcome"],
+        ),
+        (
+            "signal_deliver",
+            &["sender_instance_id", "target_instance_id", "outcome"],
+        ),
     ];
     let reg = fsm_cli::mcp::tools::registry();
-    assert_eq!(reg.len(), 14);
+    assert_eq!(reg.len(), 17);
     for (name, fields) in expect {
         let t = reg.iter().find(|t| t.name == *name).expect(name);
         let out = (t.output_schema)();

@@ -418,9 +418,10 @@ directory and it can call `machine_list`, `machine_get`, `machine_analyze`,
 `machine_diagram`, `instance_get`, `instance_list`, `instance_history`, and
 `simulate` while the executor writes.
 
-What it cannot do there is write. These six refuse with a message naming the
+What it cannot do there is write. These nine refuse with a message naming the
 mode: `machine_create`, `instance_create`, `instance_send`, `deadline_poll`,
-`effect_ack`, `instance_cancel`. A `machine_create` with `dry_run` still
+`effect_ack`, `instance_cancel`, `invocation_start`, `invocation_return`,
+`signal_deliver`. A `machine_create` with `dry_run` still
 validates, because checking a definition is reading, not writing.
 
 That is the one real ergonomic price of a single-writer store, and it decides

@@ -181,6 +181,69 @@ fn poll_deadline(ctx: &mut Ctx, args: &Args) -> u8 {
     }
 }
 
+/// `fsm instance invoke <parent> <slot>` — create the child of a pending
+/// slot. The executor normally does this; this is the path for a session
+/// with none running.
+fn invoke(ctx: &mut Ctx, args: &Args) -> u8 {
+    composition(
+        ctx,
+        args,
+        "instance invoke <id> <slot>",
+        |store, one, two, rid| store.invoke_child(one, two, rid),
+    )
+}
+
+/// `fsm instance return <parent> <slot>` — hand a settled child's result to
+/// its parent, where it arrives as `$done.invoke.<slot>`.
+fn invocation_return(ctx: &mut Ctx, args: &Args) -> u8 {
+    composition(
+        ctx,
+        args,
+        "instance return <id> <slot>",
+        |store, one, two, rid| store.invocation_return(one, two, rid),
+    )
+}
+
+/// `fsm instance signal <sender> <signal-id>` — deliver one pending signal.
+fn signal(ctx: &mut Ctx, args: &Args) -> u8 {
+    composition(
+        ctx,
+        args,
+        "instance signal <id> <signal-id>",
+        |store, one, two, rid| store.signal_deliver(one, two, rid),
+    )
+}
+
+/// The three composition commands differ only in which mutator they call.
+fn composition(
+    ctx: &mut Ctx,
+    args: &Args,
+    usage: &str,
+    call: impl FnOnce(&mut crate::store::Store, &str, &str, &str) -> Result<Value, ErrorObj>,
+) -> u8 {
+    if args.positionals.len() < 2 {
+        return emit_error(ctx, &ErrorObj::new("args", usage));
+    }
+    let mut store = match open(ctx) {
+        Ok(store) => store,
+        Err(error) => return emit_error(ctx, &error),
+    };
+    let rid = match args.flags.get("request-id").cloned() {
+        Some(rid) => rid,
+        None => match store.allocate_request_id() {
+            Ok(rid) => rid,
+            Err(error) => return emit_error(ctx, &error),
+        },
+    };
+    match call(&mut store, &args.positionals[0], &args.positionals[1], &rid) {
+        Ok(value) => {
+            emit_success(ctx, &value);
+            0
+        }
+        Err(error) => fail(ctx, error, &rid),
+    }
+}
+
 fn ack(ctx: &mut Ctx, args: &Args) -> u8 {
     if args.positionals.len() < 2 {
         return emit_error(ctx, &ErrorObj::new("args", "instance ack <id> <effect>"));
@@ -446,6 +509,30 @@ pub static SPECS: &[CmdSpec] = &[
         switches: &[],
         help: "Ack effect",
         run: ack,
+    },
+    CmdSpec {
+        path: &["instance", "invoke"],
+        positionals: &["instance", "slot"],
+        flags: &["request-id"],
+        switches: &[],
+        help: "Invoke a slot's child",
+        run: invoke,
+    },
+    CmdSpec {
+        path: &["instance", "return"],
+        positionals: &["instance", "slot"],
+        flags: &["request-id"],
+        switches: &[],
+        help: "Return a settled child's result",
+        run: invocation_return,
+    },
+    CmdSpec {
+        path: &["instance", "signal"],
+        positionals: &["instance", "signal-id"],
+        flags: &["request-id"],
+        switches: &[],
+        help: "Deliver one pending signal",
+        run: signal,
     },
     CmdSpec {
         path: &["instance", "cancel"],
