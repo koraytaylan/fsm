@@ -148,6 +148,11 @@ enforced by jobs in `release.yml`, not by this list.
   natural-language brief, unaided, in a bounded number of tool calls.
 - `manual:` replay [`EXAMPLES.md`](EXAMPLES.md) transcripts under `FSM_CLOCK_MS`
   and compare output.
+- `manual:` drive a reactive machine — one eventless transition, one `raise`,
+  and the fork/join in `examples/parallel_fork_join.json` — through a live MCP
+  host and confirm each cascade reads as one macrostep in `instance_history`
+  with `include_trace` and in `explain`: the trigger, then every reaction
+  microstep, in one record.
 - `manual:` `cargo install --path crates/fsm-cli --locked && fsm version && fsm docs spec`
 - `manual:` the executor runs a real workflow unattended: validate a table
   (`fsm execute --check --handlers examples/order_lifecycle.handlers.json`),

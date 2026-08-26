@@ -1,6 +1,7 @@
 use fsm_cli::clock::FixedClock;
 use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
+use fsm_core::record::RecordKind;
 use fsm_core::spec::{compile, parse_machine};
 use std::collections::BTreeMap;
 use std::fs;
@@ -56,6 +57,68 @@ fn all_valid() {
     valid("order_lifecycle");
     valid("invoice_matching");
     valid("parallel_review_deadline");
+    valid("parallel_fork_join");
+}
+
+/// The fork/join example settles in one record: the send that ends the
+/// `review` region, the join it raises, and the eventless close that
+/// completes the instance are one macrostep with two reaction microsteps.
+#[test]
+fn parallel_fork_join_settles_in_one_record_with_two_microsteps() {
+    let directory = TestDirectory::create();
+    let mut store = Store::open(directory.path()).unwrap();
+    store
+        .define_machine(load("parallel_fork_join"), false, false)
+        .unwrap();
+    let mut clock = FixedClock::new(1_000, 1);
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "parallel_fork_join",
+            "fj",
+            "fj-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let joined = store
+        .send_event(
+            "fj",
+            "approve",
+            Value::Obj(BTreeMap::new()),
+            "fj-approve",
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        joined.get("status").and_then(Value::as_str),
+        Some("completed")
+    );
+    let applied: Vec<_> = store
+        .records
+        .iter()
+        .filter(|record| record.kind == RecordKind::EventApplied)
+        .collect();
+    assert_eq!(applied.len(), 1, "one send, one record");
+    let microsteps = applied[0]
+        .body
+        .get("microsteps")
+        .and_then(Value::as_arr)
+        .expect("the record carries its reactions");
+    assert_eq!(microsteps.len(), 2);
+    assert_eq!(
+        microsteps[0].get("event").and_then(Value::as_str),
+        Some("$done.region.review")
+    );
+    assert_eq!(
+        microsteps[1].get("trigger").and_then(Value::as_str),
+        Some("eventless")
+    );
+    assert_eq!(
+        store.state.instances["fj"].ctx["joined"].canonical_string(),
+        "true"
+    );
 }
 
 #[test]

@@ -1,0 +1,39 @@
+{
+  "format": "fsm.machine/1",
+  "name": "parallel_fork_join",
+  "regions": [
+    {
+      "name": "review",
+      "initial": "awaiting_review",
+      "states": [
+        {"name": "awaiting_review"},
+        {"name": "approved", "terminal": true}
+      ]
+    },
+    {
+      "name": "audit",
+      "initial": "auditing",
+      "states": [
+        {"name": "auditing"},
+        {"name": "reconciling"},
+        {"name": "closed", "terminal": true}
+      ]
+    }
+  ],
+  "context": [
+    {"name": "joined", "ty": "bool", "init": "false"}
+  ],
+  "events": [
+    {"name": "approve", "fields": []}
+  ],
+  "transitions": [
+    {"from": "awaiting_review", "on": "approve", "to": "approved"},
+    {
+      "from": "auditing",
+      "on": "$done.region.review",
+      "to": "reconciling",
+      "do": [{"target": "joined", "value": "true"}]
+    },
+    {"from": "reconciling", "to": "closed"}
+  ]
+}

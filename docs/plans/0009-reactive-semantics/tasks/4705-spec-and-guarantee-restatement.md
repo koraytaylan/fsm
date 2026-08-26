@@ -14,9 +14,11 @@ touches:
   - docs/RELEASE.md
   - README.md
   - docs/EXAMPLES.md
-  - examples/parallel_review_deadline.json
+  - examples/parallel_fork_join.json
+  - crates/fsm-core/tests/fixtures/hashes/identity.jsonl
   - crates/fsm-cli/tests/spec_appendix.rs
-status: planned
+  - crates/fsm-cli/tests/examples.rs
+status: done
 merged_as: ""
 ---
 # Spec And Guarantee Restatement
@@ -45,3 +47,5 @@ SPEC is the source of truth and goldens derive from its prose, so this plan's se
 - `docs/RELEASE.md` names the reactive-machine manual-acceptance pass.
 
 - **Done when:** SPEC describes macrosteps, the four new definition shapes, the optional record key and its absence rule, and every new code; README states `one-event-one-macrostep` and the bounded-reaction non-claim; a fork/join example replays in one record; `cargo test -p fsm-cli --test spec_appendix --test examples` passes; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `## Semantics` gains `### Macrosteps`, stating the loop order, the queue order (raises then done events, breadth-first), the handler-only rule for generated events, continuous effect numbering, the three exceptions, atomicity with the rejection trace keeping every microstep, the ceiling and `run/microstep_limit`, admission of certain cycles, and — as a MUST — that the queue is never persisted and empty at every sealed state. Steps 2–4 were already true: the four definition shapes, the `def/*` rows, the `req/event_internal` catalogue row, the `microsteps` key with its absence rule and two-way verification, and both Appendix B rows with their genesis-limits note landed with the tasks that introduced them, which the extended `spec_appendix` now proves mechanically — Appendix A lists exactly `ALL_CODES`, every `def/*` code has a structural-rules row, the `run/*` catalogue names only real codes — beside the prose pins for `one-event-one-macrostep`, the 64-microstep non-claim, `never persisted`, and the manual-acceptance row. `examples/parallel_review_deadline.json` is pinned by `identity.jsonl` and by the inertness suite as a plain machine, so the worked fork/join is the sibling `examples/parallel_fork_join.json`: `approve` ends the review region, the audit region joins on `$done.region.review`, and an eventless transition closes the instance — one record, two microsteps — documented in EXAMPLES.md with a transcript the doc-replay test runs, pinned by `parallel_fork_join_settles_in_one_record_with_two_microsteps` and by its own identity line. EXAMPLES.md's older wording of the one-transition guarantee was restated alongside README's. The `policy.rs` scan is a purity scan of `fsm-core` source, so no prose passes through it; the wording rule of never naming the motivating domain was kept by hand.

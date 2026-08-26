@@ -22,6 +22,72 @@ fn all_codes_appear() {
     assert!(SPEC.contains("4096"));
 }
 
+/// A section of SPEC between two headings.
+fn section<'a>(text: &'a str, from: &str, to: &str) -> &'a str {
+    let start = text
+        .find(from)
+        .unwrap_or_else(|| panic!("SPEC has no {from}"));
+    let rest = &text[start..];
+    let end = rest
+        .find(to)
+        .unwrap_or_else(|| panic!("SPEC has no {to} after {from}"));
+    &rest[..end]
+}
+
+/// Both directions: Appendix A lists exactly `ALL_CODES` — a documented but
+/// unimplemented code is caught as well as an undocumented one — every
+/// `def/*` code has a row in the structural-rules table, and every code the
+/// `run/*` catalogue names exists.
+#[test]
+fn every_code_is_documented_and_every_documented_code_exists() {
+    let all: std::collections::BTreeSet<&str> = ALL_CODES.iter().copied().collect();
+    let appendix = section(SPEC, "## Appendix A", "## Appendix B");
+    let listed: std::collections::BTreeSet<&str> = appendix
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("- `"))
+        .filter_map(|rest| rest.split('`').next())
+        .collect();
+    assert_eq!(listed, all, "Appendix A and ALL_CODES disagree");
+    let rules = section(SPEC, "### Structural rules", "## Semantics");
+    for code in ALL_CODES.iter().filter(|code| code.starts_with("def/")) {
+        assert!(
+            rules.contains(&format!("`{code}`")),
+            "structural-rules table has no row for {code}"
+        );
+    }
+    let catalogue = section(SPEC, "### `run/*` catalogue", "## Journal");
+    for line in catalogue.lines().filter(|line| line.starts_with("| `")) {
+        let code = line.trim_start_matches("| `").split('`').next().unwrap();
+        assert!(
+            all.contains(code),
+            "the catalogue names an unknown code {code}"
+        );
+    }
+}
+
+/// The reactive plan's guarantee is stated where a reader looks for it, and
+/// its most important structural rule is pinned to prose.
+#[test]
+fn reactive_semantics_are_stated_where_a_reader_looks() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
+    assert!(!readme.contains("one-event-one-transition"));
+    assert!(readme.contains("one-event-one-macrostep"));
+    assert!(readme.contains("bounded at 64 microsteps"));
+    let macrosteps = section(SPEC, "### Macrosteps", "### `run/*` catalogue");
+    assert!(macrosteps.contains("never persisted"));
+    assert!(macrosteps.contains("`run/microstep_limit`"));
+    assert!(macrosteps.contains("`internal_unhandled`"));
+    assert!(macrosteps.contains("`on_unhandled`"));
+    let release = std::fs::read_to_string(root.join("docs/RELEASE.md")).unwrap();
+    assert!(
+        release.contains("parallel_fork_join"),
+        "manual acceptance names the reactive pass"
+    );
+    let examples = std::fs::read_to_string(root.join("docs/EXAMPLES.md")).unwrap();
+    assert!(examples.contains("## parallel_fork_join"));
+}
+
 #[test]
 fn readme_and_licenses() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -35,10 +101,10 @@ fn readme_and_licenses() {
         let end = block.find("```")?;
         Some(block[..end].trim().to_string())
     });
-    if let Some(block) = start {
-        if block.contains("mcpServers") {
-            let _ = parse(block.as_bytes(), &JsonLimits::DEFAULT);
-        }
+    if let Some(block) = start
+        && block.contains("mcpServers")
+    {
+        let _ = parse(block.as_bytes(), &JsonLimits::DEFAULT);
     }
     assert!(readme.contains("mcpServers"));
     let table_start = readme.find("| Guarantee").expect("table");

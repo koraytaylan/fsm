@@ -241,6 +241,54 @@ configuration, ctx, history, deadlines, pending}` under `fsm:state:2`;
 `deadlines` maps deadline name to its signed-millisecond due time and `pending`
 is sorted before hashing.
 
+### Macrosteps
+
+A create, event send, or deadline poll runs one **macrostep**: the trigger
+microstep the rules above describe, then the machine's reactions to
+quiescence, sealed as one outcome and one record. After the trigger, and after
+every reaction, the engine repeats one selection until nothing selects:
+
+1. **Eventless first.** Scan the active configuration exactly as for an event
+   (rules 3–4) over the transitions with no `on`, reading `ctx` alone. Every
+   guard false is quiescence for this scan; a guard that fails to evaluate
+   rejects the macrostep.
+2. **Then the queue front.** Otherwise take the oldest internal event — raised
+   by a block, or generated when a `final` leaf or a region's terminal leaf was
+   entered — and scan for its handler with the raised payload bound as `evt`.
+   No handler is a **discard**: recorded in the trace as `internal_unhandled`,
+   never a rejection, and never subject to `on_unhandled`, which governs the
+   trigger microstep only.
+3. **Quiescence.** No eventless candidate and an empty queue end the macrostep.
+
+Raised events queue in block order behind everything already waiting
+(breadth-first); a microstep's own raises precede the done events it
+generated, `$done.state.*` before `$done.region.*`, in entry order and region
+document order respectively. A generated event is raised only when some
+transition names it in `on`. Effects number continuously across the microsteps
+of one macrostep.
+
+Three exceptions to "each microstep is a step": the invariants (rule 8) are
+evaluated **once**, at quiescence, on the final context and configuration;
+`evt` is bound only in the microstep whose trigger supplied it, so an
+eventless transition's guard and block see none; and one `now_ms` serves the
+whole macrostep, each microstep's schedules settling by rule 9 as the next
+reaction is selected and the last after the invariants.
+
+The macrostep is **atomic**. Any failure in any microstep — a guard or action
+error, the invariants, a schedule, or the ceiling — rejects the whole
+macrostep, the instance keeps the state it had, and the rejection's trace
+keeps every microstep that ran. Applied reactions and discards together MUST
+NOT exceed `MAX_MICROSTEPS` (64): the 65th is refused as `run/microstep_limit`,
+naming the last microstep. A definition whose eventless transitions provably
+never quiesce is refused at admission (`def/eventless_cycle`); a guarded cycle
+is admitted with a warning and stopped by the ceiling at run time.
+
+The internal queue is a value of the macrostep alone and is **never persisted**:
+it MUST NOT appear in `fsm.state/2` or any record, and it is empty at every
+sealed state, so an instance resumed from its records has nothing to resume. The record carries the reactions as `microsteps`
+(§Record kinds), absent when there were none, and the decision trace carries
+each microstep's candidates and pipeline.
+
 ### `run/*` catalogue
 
 | Code | Trigger | Hint policy |

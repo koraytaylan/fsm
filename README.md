@@ -79,7 +79,7 @@ Claude Desktop `mcpServers` JSON:
 | Guarantee | What it means |
 |---|---|
 | total order | journal records are a single sequence |
-| one-event-one-transition | at most one transition fires per send |
+| one-event-one-macrostep | at most one transition fires for the event you sent; the machine may then react to itself to quiescence, bounded, in the same atomic record |
 | deterministic regions | parallel regions share one document-ordered global winner; no broadcast |
 | explicit deadlines | caller-supplied time plus an explicit poll applies at most one due deadline |
 | pure core | `fsm-core` has no I/O, clock, or HashMap |
@@ -103,6 +103,8 @@ HA/replication or autonomous real-time scheduler; a deadline fires only when a
 caller polls. The throughput ceiling is a feature. The executor inherits that
 ceiling, and a handler killed mid-run is re-run by the next executor rather
 than rolled back — model the undo as a compensating effect in the machine.
+Reaction is bounded at 64 microsteps per event: a machine that needs more is
+refused at run time, not truncated.
 
 See [docs/SPEC.md](docs/SPEC.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), [docs/EMBEDDING.md](docs/EMBEDDING.md), [docs/API-POLICY.md](docs/API-POLICY.md), and [docs/RELEASE.md](docs/RELEASE.md).
 

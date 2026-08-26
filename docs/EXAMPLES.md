@@ -3,7 +3,8 @@ Load any example with `fsm machine add examples/<name>.json`. The grammar lives 
 ## parallel_review_deadline
 
 Intent: run review and audit concurrently while keeping the engine's
-one-transition guarantee, and expire review only through an explicit poll.
+one-event-one-macrostep guarantee — an event still fires at most one
+transition of its own — and expire review only through an explicit poll.
 
 The two `regions` enter in document order. An event scans review before audit
 and still applies at most one global transition. `review_timeout` is scheduled
@@ -28,6 +29,39 @@ status: completed
 A no-due poll is journaled. Retrying its `request_id` returns the original
 no-due observation even after time advances; use a new `request_id` for a new
 observation.
+
+## parallel_fork_join
+
+Intent: fork into two regions and join when one of them finishes, with the
+whole reaction sealed in the record of the event that caused it.
+
+`approve` ends the `review` region. The engine raises `$done.region.review`,
+the `audit` region's handler takes it in the same macrostep and lands in
+`reconciling`, and the eventless transition out of `reconciling` closes the
+instance. One send, one record, two reaction microsteps — `instance history`
+lists them under that record, and `explain --seq 3` shows each with its own
+candidates and pipeline.
+
+```
+$ fsm validate examples/parallel_fork_join.json
+ok: true
+$ fsm machine add examples/parallel_fork_join.json
+created: true
+$ FSM_CLOCK_MS=1000 fsm instance new parallel_fork_join --request-id fj1
+status: running
+$ FSM_CLOCK_MS=2000 fsm instance send inst-fj1 approve --request-id fj-approve
+context:
+  joined: true
+microsteps:
+  → microstep 1 (internal $done.region.review): auditing → reconciling
+  → microstep 2 (eventless): reconciling → closed
+status: completed
+$ FSM_CLOCK_MS=2000 fsm instance history inst-fj1
+chain_verified: true
+```
+
+A generated `$done.*` event is raised only when some transition names it; a
+region finishing in a machine that never joins on it leaves no trace of it.
 
 ## expense_approval
 
