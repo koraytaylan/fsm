@@ -144,6 +144,8 @@ impl Store {
                     .or_default()
                     .push(record.seq);
                 self.note_record(&record);
+                // A deadline can leave an invoking state too.
+                self.cancel_exited_children(clock, instance_id, &transition.cancelled_children);
                 let mut response =
                     self.instance_view(instance_id, Some(request_id), Some(false))?;
                 if let Value::Obj(output) = &mut response {

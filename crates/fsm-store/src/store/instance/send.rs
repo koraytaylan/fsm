@@ -202,6 +202,16 @@ impl Store {
                     .or_default()
                     .push(rec.seq);
                 self.note_record(&rec);
+                // The parent walked out of an invoking state with a child
+                // still running: nobody will consume that work, so it is
+                // cancelled in this same operation. This is the one place
+                // the plan writes two records for one request, and it is
+                // safe because the second is a cancellation — idempotent and
+                // state-independent — so a crash between them leaves the
+                // child running-but-unreferenced, which the orphan sweep
+                // finishes. A group commit would buy that one recoverable
+                // window at the price of the one-fsync-per-record claim.
+                self.cancel_exited_children(clock, instance_id, &a.cancelled_children);
                 let mut resp = self.instance_view(instance_id, Some(request_id), Some(false))?;
                 if let Value::Obj(o) = &mut resp {
                     o.insert("applied".into(), Value::Bool(true));

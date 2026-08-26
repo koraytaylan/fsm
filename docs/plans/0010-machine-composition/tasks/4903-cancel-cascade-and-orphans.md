@@ -9,8 +9,10 @@ gated: false
 touches:
   - crates/fsm-store/src/store/instance/cancel.rs
   - crates/fsm-cli/src/cli/ops.rs
+  - crates/fsm-store/src/store/instance/send.rs
+  - crates/fsm-store/src/store/instance/poll.rs
   - crates/fsm-store/tests/cancel_cascade.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Cancel Cascade And Orphans
@@ -37,3 +39,5 @@ A parent that walks away from a running child leaves work nobody will ever consu
 - The cascade respects `MAX_INVOKE_DEPTH` and does not recurse without bound on a graph that admission already refused.
 
 - **Done when:** `cargo test -p fsm-store --test cancel_cascade` passes every case above including the truncated-journal window and the no-write-on-open rule, `fsm doctor` reports orphans, `fsm repair --cancel-orphans` settles them, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `cancel_exited_children` (called from the applied-event and applied-deadline commits, since a deadline can leave an invoking state as readily as an event can), `cascade_cancel` for the parent-cancel case, `cancel_child_record` as the one journaling primitive both use — it claims no request key of its own, so a cascade never collides with the caller's idempotency — and `orphaned_children`/`parent_of`/`cancel_orphans_on` for the sweep. `parent_of` reads the `instance_invoked` record rather than recomputing the derived id from a guess, so an instance whose id merely looks derived is not mistaken for a child. `fsm doctor` gained an `orphans` array and `fsm repair` a `--cancel-orphans` switch. The crash-window test truncates the journal after the parent's own record, reopens, and asserts the store is coherent, the open wrote nothing, one orphan is reported, and one record settles it.

@@ -219,6 +219,12 @@ fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
     m.insert("snapshots".into(), Value::Num(snaps.to_string()));
     let v = verify(&ctx.data_dir);
     m.insert("verify".into(), Value::Str(format!("{:?}", v.health)));
+    // Running children nobody references: reported here, settled only by an
+    // explicit `repair --cancel-orphans`, because an open must never write.
+    let orphans = crate::store::Store::open_read_only(&ctx.data_dir)
+        .map(|store| store.orphaned_children())
+        .unwrap_or_default();
+    m.insert("orphans".into(), Value::Arr(orphans));
     m.insert(
         "FSM_DATA_DIR".into(),
         Value::Str(std::env::var("FSM_DATA_DIR").unwrap_or_default()),
@@ -231,9 +237,39 @@ fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
     0
 }
 
+/// Cancel every orphaned child, one journaled record each.
+///
+/// Explicit by design: an open reports them and writes nothing, so an
+/// operator decides when work nobody references is ended.
+fn repair_cancel_orphans(ctx: &mut Ctx) -> u8 {
+    let mut store = match crate::store::Store::open(&ctx.data_dir) {
+        Ok(store) => store,
+        Err(error) => return emit_error(ctx, &error),
+    };
+    let request_id = format!("repair-orphans-{}", store.state.last_seq);
+    match store.cancel_orphans_on(&mut crate::clock::GlobalClock, &request_id) {
+        Ok(cancelled) => {
+            let mut m = BTreeMap::new();
+            m.insert(
+                "cancelled".into(),
+                Value::Arr(cancelled.into_iter().map(Value::Str).collect()),
+            );
+            emit_success(ctx, &Value::Obj(m));
+            0
+        }
+        Err(error) => emit_error(ctx, &error),
+    }
+}
+
 fn repair(ctx: &mut Ctx, args: &Args) -> u8 {
+    if args.switches.contains("cancel-orphans") {
+        return repair_cancel_orphans(ctx);
+    }
     if !args.switches.contains("truncate-torn-tail") {
-        return emit_error(ctx, &ErrorObj::new("args", "repair --truncate-torn-tail"));
+        return emit_error(
+            ctx,
+            &ErrorObj::new("args", "repair --truncate-torn-tail | --cancel-orphans"),
+        );
     }
     match repair_truncate_torn_tail(&ctx.data_dir) {
         Ok(r) => {
@@ -390,7 +426,7 @@ pub static SPECS: &[CmdSpec] = &[
         path: &["repair"],
         positionals: &[],
         flags: &[],
-        switches: &["truncate-torn-tail"],
+        switches: &["truncate-torn-tail", "cancel-orphans"],
         help: "Repair torn tail",
         run: repair,
     },
