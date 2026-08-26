@@ -10,12 +10,37 @@ use super::validate::{DefinitionCompatibility, validate_with_compatibility};
 use super::{Block, Finding, MachineSpec, Severity, StateNode, TransitionSpec};
 
 pub fn compile(spec: MachineSpec) -> Result<CompiledMachine, Vec<Finding>> {
-    compile_with_compatibility(spec, DefinitionCompatibility::Current)
+    compile_with_catalogue(spec, &BTreeMap::new())
+}
+
+/// [`compile`] with the definitions of the machines this one invokes, keyed
+/// by their 64-hex `machine_id` digest.
+///
+/// A `$done.invoke.<slot>` handler's `evt` fields are the slot's `returns`
+/// keys, typed by the **child's** declaration of the context variable each
+/// one projects — so the parent cannot be typechecked against a child it
+/// cannot see. Bare `fsm-core` has no catalogue and passes an empty one,
+/// under which those fields simply do not exist and a guard reading one is
+/// `expr/unknown_field`; the store, which refuses a definition invoking a
+/// machine it does not hold, always passes the real thing.
+pub fn compile_with_catalogue(
+    spec: MachineSpec,
+    catalogue: &BTreeMap<String, MachineSpec>,
+) -> Result<CompiledMachine, Vec<Finding>> {
+    compile_with(spec, DefinitionCompatibility::Current, catalogue)
 }
 
 pub(super) fn compile_with_compatibility(
     spec: MachineSpec,
     compatibility: DefinitionCompatibility,
+) -> Result<CompiledMachine, Vec<Finding>> {
+    compile_with(spec, compatibility, &BTreeMap::new())
+}
+
+fn compile_with(
+    spec: MachineSpec,
+    compatibility: DefinitionCompatibility,
+    catalogue: &BTreeMap<String, MachineSpec>,
 ) -> Result<CompiledMachine, Vec<Finding>> {
     validate_with_compatibility(&spec, compatibility)?;
     let mut errs = Vec::new();
@@ -47,6 +72,27 @@ pub(super) fn compile_with_compatibility(
     // already wrote.
     for name in super::generated_event_names(&spec) {
         event_map.entry(name).or_default();
+    }
+    // A `$done.invoke.<slot>` payload is the slot's `returns` projection,
+    // typed by the child's declarations.
+    for (node, _) in spec.walk_states() {
+        for invoke in &node.invokes {
+            let Some(child) = catalogue.get(&invoke.machine) else {
+                continue;
+            };
+            let fields = invoke
+                .returns
+                .iter()
+                .filter_map(|(field, child_var)| {
+                    child
+                        .context
+                        .iter()
+                        .find(|c| c.name == *child_var)
+                        .map(|c| (field.clone(), c.ty.to_ty()))
+                })
+                .collect();
+            event_map.insert(format!("$done.invoke.{}", invoke.id), fields);
+        }
     }
     let effect_map: BTreeMap<String, BTreeMap<String, Ty>> = spec
         .effects

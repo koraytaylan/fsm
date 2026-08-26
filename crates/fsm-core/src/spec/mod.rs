@@ -24,7 +24,7 @@ mod validate;
 pub use compat::{
     accepted_identity, compile_accepted, compile_accepted_historical_unchecked, load_machine_json,
 };
-pub use compile::compile;
+pub use compile::{compile, compile_with_catalogue};
 pub use parse::parse_machine;
 pub use validate::{generated_event_names, validate};
 

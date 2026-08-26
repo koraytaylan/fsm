@@ -56,7 +56,8 @@ pub(super) fn validate_reactive(spec: &MachineSpec, errs: &mut Vec<Finding>) {
 
 /// Every generated event name this machine can produce, in document order:
 /// `$done.state.<compound>` for each compound owning a `final` child, then
-/// `$done.region.<region>` for each region.
+/// `$done.region.<region>` for each region, then `$done.invoke.<slot>` for
+/// each declared invoke slot.
 pub fn generated_event_names(spec: &MachineSpec) -> Vec<String> {
     let mut names = Vec::new();
     for (node, _) in spec.walk_states() {
@@ -72,6 +73,11 @@ pub fn generated_event_names(spec: &MachineSpec) -> Vec<String> {
     if let Topology::Parallel { regions } = &spec.topology {
         for region in regions {
             names.push(format!("$done.region.{}", region.name));
+        }
+    }
+    for (node, _) in spec.walk_states() {
+        for invoke in &node.invokes {
+            names.push(format!("$done.invoke.{}", invoke.id));
         }
     }
     names

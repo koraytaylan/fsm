@@ -9,8 +9,11 @@ gated: false
 touches:
   - crates/fsm-core/src/step/micro.rs
   - crates/fsm-core/src/spec/validate/reactive.rs
+  - crates/fsm-core/src/spec/compile.rs
+  - crates/fsm-core/src/spec/mod.rs
+  - crates/fsm-core/src/step/mod.rs
   - crates/fsm-core/tests/done_invoke_events.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Done Invoke Events
@@ -36,3 +39,5 @@ merged_as: ""
 - A machine that declares a slot but has no transition on its done event still validates.
 
 - **Done when:** `cargo test -p fsm-core --test done_invoke_events` passes every case above, the event reuses plan 0009's queue and discard rules with no parallel path, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `generated_event_names` gained the slot names, so resolution, the hint, and `req/event_internal` all came from 4502's machinery unchanged. Step 2 needed a design decision the plan left implicit: typing the payload against the **child's** declarations is impossible in `fsm-core`, which has no catalogue, so `compile_with_catalogue(spec, &BTreeMap<digest, MachineSpec>)` is the entry point that types a `$done.invoke.<slot>` payload from the child's context declarations, and plain `compile` passes an empty catalogue — under which the payload has no fields and a guard reading one is `expr/unknown_field`. A parent is therefore never typechecked against a child nobody supplied; it is refused, which is the honest outcome, and the store (4901) always has the real catalogue because it refuses a definition invoking a machine it does not hold. Step 3 landed as `step::deliver_generated`, which shares the scan-and-macrostep half of `step_with` and adds only the generated-name gate: it takes an already-typed payload, because the store builds it from the child's typed context, and it refuses a declared name so it cannot become a back door round `validate_event`. The task's decimal-scale test asserted a comparison would fail; the typechecker widens a decimal literal against a comparison, so payload typing is pinned through assignment compatibility instead — `evt.amount` from a `decimal(2)` child variable assigns into a `decimal(2)` parent variable and not into a `decimal(4)` one, which is the same fact stated where the engine actually enforces it.

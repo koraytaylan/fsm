@@ -222,6 +222,73 @@ pub fn step_with(
         Ok(f) => f,
         Err(r) => return Outcome::Rejected(r),
     };
+    deliver(m, t, st, event, fields, now_ms, budget, selector)
+}
+
+/// Deliver a generated `$done.invoke.<slot>` event as a macrostep trigger.
+///
+/// The store calls this when an invocation returns, exactly as it hands over
+/// a due deadline: the core never learns that a child completed — that is
+/// I/O — so the event arrives already named and already typed, its payload
+/// being the `returns` projection read out of the child's final context. From
+/// there it is an ordinary macrostep, reactions and all.
+///
+/// This is not a way round [`validate_event`]: a caller sending
+/// `$done.invoke.review` through [`step`] is still refused
+/// `req/event_internal`, because the refusal is about who may send a
+/// generated name, not about whether the engine can deliver one.
+pub fn deliver_generated(
+    m: &CompiledMachine,
+    t: &Tree,
+    st: &InstanceState,
+    event: &str,
+    payload: &BTreeMap<String, Val>,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Outcome {
+    if !event.starts_with('$') {
+        return Outcome::Rejected(reject(
+            "req/event_internal",
+            "only a generated $-prefixed event is delivered this way",
+        ));
+    }
+    if let Err(error) = t.validate_instance_state(m, st) {
+        return Outcome::Rejected(invalid_state_rejection(error.detail()));
+    }
+    match st.status {
+        Status::Completed => {
+            return Outcome::Rejected(reject("run/instance_completed", "instance is completed"));
+        }
+        Status::Cancelled => {
+            return Outcome::Rejected(reject("run/instance_cancelled", "instance is cancelled"));
+        }
+        Status::Running => {}
+    }
+    deliver(
+        m,
+        t,
+        st,
+        event,
+        payload.clone(),
+        now_ms,
+        budget,
+        &mut EngineSelector,
+    )
+}
+
+/// The scan, selection, and macrostep every trigger shares once its payload
+/// is typed.
+#[allow(clippy::too_many_arguments)]
+fn deliver(
+    m: &CompiledMachine,
+    t: &Tree,
+    st: &InstanceState,
+    event: &str,
+    fields: BTreeMap<String, Val>,
+    now_ms: i64,
+    budget: &mut Budget,
+    selector: &mut dyn ReactionSelector,
+) -> Outcome {
     let active_leaves = match t.active_leaves(&st.configuration) {
         Some(active_leaves) => active_leaves,
         None => {
