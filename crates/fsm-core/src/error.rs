@@ -118,6 +118,7 @@ pub const ALL_CODES: &[&str] = &[
     "req/payload_too_large",
     "req/request_id_conflict",
     "req/seq_mismatch",
+    "req/signal_target",
     "run/action_error",
     "run/configuration_invalid",
     "run/create_failed",

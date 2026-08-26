@@ -322,6 +322,7 @@ each microstep's candidates and pipeline.
 | `req/event_unknown` | undeclared event | — |
 | `req/event_internal` | an event declared `internal`, or a `$`-prefixed generated name, sent from outside | name where the machine raises it and list the sendable events |
 | `req/invoke_slot_state` | `invoke_child` against a slot that is not `pending` | name the slot's current status and the slots the instance has |
+| `req/signal_target` | a `signal` addressed to its own sender | name `raise` as the construct for an event to this instance |
 | `run/invoke_create_failed` | creating an invoked child failed; nothing is journaled and the slot stays `pending` | carry the child's own rejection as the cause |
 | `req/field_missing` | declared field absent | — |
 | `req/field_unknown` | extra field | — |
@@ -830,6 +831,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `req/field_unknown` — extra field
 - `req/instance_not_found` — unknown instance
 - `req/invoke_slot_state` — an invocation slot is not pending
+- `req/signal_target` — a signal addressed to its own sender
 - `req/machine_ambiguous` — bare name matches several versions
 - `req/machine_exists` — define refused because the spec exists
 - `req/machine_not_found` — unknown machine

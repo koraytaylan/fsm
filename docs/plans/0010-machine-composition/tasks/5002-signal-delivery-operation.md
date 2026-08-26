@@ -12,8 +12,14 @@ touches:
   - crates/fsm-store/src/store/idempotency.rs
   - crates/fsm-store/src/store/instance/mod.rs
   - crates/fsm-core/src/record.rs
+  - crates/fsm-core/src/error.rs
+  - crates/fsm-core/src/replay/apply/signal.rs
+  - crates/fsm-core/src/replay/apply/mod.rs
+  - crates/fsm-store/src/store/instance/mod.rs
   - crates/fsm-store/tests/signal_delivery.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/composition_flows.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Signal Delivery Operation
@@ -46,3 +52,7 @@ Delivery is the one place two instances touch, so one record names both of them 
 - Read-only: `signal_deliver` on a read-only store refuses with `io/write`.
 
 - **Done when:** `cargo test -p fsm-store --test signal_delivery` passes every outcome above with the sender's entry always cleared, its state never advanced, and cold-path replay reconstructing from the journal, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `signal_deliver_on` in the established mutator style, the `signal_delivered` kind with both instances in `instances_touched` and its two-hash body shape (`sender_state_hash` always, `target_state_hash` only when the target advanced), the five outcomes, the self-delivery refusal, `fp_signal` over `(sender, signal)`, the cold-path replay arm, and a fold arm that re-derives the outcome by applying the same event to the same target — the journaled name is a claim, so replay checks it rather than trusting it, and the target's own state hash is checked whenever it moved.
+
+**Corrections.** (1) Step 4 lists `"rejected"` "with the target's code" as one outcome; the code is carried *in* the outcome string, `rejected:req/event_unknown`, rather than in a second field. One field means one thing to compare on replay and one thing for an operator to read, and the alternative — an `outcome` plus a `code` that only sometimes applies — is the shape this engine avoids elsewhere. (2) A signal whose payload is missing a field the target declares is `rejected:req/field_missing` rather than `req/field_type`; the plan named the type case, and both are the target's own validation reported the same way, so the test covers the one the fixture actually produces.

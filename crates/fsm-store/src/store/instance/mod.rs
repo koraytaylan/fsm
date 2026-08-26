@@ -5,3 +5,4 @@ mod create;
 pub(crate) mod invoke;
 mod poll;
 mod send;
+pub(crate) mod signal;

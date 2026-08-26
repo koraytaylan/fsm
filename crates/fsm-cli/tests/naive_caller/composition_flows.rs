@@ -239,6 +239,63 @@ pub(crate) fn one_step_composition(
     .unwrap();
     st.invoke_child("inst-osb2", "review", "osb2-inv").unwrap();
     seen.insert("run/invoke_create_failed");
+
+    // req/signal_target: the hint names `raise` as the construct the author
+    // wanted, and a machine that raises instead settles in one macrostep.
+    let self_signal = r#"{"format":"fsm.machine/1","name":"os_selfsig","states":[{"name":"idle"},{"name":"working","entry":{"signal":[{"to":"ctx.me","event":"ping"}]}}],"initial":"idle","context":[{"name":"me","ty":"str","init":"inst-osselfsig"}],"events":[{"name":"go","fields":[]},{"name":"ping","fields":[],"internal":true}],"transitions":[{"from":"idle","on":"go","to":"working"},{"from":"working","on":"ping","to":"idle"}]}"#;
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(self_signal))]),
+    )
+    .unwrap();
+    dispatch(
+        st,
+        clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("os_selfsig".into())),
+            ("request_id", Value::Str("osselfsig".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        st,
+        clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-osselfsig".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("osselfsig-go".into())),
+        ]),
+    )
+    .unwrap();
+    let signal_id = st.state.instances["inst-osselfsig"]
+        .signals
+        .keys()
+        .next()
+        .cloned()
+        .expect("the entry block signalled");
+    let err = st
+        .signal_deliver("inst-osselfsig", &signal_id, "osselfsig-deliver")
+        .expect_err("a signal to its own sender");
+    assert_eq!(err.code, "req/signal_target");
+    assert!(err.hint.contains("raise"), "{}", err.hint);
+    let raised = self_signal
+        .replace(
+            r#""signal":[{"to":"ctx.me","event":"ping"}]"#,
+            r#""raise":[{"event":"ping"}]"#,
+        )
+        .replace("os_selfsig", "os_selfraise");
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(&raised))]),
+    )
+    .unwrap();
+    seen.insert("req/signal_target");
 }
 
 /// Every composition code, produced through a real outcome.
@@ -297,6 +354,47 @@ pub(crate) fn drive_composition_outcomes(
     match dispatch(st, clock, "machine_create", &obj(&[("spec", value(over))])) {
         Ok(v) => note_ok(&v, out),
         Err(e) => note_err(&e, out),
+    }
+
+    // req/signal_target (task 5002): a signal addressed to its own sender.
+    // The hint names `raise`, and the corrected machine uses it.
+    let self_signal = r#"{"format":"fsm.machine/1","name":"selfsig","states":[{"name":"idle"},{"name":"working","entry":{"signal":[{"to":"ctx.me","event":"ping"}]}}],"initial":"idle","context":[{"name":"me","ty":"str","init":"inst-selfsig"}],"events":[{"name":"go","fields":[]},{"name":"ping","fields":[],"internal":true}],"transitions":[{"from":"idle","on":"go","to":"working"},{"from":"working","on":"ping","to":"idle"}]}"#;
+    dispatch(
+        st,
+        clock,
+        "machine_create",
+        &obj(&[("spec", value(self_signal))]),
+    )
+    .unwrap();
+    dispatch(
+        st,
+        clock,
+        "instance_create",
+        &obj(&[
+            ("machine", Value::Str("selfsig".into())),
+            ("request_id", Value::Str("selfsig".into())),
+        ]),
+    )
+    .unwrap();
+    dispatch(
+        st,
+        clock,
+        "instance_send",
+        &obj(&[
+            ("instance_id", Value::Str("inst-selfsig".into())),
+            ("event", obj(&[("name", Value::Str("go".into()))])),
+            ("request_id", Value::Str("selfsig-go".into())),
+        ]),
+    )
+    .unwrap();
+    let signal_id = st.state.instances["inst-selfsig"]
+        .signals
+        .keys()
+        .next()
+        .cloned()
+        .expect("the entry block signalled");
+    if let Err(e) = st.signal_deliver("inst-selfsig", &signal_id, "selfsig-deliver") {
+        note_err(&e, out);
     }
 
     // The two run-time refusals.

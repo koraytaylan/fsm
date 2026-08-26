@@ -222,6 +222,24 @@ impl Store {
                 true,
             )));
         }
+        if rec.kind == RecordKind::SignalDelivered {
+            let field = |name: &str| {
+                rec.body
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+            };
+            return Some(Ok(super::instance::signal::delivered_response(
+                field("sender_instance_id"),
+                field("signal_id"),
+                field("target_instance_id"),
+                field("event"),
+                field("outcome"),
+                request_id,
+                rec.seq,
+                true,
+            )));
+        }
         if rec.kind == RecordKind::Annotated {
             let mut m = BTreeMap::new();
             m.insert("ok".into(), Value::Str("true".into()));
@@ -401,6 +419,18 @@ impl Store {
             &BTreeMap::from([
                 ("parent_instance_id".into(), Value::Str(parent_id.into())),
                 ("slot".into(), Value::Str(slot.into())),
+            ]),
+        )
+    }
+
+    /// A delivery's key is the sender and the signal: the target, the event,
+    /// and the payload are all carried in the signal itself.
+    pub(super) fn fp_signal(sender_id: &str, signal_id: &str) -> String {
+        fsm_core::hashes::request_fp(
+            "signal_deliver",
+            &BTreeMap::from([
+                ("sender_instance_id".into(), Value::Str(sender_id.into())),
+                ("signal_id".into(), Value::Str(signal_id.into())),
             ]),
         )
     }

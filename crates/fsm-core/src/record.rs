@@ -32,6 +32,10 @@ pub enum RecordKind {
     /// `returns` projection became `$done.invoke.<slot>`, and the parent's
     /// whole macrostep sealed in this record.
     InvocationReturned,
+    /// One instance signalled another: the only record naming two instances
+    /// that are not parent and child, and the sender's proof of what it
+    /// tried, whatever the target did with it.
+    SignalDelivered,
     RequestRejected,
     InstanceCancelled,
     Annotated,
@@ -68,6 +72,10 @@ pub fn instances_touched(record: &Record) -> Vec<&str> {
             .into_iter()
             .chain(field("child_instance_id"))
             .collect(),
+        RecordKind::SignalDelivered => field("sender_instance_id")
+            .into_iter()
+            .chain(field("target_instance_id"))
+            .collect(),
     }
 }
 
@@ -86,6 +94,7 @@ impl RecordKind {
             RecordKind::EffectAcked => "effect_acked",
             RecordKind::InstanceInvoked => "instance_invoked",
             RecordKind::InvocationReturned => "invocation_returned",
+            RecordKind::SignalDelivered => "signal_delivered",
             RecordKind::RequestRejected => "request_rejected",
             RecordKind::InstanceCancelled => "instance_cancelled",
             RecordKind::Annotated => "annotated",
@@ -107,6 +116,7 @@ impl RecordKind {
             "effect_acked" => Self::EffectAcked,
             "instance_invoked" => Self::InstanceInvoked,
             "invocation_returned" => Self::InvocationReturned,
+            "signal_delivered" => Self::SignalDelivered,
             "request_rejected" => Self::RequestRejected,
             "instance_cancelled" => Self::InstanceCancelled,
             "annotated" => Self::Annotated,
@@ -116,7 +126,7 @@ impl RecordKind {
     }
 
     /// Every recognized record kind in stable protocol order.
-    pub fn all() -> [RecordKind; 16] {
+    pub fn all() -> [RecordKind; 17] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -130,6 +140,7 @@ impl RecordKind {
             Self::EffectAcked,
             Self::InstanceInvoked,
             Self::InvocationReturned,
+            Self::SignalDelivered,
             Self::RequestRejected,
             Self::InstanceCancelled,
             Self::Annotated,
@@ -639,6 +650,19 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str(body, "request_id")
                 && req_str(body, "reason")
                 && is_state_hash(body.get("state_hash"))
+        }
+        RecordKind::SignalDelivered => {
+            req_str(body, "sender_instance_id")
+                && req_str(body, "signal_id")
+                && req_str(body, "target_instance_id")
+                && req_str(body, "event")
+                && req_str(body, "request_id")
+                && req_str(body, "outcome")
+                && body.get("payload").and_then(Value::as_obj).is_some()
+                && is_state_hash(body.get("sender_state_hash"))
+                && body
+                    .get("target_state_hash")
+                    .is_none_or(|hash| is_state_hash(Some(hash)))
         }
         RecordKind::InvocationReturned => {
             req_str(body, "parent_instance_id")
