@@ -377,6 +377,9 @@ pub(super) fn history_entry(
     if let Some(r) = rec.body.get("reason") {
         e.insert("reason".into(), r.clone());
     }
+    if let Some(microsteps) = rec.body.get("microsteps") {
+        e.insert("microsteps".into(), microsteps.clone());
+    }
     if rec.seq > 0 {
         if let Ok(pre) = fold_prefix(&store.records, rec.seq.saturating_sub(1)) {
             if let Ok(post) = fold_prefix(&store.records, rec.seq) {

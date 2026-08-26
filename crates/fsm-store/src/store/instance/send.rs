@@ -4,7 +4,7 @@ use fsm_core::expr::eval::Budget;
 use fsm_core::hashes::{STATE_FORMAT, state_hash};
 use fsm_core::json::Value;
 use fsm_core::machine::{InstanceState, Status};
-use fsm_core::record::RecordKind;
+use fsm_core::record::{RecordKind, microsteps_value};
 use fsm_core::step::{Outcome, step, validate_event};
 
 use crate::store::reconstruct::{
@@ -140,7 +140,10 @@ impl Store {
             .unwrap_or_else(|| clock.now_ms());
         self.pending_fp = Some(request_fp);
         *payload = final_payload;
-        let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+        // A macrostep may run the trigger, MAX_MICROSTEPS reactions, and the
+        // closing scan; the enabled-event scan in `instance_view` keeps the
+        // standard budget because it selects and never applies a pipeline.
+        let mut bud = Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
         let out = step(
             &m.compiled,
             &m.tree,
@@ -183,6 +186,9 @@ impl Store {
                     "entered".into(),
                     Value::Arr(a.entered.iter().cloned().map(Value::Str).collect()),
                 );
+                if let Some(microsteps) = microsteps_value(&a.trace.microsteps) {
+                    body.insert("microsteps".into(), microsteps);
+                }
                 let rec = self.append_at_with_root(
                     RecordKind::EventApplied,
                     Value::Obj(body),

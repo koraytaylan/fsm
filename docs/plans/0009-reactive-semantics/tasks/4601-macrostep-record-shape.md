@@ -13,7 +13,9 @@ touches:
   - crates/fsm-store/src/store/instance/create.rs
   - crates/fsm-store/src/store/reconstruct.rs
   - crates/fsm-store/tests/macrostep_records.rs
-status: planned
+  - crates/fsm-store/tests/fixtures/non_reactive_session.journal
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Macrostep Record Shape
@@ -42,3 +44,5 @@ One optional key carries the whole reaction, and its **absence** on a non-reacti
 - The genesis `limits` block is byte-identical to before this plan — no `max_microsteps`, no `max_raises`.
 
 - **Done when:** `cargo test -p fsm-store --test macrostep_records` proves both the absent-key and present-key shapes, a non-reactive machine's record bytes are provably unchanged, the genesis limits block has not moved, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `record.rs::microsteps_value` builds the optional array — `None` when there were no reaction microsteps — and each of the three store writers inserts it through one guarded line, so the key is absent, never empty; `microsteps_ok` refuses a journaled empty array or a malformed entry on read, for all three kinds. Entries are `{index (from 1), trigger, event (internal only), source_state, transition_idx, exited, entered}` and the top-level trigger fields are untouched. The compatibility anchor is `tests/fixtures/non_reactive_session.journal`, a journal the pre-change build (commit `027ebd9`) wrote for a fixed create/send/poll session; the suite replays the session and compares every line byte for byte, and `FSM_REGEN_FIXTURES=1` regenerates it only from such a build. `send.rs` and `poll.rs` budget their macrosteps at `MACROSTEP_EVAL_TICKS` (`create.rs` needs nothing: `fsm_core::step::create` sizes its own) while the enabled-event scan keeps `MAX_EVAL_TICKS`; replay's budgets in `reconstruct.rs` are 4602's; `reconstruct.rs` copies the key through to history entries without touching any existing rendered field. A full 64-microstep cascade stays under `MAX_PAYLOAD_BYTES`, `state_hash` matches a hand-computed `fsm.state/2` hash of the final configuration, and the genesis `limits` block is byte-identical — each pinned by a test.

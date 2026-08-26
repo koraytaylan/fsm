@@ -4,7 +4,7 @@ use fsm_core::expr::eval::Val;
 use fsm_core::hashes::{STATE_FORMAT, configuration_value, machine_id, state_hash};
 use fsm_core::json::Value;
 use fsm_core::machine::InstanceState;
-use fsm_core::record::RecordKind;
+use fsm_core::record::{RecordKind, microsteps_value};
 use fsm_core::step::create;
 
 use crate::store::{ErrorObj, Store};
@@ -170,6 +170,9 @@ impl Store {
                 "tags".into(),
                 Value::Arr(tags.iter().cloned().map(Value::Str).collect()),
             );
+        }
+        if let Some(microsteps) = microsteps_value(&a.trace.microsteps) {
+            body.insert("microsteps".into(), microsteps);
         }
         let rec =
             self.append_at_with_root(RecordKind::InstanceCreated, Value::Obj(body), commit_ts)?;

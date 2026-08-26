@@ -4,7 +4,7 @@ use fsm_core::expr::eval::Budget;
 use fsm_core::hashes::{STATE_FORMAT, state_hash};
 use fsm_core::json::Value;
 use fsm_core::machine::InstanceState;
-use fsm_core::record::RecordKind;
+use fsm_core::record::{RecordKind, microsteps_value};
 use fsm_core::step::{DeadlineOutcome, poll_deadline};
 
 use crate::store::reconstruct::insert_transition_configuration_fields;
@@ -72,7 +72,7 @@ impl Store {
         })?;
         let before_configuration = instance.configuration.clone();
         let commit_ts = clock.now_ms();
-        let mut budget = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+        let mut budget = Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
         let outcome = poll_deadline(
             &machine.compiled,
             &machine.tree,
@@ -101,7 +101,7 @@ impl Store {
                     self.journal.last_seq + 1,
                     &next_state,
                 );
-                let body = Value::Obj(BTreeMap::from([
+                let mut body = BTreeMap::from([
                     ("instance_id".into(), Value::Str(instance_id.into())),
                     ("request_id".into(), Value::Str(request_id.into())),
                     ("deadline".into(), Value::Str(applied.deadline.name.clone())),
@@ -127,9 +127,15 @@ impl Store {
                         "entered".into(),
                         Value::Arr(transition.entered.iter().cloned().map(Value::Str).collect()),
                     ),
-                ]));
-                let record =
-                    self.append_at_with_root(RecordKind::DeadlineApplied, body, commit_ts)?;
+                ]);
+                if let Some(microsteps) = microsteps_value(&transition.trace.microsteps) {
+                    body.insert("microsteps".into(), microsteps);
+                }
+                let record = self.append_at_with_root(
+                    RecordKind::DeadlineApplied,
+                    Value::Obj(body),
+                    commit_ts,
+                )?;
                 self.state.instances.insert(instance_id.into(), next_state);
                 self.history
                     .entry(instance_id.into())

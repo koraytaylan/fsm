@@ -360,11 +360,11 @@ sealed rejection details, never to a new enabled-event scan.
 |---|---|
 | `genesis` | `format`, `created_ts`, `limits` |
 | `machine_defined` | `machine_id`, `def` |
-| `instance_created` | `instance_id`, `machine_id`, `request_id`, `state_hash`, `state_format`, `configuration`, `overrides` |
-| `event_applied` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `state_format`, `exited`, `entered`, `source_state` |
+| `instance_created` | `instance_id`, `machine_id`, `request_id`, `state_hash`, `state_format`, `configuration`, `overrides`, optional `microsteps` |
+| `event_applied` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `state_format`, `exited`, `entered`, `source_state`, optional `microsteps` |
 | `event_rejected` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `state_format`, `code`, `message`, `hint`, `details`, optional `span` |
 | `event_ignored` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `state_format` |
-| `deadline_applied` | `instance_id`, `deadline`, `deadline_idx`, `due_ms`, `request_id`, `state_hash`, `state_format`, `exited`, `entered`, `source_state` |
+| `deadline_applied` | `instance_id`, `deadline`, `deadline_idx`, `due_ms`, `request_id`, `state_hash`, `state_format`, `exited`, `entered`, `source_state`, optional `microsteps` |
 | `deadline_rejected` | `instance_id`, `deadline`, `deadline_idx`, `due_ms`, `request_id`, `state_hash`, `state_format`, `code`, `message`, `hint`, `details`, optional `span` |
 | `deadline_not_due` | `instance_id`, `request_id`, `state_hash`, `state_format`, either all or none of `next_deadline`, `next_deadline_idx`, `next_due_ms` |
 | `effect_acked` | `instance_id`, `effect_id`, `request_id`, `outcome` (`ok` or `failed`), `state_hash`, `state_format`, optional `result` |
@@ -372,6 +372,18 @@ sealed rejection details, never to a new enabled-event scan.
 | `instance_cancelled` | `instance_id`, `request_id`, `reason`, `state_hash`, `state_format` |
 | `annotated` | `instance_id`, `request_id`, `note` |
 | `state_checkpoint` | `state_root`, `state_root_format` |
+
+`microsteps` is the macrostep's reaction list: `[{index, trigger, event?,
+source_state, transition_idx, exited, entered}]` with `index` starting at 1
+(index 0 is the trigger, described by the record's own `exited`, `entered`,
+`source_state`, and `deadline_idx` fields, whose meaning does not change),
+`trigger` either `eventless` or `internal`, and `event` present exactly when
+the trigger is `internal`. The key MUST be absent, never empty, when a
+macrostep had no reaction microsteps: that absence is what keeps every
+non-reactive record's canonical bytes, hash, and chain identical to the bytes
+an earlier build wrote. `state_hash` commits the state after the whole
+macrostep; `fsm.state/2` is unchanged, and the internal queue is never part
+of it. Replay verifies the claim in both directions (§Verification).
 
 Every deadline-poll record timestamp is the exact `now_ms` passed to the pure
 poll, so replay NEVER consults a clock. This includes `deadline_not_due`: the

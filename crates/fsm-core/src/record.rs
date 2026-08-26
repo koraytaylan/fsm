@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use crate::hashes::domain_hash;
 use crate::json::{JsonLimits, Value, parse};
 use crate::sha256::to_hex;
+use crate::trace::{MicrostepTrace, MicrostepTrigger};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RecordKind {
@@ -212,6 +213,84 @@ fn legacy_limits_value() -> Value {
 #[doc(hidden)]
 pub fn genesis_uses_historical_definition_limits(body: &Value) -> bool {
     body.get("limits") == Some(&legacy_limits_value())
+}
+
+/// The optional `microsteps` body key of `instance_created`, `event_applied`,
+/// and `deadline_applied`: one entry per reaction microstep after the trigger.
+///
+/// `None` when there were no reaction microsteps. The key is **absent, never
+/// empty**: a definition with no eventless transition, no `raise`, and no
+/// `final` state produces a body with no `microsteps` key, hence identical
+/// canonical bytes, an identical record hash, and an identical chain. This
+/// one guard is the whole compatibility story of the reactive plan.
+pub fn microsteps_value(microsteps: &[MicrostepTrace]) -> Option<Value> {
+    if microsteps.is_empty() {
+        return None;
+    }
+    Some(Value::Arr(microsteps.iter().map(microstep_value).collect()))
+}
+
+fn microstep_value(microstep: &MicrostepTrace) -> Value {
+    let mut m = BTreeMap::new();
+    m.insert("index".into(), Value::Num(microstep.index.to_string()));
+    m.insert(
+        "trigger".into(),
+        Value::Str(microstep.trigger.as_str().into()),
+    );
+    if let MicrostepTrigger::Internal(event) = &microstep.trigger {
+        m.insert("event".into(), Value::Str(event.clone()));
+    }
+    m.insert(
+        "source_state".into(),
+        Value::Str(microstep.source_state.clone()),
+    );
+    m.insert(
+        "transition_idx".into(),
+        Value::Num(microstep.transition_idx.to_string()),
+    );
+    m.insert(
+        "exited".into(),
+        Value::Arr(microstep.exited.iter().cloned().map(Value::Str).collect()),
+    );
+    m.insert(
+        "entered".into(),
+        Value::Arr(microstep.entered.iter().cloned().map(Value::Str).collect()),
+    );
+    Value::Obj(m)
+}
+
+/// A journaled `microsteps` array, if present: entries indexed from 1 in
+/// order, each `eventless` or `internal` (the latter naming its `event`),
+/// with the trigger's fields. An empty array is malformed by the absence
+/// rule above.
+fn microsteps_ok(body: &Value) -> bool {
+    let Some(microsteps) = body.get("microsteps") else {
+        return true;
+    };
+    let Some(entries) = microsteps.as_arr() else {
+        return false;
+    };
+    if entries.is_empty() {
+        return false;
+    }
+    entries.iter().enumerate().all(|(position, entry)| {
+        let index_ok = entry
+            .get("index")
+            .and_then(Value::as_num)
+            .and_then(|raw| raw.parse::<u32>().ok())
+            == Some(position as u32 + 1);
+        let trigger_ok = match entry.get("trigger").and_then(Value::as_str) {
+            Some("eventless") => entry.get("event").is_none(),
+            Some("internal") => req_str(entry, "event"),
+            _ => false,
+        };
+        index_ok
+            && trigger_ok
+            && req_str(entry, "source_state")
+            && req_u32(entry, "transition_idx")
+            && req_str_arr(entry, "exited")
+            && req_str_arr(entry, "entered")
+    })
 }
 
 fn genesis_limits_ok(value: Option<&Value>) -> bool {
@@ -421,6 +500,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                     Some(_) => body.get("configuration").and_then(Value::as_obj).is_some(),
                     None => req_str(body, "leaf"),
                 }
+                && microsteps_ok(body)
         }
         RecordKind::EventApplied => {
             req_str(body, "instance_id")
@@ -431,6 +511,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str_arr(body, "exited")
                 && req_str_arr(body, "entered")
                 && req_str(body, "source_state")
+                && microsteps_ok(body)
         }
         RecordKind::EventRejected => {
             req_str(body, "instance_id")
@@ -455,6 +536,7 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && req_str_arr(body, "exited")
                 && req_str_arr(body, "entered")
                 && req_str(body, "source_state")
+                && microsteps_ok(body)
         }
         RecordKind::DeadlineRejected => {
             req_str(body, "instance_id")
