@@ -192,6 +192,57 @@ pub(super) fn apply_emits(
     Ok(())
 }
 
+/// Events a block raised, in block order, each with its evaluated payload.
+pub(super) type Raised = Vec<(String, BTreeMap<String, Val>)>;
+
+/// A raise is an emit turned inward: its `with` expressions read the same
+/// pre-block snapshot an emit's arguments read.
+pub(super) fn apply_raises(
+    raises: &[fsm_core::spec::RaiseSpec],
+    ctx: &BTreeMap<String, Val>,
+    evt: &BTreeMap<String, Val>,
+    see_evt: bool,
+    budget: &mut Budget,
+    raised: &mut Raised,
+) -> Result<(), Rejection> {
+    let b = Bindings {
+        ctx,
+        evt: if see_evt { Some(evt) } else { None },
+        active: None,
+    };
+    for raise in raises {
+        let mut payload = BTreeMap::new();
+        for (k, src) in &raise.with {
+            let e = parser::parse(src).map_err(|err| Rejection {
+                code: "run/action_error",
+                message: err.message,
+                hint: err.hint,
+                source_state: None,
+                transition_idx: None,
+                block: None,
+                span: Some((err.span.start, err.span.end)),
+                trace: Default::default(),
+                cause: Some(err.code),
+            })?;
+            let (v, _) = eval(&e, &b, budget, false);
+            let v = v.map_err(|err| Rejection {
+                code: "run/action_error",
+                message: err.message,
+                hint: err.hint,
+                source_state: None,
+                transition_idx: None,
+                block: None,
+                span: Some((err.span.start, err.span.end)),
+                trace: Default::default(),
+                cause: Some(err.code),
+            })?;
+            payload.insert(k.clone(), v);
+        }
+        raised.push((raise.event.clone(), payload));
+    }
+    Ok(())
+}
+
 pub(super) fn apply_block(
     block: &fsm_core::spec::Block,
     ctx: &mut BTreeMap<String, Val>,
@@ -199,10 +250,12 @@ pub(super) fn apply_block(
     see_evt: bool,
     budget: &mut Budget,
     effects: &mut Vec<EffectOut>,
+    raised: &mut Raised,
 ) -> Result<(), Rejection> {
     let snapshot = ctx.clone();
     apply_sets(&block.sets, ctx, evt, see_evt, budget)?;
     apply_emits(&block.emits, &snapshot, evt, see_evt, budget, effects)?;
+    apply_raises(&block.raises, &snapshot, evt, see_evt, budget, raised)?;
     Ok(())
 }
 
@@ -361,18 +414,19 @@ pub(super) fn apply_entry_chain(
     ctx: &mut BTreeMap<String, Val>,
     budget: &mut Budget,
     effects: &mut Vec<EffectOut>,
+    raised: &mut Raised,
 ) -> Result<Vec<String>, Rejection> {
     let mut entered = vec![start.to_string()];
     if let Some(node) = find(states, start) {
         if let Some(b) = &node.entry {
-            apply_block(b, ctx, &BTreeMap::new(), false, budget, effects)?;
+            apply_block(b, ctx, &BTreeMap::new(), false, budget, effects, raised)?;
         }
     }
     entered.extend(initial_descent(states, start));
     for name in entered.iter().skip(1) {
         if let Some(node) = find(states, name) {
             if let Some(b) = &node.entry {
-                apply_block(b, ctx, &BTreeMap::new(), false, budget, effects)?;
+                apply_block(b, ctx, &BTreeMap::new(), false, budget, effects, raised)?;
             }
         }
     }

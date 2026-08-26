@@ -1,5 +1,5 @@
-use super::eval::{apply_block, eval_invariants, is_compound, reject};
-use super::step::{configuration_with_leaf, states_for_region};
+use super::eval::{apply_block, is_compound, reject};
+use super::step::{NaiveMicro, configuration_with_leaf, states_for_region};
 use super::*;
 
 fn deadline_rejection(
@@ -234,11 +234,19 @@ fn apply_naive_deadline(
 
     let mut ctx = st.ctx.clone();
     let mut effects = Vec::new();
+    let mut raised = Vec::new();
     let no_event = BTreeMap::new();
     for name in &exited {
         if let Some(block) = find(states, name).and_then(|node| node.exit.as_ref())
-            && let Err(rejection) =
-                apply_block(block, &mut ctx, &no_event, false, budget, &mut effects)
+            && let Err(rejection) = apply_block(
+                block,
+                &mut ctx,
+                &no_event,
+                false,
+                budget,
+                &mut effects,
+                &mut raised,
+            )
         {
             return Outcome::Rejected(rejection);
         }
@@ -255,13 +263,21 @@ fn apply_naive_deadline(
         false,
         budget,
         &mut effects,
+        &mut raised,
     ) {
         return Outcome::Rejected(rejection);
     }
     for name in &entered {
         if let Some(block) = find(states, name).and_then(|node| node.entry.as_ref())
-            && let Err(rejection) =
-                apply_block(block, &mut ctx, &no_event, false, budget, &mut effects)
+            && let Err(rejection) = apply_block(
+                block,
+                &mut ctx,
+                &no_event,
+                false,
+                budget,
+                &mut effects,
+                &mut raised,
+            )
         {
             return Outcome::Rejected(rejection);
         }
@@ -288,46 +304,24 @@ fn apply_naive_deadline(
             }
         }
     }
-    let active = active_state_names(&m.spec, &configuration_after);
-    let monitor_flags = match eval_invariants(&m.spec, &ctx, &active, budget) {
-        Ok(flags) => flags,
-        Err(rejection) => return Outcome::Rejected(rejection),
-    };
-    let mut deadlines_after = match update_deadline_schedules(
-        &m.spec,
-        &st.deadlines,
-        &exited,
-        &entered,
-        &ctx,
-        now_ms,
-        budget,
-    ) {
-        Ok(schedules) => schedules,
-        Err(rejection) => return Outcome::Rejected(rejection),
-    };
-    clear_terminal_region_deadlines(&m.spec, &configuration_after, &mut deadlines_after);
-    let status_after = if configuration_is_terminal(&m.spec, &configuration_after) {
-        deadlines_after.clear();
-        Status::Completed
-    } else {
-        Status::Running
-    };
-    Outcome::Applied(Applied {
+    // The deadline's transition is the trigger of a macrostep like any
+    // other: reactions, invariants once at quiescence, then settlement.
+    let first = NaiveMicro {
         configuration_after,
-        ctx_after: ctx,
+        ctx,
         history_after,
-        deadlines_after,
-        effects,
-        monitor_flags,
-        status_after,
         internal: false,
         region: selected.region.clone(),
-        source_state: selected.source.clone(),
-        transition_idx: selected.document_index as u32,
+        source: selected.source.clone(),
+        transition_index: selected.document_index,
         exited,
         entered,
-        trace: Default::default(),
-    })
+        raised,
+    };
+    match super::macrostep::run_reactions(m, st, first, effects, now_ms, budget) {
+        Ok(applied) => Outcome::Applied(applied),
+        Err(rejection) => Outcome::Rejected(rejection),
+    }
 }
 
 pub fn naive_poll_deadline(

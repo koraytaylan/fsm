@@ -30,6 +30,10 @@ pub(super) struct RunCounts {
     pub(super) leaf_changes: u64,
     pub(super) effects: u64,
     pub(super) history_changes: u64,
+    pub(super) reactions: u64,
+    pub(super) discards: u64,
+    pub(super) microstep_limits: u64,
+    pub(super) create_rejections: u64,
 }
 
 pub(super) fn compare_run(src: &str) -> RunCounts {
@@ -241,6 +245,227 @@ pub(super) fn execute_case(src: String, counts: &mut SuiteCounts) {
     counts.runs.leaf_changes += run.leaf_changes;
     counts.runs.effects += run.effects;
     counts.runs.history_changes += run.history_changes;
+    counts.runs.reactions += run.reactions;
+    counts.runs.discards += run.discards;
+    counts.runs.microstep_limits += run.microstep_limits;
+}
+
+/// Admission parity: the engine refuses a certain eventless cycle with
+/// `def/eventless_cycle`, and the oracle's own brute-force check must say so
+/// of exactly the same machines. Returns whether the machine was accepted.
+pub(super) fn assert_admission_parity(src: &str) -> bool {
+    let value = fsm_core::json::parse(src.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT)
+        .unwrap_or_else(|err| panic!("generated JSON did not parse: {err:?}\n{src}"));
+    let spec = parse_machine(&value)
+        .unwrap_or_else(|findings| panic!("generated machine did not parse: {findings:?}\n{src}"));
+    let naive_cycle = oracle::naive_certain_cycle(&spec);
+    match compile(spec) {
+        Ok(_) => {
+            assert!(
+                !naive_cycle,
+                "the engine admitted a machine the naive cycle check refuses\n{src}"
+            );
+            true
+        }
+        Err(findings) => {
+            let codes: Vec<&str> = findings.iter().map(|f| f.code).collect();
+            assert!(
+                codes.iter().all(|code| *code == "def/eventless_cycle"),
+                "generated machine refused for something other than a cycle: {codes:?}\n{src}"
+            );
+            assert!(
+                naive_cycle,
+                "the engine refused a cycle the naive check does not see: {codes:?}\n{src}"
+            );
+            false
+        }
+    }
+}
+
+/// Admission parity, then a run under the macrostep budget comparing every
+/// macrostep's reactions; a refused machine counts as generated only.
+pub(super) fn execute_macrostep_case(src: String, counts: &mut SuiteCounts) -> bool {
+    counts.generated += 1;
+    if !assert_admission_parity(&src) {
+        return false;
+    }
+    let run = compare_macrostep_run(&src);
+    counts.executed += 1;
+    counts.runs.sequences += run.sequences;
+    counts.runs.steps += run.steps;
+    counts.runs.applied += run.applied;
+    counts.runs.rejected += run.rejected;
+    counts.runs.ignored += run.ignored;
+    counts.runs.effects += run.effects;
+    counts.runs.reactions += run.reactions;
+    counts.runs.discards += run.discards;
+    counts.runs.microstep_limits += run.microstep_limits;
+    counts.runs.create_rejections += run.create_rejections;
+    true
+}
+
+/// Everything `assert_applied_parity` compares, plus the macrostep's
+/// reactions: each microstep's index, trigger, source, transition, region,
+/// exit set, and entry set, and every discarded internal event.
+pub(super) fn assert_macrostep_parity(engine: &Applied, oracle: &Applied, case: &str) {
+    assert_applied_parity(engine, oracle, case);
+    let reactions = |applied: &Applied| -> Vec<(
+        u32,
+        String,
+        String,
+        u32,
+        Option<String>,
+        Vec<String>,
+        Vec<String>,
+    )> {
+        applied
+            .trace
+            .microsteps
+            .iter()
+            .map(|m| {
+                (
+                    m.index,
+                    format!("{:?}", m.trigger),
+                    m.source_state.clone(),
+                    m.transition_idx,
+                    m.region.clone(),
+                    m.exited.clone(),
+                    m.entered.clone(),
+                )
+            })
+            .collect()
+    };
+    assert_eq!(reactions(engine), reactions(oracle), "microsteps {case}");
+    let discards = |applied: &Applied| -> Vec<(String, u32)> {
+        applied
+            .trace
+            .internal_unhandled
+            .iter()
+            .map(|u| (u.event.clone(), u.after_microstep))
+            .collect()
+    };
+    assert_eq!(discards(engine), discards(oracle), "discards {case}");
+}
+
+/// Like `compare_run`, under the macrostep budget, over the sendable events
+/// only, comparing reactions and rejection codes including the ceiling's.
+pub(super) fn compare_macrostep_run(src: &str) -> RunCounts {
+    let (machine, tree) = compile_src(src);
+    let sendable: Vec<String> = machine
+        .spec
+        .events
+        .iter()
+        .filter(|event| !event.internal)
+        .map(|event| event.name.clone())
+        .collect();
+    let event_refs: Vec<&str> = sendable.iter().map(String::as_str).collect();
+    // Creation cascades too, so it can be refused — by both, for the same
+    // reason: the engine reports `run/create_failed` and keeps the cause.
+    let (engine_create, oracle_create) = match (
+        create(&machine, &tree, &BTreeMap::new(), 0),
+        oracle::naive_create(&machine, &BTreeMap::new()),
+    ) {
+        (Ok(engine), Ok(oracle)) => (engine, oracle),
+        (Err(engine), Err(oracle)) => {
+            assert_eq!(engine.code, "run/create_failed", "{src}");
+            let expected_cause = if oracle.code == "run/microstep_limit" {
+                Some("run/microstep_limit")
+            } else {
+                oracle.cause
+            };
+            assert_eq!(engine.cause, expected_cause, "create cause {src}");
+            if oracle.code == "run/microstep_limit" {
+                assert_eq!(engine.trace.microsteps.len(), 64, "{src}");
+            }
+            return RunCounts {
+                create_rejections: 1,
+                ..RunCounts::default()
+            };
+        }
+        (engine, oracle) => panic!("create mismatch: engine={engine:?} oracle={oracle:?}\n{src}"),
+    };
+    assert_macrostep_parity(&engine_create, &oracle_create, &format!("create {src}"));
+    let initial_engine = state_from_applied(engine_create.clone());
+    let initial_oracle = state_from_applied(oracle_create);
+    let all_sequences = sequences(&event_refs);
+    let mut counts = RunCounts {
+        sequences: all_sequences.len() as u64,
+        reactions: engine_create.trace.microsteps.len() as u64,
+        discards: engine_create.trace.internal_unhandled.len() as u64,
+        ..RunCounts::default()
+    };
+    for sequence in &all_sequences {
+        let mut engine_state = initial_engine.clone();
+        let mut oracle_state = initial_oracle.clone();
+        for event in sequence {
+            counts.steps += 1;
+            let pre_engine = engine_state.clone();
+            let pre_oracle = oracle_state.clone();
+            let mut engine_budget = Budget::new(4096 * 66);
+            let mut oracle_budget = Budget::new(4096 * 66);
+            let engine_outcome = step(
+                &machine,
+                &tree,
+                &engine_state,
+                event,
+                &payload(),
+                0,
+                &mut engine_budget,
+            );
+            let oracle_outcome = oracle::naive_step(
+                &machine,
+                &oracle_state,
+                event,
+                &payload(),
+                &mut oracle_budget,
+            );
+            let case = format!("{src} {sequence:?}");
+            match (&engine_outcome, &oracle_outcome) {
+                (Outcome::Applied(engine), Outcome::Applied(oracle)) => {
+                    counts.applied += 1;
+                    counts.effects += engine.effects.len() as u64;
+                    counts.reactions += engine.trace.microsteps.len() as u64;
+                    counts.discards += engine.trace.internal_unhandled.len() as u64;
+                    assert_macrostep_parity(engine, oracle, &case);
+                    engine_state = state_from_applied(engine.clone());
+                    oracle_state = state_from_applied(oracle.clone());
+                }
+                (Outcome::Rejected(engine), Outcome::Rejected(oracle)) => {
+                    counts.rejected += 1;
+                    assert_eq!(engine.code, oracle.code, "{case}");
+                    assert_eq!(engine.cause, oracle.cause, "{case}");
+                    assert_eq!(engine_state, pre_engine, "engine mutated on reject {case}");
+                    assert_eq!(oracle_state, pre_oracle, "oracle mutated on reject {case}");
+                    assert_ne!(
+                        engine.code, "internal/budget",
+                        "macrostep budget tripped {case}"
+                    );
+                    assert_ne!(
+                        engine.cause,
+                        Some("internal/budget"),
+                        "macrostep budget tripped {case}"
+                    );
+                    if engine.code == "run/microstep_limit" {
+                        counts.microstep_limits += 1;
+                        assert_eq!(
+                            engine.trace.microsteps.len(),
+                            64,
+                            "the ceiling is a specified number {case}"
+                        );
+                    }
+                }
+                (Outcome::Ignored, Outcome::Ignored) => {
+                    counts.ignored += 1;
+                    assert_eq!(engine_state, pre_engine, "engine mutated on ignore {case}");
+                    assert_eq!(oracle_state, pre_oracle, "oracle mutated on ignore {case}");
+                }
+                _ => panic!(
+                    "outcome mismatch for {sequence:?}: engine={engine_outcome:?} oracle={oracle_outcome:?}\n{src}"
+                ),
+            }
+        }
+    }
+    counts
 }
 
 pub(super) fn state_from_create(

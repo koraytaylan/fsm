@@ -7,6 +7,7 @@ pub(super) enum BlockCase {
     Increment,
     Emit,
     IncrementAndEmit,
+    Raise,
 }
 
 pub(super) const TRANSITION_BLOCKS: [BlockCase; 5] = [
@@ -37,7 +38,46 @@ pub(super) fn block_members(case: BlockCase) -> Vec<&'static str> {
             r#""do":[{"target":"n","value":"ctx.n + 1"}]"#,
             r#""emit":[{"effect":"fx","args":{"v":"ctx.n"}}]"#,
         ],
+        BlockCase::Raise => vec![r#""raise":[{"event":"r"}]"#],
     }
+}
+
+/// A transition with no `on`: the eventless shape.
+pub(super) fn eventless_transition_json(
+    from: &str,
+    to: Option<&str>,
+    guard: Option<&str>,
+    block: BlockCase,
+) -> String {
+    let mut fields = vec![format!(r#""from":"{from}""#)];
+    if let Some(to) = to {
+        fields.push(format!(r#""to":"{to}""#));
+    }
+    if let Some(guard) = guard {
+        fields.push(format!(r#""if":"{guard}""#));
+    }
+    fields.extend(block_members(block).into_iter().map(str::to_string));
+    format!("{{{}}}", fields.join(","))
+}
+
+/// `machine_json` with the sendable events `e` and `f` and the internal
+/// event `r` a block can raise.
+pub(super) fn reactive_machine_json(states: &str, initial: &str, transitions: &[String]) -> String {
+    format!(
+        r#"{{"format":"fsm.machine/1","name":"g","states":{states},"initial":"{initial}","context":[{{"name":"b","ty":"bool","init":"true"}},{{"name":"n","ty":"int","init":"0"}}],"events":[{{"name":"e","fields":[]}},{{"name":"f","fields":[]}},{{"name":"r","fields":[],"internal":true}}],"effects":[{{"name":"fx","fields":[{{"name":"v","ty":"int"}}]}}],"transitions":[{}],"invariants":[{{"name":"nneg","expr":"ctx.n >= 0","mode":"enforce"}}]}}"#,
+        transitions.join(",")
+    )
+}
+
+/// Mark the undecorated leaf `leaf` final in an `emit_states` rendering.
+pub(super) fn mark_final(states: &str, leaf: &str) -> String {
+    let plain = format!(r#"{{"name":"{leaf}"}}"#);
+    assert_eq!(
+        states.matches(&plain).count(),
+        1,
+        "{leaf} is one undecorated leaf in {states}"
+    );
+    states.replace(&plain, &format!(r#"{{"name":"{leaf}","final":true}}"#))
 }
 
 pub(super) fn block_json(case: BlockCase) -> String {

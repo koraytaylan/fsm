@@ -1,5 +1,7 @@
 //! Naive event and deadline interpreter: recursive spec walks, no `Tree`
 //! tables, compiled expression slots, transition lookup, or deadline selector.
+//! Every entry point runs the macrostep loop in `macrostep.rs`, written the
+//! dumbest possible way.
 
 use std::collections::BTreeMap;
 
@@ -215,6 +217,8 @@ mod create;
 mod deadline;
 #[path = "oracle/eval.rs"]
 mod eval;
+#[path = "oracle/macrostep.rs"]
+mod macrostep;
 #[path = "oracle/reach.rs"]
 mod reach;
 #[path = "oracle/step.rs"]
@@ -222,6 +226,7 @@ mod step;
 
 pub use create::{naive_create, naive_create_at};
 pub use deadline::naive_poll_deadline;
+pub use macrostep::naive_certain_cycle;
 pub use reach::brute_enterable;
 pub use step::{naive_step, naive_step_at};
 

@@ -1,17 +1,16 @@
-use super::deadline::{clear_terminal_region_deadlines, update_deadline_schedules};
-use super::eval::{apply_block, eval_bool, eval_invariants, is_compound, naive_validate, reject};
+use super::eval::{Raised, apply_block, eval_bool, is_compound, naive_validate, reject};
 use super::*;
 
 pub(super) struct SelectedCandidate {
-    region: Option<String>,
-    leaf: String,
-    source: String,
-    transition_index: usize,
+    pub(super) region: Option<String>,
+    pub(super) leaf: String,
+    pub(super) source: String,
+    pub(super) transition_index: usize,
 }
 
 /// Apply SPEC's global scan literally: regions in document order, then each
 /// recursive leaf-to-root chain, then transitions in document order.
-fn select_event_candidate(
+pub(super) fn select_event_candidate(
     spec: &MachineSpec,
     active: &[ActiveLeaf<'_>],
     state: &InstanceState,
@@ -168,8 +167,46 @@ pub fn naive_step_at(
             cause: None,
         });
     };
+    let mut effects = Vec::new();
+    let first = match apply_candidate(m, st, &winner, &fields, true, budget, &mut effects) {
+        Ok(first) => first,
+        Err(rejection) => return Outcome::Rejected(rejection),
+    };
+    match super::macrostep::run_reactions(m, st, first, effects, now_ms, budget) {
+        Ok(applied) => Outcome::Applied(applied),
+        Err(rejection) => Outcome::Rejected(rejection),
+    }
+}
+
+/// What one applied transition contributes to its macrostep, before the
+/// invariants and the schedule settlement that the macrostep owns.
+pub(super) struct NaiveMicro {
+    pub(super) configuration_after: ActiveConfiguration,
+    pub(super) ctx: BTreeMap<String, Val>,
+    pub(super) history_after: BTreeMap<String, String>,
+    pub(super) internal: bool,
+    pub(super) region: Option<String>,
+    pub(super) source: String,
+    pub(super) transition_index: usize,
+    pub(super) exited: Vec<String>,
+    pub(super) entered: Vec<String>,
+    pub(super) raised: Raised,
+}
+
+/// Apply the selected transition to `st`: exit blocks, the transition's own
+/// block (which sees `evt` only when `see_evt`), entry blocks, and history
+/// bindings, numbering effects on from `effects`.
+pub(super) fn apply_candidate(
+    m: &CompiledMachine,
+    st: &InstanceState,
+    winner: &SelectedCandidate,
+    fields: &BTreeMap<String, Val>,
+    see_evt: bool,
+    budget: &mut Budget,
+    effects: &mut Vec<EffectOut>,
+) -> Result<NaiveMicro, Rejection> {
     let Some(states) = states_for_region(&m.spec, winner.region.as_deref()) else {
-        return Outcome::Rejected(reject("run/unhandled", "invalid transition region"));
+        return Err(reject("run/unhandled", "invalid transition region"));
     };
     let tr = &m.spec.transitions[winner.transition_index];
     let internal = tr.to.is_none();
@@ -203,16 +240,14 @@ pub fn naive_step_at(
     let Some(configuration_after) =
         configuration_with_leaf(&st.configuration, winner.region.as_deref(), new_leaf)
     else {
-        return Outcome::Rejected(reject("run/unhandled", "invalid transition region"));
+        return Err(reject("run/unhandled", "invalid transition region"));
     };
     let mut ctx = st.ctx.clone();
-    let mut effects = Vec::new();
+    let mut raised = Vec::new();
     for name in &exited {
         if let Some(node) = find(states, name) {
             if let Some(b) = &node.exit {
-                if let Err(r) = apply_block(b, &mut ctx, &fields, false, budget, &mut effects) {
-                    return Outcome::Rejected(r);
-                }
+                apply_block(b, &mut ctx, fields, false, budget, effects, &mut raised)?;
             }
         }
     }
@@ -221,15 +256,19 @@ pub fn naive_step_at(
         emits: tr.emits.clone(),
         raises: tr.raises.clone(),
     };
-    if let Err(r) = apply_block(&tblock, &mut ctx, &fields, true, budget, &mut effects) {
-        return Outcome::Rejected(r);
-    }
+    apply_block(
+        &tblock,
+        &mut ctx,
+        fields,
+        see_evt,
+        budget,
+        effects,
+        &mut raised,
+    )?;
     for name in &entered {
         if let Some(node) = find(states, name) {
             if let Some(b) = &node.entry {
-                if let Err(r) = apply_block(b, &mut ctx, &fields, false, budget, &mut effects) {
-                    return Outcome::Rejected(r);
-                }
+                apply_block(b, &mut ctx, fields, false, budget, effects, &mut raised)?;
             }
         }
     }
@@ -252,44 +291,16 @@ pub fn naive_step_at(
             }
         }
     }
-    let active = active_state_names(&m.spec, &configuration_after);
-    let flags = match eval_invariants(&m.spec, &ctx, &active, budget) {
-        Ok(f) => f,
-        Err(r) => return Outcome::Rejected(r),
-    };
-    let mut deadlines_after = match update_deadline_schedules(
-        &m.spec,
-        &st.deadlines,
-        &exited,
-        &entered,
-        &ctx,
-        now_ms,
-        budget,
-    ) {
-        Ok(schedules) => schedules,
-        Err(rejection) => return Outcome::Rejected(rejection),
-    };
-    clear_terminal_region_deadlines(&m.spec, &configuration_after, &mut deadlines_after);
-    let status_after = if configuration_is_terminal(&m.spec, &configuration_after) {
-        deadlines_after.clear();
-        Status::Completed
-    } else {
-        Status::Running
-    };
-    Outcome::Applied(Applied {
+    Ok(NaiveMicro {
         configuration_after,
-        ctx_after: ctx,
+        ctx,
         history_after,
-        deadlines_after,
-        effects,
-        monitor_flags: flags,
-        status_after,
         internal,
-        region: winner.region,
-        source_state: winner.source,
-        transition_idx: winner.transition_index as u32,
+        region: winner.region.clone(),
+        source: winner.source.clone(),
+        transition_index: winner.transition_index,
         exited,
         entered,
-        trace: Default::default(),
+        raised,
     })
 }

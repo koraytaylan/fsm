@@ -11,9 +11,15 @@ gated: false
 touches:
   - crates/fsm-core/tests/oracle.rs
   - crates/fsm-core/tests/oracle/macrostep.rs
+  - crates/fsm-core/tests/oracle/step.rs
+  - crates/fsm-core/tests/oracle/create.rs
+  - crates/fsm-core/tests/oracle/deadline.rs
+  - crates/fsm-core/tests/oracle/eval.rs
+  - crates/fsm-core/tests/enumerate_small/compare.rs
   - crates/fsm-core/tests/enumerate_small/machine_json.rs
-  - crates/fsm-core/tests/enumerate_small/trees.rs
-status: planned
+  - crates/fsm-core/tests/enumerate_small.rs
+  - crates/fsm-core/tests/enumerate_reactive.rs
+status: done
 merged_as: ""
 ---
 # Macrostep Oracle Differential
@@ -38,3 +44,5 @@ Plan 0003 proved the single-transition engine against a deliberately naive secon
 - Runtime stays within the existing oracle suite's CI budget on all three operating systems; report the measured wall time in the commit message.
 
 - **Done when:** `cargo test -p fsm-core --test oracle` passes with the macrostep leg enabled over the extended enumeration, the naive implementation shares no code with the engine, admission agreement is asserted, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `oracle/macrostep.rs` is the loop, the dumbest possible way — a `Vec` queue popped with `remove(0)`, a linear scan over every transition for eventless candidates, generated done events found by walking the spec, the ceiling written as the number 64 — and every naive entry point runs it: `step.rs` was split into selection plus `apply_candidate`, `create.rs` treats the initial entry as the trigger of a macrostep, `deadline.rs` hands its transition to the same loop, and `eval.rs`'s blocks now also raise, evaluating `with` against the pre-block snapshot like an emit. `naive_certain_cycle` is the brute-force admission check (every nonempty set of leaves, closed under every selectable candidate up to the first certain one), asserted equal to `def/eventless_cycle` on every enumerated machine. The enumeration lives in a second root, `enumerate_reactive.rs`, sharing `enumerate_small/`'s toolkit (`compare.rs` gained `compare_macrostep_run`, `assert_macrostep_parity`, `assert_admission_parity`; `machine_json.rs` gained the eventless, raise, and final shapes; `trees.rs` needed nothing) so `enumerate_small.rs` stays under the file ceiling; both roots mark the shared modules `allow(dead_code)` for the part they do not use. Six families: eventless source × target × guard, raises from transition, entry, and exit blocks with a handler anywhere or nowhere, a final leaf under every compound with its done event handled on the compound, an ancestor, or nobody, raise-plus-eventless orderings, the 63/64/65 counted self-loop, and three fork/join machines; six compared outputs plus discards, and a refused creation compared by cause. The injected-bug control from the task's test list was run honestly: draining the queue before eventless selection passed the first five families — nothing in them combined a raise with an eventless transition — which is why the ordering family exists; with it the mutation fails, and the engine was reverted. Development-host timings are in the commit message.

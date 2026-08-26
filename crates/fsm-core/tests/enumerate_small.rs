@@ -27,9 +27,13 @@ fn compile_src(src: &str) -> (fsm_core::machine::CompiledMachine, Tree) {
     (machine, tree)
 }
 
+// The enumeration toolkit is shared with `enumerate_reactive`; each root uses
+// the part it needs.
 #[path = "enumerate_small/compare.rs"]
+#[allow(dead_code)]
 mod compare;
 #[path = "enumerate_small/machine_json.rs"]
+#[allow(dead_code)]
 mod machine_json;
 #[path = "enumerate_small/trees.rs"]
 mod trees;

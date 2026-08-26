@@ -1,5 +1,5 @@
-use super::deadline::{clear_terminal_region_deadlines, update_deadline_schedules};
-use super::eval::{apply_entry_chain, eval_invariants, parse_init};
+use super::eval::{apply_entry_chain, parse_init};
+use super::step::NaiveMicro;
 use super::*;
 
 pub fn naive_create(
@@ -15,7 +15,9 @@ pub fn naive_create_at(
     now_ms: i64,
 ) -> Result<Applied, Rejection> {
     let mut ctx = BTreeMap::new();
-    let mut budget = Budget::new(4096);
+    // SPEC Appendix B: the standard budget for each of the trigger, the
+    // ceiling's worth of reactions, and the closing scan.
+    let mut budget = Budget::new(4096 * (64 + 2));
     for c in &m.spec.context {
         let v = if let Some(ov) = overrides.get(&c.name) {
             ov.clone()
@@ -25,10 +27,18 @@ pub fn naive_create_at(
         ctx.insert(c.name.clone(), v);
     }
     let mut effects = Vec::new();
+    let mut raised = Vec::new();
     let mut entered = Vec::new();
     let configuration_after = match &m.spec.topology {
         Topology::Sequential { states, initial } => {
-            let path = apply_entry_chain(states, initial, &mut ctx, &mut budget, &mut effects)?;
+            let path = apply_entry_chain(
+                states,
+                initial,
+                &mut ctx,
+                &mut budget,
+                &mut effects,
+                &mut raised,
+            )?;
             let leaf = path.last().cloned().unwrap_or_else(|| initial.to_string());
             entered.extend(path);
             ActiveConfiguration::Sequential { leaf }
@@ -42,6 +52,7 @@ pub fn naive_create_at(
                     &mut ctx,
                     &mut budget,
                     &mut effects,
+                    &mut raised,
                 )?;
                 let leaf = path
                     .last()
@@ -53,38 +64,28 @@ pub fn naive_create_at(
             ActiveConfiguration::Parallel { leaves }
         }
     };
-    let active = active_state_names(&m.spec, &configuration_after);
-    let flags = eval_invariants(&m.spec, &ctx, &active, &mut budget)?;
-    let mut deadlines_after = update_deadline_schedules(
-        &m.spec,
-        &BTreeMap::new(),
-        &[],
-        &entered,
-        &ctx,
-        now_ms,
-        &mut budget,
-    )?;
-    clear_terminal_region_deadlines(&m.spec, &configuration_after, &mut deadlines_after);
-    let status_after = if configuration_is_terminal(&m.spec, &configuration_after) {
-        deadlines_after.clear();
-        Status::Completed
-    } else {
-        Status::Running
+    // Creation runs a macrostep like everything else: the initial entry is
+    // its trigger, and the state it starts from is the configuration it
+    // entered, so no region can have "become" terminal.
+    let before = InstanceState {
+        status: Status::Running,
+        configuration: configuration_after.clone(),
+        ctx: BTreeMap::new(),
+        history: BTreeMap::new(),
+        deadlines: BTreeMap::new(),
+        pending: Vec::new(),
     };
-    Ok(Applied {
+    let first = NaiveMicro {
         configuration_after,
-        ctx_after: ctx,
+        ctx,
         history_after: BTreeMap::new(),
-        deadlines_after,
-        effects,
-        monitor_flags: flags,
-        status_after,
         internal: false,
         region: None,
-        source_state: String::new(),
-        transition_idx: 0,
+        source: String::new(),
+        transition_index: 0,
         exited: Vec::new(),
         entered,
-        trace: Default::default(),
-    })
+        raised,
+    };
+    super::macrostep::run_reactions(m, &before, first, effects, now_ms, &mut budget)
 }
