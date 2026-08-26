@@ -1,6 +1,7 @@
 //! Newline-delimited JSON-RPC 2.0 types for the MCP transport.
 
 use fsm_core::json::{JsonError, JsonLimits, Value, parse};
+use std::collections::BTreeMap;
 
 pub const PARSE_ERROR: i64 = -32700;
 pub const INVALID_REQUEST: i64 = -32600;
@@ -58,6 +59,18 @@ pub fn result_response(id: Value, result: Value) -> Value {
     obj.insert("id".into(), id);
     obj.insert("result".into(), result);
     Value::Obj(obj)
+}
+
+/// A notification: a method and params, and deliberately **no** `id`.
+///
+/// An id would make it a request, and a client that answers a notification
+/// is answering something nobody asked.
+pub fn notification(method: &str, params: Value) -> Value {
+    Value::Obj(BTreeMap::from([
+        ("jsonrpc".into(), Value::Str("2.0".into())),
+        ("method".into(), Value::Str(method.into())),
+        ("params".into(), params),
+    ]))
 }
 
 pub fn error_response(id: Value, code: i64, message: &str) -> Value {

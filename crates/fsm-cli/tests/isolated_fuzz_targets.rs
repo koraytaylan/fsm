@@ -114,9 +114,15 @@ fn isolated_fuzz_targets_driver() {
     let mut store = Store::open_memory().unwrap();
     let mut clk = FixedClock::new(1, 0);
     let req = br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#;
-    let mut out = Vec::new();
-    let _ = serve_session(Some(&mut store), &mut clk, Cursor::new(&req[..]), &mut out);
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
+    let _ = serve_session(
+        Some(&mut store),
+        &mut clk,
+        Cursor::new(&req[..]),
+        sink.writer(),
+    );
     drop(store);
+    let out = sink.bytes();
     for line in out.split(|&b| b == b'\n') {
         if line.is_empty() {
             continue;

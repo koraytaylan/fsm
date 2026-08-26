@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
 use fsm_core::json::{JsonLimits, Value, parse};
-#[cfg(test)]
-use fsm_core::record::RecordKind;
 
 use crate::args::{Args, CmdSpec, Ctx, read_input_from};
 use crate::render::{emit_error, emit_success};

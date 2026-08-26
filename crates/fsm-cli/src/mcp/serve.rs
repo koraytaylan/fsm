@@ -3,7 +3,6 @@
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use fsm_core::canon::canon_bytes;
 use fsm_core::json::Value;
 
 use crate::args::resolve_data_dir;
@@ -15,6 +14,7 @@ use super::jsonrpc::{
     INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, NOT_INITIALIZED, PARSE_ERROR,
     WireError, error_response, parse_line, result_response,
 };
+use super::notify::Notifier;
 use super::tools;
 
 const LINE_CAP: usize = 16 * 1024 * 1024;
@@ -160,17 +160,19 @@ pub fn run_with_mode(dir: &std::path::Path, mode: ServeMode) -> std::io::Result<
     install_panic_hook();
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
-    serve_dir_with(dir, mode, stdin.lock(), stdout.lock())
+    // `stdout()` itself is `Send`; a borrowed `StdoutLock` is not, and the
+    // change feed writes from another thread.
+    serve_dir_with(dir, mode, stdin.lock(), stdout)
 }
 
-pub fn serve(input: impl BufRead, output: impl Write) -> std::io::Result<()> {
+pub fn serve(input: impl BufRead, output: impl Write + Send + 'static) -> std::io::Result<()> {
     serve_dir(&resolve_data_dir(None), input, output)
 }
 
 pub fn serve_dir(
     dir: &std::path::Path,
     input: impl BufRead,
-    output: impl Write,
+    output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
     serve_dir_with(dir, ServeMode::Writer, input, output)
 }
@@ -179,7 +181,7 @@ pub fn serve_dir_with(
     dir: &std::path::Path,
     mode: ServeMode,
     input: impl BufRead,
-    output: impl Write,
+    output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
     let opened = match &mode {
         // A read-only open takes no lock and creates nothing, which is what
@@ -238,7 +240,7 @@ pub fn serve_session(
     store: Option<&mut Store>,
     clock: &mut dyn Clock,
     input: impl BufRead,
-    output: impl Write,
+    output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
     serve_session_with(store, clock, None, None, input, output)
 }
@@ -257,8 +259,11 @@ pub fn serve_session_with(
     mut executor: Option<&mut ExecutorLoop>,
     refresh: Option<&std::path::Path>,
     mut input: impl BufRead,
-    mut output: impl Write,
+    output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
+    // One writer for the whole session: the request path and, from `5901`,
+    // a background change feed share it through cloned handles.
+    let output = Notifier::new(Box::new(output));
     if std::env::var("FSM_MCP_PANIC").ok().as_deref() == Some("1") {
         install_panic_hook();
         panic!("deliberate serve panic");
@@ -272,22 +277,20 @@ pub fn serve_session_with(
     loop {
         match read_capped_line(&mut input, LINE_CAP)? {
             Line::Eof => {
-                output.flush()?;
+                // Every send already flushed under the lock, so there is
+                // nothing left buffered to push.
                 return Ok(());
             }
             Line::TooLong => {
                 let msg = format!("parse error: line exceeds {LINE_CAP} bytes");
-                send_line(&mut output, &rpc_error(Value::Null, PARSE_ERROR, &msg))?;
+                send_line(&output, &rpc_error(Value::Null, PARSE_ERROR, &msg))?;
                 continue;
             }
             Line::Data(buf) => {
                 let line = match std::str::from_utf8(&buf) {
                     Ok(s) => s.trim_end_matches('\r').to_string(),
                     Err(_) => {
-                        send_line(
-                            &mut output,
-                            &rpc_error(Value::Null, PARSE_ERROR, "parse error"),
-                        )?;
+                        send_line(&output, &rpc_error(Value::Null, PARSE_ERROR, "parse error"))?;
                         continue;
                     }
                 };
@@ -296,14 +299,11 @@ pub fn serve_session_with(
                 }
                 match parse_line(&line) {
                     Err(WireError::Parse(_)) => {
-                        send_line(
-                            &mut output,
-                            &rpc_error(Value::Null, PARSE_ERROR, "parse error"),
-                        )?;
+                        send_line(&output, &rpc_error(Value::Null, PARSE_ERROR, "parse error"))?;
                     }
                     Err(WireError::Batch) => {
                         send_line(
-                            &mut output,
+                            &output,
                             &rpc_error(
                                 Value::Null,
                                 INVALID_REQUEST,
@@ -313,7 +313,7 @@ pub fn serve_session_with(
                     }
                     Err(WireError::Invalid) => {
                         send_line(
-                            &mut output,
+                            &output,
                             &rpc_error(Value::Null, INVALID_REQUEST, "invalid request"),
                         )?;
                     }
@@ -336,7 +336,7 @@ pub fn serve_session_with(
                         }
                         refresh_read_only(store.as_deref_mut(), refresh);
                         handle_request(
-                            &mut output,
+                            &output,
                             store.as_deref_mut(),
                             clock,
                             &mut initialized,
@@ -387,7 +387,7 @@ fn drive_executor(
 
 #[allow(clippy::too_many_arguments)]
 fn handle_request(
-    output: &mut impl Write,
+    output: &Notifier,
     store: Option<&mut Store>,
     clock: &mut dyn Clock,
     initialized: &mut bool,
@@ -549,12 +549,11 @@ fn fsm_ping_result() -> Value {
     Value::Obj(result)
 }
 
-fn send_line(out: &mut impl Write, v: &Value) -> std::io::Result<()> {
-    let bytes = canon_bytes(v);
-    debug_assert!(!bytes.contains(&b'\n'));
-    out.write_all(&bytes)?;
-    out.write_all(b"\n")?;
-    out.flush()
+/// Every write in this file goes through the session's one notifier, which
+/// holds a lock across the whole line. Nothing else in the process writes to
+/// the protocol stream.
+fn send_line(out: &Notifier, v: &Value) -> std::io::Result<()> {
+    out.send(v)
 }
 
 fn read_capped_line(input: &mut impl BufRead, cap: usize) -> std::io::Result<Line> {

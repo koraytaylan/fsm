@@ -68,15 +68,15 @@ fn drive(input: &str) -> String {
     let mut store = Store::open(&dir).unwrap();
     clock::reset_injected();
     let mut clk = FixedClock::new(1_000, 1);
-    let mut out = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session(
         Some(&mut store),
         &mut clk,
         Cursor::new(input.as_bytes()),
-        &mut out,
+        sink.writer(),
     )
     .unwrap();
-    String::from_utf8(out).unwrap()
+    sink.text()
 }
 
 fn assert_transcript(ver: &str) {

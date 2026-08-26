@@ -1,9 +1,7 @@
 //! The instance commands' own tests.
 
 // The commands under test, and the argument shapes they take.
-use super::{
-    Args, ack, annotate, cancel, explain, history, invoke, ls, new_inst, poll_deadline, send, show,
-};
+use super::{Args, ack, annotate, cancel, explain, history, ls, new_inst, send, show};
 use crate::args::Ctx;
 use crate::cli::machine;
 use crate::clock;

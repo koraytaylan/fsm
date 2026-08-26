@@ -83,16 +83,16 @@ fn isolated_jsonrpc_expr_record_fuzz() {
         r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"instance_send","arguments":{"instance_id":"nope","event":{"name":"x"},"request_id":"f1"}}}"#,
     ];
     let input = lines.join("\n") + "\n";
-    let mut out = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     let mut clock = SystemClock;
     serve_session(
         Some(&mut store),
         &mut clock,
         Cursor::new(input.as_bytes()),
-        &mut out,
+        sink.writer(),
     )
     .unwrap();
-    let text = String::from_utf8(out).unwrap();
+    let text = sink.text();
     for line in text.lines() {
         if line.is_empty() {
             continue;

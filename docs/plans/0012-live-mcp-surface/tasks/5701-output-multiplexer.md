@@ -15,7 +15,9 @@ touches:
   - crates/fsm-cli/src/mcp/cancel.rs
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/tests/mcp_notifier.rs
-status: planned
+  - crates/fsm-cli/src/mcp/jsonrpc.rs
+  - crates/fsm-cli/tests/*.rs
+status: done
 merged_as: ""
 ---
 # Output Multiplexer
@@ -48,3 +50,7 @@ merged_as: ""
 - Every scaffolded shell carries the public items the architecture names, so a later task adds bodies rather than signatures — checked by referencing each named type or function from the test file.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_notifier` passes every case above including the eight-thread interleaving property, `Notifier` is the only writer to the protocol stream, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `Notifier` with `new`, `clone_handle`, `send`, `notify`, and `is_broken`; the five module shells and their declarations; `jsonrpc::notification`; the widened bound on all four session entry points with `stdout()` taken by value rather than locked; and the suite — one line per send, eight threads × 500 messages arriving intact and exactly once, a notification with no `id`, a poisoned lock still writing, a broken stream reported rather than fatal, an escaped newline still occupying one line, and two handles sharing one stream.
+
+**Corrections.** Step 8 says to fix the callers that pass a borrowed buffer, without saying what they should pass instead: an owned `Write + Send + 'static` that the caller can still read cannot be a `&mut Vec`. `SharedSink`/`SharedWriter` is that thing, and it lives in `notify.rs` beside the type that forced the bound — every test and the embed-acceptance caller now use it.

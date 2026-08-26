@@ -55,15 +55,15 @@ fn run(input: &str) -> String {
     let dir = tmp();
     let mut store = Store::open(&dir).unwrap();
     let mut clock = SystemClock;
-    let mut out = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session(
         Some(&mut store),
         &mut clock,
         Cursor::new(input.as_bytes()),
-        &mut out,
+        sink.writer(),
     )
     .unwrap();
-    String::from_utf8(out).unwrap()
+    sink.text()
 }
 
 #[test]

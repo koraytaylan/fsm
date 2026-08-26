@@ -242,16 +242,16 @@ fn a_read_only_server_refuses_every_mutating_tool_by_name() {
     }
     let mut store = Store::open_read_only(directory.path()).unwrap();
     let mut clock = SystemClock;
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session(
         Some(&mut store),
         &mut clock,
         Cursor::new(input.as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
 
-    let replies = responses(&String::from_utf8(output).unwrap());
+    let replies = responses(&sink.text());
     let refusals: Vec<&Value> = replies.iter().skip(1).collect();
     assert_eq!(refusals.len(), MUTATING_TOOLS.len());
     for (tool, reply) in MUTATING_TOOLS.iter().zip(refusals) {
@@ -276,16 +276,16 @@ fn a_read_only_server_still_validates_a_dry_run_definition() {
 
     let mut store = Store::open_read_only(directory.path()).unwrap();
     let mut clock = SystemClock;
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session(
         Some(&mut store),
         &mut clock,
         Cursor::new(input.as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
 
-    let replies = responses(&String::from_utf8(output).unwrap());
+    let replies = responses(&sink.text());
     assert!(
         !is_error(&replies[1]),
         "a dry run validates without writing: {:?}",
@@ -302,14 +302,14 @@ fn a_read_only_server_sees_writes_that_land_after_it_started() {
 
     let mut store = Store::open_read_only(directory.path()).unwrap();
     let mut clock = SystemClock;
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session_with(
         Some(&mut store),
         &mut clock,
         None,
         Some(directory.path()),
         Cursor::new(initialize_lines().as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
 
@@ -332,17 +332,17 @@ fn a_read_only_server_sees_writes_that_land_after_it_started() {
     // A second session over the same handle: the reopen is what decides what
     // it can see, not the handle it was handed.
     let later = initialize_lines() + &call(2, "instance_get", r#"{"instance_id":"order-1"}"#);
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session_with(
         Some(&mut store),
         &mut clock,
         None,
         Some(directory.path()),
         Cursor::new(later.as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
-    let text = tool_text(&responses(&String::from_utf8(output).unwrap())[1]);
+    let text = tool_text(&responses(&sink.text())[1]);
     assert!(
         text.contains("awaiting_confirmation"),
         "a monitoring session must see the new prefix: {text}"
@@ -365,16 +365,16 @@ fn a_read_only_server_reads_a_store_a_writer_is_changing() {
         + &call(2, "instance_get", r#"{"instance_id":"order-1"}"#)
         + &call(3, "instance_history", r#"{"instance_id":"order-1"}"#);
     let mut clock = SystemClock;
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session(
         Some(&mut store),
         &mut clock,
         Cursor::new(input.as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
 
-    let replies = responses(&String::from_utf8(output).unwrap());
+    let replies = responses(&sink.text());
     assert!(!is_error(&replies[1]), "{:?}", replies[1]);
     assert!(!is_error(&replies[2]), "{:?}", replies[2]);
     let mut clock = FixedClock::new(9_000, 1);
@@ -414,7 +414,7 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
 
     // One line: advance into the state that emits. The tick that follows it
     // observes the effect and spawns the handler.
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     let input = initialize_lines()
         + &call(
             2,
@@ -427,7 +427,7 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
         Some(&mut executor),
         None,
         Cursor::new(input.as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
     assert!(!store.state.instances["order-1"].pending.is_empty());
@@ -443,7 +443,7 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
         {
             break;
         }
-        let mut output = Vec::new();
+        let sink = fsm_cli::mcp::notify::SharedSink::new();
         serve_session_with(
             Some(&mut store),
             &mut clock,
@@ -456,7 +456,7 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
                 )
                 .as_bytes(),
             ),
-            &mut output,
+            sink.writer(),
         )
         .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -487,15 +487,15 @@ fn the_instructions_adjunct_names_a_non_default_mode() {
 
     let mut store = Store::open_read_only(directory.path()).unwrap();
     let mut clock = SystemClock;
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session(
         Some(&mut store),
         &mut clock,
         Cursor::new(initialize_lines().as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
-    let instructions = responses(&String::from_utf8(output).unwrap())[0]
+    let instructions = responses(&sink.text())[0]
         .get("result")
         .and_then(|result| result.get("instructions"))
         .and_then(Value::as_str)
@@ -507,15 +507,15 @@ fn the_instructions_adjunct_names_a_non_default_mode() {
     // The default mode adds nothing: those instructions are byte-compared by
     // the MCP transcripts.
     let mut writer = open_writer(directory.path());
-    let mut output = Vec::new();
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
     serve_session(
         Some(&mut writer),
         &mut clock,
         Cursor::new(initialize_lines().as_bytes()),
-        &mut output,
+        sink.writer(),
     )
     .unwrap();
-    let default_instructions = responses(&String::from_utf8(output).unwrap())[0]
+    let default_instructions = responses(&sink.text())[0]
         .get("result")
         .and_then(|result| result.get("instructions"))
         .and_then(Value::as_str)

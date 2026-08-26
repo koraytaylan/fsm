@@ -423,8 +423,8 @@ fn serve_uses_ctx_data_dir() {
     let _g = gate();
     let dir = tmp("serve");
     let input = std::io::Cursor::new(Vec::<u8>::new());
-    let mut out = Vec::new();
-    let _ = fsm_cli::mcp::serve::serve_dir(&dir, input, &mut out);
+    let sink = fsm_cli::mcp::notify::SharedSink::new();
+    let _ = fsm_cli::mcp::serve::serve_dir(&dir, input, sink.writer());
     assert!(
         dir.join("VERSION").exists(),
         "serve must open the given data dir"
