@@ -9,6 +9,10 @@ pub const METHOD_NOT_FOUND: i64 = -32601;
 pub const INVALID_PARAMS: i64 = -32602;
 pub const INTERNAL_ERROR: i64 = -32603;
 pub const NOT_INITIALIZED: i64 = -32002;
+/// A resource that does not exist — the same numeric code, because both are
+/// "the server has nothing for that", and one shape is easier to act on than
+/// two.
+pub const RESOURCE_NOT_FOUND: i64 = -32002;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Incoming {

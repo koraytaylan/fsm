@@ -10,7 +10,10 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/subscribe.rs
   - crates/fsm-cli/tests/mcp_subscribe.rs
-status: planned
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/src/mcp/jsonrpc.rs
+  - crates/fsm-cli/tests/mcp_subscribe.rs
+status: done
 merged_as: ""
 ---
 # Subscription Registry
@@ -39,3 +42,7 @@ Subscriptions are per session and capped, and the first one is what brings the c
 - A subscription made before `notifications/initialized` still works, matching the leniency the loop already applies to other methods.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_subscribe` passes every case above including idempotency, the cap, and lazy spawn, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the shared `Subscriptions` set with `snapshot` and `clone_handle` for the feed, resolver-based validation, idempotence, the 64 cap that names itself, the lazy spawn wired to the first success, and the suite — a servable URI, three unservable ones, both idempotent paths, the cap's boundary, the feed's single spawn across a churn of subscribe and unsubscribe, independent sessions, and a subscription before `notifications/initialized`.
+
+**Corrections.** (1) Step 2 says not to edit `serve.rs`, but the subscribe arm's *rules* — validation, the cap, and the lazy spawn — live where the arm is, and `5702` deliberately put every arm there so no later task would have to add one. What this task did not do is add or move an arm; it filled the two that were already routed. (2) The task names `contains`; the type already had `watches` from `5702` and keeps it, since renaming a method to match a plan's prose would churn its only caller for nothing. (3) Every test in the file takes the spawn-counter lock, not only the ones that read it: a subscription spawns a feed, so a test that subscribes while another counts is what makes the count wrong. (4) Validating against the resolver made `5703`'s shutdown tests subscribe to instances their stores never created; they now watch a documentation URI, which is servable in any store — the tests are about the feed's lifecycle, not about what it watches.

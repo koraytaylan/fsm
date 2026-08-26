@@ -12,7 +12,7 @@ use crate::store::{ErrorObj, Store};
 
 use super::jsonrpc::{
     INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, NOT_INITIALIZED, PARSE_ERROR,
-    WireError, error_response, parse_line, result_response,
+    RESOURCE_NOT_FOUND, WireError, error_response, parse_line, result_response,
 };
 use super::notify::{FeedHandle, Notifier};
 use super::tools;
@@ -301,6 +301,7 @@ impl Live {
             return;
         };
         let writer = output.clone_handle();
+        let watched = self.subscriptions.clone_handle();
         self.feed = Some(FeedHandle::spawn(move |stop| {
             // The cadence and the stop discipline are settled here; what
             // `5902` adds is the poll that fills the middle. A feed with
@@ -312,6 +313,9 @@ impl Live {
                     // closed pipe.
                     return;
                 }
+                // A snapshot, so the poll never holds the session's lock
+                // across its work.
+                let _watching = watched.snapshot();
                 super::notify::sleep_unless_stopped(stop, FEED_INTERVAL_MS);
             }
         }));
@@ -527,8 +531,37 @@ fn handle_request(
             if uri.is_empty() {
                 return send_line(output, &rpc_error(id, INVALID_PARAMS, "uri is required"));
             }
+            // Validated against the resolver rather than a prefix match, so a
+            // subscription can never name something unreadable — and refused
+            // with the code a read of the same URI would give.
+            if super::resources::read(uri, store.as_deref()).is_err() {
+                return send_line(
+                    output,
+                    &rpc_error(id, RESOURCE_NOT_FOUND, "Resource not found"),
+                );
+            }
+            // An unbounded set is an unbounded per-poll cost, and this cap is
+            // the only backpressure the design has.
+            if !live.subscriptions.watches(uri)
+                && live.subscriptions.len() >= subscribe::MAX_SUBSCRIPTIONS
+            {
+                return send_line(
+                    output,
+                    &rpc_error(
+                        id,
+                        INVALID_PARAMS,
+                        &format!(
+                            "a session may watch at most {} resources; unsubscribe one first",
+                            subscribe::MAX_SUBSCRIPTIONS
+                        ),
+                    ),
+                );
+            }
             live.subscriptions.subscribe(uri);
-            // The feed starts on the first subscription and not before.
+            // The feed starts on the first successful subscription and not
+            // before. It is never stopped when the last one goes: a session
+            // that unsubscribes and resubscribes is common, and a parked feed
+            // costs one integer comparison per interval.
             live.ensure_feed(store.as_ref().map(|st| st.data_dir.clone()), output);
             send_line(output, &result_response(id, Value::Obj(Default::default())))
         }
@@ -573,7 +606,10 @@ fn handle_request(
                 .unwrap_or("");
             match super::resources::read(uri, store.as_deref()) {
                 Ok(v) => send_line(output, &result_response(id, v)),
-                Err(_) => send_line(output, &rpc_error(id, -32002, "Resource not found")),
+                Err(_) => send_line(
+                    output,
+                    &rpc_error(id, RESOURCE_NOT_FOUND, "Resource not found"),
+                ),
             }
         }
         "prompts/list" => send_line(output, &result_response(id, super::prompts::list())),

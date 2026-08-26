@@ -99,8 +99,8 @@ fn a_subscribing_session_spawns_one_feed_and_joins_it_at_eof() {
         &directory,
         &format!(
             "{HELLO}\n{}\n{}\n",
-            r#"{"jsonrpc":"2.0","id":2,"method":"resources/subscribe","params":{"uri":"fsm://instance/inst-1"}}"#,
-            r#"{"jsonrpc":"2.0","id":3,"method":"resources/subscribe","params":{"uri":"fsm://instance/inst-2"}}"#
+            r#"{"jsonrpc":"2.0","id":2,"method":"resources/subscribe","params":{"uri":"fsm://docs/spec"}}"#,
+            r#"{"jsonrpc":"2.0","id":3,"method":"resources/subscribe","params":{"uri":"fsm://docs/examples"}}"#
         ),
     );
     // The session returned, which means the join completed.
@@ -203,7 +203,7 @@ fn two_sequential_sessions_each_spawn_and_join_their_own() {
             &directory,
             &format!(
                 "{HELLO}\n{}\n",
-                r#"{"jsonrpc":"2.0","id":2,"method":"resources/subscribe","params":{"uri":"fsm://instance/inst-1"}}"#
+                r#"{"jsonrpc":"2.0","id":2,"method":"resources/subscribe","params":{"uri":"fsm://docs/spec"}}"#
             ),
         );
     }
