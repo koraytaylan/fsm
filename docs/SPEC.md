@@ -87,6 +87,9 @@ entered; the core NEVER reads a clock.
 | `def/eventless_from_terminal` | an eventless transition's `from` is terminal |
 | `def/eventless_shadowed` | guardless/`true` eventless transition precedes a later eventless transition from the same state |
 | `def/eventless_internal_noop` | warning: an eventless transition with no `to`, `do`, `emit`, or `raise` |
+| `def/eventless_cycle` | a cycle in the eventless transition graph that the machine provably cannot leave: every state on it has a guardless (or literal-`true`) eventless transition and every eventless transition its scan could select stays on the cycle; an internal eventless transition is a self-edge |
+| `def/eventless_cycle_guarded` | warning: any other cycle in the eventless transition graph — a guard the engine cannot decide at admission must break it, and `MAX_MICROSTEPS` stops it at run time |
+| `def/eventless_depth` | warning: the longest acyclic eventless cascade times the region count reaches half of `MAX_MICROSTEPS` |
 | `def/unreachable_state` | warning: state never enterable |
 | `def/ancestor_shadowed` | warning: ancestor handler globally dead |
 | `def/create_always_fails` | creation fails on declared inits |
@@ -605,6 +608,9 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/dup_set` — duplicate set targets in one block
 - `def/duplicate_deadline` — duplicate deadline name
 - `def/duplicate_guard` — identical guards in one (from, on) group
+- `def/eventless_cycle` — an eventless cycle no guard can stop
+- `def/eventless_cycle_guarded` — warning: an eventless cycle only a guard can break
+- `def/eventless_depth` — warning: an eventless cascade approaches the macrostep ceiling
 - `def/eventless_evt` — an eventless transition references evt
 - `def/eventless_from_terminal` — an eventless transition leaves a terminal state
 - `def/eventless_internal_noop` — warning: an eventless transition that can only burn a microstep

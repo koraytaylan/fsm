@@ -8,8 +8,14 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-core/src/analyze.rs
+  - crates/fsm-core/src/spec/compile.rs
+  - crates/fsm-core/src/error.rs
   - crates/fsm-core/tests/eventless_cycles.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/one_step_data.rs
+  - crates/fsm-cli/tests/naive_caller/harness.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Eventless Cycle Analysis
@@ -41,3 +47,5 @@ A guardless eventless cycle is a machine that provably cannot quiesce, and refus
 - A machine with no eventless transitions produces byte-identical `analyze_all` output to the pre-change behaviour — the existing `analyze_golden.rs` fixtures do not move.
 
 - **Done when:** `cargo test -p fsm-core --test eventless_cycles` passes every case above, `analyze_golden.rs` is unchanged for non-reactive machines, the SCC pass is iterative, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `analyze::eventless_cycle_findings` (graph, iterative Tarjan, the three findings) is registered in `analyze_all` and — because analysis findings never refuse a definition, `machine_create` reports them as warnings — also called from `spec/compile.rs` after expression binding, where an `Error`-severity finding refuses the definition; `compile.rs` joined the footprint for that. Two corrections to the rule as drafted: the graph holds only the candidates a scan could select (up to the first guardless one on the chain), and a component is certain only when every node has a guardless edge **and** no selectable edge escapes it — the draft's "every edge guardless" both refuses machines a guarded leaf transition can steer out of and misses a certain cycle sitting under a shadowed exit. And an internal (`to`-absent) eventless transition is a self-edge, not edgeless: guardless, it is the one cycle certain by construction, so the draft's "no cycle finding" case became "refused"; guarded, it carries both the guarded-cycle and the noop warnings. Codes landed per the `4201` correction with SPEC rows, naive-caller rows, and outcome drives.

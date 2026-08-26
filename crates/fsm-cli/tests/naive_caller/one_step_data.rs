@@ -40,6 +40,11 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
         r#"{"format":"fsm.machine/1","name":"eevt2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[{"from":"a","on":"e","if":"evt.x > 0","to":"b"}]}"#,
     ),
     (
+        "def/eventless_cycle",
+        r#"{"format":"fsm.machine/1","name":"ecyc","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"b","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"ecyc2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","to":"b"}]}"#,
+    ),
+    (
         "def/eventless_from_terminal",
         r#"{"format":"fsm.machine/1","name":"eft","states":[{"name":"a"},{"name":"t","terminal":true}],"initial":"a","context":[],"events":[],"transitions":[{"from":"t","to":"a"}]}"#,
         r#"{"format":"fsm.machine/1","name":"eft2","states":[{"name":"a"},{"name":"t"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","to":"t"}]}"#,
@@ -251,6 +256,14 @@ pub(crate) const ANALYZE_ROWS: &[(&str, &str)] = &[
     (
         "def/eventless_shadowed",
         r#"{"format":"fsm.machine/1","name":"esh","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"a","if":"ctx.x > 0","to":"b"}]}"#,
+    ),
+    (
+        "def/eventless_cycle_guarded",
+        r#"{"format":"fsm.machine/1","name":"ecg","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"b","if":"ctx.x > 0","to":"a"}]}"#,
+    ),
+    (
+        "def/eventless_depth",
+        r#"{"format":"fsm.machine/1","name":"edepth","states":[{"name":"s0"},{"name":"s1"},{"name":"s2"},{"name":"s3"},{"name":"s4"},{"name":"s5"},{"name":"s6"},{"name":"s7"},{"name":"s8"},{"name":"s9"},{"name":"s10"},{"name":"s11"},{"name":"s12"},{"name":"s13"},{"name":"s14"},{"name":"s15"},{"name":"s16"},{"name":"s17"},{"name":"s18"},{"name":"s19"},{"name":"s20"},{"name":"s21"},{"name":"s22"},{"name":"s23"},{"name":"s24"},{"name":"s25"},{"name":"s26"},{"name":"s27"},{"name":"s28"},{"name":"s29"},{"name":"s30"},{"name":"s31"},{"name":"s32"},{"name":"s33"},{"name":"s34"}],"initial":"s0","context":[],"events":[],"transitions":[{"from":"s0","to":"s1"},{"from":"s1","to":"s2"},{"from":"s2","to":"s3"},{"from":"s3","to":"s4"},{"from":"s4","to":"s5"},{"from":"s5","to":"s6"},{"from":"s6","to":"s7"},{"from":"s7","to":"s8"},{"from":"s8","to":"s9"},{"from":"s9","to":"s10"},{"from":"s10","to":"s11"},{"from":"s11","to":"s12"},{"from":"s12","to":"s13"},{"from":"s13","to":"s14"},{"from":"s14","to":"s15"},{"from":"s15","to":"s16"},{"from":"s16","to":"s17"},{"from":"s17","to":"s18"},{"from":"s18","to":"s19"},{"from":"s19","to":"s20"},{"from":"s20","to":"s21"},{"from":"s21","to":"s22"},{"from":"s22","to":"s23"},{"from":"s23","to":"s24"},{"from":"s24","to":"s25"},{"from":"s25","to":"s26"},{"from":"s26","to":"s27"},{"from":"s27","to":"s28"},{"from":"s28","to":"s29"},{"from":"s29","to":"s30"},{"from":"s30","to":"s31"},{"from":"s31","to":"s32"},{"from":"s32","to":"s33"},{"from":"s33","to":"s34"}]}"#,
     ),
     (
         "def/eventless_internal_noop",

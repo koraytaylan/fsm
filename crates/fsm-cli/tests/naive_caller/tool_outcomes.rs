@@ -428,6 +428,15 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
     for src in reactive_specs {
         drive_create(&mut st, &mut clock, src, &mut out);
     }
+    // Eventless cycles and cascade depth (task 4304).
+    let cycle_specs: &[&str] = &[
+        r#"{"format":"fsm.machine/1","name":"r05","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"b","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"r06","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"b","if":"ctx.x > 0","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"r07","states":[{"name":"s0"},{"name":"s1"},{"name":"s2"},{"name":"s3"},{"name":"s4"},{"name":"s5"},{"name":"s6"},{"name":"s7"},{"name":"s8"},{"name":"s9"},{"name":"s10"},{"name":"s11"},{"name":"s12"},{"name":"s13"},{"name":"s14"},{"name":"s15"},{"name":"s16"},{"name":"s17"},{"name":"s18"},{"name":"s19"},{"name":"s20"},{"name":"s21"},{"name":"s22"},{"name":"s23"},{"name":"s24"},{"name":"s25"},{"name":"s26"},{"name":"s27"},{"name":"s28"},{"name":"s29"},{"name":"s30"},{"name":"s31"},{"name":"s32"},{"name":"s33"},{"name":"s34"}],"initial":"s0","context":[],"events":[],"transitions":[{"from":"s0","to":"s1"},{"from":"s1","to":"s2"},{"from":"s2","to":"s3"},{"from":"s3","to":"s4"},{"from":"s4","to":"s5"},{"from":"s5","to":"s6"},{"from":"s6","to":"s7"},{"from":"s7","to":"s8"},{"from":"s8","to":"s9"},{"from":"s9","to":"s10"},{"from":"s10","to":"s11"},{"from":"s11","to":"s12"},{"from":"s12","to":"s13"},{"from":"s13","to":"s14"},{"from":"s14","to":"s15"},{"from":"s15","to":"s16"},{"from":"s16","to":"s17"},{"from":"s17","to":"s18"},{"from":"s18","to":"s19"},{"from":"s19","to":"s20"},{"from":"s20","to":"s21"},{"from":"s21","to":"s22"},{"from":"s22","to":"s23"},{"from":"s23","to":"s24"},{"from":"s24","to":"s25"},{"from":"s25","to":"s26"},{"from":"s26","to":"s27"},{"from":"s27","to":"s28"},{"from":"s28","to":"s29"},{"from":"s29","to":"s30"},{"from":"s30","to":"s31"},{"from":"s31","to":"s32"},{"from":"s32","to":"s33"},{"from":"s33","to":"s34"}]}"#,
+    ];
+    for src in cycle_specs {
+        drive_create(&mut st, &mut clock, src, &mut out);
+    }
     // A guarded eventless cycle that never settles (task 4303).
     drive_create(
         &mut st,

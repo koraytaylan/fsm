@@ -618,6 +618,13 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 truncate_array(&mut v, p, 1);
             }
         },
+        "def/eventless_cycle" | "def/eventless_cycle_guarded" | "def/eventless_depth" => {
+            // Every repair breaks the cascade after its first transition:
+            // the cycle loses its back edge, the depth its length.
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                tr.truncate(1);
+            }
+        }
         "def/shadowed"
         | "def/eventless_shadowed"
         | "def/duplicate_guard"

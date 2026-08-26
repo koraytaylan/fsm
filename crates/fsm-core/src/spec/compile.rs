@@ -405,12 +405,28 @@ pub(super) fn compile_with_compatibility(
     }
     let accepted = identity_document(&spec);
     let (canonical, machine_id) = accepted_identity(&accepted);
-    Ok(CompiledMachine {
+    let compiled = CompiledMachine {
         machine_id,
         spec,
         canonical,
         transitions_by,
         compiled_exprs,
         compile_warnings: errs,
-    })
+    };
+    // An eventless cycle the machine provably cannot leave never reaches a
+    // journal: refusing it here is strictly better than a live workflow
+    // discovering it as `run/microstep_limit`. The graph needs the compiled
+    // cells and the tree, so it runs after binding; only its refusals count
+    // here — its warnings are `analyze_all`'s to report.
+    let tree = crate::tree::Tree::for_machine(&compiled.spec);
+    let refusals: Vec<Finding> = crate::analyze::eventless_cycle_findings(&compiled, &tree)
+        .into_iter()
+        .filter(|finding| finding.severity == Severity::Error)
+        .collect();
+    if !refusals.is_empty() {
+        let mut errs = compiled.compile_warnings;
+        errs.extend(refusals);
+        return Err(errs);
+    }
+    Ok(compiled)
 }
