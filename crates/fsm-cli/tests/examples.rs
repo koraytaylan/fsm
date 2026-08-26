@@ -58,6 +58,105 @@ fn all_valid() {
     valid("invoice_matching");
     valid("parallel_review_deadline");
     valid("parallel_fork_join");
+    valid("case_review_child");
+    // The parent invokes, so its done-event payload types come from the
+    // child: it compiles against a catalogue, exactly as admission does.
+    let child = load("case_review_child");
+    let catalogue: fsm_core::spec::Catalogue = std::collections::BTreeMap::from([(
+        fsm_core::hashes::digest_of(&fsm_core::hashes::machine_id(&child))
+            .unwrap()
+            .to_string(),
+        parse_machine(&child).unwrap(),
+    )]);
+    fsm_core::spec::compile_accepted_with_catalogue(&load("case_review_parent"), &catalogue)
+        .unwrap_or_else(|e| panic!("case_review_parent {e:?}"));
+}
+
+/// The composed example replays exactly the record sequence EXAMPLES.md
+/// documents — including the child's creation being an `instance_invoked`,
+/// which is the whole point of the example.
+#[test]
+fn the_composed_example_writes_the_documented_records() {
+    let directory = TestDirectory::create();
+    let mut store = Store::open(directory.path()).unwrap();
+    let mut clock = fsm_store::clock::FixedClock::new(1_000, 1);
+    for name in ["case_review_child", "case_review_parent"] {
+        store
+            .define_machine_on(&mut clock, load(name), false, false)
+            .unwrap();
+    }
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "case_review_parent",
+            "inst-new-1",
+            "new-1",
+            None,
+            &std::collections::BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    store
+        .send_event(
+            "inst-new-1",
+            "open",
+            Value::Obj(std::collections::BTreeMap::new()),
+            "send-1",
+            None,
+        )
+        .unwrap();
+    let started = store.invoke_child("inst-new-1", "check", "inv-1").unwrap();
+    let child = started
+        .get("child_instance_id")
+        .and_then(Value::as_str)
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        child,
+        fsm_core::hashes::child_instance_id("inst-new-1", "check"),
+        "the id is a function of the parent and the slot"
+    );
+    store
+        .send_event(
+            &child,
+            "clear",
+            Value::Obj(std::collections::BTreeMap::new()),
+            "child-1",
+            None,
+        )
+        .unwrap();
+    store
+        .invocation_return("inst-new-1", "check", "ret-1")
+        .unwrap();
+
+    let kinds: Vec<String> = store
+        .records
+        .iter()
+        .skip(1)
+        .map(|record| format!("{:?}", record.kind))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "MachineDefined",
+            "MachineDefined",
+            "InstanceCreated",
+            "EventApplied",
+            "InstanceInvoked",
+            "EventApplied",
+            "InvocationReturned",
+        ],
+        "the sequence EXAMPLES.md documents"
+    );
+    assert!(
+        !store.records.iter().any(|record| record.kind
+            == fsm_core::record::RecordKind::InstanceCreated
+            && record.body.get("instance_id").and_then(Value::as_str) == Some(child.as_str())),
+        "a child has no creation record of its own"
+    );
+    let parent = &store.state.instances["inst-new-1"];
+    assert_eq!(parent.configuration.sequential_leaf(), Some("decided"));
+    assert_eq!(parent.ctx["outcome"].canonical_string(), "clear");
 }
 
 /// The fork/join example settles in one record: the send that ends the

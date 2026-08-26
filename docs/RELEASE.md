@@ -15,7 +15,20 @@ late is superseded by a new patch version, never by rewriting the tag.
 
 This first tagged release establishes the public surface at the workspace
 version declared in the root `Cargo.toml`, including parallel regions,
-explicit deadline polling, and the `in(state)` invariant predicate. The
+explicit deadline polling, the `in(state)` invariant predicate, and machine
+composition.
+
+**Upgrading an existing store.** This release moves the instance state format
+to `fsm.state/3` — which adds the composition fields — and the on-disk store
+to `VERSION` 9. A store at `VERSION` 1 through 8 is migrated on **first
+open**: the complete journal is folded using each record's own `state_format`
+discriminator and the marker is stamped forward on success. Interior records
+are never rewritten and old hashes are never recomputed under the new format,
+so a record written before this release keeps its `fsm.state/2` identity
+forever. A fold that fails refuses the open and leaves `VERSION` untouched.
+Snapshot caches move to `fsm.snapshot/5`; an older one beside a current
+journal is skipped and the state re-derived, because a snapshot is a
+disposable cache. The
 migration list remains relevant to consumers of
 historical untagged builds: `MachineSpec` now carries
 `topology` and `deadlines`; `Tree::build` takes the sequential initial (with
@@ -149,6 +162,11 @@ enforced by jobs in `release.yml`, not by this list.
   natural-language brief, unaided, in a bounded number of tool calls.
 - `manual:` replay [`EXAMPLES.md`](EXAMPLES.md) transcripts under `FSM_CLOCK_MS`
   and compare output.
+- `manual:` drive a parent-and-child workflow through a live MCP host: define
+  both machines, create the parent, `invocation_start` the slot, drive the
+  child to completion, `invocation_return` it, and confirm the parent advanced
+  on `$done.invoke.<slot>` — then read the tree back through `instance_get`'s
+  `parent` and `children` and `instance_list --roots-only`.
 - `manual:` drive a reactive machine — one eventless transition, one `raise`,
   and the fork/join in `examples/parallel_fork_join.json` — through a live MCP
   host and confirm each cascade reads as one macrostep in `instance_history`

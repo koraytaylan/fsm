@@ -30,6 +30,52 @@ A no-due poll is journaled. Retrying its `request_id` returns the original
 no-due observation even after time advances; use a new `request_id` for a new
 observation.
 
+## case_review_parent and case_review_child
+
+A parent that delegates one step to a child machine and takes the child's
+finding back as an event. The two are separate definitions on purpose: the
+child is a reusable review step, and the parent names it **by digest**, so the
+definition the parent invokes cannot change under it.
+
+```
+$ fsm machine add examples/case_review_child.json
+$ fsm machine add examples/case_review_parent.json
+$ fsm instance new case_review_parent --request-id new-1
+$ fsm instance send inst-new-1 open --request-id send-1
+$ fsm instance invoke inst-new-1 check --request-id inv-1
+{"child_instance_id":"inst-a111dfb0920dcaf7dd51064b", ...}
+$ fsm instance send inst-a111dfb0920dcaf7dd51064b clear --request-id child-1
+$ fsm instance return inst-new-1 check --request-id ret-1
+{"outcome":"completed", ...}
+$ fsm instance show inst-new-1
+leaf: decided
+```
+
+The parent's context now holds the child's finding: `outcome: clear`.
+
+The parent's history is the whole story, four records for the parent and two
+for the child:
+
+| seq | kind | what it says |
+|---|---|---|
+| 3 | `instance_created` | the parent exists |
+| 4 | `event_applied` | `open` moved it to `delegating`, creating one pending slot |
+| 5 | `instance_invoked` | the child exists, its id derived from `(inst-new-1, check)` |
+| 6 | `event_applied` | the child's own `clear`, in the child's history |
+| 7 | `invocation_returned` | the child's `finding` reached the parent as `$done.invoke.check`, which moved it to `decided` |
+
+There is no `instance_created` for the child: seq 5 **is** its creation, and
+the fold re-derives the child by running the same creation the record
+describes. The id is a function of the parent and the slot, so a second writer
+issuing the same invocation computes the same id and the store replays rather
+than creating a second child.
+
+`fsm validate examples/case_review_parent.json` on its own reports
+`expr/unknown_field` for `evt.finding`, and says why: a done-invoke payload is
+typed from the **child's** declarations, which live in a store. Add the child
+first, or point `--data-dir` at a store that already holds it, and the same
+command validates.
+
 ## parallel_fork_join
 
 Intent: fork into two regions and join when one of them finishes, with the

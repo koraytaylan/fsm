@@ -333,6 +333,125 @@ each microstep's candidates and pipeline.
 | `req/number_token` | raw JSON number | quote it |
 
 
+## Composition
+
+A machine MAY declare `invoke` on a state: a list of at most
+`MAX_INVOKES_PER_STATE` slots, each `{id, machine, with?, returns?}`. Entering
+the state creates one pending slot per entry; exiting it removes them, and any
+slot whose child was running is cancelled (§Cascade).
+
+`machine` MUST be a 64-hex `machine_id` digest, never a name. A name is a
+mutable pointer: the definition it resolves to can change between the
+invocation and its replay, and a store whose history depends on what a name
+means today is not replayable. Admission refuses an unknown digest with
+`def/invoke_unknown_machine`.
+
+A child's instance id is **derived**, never allocated:
+
+```
+child_instance_id(parent, slot)
+  = "inst-" + hex(sha256("fsm:child:1" | 0x0A | parent | 0x00 | slot))[..24]
+```
+
+The domain string is `fsm:child:1`, the separator after it is one `0x0A`
+byte, and the separator between the parent id and the slot is one `0x00`
+byte. The digest is truncated to 24 hex characters. Two writers that invoke
+the same slot therefore agree on the child's id without coordinating, and a
+reader can check any child id against the record that created it.
+
+`with` maps a **child** context field to an `expr/1` expression evaluated in
+the parent's scope when the slot is created; a field the child does not
+declare is `def/invoke_unknown_ctx` and a type that does not match the child's
+declaration is `def/invoke_type`. `returns` maps a **parent** event field to a
+child context field, read out of the child's final context when the
+invocation returns. The generated event `$done.invoke.<slot>` carries exactly
+the `returns` projection, at the child's declared types; its declarations come
+from the child machine, which is why admission needs the catalogue.
+
+An invocation graph MUST NOT exceed `MAX_INVOKE_DEPTH` machines
+(`def/invoke_depth`) and MUST NOT contain a cycle (`def/invoke_cycle`). A
+cycle is unreachable by construction — a machine would have to contain the
+digest of a definition that contains its own digest — and the rule is stated
+and enforced anyway, as defence in depth.
+
+### Invocation operations
+
+Two journaled operations enact a slot, because a state change caused by
+something outside the instance MUST be a record somebody can point at:
+
+`invoke_child(parent, slot, request_id)` is legal only against a `pending`
+slot (`req/invoke_slot_state`). It creates the child by running the child
+machine's creation with the slot's evaluated `with` as overrides, and writes
+one `instance_invoked` record naming both instances and both state hashes.
+The slot moves `pending → running`. A child whose creation is rejected is
+`run/invoke_create_failed`: **nothing** is journaled and the slot stays
+`pending`. There is no `instance_created` record for a child — the fold
+derives the child from the `instance_invoked` record by running the same
+creation — so a reader looking for one MUST accept either kind.
+
+`invocation_return(parent, slot, request_id)` is legal only against a
+`running` slot whose child is `completed` or `cancelled`
+(`req/invoke_slot_state` names the child's status). It writes one
+`invocation_returned` record carrying the `returns` projection of the child's
+final context, and delivers `$done.invoke.<slot>` into the parent as the
+trigger of an ordinary macrostep, so the parent's whole reaction seals in that
+record's `microsteps`. A cancelled child returns `outcome: "cancelled"` with
+an **empty** payload; a parent that must distinguish models a declared field
+for it, because `outcome` MUST NOT be injected into a payload whose shape the
+child's declarations promised. A parent with no transition on the event
+discards it (§Macrosteps) and the record still commits. The slot moves
+`running → returned` and stays until its state is exited.
+
+A generated `$done.invoke.<slot>` event follows the handler-only rule
+(§Macrosteps): it is raised only when some transition names it in `on`.
+
+### Cascade
+
+Leaving an invoking state cancels every running child of the slots it
+removed, with `reason: "parent-exit:<parent>/<slot>"`, in the same operation.
+Cancelling an instance cancels every running descendant depth-first, bounded
+by `MAX_INVOKE_DEPTH`, with `reason: "parent-cancel:<instance>"`. A child that
+already settled is skipped, never re-cancelled.
+
+This is the one place the store writes two records for one request, and the
+window between them is documented rather than denied: a crash there leaves the
+child `running` and unreferenced. That is safe because the second record is a
+cancellation — idempotent and state-independent — so nothing is corrupt, only
+unreferenced. A store open MUST NOT repair it: `fsm doctor` reports every
+running child whose parent slot is gone or whose parent has settled, and `fsm
+repair --cancel-orphans` settles each with one `instance_cancelled` record
+carrying `reason: "orphan"`. A group commit would close the window at the
+price of the one-fsync-per-record durability claim, which is the worse trade.
+
+### Signals
+
+A block MAY declare `signal`: at most `MAX_SIGNALS_PER_BLOCK` entries, each
+`{to, event, with?}`, evaluated under the same snapshot semantics as `do`,
+`emit`, and `raise`, and enqueued only from a block that commits. Signal ids
+are `{instance_id}/{seq}/{k}` with `k` running in its own sequence,
+independent of the effect `k`.
+
+`to` is an `expr/1` expression of type `str` naming **exactly one** instance.
+A query-targeted delivery MUST NOT be added: the set a query matches grows
+over time, so replaying the record would deliver to a different set and the
+store would stop being a function of its journal.
+
+`event` and `with` are **not** typed at admission. The target machine is a
+run-time value, so its declarations are unknown when the sender is admitted;
+the check belongs to delivery, where the target's own machine validates the
+event name and payload. This is the only construct in this specification whose
+payload typing is a delivery-time check.
+
+`signal_deliver(sender, signal_id, request_id)` applies the event to the
+target as an ordinary macrostep and journals one `signal_delivered` record
+naming both instances. `outcome` is one of `applied`, `ignored`,
+`target_missing`, `target_settled`, or `rejected:<the target's code>`. Every
+one of those clears the sender's pending entry: a signal is fire-and-forget by
+design, and a sender that needs an answer models the target signalling back.
+Delivery is NOT a transition of the sender, and MUST NOT advance its
+configuration. A signal addressed to its own sender is `req/signal_target` and
+journals nothing; `raise` is the construct for an event to this instance.
+
 ## Journal
 
 ### Idempotency
@@ -448,6 +567,9 @@ because a deadline poll visits no event guard.
 | `effect_acked` | `instance_id`, `effect_id`, `request_id`, `outcome` (`ok` or `failed`), `state_hash`, `state_format`, optional `result` |
 | `request_rejected` | `request_id`, `instance_id`, `code`, `message`, `hint`, `details`, `operation`, `state_hash`, `state_format`; `effect_id` required when `operation` is `ack` |
 | `instance_cancelled` | `instance_id`, `request_id`, `reason`, `state_hash`, `state_format` |
+| `instance_invoked` | `parent_instance_id`, `slot`, `child_instance_id`, `child_machine_id`, `overrides`, `request_id`, `state_hash`, `child_state_hash`, `state_format` |
+| `invocation_returned` | `parent_instance_id`, `slot`, `child_instance_id`, `outcome` (`completed` or `cancelled`), `payload`, `request_id`, `state_hash`, `state_format`, optional `microsteps` |
+| `signal_delivered` | `sender_instance_id`, `signal_id`, `target_instance_id`, `event`, `payload`, `outcome`, `request_id`, `sender_state_hash`, `state_format`, optional `target_state_hash`, optional `microsteps` |
 | `annotated` | `instance_id`, `request_id`, `note` |
 | `state_checkpoint` | `state_root`, `state_root_format` |
 
@@ -890,6 +1012,9 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 | sets per block | 32 (`MAX_SETS_PER_BLOCK`) |
 | emits per block | 8 (`MAX_EMITS_PER_BLOCK`) |
 | raises per block | 8 (`MAX_RAISES_PER_BLOCK`); deliberately not in the genesis `limits` block, which is hash-verified on fold |
+| invoke slots per state | 4 (`MAX_INVOKES_PER_STATE`); deliberately not in the genesis `limits` block, which is hash-verified on fold |
+| invocation depth | 4 machines (`MAX_INVOKE_DEPTH`); deliberately not in the genesis `limits` block |
+| signals per block | 4 (`MAX_SIGNALS_PER_BLOCK`); deliberately not in the genesis `limits` block |
 
 These match `crates/fsm-core/src/limits.rs`.
 

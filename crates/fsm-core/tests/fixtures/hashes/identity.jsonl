@@ -5,3 +5,5 @@
 {"file":"../../../../../examples/order_lifecycle.json","id":"order_lifecycle@sha256:ad7f2ac39d9dc2ca5880049807d9232dd1892964e28e5dfec2b1d2d40def108d"}
 {"file":"../../../../../examples/parallel_review_deadline.json","id":"parallel_review_deadline@sha256:a08aebb6553e0f0f72bcab793132d251118f644e1c5f3ce0cac531259cedb17f"}
 {"file":"../../../../../examples/parallel_fork_join.json","id":"parallel_fork_join@sha256:f84c93860c511302ff2833f9d2ad40d6f672d14f739c8c31ccf635e16bf90ce7"}
+{"file":"../../../../../examples/case_review_child.json","id":"case_review_child@sha256:f8f5ed8786627264bb8e1729bd4d0d2f08403ce0ca33727e7afdd8c4f2e0dd5b"}
+{"file":"../../../../../examples/case_review_parent.json","id":"case_review_parent@sha256:7d1a09e3475549dd8e6c2ef94232afb6a5f991dfca15fb802d1c23c294111fc3"}

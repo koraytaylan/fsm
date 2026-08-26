@@ -161,7 +161,7 @@ const NOTIFIER: &str = r#"{"format":"fsm.machine/1","name":"notifier","states":[
 fn assert_coherent(directory: &TestDirectory, seed: u64, point: DeathPoint) {
     let report = verify(directory.path());
     assert!(
-        matches!(report.health, JournalHealth::Ok { .. }),
+        matches!(report.health, JournalHealth::Ok),
         "seed {seed} {point:?}: journal not clean: {:?}",
         report.health
     );

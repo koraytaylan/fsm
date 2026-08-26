@@ -185,7 +185,7 @@ impl Store {
 
     /// The machines this store holds, keyed by the 64-hex digest an `invoke`
     /// slot names.
-    pub(crate) fn invoke_catalogue(&self) -> fsm_core::spec::Catalogue {
+    pub fn invoke_catalogue(&self) -> fsm_core::spec::Catalogue {
         self.state
             .machines
             .iter()

@@ -115,7 +115,7 @@ fn readme_and_licenses() {
         .lines()
         .filter(|l| l.starts_with("|") && !l.contains("---") && !l.contains("Guarantee"))
         .count();
-    assert_eq!(rows, 19, "{rows}");
+    assert_eq!(rows, 20, "{rows}");
     assert!(readme.contains("single-node"));
     let mit = std::fs::read_to_string(root.join("LICENSE-MIT")).unwrap();
     let ap = std::fs::read_to_string(root.join("LICENSE-APACHE")).unwrap();
@@ -390,4 +390,67 @@ fn every_shipped_platform_is_also_verified() {
             );
         }
     }
+}
+
+/// Every record kind, in both directions: a kind the code defines must appear
+/// in SPEC's table, and a kind the table names must exist in the code. A
+/// record kind can never ship undocumented, and the table can never name one
+/// that is gone.
+#[test]
+fn every_record_kind_is_documented_and_every_documented_kind_exists() {
+    let table = SPEC
+        .split("### Record kinds")
+        .nth(1)
+        .expect("SPEC has a record-kind section")
+        .split("\n\n`microsteps`")
+        .next()
+        .expect("the table ends before the microsteps prose");
+    let documented: std::collections::BTreeSet<String> = table
+        .lines()
+        .filter_map(|line| line.strip_prefix("| `"))
+        .filter_map(|line| line.split('`').next())
+        .map(str::to_string)
+        .collect();
+    let defined: std::collections::BTreeSet<String> = fsm_core::record::RecordKind::all()
+        .iter()
+        .map(|kind| kind.as_str().to_string())
+        .collect();
+    for kind in &defined {
+        assert!(
+            documented.contains(kind),
+            "{kind} is a record kind but SPEC's table does not name it"
+        );
+    }
+    for kind in &documented {
+        assert!(
+            defined.contains(kind),
+            "SPEC's table names {kind}, which is not a record kind"
+        );
+    }
+}
+
+/// The child-id scheme is pinned to prose: a reader must be able to recompute
+/// an id from SPEC alone, so the domain string cannot drift silently.
+#[test]
+fn spec_pins_the_child_id_scheme_and_the_single_target_rule() {
+    assert!(
+        SPEC.contains("fsm:child:1"),
+        "SPEC must name the child-id domain string"
+    );
+    assert!(
+        SPEC.contains(r#"hex(sha256("fsm:child:1" | 0x0A | parent | 0x00 | slot))[..24]"#),
+        "the derivation, not just the domain string, has to be recomputable from prose"
+    );
+    let signals = SPEC
+        .split("### Signals")
+        .nth(1)
+        .expect("SPEC has a signals subsection");
+    assert!(
+        signals.contains("**exactly one**"),
+        "the single-target MUST is the whole reason signals are shaped this way"
+    );
+    assert!(
+        signals.contains("MUST NOT be added"),
+        "and the rule that a query-targeted delivery is refused"
+    );
 }

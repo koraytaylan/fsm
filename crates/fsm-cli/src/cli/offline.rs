@@ -19,7 +19,15 @@ fn validate(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(s) => s,
         Err(e) => return emit_error(ctx, &e),
     };
-    match validate_text(&text) {
+    // A machine that invokes cannot be fully checked in isolation: the done
+    // event's payload types come from the child's declarations, which live in
+    // a store. So `validate` reads the data directory's catalogue when there
+    // is one, and says so plainly when the definition needed it and there was
+    // not. It still never writes.
+    let catalogue = crate::store::Store::open_read_only(&ctx.data_dir)
+        .map(|store| store.invoke_catalogue())
+        .unwrap_or_default();
+    match validate_text(&text, &catalogue) {
         Ok(v) => {
             emit_success(ctx, &v);
             0
@@ -28,10 +36,31 @@ fn validate(ctx: &mut Ctx, args: &Args) -> u8 {
     }
 }
 
-fn validate_text(text: &str) -> Result<Value, ErrorObj> {
+/// Whether a definition names an `invoke` slot anywhere, read from the raw
+/// document because it may not have compiled.
+fn invokes_something(v: &Value) -> bool {
+    match v {
+        Value::Obj(fields) => fields
+            .iter()
+            .any(|(name, inner)| name == "invoke" || invokes_something(inner)),
+        Value::Arr(items) => items.iter().any(invokes_something),
+        _ => false,
+    }
+}
+
+fn validate_text(text: &str, catalogue: &fsm_core::spec::Catalogue) -> Result<Value, ErrorObj> {
     let v = parse(text.as_bytes(), &JsonLimits::DEFAULT)
         .map_err(|e| ErrorObj::new("def/shape", e.message))?;
-    let compiled = fsm_core::spec::compile_accepted(&v).map_err(ErrorObj::from_findings)?;
+    let compiled = fsm_core::spec::compile_accepted_with_catalogue(&v, catalogue)
+        .map_err(|findings| {
+            let error = ErrorObj::from_findings(findings);
+            if invokes_something(&v) && catalogue.is_empty() {
+                return error.hint(
+                    "this definition invokes another machine, so its done-invoke payload types                      come from that machine's declarations: add the child with `fsm machine add`                      first, or point --data-dir at a store that holds it",
+                );
+            }
+            error
+        })?;
     let tree = Tree::for_machine(&compiled.spec);
     let warnings = fsm_core::analyze::analyze_all(&compiled, &tree);
     let id = compiled.machine_id.clone();
@@ -252,7 +281,7 @@ mod tests {
     #[test]
     fn validate_case_review_and_unknown() {
         let text = std::fs::read_to_string(case_path()).unwrap();
-        assert!(validate_text(&text).is_ok());
+        assert!(validate_text(&text, &Default::default()).is_ok());
         let mut v = parse(text.as_bytes(), &JsonLimits::DEFAULT).unwrap();
         if let Value::Obj(o) = &mut v {
             if let Some(Value::Arr(ts)) = o.get_mut("transitions") {
@@ -262,7 +291,7 @@ mod tests {
             }
         }
         let dumped = String::from_utf8(fsm_core::canon::canon_bytes(&v)).unwrap();
-        let err = validate_text(&dumped).unwrap_err();
+        let err = validate_text(&dumped, &Default::default()).unwrap_err();
         assert_eq!(err.code, "def/unknown_state");
         assert!(!err.path.is_empty());
         assert!(!err.hint.is_empty());
@@ -283,7 +312,7 @@ mod tests {
         let ev = r#"[{"name":"docs_ok"},{"name":"suspend"}]"#;
         let args = Args {
             positionals: vec![path.clone()],
-            flags: BTreeMap::from([("events".into(), ev.into())]),
+            flags: BTreeMap::from([("events", ev.into())]),
             switches: Default::default(),
         };
         // drive simulate_cmd; we inspect via simulate() itself for traces

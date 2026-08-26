@@ -14,8 +14,15 @@ touches:
   - README.md
   - examples/order_lifecycle.json
   - examples/case_review_child.json
+  - examples/case_review_parent.json
+  - crates/fsm-cli/src/cli/offline.rs
+  - crates/fsm-cli/tests/examples.rs
+  - crates/fsm-core/tests/spec_parse.rs
+  - docs/EMBEDDING.md
+  - docs/RELEASE.md
+  - README.md
   - crates/fsm-cli/tests/spec_appendix.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Composition Spec And Docs
@@ -45,3 +52,7 @@ SPEC is the source of truth and every golden in this plan derives from its prose
 - `docs/RELEASE.md` names both the composition acceptance pass and the `fsm.state/3` / `VERSION` 9 migration.
 
 - **Done when:** SPEC is normative about invocation, signals, the new records, and both format bumps; EMBEDDING covers the executor's new directives; a composed example replays with its documented record sequence; `cargo test -p fsm-cli --test spec_appendix --test examples --test executor_doc --test policy` passes; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** SPEC's `## Composition` section with its `### Invocation operations`, `### Cascade`, and `### Signals` subsections; three record kinds in the table and three limits in Appendix B; EMBEDDING's `### Composition without a human`; RELEASE's acceptance row and upgrade note; README's guarantee row and non-claim; the sibling example pair with its documented record sequence and a test that replays it; and `spec_appendix.rs`'s two new assertions — record kinds in both directions, and the child-id derivation and single-target rule pinned to prose.
+
+**Corrections.** (1) Step 6 anticipated the pin: `order_lifecycle.json`'s `machine_id` is committed in `identity.jsonl` and in the inertness drives, so the example is a sibling pair and the commit message says so. (2) Writing the example surfaced a real gap the plan did not list: `fsm validate` on a composing machine reported `expr/unknown_field` with an empty hint, because a done-invoke payload types from the child's declarations and those live in a store. Validate now compiles against the data directory's catalogue when one is readable — it still never writes — and explains itself when there is not, which is the difference between a dead end and a next step. `Store::invoke_catalogue` became public for it. (3) `every_example_keeps_its_committed_machine_id` compiled each example with no catalogue, which a composing example cannot survive; it now compiles against a catalogue of every shipped example — the same information a store holding them would offer — so the new pair is pinned like every other.

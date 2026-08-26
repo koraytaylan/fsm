@@ -97,6 +97,7 @@ Claude Desktop `mcpServers` JSON:
 | crash safety | torn tails are classified and repaired |
 | auditable implementation | zero dependencies, no unsafe |
 | unattended execution | `fsm execute` is a separate one-node process with **at-least-once** execution at the process boundary and exactly-once journaling: one ack per effect, whatever it survived |
+| explicit composition | a child instance exists because a record says so, and its id is derived from its parent and slot — never allocated, never guessed |
 
 Honest non-claims: this is a **single-node** single-writer engine. There is no
 HA/replication or autonomous real-time scheduler; a deadline fires only when a
@@ -104,7 +105,10 @@ caller polls. The throughput ceiling is a feature. The executor inherits that
 ceiling, and a handler killed mid-run is re-run by the next executor rather
 than rolled back — model the undo as a compensating effect in the machine.
 Reaction is bounded at 64 microsteps per event: a machine that needs more is
-refused at run time, not truncated.
+refused at run time, not truncated. Composition is single-store and
+single-writer too — a parent and its children live in one journal — and a
+signal reaches **exactly one** instance by design, because a query-targeted
+delivery would match a different set on replay.
 
 See [docs/SPEC.md](docs/SPEC.md), [docs/EXAMPLES.md](docs/EXAMPLES.md), [docs/EMBEDDING.md](docs/EMBEDDING.md), [docs/API-POLICY.md](docs/API-POLICY.md), and [docs/RELEASE.md](docs/RELEASE.md).
 

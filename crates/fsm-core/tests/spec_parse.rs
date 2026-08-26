@@ -178,6 +178,27 @@ fn round_trip_keeps_an_eventless_transition_without_an_on_key() {
 
 /// The compatibility anchor: every committed example keeps the machine id the
 /// pre-change build computed, recorded in `fixtures/hashes/identity.jsonl`.
+/// Every shipped example, keyed by digest: the catalogue a store holding
+/// them would offer an `invoke` slot.
+fn example_catalogue(root: &std::path::Path) -> fsm_core::spec::Catalogue {
+    let mut catalogue = fsm_core::spec::Catalogue::new();
+    for entry in std::fs::read_dir(root.join("examples")).unwrap().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.ends_with(".json") || name.ends_with(".handlers.json") {
+            continue;
+        }
+        let bytes = std::fs::read(entry.path()).unwrap();
+        let document = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
+        if let Ok(spec) = fsm_core::spec::parse_machine(&document)
+            && let Some(digest) =
+                fsm_core::hashes::digest_of(&fsm_core::hashes::machine_id(&document))
+        {
+            catalogue.insert(digest.to_string(), spec);
+        }
+    }
+    catalogue
+}
+
 #[test]
 fn every_example_keeps_its_committed_machine_id() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -193,7 +214,12 @@ fn every_example_keeps_its_committed_machine_id() {
         };
         let bytes = std::fs::read(root.join("examples").join(example)).unwrap();
         let document = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
-        let compiled = fsm_core::spec::compile_accepted(&document).unwrap();
+        // A composing example types its done-invoke payload from the child's
+        // declarations, so the catalogue here is every shipped example —
+        // which is what a store holding them would offer.
+        let compiled =
+            fsm_core::spec::compile_accepted_with_catalogue(&document, &example_catalogue(&root))
+                .unwrap_or_else(|e| panic!("{example} {e:?}"));
         assert_eq!(
             compiled.machine_id,
             record.get("id").and_then(Value::as_str).unwrap(),

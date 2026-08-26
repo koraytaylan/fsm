@@ -1,0 +1,38 @@
+{
+  "format": "fsm.machine/1",
+  "name": "case_review_parent",
+  "context": [
+    { "name": "reference", "ty": "str", "init": "case-1" },
+    { "name": "outcome", "ty": "str", "init": "" }
+  ],
+  "events": [
+    { "name": "open", "fields": [] },
+    { "name": "withdraw", "fields": [] }
+  ],
+  "states": [
+    { "name": "intake" },
+    {
+      "name": "delegating",
+      "invoke": [
+        {
+          "id": "check",
+          "machine": "f8f5ed8786627264bb8e1729bd4d0d2f08403ce0ca33727e7afdd8c4f2e0dd5b",
+          "with": { "reference": "ctx.reference" },
+          "returns": { "finding": "finding" }
+        }
+      ]
+    },
+    { "name": "decided" }
+  ],
+  "initial": "intake",
+  "transitions": [
+    { "from": "intake", "on": "open", "to": "delegating" },
+    {
+      "from": "delegating",
+      "on": "$done.invoke.check",
+      "to": "decided",
+      "do": [{ "target": "outcome", "value": "evt.finding" }]
+    },
+    { "from": "delegating", "on": "withdraw", "to": "decided" }
+  ]
+}

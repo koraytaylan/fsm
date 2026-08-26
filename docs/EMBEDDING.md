@@ -479,6 +479,38 @@ and do not appear in SPEC.md's appendix.
 | `exec/invoke` | creating a child or returning its result failed; the store's own code is preserved in `details` |
 | `exec/signal` | delivering a signal failed; the store's own code is preserved in `details` |
 
+### Composition without a human
+
+The executor enacts composition the same way it enacts effects: from the
+journal, with derived keys. Three directives join the tick, in this order
+within one tick — invoke, then return, then signal — so a slot created and
+settled across two ticks never races itself:
+
+| Directive | When | Derived key |
+|---|---|---|
+| invoke a child | a slot is `pending` | `exec-inv-{parent}/{slot}` |
+| return a result | a `running` slot's child has settled | `exec-ret-{parent}/{slot}` |
+| deliver a signal | an instance holds an undelivered signal | `exec-sig-{sender}/{signal_id}` |
+
+None of them spawns a subprocess. A handler exists to reach the world's
+computers; these three reach only the journal, so they take the writer for
+the tick and go straight to the store. A restarted executor recomputes each
+key from journaled content and the store answers `duplicate: true` rather
+than acting twice.
+
+The run modes apply unchanged. In `paired` the executor writes and the model
+reads; a composed workflow runs to completion with the model watching the
+tree through `instance_get`. In `embedded` the server drives the same tick on
+the handle it already holds, so a model can invoke, return, and deliver
+itself through `invocation_start`, `invocation_return`, and `signal_deliver`.
+In `exclusive` the executor holds the directory alone and every composition
+tool refuses with the message naming the mode — which is the same trade as
+every other write.
+
+A returnable invocation is decided from the child's own status, never from
+elapsed time: the watcher reports a slot as returnable only when the child is
+`completed` or `cancelled`.
+
 ## Errors
 
 Every error carries a namespaced `code`, a `message`, and a `hint` that states

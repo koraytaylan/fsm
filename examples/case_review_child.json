@@ -1,0 +1,31 @@
+{
+  "format": "fsm.machine/1",
+  "name": "case_review_child",
+  "context": [
+    { "name": "reference", "ty": "str", "init": "" },
+    { "name": "finding", "ty": "str", "init": "open" }
+  ],
+  "events": [
+    { "name": "clear", "fields": [] },
+    { "name": "flag", "fields": [] }
+  ],
+  "states": [
+    { "name": "reviewing" },
+    { "name": "filed", "terminal": true }
+  ],
+  "initial": "reviewing",
+  "transitions": [
+    {
+      "from": "reviewing",
+      "on": "clear",
+      "to": "filed",
+      "do": [{ "target": "finding", "value": "\"clear\"" }]
+    },
+    {
+      "from": "reviewing",
+      "on": "flag",
+      "to": "filed",
+      "do": [{ "target": "finding", "value": "\"flagged\"" }]
+    }
+  ]
+}
