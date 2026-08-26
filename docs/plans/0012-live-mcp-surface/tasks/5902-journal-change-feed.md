@@ -9,7 +9,9 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/watch.rs
   - crates/fsm-cli/tests/mcp_change_feed.rs
-status: planned
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/tests/mcp_change_feed.rs
+status: done
 merged_as: ""
 ---
 # Journal Change Feed
@@ -43,3 +45,5 @@ The feed runs on every interval whether or not anything happened, so its common 
 - The feed and `instance_history` agree: for every record kind, the set of instances the feed notifies equals the set whose history contains that record. Assert this over a store exercising composition, since two independent rules drifting apart is exactly what sharing the helper prevents.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_change_feed` passes every case above, the unchanged-journal path does no work beyond one open and one comparison, the feed never takes a lock or writes, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `watch::Feed` with `poll_once`, `run`, `walks`, and `watermark`; the seq fast path; the `instances_touched` mapping; per-URI de-duplication and ordering; the watermark-after-write rule; the snapshot read; and the session wiring that starts a feed from the journal's current seq — a subscriber asked to be told what happens next, not what already had. The suite covers the notification, the zero-walk idle case, the ten-record batch, an unsubscribed instance, byte-determinism, the unadvanced watermark on a write error, coexistence with a live writer, and the three composition shapes a field-name probe would have missed.

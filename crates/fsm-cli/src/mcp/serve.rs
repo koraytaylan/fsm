@@ -16,7 +16,7 @@ use super::jsonrpc::{
 };
 use super::notify::{FeedHandle, Notifier};
 use super::tools;
-use super::{cancel, logging, subscribe};
+use super::{cancel, logging, subscribe, watch};
 
 const LINE_CAP: usize = 16 * 1024 * 1024;
 const KNOWN_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -269,7 +269,7 @@ pub fn serve_session(
 
 /// The change feed's cadence, matched to the executor's own tick so a
 /// subscriber learns of a change about as fast as the executor caused it.
-const FEED_INTERVAL_MS: u64 = 250;
+const FEED_INTERVAL_MS: u64 = watch::DEFAULT_INTERVAL_MS;
 
 /// What one session knows that outlives a single request: what it watches,
 /// how loudly it wants to be told, and which requests the client withdrew.
@@ -297,27 +297,19 @@ impl Live {
         if self.feed.is_some() {
             return;
         }
-        let Some(_data_dir) = data_dir else {
+        let Some(data_dir) = data_dir else {
             return;
         };
         let writer = output.clone_handle();
         let watched = self.subscriptions.clone_handle();
+        // The feed starts from wherever the journal is now: a subscriber
+        // asked to be told what happens next, not what already had.
+        let from_seq = crate::store::Store::open_read_only(&data_dir)
+            .map(|store| store.journal.last_seq)
+            .unwrap_or(0);
         self.feed = Some(FeedHandle::spawn(move |stop| {
-            // The cadence and the stop discipline are settled here; what
-            // `5902` adds is the poll that fills the middle. A feed with
-            // nothing to report still has to wake, check, and die promptly.
-            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-                if writer.is_broken() {
-                    // The client is gone. The main loop discovers EOF on its
-                    // own; a feed that kept writing would be writing to a
-                    // closed pipe.
-                    return;
-                }
-                // A snapshot, so the poll never holds the session's lock
-                // across its work.
-                let _watching = watched.snapshot();
-                super::notify::sleep_unless_stopped(stop, FEED_INTERVAL_MS);
-            }
+            let mut feed = watch::Feed::new(&data_dir, watched, writer, from_seq);
+            feed.run(stop, FEED_INTERVAL_MS);
         }));
     }
 
