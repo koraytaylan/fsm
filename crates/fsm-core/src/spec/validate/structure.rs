@@ -184,6 +184,14 @@ pub(super) fn check_nodes(
                     "remove states, terminal, and initial from the history node",
                 ));
             }
+            if node.final_state {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("/states/{n}"),
+                    "history pseudostate cannot be final",
+                    "mark a real leaf final instead",
+                ));
+            }
         }
         if node.history.is_none() && !node.states.is_empty() {
             match &node.initial {

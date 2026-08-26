@@ -147,6 +147,17 @@ pub(crate) fn drive_reactive_outcomes(
     for src in cycle_specs {
         drive_create(st, clock, src, out);
     }
+    // The five `final` rules (task 4501).
+    let final_specs: &[&str] = &[
+        r#"{"format":"fsm.machine/1","name":"r09","states":[{"name":"p","initial":"w","states":[{"name":"w"},{"name":"q","final":true,"initial":"r","states":[{"name":"r"}]}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"r10","states":[{"name":"a"},{"name":"f","final":true}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"r11","states":[{"name":"p","initial":"a","states":[{"name":"a"},{"name":"f","final":true,"terminal":true}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"r12","states":[{"name":"p","initial":"a","states":[{"name":"a"},{"name":"f","final":true}]}],"initial":"p","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"f","on":"e","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"r13","states":[{"name":"p","initial":"f","states":[{"name":"f","final":true},{"name":"a"}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+    ];
+    for src in final_specs {
+        drive_create(st, clock, src, out);
+    }
     // Nine raises in one block (task 4402).
     drive_create(
         st,

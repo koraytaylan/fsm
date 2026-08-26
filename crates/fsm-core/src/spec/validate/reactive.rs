@@ -19,6 +19,7 @@ use crate::expr::parser;
 use super::super::{Finding, MachineSpec, TransitionSpec};
 
 pub(super) fn validate_reactive(spec: &MachineSpec, errs: &mut Vec<Finding>) {
+    check_final_states(spec, errs);
     let terminal_states: BTreeSet<&str> = spec
         .walk_states()
         .into_iter()
@@ -39,6 +40,77 @@ pub(super) fn validate_reactive(spec: &MachineSpec, errs: &mut Vec<Finding>) {
                     transition.from
                 ),
                 "a terminal state ends its machine or region and nothing runs after it; remove the transition or move it to a state that is not terminal",
+            ));
+        }
+    }
+}
+
+/// The five `final` rules, each with a hint that says which of `final` and
+/// `terminal` the author probably wanted. A `final` state is otherwise an
+/// ordinary leaf: it may have blocks, be a target, and bind history.
+fn check_final_states(spec: &MachineSpec, errs: &mut Vec<Finding>) {
+    let mut final_states: BTreeSet<&str> = BTreeSet::new();
+    for (node, parent) in spec.walk_states() {
+        if node.final_state && node.history.is_none() {
+            final_states.insert(node.name.as_str());
+            let path = format!("/states/{}", node.name);
+            if !node.states.is_empty() {
+                errs.push(Finding::err(
+                    "def/final_not_leaf",
+                    path.clone(),
+                    format!("final state {} has children", node.name),
+                    "a final state is a leaf that ends its parent's inner workflow; mark one of its leaves final instead",
+                ));
+            }
+            if parent.is_none() {
+                errs.push(Finding::err(
+                    "def/final_at_root",
+                    path.clone(),
+                    format!("final state {} has no parent compound to finish", node.name),
+                    "at the machine or region root, terminal is the spelling that ends the machine or region",
+                ));
+            }
+            if node.terminal {
+                errs.push(Finding::err(
+                    "def/final_and_terminal",
+                    path,
+                    format!("state {} is both final and terminal", node.name),
+                    "final ends the parent compound; terminal ends the machine or region; keep one",
+                ));
+            }
+        }
+        if node.history.is_none() && !node.states.is_empty() {
+            if let Some(initial) = node.initial.as_deref() {
+                if node.states.iter().any(|child| {
+                    child.name == initial && child.final_state && child.history.is_none()
+                }) {
+                    errs.push(Finding::err(
+                        "def/final_is_initial",
+                        format!("/states/{}/initial", node.name),
+                        format!("compound {} starts in its final child {initial}", node.name),
+                        "start in a child that has work to do; a compound that begins finished never runs",
+                    ));
+                }
+            }
+        }
+    }
+    for (index, transition) in spec.transitions.iter().enumerate() {
+        if final_states.contains(transition.from.as_str()) {
+            errs.push(Finding::err(
+                "def/final_has_transitions",
+                format!("/transitions/{index}/from"),
+                format!("transition leaves final state {}", transition.from),
+                "a final state ends its compound; handle $done.state.<compound> on the compound or outside it instead",
+            ));
+        }
+    }
+    for (index, deadline) in spec.deadlines.iter().enumerate() {
+        if final_states.contains(deadline.from.as_str()) {
+            errs.push(Finding::err(
+                "def/final_has_transitions",
+                format!("/deadlines/{index}/from"),
+                format!("deadline leaves final state {}", deadline.from),
+                "a final state ends its compound; schedule the deadline on the compound or a state that is not final",
             ));
         }
     }

@@ -40,6 +40,31 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
         r#"{"format":"fsm.machine/1","name":"eevt2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[{"from":"a","on":"e","if":"evt.x > 0","to":"b"}]}"#,
     ),
     (
+        "def/final_not_leaf",
+        r#"{"format":"fsm.machine/1","name":"fnl","states":[{"name":"p","initial":"w","states":[{"name":"w"},{"name":"q","final":true,"initial":"r","states":[{"name":"r"}]}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"fnl2","states":[{"name":"p","initial":"w","states":[{"name":"w"},{"name":"q","initial":"r","states":[{"name":"r"}]}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+    ),
+    (
+        "def/final_at_root",
+        r#"{"format":"fsm.machine/1","name":"far","states":[{"name":"a"},{"name":"f","final":true}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"far2","states":[{"name":"a"},{"name":"f","terminal":true}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    ),
+    (
+        "def/final_and_terminal",
+        r#"{"format":"fsm.machine/1","name":"fat","states":[{"name":"p","initial":"a","states":[{"name":"a"},{"name":"f","final":true,"terminal":true}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"fat2","states":[{"name":"p","initial":"a","states":[{"name":"a"},{"name":"f","final":true}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+    ),
+    (
+        "def/final_has_transitions",
+        r#"{"format":"fsm.machine/1","name":"fht","states":[{"name":"p","initial":"a","states":[{"name":"a"},{"name":"f","final":true}]}],"initial":"p","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"f","on":"e","to":"a"}]}"#,
+        r#"{"format":"fsm.machine/1","name":"fht2","states":[{"name":"p","initial":"a","states":[{"name":"a"},{"name":"f","final":true}]}],"initial":"p","context":[],"events":[{"name":"e","fields":[]}],"transitions":[{"from":"a","on":"e","to":"f"}]}"#,
+    ),
+    (
+        "def/final_is_initial",
+        r#"{"format":"fsm.machine/1","name":"fii","states":[{"name":"p","initial":"f","states":[{"name":"f","final":true},{"name":"a"}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"fii2","states":[{"name":"p","initial":"a","states":[{"name":"f","final":true},{"name":"a"}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
+    ),
+    (
         "def/limit_raises",
         r#"{"format":"fsm.machine/1","name":"lr","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"tick","fields":[],"internal":true},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b","raise":[{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"}]}]}"#,
         r#"{"format":"fsm.machine/1","name":"lr2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"tick","fields":[],"internal":true},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b","raise":[{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"}]}]}"#,

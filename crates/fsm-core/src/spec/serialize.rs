@@ -110,6 +110,9 @@ pub(super) fn states_value(nodes: &[StateNode]) -> Value {
                 if n.terminal {
                     m.insert("terminal".into(), Value::Bool(true));
                 }
+                if n.final_state {
+                    m.insert("final".into(), Value::Bool(true));
+                }
                 if let Some(h) = n.history {
                     m.insert(
                         "history".into(),

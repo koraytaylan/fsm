@@ -242,7 +242,7 @@ pub(super) fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -
         check_keys(
             obj,
             &[
-                "name", "terminal", "history", "initial", "entry", "exit", "states",
+                "name", "terminal", "final", "history", "initial", "entry", "exit", "states",
             ],
             &p,
             errs,
@@ -258,6 +258,19 @@ pub(super) fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -
                     "def/shape",
                     format!("{p}/terminal"),
                     "terminal must be a boolean",
+                    "use true or false",
+                ));
+                false
+            }
+        };
+        let final_state = match obj.get("final") {
+            None => false,
+            Some(Value::Bool(b)) => *b,
+            Some(_) => {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{p}/final"),
+                    "final must be a boolean",
                     "use true or false",
                 ));
                 false
@@ -319,6 +332,7 @@ pub(super) fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -
         out.push(StateNode {
             name,
             terminal,
+            final_state,
             history,
             initial,
             entry,

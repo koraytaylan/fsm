@@ -42,8 +42,14 @@ ordinary typed event that only the machine may raise — the external send
 path refuses it with `req/event_internal`, as it refuses every `$`-prefixed
 generated name — and it may still be the `on` of any transition. States are recursive trees; a child with
 `history: "deep"|"shallow"` is a history pseudostate. It MUST be owned by a
-compound parent and MUST be childless, nonterminal, and have no `initial` of
-its own. Blocks use `do` (sets), `emit`, and `raise`: a `raise` is
+compound parent and MUST be childless, nonterminal, not final, and have no
+`initial` of its own. A leaf with `final: true` ends its parent compound's
+inner workflow when entered — the macrostep raises `$done.state.<parent>` —
+without ending the machine or region; `terminal` does that. A `final` state
+MUST be a leaf under a compound, MUST NOT also be `terminal`, MUST NOT be its
+compound's `initial`, and MUST NOT be the `from` of any transition or
+deadline; it is otherwise an ordinary leaf with blocks, a target, and a
+history binding. Blocks use `do` (sets), `emit`, and `raise`: a `raise` is
 `{event, with}`, where `event` names a declared event (never a generated
 `$done` name) and `with` maps every one of its declared fields — no more, no
 fewer — to an `expr/1` source typed exactly like a context assignment, scale
@@ -99,6 +105,11 @@ entered; the core NEVER reads a clock.
 | `def/eventless_cycle` | a cycle in the eventless transition graph that the machine provably cannot leave: every state on it has a guardless (or literal-`true`) eventless transition and every eventless transition its scan could select stays on the cycle; an internal eventless transition is a self-edge |
 | `def/eventless_cycle_guarded` | warning: any other cycle in the eventless transition graph — a guard the engine cannot decide at admission must break it, and `MAX_MICROSTEPS` stops it at run time |
 | `def/eventless_depth` | warning: the longest acyclic eventless cascade times the region count reaches half of `MAX_MICROSTEPS` |
+| `def/final_not_leaf` | a `final` state has children |
+| `def/final_at_root` | a `final` state has no parent compound — `terminal` is the spelling there |
+| `def/final_and_terminal` | `final` and `terminal` on one state |
+| `def/final_has_transitions` | a transition or deadline has a `final` state as its `from` |
+| `def/final_is_initial` | a compound's `initial` names its `final` child |
 | `def/unreachable_state` | warning: state never enterable |
 | `def/ancestor_shadowed` | warning: ancestor handler globally dead |
 | `def/create_always_fails` | creation fails on declared inits |
@@ -626,6 +637,11 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/eventless_from_terminal` — an eventless transition leaves a terminal state
 - `def/eventless_internal_noop` — warning: an eventless transition that can only burn a microstep
 - `def/eventless_shadowed` — a guardless eventless transition hides later eventless siblings
+- `def/final_and_terminal` — final and terminal on one state
+- `def/final_at_root` — a final state with no parent compound
+- `def/final_has_transitions` — a transition or deadline from a final state
+- `def/final_is_initial` — a compound that starts in its final child
+- `def/final_not_leaf` — a final state with children
 - `def/from_history` — history used as a transition source
 - `def/history_target_from_inside` — history targeted from inside its owner
 - `def/initial_is_history` — initial names a history node

@@ -169,6 +169,10 @@ pub struct Block {
 pub struct StateNode {
     pub name: String,
     pub terminal: bool,
+    /// JSON key `final`: entering this leaf finishes its parent compound's
+    /// inner workflow and raises `$done.state.<parent>`, without ending the
+    /// machine or region the way `terminal` does. (`final` is a Rust keyword.)
+    pub final_state: bool,
     pub history: Option<HistoryKind>,
     pub initial: Option<String>,
     pub entry: Option<Block>,

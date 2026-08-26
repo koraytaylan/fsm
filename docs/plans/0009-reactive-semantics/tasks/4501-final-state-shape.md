@@ -10,9 +10,16 @@ gated: false
 touches:
   - crates/fsm-core/src/spec/parse/states.rs
   - crates/fsm-core/src/spec/mod.rs
+  - crates/fsm-core/src/spec/serialize.rs
   - crates/fsm-core/src/spec/validate/reactive.rs
+  - crates/fsm-core/src/spec/validate/structure.rs
+  - crates/fsm-core/src/error.rs
   - crates/fsm-core/tests/final_states.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/one_step_data.rs
+  - crates/fsm-cli/tests/naive_caller/harness.rs
+  - crates/fsm-cli/tests/naive_caller/reactive_flows.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Final State Shape
@@ -43,3 +50,5 @@ merged_as: ""
 - Interaction: a `final` state that is also the target of an eventless transition validates, proving `4302`'s `def/eventless_from_terminal` guards the *source* side only.
 
 - **Done when:** `cargo test -p fsm-core --test final_states` covers all five rules plus the accepted counter-cases, every `examples/` machine keeps its committed `machine_id`, `terminal` semantics are untouched, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `StateNode.final_state`, parsed from `final`, serialized only when true (`serialize.rs`, where state serialization lives), and the five rules in `validate/reactive.rs` with the hints step 3 asked for. One rule beyond the five, in `structure.rs`'s existing history-shape check: a history pseudostate cannot be `final`, because it is never entered as a leaf and the tree lookups `4502` builds would otherwise treat it as one. The five codes landed with SPEC rows, naive-caller rows and repairs, and outcome drives per the `4201` correction.

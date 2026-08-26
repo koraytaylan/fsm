@@ -628,6 +628,29 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 truncate_array(&mut v, p, 1);
             }
         },
+        "def/final_not_leaf" => {
+            // The compound was marked final; only a leaf may be, and its own
+            // initial child cannot, so the mark simply comes off.
+            delete_pointer(&mut v, "/states/0/states/1/final");
+        }
+        "def/final_at_root" => {
+            delete_pointer(&mut v, "/states/1/final");
+            set_pointer(&mut v, "/states/1/terminal", Value::Bool(true));
+        }
+        "def/final_and_terminal" => {
+            delete_pointer(&mut v, "/states/0/states/1/terminal");
+        }
+        "def/final_has_transitions" => {
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
+                if let Some(Value::Obj(t)) = tr.first_mut() {
+                    t.insert("from".into(), Value::Str("a".into()));
+                    t.insert("to".into(), Value::Str("f".into()));
+                }
+            }
+        }
+        "def/final_is_initial" => {
+            set_pointer(&mut v, "/states/0/initial", Value::Str("a".into()));
+        }
         "def/eventless_cycle" | "def/eventless_cycle_guarded" | "def/eventless_depth" => {
             // Every repair breaks the cascade after its first transition:
             // the cycle loses its back edge, the depth its length.
