@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use fsm_core::canon::canon_bytes;
 use fsm_core::expr::eval::Val;
-use fsm_core::hashes::{STATE_DOMAIN, domain_hash, state_hash};
+use fsm_core::hashes::{STATE_DOMAIN_V2, domain_hash, state_hash_v2};
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{ActiveConfiguration, InstanceState, Status};
 use fsm_core::record::{RecordKind, limits_value, seal, verify_line, zeros};
@@ -120,15 +120,15 @@ fn state_v2_and_state_root_v3_match_literal_canonical_material() {
     assert_eq!(
         format!(
             "sha256:{}",
-            to_hex(&domain_hash(STATE_DOMAIN, &state_material))
+            to_hex(&domain_hash(STATE_DOMAIN_V2, &state_material))
         ),
         STATE_HASH,
         "the checked-in state material has the independently fixed digest"
     );
     assert_eq!(
-        state_hash(MACHINE_ID, "case-1", 7, &parallel_state()),
+        state_hash_v2(MACHINE_ID, "case-1", 7, &parallel_state()),
         STATE_HASH,
-        "the production state encoder commits the checked-in material"
+        "the v2 encoder still commits the checked-in material, for the records that declare it"
     );
 
     let root_material = canonical_fixture(include_bytes!(
@@ -142,12 +142,23 @@ fn state_v2_and_state_root_v3_match_literal_canonical_material() {
         STATE_ROOT,
         "the checked-in root material has the independently fixed digest"
     );
+    // The root format is unchanged (`fsm.state-root/3`) but a root computed
+    // today over the same instances differs: the root embeds each instance's
+    // state hash, and those moved to `fsm.state/3` with the composition
+    // fields. The fixture above stays as the historical material — what this
+    // state hashed to before that bump — and the encoder is pinned against
+    // its own.
     assert_eq!(
         state_root_at(&store_state(&root_material), 7),
-        STATE_ROOT,
-        "the production root encoder commits the checked-in material"
+        CURRENT_ROOT,
+        "the production root encoder is stable"
     );
+    assert_ne!(STATE_ROOT, CURRENT_ROOT);
 }
+
+/// The same store state's root under the current state format.
+const CURRENT_ROOT: &str =
+    "sha256:d773b3c781ada6f2e0898c994c07957066bf4d2311465410e517d372a1f4f5fc";
 
 fn state_hash_value() -> Value {
     Value::Str(STATE_HASH.into())

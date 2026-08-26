@@ -172,9 +172,9 @@ The versioned formats are independent of the crate version:
 | Format | Current | Where |
 |---|---|---|
 | machine definition | `fsm.machine/1` | spec JSON |
-| journal | `fsm.journal/1`, store `VERSION` 8 | `<data_dir>` |
-| snapshot | `fsm.snapshot/4` | `<data_dir>/snapshots` |
-| state hash | `fsm.state/2` | state-bearing records and views |
+| journal | `fsm.journal/1`, store `VERSION` 9 | `<data_dir>` |
+| snapshot | `fsm.snapshot/5` | `<data_dir>/snapshots` |
+| state hash | `fsm.state/3` (records written before composition carry `fsm.state/2` and verify under it) | state-bearing records and views |
 | state root | `fsm.state-root/3` | checkpoints and snapshots |
 
 Rules:
@@ -184,7 +184,7 @@ Rules:
   anything a record did not carry stays absent — a `request_id` claimed before
   fingerprints existed (format ≤ 6) can be replayed but not conflict-checked.
   Store formats 1 through 7 and markerless journals are full-folded before the
-  `VERSION` marker is stamped 8.
+  `VERSION` marker is stamped 9.
 - **A store from a newer format is refused, not guessed at** (`store/version_mismatch`).
 - **Snapshots are a disposable cache.** An unreadable or stale-format snapshot is
   skipped and the journal is folded instead; bumping the snapshot format is never
@@ -200,7 +200,8 @@ Rules:
   Oversized snapshot caches are skipped on read and refused before cache
   mutation on write.
 - **Hash domains are versioned separately** (`fsm:machine:1`, `fsm:record:1`,
-  `fsm:state:2`, `fsm:state-root:3`, `fsm:snapshot:4`,
+  `fsm:state:3` (and `fsm:state:2` for records that declare it),
+  `fsm:state-root:3`, `fsm:snapshot:5`, `fsm:child:1`,
   `fsm:request-fp:1`) so a change to one does not invalidate the others.
   Replay retains explicit legacy verifiers for markerless `fsm.state/1` and
   `fsm.state-root/2` material. Changing a current domain is a compatibility

@@ -126,21 +126,25 @@ pub fn request_fp(operation: &str, fields: &BTreeMap<String, Value>) -> String {
 }
 
 /// Format discriminator for newly written logical instance-state hashes.
-pub const STATE_FORMAT: &str = "fsm.state/2";
-/// Domain-separation tag paired with [`STATE_FORMAT`].
-pub const STATE_DOMAIN: &str = "fsm:state:2";
+pub const STATE_FORMAT_V2: &str = "fsm.state/2";
+/// Domain-separation tag paired with [`STATE_FORMAT_V2`].
+pub const STATE_DOMAIN_V2: &str = "fsm:state:2";
 
-/// State identity with the composition fields: `invocations` and `signals`
-/// join the payload, both always present even when empty.
+/// The state format every new record carries: the v2 payload plus
+/// `invocations` and `signals`, both always present even when empty.
 ///
-/// Defined completely here, in one task, and written by nobody yet: the
-/// writer moves from [`STATE_FORMAT`] to this in the migration task, which
-/// bumps the store `VERSION` alongside it. One version string must mean one
-/// payload for its whole life, so a later task may populate `signals` but may
-/// not add it.
-pub const STATE_FORMAT_V3: &str = "fsm.state/3";
-/// Domain-separation tag paired with [`STATE_FORMAT_V3`].
-pub const STATE_DOMAIN_V3: &str = "fsm:state:3";
+/// One version string means one payload for its whole life. Records written
+/// before the bump keep `fsm.state/2` and verify under the v2 function
+/// forever; nothing is ever rewritten, and no reader guesses from a record's
+/// age — the discriminator is in the record.
+pub const STATE_FORMAT: &str = "fsm.state/3";
+/// Domain-separation tag paired with [`STATE_FORMAT`].
+pub const STATE_DOMAIN: &str = "fsm:state:3";
+
+/// Alias of [`STATE_FORMAT`] for readers that name the version explicitly.
+pub const STATE_FORMAT_V3: &str = STATE_FORMAT;
+/// Alias of [`STATE_DOMAIN`].
+pub const STATE_DOMAIN_V3: &str = STATE_DOMAIN;
 
 /// The 64-hex digest half of a `machine_id`, which is what an `invoke` slot
 /// names: `name@sha256:<digest>`.
@@ -197,12 +201,17 @@ pub fn configuration_value(configuration: &ActiveConfiguration) -> Value {
 /// The hash binds the active configuration and absolute deadline schedules in
 /// addition to context, history, lifecycle status, and pending effects.
 pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String {
-    let material = state_material(STATE_FORMAT, machine_id, instance_id, seq, st);
-    let hex = to_hex(&domain_hash(STATE_DOMAIN, &material));
+    state_hash_v3(machine_id, instance_id, seq, st)
+}
+
+/// The `fsm.state/2` identity, kept for the records that declare it.
+pub fn state_hash_v2(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String {
+    let material = state_material(STATE_FORMAT_V2, machine_id, instance_id, seq, st);
+    let hex = to_hex(&domain_hash(STATE_DOMAIN_V2, &material));
     format!("sha256:{hex}")
 }
 
-/// [`STATE_FORMAT_V3`] state identity: the v2 payload plus `invocations` and
+/// [`STATE_FORMAT`] state identity: the v2 payload plus `invocations` and
 /// `signals`, each canonically ordered and always present.
 ///
 /// The empty maps are written, not omitted. An omit-when-empty rule would be
@@ -210,12 +219,12 @@ pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceSt
 /// record's `microsteps` key, whose absence had to preserve bytes an earlier
 /// build wrote, this format is new and nothing depends on its silence.
 pub fn state_hash_v3(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String {
-    let mut material = state_material(STATE_FORMAT_V3, machine_id, instance_id, seq, st);
+    let mut material = state_material(STATE_FORMAT, machine_id, instance_id, seq, st);
     if let Value::Obj(obj) = &mut material {
         obj.insert("invocations".into(), invocations_value(st));
         obj.insert("signals".into(), signals_value(st));
     }
-    let hex = to_hex(&domain_hash(STATE_DOMAIN_V3, &material));
+    let hex = to_hex(&domain_hash(STATE_DOMAIN, &material));
     format!("sha256:{hex}")
 }
 

@@ -12,9 +12,10 @@ silently.
 |---|---|
 | `fsm.machine/1` | Machine definition documents |
 | `fsm.journal/1` | Journal record envelopes |
-| `fsm.state/2` | Instance state identity hash payloads |
+| `fsm.state/3` | Instance state identity hash payloads |
+| `fsm.state/2` | Instance state identity before composition; still verified where a record declares it |
 | `fsm.state-root/3` | Complete logical store roots |
-| `fsm.snapshot/4` | Disposable snapshot caches |
+| `fsm.snapshot/5` | Disposable snapshot caches |
 | `expr/1` | Expression grammar |
 
 ## Machine definitions
@@ -245,11 +246,14 @@ non-leaf entry is invalid state, never repaired by guessing. The same holds for
 a status that disagrees with terminality, a malformed history binding, or a
 missing/unexpected deadline schedule. `step` and `poll_deadline` validate that
 complete state before the lifecycle gate and reject incoherence as
-`run/configuration_invalid`. `fsm.state/2`
+`run/configuration_invalid`. `fsm.state/3`
 hashes canonical `{format, machine_id, instance_id, seq, status,
-configuration, ctx, history, deadlines, pending}` under `fsm:state:2`;
-`deadlines` maps deadline name to its signed-millisecond due time and `pending`
-is sorted before hashing.
+configuration, ctx, history, deadlines, pending, invocations, signals}` under
+`fsm:state:3`; `deadlines` maps deadline name to its signed-millisecond due
+time, `pending` is sorted before hashing, and `invocations` and `signals` are
+ordered by key and always present, empty maps included. `fsm.state/2` is the
+same payload without those last two keys, under `fsm:state:2`, and remains the
+identity of every record that declares it.
 
 ### Macrosteps
 
@@ -294,7 +298,7 @@ never quiesce is refused at admission (`def/eventless_cycle`); a guarded cycle
 is admitted with a warning and stopped by the ceiling at run time.
 
 The internal queue is a value of the macrostep alone and is **never persisted**:
-it MUST NOT appear in `fsm.state/2` or any record, and it is empty at every
+it MUST NOT appear in `fsm.state/3` or any record, and it is empty at every
 sealed state, so an instance resumed from its records has nothing to resume. The record carries the reactions as `microsteps`
 (§Record kinds), absent when there were none, and the decision trace carries
 each microstep's candidates and pipeline.
@@ -452,15 +456,16 @@ the trigger is `internal`. The key MUST be absent, never empty, when a
 macrostep had no reaction microsteps: that absence is what keeps every
 non-reactive record's canonical bytes, hash, and chain identical to the bytes
 an earlier build wrote. `state_hash` commits the state after the whole
-macrostep; `fsm.state/2` is unchanged, and the internal queue is never part
+macrostep; the internal queue is never part
 of it. Replay verifies the claim in both directions (§Verification).
 
 Every deadline-poll record timestamp is the exact `now_ms` passed to the pure
 poll, so replay NEVER consults a clock. This includes `deadline_not_due`: the
 record proves the negative observation and makes retries exact.
 
-Records written by store `VERSION` 8 that carry `state_hash` also carry
-`state_format: "fsm.state/2"`; records from earlier versions omit it and verify
+Records written by store `VERSION` 9 that carry `state_hash` also carry
+`state_format: "fsm.state/3"`; records written by `VERSION` 8 carry
+`"fsm.state/2"` and verify under it forever; records from earlier versions omit it and verify
 under `fsm.state/1`. Likewise, every new record carrying `state_root` carries
 `state_root_format: "fsm.state-root/3"`; an absent field denotes the historical
 `fsm.state-root/2`. These per-record discriminators let migration verify old
@@ -494,15 +499,15 @@ be corrected and retried under the same `request_id`. An oversized journal
 record encountered while opening is authoritative input and is therefore a
 fatal `io/read`, never a torn-tail repair candidate.
 
-On-disk store `VERSION` is `8`. Opening a `VERSION` `1` through `7` directory,
+On-disk store `VERSION` is `9`. Opening a `VERSION` `1` through `8` directory,
 or a journal with no `VERSION` marker, MUST attempt a best-effort migration:
 ignore snapshot caches entirely, fold the complete journal using each record's
-format discriminator, and on success stamp `VERSION` `8`. Interior journal
+format discriminator, and on success stamp `VERSION` `9`. Interior journal
 records MUST NOT be rewritten. If classify is not `Ok` (including a migratable
 marker whose journal is missing) or fold fails, refuse with that health and
 leave `VERSION` unchanged — a migratable directory is never re-created over. A
 successful `repair --truncate-torn-tail` on a migratable store folds the
-complete retained journal and likewise stamps `VERSION` `8`. Any other
+complete retained journal and likewise stamps `VERSION` `9`. Any other
 `VERSION` value is `store/version_mismatch`, refused and never silently
 reinterpreted.
 
@@ -544,11 +549,11 @@ durability does not depend on it. Every such case lands in the table above and
 is classified on the next open rather than trusted, so the outcome is a recovery
 step, not silent loss.
 
-Interior history is never rewritten. Snapshots (`fsm.snapshot/4`) are
+Interior history is never rewritten. Snapshots (`fsm.snapshot/5`) are
 disposable caches, never authoritative, never part of the chain. Each snapshot
 carries a self-checked `state_root`: `sha256:` plus the hex encoding of domain
 `fsm:state-root:3` over canonical `{seq,machines,instances,dedup}` using the
-same values and `fsm.state/2` per-instance hashes as the snapshot; `last_hash`
+same values and per-instance state hashes as the snapshot; `last_hash`
 is excluded to avoid a cycle. The fast path is permitted only when the journal
 record at the snapshot sequence has the same hash as the snapshot's
 `last_hash`, carries the same `state_root`, and declares
@@ -849,7 +854,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed
 - `store/torn_tail` — truncated final record
-- `store/version_mismatch` — data directory VERSION is not 8 and cannot be migrated
+- `store/version_mismatch` — data directory VERSION is not 9 and cannot be migrated
 
 ## Appendix B — Limits
 
@@ -886,15 +891,16 @@ These match `crates/fsm-core/src/limits.rs`.
 |---|---|
 | `fsm.machine/1` | Machine definition documents |
 | `fsm.journal/1` | Journal record envelopes |
-| `fsm.snapshot/4` | Disposable snapshot caches optionally accelerated by a hash-chained `state_root` |
+| `fsm.snapshot/5` | Disposable snapshot caches optionally accelerated by a hash-chained `state_root` |
 | `fsm.snapshot/1` through `fsm.snapshot/3` | Skipped, never reinterpreted; the journal is folded instead |
-| `fsm.state/2` | Current instance state identity hash payload |
+| `fsm.state/3` | Current instance state identity hash payload |
+| `fsm.state/2` | Instance state identity before composition; verified where a record declares it |
 | `fsm.state/1` | Historical single-leaf state identity hash payload |
 | `fsm.state-root/3` | Current complete logical store root payload |
 | `fsm.state-root/2` | Historical single-leaf logical store root payload |
 | `expr/1` | Expression grammar |
 
-On-disk store `VERSION` is `8`. A `VERSION` `1` through `7` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `8`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted.
+On-disk store `VERSION` is `9`. A `VERSION` `1` through `8` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `8`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted.
 
 Because records are never rewritten, a migrated store keeps whatever its records already carried: a `request_id` claimed before `VERSION` `7` has no `request_fp`, so it can be replayed but not conflict-checked. Records written after the migration are fully checked.
 

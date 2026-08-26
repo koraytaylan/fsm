@@ -127,6 +127,11 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
                 "state_hash".into(),
                 Value::Str(state_hash(&mid, id, seq, inst)),
             ),
+            // Carried like the other fields: the state hash already commits
+            // them, and a reader should not have to recompute a hash to see
+            // what an instance is waiting for.
+            ("invocations".into(), crate::hashes::invocations_value(inst)),
+            ("signals".into(), crate::hashes::signals_value(inst)),
         ]);
         instances.insert(id.clone(), Value::Obj(body));
     }
@@ -224,8 +229,17 @@ fn state_hash_for_record(
     instance_id: &str,
     state: &InstanceState,
 ) -> Option<String> {
+    // The discriminator is in the record, never in its age: a v2 record
+    // verifies under v2 forever, a v3 record under v3, and an absent field
+    // still denotes the historical v1.
     match record.body.get("state_format").and_then(Value::as_str) {
         Some(STATE_FORMAT) => Some(state_hash(machine_id, instance_id, record.seq, state)),
+        Some(crate::hashes::STATE_FORMAT_V2) => Some(crate::hashes::state_hash_v2(
+            machine_id,
+            instance_id,
+            record.seq,
+            state,
+        )),
         None => legacy_state_hash(machine_id, instance_id, record.seq, state),
         Some(_) => None,
     }

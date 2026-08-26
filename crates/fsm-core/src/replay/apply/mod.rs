@@ -1,5 +1,11 @@
 //! The record-kind dispatcher: every kind's applier, one module per
 //! subject.
+//!
+//! An instance written before a format bump keeps its records and its hashes
+//! forever: every state-bearing record carries the `state_format` it was
+//! written under, and verification picks the function that format names.
+//! There is no moment at which an old hash is recomputed under a new format,
+//! and no reader ever guesses from a record's age.
 
 use std::collections::BTreeMap;
 

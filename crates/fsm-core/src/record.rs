@@ -484,9 +484,14 @@ fn req_str_arr(body: &Value, k: &str) -> bool {
         .is_some_and(|values| values.iter().all(|value| value.as_str().is_some()))
 }
 
+/// A record may declare any state format this build can verify: the current
+/// one, or the v2 that predates the composition fields. An absent field is
+/// the historical v1 and is only allowed where the field is optional.
 fn state_format_ok(body: &Value, required: bool) -> bool {
     match body.get("state_format") {
-        Some(Value::Str(format)) => format == crate::hashes::STATE_FORMAT,
+        Some(Value::Str(format)) => {
+            format == crate::hashes::STATE_FORMAT || format == crate::hashes::STATE_FORMAT_V2
+        }
         None => !required,
         Some(_) => false,
     }

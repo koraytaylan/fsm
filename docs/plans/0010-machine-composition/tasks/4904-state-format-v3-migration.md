@@ -11,9 +11,18 @@ touches:
   - crates/fsm-store/src/journal_io/init.rs
   - crates/fsm-store/src/snapshot.rs
   - crates/fsm-core/src/replay/apply.rs
-  - crates/fsm-core/src/replay/verify.rs
+  - crates/fsm-core/src/replay/apply/invoke.rs
+  - crates/fsm-core/src/replay/apply/mod.rs
+  - crates/fsm-core/src/replay/mod.rs
+  - crates/fsm-core/src/hashes.rs
+  - crates/fsm-core/src/record.rs
+  - crates/fsm-store/src/journal_io/mod.rs
   - crates/fsm-store/tests/state_v3_migration.rs
-status: planned
+  - crates/fsm-store/tests/snapshot_v5_golden.rs
+  - docs/SPEC.md
+  - docs/API-POLICY.md
+  - docs/RELEASE.md
+status: done
 merged_as: ""
 ---
 # State Format V3 Migration
@@ -47,3 +56,7 @@ merged_as: ""
 - An unknown `VERSION` value is still `store/version_mismatch` and is never reinterpreted.
 
 - **Done when:** `cargo test -p fsm-store --test state_v3_migration` passes every case above, a committed v8 fixture migrates without rewriting a byte of history, mixed-format journals verify, every value this plan's three records journal is re-derived and checked, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the writer moved to `fsm.state/3` (with `state_hash_v2` kept for the records that declare v2), `state_hash_for_record` picks the function each record's own discriminator names, `record.rs` accepts either current-era format on read, store `VERSION` is 9 with 1–8 migratable, the snapshot is `fsm.snapshot/5` carrying both fields and deriving its known instances through `instances_touched` (so an invoked child is not silently forgotten), and the state root carries the composition fields beside the ones it already listed. Replay verifies a return's `outcome` against the child's status — the one journaled value nothing else depended on — while `child_state_hash`, `overrides`, and `payload` are checked by being *used*: the child is re-created from the overrides and the parent's macrostep re-delivered from the payload, so a tampered value fails a hash rather than needing its own comparison.
+
+**Corrections.** (1) Step 3 asks fold to reconstruct `invocations` from the composition records; it already does, because `create`/`step` return them on `Applied` and the fold arms carry that through — the reconstruction is the engine's, not a second implementation in replay. `signals` stay empty until `5002` populates them. (2) The plan's test list says `legacy_snapshot_migration.rs` and `snapshot_v4_golden.rs` pass unchanged. The first does; the second cannot, because it is the golden *of the snapshot format this task bumps* — it becomes `snapshot_v5_golden.rs` with a regenerable fixture, which is what "snapshots are disposable caches" means for a golden. (3) The plan does not mention plan 0009's compatibility suites, which pin bytes against pre-plan builds; a state-format bump necessarily moves every state hash and every record hash that chains one. Their claim is restated rather than dropped: the format-versioned fields are held aside, everything else is still byte-for-byte, and the committed pre-change journal must still fold under the formats its own records declare — a stronger statement than the byte comparison alone, since it exercises the migration the bump introduces. (4) Carrying the two fields pushed `snapshot.rs` to 1089 lines, so it is split into `snapshot/{encode,decode,files,open}.rs` behind the same facade — encoding a state as a cache value, decoding one back, the cache files, and the open path — the same rule `4801` states for a file an addition takes past the cap.

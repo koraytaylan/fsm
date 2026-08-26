@@ -97,9 +97,24 @@ fn a_non_reactive_session_writes_the_bytes_the_pre_change_build_wrote() {
     }
     let committed = std::fs::read(FIXTURE).expect("the pre-change journal fixture is committed");
     assert!(
-        bytes == committed,
+        comparable(&bytes) == comparable(&committed),
         "a non-reactive machine's journal bytes moved; the microsteps key must stay absent"
     );
+    // And the committed journal itself still folds, under the format its own
+    // records declare.
+    let mut previous = zeros();
+    let mut records = Vec::new();
+    for (seq, line) in committed
+        .split_inclusive(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .enumerate()
+    {
+        let record = verify_line(line, seq as u64, &previous).expect("a committed record verifies");
+        previous = record.hash.clone();
+        records.push(record);
+    }
+    fsm_core::replay::fold_with(records, &mut fsm_core::replay::NopSink)
+        .expect("the pre-change journal still folds under the format its records declare");
     for kind in [
         RecordKind::InstanceCreated,
         RecordKind::EventApplied,
@@ -359,4 +374,51 @@ fn the_genesis_limits_block_has_not_moved() {
             "max_variants",
         ]
     );
+}
+
+/// A state hash is a format-versioned value, and plan 0010's composition
+/// fields moved every one of them from `fsm.state/2` to `fsm.state/3` — with
+/// a per-record discriminator, so the committed journal below still folds and
+/// still verifies under v2. That bump is deliberate and orthogonal to this
+/// suite's claim, so the comparison holds the two format-versioned fields
+/// aside and pins every other byte.
+fn without_state_hashes(line: &[u8]) -> Vec<u8> {
+    let Ok(mut value) = parse(line, &JsonLimits::DEFAULT) else {
+        return line.to_vec();
+    };
+    fn scrub(value: &mut Value) {
+        if let Value::Obj(fields) = value {
+            for (name, inner) in fields.iter_mut() {
+                // `hash` and `prev` chain the body, so they move with any
+                // field in it; holding them aside is the same statement as
+                // holding the state hash aside, one level out.
+                if name.ends_with("state_hash")
+                    || name == "state_format"
+                    || name == "state_root"
+                    || name == "hash"
+                    || name == "prev"
+                {
+                    *inner = Value::Str("<format-versioned>".into());
+                } else {
+                    scrub(inner);
+                }
+            }
+        }
+        if let Value::Arr(items) = value {
+            for item in items {
+                scrub(item);
+            }
+        }
+    }
+    scrub(&mut value);
+    fsm_core::canon::canon_bytes(&value)
+}
+
+/// Both journals, line by line, with those fields held aside.
+fn comparable(bytes: &[u8]) -> Vec<Vec<u8>> {
+    bytes
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(without_state_hashes)
+        .collect()
 }

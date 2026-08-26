@@ -185,6 +185,33 @@ pub(super) fn apply_invocation_returned(
         .instances
         .get(parent_id)
         .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
+    // The journaled `outcome` is a claim about the child, and nothing else
+    // in this record depends on it — a tampered "completed" would otherwise
+    // ride through unchecked, since the payload is read as written.
+    let child_id = rec
+        .body
+        .get("child_instance_id")
+        .and_then(Value::as_str)
+        .ok_or(ReplayError::FieldMismatch {
+            seq: rec.seq,
+            field: "child_instance_id",
+        })?;
+    let expected_outcome = match st.instances.get(child_id).map(|child| child.status) {
+        Some(crate::machine::Status::Completed) => "completed",
+        Some(crate::machine::Status::Cancelled) => "cancelled",
+        _ => {
+            return Err(ReplayError::FieldMismatch {
+                seq: rec.seq,
+                field: "outcome",
+            });
+        }
+    };
+    if rec.body.get("outcome").and_then(Value::as_str) != Some(expected_outcome) {
+        return Err(ReplayError::FieldMismatch {
+            seq: rec.seq,
+            field: "outcome",
+        });
+    }
     let payload = payload_from(st, &machine.compiled, slot, rec)?;
     let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
     let outcome = crate::step::deliver_generated(

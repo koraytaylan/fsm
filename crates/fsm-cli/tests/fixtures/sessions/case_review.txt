@@ -72,8 +72,8 @@ ok:                true
 request_id:        new-1
 seq:               2
 state:             intake
-state_format:      fsm.state/2
-state_hash:        sha256:1b2b293a48cc4c57d2a4f841a47b47e2c75376e60a721f5e221187938df45914
+state_format:      fsm.state/3
+state_hash:        sha256:0fabea12407c3a1957464243118ccf3ec4782f2160056ee907838e29e50c3e56
 state_path:        intake
 status:            running
 --- stderr ---
@@ -115,8 +115,8 @@ ok:                true
 request_id:        send-1
 seq:               3
 state:             in_review.docs_review
-state_format:      fsm.state/2
-state_hash:        sha256:e486ff24a8c250baf78c2acc1b9a3ec72547ca9ab78d6dc98b5feb1099994a51
+state_format:      fsm.state/3
+state_hash:        sha256:964abfd9f0a21f867e3137c85b1762d72db9e75e091757692ea610bf1a8e9538
 state_path:        in_review, docs_review
 status:            running
 trace:
@@ -233,8 +233,8 @@ ok:                true
 request_id:        send-2
 seq:               5
 state:             in_review.risk_review
-state_format:      fsm.state/2
-state_hash:        sha256:2bcdafb17acc803231e3b8d5eca980bfe63a439e94faed914b2c00be46f407f1
+state_format:      fsm.state/3
+state_hash:        sha256:ece0dfc8e267d36136ae83fb1c5f6fb1ac7a6eabf9166eb7a92e67f7618ad7bd
 state_path:        in_review, risk_review
 status:            running
 trace:
@@ -339,7 +339,7 @@ entries:
       kind: sequential
       leaf: intake
     from_leaf:           intake
-    hash:                019904085fef35b107ae11acb403ab7e9f4618e40346d4203b0e1a8b8668da99
+    hash:                d71e549bce597be333204399a2162717b5bb51d838f05ac5e91584528530da65
     kind:                InstanceCreated
     request_id:          new-1
     seq:                 2
@@ -373,7 +373,7 @@ entries:
       kind: sequential
       leaf: intake
     from_leaf:            intake
-    hash:                 b9ca0308258f38ed85504f43cefe87a57a096ca62cec40ca3dcc5ea443e2c427
+    hash:                 14b86907fcaab4402d529348ff4fcf4e8984e1111ea03a4f1c1f9f79d710baea
     kind:                 EventApplied
     payload:
     request_id:           send-1
@@ -408,7 +408,7 @@ entries:
       kind: sequential
       leaf: docs_review
     from_leaf:            docs_review
-    hash:                 778987fc779444487e0c2bafdddadad01edd46c6de7abf0ff4d0af8ebcb631a8
+    hash:                 ac81194a0d6f3f29d2c7b959e5ee2b3d40b59c5df1d1d1838bacaaf5c17a3b45
     kind:                 EventRejected
     payload:
     request_id:           send-bad
@@ -443,7 +443,7 @@ entries:
       kind: sequential
       leaf: docs_review
     from_leaf:            docs_review
-    hash:                 3766d943442d377c6882a07413e180635fb0f25d88b656b1085f48ea9c05bb07
+    hash:                 ef51e3e1ad4b6ab720139a82fcab0070b289df87f5554795032c9f85f3dfbb24
     kind:                 EventApplied
     payload:
     request_id:           send-2
@@ -477,7 +477,7 @@ entries:
       kind: sequential
       leaf: risk_review
     from_leaf:            risk_review
-    hash:                 5546f0612740c22aaeb14e02f206fe02c22e04bf4941f22a303db4d4eaba45ba
+    hash:                 bf93027bf16e3666b9310c4ac6625bf777705ccc64cd71d59058574a5064a25f
     kind:                 EffectAcked
     request_id:           ack-1
     seq:                  6
@@ -510,7 +510,7 @@ entries:
       kind: sequential
       leaf: risk_review
     from_leaf:            risk_review
-    hash:                 4cee0312283bba0fe1afdc5a56067f06714911a79ddaf5e8b89cb30f5de087eb
+    hash:                 4a8810d2f2332155bb091bd62683833f680f1cb05fa54679a39739b649885f6a
     kind:                 Annotated
     note:                 hello-note
     request_id:           ann-1
@@ -530,5 +530,5 @@ health:        Ok
 instances:     1
 machines:      1
 records:       8
-store_version: 8
+store_version: 9
 --- stderr ---

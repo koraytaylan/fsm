@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use fsm_core::canon::canon_bytes;
 use fsm_core::expr::eval::{Budget, Val};
 use fsm_core::hashes::{
-    STATE_FORMAT, STATE_FORMAT_V3, child_instance_id, state_hash, state_hash_v3,
+    STATE_FORMAT, STATE_FORMAT_V2, child_instance_id, state_hash_v2, state_hash_v3,
 };
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::limits::MACROSTEP_EVAL_TICKS;
@@ -212,7 +212,7 @@ fn slot(status: InvokeStatus) -> Invocation {
 }
 
 #[test]
-fn the_v3_payload_is_complete_and_the_v2_hash_is_untouched() {
+fn the_v3_payload_is_complete_and_the_v2_function_is_untouched() {
     let empty = state_with(BTreeMap::new(), BTreeMap::new());
     // Committed golden: the canonical v3 material for a state with neither
     // invocations nor signals carries **both** keys as empty maps, so a later
@@ -232,8 +232,8 @@ fn the_v3_payload_is_complete_and_the_v2_hash_is_untouched() {
         "sha256:b3cffbbcc3c2f39ecae18016bbbc6162a3cd8c88e9a809ddace40f95b9947d43",
         "the v3 encoder commits the checked-in material"
     );
-    assert_eq!(STATE_FORMAT_V3, "fsm.state/3");
-    assert_eq!(STATE_FORMAT, "fsm.state/2", "writers move in the migration");
+    assert_eq!(STATE_FORMAT, "fsm.state/3", "the writer's format");
+    assert_eq!(STATE_FORMAT_V2, "fsm.state/2", "still verifiable, forever");
 
     // Both new fields are in the payload before anything writes to them.
     let with_slot = state_with(
@@ -275,12 +275,12 @@ fn the_v3_payload_is_complete_and_the_v2_hash_is_untouched() {
     // empty v3 state hashes differently from the same logical v2 state. That
     // difference is why the migration task exists.
     assert_eq!(
-        state_hash(&machine_id, "inst-1", 4, &empty),
-        state_hash(&machine_id, "inst-1", 4, &with_slot),
+        state_hash_v2(&machine_id, "inst-1", 4, &empty),
+        state_hash_v2(&machine_id, "inst-1", 4, &with_slot),
         "v2's payload is what it always was"
     );
     assert_ne!(
-        state_hash(&machine_id, "inst-1", 4, &empty),
+        state_hash_v2(&machine_id, "inst-1", 4, &empty),
         state_hash_v3(&machine_id, "inst-1", 4, &empty)
     );
 }

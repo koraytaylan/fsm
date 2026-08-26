@@ -50,7 +50,7 @@ const ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 // complete journal and stamping 8. Records are never rewritten, so legacy
 // records retain their historical hash material and request-id behavior.
 /// Current marker written to a store's `VERSION` file.
-pub const STORE_VERSION: &str = "8";
+pub const STORE_VERSION: &str = "9";
 
 /// On-disk store format as detected before opening. Public because store
 /// diagnostics (`fsm store status`, `fsm store repair`) report it.
@@ -113,8 +113,14 @@ fn has_journal_segments(dir: &Path) -> Result<bool, String> {
     }
 }
 
+/// Every store version this build can fold and stamp forward.
+///
+/// Opening one folds the complete journal using each record's own
+/// `state_format` discriminator and stamps the current version on success; a
+/// failed fold refuses and leaves `VERSION` alone, and interior records are
+/// never rewritten.
 fn is_migratable_version(v: &str) -> bool {
-    matches!(v, "1" | "2" | "3" | "4" | "5" | "6" | "7")
+    matches!(v, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8")
 }
 
 /// Classify an on-disk store directory without opening or locking it.

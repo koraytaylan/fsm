@@ -14,7 +14,7 @@ use std::path::Path;
 
 use fsm_core::canon::canon_bytes;
 use fsm_core::expr::eval::Budget;
-use fsm_core::hashes::{STATE_FORMAT, STATE_FORMAT_V3, machine_id, state_hash};
+use fsm_core::hashes::{STATE_FORMAT, machine_id, state_hash};
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::limits::MAX_EVAL_TICKS;
 use fsm_core::machine::{CompiledMachine, InstanceState};
@@ -305,6 +305,31 @@ fn every_committed_machine_is_non_reactive_and_keeps_its_identity() {
     }
 }
 
+/// A state hash is a format-versioned value: plan 0010's composition fields
+/// moved every instance's hash from `fsm.state/2` to `fsm.state/3`, with a
+/// per-record discriminator so old records keep verifying. That bump is
+/// deliberate and orthogonal to this suite's claim, so the comparison holds
+/// every hash aside and pins everything else — traces, effects, statuses,
+/// configurations, tick counts, and the genesis limits — byte for byte.
+fn without_hashes(value: &Value) -> Value {
+    match value {
+        Value::Obj(fields) => Value::Obj(
+            fields
+                .iter()
+                .map(|(name, inner)| {
+                    if name == "state_hash" {
+                        (name.clone(), Value::Str("<format-versioned>".into()))
+                    } else {
+                        (name.clone(), without_hashes(inner))
+                    }
+                })
+                .collect(),
+        ),
+        Value::Arr(items) => Value::Arr(items.iter().map(without_hashes).collect()),
+        other => other.clone(),
+    }
+}
+
 #[test]
 fn drives_match_the_pre_plan_build_byte_for_byte() {
     let bytes = canon_bytes(&drives());
@@ -319,8 +344,14 @@ fn drives_match_the_pre_plan_build_byte_for_byte() {
         "a non-reactive drive carries a reaction key"
     );
     assert!(
-        bytes == committed,
-        "a non-reactive machine's hashes, traces, or tick counts moved from the pre-plan build"
+        !text.contains("invocations") && !text.contains("signals"),
+        "a non-composing drive carries a composition key"
+    );
+    let now = without_hashes(&parse(&bytes, &JsonLimits::DEFAULT).unwrap());
+    let then = without_hashes(&parse(&committed, &JsonLimits::DEFAULT).unwrap());
+    assert!(
+        canon_bytes(&now) == canon_bytes(&then),
+        "a non-reactive machine's traces, effects, statuses, or tick counts moved from the pre-plan build"
     );
 }
 
@@ -334,7 +365,11 @@ fn genesis_limits_carry_no_reactive_ceiling() {
         "{keys:?}"
     );
     let committed = document(&std::fs::read(GOLDEN).unwrap());
-    assert_eq!(committed.get("genesis_limits"), Some(&limits));
+    assert_eq!(
+        committed.get("genesis_limits"),
+        Some(&limits),
+        "the hash-verified genesis block has not moved across two plans"
+    );
 }
 
 /// Every state format named anywhere in the workspace is one this build
@@ -348,11 +383,15 @@ fn genesis_limits_carry_no_reactive_ceiling() {
 /// tooth it always had.
 #[test]
 fn every_state_format_named_in_the_workspace_is_one_this_build_declares() {
-    assert_eq!(STATE_FORMAT, "fsm.state/2", "the writer's format");
+    assert_eq!(STATE_FORMAT, "fsm.state/3", "the writer's format");
     let declared = BTreeSet::from([
         "1".to_string(),
+        fsm_core::hashes::STATE_FORMAT_V2
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_string(),
         STATE_FORMAT.rsplit('/').next().unwrap().to_string(),
-        STATE_FORMAT_V3.rsplit('/').next().unwrap().to_string(),
     ]);
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut versions = BTreeSet::new();

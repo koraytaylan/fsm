@@ -11,9 +11,10 @@ fn all_codes_appear() {
     for tag in [
         "fsm.machine/1",
         "fsm.journal/1",
+        "fsm.state/3",
         "fsm.state/2",
         "fsm.state-root/3",
-        "fsm.snapshot/4",
+        "fsm.snapshot/5",
     ] {
         assert!(SPEC.contains(tag), "{tag}");
     }

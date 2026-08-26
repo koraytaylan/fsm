@@ -26,9 +26,10 @@ diagram overlays take `current_leaves`; pure create/step calls take
 caller-supplied timestamps; and `simulate::simulate` returns a typed creation
 rejection instead of a sentinel report. See the migration list in
 [`API-POLICY.md`](API-POLICY.md). The current persisted formats move to store
-`VERSION` 8, `fsm.state/2`, `fsm.state-root/3`, and `fsm.snapshot/4`. Stores at versions 1
-through 7 are full-folded and stamped forward without rewriting journal
-records; legacy state hashes and roots remain verifiable. New genesis records
+`VERSION` 9, `fsm.state/3`, `fsm.state-root/3`, and `fsm.snapshot/5`. Stores at versions 1
+through 8 are full-folded and stamped forward without rewriting journal
+records; legacy state hashes and roots remain verifiable, each under the
+format its own record declares. New genesis records
 also bind the region, deadline, and aggregate expression-evaluation ceilings,
 while readers retain exact support for the historical limits object already
 sealed into older journals. Definitions exceeding the standard 4096-tick

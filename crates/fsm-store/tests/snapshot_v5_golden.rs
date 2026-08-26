@@ -1,4 +1,8 @@
-//! Byte-exact golden for a parallel `fsm.snapshot/4` with an active deadline.
+//! Byte-exact golden for a parallel `fsm.snapshot/5` with an active deadline.
+//!
+//! Regenerate with `REGEN_SNAPSHOT=1`. A snapshot is a disposable cache, so a
+//! version bump replaces this golden rather than migrating it — an older
+//! snapshot beside a current journal is skipped and the journal folded.
 
 use std::collections::BTreeMap;
 
@@ -72,8 +76,16 @@ fn state_from_literal_machine() -> StoreState {
 }
 
 #[test]
-fn snapshot_v4_matches_literal_canonical_bytes_and_round_trips() {
-    let expected_with_lf = include_bytes!("fixtures/snapshot_v4_parallel.json");
+fn snapshot_v5_matches_literal_canonical_bytes_and_round_trips() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/snapshot_v5_parallel.json");
+    if std::env::var("REGEN_SNAPSHOT").ok().as_deref() == Some("1") {
+        let mut bytes = canon_bytes(&state_to_snapshot(&state_from_literal_machine()));
+        bytes.push(b'\n');
+        std::fs::write(&fixture, bytes).unwrap();
+    }
+    let expected_with_lf = std::fs::read(&fixture).expect("the snapshot golden is committed");
+    let expected_with_lf = expected_with_lf.as_slice();
     let expected = expected_with_lf
         .strip_suffix(b"\n")
         .expect("text fixture ends in one LF");
