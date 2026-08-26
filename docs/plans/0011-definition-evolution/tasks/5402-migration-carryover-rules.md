@@ -9,7 +9,10 @@ gated: false
 touches:
   - crates/fsm-core/src/migrate/carryover.rs
   - crates/fsm-core/tests/migrate_carryover.rs
-status: planned
+  - crates/fsm-core/src/migrate/apply.rs
+  - crates/fsm-core/src/step/mod.rs
+  - crates/fsm-core/tests/migrate_carryover.rs
+status: done
 merged_as: ""
 ---
 # Migration Carryover Rules
@@ -42,3 +45,7 @@ An instance holds five collections besides its status, configuration, and contex
 - An instance with empty history, no deadlines, no effects, no signals, and no slots migrates with an empty report.
 
 - **Done when:** `cargo test -p fsm-core --test migrate_carryover` passes every case above, each of the five rulings behaves exactly as the architecture states, `InstanceState` is destructured exhaustively so a new field cannot ship without a ruling, the report is byte-stable, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `carry_over` with all five rulings and the report entries that make every loss visible (`dropped_history`, `rescheduled_deadlines` with both due times, `retained_effects`, `retained_signals`, `dropped_slots`), the exhaustive destructuring guard — verified by adding a field to `InstanceState` and watching the compile fail, then reverting — and `step::schedule_for`, which recomputes a configuration's deadlines by the engine's own entry rule rather than a second copy of it.
+
+**Corrections.** (1) `carry_over` returns a `Result`: two of its five rulings can refuse (a live slot the new definition drops, and a new `after` expression that overflows), so the seam `5401` wrote as infallible is fallible in fact. The step order is unchanged. (2) It takes the new machine, the mapping, and the projected context rather than the old machine: the old definition has no say in any of the five rulings once the mapping is in hand, and a parameter nothing reads is a parameter a later reader will wire something wrong into. (3) The `from` machine `5401` left unused now has a real job — checking that the mapping supersedes *this* instance's machine — which is where `req/migrate_not_superseded` belongs.
