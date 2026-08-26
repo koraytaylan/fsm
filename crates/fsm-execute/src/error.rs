@@ -27,6 +27,8 @@ pub const ALL_CODES: &[&str] = &[
     "exec/cancelled",
     "exec/store",
     "exec/mode",
+    "exec/invoke",
+    "exec/signal",
 ];
 
 /// One executor failure, carrying enough to report the fault without the
@@ -79,10 +81,23 @@ impl ExecError {
             .details(error.to_value())
     }
 
+    /// Wrap a store failure under a directive-specific code, preserving the
+    /// original exactly as [`ExecError::store`] does.
+    ///
+    /// A composition directive says which half of the plan failed —
+    /// `exec/invoke` for creating or returning a child, `exec/signal` for a
+    /// delivery — while the store's own code stays in `details`, where the
+    /// operator reads it.
+    pub fn from_store(code: &'static str, error: &ErrorObj) -> Self {
+        Self::new(code, error.message.clone())
+            .hint(error.hint.clone())
+            .details(error.to_value())
+    }
+
     /// The store code this error wraps, for callers that must distinguish a
     /// benign store outcome from a real one.
     pub fn store_code(&self) -> Option<&str> {
-        if self.code != "exec/store" {
+        if !matches!(self.code, "exec/store" | "exec/invoke" | "exec/signal") {
             return None;
         }
         self.details.as_ref()?.get("code")?.as_str()
@@ -115,7 +130,7 @@ mod tests {
             assert!(code.len() > "exec/".len(), "{code} has an empty suffix");
             assert!(seen.insert(*code), "{code} is listed twice");
         }
-        assert_eq!(seen.len(), 8, "the closed set is eight codes");
+        assert_eq!(seen.len(), 10, "the closed set is ten codes");
     }
 
     #[test]

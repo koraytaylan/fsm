@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use fsm_core::json::Value;
-use fsm_core::machine::Status;
+use fsm_core::machine::{InvokeStatus, Status};
 use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
@@ -79,12 +79,43 @@ pub struct Observation {
     pub claimed_request_ids: BTreeSet<String>,
     /// Status and counts per observed instance.
     pub instance_states: BTreeMap<String, InstanceSnap>,
+    /// Slots waiting for their child to exist, parent first.
+    pub pending_invocations: Vec<Slot>,
+    /// Slots whose child has settled and whose result the parent has not
+    /// taken yet.
+    pub returnable_invocations: Vec<Slot>,
+    /// Signals emitted and not yet delivered.
+    pub pending_signals: Vec<PendingSignalRef>,
     /// Effect ids this scan could not re-derive, one error each.
     ///
     /// A pending effect nobody can name is not a reason to abandon the scan —
     /// the other instances still need running — so it is reported here and the
     /// service loop logs it.
     pub unresolved: Vec<ExecError>,
+}
+
+/// One invocation slot the executor can act on.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Slot {
+    /// The invoking instance.
+    pub parent_instance_id: String,
+    /// The slot id, unique machine-wide.
+    pub slot: String,
+    /// The child's derived id, which the executor never invents.
+    pub child_instance_id: String,
+}
+
+/// One undelivered signal the executor can deliver.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PendingSignalRef {
+    /// The instance holding it.
+    pub sender_instance_id: String,
+    /// Its derived id, `{instance}/{seq}/{k}`.
+    pub signal_id: String,
+    /// Where it is addressed.
+    pub target_instance_id: String,
+    /// The event it carries.
+    pub event: String,
 }
 
 /// The read side of the executor.
@@ -155,6 +186,42 @@ impl Watcher {
                     deadlines: instance.deadlines.len(),
                 },
             );
+            // Composition, read from the same public fields the scan
+            // already has open: no second store call and no `instance_view`.
+            if instance.status == Status::Running {
+                for (slot, invocation) in &instance.invocations {
+                    let child_instance_id = fsm_core::hashes::child_instance_id(instance_id, slot);
+                    let entry = Slot {
+                        parent_instance_id: instance_id.clone(),
+                        slot: slot.clone(),
+                        child_instance_id: child_instance_id.clone(),
+                    };
+                    match invocation.status {
+                        InvokeStatus::Pending => observation.pending_invocations.push(entry),
+                        // Settled means the child's own status says so; the
+                        // executor never decides that from elapsed time.
+                        InvokeStatus::Running => {
+                            if store
+                                .state
+                                .instances
+                                .get(&child_instance_id)
+                                .is_some_and(|child| child.status != Status::Running)
+                            {
+                                observation.returnable_invocations.push(entry);
+                            }
+                        }
+                        InvokeStatus::Returned => {}
+                    }
+                }
+                for (signal_id, signal) in &instance.signals {
+                    observation.pending_signals.push(PendingSignalRef {
+                        sender_instance_id: instance_id.clone(),
+                        signal_id: signal_id.clone(),
+                        target_instance_id: signal.target_instance_id.clone(),
+                        event: signal.event.clone(),
+                    });
+                }
+            }
             if instance.status == Status::Cancelled
                 && self.previous_statuses.get(instance_id).map(String::as_str)
                     == Some(Status::Running.as_str())

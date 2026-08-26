@@ -13,7 +13,7 @@ use fsm_core::json::Value;
 use crate::config::{Advance, HandlerSpec, HandlerTable, substitute};
 use crate::effect::PendingEffect;
 use crate::error::ExecError;
-use crate::rid::{ack_rid, event_rid, poll_rid};
+use crate::rid::{ack_rid, event_rid, invoke_rid, poll_rid, return_rid, signal_rid};
 use crate::run::KillReason;
 use crate::watch::Observation;
 
@@ -47,6 +47,39 @@ pub enum Directive {
         /// The derived idempotency key.
         request_id: String,
     },
+    /// Create the child of a pending invocation slot.
+    InvokeChild {
+        /// The invoking instance.
+        parent_instance_id: String,
+        /// The slot to enact.
+        slot: String,
+        /// The child's derived id, carried for the trace, never invented.
+        child_instance_id: String,
+        /// The derived idempotency key.
+        request_id: String,
+    },
+    /// Hand a settled child's result to its parent.
+    InvocationReturn {
+        /// The invoking instance.
+        parent_instance_id: String,
+        /// The slot to return.
+        slot: String,
+        /// The child whose result it carries.
+        child_instance_id: String,
+        /// The derived idempotency key.
+        request_id: String,
+    },
+    /// Deliver one pending signal.
+    SignalDeliver {
+        /// The instance holding it.
+        sender_instance_id: String,
+        /// Its derived id.
+        signal_id: String,
+        /// Where it is addressed, for the trace.
+        target_instance_id: String,
+        /// The derived idempotency key.
+        request_id: String,
+    },
     /// Send an advance event for an already-acknowledged effect.
     SendEvent {
         /// The instance to advance.
@@ -71,7 +104,10 @@ impl Directive {
             Directive::Start { effect, .. } => Some(&effect.effect_id),
             Directive::Kill { effect_id, .. } => Some(effect_id),
             Directive::SendEvent { effect_id, .. } => Some(effect_id),
-            Directive::PollDeadline { .. } => None,
+            Directive::PollDeadline { .. }
+            | Directive::InvokeChild { .. }
+            | Directive::InvocationReturn { .. }
+            | Directive::SignalDeliver { .. } => None,
         }
     }
 }
@@ -270,6 +306,48 @@ impl Scheduler {
                 instance_id: due.instance_id.clone(),
                 deadline: due.deadline_name.clone(),
                 due_ms: due.due_ms,
+                request_id,
+            });
+        }
+
+        // 4b. Composition, in causal order within the tick: invoke, then
+        // return, then signal. A slot created and settled across two ticks
+        // therefore never races itself, and the trace reads in the order the
+        // work actually happened. Each rule is gated on its derived key being
+        // absent from the journal, exactly as the rules above are.
+        for slot in &obs.pending_invocations {
+            let request_id = invoke_rid(&slot.parent_instance_id, &slot.slot);
+            if obs.claimed_request_ids.contains(&request_id) {
+                continue;
+            }
+            directives.push(Directive::InvokeChild {
+                parent_instance_id: slot.parent_instance_id.clone(),
+                slot: slot.slot.clone(),
+                child_instance_id: slot.child_instance_id.clone(),
+                request_id,
+            });
+        }
+        for slot in &obs.returnable_invocations {
+            let request_id = return_rid(&slot.parent_instance_id, &slot.slot);
+            if obs.claimed_request_ids.contains(&request_id) {
+                continue;
+            }
+            directives.push(Directive::InvocationReturn {
+                parent_instance_id: slot.parent_instance_id.clone(),
+                slot: slot.slot.clone(),
+                child_instance_id: slot.child_instance_id.clone(),
+                request_id,
+            });
+        }
+        for signal in &obs.pending_signals {
+            let request_id = signal_rid(&signal.sender_instance_id, &signal.signal_id);
+            if obs.claimed_request_ids.contains(&request_id) {
+                continue;
+            }
+            directives.push(Directive::SignalDeliver {
+                sender_instance_id: signal.sender_instance_id.clone(),
+                signal_id: signal.signal_id.clone(),
+                target_instance_id: signal.target_instance_id.clone(),
                 request_id,
             });
         }

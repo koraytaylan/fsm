@@ -14,7 +14,10 @@ touches:
   - crates/fsm-execute/src/rid.rs
   - crates/fsm-execute/src/error.rs
   - crates/fsm-execute/tests/composition.rs
-status: planned
+  - crates/fsm-execute/src/error.rs
+  - crates/fsm-execute/tests/composition.rs
+  - docs/EMBEDDING.md
+status: done
 merged_as: ""
 ---
 # Executor Composition Directives
@@ -50,3 +53,5 @@ Composition must run unattended or it is a feature only a live session can use �
 - The runner is never invoked for these directives — assert the child-process count is zero across a composition-only tick.
 
 - **Done when:** `cargo test -p fsm-execute --test composition` passes every case above including restart equivalence and within-tick ordering, a depth-2 tree completes unattended, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `creates_instance` in `effect.rs` (either creation kind, matched on the field that kind uses) plus an `InstanceInvoked` arm in `replay_emits`; `Slot` and `PendingSignalRef` on `Observation`, filled from the same instance scan with no second store call; `invoke_rid`/`return_rid`/`signal_rid`; three directives in the decision table, each gated on its key and ordered invoke → return → signal; the service's straight-to-pipeline routing with a module-doc sentence saying why; and `ExecError::from_store(code, error)` so `exec/invoke` and `exec/signal` carry the store's code in `details` exactly as `exec/store` does. A returnable slot is decided from the child's own status, never from elapsed time. The composition suite covers the derived keys, the claimed-key suppression, restart equivalence from a fresh scheduler, within-tick ordering, and both halves of the effect-resolution fix — a child's entry effect resolving through its invocation record, and a root's still resolving through `instance_created`. The two new codes join `EMBEDDING.md`'s executor table, which `executor_doc.rs` requires of every code the crate defines — the executor's own every-code gate, the counterpart of the engine's.

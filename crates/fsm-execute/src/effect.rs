@@ -123,15 +123,23 @@ fn emitting_record<'a>(store: &'a Store, id: &EffectId<'_>) -> Result<&'a Record
         // pending effect belongs to the creation that is current. Taking the
         // first would substitute the older creation's arguments into the argv
         // and run the handler against stale values.
+        // A child's creation record is `instance_invoked`, and its id lives in
+        // `child_instance_id` — there is no `instance_created` for a child and
+        // a reader must never need one. Without this arm every effect a child
+        // emits on entry would resolve as unresolved and never run, which is
+        // exactly what a child machine is for. The newest-first rule above
+        // applies unchanged to a re-invoked slot.
         return store
             .records
             .iter()
             .rev()
             .find(|record| {
-                record.kind == RecordKind::InstanceCreated
-                    && instance_of(record) == Some(id.instance_id)
+                matches!(
+                    record.kind,
+                    RecordKind::InstanceCreated | RecordKind::InstanceInvoked
+                ) && creates_instance(record, id.instance_id)
             })
-            .ok_or_else(|| unresolved(id, "this instance has no instance_created record"));
+            .ok_or_else(|| unresolved(id, "this instance has no creation record"));
     }
     let position = store
         .records
@@ -178,6 +186,32 @@ fn replay_emits(
                         id,
                         format!(
                             "replaying instance_created was rejected: {}",
+                            rejection.code
+                        ),
+                    )
+                })
+        }
+        // A child's entry effects are re-derived the same way a root's are:
+        // run `create` against the child machine with the record's own
+        // overrides, at the record's own `ts`.
+        RecordKind::InstanceInvoked => {
+            let machine_id = record
+                .body
+                .get("child_machine_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| unresolved(id, "the instance_invoked record names no machine"))?;
+            let machine = before
+                .machines
+                .get(machine_id)
+                .ok_or_else(|| unresolved(id, "the child machine is not in the journal prefix"))?;
+            let overrides = created_overrides(machine, record, id)?;
+            create(&machine.compiled, &machine.tree, &overrides, record.ts)
+                .map(|applied| applied.effects)
+                .map_err(|rejection| {
+                    unresolved(
+                        id,
+                        format!(
+                            "replaying instance_invoked was rejected: {}",
                             rejection.code
                         ),
                     )
@@ -298,6 +332,17 @@ fn machine_and_instance<'a>(
 
 fn instance_of(record: &Record) -> Option<&str> {
     record.body.get("instance_id").and_then(Value::as_str)
+}
+
+/// Whether this record is the one that brought `instance_id` into existence.
+fn creates_instance(record: &Record, instance_id: &str) -> bool {
+    match record.kind {
+        RecordKind::InstanceCreated => instance_of(record) == Some(instance_id),
+        RecordKind::InstanceInvoked => {
+            record.body.get("child_instance_id").and_then(Value::as_str) == Some(instance_id)
+        }
+        _ => false,
+    }
 }
 
 fn unresolved(id: &EffectId<'_>, reason: impl Into<String>) -> ExecError {

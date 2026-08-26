@@ -7,6 +7,12 @@
 //! it before returning, so the executor never holds the single-writer lock
 //! across a sleep.
 //!
+//! The three composition directives — creating a child, returning its
+//! result, delivering a signal — never touch the runner. A subprocess exists
+//! to reach the world's computers; these reach only the journal, so they go
+//! straight to the pipeline and take the writer for the tick like any other
+//! write.
+//!
 //! Every action produces one line, and those lines carry **identifiers only** —
 //! effect name, effect id, request id, event, outcome. Never a path, a pid, a
 //! temporary directory, or a duration: those differ per machine and per run,
@@ -363,7 +369,15 @@ fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> V
                     None => scheduler.complete(effect_id),
                 }
             }
-            Directive::SendEvent { .. } | Directive::PollDeadline { .. } => {}
+            // The three composition directives reach only the journal, so
+            // they never touch the runner: a subprocess is for reaching the
+            // world's computers, and creating a child, returning its result,
+            // or delivering a signal reaches nothing but this store.
+            Directive::SendEvent { .. }
+            | Directive::PollDeadline { .. }
+            | Directive::InvokeChild { .. }
+            | Directive::InvocationReturn { .. }
+            | Directive::SignalDeliver { .. } => {}
         }
     }
     settles
@@ -379,7 +393,11 @@ fn writes_anything(
         || directives.iter().any(|directive| {
             matches!(
                 directive,
-                Directive::SendEvent { .. } | Directive::PollDeadline { .. }
+                Directive::SendEvent { .. }
+                    | Directive::PollDeadline { .. }
+                    | Directive::InvokeChild { .. }
+                    | Directive::InvocationReturn { .. }
+                    | Directive::SignalDeliver { .. }
             )
         })
 }
@@ -443,6 +461,45 @@ fn settle_phase(
                     Err(error) => lines.push(error_line(&error)),
                 }
             }
+            Directive::InvokeChild {
+                parent_instance_id,
+                slot,
+                child_instance_id,
+                request_id,
+            } => match store.invoke_child_on(clock, parent_instance_id, slot, request_id) {
+                Ok(_) => lines.push(format!(
+                    "invoked {slot} {parent_instance_id} child={child_instance_id} request_id={request_id}"
+                )),
+                Err(error) => lines.push(error_line(&ExecError::from_store("exec/invoke", &error))),
+            },
+            Directive::InvocationReturn {
+                parent_instance_id,
+                slot,
+                child_instance_id,
+                request_id,
+            } => match store.invocation_return_on(clock, parent_instance_id, slot, request_id) {
+                Ok(_) => {
+                    lines.push(format!(
+                        "returned {slot} {parent_instance_id} child={child_instance_id} request_id={request_id}"
+                    ));
+                    lines.extend(terminal_line(store, parent_instance_id));
+                }
+                Err(error) => lines.push(error_line(&ExecError::from_store("exec/invoke", &error))),
+            },
+            Directive::SignalDeliver {
+                sender_instance_id,
+                signal_id,
+                target_instance_id,
+                request_id,
+            } => match store.signal_deliver_on(clock, sender_instance_id, signal_id, request_id) {
+                Ok(_) => {
+                    lines.push(format!(
+                        "signalled {sender_instance_id} target={target_instance_id} signal={signal_id} request_id={request_id}"
+                    ));
+                    lines.extend(terminal_line(store, target_instance_id));
+                }
+                Err(error) => lines.push(error_line(&ExecError::from_store("exec/signal", &error))),
+            },
             Directive::PollDeadline {
                 instance_id,
                 deadline,

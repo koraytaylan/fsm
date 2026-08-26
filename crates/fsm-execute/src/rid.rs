@@ -65,3 +65,21 @@ pub fn poll_rid(instance_id: &str, deadline: &str, due_ms: i64) -> String {
         instance_id.len()
     )
 }
+
+/// The key for enacting one invocation slot.
+///
+/// The parent and the slot are the whole of the request: the child id, the
+/// machine, and the overrides all derive from them and the parent's state.
+pub fn invoke_rid(parent_id: &str, slot: &str) -> String {
+    format!("exec-inv-{parent_id}/{slot}")
+}
+
+/// The key for returning one settled invocation to its parent.
+pub fn return_rid(parent_id: &str, slot: &str) -> String {
+    format!("exec-ret-{parent_id}/{slot}")
+}
+
+/// The key for delivering one pending signal.
+pub fn signal_rid(sender_id: &str, signal_id: &str) -> String {
+    format!("exec-sig-{sender_id}/{signal_id}")
+}

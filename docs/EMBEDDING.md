@@ -475,6 +475,8 @@ and do not appear in SPEC.md's appendix.
 | `exec/cancelled` | a run was killed because its instance was cancelled |
 | `exec/store` | a store operation failed; the original code is preserved in `details` |
 | `exec/mode` | `--exclusive` found another writer holding the data directory |
+| `exec/invoke` | creating a child or returning its result failed; the store's own code is preserved in `details` |
+| `exec/signal` | delivering a signal failed; the store's own code is preserved in `details` |
 
 ## Errors
 
