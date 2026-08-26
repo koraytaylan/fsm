@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use crate::json::Value;
 
 use super::super::{
-    Block, EmitSpec, Finding, HistoryKind, InvokeSpec, RaiseSpec, RegionSpec, SetSpec, StateNode,
+    Block, EmitSpec, Finding, HistoryKind, InvokeSpec, RaiseSpec, RegionSpec, SetSpec, SignalSpec,
+    StateNode,
 };
 use super::{check_keys, req_str};
 
@@ -18,7 +19,7 @@ pub(super) fn parse_block(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>
         ));
         return None;
     };
-    check_keys(obj, &["do", "emit", "raise"], path, errs);
+    check_keys(obj, &["do", "emit", "raise", "signal"], path, errs);
     let mut sets = Vec::new();
     if let Some(do_v) = obj.get("do") {
         let Some(a) = do_v.as_arr() else {
@@ -32,6 +33,7 @@ pub(super) fn parse_block(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>
                 sets,
                 emits: Vec::new(),
                 raises: Vec::new(),
+                signals: Vec::new(),
             });
         };
         for (i, s) in a.iter().enumerate() {
@@ -96,6 +98,7 @@ pub(super) fn parse_block(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>
                 sets,
                 emits,
                 raises: Vec::new(),
+                signals: Vec::new(),
             });
         };
         for (i, s) in a.iter().enumerate() {
@@ -154,11 +157,81 @@ pub(super) fn parse_block(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>
         }
     }
     let raises = parse_raises(obj.get("raise"), path, errs);
+    let signals = parse_signals(obj.get("signal"), path, errs);
     Some(Block {
         sets,
         emits,
         raises,
+        signals,
     })
+}
+
+fn parse_signals(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Vec<SignalSpec> {
+    let Some(v) = v else {
+        return Vec::new();
+    };
+    let Some(entries) = v.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            format!("{path}/signal"),
+            "signal must be an array",
+            "use an array of {to, event, with} objects",
+        ));
+        return Vec::new();
+    };
+    let mut signals = Vec::new();
+    for (i, entry) in entries.iter().enumerate() {
+        let sp = format!("{path}/signal/{i}");
+        let Some(o) = entry.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &sp,
+                "signal must be an object",
+                "use {to, event, with}",
+            ));
+            continue;
+        };
+        check_keys(o, &["to", "event", "with"], &sp, errs);
+        let mut with = Vec::new();
+        if let Some(payload) = o.get("with") {
+            if let Some(map) = payload.as_obj() {
+                for (k, val) in map {
+                    match val {
+                        Value::Num(_) => errs.push(Finding::err(
+                            "req/number_token",
+                            format!("{sp}/with/{k}"),
+                            "argument must be a string",
+                            "quote the expression",
+                        )),
+                        Value::Str(s) => with.push((k.clone(), s.clone())),
+                        _ => errs.push(Finding::err(
+                            "def/shape",
+                            format!("{sp}/with/{k}"),
+                            "argument must be a string",
+                            "quote the expression",
+                        )),
+                    }
+                }
+            } else {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{sp}/with"),
+                    "with must be an object",
+                    "map field names to expressions",
+                ));
+            }
+        }
+        signals.push(SignalSpec {
+            to: req_str(o, "to", &format!("{sp}/to"), errs)
+                .unwrap_or("")
+                .to_string(),
+            event: req_str(o, "event", &format!("{sp}/event"), errs)
+                .unwrap_or("")
+                .to_string(),
+            with,
+        });
+    }
+    signals
 }
 
 fn parse_raises(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Vec<RaiseSpec> {

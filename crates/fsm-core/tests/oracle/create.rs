@@ -28,6 +28,7 @@ pub fn naive_create_at(
     }
     let mut effects = Vec::new();
     let mut raised = Vec::new();
+    let mut signalled = Vec::new();
     let mut entered = Vec::new();
     let configuration_after = match &m.spec.topology {
         Topology::Sequential { states, initial } => {
@@ -38,6 +39,7 @@ pub fn naive_create_at(
                 &mut budget,
                 &mut effects,
                 &mut raised,
+                &mut signalled,
             )?;
             let leaf = path.last().cloned().unwrap_or_else(|| initial.to_string());
             entered.extend(path);
@@ -53,6 +55,7 @@ pub fn naive_create_at(
                     &mut budget,
                     &mut effects,
                     &mut raised,
+                    &mut signalled,
                 )?;
                 let leaf = path
                     .last()
@@ -88,6 +91,7 @@ pub fn naive_create_at(
         exited: Vec::new(),
         entered,
         raised,
+        signalled,
     };
     super::macrostep::run_reactions(m, &before, first, effects, now_ms, &mut budget)
 }

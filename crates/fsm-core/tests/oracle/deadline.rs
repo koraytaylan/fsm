@@ -235,6 +235,7 @@ fn apply_naive_deadline(
     let mut ctx = st.ctx.clone();
     let mut effects = Vec::new();
     let mut raised = Vec::new();
+    let mut signalled = Vec::new();
     let no_event = BTreeMap::new();
     for name in &exited {
         if let Some(block) = find(states, name).and_then(|node| node.exit.as_ref())
@@ -246,6 +247,7 @@ fn apply_naive_deadline(
                 budget,
                 &mut effects,
                 &mut raised,
+                &mut signalled,
             )
         {
             return Outcome::Rejected(rejection);
@@ -255,6 +257,7 @@ fn apply_naive_deadline(
         sets: deadline.sets.clone(),
         emits: deadline.emits.clone(),
         raises: deadline.raises.clone(),
+        signals: Vec::new(),
     };
     if let Err(rejection) = apply_block(
         &deadline_block,
@@ -264,6 +267,7 @@ fn apply_naive_deadline(
         budget,
         &mut effects,
         &mut raised,
+        &mut signalled,
     ) {
         return Outcome::Rejected(rejection);
     }
@@ -277,6 +281,7 @@ fn apply_naive_deadline(
                 budget,
                 &mut effects,
                 &mut raised,
+                &mut signalled,
             )
         {
             return Outcome::Rejected(rejection);
@@ -317,6 +322,7 @@ fn apply_naive_deadline(
         exited,
         entered,
         raised,
+        signalled,
     };
     match super::macrostep::run_reactions(m, st, first, effects, now_ms, budget) {
         Ok(applied) => Outcome::Applied(applied),

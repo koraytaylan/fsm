@@ -164,6 +164,7 @@ pub fn create_with(
         history_after: BTreeMap::new(),
         effects: outputs.effects,
         raises: outputs.raised,
+        signals: outputs.signalled,
         pipeline,
         candidates: Vec::new(),
         exited: Vec::new(),

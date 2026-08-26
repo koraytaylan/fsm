@@ -282,6 +282,25 @@ pub(super) fn run_reactions(
     let mut history = first.history_after.clone();
     let mut deadlines = st.deadlines.clone();
     let mut status = st.status;
+    // Signals are collected in pipeline order and numbered continuously, the
+    // same way the effects are.
+    let mut signalled: Vec<(u32, fsm_core::machine::PendingSignal)> = Vec::new();
+    let mut collect =
+        |emitted: &super::eval::Signalled,
+         out: &mut Vec<(u32, fsm_core::machine::PendingSignal)>| {
+            for (target, event, payload) in emitted {
+                let k = out.len() as u32;
+                out.push((
+                    k,
+                    fsm_core::machine::PendingSignal {
+                        target_instance_id: target.clone(),
+                        event: event.clone(),
+                        payload: payload.clone(),
+                    },
+                ));
+            }
+        };
+    collect(&first.signalled, &mut signalled);
     let (mut invocations, mut cancelled_children) = naive_invocations(
         spec,
         &st.invocations,
@@ -375,6 +394,7 @@ pub(super) fn run_reactions(
         invocations = settled;
         cancelled_children.append(&mut cancelled);
         queue.extend(micro.raised.clone());
+        collect(&micro.signalled, &mut signalled);
         queue.extend(done_state_events(spec, &micro.entered));
         queue.extend(done_region_events(spec, &before, &configuration));
         microsteps.push(MicrostepTrace {
@@ -402,6 +422,7 @@ pub(super) fn run_reactions(
         deadlines_after,
         invocations_after: invocations,
         cancelled_children,
+        signals: signalled,
         effects,
         monitor_flags,
         status_after,

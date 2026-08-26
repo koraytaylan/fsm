@@ -160,11 +160,30 @@ pub struct RaiseSpec {
     pub with: Vec<(String, String)>,
 }
 
+/// A `signal` in a block: one event sent to exactly one other instance,
+/// named by an expression evaluated when the block runs.
+///
+/// Exactly one, never a query: the set of instances a query matches grows
+/// over time, so replaying the record would deliver to a different set and
+/// the store would stop being a function of its journal. The engine already
+/// refuses broadcast across parallel regions; this is the same rule one level
+/// up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignalSpec {
+    /// `expr/1` source of type `str`: the target instance id.
+    pub to: String,
+    /// An event the **target's** machine declares, checked at delivery.
+    pub event: String,
+    /// Field name to `expr/1` source, in field-name order.
+    pub with: Vec<(String, String)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub sets: Vec<SetSpec>,
     pub emits: Vec<EmitSpec>,
     pub raises: Vec<RaiseSpec>,
+    pub signals: Vec<SignalSpec>,
 }
 
 /// One `invoke` slot on a state: a child machine named by content hash,
@@ -270,6 +289,8 @@ pub struct TransitionSpec {
     pub sets: Vec<SetSpec>,
     pub emits: Vec<EmitSpec>,
     pub raises: Vec<RaiseSpec>,
+    /// Signals sent when the transition's block runs.
+    pub signals: Vec<SignalSpec>,
     pub to: Option<String>,
 }
 
@@ -300,6 +321,8 @@ pub struct DeadlineSpec {
     pub emits: Vec<EmitSpec>,
     /// Internal events raised when the deadline fires.
     pub raises: Vec<RaiseSpec>,
+    /// Signals sent when the deadline fires.
+    pub signals: Vec<SignalSpec>,
     /// Target state in the same region as `from`.
     pub to: String,
 }

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::json::Value;
 
-use super::{Block, FieldDecl, HistoryKind, InvokeSpec, RaiseSpec, StateNode, TySpec};
+use super::{Block, FieldDecl, HistoryKind, InvokeSpec, RaiseSpec, SignalSpec, StateNode, TySpec};
 
 pub(super) fn v_str(s: impl Into<String>) -> Value {
     Value::Str(s.into())
@@ -71,6 +71,31 @@ fn invoke_value(invoke: &InvokeSpec) -> Value {
     Value::Obj(o)
 }
 
+/// One `signal` entry; `with` is omitted when empty.
+pub(super) fn signal_value(signal: &SignalSpec) -> Value {
+    let mut o = BTreeMap::new();
+    o.insert("to".into(), v_str(signal.to.clone()));
+    o.insert("event".into(), v_str(signal.event.clone()));
+    if !signal.with.is_empty() {
+        o.insert(
+            "with".into(),
+            v_obj(
+                signal
+                    .with
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v_str(v.clone()))),
+            ),
+        );
+    }
+    Value::Obj(o)
+}
+
+/// The `signal` array of a block, or nothing: a machine that signals nothing
+/// keeps its canonical bytes.
+pub(super) fn signals_value(signals: &[SignalSpec]) -> Option<Value> {
+    (!signals.is_empty()).then(|| Value::Arr(signals.iter().map(signal_value).collect()))
+}
+
 fn block_value(b: &Block) -> Value {
     let mut m = BTreeMap::new();
     if !b.sets.is_empty() {
@@ -112,6 +137,9 @@ fn block_value(b: &Block) -> Value {
     }
     if let Some(raises) = raises_value(&b.raises) {
         m.insert("raise".into(), raises);
+    }
+    if let Some(signals) = signals_value(&b.signals) {
+        m.insert("signal".into(), signals);
     }
     Value::Obj(m)
 }

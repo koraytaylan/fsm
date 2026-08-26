@@ -64,7 +64,13 @@ pub(super) fn apply_instance_created(st: &mut StoreState, rec: &Record) -> Resul
             .map(|e| format!("{iid}/0/{}", e.k))
             .collect(),
         invocations: a.invocations_after,
-        signals: BTreeMap::new(),
+        // The same derived ids the write produced: a fold that
+        // numbered them differently would not reproduce the state.
+        signals: a
+            .signals
+            .iter()
+            .map(|(k, signal)| (format!("{iid}/{}/{k}", rec.seq), signal.clone()))
+            .collect(),
     };
     if let Some(want) = rec.body.get("state_hash").and_then(Value::as_str) {
         let got =

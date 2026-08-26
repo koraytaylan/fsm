@@ -55,6 +55,11 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
         r#"{"format":"fsm.machine/1","name":"fnl2","states":[{"name":"p","initial":"w","states":[{"name":"w"},{"name":"q","initial":"r","states":[{"name":"r"}]}]}],"initial":"p","context":[],"events":[],"transitions":[]}"#,
     ),
     (
+        "def/limit_signals",
+        r#"{"format":"fsm.machine/1","name":"sig5","states":[{"name":"a","entry":{"signal":[{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"}]}}],"initial":"a","context":[{"name":"target","ty":"str","init":""}],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"sig5b","states":[{"name":"a","entry":{"signal":[{"to":"ctx.target","event":"e"}]}}],"initial":"a","context":[{"name":"target","ty":"str","init":""}],"events":[],"transitions":[]}"#,
+    ),
+    (
         "def/invoke_machine_ref",
         r#"{"format":"fsm.machine/1","name":"inv1","states":[{"name":"a","invoke":[{"id":"child","machine":"review"}]},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
         r#"{"format":"fsm.machine/1","name":"inv1b","states":[{"name":"a","invoke":[{"id":"child","machine":"a92c485db46478cb3449045e7937e104f2d29cdccb36a943271eab195ceb7071"}]},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[]}"#,

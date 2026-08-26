@@ -128,7 +128,7 @@ pub(super) fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> V
         };
         check_keys(
             obj,
-            &["from", "on", "if", "do", "emit", "raise", "to"],
+            &["from", "on", "if", "do", "emit", "raise", "signal", "to"],
             &p,
             errs,
         );
@@ -185,6 +185,9 @@ pub(super) fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> V
                 if let Some(r) = obj.get("raise") {
                     b.insert("raise".into(), r.clone());
                 }
+                if let Some(signal) = obj.get("signal") {
+                    b.insert("signal".into(), signal.clone());
+                }
                 Value::Obj(b)
             }),
             &p,
@@ -194,6 +197,7 @@ pub(super) fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> V
             sets: Vec::new(),
             emits: Vec::new(),
             raises: Vec::new(),
+            signals: Vec::new(),
         });
         let guard = match obj.get("if") {
             None => None,
@@ -239,6 +243,7 @@ pub(super) fn parse_transitions(v: Option<&Value>, errs: &mut Vec<Finding>) -> V
             sets: block.sets,
             emits: block.emits,
             raises: block.raises,
+            signals: block.signals,
             to,
         });
     }
@@ -272,12 +277,14 @@ pub(super) fn parse_deadlines(value: Option<&Value>, errs: &mut Vec<Finding>) ->
         };
         check_keys(
             object,
-            &["name", "from", "after", "to", "do", "emit", "raise"],
+            &[
+                "name", "from", "after", "to", "do", "emit", "raise", "signal",
+            ],
             &path,
             errs,
         );
         let block_value = Value::Obj(
-            ["do", "emit", "raise"]
+            ["do", "emit", "raise", "signal"]
                 .into_iter()
                 .filter_map(|key| object.get(key).cloned().map(|value| (key.into(), value)))
                 .collect(),
@@ -286,6 +293,7 @@ pub(super) fn parse_deadlines(value: Option<&Value>, errs: &mut Vec<Finding>) ->
             sets: Vec::new(),
             emits: Vec::new(),
             raises: Vec::new(),
+            signals: Vec::new(),
         });
         out.push(DeadlineSpec {
             name: req_str(object, "name", &format!("{path}/name"), errs)
@@ -300,6 +308,7 @@ pub(super) fn parse_deadlines(value: Option<&Value>, errs: &mut Vec<Finding>) ->
             sets: block.sets,
             emits: block.emits,
             raises: block.raises,
+            signals: block.signals,
             to: req_str(object, "to", &format!("{path}/to"), errs)
                 .unwrap_or("")
                 .to_string(),

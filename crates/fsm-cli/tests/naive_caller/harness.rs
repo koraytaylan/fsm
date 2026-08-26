@@ -590,6 +590,10 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 // The reactive rules address states by name, not by pointer.
                 truncate_array(&mut v, "/states/0/invoke", 1);
             }
+            "def/limit_signals" => {
+                // The block rules address a state by name, not by index.
+                truncate_array(&mut v, "/states/0/entry/signal", 1);
+            }
             "def/limit_raises" => {
                 let p = if path.is_empty() {
                     "/transitions/0/raise".into()

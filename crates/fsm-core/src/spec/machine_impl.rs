@@ -3,7 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::json::Value;
 use crate::machine::EnforceMode;
 
-use super::serialize::{field_value, raises_value, states_value, ty_spec_value, v_obj, v_str};
+use super::serialize::{
+    field_value, raises_value, signals_value, states_value, ty_spec_value, v_obj, v_str,
+};
 use super::{MachineSpec, StateNode, Topology, Unhandled};
 
 impl MachineSpec {
@@ -171,6 +173,9 @@ impl MachineSpec {
                         if let Some(raises) = raises_value(&t.raises) {
                             o.insert("raise".into(), raises);
                         }
+                        if let Some(signals) = signals_value(&t.signals) {
+                            o.insert("signal".into(), signals);
+                        }
                         Value::Obj(o)
                     })
                     .collect(),
@@ -239,6 +244,9 @@ impl MachineSpec {
                             }
                             if let Some(raises) = raises_value(&deadline.raises) {
                                 object.insert("raise".into(), raises);
+                            }
+                            if let Some(signals) = signals_value(&deadline.signals) {
+                                object.insert("signal".into(), signals);
                             }
                             Value::Obj(object)
                         })

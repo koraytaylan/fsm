@@ -1,4 +1,4 @@
-use super::eval::{Raised, apply_block, eval_bool, is_compound, naive_validate, reject};
+use super::eval::{Raised, Signalled, apply_block, eval_bool, is_compound, naive_validate, reject};
 use super::*;
 
 pub(super) struct SelectedCandidate {
@@ -191,6 +191,7 @@ pub(super) struct NaiveMicro {
     pub(super) exited: Vec<String>,
     pub(super) entered: Vec<String>,
     pub(super) raised: Raised,
+    pub(super) signalled: Signalled,
 }
 
 /// Apply the selected transition to `st`: exit blocks, the transition's own
@@ -244,10 +245,20 @@ pub(super) fn apply_candidate(
     };
     let mut ctx = st.ctx.clone();
     let mut raised = Vec::new();
+    let mut signalled = Vec::new();
     for name in &exited {
         if let Some(node) = find(states, name) {
             if let Some(b) = &node.exit {
-                apply_block(b, &mut ctx, fields, false, budget, effects, &mut raised)?;
+                apply_block(
+                    b,
+                    &mut ctx,
+                    fields,
+                    false,
+                    budget,
+                    effects,
+                    &mut raised,
+                    &mut signalled,
+                )?;
             }
         }
     }
@@ -255,6 +266,7 @@ pub(super) fn apply_candidate(
         sets: tr.sets.clone(),
         emits: tr.emits.clone(),
         raises: tr.raises.clone(),
+        signals: Vec::new(),
     };
     apply_block(
         &tblock,
@@ -264,11 +276,21 @@ pub(super) fn apply_candidate(
         budget,
         effects,
         &mut raised,
+        &mut signalled,
     )?;
     for name in &entered {
         if let Some(node) = find(states, name) {
             if let Some(b) = &node.entry {
-                apply_block(b, &mut ctx, fields, false, budget, effects, &mut raised)?;
+                apply_block(
+                    b,
+                    &mut ctx,
+                    fields,
+                    false,
+                    budget,
+                    effects,
+                    &mut raised,
+                    &mut signalled,
+                )?;
             }
         }
     }
@@ -302,5 +324,6 @@ pub(super) fn apply_candidate(
         exited,
         entered,
         raised,
+        signalled,
     })
 }

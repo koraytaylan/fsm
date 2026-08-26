@@ -95,7 +95,16 @@ impl Store {
                     deadlines: transition.deadlines_after.clone(),
                     pending,
                     invocations: transition.invocations_after.clone(),
-                    signals: BTreeMap::new(),
+                    signals: transition
+                        .signals
+                        .iter()
+                        .map(|(k, signal)| {
+                            (
+                                format!("{instance_id}/{}/{k}", self.journal.last_seq + 1),
+                                signal.clone(),
+                            )
+                        })
+                        .collect(),
                 };
                 let state_hash = state_hash(
                     &machine_id,

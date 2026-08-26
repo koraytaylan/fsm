@@ -113,7 +113,13 @@ pub(super) fn apply_event_applied(st: &mut StoreState, rec: &Record) -> Result<(
                 deadlines: a.deadlines_after,
                 pending,
                 invocations: a.invocations_after,
-                signals: BTreeMap::new(),
+                // The same derived ids the write produced: a fold that
+                // numbered them differently would not reproduce the state.
+                signals: a
+                    .signals
+                    .iter()
+                    .map(|(k, signal)| (format!("{iid}/{}/{k}", rec.seq), signal.clone()))
+                    .collect(),
             };
             let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
                 ReplayError::FieldMismatch {

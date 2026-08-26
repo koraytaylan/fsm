@@ -127,6 +127,7 @@ pub fn poll_deadline_with(
                 sets: deadline.sets.clone(),
                 emits: deadline.emits.clone(),
                 raises: deadline.raises.clone(),
+                signals: deadline.signals.clone(),
             },
             action_kind: BlockKind::Deadline(deadline.name.clone()),
             owner: ExprSlotOwner::Deadline(deadline_index),

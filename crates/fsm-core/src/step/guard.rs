@@ -227,6 +227,26 @@ pub(super) fn owner_raise_slot(owner: &ExprSlotOwner, i: usize, field: &str) -> 
     }
 }
 
+pub(super) fn owner_signal_to_slot(owner: &ExprSlotOwner, i: usize) -> ExprSlot {
+    match owner {
+        ExprSlotOwner::Transition(t) => ExprSlot::TransitionSignalTo(*t, i),
+        ExprSlotOwner::Deadline(deadline) => ExprSlot::DeadlineSignalTo(*deadline, i),
+        ExprSlotOwner::Entry(n) => ExprSlot::StateEntrySignalTo(n.clone(), i),
+        ExprSlotOwner::Exit(n) => ExprSlot::StateExitSignalTo(n.clone(), i),
+    }
+}
+
+pub(super) fn owner_signal_arg_slot(owner: &ExprSlotOwner, i: usize, field: &str) -> ExprSlot {
+    match owner {
+        ExprSlotOwner::Transition(t) => ExprSlot::TransitionSignalArg(*t, i, field.into()),
+        ExprSlotOwner::Deadline(deadline) => {
+            ExprSlot::DeadlineSignalArg(*deadline, i, field.into())
+        }
+        ExprSlotOwner::Entry(n) => ExprSlot::StateEntrySignalArg(n.clone(), i, field.into()),
+        ExprSlotOwner::Exit(n) => ExprSlot::StateExitSignalArg(n.clone(), i, field.into()),
+    }
+}
+
 pub(super) fn val_matches(v: &Val, ty: &TySpec) -> bool {
     match (v, ty) {
         (Val::Int(_), TySpec::Int)

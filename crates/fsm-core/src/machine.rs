@@ -179,6 +179,22 @@ pub enum ExprSlot {
     StateExitRaiseArg(String, usize, String),
     /// A `with` field of the indexed invoke slot on the named state.
     InvokeWith(String, usize, String),
+    /// The `to` expression of the indexed signal in the indexed transition.
+    TransitionSignalTo(usize, usize),
+    /// A `with` field of the indexed signal in the indexed transition.
+    TransitionSignalArg(usize, usize, String),
+    /// The `to` expression of the indexed signal in the named state's entry.
+    StateEntrySignalTo(String, usize),
+    /// A `with` field of the indexed signal in the named state's entry.
+    StateEntrySignalArg(String, usize, String),
+    /// The `to` expression of the indexed signal in the named state's exit.
+    StateExitSignalTo(String, usize),
+    /// A `with` field of the indexed signal in the named state's exit.
+    StateExitSignalArg(String, usize, String),
+    /// The `to` expression of the indexed signal in the indexed deadline.
+    DeadlineSignalTo(usize, usize),
+    /// A `with` field of the indexed signal in the indexed deadline.
+    DeadlineSignalArg(usize, usize, String),
     /// The `after` expression of the indexed deadline definition.
     DeadlineAfter(usize),
     /// The indexed context assignment of the indexed deadline definition.

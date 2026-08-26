@@ -92,3 +92,9 @@ pub const MAX_INVOKES_PER_STATE: usize = 4;
 ///
 /// Deliberately *not* part of the genesis `limits` block, as above.
 pub const MAX_INVOKE_DEPTH: usize = 4;
+
+/// Maximum `signal` entries in one block, mirroring `MAX_EMITS_PER_BLOCK`.
+///
+/// Deliberately *not* part of the genesis `limits` block, for the reason
+/// `MAX_PAYLOAD_BYTES` gives: that block is hash-verified on fold.
+pub const MAX_SIGNALS_PER_BLOCK: usize = 4;

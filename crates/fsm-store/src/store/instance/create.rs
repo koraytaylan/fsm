@@ -149,7 +149,16 @@ impl Store {
             deadlines: a.deadlines_after.clone(),
             pending: pending.clone(),
             invocations: a.invocations_after.clone(),
-            signals: BTreeMap::new(),
+            signals: a
+                .signals
+                .iter()
+                .map(|(k, signal)| {
+                    (
+                        format!("{instance_id}/{}/{k}", self.journal.last_seq + 1),
+                        signal.clone(),
+                    )
+                })
+                .collect(),
         };
         let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &inst);
         let mut ov = BTreeMap::new();

@@ -461,6 +461,9 @@ pub(super) fn run_to_quiescence(
     // accumulate across the macrostep, because a parent that entered and left
     // an invoking state twice cancelled twice.
     let mut cancelled_children = std::mem::take(&mut trigger.cancelled_children);
+    // Signals number continuously across the microsteps of one macrostep,
+    // exactly as effects do.
+    let mut signals = std::mem::take(&mut trigger.signals);
     let mut unsettled = trigger;
     loop {
         let index = macrostep.microsteps.len() as u32 + 1;
@@ -542,6 +545,9 @@ pub(super) fn run_to_quiescence(
             }
         };
         macrostep.effects.append(&mut next.effects);
+        for (_, signal) in next.signals.drain(..) {
+            signals.push((signals.len() as u32, signal));
+        }
         // Breadth-first: an event raised while handling another lands behind
         // every event already waiting, which is the only order under which
         // "raised together, delivered together" is true. Generated done
@@ -612,6 +618,7 @@ pub(super) fn run_to_quiescence(
         deadlines_after,
         invocations_after: unsettled.invocations,
         cancelled_children,
+        signals,
         effects: macrostep.effects,
         monitor_flags,
         status_after,
@@ -739,6 +746,7 @@ fn apply_reaction(
                 sets: transition.sets.clone(),
                 emits: transition.emits.clone(),
                 raises: transition.raises.clone(),
+                signals: transition.signals.clone(),
             },
             action_kind: BlockKind::Transition,
             owner: ExprSlotOwner::Transition(selection.transition_idx),

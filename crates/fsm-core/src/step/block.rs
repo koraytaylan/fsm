@@ -11,7 +11,7 @@ use crate::trace::{
 
 use super::guard::{
     coerce_to_ty, compiled_or_annotate, owner_emit_slot, owner_raise_slot, owner_set_slot,
-    spec_scope,
+    owner_signal_arg_slot, owner_signal_to_slot, spec_scope,
 };
 use super::micro::{InternalEvent, InternalOrigin};
 use super::{EffectOut, ExprSlotOwner, Rejection};
@@ -23,6 +23,10 @@ pub(super) struct PipelineOutputs {
     pub(super) effects: Vec<EffectOut>,
     pub(super) next_effect_index: u32,
     pub(super) raised: Vec<InternalEvent>,
+    /// Signals the committed blocks emitted, in pipeline order, each with the
+    /// index it takes in the macrostep's **signal** sequence.
+    pub(super) signalled: Vec<(u32, crate::machine::PendingSignal)>,
+    pub(super) next_signal_index: u32,
 }
 
 impl PipelineOutputs {
@@ -31,6 +35,8 @@ impl PipelineOutputs {
             effects: Vec::new(),
             next_effect_index: first_effect_index,
             raised: Vec::new(),
+            signalled: Vec::new(),
+            next_signal_index: 0,
         }
     }
 }
@@ -52,6 +58,7 @@ pub(super) fn apply_block(
     let mut sets = Vec::new();
     let mut emits = Vec::new();
     let mut raises = Vec::new();
+    let mut signals = Vec::new();
     let evt_ref = if see_evt { Some(evt) } else { None };
     let b = Bindings {
         ctx: &snapshot,
@@ -256,11 +263,105 @@ pub(super) fn apply_block(
             },
         });
     }
+    // A signal is an emit turned sideways: the same snapshot semantics and
+    // the same document order, but it lands in the sender's signal outbox for
+    // the store to deliver to exactly one other instance. Its payload is
+    // **not** typed here — the target machine is a run-time value — and its
+    // `k` runs in its own sequence, so a reader never has to wonder which
+    // outbox an index belongs to.
+    for (si, signal) in block.signals.iter().enumerate() {
+        let target = {
+            let e = compiled_or_annotate(
+                &signal.to,
+                &owner_signal_to_slot(&owner, si),
+                compiled,
+                spec,
+                scope_kind,
+                &ctx_tys,
+                evt_tys.as_ref(),
+                &state_names,
+                &kind,
+            )?;
+            match eval(&e, &b, budget, false) {
+                (Ok(Val::Str(target)), _) => target,
+                (Ok(other), _) => {
+                    return Err(action_err(
+                        &kind,
+                        format!("signal target is {}, not a str", other.canonical_string()),
+                        "an instance id is a str".into(),
+                    ));
+                }
+                (Err(err), _) => {
+                    return Err(action_err_at(
+                        &kind,
+                        "run/action_error",
+                        err.message,
+                        err.hint,
+                        Some((err.span.start, err.span.end)),
+                        sets,
+                        emits,
+                        Some(err.code),
+                    ));
+                }
+            }
+        };
+        let mut payload = BTreeMap::new();
+        for (name, src) in &signal.with {
+            let e = compiled_or_annotate(
+                src,
+                &owner_signal_arg_slot(&owner, si, name),
+                compiled,
+                spec,
+                scope_kind,
+                &ctx_tys,
+                evt_tys.as_ref(),
+                &state_names,
+                &kind,
+            )?;
+            match eval(&e, &b, budget, false) {
+                (Ok(v), _) => {
+                    payload.insert(name.clone(), v);
+                }
+                (Err(err), _) => {
+                    return Err(action_err_at(
+                        &kind,
+                        "run/action_error",
+                        err.message,
+                        err.hint,
+                        Some((err.span.start, err.span.end)),
+                        sets,
+                        emits,
+                        Some(err.code),
+                    ));
+                }
+            }
+        }
+        let k = outputs.next_signal_index;
+        outputs.next_signal_index += 1;
+        signals.push(crate::trace::SignalTrace {
+            to: target.clone(),
+            event: signal.event.clone(),
+            with: payload
+                .iter()
+                .map(|(field, value)| (field.clone(), value.canonical_string()))
+                .collect(),
+            k,
+        });
+        outputs.signalled.push((
+            k,
+            crate::machine::PendingSignal {
+                target_instance_id: target,
+                event: signal.event.clone(),
+                payload,
+            },
+        ));
+    }
     Ok(BlockTrace {
         block: kind,
         sets,
         emits,
         raises,
+        signals,
         discarded: false,
     })
 }
@@ -320,6 +421,7 @@ fn action_err_at(
                 sets,
                 emits,
                 raises: Vec::new(),
+                signals: Vec::new(),
                 discarded: true,
             }],
             ..DecisionTrace::default()

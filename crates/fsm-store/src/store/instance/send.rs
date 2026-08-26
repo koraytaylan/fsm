@@ -169,7 +169,18 @@ impl Store {
                     deadlines: a.deadlines_after.clone(),
                     pending,
                     invocations: a.invocations_after.clone(),
-                    signals: BTreeMap::new(),
+                    // A signal's id reads like an effect's, deliberately: an
+                    // operator already knows how to read one.
+                    signals: a
+                        .signals
+                        .iter()
+                        .map(|(k, signal)| {
+                            (
+                                format!("{instance_id}/{}/{k}", self.journal.last_seq + 1),
+                                signal.clone(),
+                            )
+                        })
+                        .collect(),
                 };
                 let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &new);
                 let mut body = BTreeMap::new();

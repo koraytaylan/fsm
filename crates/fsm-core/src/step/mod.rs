@@ -35,7 +35,8 @@ use std::collections::BTreeMap;
 use crate::expr::eval::{Budget, Val};
 use crate::json::Value;
 use crate::machine::{
-    ActiveConfiguration, CancelledChild, CompiledMachine, InstanceState, Invocation, Status,
+    ActiveConfiguration, CancelledChild, CompiledMachine, InstanceState, Invocation, PendingSignal,
+    Status,
 };
 use crate::spec::Block;
 
@@ -77,6 +78,10 @@ pub struct Applied {
     /// Children whose invoking state was exited while they were running: the
     /// parent stopped waiting, so the store cancels them.
     pub cancelled_children: Vec<CancelledChild>,
+    /// Signals this macrostep emitted, each with its index in the macrostep's
+    /// own signal sequence. The shell derives the id an operator reads,
+    /// `{instance_id}/{seq}/{k}`, exactly as it does for an effect.
+    pub signals: Vec<(u32, PendingSignal)>,
     /// Effects emitted by the accepted pipeline, in execution order.
     pub effects: Vec<EffectOut>,
     /// Names of monitor-mode invariants that failed.
@@ -357,6 +362,7 @@ fn deliver(
                 sets: transition.sets.clone(),
                 emits: transition.emits.clone(),
                 raises: transition.raises.clone(),
+                signals: transition.signals.clone(),
             },
             action_kind: BlockKind::Transition,
             owner: ExprSlotOwner::Transition(tidx),

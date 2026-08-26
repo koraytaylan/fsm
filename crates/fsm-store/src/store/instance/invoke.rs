@@ -478,6 +478,7 @@ fn unhandled_applied(parent: &InstanceState) -> fsm_core::step::Applied {
         deadlines_after: parent.deadlines.clone(),
         invocations_after: parent.invocations.clone(),
         cancelled_children: Vec::new(),
+        signals: Vec::new(),
         effects: Vec::new(),
         monitor_flags: Vec::new(),
         status_after: parent.status,

@@ -74,7 +74,14 @@ pub(super) fn apply_deadline_applied(st: &mut StoreState, rec: &Record) -> Resul
                 deadlines: applied.transition.deadlines_after,
                 pending,
                 invocations: applied.transition.invocations_after,
-                signals: BTreeMap::new(),
+                // The same derived ids the write produced: a fold that
+                // numbered them differently would not reproduce the state.
+                signals: applied
+                    .transition
+                    .signals
+                    .iter()
+                    .map(|(k, signal)| (format!("{iid}/{}/{k}", rec.seq), signal.clone()))
+                    .collect(),
             };
             verify_record_state_hash(rec, &mid, iid, &new)?;
             st.instances.insert(iid.into(), new);

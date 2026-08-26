@@ -75,7 +75,21 @@ pub struct BlockTrace {
     /// Internal events this block raised; empty for every block of a machine
     /// that raises nothing, and then absent from the rendered trace.
     pub raises: Vec<RaiseTrace>,
+    /// Signals this block emitted, under their own `k` sequence.
+    pub signals: Vec<SignalTrace>,
     pub discarded: bool,
+}
+
+/// One signal a block emitted: where it goes, what it says, and its own
+/// outbox index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignalTrace {
+    pub to: String,
+    pub event: String,
+    pub with: BTreeMap<String, String>,
+    /// Index in the block's **signal** sequence, independent of the effect
+    /// `k`, so a reader never has to wonder which outbox a `k` belongs to.
+    pub k: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -350,6 +364,33 @@ fn block_value(b: &BlockTrace) -> Value {
                                 "with".into(),
                                 Value::Obj(
                                     raise
+                                        .with
+                                        .iter()
+                                        .map(|(k, v)| (k.clone(), Value::Str(v.clone())))
+                                        .collect(),
+                                ),
+                            ),
+                        ]))
+                    })
+                    .collect(),
+            ),
+        );
+    }
+    if !b.signals.is_empty() {
+        m.insert(
+            "signals".into(),
+            Value::Arr(
+                b.signals
+                    .iter()
+                    .map(|signal| {
+                        Value::Obj(BTreeMap::from([
+                            ("to".into(), Value::Str(signal.to.clone())),
+                            ("event".into(), Value::Str(signal.event.clone())),
+                            ("k".into(), Value::Num(signal.k.to_string())),
+                            (
+                                "with".into(),
+                                Value::Obj(
+                                    signal
                                         .with
                                         .iter()
                                         .map(|(k, v)| (k.clone(), Value::Str(v.clone())))

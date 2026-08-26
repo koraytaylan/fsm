@@ -292,6 +292,13 @@ pub(crate) fn drive_composition_outcomes(
             .unwrap_or_default()
             .to_string();
     }
+    // def/limit_signals (task 5001): four signals in one block are the most.
+    let over = r#"{"format":"fsm.machine/1","name":"sig5","states":[{"name":"a","entry":{"signal":[{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"},{"to":"ctx.target","event":"e"}]}}],"initial":"a","context":[{"name":"target","ty":"str","init":""}],"events":[],"transitions":[]}"#;
+    match dispatch(st, clock, "machine_create", &obj(&[("spec", value(over))])) {
+        Ok(v) => note_ok(&v, out),
+        Err(e) => note_err(&e, out),
+    }
+
     // The two run-time refusals.
     let parent_id = waiting(st, clock, "drive_parent", 1, "dp1");
     st.invoke_child(&parent_id, "review", "dp1-inv-1").unwrap();

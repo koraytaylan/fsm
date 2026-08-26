@@ -56,6 +56,7 @@ pub const ALL_CODES: &[&str] = &[
     "def/limit_raises",
     "def/limit_regions",
     "def/limit_sets",
+    "def/limit_signals",
     "def/limit_states",
     "def/limit_transitions",
     "def/limit_variants",

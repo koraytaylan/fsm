@@ -179,6 +179,24 @@ fn compile_with(
             BlockOwner::Exit(n) => ExprSlot::StateExitRaiseArg(n.clone(), i, field.into()),
         }
     };
+    let signal_to_slot = |owner: &BlockOwner, i: usize| -> ExprSlot {
+        match owner {
+            BlockOwner::Transition(t) => ExprSlot::TransitionSignalTo(*t, i),
+            BlockOwner::Deadline(deadline) => ExprSlot::DeadlineSignalTo(*deadline, i),
+            BlockOwner::Entry(n) => ExprSlot::StateEntrySignalTo(n.clone(), i),
+            BlockOwner::Exit(n) => ExprSlot::StateExitSignalTo(n.clone(), i),
+        }
+    };
+    let signal_arg_slot = |owner: &BlockOwner, i: usize, field: &str| -> ExprSlot {
+        match owner {
+            BlockOwner::Transition(t) => ExprSlot::TransitionSignalArg(*t, i, field.into()),
+            BlockOwner::Deadline(deadline) => {
+                ExprSlot::DeadlineSignalArg(*deadline, i, field.into())
+            }
+            BlockOwner::Entry(n) => ExprSlot::StateEntrySignalArg(n.clone(), i, field.into()),
+            BlockOwner::Exit(n) => ExprSlot::StateExitSignalArg(n.clone(), i, field.into()),
+        }
+    };
     let check_block = |block: &Block,
                        scope: &Scope<'_>,
                        path: &str,
@@ -250,6 +268,52 @@ fn compile_with(
                         }
                     }
                 }
+            }
+        }
+        // A signal's target is an instance id, so `to` must be a `str`. Its
+        // `event` and `with` are **not** checked here: the target machine is
+        // a run-time value, so its declarations are unknown at admission.
+        // Declaring the target machine statically was the alternative, and it
+        // was rejected because a signal exists to reach an instance the
+        // sender learned about at run time — the one construct in this engine
+        // whose payload typing is a delivery-time check.
+        if block.signals.len() > limits::MAX_SIGNALS_PER_BLOCK {
+            errs.push(Finding::err(
+                "def/limit_signals",
+                format!("{path}/signal"),
+                format!(
+                    "more than {} signals in one block",
+                    limits::MAX_SIGNALS_PER_BLOCK
+                ),
+                "send fewer signals from one block, or split the work across states",
+            ));
+        }
+        for (i, signal) in block.signals.iter().enumerate() {
+            if let Some(got) = bind(
+                &signal.to,
+                scope,
+                &format!("{path}/signal/{i}/to"),
+                signal_to_slot(owner, i),
+                compiled_exprs,
+                errs,
+            ) && got != Ty::Str
+            {
+                errs.push(Finding::err(
+                    "def/assign_type",
+                    format!("{path}/signal/{i}/to"),
+                    format!("signal target is {got}, not str"),
+                    "an instance id is a str; build one with a str expression",
+                ));
+            }
+            for (field, source) in &signal.with {
+                bind(
+                    source,
+                    scope,
+                    &format!("{path}/signal/{i}/with/{field}"),
+                    signal_arg_slot(owner, i, field),
+                    compiled_exprs,
+                    errs,
+                );
             }
         }
         // A raise's payload is typed exactly like a context assignment:
@@ -395,6 +459,7 @@ fn compile_with(
                 sets: deadline.sets.clone(),
                 emits: deadline.emits.clone(),
                 raises: deadline.raises.clone(),
+                signals: deadline.signals.clone(),
             },
             &block_scope,
             &format!("/deadlines/{index}"),
@@ -478,6 +543,7 @@ fn compile_with(
             sets: t.sets.clone(),
             emits: t.emits.clone(),
             raises: t.raises.clone(),
+            signals: t.signals.clone(),
         };
         check_block(
             &block,

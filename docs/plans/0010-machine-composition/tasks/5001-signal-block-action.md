@@ -12,8 +12,19 @@ touches:
   - crates/fsm-core/src/step/block.rs
   - crates/fsm-core/src/machine.rs
   - crates/fsm-core/src/limits.rs
+  - crates/fsm-core/src/spec/mod.rs
+  - crates/fsm-core/src/spec/compile.rs
+  - crates/fsm-core/src/spec/serialize.rs
+  - crates/fsm-core/src/spec/machine_impl.rs
+  - crates/fsm-core/src/trace.rs
+  - crates/fsm-core/src/step/{mod,micro,transition,create,deadline,guard}.rs
+  - crates/fsm-store/src/store/instance/{send,poll,create}.rs
+  - crates/fsm-core/src/replay/apply/*.rs
   - crates/fsm-core/tests/signal_actions.rs
-status: planned
+  - crates/fsm-core/tests/oracle/*.rs
+  - crates/fsm-cli/tests/naive_caller/*.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Signal Block Action
@@ -44,3 +55,5 @@ A signal reaches exactly one instance, named by an expression evaluated at emit 
 - Identity: a machine with no `signal` serializes without the key and keeps its committed `machine_id`.
 
 - **Done when:** `cargo test -p fsm-core --test signal_actions` passes every case above including the deliberate absence of compile-time payload checking, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `SignalSpec` on `Block` (and on `TransitionSpec`/`DeadlineSpec`, whose synthetic action blocks carry it through), parsed from `signal` at all three sites, serialized only when present, typed at admission for `to` alone, limited to four per block, evaluated in `block.rs` under the pre-block snapshot with its own `k` sequence and a `SignalTrace` beside the raises, threaded through `Transitioned`/`Applied.signals`, and persisted by the three store writers — and reproduced identically by the three replay sites — as `{instance_id}/{seq}/{k}`. The naive oracle grew the same outbox rather than being left to diverge, so the differential covers signals the moment an enumerated machine emits one. `def/limit_signals` lands with its SPEC rows, its one-step correction, and its tool outcome, as every code does.

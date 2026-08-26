@@ -58,6 +58,8 @@ pub(super) struct Transitioned {
     pub(super) effects: Vec<EffectOut>,
     /// Internal events the committed blocks raised, in pipeline order.
     pub(super) raises: Vec<InternalEvent>,
+    /// Signals the committed blocks emitted, each with its outbox index.
+    pub(super) signals: Vec<(u32, crate::machine::PendingSignal)>,
     pub(super) pipeline: Vec<BlockTrace>,
     pub(super) candidates: Vec<LevelTrace>,
     pub(super) exited: Vec<u16>,
@@ -283,6 +285,7 @@ pub(super) fn apply_selected_transition(
         history_after,
         effects: outputs.effects,
         raises: outputs.raised,
+        signals: outputs.signalled,
         pipeline,
         candidates,
         exited: exited_ids,
