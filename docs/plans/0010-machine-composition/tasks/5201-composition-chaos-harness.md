@@ -10,7 +10,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/tests/composition_chaos.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Composition Chaos Harness
@@ -37,3 +37,7 @@ Composition adds edges between instances, and an edge is exactly the thing a cra
 - Iteration count is configurable via the env override, and the committed default is the one the wall-time measurement justified — stated in the commit message alongside the measurement.
 
 - **Done when:** `cargo test -p fsm-cli --test composition_chaos` passes 200 seeded iterations across all five death points with every invariant holding, the parent-exit window is proven recoverable through `doctor` and `repair`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `composition_chaos.rs` with its own xorshift64\* (the documented duplication), 200 seeded iterations over five death points, `FSM_COMPOSITION_CHAOS_ITERS` and `COMPOSITION_CHAOS_SEED`, and a `the_generator_is_deterministic` companion that also asserts every death point is reachable so no seed space is dead. Verified by mutation: deriving a child id from a counter instead of `(parent, slot)` fails the reopen with `ReplayMismatch { field: "child_instance_id" }`, and the mutation was reverted. Measured 15.8 s debug / 2.6 s release for the committed 200 iterations — recorded in the commit message with the chosen default, per step 8.
+
+**Corrections.** The fixture's review machine needed a terminal `decided` state and a `returns` projection naming the field its *own* child declares, not a fixed name: a review over an audit reads `finding`, a review over a review reads `seen`. Without the terminal state a middle level can never settle, so a depth-3 tree could not return past its first level — which is exactly the case the plan asks this harness to exercise.
