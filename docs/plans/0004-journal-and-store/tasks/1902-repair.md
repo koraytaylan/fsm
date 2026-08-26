@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/journal_io.rs
   - crates/fsm-cli/tests/repair.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Repair

@@ -11,7 +11,7 @@ touches:
   - crates/fsm-cli/src/journal_io.rs
   - crates/fsm-cli/src/store.rs
   - crates/fsm-cli/src/clock.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Append And Fsync

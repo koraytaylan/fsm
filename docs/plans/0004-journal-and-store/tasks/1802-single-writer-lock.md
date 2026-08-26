@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/journal_io.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Single Writer Lock

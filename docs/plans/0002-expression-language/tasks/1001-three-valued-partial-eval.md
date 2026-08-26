@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/expr/partial.rs
   - crates/fsm-core/tests/expr_partial.rs
   - crates/fsm-core/tests/fixtures/expr/partial.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Three Valued Partial Eval

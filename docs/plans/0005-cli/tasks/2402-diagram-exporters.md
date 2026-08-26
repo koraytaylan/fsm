@@ -12,7 +12,7 @@ touches:
   - crates/fsm-core/tests/diagram_golden.rs
   - "crates/fsm-core/tests/fixtures/diagram/**"
   - crates/fsm-cli/src/cli/diagram.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Diagram Exporters

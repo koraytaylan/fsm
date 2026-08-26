@@ -8,7 +8,7 @@ gated: false
 touches:
   - crates/fsm-core/src/lib.rs
   - "crates/fsm-core/src/expr/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Lexer

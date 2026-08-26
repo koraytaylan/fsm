@@ -7,7 +7,7 @@ depends_on: []
 gated: false
 touches:
   - crates/fsm-core/tests/proputil.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Machine Generators

@@ -10,7 +10,7 @@ touches:
   - examples/order_lifecycle.json
   - examples/invoice_matching.json
   - crates/fsm-cli/tests/examples.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Worked Examples

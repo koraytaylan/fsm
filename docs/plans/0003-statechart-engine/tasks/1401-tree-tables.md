@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/tree.rs
   - crates/fsm-core/src/machine.rs
   - crates/fsm-core/tests/tree_build.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Tree Tables

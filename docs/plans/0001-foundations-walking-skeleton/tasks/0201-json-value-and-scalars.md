@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/json/parse.rs
   - crates/fsm-core/tests/json_scalars.rs
   - "crates/fsm-core/tests/fixtures/json-scalars/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Json Value And Scalars

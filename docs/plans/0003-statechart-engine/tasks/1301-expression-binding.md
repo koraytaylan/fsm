@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/machine.rs
   - crates/fsm-core/tests/compile_machine.rs
   - "crates/fsm-core/tests/fixtures/machines/binding/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Expression Binding

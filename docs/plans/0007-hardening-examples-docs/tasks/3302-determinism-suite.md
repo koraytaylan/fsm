@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/tests/determinism.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Determinism Suite

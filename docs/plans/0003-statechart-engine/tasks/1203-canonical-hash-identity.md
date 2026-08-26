@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/hashes.rs
   - crates/fsm-core/tests/hashes_golden.rs
   - "crates/fsm-core/tests/fixtures/hashes/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Canonical Hash Identity

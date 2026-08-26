@@ -12,7 +12,7 @@ touches:
   - LICENSE-MIT
   - LICENSE-APACHE
   - crates/fsm-cli/tests/spec_appendix.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Readme And Spec Completion

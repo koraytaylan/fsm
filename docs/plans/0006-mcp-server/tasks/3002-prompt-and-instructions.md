@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/prompts.rs
   - crates/fsm-cli/tests/mcp_prompts.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Prompt And Instructions

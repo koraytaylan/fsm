@@ -17,7 +17,7 @@ touches:
   - crates/fsm-core/src/hashes.rs
   - crates/fsm-core/tests/spec_parse.rs
   - "crates/fsm-core/tests/fixtures/machines/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Machine Spec Parse

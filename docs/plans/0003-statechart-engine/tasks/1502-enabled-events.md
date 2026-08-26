@@ -10,7 +10,7 @@ gated: false
 touches:
   - crates/fsm-core/src/analyze.rs
   - crates/fsm-core/tests/enabled_events.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Enabled Events

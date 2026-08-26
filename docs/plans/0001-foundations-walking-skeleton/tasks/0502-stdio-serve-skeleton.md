@@ -12,7 +12,7 @@ touches:
   - crates/fsm-cli/src/main.rs
   - crates/fsm-cli/tests/mcp_skeleton.rs
   - "crates/fsm-cli/tests/fixtures/transcripts/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Stdio Serve Skeleton

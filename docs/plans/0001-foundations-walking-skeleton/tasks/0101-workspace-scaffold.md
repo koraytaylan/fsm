@@ -14,7 +14,7 @@ touches:
   - crates/fsm-cli/src/lib.rs
   - crates/fsm-cli/src/main.rs
   - "crates/fsm-cli/src/mcp/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Workspace Scaffold

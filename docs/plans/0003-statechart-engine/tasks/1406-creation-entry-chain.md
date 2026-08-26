@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-core/src/step.rs
   - crates/fsm-core/tests/create_chain.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Creation Entry Chain

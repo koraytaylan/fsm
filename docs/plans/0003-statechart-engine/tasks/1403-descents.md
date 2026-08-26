@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-core/src/tree.rs
   - crates/fsm-core/tests/tree_descents.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Descents

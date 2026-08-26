@@ -10,7 +10,7 @@ touches:
   - crates/fsm-cli/src/journal_io.rs
   - crates/fsm-cli/tests/recovery_classification.rs
   - "crates/fsm-cli/tests/fixtures/journals/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Open And Verify

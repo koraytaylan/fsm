@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/expr/eval.rs
   - crates/fsm-core/tests/expr_eval.rs
   - crates/fsm-core/tests/fixtures/expr/eval.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Evaluator

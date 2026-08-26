@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/replay.rs
   - crates/fsm-core/tests/record_golden.rs
   - "crates/fsm-core/tests/fixtures/records/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Record Envelope

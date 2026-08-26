@@ -10,7 +10,7 @@ touches:
   - crates/fsm-cli/src/mcp/tools.rs
   - crates/fsm-cli/src/mcp/descriptions.rs
   - crates/fsm-cli/tests/tool_schemas.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Tool Registry And Schemas

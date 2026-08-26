@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/mcp/tools.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Tool Dispatch

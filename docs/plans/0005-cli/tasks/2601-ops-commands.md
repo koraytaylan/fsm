@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/cli/ops.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Ops Commands

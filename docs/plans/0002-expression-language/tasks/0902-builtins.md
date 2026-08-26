@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/expr/eval.rs
   - crates/fsm-core/tests/expr_builtins.rs
   - crates/fsm-core/tests/fixtures/expr/builtins.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Builtins

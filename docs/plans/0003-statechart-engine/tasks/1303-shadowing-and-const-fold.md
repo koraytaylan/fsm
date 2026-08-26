@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/analyze.rs
   - crates/fsm-core/tests/shadowing_golden.rs
   - "crates/fsm-core/tests/fixtures/machines/analyze/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Shadowing And Const Fold

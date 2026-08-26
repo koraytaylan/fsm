@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/trace.rs
   - crates/fsm-core/src/hashes.rs
   - crates/fsm-core/tests/trace_render.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Trace And State Hash

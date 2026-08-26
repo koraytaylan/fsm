@@ -14,7 +14,7 @@ touches:
   - crates/fsm-cli/src/mcp/prompts.rs
   - crates/fsm-cli/tests/mcp_lifecycle.rs
   - "crates/fsm-cli/tests/fixtures/transcripts/lifecycle.*"
-status: planned
+status: done
 merged_as: ""
 ---
 # Negotiation And Lifecycle

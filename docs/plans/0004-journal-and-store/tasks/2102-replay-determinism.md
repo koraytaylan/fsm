@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/tests/replay_determinism.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Replay Determinism

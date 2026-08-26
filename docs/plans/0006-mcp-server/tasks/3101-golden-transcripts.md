@@ -12,7 +12,7 @@ touches:
   - crates/fsm-cli/tests/mcp_full.rs
   - crates/fsm-cli/tests/mcp_structured_parity.rs
   - "crates/fsm-cli/tests/fixtures/transcripts/full_*"
-status: planned
+status: done
 merged_as: ""
 ---
 # Golden Transcripts

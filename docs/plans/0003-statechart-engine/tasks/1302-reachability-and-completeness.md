@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/analyze.rs
   - crates/fsm-core/tests/analyze_golden.rs
   - "crates/fsm-core/tests/fixtures/machines/analyze/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Reachability And Completeness

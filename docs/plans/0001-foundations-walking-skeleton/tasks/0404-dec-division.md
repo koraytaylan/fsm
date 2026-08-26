@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-core/src/decimal/mod.rs
   - crates/fsm-core/tests/fixtures/decimal/div_vectors.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Dec Division

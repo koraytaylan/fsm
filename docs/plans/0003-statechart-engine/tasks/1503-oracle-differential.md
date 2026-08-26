@@ -14,7 +14,7 @@ touches:
   - crates/fsm-core/tests/step_golden.rs
   - crates/fsm-core/tests/history_props.rs
   - "crates/fsm-core/tests/fixtures/scenarios/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Oracle Differential

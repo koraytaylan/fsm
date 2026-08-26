@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/cli/machine.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Machine Commands

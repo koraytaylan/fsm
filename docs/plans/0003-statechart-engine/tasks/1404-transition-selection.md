@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-core/src/step.rs
   - crates/fsm-core/tests/select_golden.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Transition Selection

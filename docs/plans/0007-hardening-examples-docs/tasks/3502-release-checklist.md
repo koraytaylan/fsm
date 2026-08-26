@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - docs/RELEASE.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Release Checklist

@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/expr/parser.rs
   - crates/fsm-core/tests/expr_golden.rs
   - crates/fsm-core/tests/fixtures/expr/parse.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Parser

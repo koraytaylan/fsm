@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/spec.rs
   - crates/fsm-core/tests/spec_validate.rs
   - "crates/fsm-core/tests/fixtures/machines/invalid/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Structural Validation

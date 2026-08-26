@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/decimal/mod.rs
   - crates/fsm-core/tests/decimal_golden.rs
   - crates/fsm-core/tests/fixtures/decimal/align_vectors.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Dec Representation And Alignment

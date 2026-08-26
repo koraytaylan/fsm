@@ -11,7 +11,7 @@ touches:
   - crates/fsm-cli/src/main.rs
   - crates/fsm-cli/src/render.rs
   - "crates/fsm-cli/src/cli/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Args Framework

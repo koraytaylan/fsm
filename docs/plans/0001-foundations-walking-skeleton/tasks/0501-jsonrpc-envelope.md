@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/mcp/jsonrpc.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Jsonrpc Envelope

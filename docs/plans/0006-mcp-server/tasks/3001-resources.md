@@ -10,7 +10,7 @@ touches:
   - crates/fsm-cli/src/mcp/resources.rs
   - docs/EXAMPLES.md
   - crates/fsm-cli/tests/mcp_resources.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Resources

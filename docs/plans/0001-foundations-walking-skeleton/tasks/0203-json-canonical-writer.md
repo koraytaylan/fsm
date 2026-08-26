@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/canon.rs
   - crates/fsm-core/tests/canon_golden.rs
   - "crates/fsm-core/tests/fixtures/canon/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Json Canonical Writer

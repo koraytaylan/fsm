@@ -9,7 +9,7 @@ depends_on:
 gated: false
 touches:
   - docs/SPEC.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Spec Expressions Doc

@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/clippy.toml
   - crates/fsm-cli/tests/policy.rs
   - crates/fsm-cli/tests/zero_deps.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Policy Gates

@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/tests/crash_harness.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Crash Harness

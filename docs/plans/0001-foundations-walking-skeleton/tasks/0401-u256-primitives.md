@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-core/src/decimal/u256.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # U256 Primitives

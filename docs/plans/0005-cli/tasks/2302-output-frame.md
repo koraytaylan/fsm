@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/src/render.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Output Frame

@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/tests/naive_caller.rs
   - crates/fsm-core/src/error.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Naive Caller Suite

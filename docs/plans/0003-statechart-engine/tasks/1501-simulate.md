@@ -10,7 +10,7 @@ gated: false
 touches:
   - crates/fsm-core/src/simulate.rs
   - crates/fsm-core/tests/simulate_runs.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Simulate

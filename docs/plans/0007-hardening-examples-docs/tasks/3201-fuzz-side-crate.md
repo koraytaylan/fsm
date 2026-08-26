@@ -7,7 +7,7 @@ depends_on: []
 gated: false
 touches:
   - "fuzz/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Fuzz Side Crate

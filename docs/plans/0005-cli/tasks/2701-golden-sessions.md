@@ -12,7 +12,7 @@ touches:
   - crates/fsm-cli/tests/cli_golden.rs
   - "crates/fsm-cli/tests/fixtures/sessions/**"
   - "crates/fsm-cli/tests/fixtures/structured/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Golden Sessions

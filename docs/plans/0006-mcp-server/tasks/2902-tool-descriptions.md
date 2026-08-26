@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/descriptions.rs
   - crates/fsm-cli/tests/tools_budget.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Tool Descriptions

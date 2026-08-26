@@ -11,7 +11,7 @@ touches:
   - crates/fsm-core/src/ident.rs
   - crates/fsm-core/tests/expr_typeck.rs
   - crates/fsm-core/tests/fixtures/expr/typeck.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Typechecker

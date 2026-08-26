@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/json/parse.rs
   - crates/fsm-core/tests/json_corpus.rs
   - "crates/fsm-core/tests/fixtures/json/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Json Structural Parser

@@ -8,7 +8,7 @@ depends_on:
 gated: false
 touches:
   - docs/EXAMPLES.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Example Walkthroughs

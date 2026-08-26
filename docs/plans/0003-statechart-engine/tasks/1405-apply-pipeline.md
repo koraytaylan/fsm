@@ -11,7 +11,7 @@ gated: false
 touches:
   - crates/fsm-core/src/step.rs
   - crates/fsm-core/tests/apply_pipeline.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Apply Pipeline

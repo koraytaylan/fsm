@@ -9,7 +9,7 @@ gated: false
 touches:
   - tools/gen_decimal_vectors.py
   - crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl
-status: planned
+status: done
 merged_as: ""
 ---
 # Decimal Differential Harness

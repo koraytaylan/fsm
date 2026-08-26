@@ -10,7 +10,7 @@ touches:
   - crates/fsm-core/src/sha256.rs
   - crates/fsm-core/tests/sha256_golden.rs
   - "crates/fsm-core/tests/fixtures/sha256/**"
-status: planned
+status: done
 merged_as: ""
 ---
 # Sha256 And Hex
