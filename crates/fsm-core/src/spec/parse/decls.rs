@@ -117,11 +117,25 @@ fn parse_fields(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Vec<F
     out
 }
 
+/// Which declaration list is being parsed; only events accept `internal`.
+#[derive(Clone, Copy)]
+enum Declared {
+    Events,
+    Effects,
+}
+
+struct NamedEntry {
+    name: String,
+    fields: Vec<FieldDecl>,
+    internal: bool,
+}
+
 fn parse_named_list(
     v: Option<&Value>,
     path: &str,
+    declared: Declared,
     errs: &mut Vec<Finding>,
-) -> Option<Vec<(String, Vec<FieldDecl>)>> {
+) -> Option<Vec<NamedEntry>> {
     match v {
         None => Some(Vec::new()),
         Some(x) => match x.as_arr() {
@@ -147,10 +161,28 @@ fn parse_named_list(
                         ));
                         continue;
                     };
-                    check_keys(obj, &["name", "fields"], &p, errs);
+                    match declared {
+                        Declared::Events => {
+                            check_keys(obj, &["name", "fields", "internal"], &p, errs)
+                        }
+                        Declared::Effects => check_keys(obj, &["name", "fields"], &p, errs),
+                    }
                     let name = req_str(obj, "name", &format!("{p}/name"), errs)
                         .unwrap_or("")
                         .to_string();
+                    let internal = match obj.get("internal") {
+                        None => false,
+                        Some(Value::Bool(internal)) => *internal,
+                        Some(_) => {
+                            errs.push(Finding::err(
+                                "def/shape",
+                                format!("{p}/internal"),
+                                "internal must be a boolean",
+                                "use true for an event only the machine raises, or omit it",
+                            ));
+                            false
+                        }
+                    };
                     if name.starts_with('$') {
                         errs.push(Finding::err(
                             "def/reserved_ident",
@@ -170,7 +202,11 @@ fn parse_named_list(
                             ));
                         }
                     }
-                    out.push((name, fields));
+                    out.push(NamedEntry {
+                        name,
+                        fields,
+                        internal,
+                    });
                 }
                 Some(out)
             }
@@ -179,17 +215,24 @@ fn parse_named_list(
 }
 
 pub(super) fn parse_events(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<EventDecl> {
-    parse_named_list(v, "/events", errs)
+    parse_named_list(v, "/events", Declared::Events, errs)
         .unwrap_or_default()
         .into_iter()
-        .map(|(name, fields)| EventDecl { name, fields })
+        .map(|entry| EventDecl {
+            name: entry.name,
+            fields: entry.fields,
+            internal: entry.internal,
+        })
         .collect()
 }
 
 pub(super) fn parse_effects(v: Option<&Value>, errs: &mut Vec<Finding>) -> Vec<EffectDecl> {
-    parse_named_list(v, "/effects", errs)
+    parse_named_list(v, "/effects", Declared::Effects, errs)
         .unwrap_or_default()
         .into_iter()
-        .map(|(name, fields)| EffectDecl { name, fields })
+        .map(|entry| EffectDecl {
+            name: entry.name,
+            fields: entry.fields,
+        })
         .collect()
 }

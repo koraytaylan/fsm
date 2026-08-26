@@ -86,6 +86,7 @@ pub const ALL_CODES: &[&str] = &[
     "io/read",
     "io/write",
     "req/args_invalid",
+    "req/event_internal",
     "req/event_unknown",
     "req/field_missing",
     "req/field_scale",

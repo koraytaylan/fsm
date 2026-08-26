@@ -736,65 +736,7 @@ fn one_step_every_non_infra_code() {
     .unwrap();
     seen.insert("run/invariant");
 
-    // run/microstep_limit: a guarded eventless cycle that never settles. The
-    // hint names the transition that kept firing; the caller redefines the
-    // machine with a guard that becomes false, and the same event settles.
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"spin","states":[{"name":"a"},{"name":"b","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]}}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b"},{"from":"b","if":"ctx.n >= 0","to":"b"}]}"#,
-    );
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_create",
-        &obj(&[
-            ("machine", Value::Str("spin".into())),
-            ("request_id", Value::Str("spin1".into())),
-        ]),
-    )
-    .unwrap();
-    let err = send_err(
-        &mut st,
-        &mut clock,
-        "inst-spin1",
-        "go",
-        obj(&[]),
-        "spin-bad",
-    );
-    assert_eq!(err.code, "run/microstep_limit");
-    assert!(
-        err.hint.contains("transition 1") && err.hint.contains("state b"),
-        "{}",
-        err.hint
-    );
-    create_ok(
-        &mut st,
-        &mut clock,
-        r#"{"format":"fsm.machine/1","name":"spin_fixed","states":[{"name":"a"},{"name":"b","entry":{"do":[{"target":"n","value":"ctx.n + 1"}]}}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b"},{"from":"b","if":"ctx.n < 3","to":"b"}]}"#,
-    );
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_create",
-        &obj(&[
-            ("machine", Value::Str("spin_fixed".into())),
-            ("request_id", Value::Str("spin2".into())),
-        ]),
-    )
-    .unwrap();
-    dispatch(
-        &mut st,
-        &mut clock,
-        "instance_send",
-        &obj(&[
-            ("instance_id", Value::Str("inst-spin2".into())),
-            ("event", obj(&[("name", Value::Str("go".into()))])),
-            ("request_id", Value::Str("spin-ok".into())),
-        ]),
-    )
-    .unwrap();
-    seen.insert("run/microstep_limit");
+    crate::reactive_flows::one_step_reactive(&mut st, &mut clock, &mut seen);
 
     create_ok(
         &mut st,

@@ -10,9 +10,16 @@ gated: false
 touches:
   - crates/fsm-core/src/spec/parse/decls.rs
   - crates/fsm-core/src/spec/mod.rs
+  - crates/fsm-core/src/spec/machine_impl.rs
   - crates/fsm-core/src/step/validate.rs
+  - crates/fsm-core/src/error.rs
   - crates/fsm-core/tests/internal_events.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/one_step_every_non_infra_code.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
+  - crates/fsm-cli/tests/naive_caller/reactive_flows.rs
+  - crates/fsm-cli/tests/naive_caller/main.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Internal Event Declaration
@@ -39,3 +46,5 @@ An internal event is an ordinary typed event that only the machine may raise; ma
 - An internal event with 33 fields still reports `def/limit_fields`, and 129 events of which some are internal still reports `def/limit_events`.
 
 - **Done when:** `cargo test -p fsm-core --test internal_events` passes every case above, every `examples/` machine keeps its committed `machine_id`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `EventDecl.internal`, parsed only on events (an `internal` key on an effect is `def/unknown_key`), serialized only when true (`machine_impl.rs`, where event serialization lives). `validate_event` refuses a declared-internal event and any `$`-prefixed name with `req/event_internal`; the hint lists the sendable events and, once `4402` lands `raise`, the sites that raise it — until then it says so. Contrary to step 6, `req/event_internal` and its SPEC rows landed here with the code, per the `4201` correction, and the naive-caller flow sends an internal event, reads the hint, and sends a listed one. That flow pushed `one_step_every_non_infra_code.rs` past the 1000-line ceiling, so plan 0009's flows for both every-code suites moved into `naive_caller/reactive_flows.rs`, which the later tasks extend instead.

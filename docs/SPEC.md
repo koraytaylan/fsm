@@ -37,7 +37,10 @@ Machine identity hashes the entire canonical definition *including*
 
 Context variables: `{name, ty, init}`. Types: `int`, `str`, `bool`,
 `timestamp`, `duration`, `{decimal: "N"}`, `{enum: "Name"}`. Events and
-effects declare `fields`. States are recursive trees; a child with
+effects declare `fields`. An event may declare `internal: true`: it is an
+ordinary typed event that only the machine may raise — the external send
+path refuses it with `req/event_internal`, as it refuses every `$`-prefixed
+generated name — and it may still be the `on` of any transition. States are recursive trees; a child with
 `history: "deep"|"shallow"` is a history pseudostate. It MUST be owned by a
 compound parent and MUST be childless, nonterminal, and have no `initial` of
 its own. Blocks use `do` (sets) and `emit`. Transitions use `from`, optional
@@ -226,6 +229,7 @@ is sorted before hashing.
 | `run/create_failed` | creation failed; **unjournaled** | wrap the inner error |
 | `run/overflow` | checked arithmetic in an action/guard | operand strings |
 | `req/event_unknown` | undeclared event | — |
+| `req/event_internal` | an event declared `internal`, or a `$`-prefixed generated name, sent from outside | name where the machine raises it and list the sendable events |
 | `req/field_missing` | declared field absent | — |
 | `req/field_unknown` | extra field | — |
 | `req/field_type` | value does not match declared type | — |
@@ -680,6 +684,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `io/read` — read failed
 - `io/write` — write failed
 - `req/args_invalid` — tool/CLI arguments invalid
+- `req/event_internal` — an internal or generated event sent from outside
 - `req/event_unknown` — undeclared event
 - `req/field_missing` — declared field absent
 - `req/field_scale` — too many fraction digits

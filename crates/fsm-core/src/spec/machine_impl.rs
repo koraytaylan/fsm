@@ -47,13 +47,19 @@ impl MachineSpec {
                 self.events
                     .iter()
                     .map(|e| {
-                        v_obj([
-                            ("name".into(), v_str(e.name.clone())),
+                        let mut event = BTreeMap::from([
+                            ("name".to_string(), v_str(e.name.clone())),
                             (
-                                "fields".into(),
+                                "fields".to_string(),
                                 Value::Arr(e.fields.iter().map(field_value).collect()),
                             ),
-                        ])
+                        ]);
+                        // Omitted when false: a machine that declares no
+                        // internal event keeps its machine_id.
+                        if e.internal {
+                            event.insert("internal".into(), Value::Bool(true));
+                        }
+                        Value::Obj(event)
                     })
                     .collect(),
             ),

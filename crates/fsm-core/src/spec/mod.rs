@@ -126,6 +126,9 @@ pub struct FieldDecl {
 pub struct EventDecl {
     pub name: String,
     pub fields: Vec<FieldDecl>,
+    /// Only the machine may raise it: the external send path refuses it
+    /// with `req/event_internal`, and `enabled_events` never lists it.
+    pub internal: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
