@@ -21,7 +21,6 @@ use fsm_core::step::{Applied, Outcome, create, step};
 use fsm_core::tree::Tree;
 
 const DIGEST: &str = "9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c";
-const OTHER: &str = "1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b1a3b";
 
 fn machine(src: &str) -> (CompiledMachine, Tree) {
     let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap())

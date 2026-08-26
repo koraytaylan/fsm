@@ -596,12 +596,37 @@ mod tests {
 
     static N: AtomicU64 = AtomicU64::new(0);
 
-    fn tmp() -> std::path::PathBuf {
+    /// A scratch directory that removes itself. A suite that leaks one per run
+    /// exhausts a long-lived machine's tmpfs inodes long before it exhausts its
+    /// bytes, and the failure looks like a broken toolchain rather than a leaky
+    /// test.
+    struct Scratch(std::path::PathBuf);
+
+    impl std::ops::Deref for Scratch {
+        type Target = std::path::Path;
+        fn deref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl AsRef<std::path::Path> for Scratch {
+        fn as_ref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn tmp() -> Scratch {
         let n = N.fetch_add(1, Ordering::SeqCst);
         let p = std::env::temp_dir().join(format!("fsm-ic-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
-        p
+        Scratch(p)
     }
 
     fn case() -> String {
@@ -611,12 +636,12 @@ mod tests {
         )
     }
 
-    fn setup() -> (std::path::PathBuf, String) {
+    fn setup() -> (Scratch, String) {
         clock::reset_injected();
         clock::force_ms(5_000);
         crate::args::reset_request_ids();
         let dir = tmp();
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         assert_eq!(
             (machine::SPECS[0].run)(
                 &mut c,
@@ -643,7 +668,7 @@ mod tests {
     #[test]
     fn new_prints_leaf_and_request() {
         let dir = tmp();
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         (machine::SPECS[0].run)(
             &mut c,
             &Args {
@@ -674,7 +699,7 @@ mod tests {
         let v = parse(spec.as_bytes(), &JsonLimits::DEFAULT).unwrap();
         store.define_machine(v, false, false).unwrap();
         drop(store);
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         let code = new_inst(
             &mut c,
             &Args {
@@ -690,7 +715,7 @@ mod tests {
     #[test]
     fn send_applied_rejected_idempotent_seq() {
         let (dir, iid) = setup();
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         let seq = Store::open(&dir).unwrap().journal.last_seq;
         assert_eq!(
             send(
@@ -757,7 +782,7 @@ mod tests {
         store.create_instance("tsm", "t1", "c", None).unwrap();
         drop(store);
         clock::force_ms(42_000);
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         assert_eq!(
             send(
                 &mut c,
@@ -790,7 +815,7 @@ mod tests {
         drop(store);
 
         let (dir2, iid) = setup();
-        let mut c = Ctx::new(dir2.clone(), true, false);
+        let mut c = Ctx::new(dir2.to_path_buf(), true, false);
         send(
             &mut c,
             &Args {

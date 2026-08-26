@@ -7,7 +7,40 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// showed up first on a fast macOS release build.
 static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-fn tmp() -> PathBuf {
+/// A scratch directory that removes itself.
+///
+/// Every temp directory a test makes has to be given back: a suite that
+/// leaks one per run exhausts a long-lived machine's tmpfs inodes long
+/// before it exhausts its bytes, and the failure looks like a broken
+/// toolchain rather than a leaky test.
+struct Scratch(std::path::PathBuf);
+
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for Scratch {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.0.as_os_str()
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn tmp() -> Scratch {
     let n = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -16,7 +49,7 @@ fn tmp() -> PathBuf {
     let i = TMP_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let p = std::env::temp_dir().join(format!("fsm-s-{pid}-{n}-{i}"));
     fs::create_dir_all(&p).unwrap();
-    p
+    Scratch(p)
 }
 
 fn case_def() -> Value {

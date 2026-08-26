@@ -441,7 +441,32 @@ mod tests {
     use fsm_core::record::RecordKind;
     use std::collections::BTreeSet;
 
-    fn tmp() -> std::path::PathBuf {
+    /// A scratch directory that removes itself. A suite that leaks one per
+    /// run exhausts a long-lived machine's tmpfs inodes long before it
+    /// exhausts its bytes, and the failure looks like a broken toolchain
+    /// rather than a leaky test.
+    struct Scratch(std::path::PathBuf);
+
+    impl std::ops::Deref for Scratch {
+        type Target = std::path::Path;
+        fn deref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl AsRef<std::path::Path> for Scratch {
+        fn as_ref(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn tmp() -> Scratch {
         let p = std::env::temp_dir().join(format!(
             "fsm-ops-{}-{}",
             std::process::id(),
@@ -451,10 +476,10 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&p).unwrap();
-        p
+        Scratch(p)
     }
 
-    fn clean() -> std::path::PathBuf {
+    fn clean() -> Scratch {
         let dir = tmp();
         let _j = init(&dir).unwrap();
         dir
@@ -500,7 +525,7 @@ mod tests {
     #[test]
     fn verify_clean_and_torn() {
         let dir = clean();
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         assert_eq!(
             journal_verify(
                 &mut c,
@@ -532,7 +557,7 @@ mod tests {
     #[test]
     fn replay_and_doctor() {
         let dir = clean();
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         assert_eq!(
             journal_replay(
                 &mut c,
@@ -564,7 +589,7 @@ mod tests {
         let mut bytes = std::fs::read(&seg).unwrap();
         bytes.truncate(bytes.len() - 3);
         std::fs::write(&seg, &bytes).unwrap();
-        let mut c = Ctx::new(dir.clone(), true, false);
+        let mut c = Ctx::new(dir.to_path_buf(), true, false);
         assert_eq!(
             repair(
                 &mut c,
@@ -600,7 +625,7 @@ mod tests {
             bytes[pos + 2] ^= 0x01;
         }
         std::fs::write(&seg, &bytes).unwrap();
-        let mut c2 = Ctx::new(dir2, true, false);
+        let mut c2 = Ctx::new(dir2.to_path_buf(), true, false);
         let code = repair(
             &mut c2,
             &Args {

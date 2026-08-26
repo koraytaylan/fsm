@@ -10,7 +10,38 @@ pub(crate) fn gate() -> MutexGuard<'static, ()> {
     GATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub(crate) fn tmp(tag: &str) -> std::path::PathBuf {
+/// A scratch directory that removes itself. A suite that leaks one per run
+/// exhausts a long-lived machine's tmpfs inodes long before it exhausts its
+/// bytes, and the failure looks like a broken toolchain rather than a leaky
+/// test.
+pub(crate) struct Scratch(pub(crate) std::path::PathBuf);
+
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::ffi::OsStr> for Scratch {
+    fn as_ref(&self) -> &std::ffi::OsStr {
+        self.0.as_os_str()
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+pub(crate) fn tmp(tag: &str) -> Scratch {
     let p = std::env::temp_dir().join(format!(
         "fsm-reg-{tag}-{}-{}",
         std::process::id(),
@@ -20,7 +51,7 @@ pub(crate) fn tmp(tag: &str) -> std::path::PathBuf {
             .as_nanos()
     ));
     std::fs::create_dir_all(&p).unwrap();
-    p
+    Scratch(p)
 }
 
 pub(crate) fn case() -> Value {

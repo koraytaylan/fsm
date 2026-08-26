@@ -567,3 +567,51 @@ pub fn react_from(
         &mut EngineSelector,
     )
 }
+
+/// Schedule a machine's deadlines for an active configuration, from scratch.
+///
+/// Public for [`crate::migrate`]: a migration drops every existing schedule
+/// and recomputes, by exactly the rule state entry uses, so the answer is the
+/// engine's. The entered chain is every state on the active path, ancestors
+/// first, which is the order entry itself schedules in.
+pub fn schedule_for(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    configuration: &ActiveConfiguration,
+    ctx: &BTreeMap<String, Val>,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Result<BTreeMap<String, i64>, Rejection> {
+    let mut entered = Vec::new();
+    let leaves: Vec<&String> = match configuration {
+        ActiveConfiguration::Sequential { leaf } => vec![leaf],
+        ActiveConfiguration::Parallel { leaves } => leaves.values().collect(),
+    };
+    for leaf in leaves {
+        let Some(index) = tree.index.get(leaf.as_str()).copied() else {
+            continue;
+        };
+        let mut chain = vec![index];
+        let mut cursor = index;
+        while let Some(parent) = tree.parent[cursor as usize] {
+            chain.push(parent);
+            cursor = parent;
+        }
+        chain.reverse();
+        for state in chain {
+            if !entered.contains(&state) {
+                entered.push(state);
+            }
+        }
+    }
+    transition::update_deadline_schedules(
+        machine,
+        &BTreeMap::new(),
+        &[],
+        &entered,
+        tree,
+        ctx,
+        now_ms,
+        budget,
+    )
+}

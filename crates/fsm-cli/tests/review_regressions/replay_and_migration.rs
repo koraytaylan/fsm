@@ -301,8 +301,8 @@ fn lock_held_store_open_writes_no_version() {
 fn concurrent_first_open_installs_one_version() {
     let _g = gate();
     let dir = tmp("conc");
-    let a = dir.clone();
-    let b = dir.clone();
+    let a = dir.to_path_buf();
+    let b = dir.to_path_buf();
     let t1 = std::thread::spawn(move || Store::open(&a));
     let t2 = std::thread::spawn(move || Store::open(&b));
     let r1 = t1.join().unwrap();

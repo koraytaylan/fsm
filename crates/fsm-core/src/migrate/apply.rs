@@ -44,6 +44,18 @@ pub struct MigrationReport {
     /// Monitor invariants that failed on the migrated state. They do not
     /// block; an operator sees them and decides.
     pub monitor_flags: Vec<String>,
+    /// History bindings the mapping does not cover, `owner/child` each.
+    pub dropped_history: Vec<String>,
+    /// Every timer whose due time moved: name, the time it had, the time it
+    /// has now. Migration restarts the clock, and this is where an operator
+    /// sees it.
+    pub rescheduled_deadlines: Vec<(String, Option<i64>, Option<i64>)>,
+    /// Effect ids carried verbatim.
+    pub retained_effects: Vec<String>,
+    /// Signal ids carried verbatim.
+    pub retained_signals: Vec<String>,
+    /// Slots dropped because their result was already delivered.
+    pub dropped_slots: Vec<String>,
     /// The reaction the migrated instance ran, if any.
     pub microsteps: Vec<crate::trace::MicrostepTrace>,
 }
@@ -60,10 +72,25 @@ pub fn migrate(
     let Some(supersedes) = &to.spec.supersedes else {
         return Err(reject(
             "req/migrate_not_superseded",
-            format!("{} does not supersede anything", to.spec.name),
+            format!("{} supersedes nothing", to.spec.name),
             "migrate onto a definition whose supersedes block names the one this instance is on",
         ));
     };
+    // And it must supersede *this* machine. A mapping written against some
+    // other definition would map states that happen to share names and
+    // project a context it was never checked against — the admission rules
+    // ran against the machine the block names, not this one.
+    if crate::hashes::digest_of(&from.machine_id) != Some(supersedes.machine.as_str()) {
+        return Err(reject(
+            "req/migrate_not_superseded",
+            format!(
+                "{} supersedes {} and the instance is on {}",
+                to.spec.name, supersedes.machine, from.machine_id
+            ),
+            "migrate onto the definition that supersedes the one this instance is on, or migrate \
+             in hops if a chain of definitions stands between them",
+        ));
+    }
 
     // Step one — gate. There is nothing to save in a settled instance, and
     // migrating a finished workflow would change what it did.
@@ -154,7 +181,21 @@ pub fn migrate(
     // Step four — carry over everything an instance holds besides its state.
     // A seam at this stage: task 5402 fills it, and the step order does not
     // move to accommodate what it will do.
-    let carried = super::carryover::carry_over(from, to, tree_to, st, &configuration, now_ms);
+    let carried = super::carryover::carry_over(
+        to,
+        tree_to,
+        st,
+        &mapping,
+        &configuration,
+        &ctx,
+        now_ms,
+        budget,
+    )?;
+    report.dropped_history = carried.dropped_history.clone();
+    report.rescheduled_deadlines = carried.rescheduled_deadlines.clone();
+    report.retained_effects = carried.retained_effects.clone();
+    report.retained_signals = carried.retained_signals.clone();
+    report.dropped_slots = carried.dropped_slots.clone();
 
     // Step five — the new definition's invariants, on the migrated state.
     // Migrating an instance into a state its own definition calls invalid is

@@ -285,21 +285,20 @@ pub(super) fn run_reactions(
     // Signals are collected in pipeline order and numbered continuously, the
     // same way the effects are.
     let mut signalled: Vec<(u32, fsm_core::machine::PendingSignal)> = Vec::new();
-    let mut collect =
-        |emitted: &super::eval::Signalled,
-         out: &mut Vec<(u32, fsm_core::machine::PendingSignal)>| {
-            for (target, event, payload) in emitted {
-                let k = out.len() as u32;
-                out.push((
-                    k,
-                    fsm_core::machine::PendingSignal {
-                        target_instance_id: target.clone(),
-                        event: event.clone(),
-                        payload: payload.clone(),
-                    },
-                ));
-            }
-        };
+    let collect = |emitted: &super::eval::Signalled,
+                   out: &mut Vec<(u32, fsm_core::machine::PendingSignal)>| {
+        for (target, event, payload) in emitted {
+            let k = out.len() as u32;
+            out.push((
+                k,
+                fsm_core::machine::PendingSignal {
+                    target_instance_id: target.clone(),
+                    event: event.clone(),
+                    payload: payload.clone(),
+                },
+            ));
+        }
+    };
     collect(&first.signalled, &mut signalled);
     let (mut invocations, mut cancelled_children) = naive_invocations(
         spec,

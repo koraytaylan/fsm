@@ -3,7 +3,32 @@ use crate::clock::FixedClock;
 use fsm_core::hashes::state_hash;
 use fsm_core::json::{JsonLimits, parse};
 
-fn tmp() -> std::path::PathBuf {
+/// A scratch directory that removes itself. A suite that leaks one per run
+/// exhausts a long-lived machine's tmpfs inodes long before it exhausts its
+/// bytes, and the failure looks like a broken toolchain rather than a leaky
+/// test.
+struct Scratch(std::path::PathBuf);
+
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn tmp() -> Scratch {
     let p = std::env::temp_dir().join(format!(
         "fsm-tools-{}-{}",
         std::process::id(),
@@ -13,7 +38,7 @@ fn tmp() -> std::path::PathBuf {
             .as_nanos()
     ));
     std::fs::create_dir_all(&p).unwrap();
-    p
+    Scratch(p)
 }
 
 fn case() -> Value {

@@ -14,7 +14,32 @@ use super::paths::acquire_lock;
 /// showed up first on a fast macOS release build.
 static TMP_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-fn tmp() -> PathBuf {
+/// A scratch directory that removes itself. A suite that leaks one per run
+/// exhausts a long-lived machine's tmpfs inodes long before it exhausts its
+/// bytes, and the failure looks like a broken toolchain rather than a leaky
+/// test.
+struct Scratch(std::path::PathBuf);
+
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::path::Path> for Scratch {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn tmp() -> Scratch {
     let n = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -24,7 +49,7 @@ fn tmp() -> PathBuf {
     let p = std::env::temp_dir().join(format!("fsm-j-{pid}-{n}-{i}"));
     let _ = fs::remove_dir_all(&p);
     fs::create_dir_all(&p).unwrap();
-    p
+    Scratch(p)
 }
 
 #[test]
@@ -238,15 +263,8 @@ fn every_prior_version_migrates_after_successful_full_fold() {
 
 #[test]
 fn version_seven_migrates_with_the_exact_historical_genesis_limits() {
-    struct Cleanup(PathBuf);
-    impl Drop for Cleanup {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
-
-    let cleanup = Cleanup(tmp());
-    let dir = &cleanup.0;
+    let cleanup = tmp();
+    let dir = &*cleanup;
     let journal = init(dir).unwrap();
     drop(journal);
 

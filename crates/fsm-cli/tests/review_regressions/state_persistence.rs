@@ -4,7 +4,7 @@ use fsm_cli::store::Store;
 use fsm_core::expr::eval::Val;
 use fsm_core::json::{JsonLimits, Value, parse};
 
-use crate::harness::{case, gate, tmp};
+use crate::harness::{Scratch, case, gate, tmp};
 
 #[test]
 fn override_survives_reopen() {
@@ -98,7 +98,7 @@ fn enum_set_by_transition_survives_reopen() {
 // it had advanced. Standard idempotency-key semantics: same key + different
 // params is a conflict, not a replay.
 
-fn conflict_fixture(tag: &str) -> (std::path::PathBuf, Store) {
+fn conflict_fixture(tag: &str) -> (Scratch, Store) {
     let dir = tmp(tag);
     let mut s = Store::open(&dir).unwrap();
     s.define_machine(case(), false, false).unwrap();
