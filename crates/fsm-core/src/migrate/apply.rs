@@ -60,6 +60,22 @@ pub struct MigrationReport {
     pub microsteps: Vec<crate::trace::MicrostepTrace>,
 }
 
+/// One migration attempt, carrying what it worked out before it finished.
+///
+/// A preview and an apply are the *same* attempt read two ways: a preview
+/// wants the report even when the outcome is a refusal, and an apply wants
+/// the state. Structuring it this way is what makes preview/apply agreement
+/// a property of the code rather than of two implementations staying in
+/// step.
+pub(crate) struct Attempt {
+    /// What the attempt determined, however far it got.
+    pub(crate) report: MigrationReport,
+    /// The configuration the mapping produced, before any reaction.
+    pub(crate) mapped_configuration: Option<ActiveConfiguration>,
+    /// The migrated instance, or the refusal that stopped it.
+    pub(crate) outcome: Result<InstanceState, Rejection>,
+}
+
 /// Move `st` from `from` onto `to` under `to`'s own `supersedes` mapping.
 pub fn migrate(
     from: &CompiledMachine,
@@ -69,8 +85,34 @@ pub fn migrate(
     now_ms: i64,
     budget: &mut Budget,
 ) -> Result<Migrated, Rejection> {
+    let attempt = attempt(from, to, tree_to, st, now_ms, budget);
+    attempt.outcome.map(|state| Migrated {
+        state,
+        report: attempt.report,
+    })
+}
+
+pub(crate) fn attempt(
+    from: &CompiledMachine,
+    to: &CompiledMachine,
+    tree_to: &Tree,
+    st: &InstanceState,
+    now_ms: i64,
+    budget: &mut Budget,
+) -> Attempt {
+    let mut report = MigrationReport::default();
+    let mut mapped_configuration = None;
+    macro_rules! refuse {
+        ($rejection:expr) => {
+            return Attempt {
+                report,
+                mapped_configuration,
+                outcome: Err($rejection),
+            }
+        };
+    }
     let Some(supersedes) = &to.spec.supersedes else {
-        return Err(reject(
+        refuse!(reject(
             "req/migrate_not_superseded",
             format!("{} supersedes nothing", to.spec.name),
             "migrate onto a definition whose supersedes block names the one this instance is on",
@@ -81,7 +123,7 @@ pub fn migrate(
     // project a context it was never checked against — the admission rules
     // ran against the machine the block names, not this one.
     if crate::hashes::digest_of(&from.machine_id) != Some(supersedes.machine.as_str()) {
-        return Err(reject(
+        refuse!(reject(
             "req/migrate_not_superseded",
             format!(
                 "{} supersedes {} and the instance is on {}",
@@ -95,7 +137,7 @@ pub fn migrate(
     // Step one — gate. There is nothing to save in a settled instance, and
     // migrating a finished workflow would change what it did.
     if st.status != Status::Running {
-        return Err(reject(
+        refuse!(reject(
             "req/migrate_settled",
             format!("the instance is {}", st.status.as_str()),
             "a settled instance has nothing to migrate; read its history instead",
@@ -110,10 +152,12 @@ pub fn migrate(
         .iter()
         .map(|(old, new)| (old.as_str(), new.as_str()))
         .collect();
-    let mut report = MigrationReport::default();
     let configuration = match &st.configuration {
         ActiveConfiguration::Sequential { leaf } => {
-            let mapped = map_leaf(&mapping, leaf, None)?;
+            let mapped = match map_leaf(&mapping, leaf, None) {
+                Ok(mapped) => mapped,
+                Err(rejection) => refuse!(rejection),
+            };
             report
                 .leaves
                 .push((String::new(), leaf.clone(), mapped.clone()));
@@ -122,7 +166,10 @@ pub fn migrate(
         ActiveConfiguration::Parallel { leaves } => {
             let mut mapped_leaves = BTreeMap::new();
             for (region, leaf) in leaves {
-                let mapped = map_leaf(&mapping, leaf, Some(region))?;
+                let mapped = match map_leaf(&mapping, leaf, Some(region)) {
+                    Ok(mapped) => mapped,
+                    Err(rejection) => refuse!(rejection),
+                };
                 report
                     .leaves
                     .push((region.clone(), leaf.clone(), mapped.clone()));
@@ -145,21 +192,24 @@ pub fn migrate(
     for declared in &to.spec.context {
         match projections.get(declared.name.as_str()) {
             Some(source) => {
-                let value = project(source, &st.ctx, budget)?;
+                let value = match project(source, &st.ctx, budget) {
+                    Ok(value) => value,
+                    Err(rejection) => refuse!(rejection),
+                };
                 report
                     .projected
                     .push((declared.name.clone(), value.canonical_string()));
                 ctx.insert(declared.name.clone(), value);
             }
             None => {
-                let value =
-                    crate::step::parse_init_for(&declared.init, &declared.ty).map_err(|code| {
-                        reject(
-                            code,
-                            format!("{} has no init this migration can use", declared.name),
-                            "give the variable a valid init, or map it in the supersedes block",
-                        )
-                    })?;
+                let value = match crate::step::parse_init_for(&declared.init, &declared.ty) {
+                    Ok(value) => value,
+                    Err(code) => refuse!(reject(
+                        code,
+                        format!("{} has no init this migration can use", declared.name),
+                        "give the variable a valid init, or map it in the supersedes block",
+                    )),
+                };
                 report.defaulted.push(declared.name.clone());
                 ctx.insert(declared.name.clone(), value);
             }
@@ -181,7 +231,8 @@ pub fn migrate(
     // Step four — carry over everything an instance holds besides its state.
     // A seam at this stage: task 5402 fills it, and the step order does not
     // move to accommodate what it will do.
-    let carried = super::carryover::carry_over(
+    mapped_configuration = Some(configuration.clone());
+    let carried = match super::carryover::carry_over(
         to,
         tree_to,
         st,
@@ -190,7 +241,10 @@ pub fn migrate(
         &ctx,
         now_ms,
         budget,
-    )?;
+    ) {
+        Ok(carried) => carried,
+        Err(rejection) => refuse!(rejection),
+    };
     report.dropped_history = carried.dropped_history.clone();
     report.rescheduled_deadlines = carried.rescheduled_deadlines.clone();
     report.retained_effects = carried.retained_effects.clone();
@@ -211,7 +265,7 @@ pub fn migrate(
             "the migrated state breaks an enforce invariant; correct the mapping or the definition",
         );
         rejection.trace.invariants = invariants.clone();
-        return Err(rejection);
+        refuse!(rejection);
     }
     report.monitor_flags = monitor_flags;
 
@@ -229,13 +283,18 @@ pub fn migrate(
         invocations: carried.invocations,
         signals: carried.signals,
     };
-    let applied: Applied = crate::step::react_from(to, tree_to, &migrated, now_ms, budget)?;
+    let applied: Applied = match crate::step::react_from(to, tree_to, &migrated, now_ms, budget) {
+        Ok(applied) => applied,
+        Err(rejection) => refuse!(rejection),
+    };
     report.microsteps = applied.trace.microsteps.clone();
 
     // Step seven — return. `seq` is the store's business, and a pure function
     // that invented one would be lying about ordering.
-    Ok(Migrated {
-        state: InstanceState {
+    Attempt {
+        report,
+        mapped_configuration,
+        outcome: Ok(InstanceState {
             status: applied.status_after,
             configuration: applied.configuration_after,
             ctx: applied.ctx_after,
@@ -244,9 +303,8 @@ pub fn migrate(
             pending: migrated.pending,
             invocations: applied.invocations_after,
             signals: migrated.signals,
-        },
-        report,
-    })
+        }),
+    }
 }
 
 /// One leaf's mapping, or the refusal that stops the whole migration.

@@ -9,7 +9,9 @@ gated: false
 touches:
   - crates/fsm-core/src/migrate/preview.rs
   - crates/fsm-core/tests/migrate_preview.rs
-status: planned
+  - crates/fsm-core/src/migrate/apply.rs
+  - crates/fsm-core/tests/migrate_preview.rs
+status: done
 merged_as: ""
 ---
 # Migration Preview
@@ -38,3 +40,7 @@ Nobody should move four hundred live workflows to find out that eight of them ar
 - Purity: neither function takes a `request_id` nor mutates its inputs.
 
 - **Done when:** `cargo test -p fsm-core --test migrate_preview` passes every case above including preview/apply agreement, both functions are pure and safe on a read-only store, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `MigrationPreview` with both configurations, before/after context pairs, the apply's own report, and `refusal: Option<Rejection>`; `preview_all` with descending-count then code ordering; and the `Attempt` refactor in `apply.rs` that makes preview/apply agreement structural — one function that keeps its report either way, with `migrate` taking the state from it and `preview` taking everything. The suite covers the clean case, both refusals, the clock, the predicted reaction, the cohort grouping's stability, purity, and an agreement sweep over nine instances spanning three leaves and three statuses.
+
+**Corrections.** Step 2 asks the preview to carry the projected context as before/after pairs; it carries **every** variable that exists on either side, so a variable the new definition drops shows a before with no after. A pairs-list restricted to projections would omit exactly the change an operator most needs to see before approving — the one that loses data.
