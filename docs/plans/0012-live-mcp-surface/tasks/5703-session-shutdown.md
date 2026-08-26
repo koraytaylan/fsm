@@ -10,7 +10,8 @@ touches:
   - crates/fsm-cli/src/mcp/notify.rs
   - crates/fsm-cli/src/mcp/serve.rs
   - crates/fsm-cli/tests/mcp_shutdown.rs
-status: planned
+  - crates/fsm-cli/tests/mcp_shutdown.rs
+status: done
 merged_as: ""
 ---
 # Session Shutdown
@@ -38,3 +39,7 @@ A background thread that outlives its session writes to a closed pipe from a pro
 - A non-subscribing session's full transcript is byte-identical to the pre-plan build's, apart from the `initialize` line `5702` changed.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_shutdown` passes every case above, no session leaks a thread on any exit path, a non-subscribing session spawns nothing, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `FeedHandle` with `spawn`, `stop_and_join`, and a `Drop` that calls it; `sleep_unless_stopped` with its 25 ms slices; the session's `Live::ensure_feed` and `Live::shutdown`, the first called only from the subscribe arm and the second from EOF; a process-wide spawn counter so "spawns nothing" is a claim a test can check; and the suite — no spawn without a subscription, one feed per session however many subscriptions, a bounded stop, `Drop` joining, a broken stream ending the feed, two sequential sessions not interfering, and a non-subscribing transcript that says nothing on its own.
+
+**Corrections.** The feed spawned here runs a real loop rather than waiting for `5902` to spawn it: a lifecycle nothing exercises is a lifecycle nobody has tested, and every one of this task's own tests — lazy spawn, join at EOF, bounded shutdown, drop safety — needs a thread that actually exists. What `5902` adds is the poll in the middle of the loop, not the loop. The spawn counter is process-global, so every test in the file that spawns a feed takes one lock: a delta read while another test's thread starts is measuring the wrong thing, which release-mode scheduling found and debug-mode did not.

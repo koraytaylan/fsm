@@ -275,10 +275,9 @@ fn the_output_carries_identifiers_only() {
 #[test]
 fn a_read_only_store_refuses_before_it_previews() {
     let directory = TestDirectory::create();
-    let store = cohort(&directory, 2, 0);
-    drop(store);
-    // Hold the writer, so the command's own open is refused.
-    let _holder = Store::open(directory.path()).unwrap();
+    // The cohort's own store stays open, so the command meets a live writer
+    // rather than racing to re-take a lock it just released.
+    let _holder = cohort(&directory, 2, 0);
     let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
         .args(["migrate", "--from=cohort_v1", "--to=cohort_v2", "--json"])
         .arg(format!("--data-dir={}", directory.path().display()))

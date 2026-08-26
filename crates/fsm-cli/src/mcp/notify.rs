@@ -7,7 +7,9 @@
 //! Plan 0012 task 5701.
 
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::Value;
@@ -137,5 +139,80 @@ impl Write for SharedWriter {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+/// How many change feeds this process has spawned.
+///
+/// A session that nobody subscribes to must spawn **nothing**: no thread, no
+/// I/O between requests, and a transcript identical to the one it produced
+/// before this plan existed. That is a claim a test has to be able to check,
+/// so the spawn is counted.
+static FEEDS_SPAWNED: AtomicU64 = AtomicU64::new(0);
+
+/// The number of change feeds spawned so far in this process.
+pub fn feeds_spawned() -> u64 {
+    FEEDS_SPAWNED.load(Ordering::Relaxed)
+}
+
+/// A running change feed, and the only way to stop one.
+///
+/// A background thread that outlives its session writes to a closed pipe
+/// from a process that has moved on, so the handle owns the lifecycle and
+/// `Drop` closes it: no early return can leak the thread.
+pub struct FeedHandle {
+    stop: Arc<AtomicBool>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl FeedHandle {
+    /// Spawn a feed that runs `body` until the stop flag is set.
+    ///
+    /// `body` is handed the flag and must check it between sleep slices; the
+    /// contract is that a stop is honoured well inside one poll interval,
+    /// because a sleep that ignores the flag turns every disconnect into a
+    /// quarter-second stall.
+    pub fn spawn(body: impl FnOnce(&AtomicBool) + Send + 'static) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&stop);
+        FEEDS_SPAWNED.fetch_add(1, Ordering::Relaxed);
+        let join = std::thread::spawn(move || body(&flag));
+        Self {
+            stop,
+            join: Some(join),
+        }
+    }
+
+    /// Ask the feed to stop, and wait for it.
+    pub fn stop_and_join(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(join) = self.join.take() {
+            // A feed that panicked is already reported by the panic hook;
+            // failing to join it must not take the session down as well.
+            let _ = join.join();
+        }
+    }
+}
+
+impl Drop for FeedHandle {
+    fn drop(&mut self) {
+        self.stop_and_join();
+    }
+}
+
+/// Sleep up to `total_ms`, waking to check the flag every 25 ms.
+///
+/// Shutdown never waits a full poll interval, which is what makes a client
+/// disconnect feel immediate rather than like a stall.
+pub fn sleep_unless_stopped(stop: &AtomicBool, total_ms: u64) {
+    const SLICE_MS: u64 = 25;
+    let mut slept = 0;
+    while slept < total_ms {
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        let slice = SLICE_MS.min(total_ms - slept);
+        std::thread::sleep(std::time::Duration::from_millis(slice));
+        slept += slice;
     }
 }

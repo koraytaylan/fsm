@@ -14,7 +14,7 @@ use super::jsonrpc::{
     INVALID_PARAMS, INVALID_REQUEST, Incoming, METHOD_NOT_FOUND, NOT_INITIALIZED, PARSE_ERROR,
     WireError, error_response, parse_line, result_response,
 };
-use super::notify::Notifier;
+use super::notify::{FeedHandle, Notifier};
 use super::tools;
 use super::{cancel, logging, subscribe};
 
@@ -246,6 +246,10 @@ pub fn serve_session(
     serve_session_with(store, clock, None, None, input, output)
 }
 
+/// The change feed's cadence, matched to the executor's own tick so a
+/// subscriber learns of a change about as fast as the executor caused it.
+const FEED_INTERVAL_MS: u64 = 250;
+
 /// What one session knows that outlives a single request: what it watches,
 /// how loudly it wants to be told, and which requests the client withdrew.
 #[derive(Default)]
@@ -253,6 +257,52 @@ struct Live {
     subscriptions: subscribe::Subscriptions,
     level: Option<logging::Level>,
     cancellations: cancel::Cancellations,
+    /// The change feed, spawned on the first successful subscribe and
+    /// stopped when the session ends. A server nobody subscribes to spawns
+    /// nothing and does no I/O between requests — which is what keeps every
+    /// non-subscribing transcript byte-identical and this plan inert for the
+    /// callers that do not use it.
+    feed: Option<FeedHandle>,
+}
+
+impl Live {
+    /// Start the change feed if this session does not have one yet.
+    ///
+    /// The body is `5902`'s; until then a session's subscription is recorded
+    /// and nothing polls. The lifecycle is decided here regardless, because
+    /// deciding it after something is spawned is how a thread outlives its
+    /// session.
+    fn ensure_feed(&mut self, data_dir: Option<std::path::PathBuf>, output: &Notifier) {
+        if self.feed.is_some() {
+            return;
+        }
+        let Some(_data_dir) = data_dir else {
+            return;
+        };
+        let writer = output.clone_handle();
+        self.feed = Some(FeedHandle::spawn(move |stop| {
+            // The cadence and the stop discipline are settled here; what
+            // `5902` adds is the poll that fills the middle. A feed with
+            // nothing to report still has to wake, check, and die promptly.
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                if writer.is_broken() {
+                    // The client is gone. The main loop discovers EOF on its
+                    // own; a feed that kept writing would be writing to a
+                    // closed pipe.
+                    return;
+                }
+                super::notify::sleep_unless_stopped(stop, FEED_INTERVAL_MS);
+            }
+        }));
+    }
+
+    /// Stop the feed and wait for it. Idempotent, and called on every exit
+    /// path including a drop.
+    fn shutdown(&mut self) {
+        if let Some(mut feed) = self.feed.take() {
+            feed.stop_and_join();
+        }
+    }
 }
 
 /// The protocol loop, optionally driving the executor between client lines.
@@ -289,7 +339,10 @@ pub fn serve_session_with(
         match read_capped_line(&mut input, LINE_CAP)? {
             Line::Eof => {
                 // Every send already flushed under the lock, so there is
-                // nothing left buffered to push.
+                // nothing left buffered to push — and nothing to say: a
+                // goodbye notification after the client closed stdout is a
+                // write to a closed pipe.
+                live.shutdown();
                 return Ok(());
             }
             Line::TooLong => {
@@ -454,6 +507,8 @@ fn handle_request(
                 return send_line(output, &rpc_error(id, INVALID_PARAMS, "uri is required"));
             }
             live.subscriptions.subscribe(uri);
+            // The feed starts on the first subscription and not before.
+            live.ensure_feed(store.as_ref().map(|st| st.data_dir.clone()), output);
             send_line(output, &result_response(id, Value::Obj(Default::default())))
         }
         "resources/unsubscribe" => {
