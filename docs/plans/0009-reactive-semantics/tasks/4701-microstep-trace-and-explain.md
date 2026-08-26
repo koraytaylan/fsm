@@ -11,7 +11,10 @@ touches:
   - crates/fsm-store/src/store/view.rs
   - crates/fsm-cli/src/render.rs
   - crates/fsm-core/tests/trace_render.rs
-status: planned
+  - crates/fsm-store/tests/explain_goldens.rs
+  - crates/fsm-store/tests/fixtures/non_reactive_explain.json
+  - crates/fsm-cli/tests/explain_microsteps.rs
+status: done
 merged_as: ""
 ---
 # Microstep Trace And Explain
@@ -38,3 +41,5 @@ A macrostep that cannot be explained is a macrostep nobody will trust with a wor
 - Round trip: `to_value` output re-parsed and re-rendered is stable.
 
 - **Done when:** `cargo test -p fsm-core --test trace_render` passes with unchanged non-reactive goldens and new reactive cases, `explain_seq` renders cascades, the CLI shows both microstep line forms, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** steps 1–3 were already true when this task opened — `DecisionTrace.microsteps` (each `MicrostepTrace` with its own `trigger`, `candidates`, and `pipeline`) and `internal_unhandled` landed with 4201 and 4403, both emitted only when non-empty — and step 4 needed no code: `explain_seq` attaches the rebuilt `DecisionTrace` value, whose `microsteps` array already nests every reaction as its own section beneath the trigger's, while `history_entry` carries the record's own claim beside it (4601). So `trace.rs` and `view.rs` are untouched; this task pins the behaviour. `trace_render.rs` gains the reactive cases (one section per reaction with candidates and pipeline, a discarded internal event as `internal_unhandled`, a rejected macrostep keeping its microsteps in order, and a canonical-bytes round trip) beside the non-reactive no-key check; `explain_goldens.rs` proves a plain machine's `explain` and `instance_history` output byte-identical to `fixtures/non_reactive_explain.json`, a golden the pre-change build (commit `c560412`) wrote, and that every reaction renders as a section on a reactive record; `explain_microsteps.rs` runs the binary. The human renderer prints `→ microstep N (eventless|internal <event>): <from> → <landed leaf>` wherever a `microsteps` array appears — the left side is the transition's own `from`, a compound when a done event is handled there, and a targetless internal transition reads `<from> → <from> (internal)` — with sixty-four lines rendering untruncated. Step 6 is pinned by `a_rejected_macrostep_keeps_the_microsteps_that_ran_in_order`.

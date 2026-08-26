@@ -64,6 +64,18 @@ fn render_val(v: &Value, indent: usize, s: &mut String) {
                 s.push(':');
                 let spaces = width.saturating_sub(k.len()) + 1;
                 s.push_str(&" ".repeat(spaces));
+                if k == "microsteps" {
+                    if let Some(lines) = microstep_lines(val) {
+                        s.push('\n');
+                        for line in lines {
+                            s.push_str(&pad);
+                            s.push_str("  ");
+                            s.push_str(&line);
+                            s.push('\n');
+                        }
+                        continue;
+                    }
+                }
                 match val {
                     Value::Obj(_) | Value::Arr(_) => {
                         if matches!(val, Value::Arr(a) if a.iter().any(|x| matches!(x, Value::Obj(_))))
@@ -85,6 +97,37 @@ fn render_val(v: &Value, indent: usize, s: &mut String) {
             }
         }
     }
+}
+
+/// One line per reaction microstep — `→ microstep 2 (internal
+/// $done.state.approve): review → done` — so a cascade reads as the sequence
+/// it was, rather than as nested candidate and pipeline objects. The full
+/// detail stays available in the JSON output.
+fn microstep_lines(microsteps: &Value) -> Option<Vec<String>> {
+    let entries = microsteps.as_arr()?;
+    let mut lines = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let index = entry.get("index").and_then(Value::as_num)?;
+        let trigger = entry.get("trigger").and_then(Value::as_str)?;
+        let source = entry.get("source_state").and_then(Value::as_str)?;
+        let last = |key: &str| {
+            entry
+                .get(key)
+                .and_then(Value::as_arr)
+                .and_then(|states| states.last())
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        };
+        let how = match (trigger, entry.get("event").and_then(Value::as_str)) {
+            ("internal", Some(event)) => format!("internal {event}"),
+            _ => trigger.to_string(),
+        };
+        // The transition's own `from` on the left — a compound when a done
+        // event is handled there — and the leaf it landed in on the right.
+        let landed = last("entered").unwrap_or_else(|| format!("{source} (internal)"));
+        lines.push(format!("→ microstep {index} ({how}): {source} → {landed}"));
+    }
+    Some(lines)
 }
 
 fn compact(v: &Value) -> String {
@@ -240,6 +283,47 @@ ctx.score >= x
         let text = render_error(&act, false);
         assert!(text.contains("  block: transition\n"), "{text}");
         assert!(text.contains("  span: 0..9\n"), "{text}");
+    }
+
+    #[test]
+    fn microsteps_render_one_line_each() {
+        use fsm_core::json::{JsonLimits, parse};
+        let trace = parse(
+            br#"{"trace":{"candidates":[],"invariants":[],"microsteps":[{"candidates":[],"entered":["approve"],"exited":["route"],"index":1,"pipeline":[],"source_state":"route","transition_idx":7,"trigger":"eventless"},{"candidates":[],"entered":["done"],"event":"$done.state.approve","exited":["review","approve"],"index":2,"pipeline":[],"source_state":"review","transition_idx":9,"trigger":"internal"},{"candidates":[],"entered":[],"event":"tick","exited":[],"index":3,"pipeline":[],"source_state":"done","transition_idx":3,"trigger":"internal"}],"pipeline":[]}}"#,
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let rendered = render_human(&trace);
+        assert!(
+            rendered.contains("→ microstep 1 (eventless): route → approve"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("→ microstep 2 (internal $done.state.approve): review → done"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("→ microstep 3 (internal tick): done → done (internal)"),
+            "{rendered}"
+        );
+        // Sixty-four lines render without truncation.
+        let many: Vec<String> = (1..=64)
+            .map(|i| format!(r#"{{"candidates":[],"entered":["s{i}"],"exited":["s{}"],"index":{i},"pipeline":[],"source_state":"s{}","transition_idx":0,"trigger":"eventless"}}"#, i - 1, i - 1))
+            .collect();
+        let deep = parse(
+            format!(r#"{{"microsteps":[{}]}}"#, many.join(",")).as_bytes(),
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let rendered = render_human(&deep);
+        assert_eq!(
+            rendered
+                .lines()
+                .filter(|l| l.contains("→ microstep"))
+                .count(),
+            64
+        );
+        assert!(rendered.contains("→ microstep 64 (eventless): s63 → s64"));
     }
 
     #[test]
