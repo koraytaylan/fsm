@@ -43,8 +43,47 @@ use super::transition::{
 use super::validate::reject;
 use super::{Applied, EffectOut, ExprSlotOwner, Rejection, scan_candidates};
 
-/// Prefix of every engine-generated event name.
+/// Prefix of the generated event a finished compound raises.
 pub const DONE_STATE_PREFIX: &str = "$done.state.";
+/// Prefix of the generated event a finished region raises.
+pub const DONE_REGION_PREFIX: &str = "$done.region.";
+
+/// The `$done.region.<region>` events a microstep generates: one for each
+/// region whose active leaf *became* terminal in it, in region document
+/// order — the same total order the candidate scan, the deadline scheduler,
+/// and creation use. A region already terminal before the microstep does
+/// not re-raise.
+///
+/// This is the join primitive. It is delivered to the *other* regions: a
+/// completed region is inert, so the candidate scan never selects a handler
+/// sourced inside it, and no new rule is needed for that. There is no
+/// `$done.machine`: when every region is terminal the instance is
+/// `Completed`, every region is inert, and the event could only be discarded.
+fn done_region_events(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    before: &crate::machine::ActiveConfiguration,
+    after: &crate::machine::ActiveConfiguration,
+) -> Vec<InternalEvent> {
+    let is_terminal = |leaf: Option<&str>| {
+        leaf.and_then(|name| super::block::find_node(&machine.spec, name))
+            .is_some_and(|node| node.terminal)
+    };
+    tree.root_initials
+        .iter()
+        .filter_map(|(region, _)| region.as_deref())
+        .filter(|region| {
+            is_terminal(after.leaf(Some(region))) && !is_terminal(before.leaf(Some(region)))
+        })
+        .map(|region| InternalEvent {
+            name: format!("{DONE_REGION_PREFIX}{region}"),
+            payload: BTreeMap::new(),
+            origin: InternalOrigin::DoneRegion {
+                region: region.to_string(),
+            },
+        })
+        .collect()
+}
 
 /// The `$done.state.<compound>` events a microstep's entry set generates, in
 /// entry order.
@@ -242,9 +281,20 @@ struct Macrostep {
 }
 
 impl Macrostep {
-    fn after_trigger(trigger: &mut Transitioned, tree: &Tree) -> Self {
+    fn after_trigger(
+        trigger: &mut Transitioned,
+        machine: &CompiledMachine,
+        tree: &Tree,
+        before: &crate::machine::ActiveConfiguration,
+    ) -> Self {
         let mut queue: VecDeque<InternalEvent> = std::mem::take(&mut trigger.raises).into();
         queue.extend(done_state_events(tree, &trigger.entered));
+        queue.extend(done_region_events(
+            machine,
+            tree,
+            before,
+            &trigger.configuration_after,
+        ));
         Self {
             queue,
             microsteps: Vec::new(),
@@ -367,7 +417,7 @@ pub(super) fn run_to_quiescence(
     selector: &mut dyn ReactionSelector,
 ) -> Result<Applied, Rejection> {
     let summary = TriggerSummary::take_from(&mut trigger, tree);
-    let mut macrostep = Macrostep::after_trigger(&mut trigger, tree);
+    let mut macrostep = Macrostep::after_trigger(&mut trigger, machine, tree, &state.configuration);
     let mut working = InstanceState {
         status: state.status,
         configuration: trigger.configuration_after.clone(),
@@ -456,9 +506,6 @@ pub(super) fn run_to_quiescence(
                 return Err(macrostep.into_rejection(rejection, summary, Some(failed)));
             }
         };
-        working.configuration = next.configuration_after.clone();
-        working.ctx = next.context.clone();
-        working.history = next.history_after.clone();
         macrostep.effects.append(&mut next.effects);
         // Breadth-first: an event raised while handling another lands behind
         // every event already waiting, which is the only order under which
@@ -468,6 +515,15 @@ pub(super) fn run_to_quiescence(
         macrostep
             .queue
             .extend(done_state_events(tree, &next.entered));
+        macrostep.queue.extend(done_region_events(
+            machine,
+            tree,
+            &working.configuration,
+            &next.configuration_after,
+        ));
+        working.configuration = next.configuration_after.clone();
+        working.ctx = next.context.clone();
+        working.history = next.history_after.clone();
         macrostep.microsteps.push(MicrostepTrace {
             index,
             trigger: kind,
@@ -741,5 +797,47 @@ fn invariant_rejection(
             invariants,
             ..DecisionTrace::default()
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json::{JsonLimits, parse};
+    use crate::machine::ActiveConfiguration;
+    use crate::spec::{compile, parse_machine};
+
+    fn three_regions() -> (CompiledMachine, Tree) {
+        let src = r#"{"format":"fsm.machine/1","name":"m","regions":[{"name":"x","states":[{"name":"x0"},{"name":"x_done","terminal":true}],"initial":"x0"},{"name":"y","states":[{"name":"y0"},{"name":"y_done","terminal":true}],"initial":"y0"},{"name":"z","states":[{"name":"z0"},{"name":"z_done","terminal":true}],"initial":"z0"}],"context":[],"events":[{"name":"go","fields":[]}],"transitions":[{"from":"x0","on":"go","to":"x_done"},{"from":"y0","on":"go","to":"y_done"},{"from":"z0","on":"go","to":"z_done"}]}"#;
+        let spec = parse_machine(&parse(src.as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap();
+        let machine = compile(spec).unwrap();
+        let tree = Tree::for_machine(&machine.spec);
+        (machine, tree)
+    }
+
+    fn leaves(pairs: &[(&str, &str)]) -> ActiveConfiguration {
+        ActiveConfiguration::Parallel {
+            leaves: pairs
+                .iter()
+                .map(|(region, leaf)| (region.to_string(), leaf.to_string()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn region_done_events_follow_region_document_order_and_never_re_raise() {
+        // A transition changes one region, so no microstep finishes two at
+        // once; the same-microstep order is pinned on the function alone:
+        // region document order, with a region that was already terminal
+        // before the microstep silent.
+        let (machine, tree) = three_regions();
+        let before = leaves(&[("x", "x0"), ("y", "y0"), ("z", "z_done")]);
+        let after = leaves(&[("x", "x_done"), ("y", "y_done"), ("z", "z_done")]);
+        let names: Vec<String> = done_region_events(&machine, &tree, &before, &after)
+            .into_iter()
+            .map(|event| event.name)
+            .collect();
+        assert_eq!(names, ["$done.region.x", "$done.region.y"]);
+        assert!(done_region_events(&machine, &tree, &after, &after).is_empty());
     }
 }
