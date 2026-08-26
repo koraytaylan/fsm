@@ -2,6 +2,13 @@
 //!
 //! Workstream 0043 owns the eventless-transition rules here, 0044 the `raise`
 //! and internal-event rules, and 0045 the `final` state rules (`def/final_*`).
+//! Plan 0010's workstream 0048 adds the `invoke` rules decidable from this
+//! definition alone (`def/invoke_machine_ref`, `def/invoke_dup_slot`,
+//! `def/invoke_on_terminal`, `def/invoke_evt`, `def/limit_invokes`); the
+//! catalogue-dependent ones — `def/invoke_unknown_ctx`, `def/invoke_type`,
+//! `def/invoke_cycle`, `def/invoke_depth`, `def/invoke_unknown_machine` —
+//! need the child definitions in hand and run in the store's
+//! `define_machine_on` (task 4901), not here.
 //! [`validate_reactive`] runs last in [`super::validate_with_compatibility`],
 //! so every finding it adds lands after the structural findings and existing
 //! golden order is untouched. Only refusals live here: the advisory eventless
@@ -20,6 +27,7 @@ use super::super::{Finding, MachineSpec, Topology, TransitionSpec};
 
 pub(super) fn validate_reactive(spec: &MachineSpec, errs: &mut Vec<Finding>) {
     check_final_states(spec, errs);
+    check_invokes(spec, errs);
     check_generated_event_names(spec, errs);
     let terminal_states: BTreeSet<&str> = spec
         .walk_states()
@@ -93,6 +101,101 @@ fn check_generated_event_names(spec: &MachineSpec, errs: &mut Vec<Finding>) {
             hint,
         ));
     }
+}
+
+/// The `invoke` rules a definition decides alone. `machine` is a 64-hex
+/// digest so the parent's identity pins the child's; slot ids are unique
+/// machine-wide because the child id, the generated event, and the audit
+/// trail all read by them; an invoke on a terminal or final state could
+/// never have its result consumed; and `with` sees `ctx` only, because an
+/// invocation is triggered by state entry, not by an event.
+fn check_invokes(spec: &MachineSpec, errs: &mut Vec<Finding>) {
+    let mut slots: BTreeSet<&str> = BTreeSet::new();
+    for (node, _) in spec.walk_states() {
+        if node.invokes.is_empty() {
+            continue;
+        }
+        let base = format!("/states/{}/invoke", node.name);
+        if node.terminal || node.final_state {
+            errs.push(Finding::err(
+                "def/invoke_on_terminal",
+                base.clone(),
+                format!(
+                    "state {} is {} and invokes a child machine",
+                    node.name,
+                    if node.terminal { "terminal" } else { "final" }
+                ),
+                "nothing runs after this state, so nothing could consume the child's result; invoke from a state that has work left to do",
+            ));
+        }
+        if node.invokes.len() > crate::limits::MAX_INVOKES_PER_STATE {
+            errs.push(Finding::err(
+                "def/limit_invokes",
+                base.clone(),
+                format!(
+                    "state {} declares {} invoke slots",
+                    node.name,
+                    node.invokes.len()
+                ),
+                format!(
+                    "at most {} invoke slots on one state; split the work across states",
+                    crate::limits::MAX_INVOKES_PER_STATE
+                ),
+            ));
+        }
+        for (index, invoke) in node.invokes.iter().enumerate() {
+            let path = format!("{base}/{index}");
+            if invoke.id.starts_with('$') {
+                errs.push(Finding::err(
+                    "def/reserved_ident",
+                    format!("{path}/id"),
+                    format!("invoke slot {} uses the reserved $ prefix", invoke.id),
+                    "the $ prefix belongs to generated names; choose another slot id",
+                ));
+            }
+            if !slots.insert(invoke.id.as_str()) {
+                errs.push(Finding::err(
+                    "def/invoke_dup_slot",
+                    format!("{path}/id"),
+                    format!("invoke slot {} is declared twice", invoke.id),
+                    "slot ids are unique across the whole machine: the child id, the done event, and the audit trail all read by them; rename one",
+                ));
+            }
+            if !is_machine_digest(&invoke.machine) {
+                errs.push(Finding::err(
+                    "def/invoke_machine_ref",
+                    format!("{path}/machine"),
+                    format!("invoke slot {} names its machine as {:?}", invoke.id, invoke.machine),
+                    "name the child by its 64-lowercase-hex machine_id digest, never by name, so this definition pins the exact child forever",
+                ));
+            }
+            for (key, source) in &invoke.with {
+                let Ok(expression) = parser::parse(source) else {
+                    continue;
+                };
+                let mut references = Vec::new();
+                collect_evt_references(&expression, &mut references);
+                if let Some((name, span)) = references.first() {
+                    let mut finding = Finding::err(
+                        "def/invoke_evt",
+                        format!("{path}/with/{key}"),
+                        format!("invoke slot {} reads evt.{name}", invoke.id),
+                        "an invocation starts when its state is entered, not when an event arrives, so `with` sees ctx only; stage the value into ctx first",
+                    );
+                    finding.span = Some(*span);
+                    errs.push(finding);
+                }
+            }
+        }
+    }
+}
+
+/// A `machine_id` digest: exactly 64 lowercase hex characters.
+fn is_machine_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// The five `final` rules, each with a hint that says which of `final` and

@@ -79,3 +79,16 @@ pub const MACROSTEP_EVAL_TICKS: u32 = MAX_EVAL_TICKS * (MAX_MICROSTEPS + 2);
 /// hash-verified on fold, so adding a key there would make every store written
 /// by an earlier build unreadable instead of migratable.
 pub const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
+
+/// Maximum `invoke` slots on one state.
+///
+/// Deliberately *not* part of the genesis `limits` block, for the reason
+/// `MAX_PAYLOAD_BYTES` gives: that block is hash-verified on fold.
+pub const MAX_INVOKES_PER_STATE: usize = 4;
+
+/// Maximum depth of the invocation graph: a machine, the machines it
+/// invokes, theirs, and theirs. Checked at definition time with the child
+/// definitions in hand, and the bound on every cancel cascade.
+///
+/// Deliberately *not* part of the genesis `limits` block, as above.
+pub const MAX_INVOKE_DEPTH: usize = 4;

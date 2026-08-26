@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::json::Value;
 
-use super::{Block, FieldDecl, HistoryKind, RaiseSpec, StateNode, TySpec};
+use super::{Block, FieldDecl, HistoryKind, InvokeSpec, RaiseSpec, StateNode, TySpec};
 
 pub(super) fn v_str(s: impl Into<String>) -> Value {
     Value::Str(s.into())
@@ -53,6 +53,22 @@ pub(super) fn raise_value(raise: &RaiseSpec) -> Value {
 /// keeps its canonical bytes.
 pub(super) fn raises_value(raises: &[RaiseSpec]) -> Option<Value> {
     (!raises.is_empty()).then(|| Value::Arr(raises.iter().map(raise_value).collect()))
+}
+
+/// One `invoke` slot; `with` and `returns` are omitted when empty.
+fn invoke_value(invoke: &InvokeSpec) -> Value {
+    let mut o = BTreeMap::new();
+    o.insert("id".into(), v_str(invoke.id.clone()));
+    o.insert("machine".into(), v_str(invoke.machine.clone()));
+    for (key, pairs) in [("with", &invoke.with), ("returns", &invoke.returns)] {
+        if !pairs.is_empty() {
+            o.insert(
+                key.into(),
+                v_obj(pairs.iter().map(|(k, v)| (k.clone(), v_str(v.clone())))),
+            );
+        }
+    }
+    Value::Obj(o)
 }
 
 fn block_value(b: &Block) -> Value {
@@ -133,6 +149,12 @@ pub(super) fn states_value(nodes: &[StateNode]) -> Value {
                 }
                 if let Some(e) = &n.exit {
                     m.insert("exit".into(), block_value(e));
+                }
+                if !n.invokes.is_empty() {
+                    m.insert(
+                        "invoke".into(),
+                        Value::Arr(n.invokes.iter().map(invoke_value).collect()),
+                    );
                 }
                 Value::Obj(m)
             })

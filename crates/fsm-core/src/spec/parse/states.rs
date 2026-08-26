@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::json::Value;
 
 use super::super::{
-    Block, EmitSpec, Finding, HistoryKind, RaiseSpec, RegionSpec, SetSpec, StateNode,
+    Block, EmitSpec, Finding, HistoryKind, InvokeSpec, RaiseSpec, RegionSpec, SetSpec, StateNode,
 };
 use super::{check_keys, req_str};
 
@@ -243,6 +243,7 @@ pub(super) fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -
             obj,
             &[
                 "name", "terminal", "final", "history", "initial", "entry", "exit", "states",
+                "invoke",
             ],
             &p,
             errs,
@@ -329,6 +330,7 @@ pub(super) fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -
                 }
             },
         };
+        let invokes = parse_invokes(obj.get("invoke"), &format!("{p}/invoke"), errs);
         out.push(StateNode {
             name,
             terminal,
@@ -338,9 +340,89 @@ pub(super) fn parse_states(arr: &[Value], path: &str, errs: &mut Vec<Finding>) -
             entry,
             exit,
             states,
+            invokes,
         });
     }
     out
+}
+
+/// A string-to-string projection object (`with`, `returns`), in key order.
+fn parse_projection(
+    v: Option<&Value>,
+    path: &str,
+    errs: &mut Vec<Finding>,
+) -> Vec<(String, String)> {
+    let Some(v) = v else {
+        return Vec::new();
+    };
+    let Some(map) = v.as_obj() else {
+        errs.push(Finding::err(
+            "def/shape",
+            path,
+            "projection must be an object",
+            "map names to strings",
+        ));
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (k, val) in map {
+        match val {
+            Value::Num(_) => errs.push(Finding::err(
+                "req/number_token",
+                format!("{path}/{k}"),
+                "projection value must be a string",
+                "quote the expression",
+            )),
+            Value::Str(s) => out.push((k.clone(), s.clone())),
+            _ => errs.push(Finding::err(
+                "def/shape",
+                format!("{path}/{k}"),
+                "projection value must be a string",
+                "quote the expression",
+            )),
+        }
+    }
+    out
+}
+
+fn parse_invokes(v: Option<&Value>, path: &str, errs: &mut Vec<Finding>) -> Vec<InvokeSpec> {
+    let Some(v) = v else {
+        return Vec::new();
+    };
+    let Some(entries) = v.as_arr() else {
+        errs.push(Finding::err(
+            "def/shape",
+            path,
+            "invoke must be an array",
+            "use an array of {id, machine, with, returns} objects",
+        ));
+        return Vec::new();
+    };
+    let mut invokes = Vec::new();
+    for (i, entry) in entries.iter().enumerate() {
+        let ip = format!("{path}/{i}");
+        let Some(o) = entry.as_obj() else {
+            errs.push(Finding::err(
+                "def/shape",
+                &ip,
+                "invoke must be an object",
+                "use {id, machine, with, returns}",
+            ));
+            continue;
+        };
+        check_keys(o, &["id", "machine", "with", "returns"], &ip, errs);
+        invokes.push(InvokeSpec {
+            id: req_str(o, "id", &format!("{ip}/id"), errs)
+                .unwrap_or("")
+                .to_string(),
+            machine: req_str(o, "machine", &format!("{ip}/machine"), errs)
+                .unwrap_or("")
+                .to_string(),
+            with: parse_projection(o.get("with"), &format!("{ip}/with"), errs),
+            returns: parse_projection(o.get("returns"), &format!("{ip}/returns"), errs),
+        });
+    }
+    invokes
 }
 
 pub(super) fn parse_regions(value: &Value, errs: &mut Vec<Finding>) -> Vec<RegionSpec> {

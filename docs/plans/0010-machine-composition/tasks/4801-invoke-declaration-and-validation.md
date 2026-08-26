@@ -11,8 +11,13 @@ touches:
   - crates/fsm-core/src/spec/validate/reactive.rs
   - crates/fsm-core/src/limits.rs
   - crates/fsm-core/src/error.rs
+  - crates/fsm-core/src/spec/serialize.rs
   - crates/fsm-core/tests/invoke_declaration.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/one_step_data.rs
+  - crates/fsm-cli/tests/naive_caller/harness.rs
+  - crates/fsm-cli/tests/naive_caller/reactive_flows.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Invoke Declaration And Validation
@@ -43,3 +48,5 @@ An invocation is declared by content hash, not by name, and that single ruling i
 - `scripts/oversized-files.sh` passes, and `scripts/oversized-files.sh 500` reports `reactive.rs`'s size for the record so plan 0011 knows how much room is left.
 
 - **Done when:** `cargo test -p fsm-core --test invoke_declaration` covers every rule and counter-case above, every `examples/` machine keeps its committed `machine_id`, the fourteen codes are registered, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `InvokeSpec { id, machine, with, returns }` on `StateNode.invokes`, parsed from `invoke` (projections are objects, kept in key order — the order canonical JSON already imposes, so "document order" of an object key set is its sorted order), serialized only when present (`serialize.rs`, where state serialization lives), and the five rules a definition decides alone in `validate/reactive.rs` with the module doc naming the store-level five. A `$`-prefixed slot id is `def/reserved_ident` like every other identifier. Step 4 was corrected: the every-code gates plan 0009 built require each registered code to be produced by a real tool outcome and taught by a one-step correction, so a code lands with the task that first produces it — this task registers its five (with their appendix and structural-rules rows, which `spec_appendix` now demands in both directions, and their naive-caller rows, repairs, and drives); `def/invoke_unknown_ctx`, `def/invoke_type`, `def/invoke_cycle`, `def/invoke_depth`, `def/invoke_unknown_machine`, `req/invoke_slot_state`, and `run/invoke_create_failed` land with 4901/4902, `def/limit_signals` with 5001, `req/signal_target` with 5002. Step 8's "no SPEC rows" was corrected the same way: the rows are mechanical, 5202 still owns the prose. `reactive.rs` is 350 lines after this task (`scripts/oversized-files.sh 200` reports it), so no split yet; plan 0011 has room.

@@ -158,6 +158,17 @@ pub(crate) fn drive_reactive_outcomes(
     for src in final_specs {
         drive_create(st, clock, src, out);
     }
+    // Plan 0010: the invoke rules a definition decides alone (task 4801).
+    let invoke_specs: &[&str] = &[
+        r#"{"format":"fsm.machine/1","name":"r14","states":[{"name":"a","invoke":[{"id":"child","machine":"review"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"r15","states":[{"name":"a","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]},{"name":"b","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"r16","states":[{"name":"a"},{"name":"t","terminal":true,"invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"r17","states":[{"name":"a","invoke":[{"id":"child","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c","with":{"x":"evt.n"}}]}],"initial":"a","context":[{"name":"n","ty":"int","init":"0"}],"events":[],"transitions":[]}"#,
+        r#"{"format":"fsm.machine/1","name":"r18","states":[{"name":"a","invoke":[{"id":"c1","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c2","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c3","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c4","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"},{"id":"c5","machine":"9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c"}]}],"initial":"a","context":[],"events":[],"transitions":[]}"#,
+    ];
+    for src in invoke_specs {
+        drive_create(st, clock, src, out);
+    }
     // Nine raises in one block (task 4402).
     drive_create(
         st,

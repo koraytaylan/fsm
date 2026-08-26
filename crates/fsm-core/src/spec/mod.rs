@@ -165,6 +165,23 @@ pub struct Block {
     pub raises: Vec<RaiseSpec>,
 }
 
+/// One `invoke` slot on a state: a child machine named by content hash,
+/// started when the state is entered.
+///
+/// `machine` is the 64-hex digest of the child's `machine_id`, never a name,
+/// so the parent's own identity pins the exact child definition. `with`
+/// projects parent `ctx` expressions into the child's declared context
+/// variables and `returns` projects the child's context out into the payload
+/// of `$done.invoke.<id>`; both are kept in key order, which is the order
+/// canonical JSON gives them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvokeSpec {
+    pub id: String,
+    pub machine: String,
+    pub with: Vec<(String, String)>,
+    pub returns: Vec<(String, String)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateNode {
     pub name: String,
@@ -178,6 +195,8 @@ pub struct StateNode {
     pub entry: Option<Block>,
     pub exit: Option<Block>,
     pub states: Vec<StateNode>,
+    /// Child machines started when this state is entered (JSON `invoke`).
+    pub invokes: Vec<InvokeSpec>,
 }
 
 /// One top-level orthogonal region in a parallel machine.

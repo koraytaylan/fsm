@@ -586,6 +586,10 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 };
                 truncate_array(&mut v, &p, 1);
             }
+            "def/limit_invokes" => {
+                // The reactive rules address states by name, not by pointer.
+                truncate_array(&mut v, "/states/0/invoke", 1);
+            }
             "def/limit_raises" => {
                 let p = if path.is_empty() {
                     "/transitions/0/raise".into()
@@ -632,6 +636,28 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             // The compound was marked final; only a leaf may be, and its own
             // initial child cannot, so the mark simply comes off.
             delete_pointer(&mut v, "/states/0/states/1/final");
+        }
+        "def/invoke_machine_ref" => {
+            set_pointer(
+                &mut v,
+                "/states/0/invoke/0/machine",
+                Value::Str(
+                    "9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c9f2c".into(),
+                ),
+            );
+        }
+        "def/invoke_dup_slot" => {
+            delete_pointer(&mut v, "/states/1/invoke");
+        }
+        "def/invoke_on_terminal" => {
+            delete_pointer(&mut v, "/states/1/invoke");
+        }
+        "def/invoke_evt" => {
+            set_pointer(
+                &mut v,
+                "/states/0/invoke/0/with/x",
+                Value::Str("ctx.n".into()),
+            );
         }
         "def/final_at_root" => {
             delete_pointer(&mut v, "/states/1/final");

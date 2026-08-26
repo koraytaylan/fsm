@@ -117,6 +117,11 @@ entered; the core NEVER reads a clock.
 | `def/final_and_terminal` | `final` and `terminal` on one state |
 | `def/final_has_transitions` | a transition or deadline has a `final` state as its `from` |
 | `def/final_is_initial` | a compound's `initial` names its `final` child |
+| `def/invoke_machine_ref` | an `invoke` slot's `machine` is not a 64-lowercase-hex `machine_id` digest |
+| `def/invoke_dup_slot` | two `invoke` slots share an `id`, across the whole machine |
+| `def/invoke_on_terminal` | an `invoke` on a `terminal` or `final` state, whose result nothing could consume |
+| `def/invoke_evt` | an `invoke` `with` expression reads `evt`; an invocation starts on state entry and sees `ctx` only |
+| `def/limit_invokes` | more than 4 `invoke` slots on one state (`MAX_INVOKES_PER_STATE`) |
 | `def/unreachable_state` | warning: state never enterable |
 | `def/ancestor_shadowed` | warning: ancestor handler globally dead |
 | `def/create_always_fails` | creation fails on declared inits |
@@ -727,6 +732,10 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/final_has_transitions` — a transition or deadline from a final state
 - `def/final_is_initial` — a compound that starts in its final child
 - `def/final_not_leaf` — a final state with children
+- `def/invoke_dup_slot` — two invoke slots share an id
+- `def/invoke_evt` — an invoke `with` expression reads evt
+- `def/invoke_machine_ref` — an invoke names its machine other than by 64-hex digest
+- `def/invoke_on_terminal` — an invoke on a terminal or final state
 - `def/from_history` — history used as a transition source
 - `def/history_target_from_inside` — history targeted from inside its owner
 - `def/initial_is_history` — initial names a history node
@@ -744,6 +753,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/limit_fields` — more than 32 fields
 - `def/limit_history` — more than 32 history nodes
 - `def/limit_invariants` — more than 64 invariants
+- `def/limit_invokes` — more than 4 invoke slots on one state
 - `def/limit_raises` — more than 8 raises per block
 - `def/limit_regions` — more than 8 regions
 - `def/limit_sets` — more than 32 sets per block
