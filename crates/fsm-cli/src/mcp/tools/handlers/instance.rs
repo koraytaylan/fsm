@@ -311,17 +311,7 @@ pub(in crate::mcp::tools) fn run_instance_get(
     args: &Value,
 ) -> Result<Value, ErrorObj> {
     let iid = str_arg(args, "instance_id").unwrap_or("");
-    let mut v = store.instance_view(iid, None, None)?;
-    if let Value::Obj(o) = &mut v {
-        if let Some(inst) = store.state.instances.get(iid) {
-            let mut h = BTreeMap::new();
-            for (k, val) in &inst.history {
-                h.insert(k.clone(), Value::Str(val.clone()));
-            }
-            o.insert("history".into(), Value::Obj(h));
-        }
-    }
-    Ok(v)
+    store.instance_report(iid)
 }
 
 pub(in crate::mcp::tools) fn run_instance_list(

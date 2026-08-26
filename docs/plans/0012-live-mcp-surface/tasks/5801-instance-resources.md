@@ -8,7 +8,10 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/resources.rs
   - crates/fsm-cli/tests/mcp_resources.rs
-status: planned
+  - crates/fsm-store/src/store/view.rs
+  - crates/fsm-cli/src/mcp/tools/handlers/instance.rs
+  - crates/fsm-cli/tests/mcp_resources.rs
+status: done
 merged_as: ""
 ---
 # Instance Resources
@@ -38,3 +41,7 @@ The live objects — the running workflows this whole system is about — have n
 - Reading an instance that was cancelled or completed works and reflects the settled state.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_resources` passes every case above including the resource/tool equality assertion, existing resource goldens are unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** both instance URIs, both templates with titles and descriptions, the instance listing ordered by `created_seq` and capped at fifty, and the suite — resource/tool equality, the bounded history page, the templates, the ordering with sixty instances present, a child appearing in the listing and reading correctly, five not-found shapes, the untouched documentation and machine resources, an empty store, and a settled instance.
+
+**Corrections.** Step 7 says every instance read goes through the same `instance_view` the tool uses, but the tool adds the instance's history bindings on top of that view — so a resource calling `instance_view` alone would differ from the tool's structured content, which the task's own test forbids. Both now call `Store::instance_report`, which is the view plus that addition: one function, two callers, and no way for the two surfaces to drift as the view grows.

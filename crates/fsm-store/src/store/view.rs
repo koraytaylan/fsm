@@ -108,6 +108,31 @@ impl Store {
         Ok(Value::Obj(m))
     }
 
+    /// The instance as every surface reports it: the view plus its history
+    /// bindings.
+    ///
+    /// The tool and the `fsm://instance/{id}` resource both call this, so
+    /// they cannot disagree about what an instance looks like — which is the
+    /// only way two surfaces stay identical as a view grows fields.
+    pub fn instance_report(&self, instance_id: &str) -> Result<Value, ErrorObj> {
+        let mut view = self.instance_view(instance_id, None, None)?;
+        if let (Value::Obj(fields), Some(instance)) =
+            (&mut view, self.state.instances.get(instance_id))
+        {
+            fields.insert(
+                "history".into(),
+                Value::Obj(
+                    instance
+                        .history
+                        .iter()
+                        .map(|(owner, leaf)| (owner.clone(), Value::Str(leaf.clone())))
+                        .collect(),
+                ),
+            );
+        }
+        Ok(view)
+    }
+
     /// The definitions this instance has been on, oldest first, each with the
     /// seq from which it applied.
     ///
