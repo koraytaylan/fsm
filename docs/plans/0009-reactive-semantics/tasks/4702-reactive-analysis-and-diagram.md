@@ -9,11 +9,16 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-core/src/diagram.rs
-  - crates/fsm-core/src/analyze.rs
+  - crates/fsm-core/src/analyze/mod.rs
+  - crates/fsm-core/src/analyze/eventless.rs
   - crates/fsm-cli/src/mcp/tools/handlers/machine.rs
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-core/tests/regions_deadlines_analysis_diagram.rs
-status: planned
+  - crates/fsm-core/tests/diagram_hostile.rs
+  - crates/fsm-cli/tests/analyze_reactive.rs
+  - crates/fsm-cli/tests/tools_budget.rs
+  - crates/fsm-cli/tests/fixtures/transcripts/skeleton.out.jsonl
+status: done
 merged_as: ""
 ---
 # Reactive Analysis And Diagram
@@ -40,3 +45,5 @@ A diagram that draws an eventless transition as an ordinary arrow is lying about
 - `machine_analyze`'s structured output validates against its own declared output schema, via the existing `tool_schemas.rs` machinery.
 
 - **Done when:** `cargo test -p fsm-core --test regions_deadlines_analysis_diagram` and `cargo test -p fsm-cli --test tool_schemas` pass with the new fields and renderings, non-reactive diagram and analysis goldens are unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `analyze/eventless.rs::reactive_summary` (re-exported from `analyze`) returns `ReactiveSummary { eventless_transitions, eventless_findings, done_events, unhandled_done_events, internal_events }`; `machine_analyze` carries it as additive optional fields — `eventless_transitions` as a plain count, because the cycle and depth findings step 1 wanted beside it are already in the same output's `findings`, where `analyze_all` reports them — and `schema_machine_analyze_out` declares them, validated against a real output in `analyze_reactive.rs`. The additions moved two byte-exact fixtures: the MCP skeleton transcript was regenerated (`REGEN_SKELETON=1`), and the `tools/list` ceiling in `tools_budget.rs` rose from 20 000 to 21 000 bytes — the listing stood at 19 990, so any additive field crossed it; the per-description word caps that bound a model's reading cost are untouched. One field beyond the three asked for: since a generated event nobody handles is never raised (the `4603` correction), `done_events` lists the names this machine raises — generatable and handled — and `unhandled_done_events` the ones it could handle and does not; that list is where an unhandled generated name is discovered now that the trace never shows one, and for a plain parallel machine it names the region joins the author has not written. Step 2 was corrected against the target grammars: Mermaid's `stateDiagram-v2` has no `-.->` and no `(((name)))` — both are flowchart syntax — so an eventless edge announces itself in its label (`[guard] (eventless)`, or `(eventless)` alone) and a final state gets the `<<final>>` description line and never an arrow to `[*]`; DOT does dash the edge (`style=dashed`, guard-only label) and draws `shape=doublecircle`. `$done.…` labels survive both escaping paths with the prefix intact, pinned in `diagram_hostile.rs` with a join on a region whose name is hostile beside a state named after the generated name minus its prefix. The CLI's `machine analyze` command keeps its narrower findings-and-completeness output; the reactive surface is the MCP tool's. Plain machines' diagrams and analysis stay byte-exact (`sequential_diagrams_remain_byte_exact`, `diagram_golden`, `analyze_golden`).

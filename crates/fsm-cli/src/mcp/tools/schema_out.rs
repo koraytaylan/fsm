@@ -53,6 +53,11 @@ pub(super) fn schema_machine_analyze_out() -> Value {
     p.insert("completeness".into(), completeness_obj());
     p.insert("reachability".into(), reachability_obj());
     p.insert("shadowing".into(), ty("array"));
+    // Additive and optional: an existing caller's parse is unaffected.
+    p.insert("eventless_transitions".into(), ty("integer"));
+    p.insert("done_events".into(), ty("array"));
+    p.insert("unhandled_done_events".into(), ty("array"));
+    p.insert("internal_events".into(), ty("array"));
     schema_obj(
         p,
         &[

@@ -25,6 +25,7 @@ pub use completeness::completeness_matrix;
 pub use creation::create_always_fails;
 pub(crate) use enabled_events::enabled_events_historical;
 pub use enabled_events::{CandidateReport, EventReport, EventStatus, enabled_events};
+pub use eventless::{ReactiveSummary, reactive_summary};
 pub use eventless::{eventless_cycle_findings, eventless_noop_findings};
 pub use reachability::{enterable, reachability_findings};
 pub use shadowing::{ancestor_shadowed, shadowing_findings};

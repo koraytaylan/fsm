@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use fsm_core::analyze::{analyze_all, completeness_matrix};
+use fsm_core::analyze::{analyze_all, completeness_matrix, reactive_summary};
 use fsm_core::diagram::{dot, mermaid};
 use fsm_core::json::Value;
 use fsm_core::spec::compile_accepted;
@@ -266,6 +266,8 @@ pub(in crate::mcp::tools) fn run_machine_analyze(
         .into_iter()
         .map(|f| Value::Str(f.code.into()))
         .collect();
+    let reactive = reactive_summary(&m.compiled, &t);
+    let names = |names: Vec<String>| Value::Arr(names.into_iter().map(Value::Str).collect());
     Ok(Value::Obj(BTreeMap::from([
         (
             "machine_id".into(),
@@ -284,6 +286,18 @@ pub(in crate::mcp::tools) fn run_machine_analyze(
             )])),
         ),
         ("shadowing".into(), Value::Arr(shadow)),
+        // A count only: the eventless cycle and depth findings are already
+        // in `findings`, where `analyze_all` reports them.
+        (
+            "eventless_transitions".into(),
+            Value::Num(reactive.eventless_transitions.to_string()),
+        ),
+        ("done_events".into(), names(reactive.done_events)),
+        (
+            "unhandled_done_events".into(),
+            names(reactive.unhandled_done_events),
+        ),
+        ("internal_events".into(), names(reactive.internal_events)),
     ])))
 }
 

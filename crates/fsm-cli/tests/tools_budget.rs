@@ -7,8 +7,12 @@ use fsm_core::canon::canon_bytes;
 
 #[test]
 fn tools_list_budget() {
+    // 20 000 until plan 0009 added the reactive surface to `machine_analyze`,
+    // `simulate`, and the instance view — four additive schema fields, each
+    // kept to one line. The per-description word caps below are what bound
+    // the reading cost; this ceiling only stops the listing growing unnoticed.
     let bytes = canon_bytes(&tools_list_result());
-    assert!(bytes.len() <= 20_000, "tools/list is {} bytes", bytes.len());
+    assert!(bytes.len() <= 21_000, "tools/list is {} bytes", bytes.len());
 }
 
 #[test]

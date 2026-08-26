@@ -181,3 +181,115 @@ fn sequential_diagrams_remain_byte_exact() {
         )
     );
 }
+
+// ---- Plan 0009 task 4702: the reactive surface, analysed and drawn.
+
+/// Two compounds owning a final child and two regions — every kind of
+/// generated name at once — plus a guarded eventless edge, an internal
+/// event, and terminal states to tell apart from the final ones. Region b's
+/// own done event has no handler.
+fn reactive_parallel() -> CompiledMachine {
+    compile_json(
+        r#"{"format":"fsm.machine/1","name":"reactive_parallel","context":[{"name":"n","ty":"int","init":"0"}],"events":[{"name":"go","fields":[]},{"name":"tick","fields":[],"internal":true},{"name":"stop","fields":[]}],"regions":[{"name":"a","initial":"review","states":[{"name":"review","initial":"open","states":[{"name":"open"},{"name":"approved","final":true}]},{"name":"a_done","terminal":true}]},{"name":"b","initial":"audit","states":[{"name":"audit","initial":"pending","states":[{"name":"pending"},{"name":"checked","final":true}]},{"name":"joined"},{"name":"b_done","terminal":true}]}],"transitions":[{"from":"open","on":"go","to":"approved"},{"from":"review","on":"$done.state.review","to":"a_done"},{"from":"pending","if":"ctx.n > 0","to":"checked"},{"from":"pending","on":"stop","to":"checked"},{"from":"audit","on":"$done.state.audit","to":"joined"},{"from":"joined","on":"$done.region.a","to":"b_done"}]}"#,
+    )
+}
+
+#[test]
+fn analysis_reports_the_reactive_surface() {
+    let machine = reactive_parallel();
+    let tree = Tree::for_machine(&machine.spec);
+    let summary = fsm_core::analyze::reactive_summary(&machine, &tree);
+    assert_eq!(summary.eventless_transitions, 1);
+    assert!(
+        summary.eventless_findings.is_empty(),
+        "{:?}",
+        summary.eventless_findings
+    );
+    assert_eq!(
+        summary.done_events,
+        ["$done.state.review", "$done.state.audit", "$done.region.a"]
+    );
+    assert_eq!(summary.unhandled_done_events, ["$done.region.b"]);
+    assert_eq!(summary.internal_events, ["tick"]);
+    // A plain parallel machine raises nothing; it could handle its region
+    // names, and that is the one place they are discoverable.
+    let (plain, plain_tree) = parallel_machine();
+    let summary = fsm_core::analyze::reactive_summary(&plain, &plain_tree);
+    assert_eq!(summary.eventless_transitions, 0);
+    assert!(summary.done_events.is_empty());
+    assert_eq!(
+        summary.unhandled_done_events,
+        ["$done.region.work", "$done.region.audit"]
+    );
+    assert!(summary.internal_events.is_empty());
+}
+
+#[test]
+fn eventless_edges_are_drawn_as_such_in_both_formats() {
+    let machine = reactive_parallel();
+    let mermaid_output = mermaid(&machine, None);
+    assert!(
+        mermaid_output.contains("  pending --> checked: [ctx.n > 0] (eventless)\n"),
+        "{mermaid_output}"
+    );
+    assert!(
+        mermaid_output.contains("  pending --> checked: stop\n"),
+        "{mermaid_output}"
+    );
+    let dot_output = dot(&machine, None);
+    assert!(
+        dot_output.contains("  pending -> checked [label=\"[ctx.n > 0]\" style=dashed];\n"),
+        "{dot_output}"
+    );
+    assert!(
+        dot_output.contains("  pending -> checked [label=\"stop\"];\n"),
+        "{dot_output}"
+    );
+}
+
+#[test]
+fn final_states_are_drawn_apart_from_terminal_ones() {
+    let machine = reactive_parallel();
+    let mermaid_output = mermaid(&machine, None);
+    assert!(
+        mermaid_output.contains("approved : <<final>>\n"),
+        "{mermaid_output}"
+    );
+    assert!(
+        mermaid_output.contains("a_done --> [*]\n"),
+        "{mermaid_output}"
+    );
+    assert!(
+        !mermaid_output.contains("approved --> [*]"),
+        "a final state does not end the machine: {mermaid_output}"
+    );
+    let dot_output = dot(&machine, None);
+    assert!(
+        dot_output.contains("approved [ shape=doublecircle];\n"),
+        "{dot_output}"
+    );
+    assert!(dot_output.contains("a_done [];\n"), "{dot_output}");
+}
+
+#[test]
+fn done_event_labels_survive_escaping() {
+    let machine = reactive_parallel();
+    let mermaid_output = mermaid(&machine, None);
+    assert!(
+        mermaid_output.contains("  joined --> b_done: $done.region.a\n"),
+        "{mermaid_output}"
+    );
+    assert!(
+        mermaid_output.contains("  review --> a_done: $done.state.review\n"),
+        "{mermaid_output}"
+    );
+    let dot_output = dot(&machine, None);
+    assert!(
+        dot_output.contains("  joined -> b_done [label=\"$done.region.a\"];\n"),
+        "{dot_output}"
+    );
+    assert!(
+        dot_output.contains("  review -> a_done [label=\"$done.state.review\"];\n"),
+        "{dot_output}"
+    );
+}

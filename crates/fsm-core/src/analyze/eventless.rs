@@ -2,8 +2,60 @@
 //! microstep, cycles the machine can never leave, and cascade depth.
 
 use crate::machine::CompiledMachine;
-use crate::spec::{ALWAYS_KEY, Finding};
+use crate::spec::{ALWAYS_KEY, Finding, generated_event_names};
 use crate::tree::{NodeKind, Tree};
+
+/// The reactive surface of a definition, for `machine_analyze`: a model
+/// spelling a generated event name must spell it exactly, and an author
+/// should see which transitions fire without anybody asking.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReactiveSummary {
+    /// Transitions with no `on`.
+    pub eventless_transitions: usize,
+    /// The eventless cycle and depth findings, as `analyze_all` reports them.
+    pub eventless_findings: Vec<Finding>,
+    /// The `$done.state.*` and `$done.region.*` names this machine raises:
+    /// the ones it can generate and some transition handles.
+    pub done_events: Vec<String>,
+    /// Names the machine could generate but nothing handles, so they are
+    /// never raised — the join a definition has not written yet. This is
+    /// where an unhandled generated name is discovered; the trace never
+    /// shows one.
+    pub unhandled_done_events: Vec<String>,
+    /// Declared events marked `internal: true`, which a caller can never send.
+    pub internal_events: Vec<String>,
+}
+
+pub fn reactive_summary(m: &CompiledMachine, t: &Tree) -> ReactiveSummary {
+    let handled = |name: &String| {
+        m.spec
+            .transitions
+            .iter()
+            .any(|transition| transition.on.as_deref() == Some(name.as_str()))
+    };
+    let (done_events, unhandled_done_events): (Vec<String>, Vec<String>) =
+        generated_event_names(&m.spec)
+            .into_iter()
+            .partition(handled);
+    ReactiveSummary {
+        eventless_transitions: m
+            .spec
+            .transitions
+            .iter()
+            .filter(|transition| transition.is_eventless())
+            .count(),
+        eventless_findings: eventless_cycle_findings(m, t),
+        done_events,
+        unhandled_done_events,
+        internal_events: m
+            .spec
+            .events
+            .iter()
+            .filter(|event| event.internal)
+            .map(|event| event.name.clone())
+            .collect(),
+    }
+}
 
 use super::find_machine_node;
 use super::shadowing::is_true_guard;

@@ -16,12 +16,14 @@ pub struct InstanceOverlay {
 /// Edge label: the event, plus the guard that distinguishes this transition
 /// from the other edges on the same event. Without the guard, two guarded
 /// transitions on one event render as the same arrow and the diagram silently
-/// misstates the machine.
+/// misstates the machine. An eventless transition has no event to name; its
+/// label is the guard alone, and the arrow itself says it is eventless.
 fn edge_label(tr: &crate::spec::TransitionSpec, escape: fn(&str) -> String) -> String {
-    let event = tr.on.as_deref().unwrap_or("");
-    match &tr.guard {
-        Some(g) => format!("{} [{}]", escape(event), escape(g)),
-        None => escape(event),
+    match (&tr.on, &tr.guard) {
+        (Some(event), Some(g)) => format!("{} [{}]", escape(event), escape(g)),
+        (Some(event), None) => escape(event),
+        (None, Some(g)) => format!("[{}]", escape(g)),
+        (None, None) => String::new(),
     }
 }
 
@@ -180,11 +182,19 @@ pub fn mermaid(m: &CompiledMachine, overlay: Option<&InstanceOverlay>) -> String
     for tr in &m.spec.transitions {
         let label = edge_label(tr, mermaid_escape);
         let from = state_id(&ids, &tr.from);
-        if let Some(to) = &tr.to {
-            s.push_str(&format!("  {from} --> {}: {label}\n", state_id(&ids, to)));
-        } else {
-            s.push_str(&format!("  {from} --> {from}: {label} (internal)\n"));
-        }
+        // stateDiagram-v2 has one arrow form, so an eventless edge announces
+        // itself in its label instead of a dash pattern; a diagram that drew
+        // it as an ordinary event arrow would misstate the machine.
+        let label = match (tr.is_eventless(), tr.to.is_some()) {
+            (false, true) => label,
+            (false, false) => format!("{label} (internal)"),
+            (true, true) if label.is_empty() => "(eventless)".to_string(),
+            (true, true) => format!("{label} (eventless)"),
+            (true, false) if label.is_empty() => "(eventless, internal)".to_string(),
+            (true, false) => format!("{label} (eventless, internal)"),
+        };
+        let to = tr.to.as_deref().map_or(from, |to| state_id(&ids, to));
+        s.push_str(&format!("  {from} --> {to}: {label}\n"));
     }
     for deadline in &m.spec.deadlines {
         let label = deadline_edge_label(deadline, mermaid_escape);
@@ -247,6 +257,11 @@ fn write_mermaid_states(
             }
             if n.terminal {
                 s.push_str(&format!("{pad}{id} --> [*]\n"));
+            }
+            // Distinct from terminal on purpose: a final state ends its
+            // compound, not the machine, so it never points at `[*]`.
+            if n.final_state {
+                s.push_str(&format!("{pad}{id} : <<final>>\n"));
             }
         } else {
             if aliased {
@@ -339,8 +354,13 @@ pub fn dot(m: &CompiledMachine, overlay: Option<&InstanceOverlay>) -> String {
     for tr in &m.spec.transitions {
         let to = tr.to.as_deref().unwrap_or(&tr.from);
         let label = edge_label(tr, dot_escape);
+        let style = if tr.is_eventless() {
+            " style=dashed"
+        } else {
+            ""
+        };
         s.push_str(&format!(
-            "  {} -> {} [label=\"{}\"];\n",
+            "  {} -> {} [label=\"{}\"{style}];\n",
             dot_state_id(&ids, &tr.from),
             dot_state_id(&ids, to),
             label
@@ -383,6 +403,11 @@ fn write_dot_states(
                     }
                 })
                 .unwrap_or("");
+            let shape = if n.final_state {
+                " shape=doublecircle"
+            } else {
+                ""
+            };
             if let Some(h) = n.history {
                 let tag = match h {
                     HistoryKind::Deep => "deep-history",
@@ -395,11 +420,11 @@ fn write_dot_states(
                 ));
             } else if aliased {
                 s.push_str(&format!(
-                    "{pad}{id} [label=\"{}\"{extra}];\n",
+                    "{pad}{id} [label=\"{}\"{extra}{shape}];\n",
                     dot_escape(&n.name)
                 ));
             } else {
-                s.push_str(&format!("{pad}{id} [{extra}];\n"));
+                s.push_str(&format!("{pad}{id} [{extra}{shape}];\n"));
             }
         } else {
             s.push_str(&format!(

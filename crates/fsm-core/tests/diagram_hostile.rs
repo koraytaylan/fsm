@@ -96,3 +96,37 @@ fn exporters_alias_and_escape_hostile_identifiers() {
     assert!(!dot_output.contains("\nINJECT"));
     assert!(!dot_output.contains(['\0', '\t']));
 }
+
+/// A join on a region whose name is hostile: the generated event name carries
+/// the hostile bytes through the same escaping as any other label, and the
+/// `$` prefix survives it. A state whose name mimics the generated name minus
+/// the prefix is aliased and escaped like any other name, so the two cannot
+/// be confused — `def/reserved_ident` keeps a real collision impossible.
+#[test]
+fn generated_event_labels_take_the_escaping_path_with_the_prefix_intact() {
+    let source = br#"{"format":"fsm.machine/1","name":"hostile join","context":[],"events":[{"name":"go","fields":[]}],"regions":[{"name":"b \";\nINJECT","initial":"b_work","states":[{"name":"b_work"},{"name":"b_done","terminal":true}]},{"name":"a","initial":"waiting","states":[{"name":"waiting"},{"name":"proceed"},{"name":"done.region.b \";\nINJECT"}]}],"transitions":[{"from":"b_work","on":"go","to":"b_done"},{"from":"waiting","on":"$done.region.b \";\nINJECT","to":"proceed"},{"from":"proceed","on":"go","to":"done.region.b \";\nINJECT"}]}"#;
+    let value = parse(source, &JsonLimits::DEFAULT).expect("hostile JSON parses");
+    let machine = compile_accepted(&value).expect("hostile identifiers remain valid machine data");
+
+    let mermaid_output = mermaid(&machine, None);
+    assert!(
+        mermaid_output.contains("  waiting --> proceed: $done.region.b #34;#59; INJECT\n"),
+        "{mermaid_output}"
+    );
+    assert!(
+        mermaid_output.contains("state \"done.region.b #34;#59; INJECT\" as _fsm_state_"),
+        "{mermaid_output}"
+    );
+    assert!(
+        !mermaid_output.contains("state \"$done"),
+        "{mermaid_output}"
+    );
+    assert!(!mermaid_output.contains("\nINJECT"));
+
+    let dot_output = dot(&machine, None);
+    assert!(
+        dot_output.contains("  waiting -> proceed [label=\"$done.region.b \\\"; INJECT\"];\n"),
+        "{dot_output}"
+    );
+    assert!(!dot_output.contains("\nINJECT"));
+}
