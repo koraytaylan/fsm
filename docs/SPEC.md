@@ -43,7 +43,13 @@ path refuses it with `req/event_internal`, as it refuses every `$`-prefixed
 generated name — and it may still be the `on` of any transition. States are recursive trees; a child with
 `history: "deep"|"shallow"` is a history pseudostate. It MUST be owned by a
 compound parent and MUST be childless, nonterminal, and have no `initial` of
-its own. Blocks use `do` (sets) and `emit`. Transitions use `from`, optional
+its own. Blocks use `do` (sets), `emit`, and `raise`: a `raise` is
+`{event, with}`, where `event` names a declared event (never a generated
+`$done` name) and `with` maps every one of its declared fields — no more, no
+fewer — to an `expr/1` source typed exactly like a context assignment, scale
+included (`def/assign_type`). Its payload is evaluated in the block's snapshot
+like `do` and `emit`, and the event is delivered to this instance inside the
+same macrostep; only a block that commits raises. Transitions use `from`, optional
 `on` (absent = an eventless transition, keyed internally under the reserved
 `$always` sentinel and run by the macrostep whenever its guard holds; an
 explicit `null` is `def/shape`), optional `if` (guard), optional `to` (absent =
@@ -110,6 +116,7 @@ entered; the core NEVER reads a clock.
 | `def/limit_fields` | ≤ 32 fields per event/effect |
 | `def/limit_sets` | ≤ 32 sets per block |
 | `def/limit_emits` | ≤ 8 emits per block |
+| `def/limit_raises` | ≤ 8 raises per block |
 | `def/limit_invariants` | ≤ 64 invariants |
 | `def/limit_eval` | ≤ 4096 worst-case evaluation ticks: compiled AST nodes + 1 per distinct event with an omitted `if` |
 | `def/limit_bytes` | definition ≤ 256 KiB |
@@ -636,6 +643,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `def/limit_fields` — more than 32 fields
 - `def/limit_history` — more than 32 history nodes
 - `def/limit_invariants` — more than 64 invariants
+- `def/limit_raises` — more than 8 raises per block
 - `def/limit_regions` — more than 8 regions
 - `def/limit_sets` — more than 32 sets per block
 - `def/limit_states` — more than 256 states
@@ -743,6 +751,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 | fields per event or effect | 32 (`MAX_FIELDS`) |
 | sets per block | 32 (`MAX_SETS_PER_BLOCK`) |
 | emits per block | 8 (`MAX_EMITS_PER_BLOCK`) |
+| raises per block | 8 (`MAX_RAISES_PER_BLOCK`); deliberately not in the genesis `limits` block, which is hash-verified on fold |
 
 These match `crates/fsm-core/src/limits.rs`.
 

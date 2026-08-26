@@ -7,7 +7,7 @@ use crate::spec::TySpec;
 use crate::trace::BlockKind;
 use crate::tree::Tree;
 
-use super::block::{apply_block, find_node, reject_pipeline};
+use super::block::{PipelineOutputs, apply_block, find_node, reject_pipeline};
 use super::guard::val_matches;
 use super::micro::{EngineSelector, ReactionSelector, invariant_failure, run_to_quiescence};
 use super::transition::Transitioned;
@@ -115,8 +115,7 @@ pub fn create_with(
             }
         }
     };
-    let mut effects = Vec::new();
-    let mut k = 0u32;
+    let mut outputs = PipelineOutputs::starting_at(0);
     let mut pipeline = Vec::new();
     let empty_evt = BTreeMap::new();
     let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
@@ -128,8 +127,7 @@ pub fn create_with(
                     b,
                     BlockKind::Entry(name.clone()),
                     &mut ctx,
-                    &mut effects,
-                    &mut k,
+                    &mut outputs,
                     false,
                     &empty_evt,
                     &mut budget,
@@ -155,7 +153,8 @@ pub fn create_with(
         configuration_after,
         context: ctx,
         history_after: BTreeMap::new(),
-        effects,
+        effects: outputs.effects,
+        raises: outputs.raised,
         pipeline,
         candidates: Vec::new(),
         exited: Vec::new(),

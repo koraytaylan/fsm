@@ -4,16 +4,26 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::limits;
 
-use super::super::{EmitSpec, Finding, MachineSpec, SetSpec, StateNode, Topology};
+use super::super::{
+    EmitSpec, EventDecl, Finding, MachineSpec, RaiseSpec, SetSpec, StateNode, Topology,
+};
 use super::structure::StateTables;
+
+/// The declarations a block's emits and raises resolve against.
+pub(super) struct Declared<'a> {
+    pub(super) effect_names: BTreeSet<&'a str>,
+    pub(super) events: &'a [EventDecl],
+}
 
 fn check_block_limits(
     sets: &[SetSpec],
     emits: &[EmitSpec],
-    effect_names: &BTreeSet<&str>,
+    raises: &[RaiseSpec],
+    declared: &Declared<'_>,
     path: &str,
     errs: &mut Vec<Finding>,
 ) {
+    let effect_names = &declared.effect_names;
     if sets.len() > limits::MAX_SETS_PER_BLOCK {
         errs.push(Finding::err(
             "def/limit_sets",
@@ -40,6 +50,52 @@ fn check_block_limits(
             ));
         }
     }
+    check_raises(raises, declared.events, path, errs);
+}
+
+/// A raise names a declared event and supplies exactly its fields; the
+/// value types are the compiler's to check (`def/assign_type`).
+fn check_raises(raises: &[RaiseSpec], events: &[EventDecl], path: &str, errs: &mut Vec<Finding>) {
+    if raises.len() > limits::MAX_RAISES_PER_BLOCK {
+        errs.push(Finding::err(
+            "def/limit_raises",
+            path,
+            "more than 8 raises in one block",
+            "split the block",
+        ));
+    }
+    for (index, raise) in raises.iter().enumerate() {
+        let raise_path = format!("{path}/raise/{index}");
+        let Some(event) = events.iter().find(|event| event.name == raise.event) else {
+            errs.push(Finding::err(
+                "def/unknown_event",
+                format!("{raise_path}/event"),
+                format!("unknown event {}", raise.event),
+                "raise a declared event; generated $done events cannot be raised",
+            ));
+            continue;
+        };
+        for field in &event.fields {
+            if !raise.with.iter().any(|(name, _)| *name == field.name) {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{raise_path}/with"),
+                    format!("raise of {} omits field {}", event.name, field.name),
+                    "supply every declared field of the event",
+                ));
+            }
+        }
+        for (name, _) in &raise.with {
+            if !event.fields.iter().any(|field| field.name == *name) {
+                errs.push(Finding::err(
+                    "def/shape",
+                    format!("{raise_path}/with/{name}"),
+                    format!("{} has no field {name}", event.name),
+                    "remove it, or declare the field on the event",
+                ));
+            }
+        }
+    }
 }
 
 /// Check every transition and return the `(from, on)` cell populations for
@@ -48,7 +104,7 @@ pub(super) fn check_transitions(
     spec: &MachineSpec,
     tables: &StateTables<'_>,
     event_names: &BTreeSet<&str>,
-    effect_names: &BTreeSet<&str>,
+    declared: &Declared<'_>,
     permits_legacy_history_shapes: bool,
     errs: &mut Vec<Finding>,
 ) -> BTreeMap<(String, String), usize> {
@@ -147,7 +203,7 @@ pub(super) fn check_transitions(
                 }
             }
         }
-        check_block_limits(&t.sets, &t.emits, effect_names, &p, errs);
+        check_block_limits(&t.sets, &t.emits, &t.raises, declared, &p, errs);
         *cell
             .entry((t.from.clone(), t.cell_key().to_string()))
             .or_insert(0) += 1;
@@ -158,7 +214,7 @@ pub(super) fn check_transitions(
 pub(super) fn check_deadlines(
     spec: &MachineSpec,
     tables: &StateTables<'_>,
-    effect_names: &BTreeSet<&str>,
+    declared: &Declared<'_>,
     errs: &mut Vec<Finding>,
 ) {
     let by_name = &tables.by_name;
@@ -257,30 +313,51 @@ pub(super) fn check_deadlines(
                 ));
             }
         }
-        check_block_limits(&deadline.sets, &deadline.emits, effect_names, &path, errs);
+        check_block_limits(
+            &deadline.sets,
+            &deadline.emits,
+            &deadline.raises,
+            declared,
+            &path,
+            errs,
+        );
     }
 }
 
 pub(super) fn check_state_block_limits(
     spec: &MachineSpec,
-    effect_names: &BTreeSet<&str>,
+    declared: &Declared<'_>,
     errs: &mut Vec<Finding>,
 ) {
     fn walk_state_blocks(
         nodes: &[StateNode],
         path: &str,
-        effect_names: &BTreeSet<&str>,
+        declared: &Declared<'_>,
         errs: &mut Vec<Finding>,
     ) {
         for (i, n) in nodes.iter().enumerate() {
             let p = format!("{path}/{i}");
             if let Some(b) = &n.entry {
-                check_block_limits(&b.sets, &b.emits, effect_names, &format!("{p}/entry"), errs);
+                check_block_limits(
+                    &b.sets,
+                    &b.emits,
+                    &b.raises,
+                    declared,
+                    &format!("{p}/entry"),
+                    errs,
+                );
             }
             if let Some(b) = &n.exit {
-                check_block_limits(&b.sets, &b.emits, effect_names, &format!("{p}/exit"), errs);
+                check_block_limits(
+                    &b.sets,
+                    &b.emits,
+                    &b.raises,
+                    declared,
+                    &format!("{p}/exit"),
+                    errs,
+                );
             }
-            walk_state_blocks(&n.states, &format!("{p}/states"), effect_names, errs);
+            walk_state_blocks(&n.states, &format!("{p}/states"), declared, errs);
         }
     }
     for (region_index, (_, states, _)) in spec.state_groups().into_iter().enumerate() {
@@ -288,7 +365,7 @@ pub(super) fn check_state_block_limits(
             Topology::Sequential { .. } => "/states".to_string(),
             Topology::Parallel { .. } => format!("/regions/{region_index}/states"),
         };
-        walk_state_blocks(states, &path, effect_names, errs);
+        walk_state_blocks(states, &path, declared, errs);
     }
 }
 

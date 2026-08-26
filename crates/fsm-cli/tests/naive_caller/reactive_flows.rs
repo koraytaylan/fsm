@@ -147,6 +147,13 @@ pub(crate) fn drive_reactive_outcomes(
     for src in cycle_specs {
         drive_create(st, clock, src, out);
     }
+    // Nine raises in one block (task 4402).
+    drive_create(
+        st,
+        clock,
+        r#"{"format":"fsm.machine/1","name":"r08","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"tick","fields":[],"internal":true},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b","raise":[{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"}]}]}"#,
+        out,
+    );
     // An internal event sent from outside (task 4401).
     drive_create(
         st,

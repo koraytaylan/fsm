@@ -5,20 +5,41 @@ use crate::expr::typeck::{ScopeKind, Ty, annotate_if_widening};
 use crate::machine::{EnforceMode, ExprSlot};
 use crate::spec::{Block, MachineSpec};
 use crate::trace::{
-    BlockKind, BlockTrace, DecisionTrace, EmitTrace, InvariantTrace, LevelTrace, SetTrace,
+    BlockKind, BlockTrace, DecisionTrace, EmitTrace, InvariantTrace, LevelTrace, RaiseTrace,
+    SetTrace,
 };
 
 use super::guard::{
-    coerce_to_ty, compiled_or_annotate, owner_emit_slot, owner_set_slot, spec_scope,
+    coerce_to_ty, compiled_or_annotate, owner_emit_slot, owner_raise_slot, owner_set_slot,
+    spec_scope,
 };
+use super::micro::{InternalEvent, InternalOrigin};
 use super::{EffectOut, ExprSlotOwner, Rejection};
+
+/// What a pipeline's blocks produce besides context: the effects for the
+/// outbox under one continuing `k`, and the internal events for the
+/// macrostep's queue, in block order.
+pub(super) struct PipelineOutputs {
+    pub(super) effects: Vec<EffectOut>,
+    pub(super) next_effect_index: u32,
+    pub(super) raised: Vec<InternalEvent>,
+}
+
+impl PipelineOutputs {
+    pub(super) fn starting_at(first_effect_index: u32) -> Self {
+        Self {
+            effects: Vec::new(),
+            next_effect_index: first_effect_index,
+            raised: Vec::new(),
+        }
+    }
+}
 
 pub(super) fn apply_block(
     block: &Block,
     kind: BlockKind,
     ctx: &mut BTreeMap<String, Val>,
-    effects: &mut Vec<EffectOut>,
-    k: &mut u32,
+    outputs: &mut PipelineOutputs,
     see_evt: bool,
     evt: &BTreeMap<String, Val>,
     budget: &mut Budget,
@@ -30,6 +51,7 @@ pub(super) fn apply_block(
     let snapshot = ctx.clone();
     let mut sets = Vec::new();
     let mut emits = Vec::new();
+    let mut raises = Vec::new();
     let evt_ref = if see_evt { Some(evt) } else { None };
     let b = Bindings {
         ctx: &snapshot,
@@ -117,6 +139,7 @@ pub(super) fn apply_block(
             }
         }
     }
+    let k = &mut outputs.next_effect_index;
     for (ei, em) in block.emits.iter().enumerate() {
         let mut args = BTreeMap::new();
         let fx = spec.effects.iter().find(|e| e.name == em.effect);
@@ -162,7 +185,7 @@ pub(super) fn apply_block(
                 }
             }
         }
-        effects.push(EffectOut {
+        outputs.effects.push(EffectOut {
             name: em.effect.clone(),
             args,
             k: *k,
@@ -174,10 +197,70 @@ pub(super) fn apply_block(
         });
         *k += 1;
     }
+    // A raise is an emit turned inward: the same snapshot semantics, the same
+    // typed argument evaluation, but the payload lands in the macrostep's
+    // queue instead of the outbox — and only from a block that commits,
+    // which is every block that returns `Ok` here.
+    for (ri, raise) in block.raises.iter().enumerate() {
+        let declared = spec.events.iter().find(|e| e.name == raise.event);
+        let mut payload = BTreeMap::new();
+        for (name, src) in &raise.with {
+            let e = compiled_or_annotate(
+                src,
+                &owner_raise_slot(&owner, ri, name),
+                compiled,
+                spec,
+                scope_kind,
+                &ctx_tys,
+                evt_tys.as_ref(),
+                &state_names,
+                &kind,
+            )?;
+            match eval(&e, &b, budget, true) {
+                (Ok(v), _) => {
+                    let v = if let Some(f) =
+                        declared.and_then(|e| e.fields.iter().find(|f| f.name == *name))
+                    {
+                        coerce_to_ty(v, &f.ty).map_err(|c| action_err(&kind, c.into(), c.into()))?
+                    } else {
+                        v
+                    };
+                    payload.insert(name.clone(), v);
+                }
+                (Err(err), _) => {
+                    return Err(action_err_at(
+                        &kind,
+                        "run/action_error",
+                        err.message,
+                        err.hint,
+                        Some((err.span.start, err.span.end)),
+                        sets,
+                        emits,
+                        Some(err.code),
+                    ));
+                }
+            }
+        }
+        raises.push(RaiseTrace {
+            event: raise.event.clone(),
+            with: payload
+                .iter()
+                .map(|(field, value)| (field.clone(), value.canonical_string()))
+                .collect(),
+        });
+        outputs.raised.push(InternalEvent {
+            name: raise.event.clone(),
+            payload,
+            origin: InternalOrigin::Raise {
+                block: kind.clone(),
+            },
+        });
+    }
     Ok(BlockTrace {
         block: kind,
         sets,
         emits,
+        raises,
         discarded: false,
     })
 }
@@ -236,6 +319,7 @@ fn action_err_at(
                 block: kind.clone(),
                 sets,
                 emits,
+                raises: Vec::new(),
                 discarded: true,
             }],
             ..DecisionTrace::default()

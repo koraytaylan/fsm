@@ -62,6 +62,11 @@ fn check_eventless_evt(transition: &TransitionSpec, path: &str, errs: &mut Vec<F
             sources.push((format!("{path}/emit/{index}/args/{name}"), source));
         }
     }
+    for (index, raise) in transition.raises.iter().enumerate() {
+        for (name, source) in &raise.with {
+            sources.push((format!("{path}/raise/{index}/with/{name}"), source));
+        }
+    }
     for (expression_path, source) in sources {
         // A source that does not parse is compile's finding, not ours.
         let Ok(expression) = parser::parse(source) else {

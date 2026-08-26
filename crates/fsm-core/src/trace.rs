@@ -59,11 +59,22 @@ pub struct EmitTrace {
     pub expr: Option<TraceNode>,
 }
 
+/// One `raise` a block evaluated: the event and its computed payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RaiseTrace {
+    pub event: String,
+    /// Field name to canonical value string.
+    pub with: BTreeMap<String, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockTrace {
     pub block: BlockKind,
     pub sets: Vec<SetTrace>,
     pub emits: Vec<EmitTrace>,
+    /// Internal events this block raised; empty for every block of a machine
+    /// that raises nothing, and then absent from the rendered trace.
+    pub raises: Vec<RaiseTrace>,
     pub discarded: bool,
 }
 
@@ -326,6 +337,31 @@ fn block_value(b: &BlockTrace) -> Value {
                 .collect(),
         ),
     );
+    if !b.raises.is_empty() {
+        m.insert(
+            "raises".into(),
+            Value::Arr(
+                b.raises
+                    .iter()
+                    .map(|raise| {
+                        Value::Obj(BTreeMap::from([
+                            ("event".into(), Value::Str(raise.event.clone())),
+                            (
+                                "with".into(),
+                                Value::Obj(
+                                    raise
+                                        .with
+                                        .iter()
+                                        .map(|(k, v)| (k.clone(), Value::Str(v.clone())))
+                                        .collect(),
+                                ),
+                            ),
+                        ]))
+                    })
+                    .collect(),
+            ),
+        );
+    }
     Value::Obj(m)
 }
 

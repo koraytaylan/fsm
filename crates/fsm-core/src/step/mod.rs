@@ -279,6 +279,7 @@ pub fn step_with(
             action: Block {
                 sets: transition.sets.clone(),
                 emits: transition.emits.clone(),
+                raises: transition.raises.clone(),
             },
             action_kind: BlockKind::Transition,
             owner: ExprSlotOwner::Transition(tidx),

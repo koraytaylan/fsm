@@ -17,8 +17,9 @@ use crate::spec::{Block, DeadlineSpec, HistoryKind};
 use crate::trace::{BlockKind, BlockTrace, DecisionTrace, LevelTrace};
 use crate::tree::{NodeKind, Tree};
 
-use super::block::{apply_block, find_node, reject_pipeline};
+use super::block::{PipelineOutputs, apply_block, find_node, reject_pipeline};
 use super::guard::spec_scope;
+use super::micro::InternalEvent;
 use super::validate::reject;
 use super::{EffectOut, ExprSlotOwner, Rejection};
 
@@ -51,6 +52,8 @@ pub(super) struct Transitioned {
     pub(super) context: BTreeMap<String, Val>,
     pub(super) history_after: BTreeMap<String, String>,
     pub(super) effects: Vec<EffectOut>,
+    /// Internal events the committed blocks raised, in pipeline order.
+    pub(super) raises: Vec<InternalEvent>,
     pub(super) pipeline: Vec<BlockTrace>,
     pub(super) candidates: Vec<LevelTrace>,
     pub(super) exited: Vec<u16>,
@@ -154,15 +157,13 @@ pub(super) fn apply_selected_transition(
     };
 
     let mut context = state.ctx.clone();
-    let mut effects = Vec::new();
-    let mut effect_index = first_effect_index;
+    let mut outputs = PipelineOutputs::starting_at(first_effect_index);
     let mut pipeline = Vec::new();
 
     let apply = |block: &Block,
                  kind: BlockKind,
                  context: &mut BTreeMap<String, Val>,
-                 effects: &mut Vec<EffectOut>,
-                 effect_index: &mut u32,
+                 outputs: &mut PipelineOutputs,
                  see_event: bool,
                  block_owner: ExprSlotOwner,
                  budget: &mut Budget|
@@ -171,8 +172,7 @@ pub(super) fn apply_selected_transition(
             block,
             kind,
             context,
-            effects,
-            effect_index,
+            outputs,
             see_event,
             event_fields,
             budget,
@@ -190,8 +190,7 @@ pub(super) fn apply_selected_transition(
                 block,
                 BlockKind::Exit(name.clone()),
                 &mut context,
-                &mut effects,
-                &mut effect_index,
+                &mut outputs,
                 false,
                 ExprSlotOwner::Exit(name.clone()),
                 budget,
@@ -207,8 +206,7 @@ pub(super) fn apply_selected_transition(
         &action,
         action_kind,
         &mut context,
-        &mut effects,
-        &mut effect_index,
+        &mut outputs,
         sees_event,
         owner,
         budget,
@@ -225,8 +223,7 @@ pub(super) fn apply_selected_transition(
                 block,
                 BlockKind::Entry(name.clone()),
                 &mut context,
-                &mut effects,
-                &mut effect_index,
+                &mut outputs,
                 false,
                 ExprSlotOwner::Entry(name.clone()),
                 budget,
@@ -265,7 +262,8 @@ pub(super) fn apply_selected_transition(
         configuration_after,
         context,
         history_after,
-        effects,
+        effects: outputs.effects,
+        raises: outputs.raised,
         pipeline,
         candidates,
         exited: exited_ids,

@@ -149,10 +149,20 @@ pub struct EmitSpec {
     pub args: BTreeMap<String, String>,
 }
 
+/// A `raise` in a block: an internal event delivered to this instance inside
+/// the same macrostep, with its typed payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RaiseSpec {
+    pub event: String,
+    /// Declared field name to `expr/1` source, in field-name order.
+    pub with: Vec<(String, String)>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub sets: Vec<SetSpec>,
     pub emits: Vec<EmitSpec>,
+    pub raises: Vec<RaiseSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,6 +244,7 @@ pub struct TransitionSpec {
     pub guard: Option<String>,
     pub sets: Vec<SetSpec>,
     pub emits: Vec<EmitSpec>,
+    pub raises: Vec<RaiseSpec>,
     pub to: Option<String>,
 }
 
@@ -262,6 +273,8 @@ pub struct DeadlineSpec {
     pub sets: Vec<SetSpec>,
     /// Effects emitted when the deadline fires.
     pub emits: Vec<EmitSpec>,
+    /// Internal events raised when the deadline fires.
+    pub raises: Vec<RaiseSpec>,
     /// Target state in the same region as `from`.
     pub to: String,
 }

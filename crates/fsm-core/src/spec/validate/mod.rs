@@ -46,18 +46,21 @@ pub(super) fn validate_with_compatibility(
     structure::check_nodes(&tables, permits_legacy_history_shapes, &mut errs);
     structure::check_initial_chains(spec, &tables, &mut errs);
     let event_names: BTreeSet<_> = spec.events.iter().map(|e| e.name.as_str()).collect();
-    let effect_names: BTreeSet<_> = spec.effects.iter().map(|e| e.name.as_str()).collect();
+    let declared = blocks::Declared {
+        effect_names: spec.effects.iter().map(|e| e.name.as_str()).collect(),
+        events: &spec.events,
+    };
     structure::check_declarations(spec, &mut errs);
     let cell = blocks::check_transitions(
         spec,
         &tables,
         &event_names,
-        &effect_names,
+        &declared,
         permits_legacy_history_shapes,
         &mut errs,
     );
-    blocks::check_deadlines(spec, &tables, &effect_names, &mut errs);
-    blocks::check_state_block_limits(spec, &effect_names, &mut errs);
+    blocks::check_deadlines(spec, &tables, &declared, &mut errs);
+    blocks::check_state_block_limits(spec, &declared, &mut errs);
     blocks::check_cell_limits(cell, &mut errs);
     structure::check_field_counts(spec, &mut errs);
     structure::check_enum_references(spec, &mut errs);

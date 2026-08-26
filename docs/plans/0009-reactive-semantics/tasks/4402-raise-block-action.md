@@ -11,10 +11,32 @@ touches:
   - crates/fsm-core/src/spec/parse/states.rs
   - crates/fsm-core/src/spec/parse/transitions.rs
   - crates/fsm-core/src/spec/mod.rs
+  - crates/fsm-core/src/spec/serialize.rs
+  - crates/fsm-core/src/spec/machine_impl.rs
+  - crates/fsm-core/src/spec/compile.rs
+  - crates/fsm-core/src/spec/validate/mod.rs
+  - crates/fsm-core/src/spec/validate/blocks.rs
+  - crates/fsm-core/src/spec/validate/reactive.rs
+  - crates/fsm-core/src/analyze/creation.rs
+  - crates/fsm-core/src/analyze/eventless.rs
+  - crates/fsm-core/src/machine.rs
+  - crates/fsm-core/src/trace.rs
   - crates/fsm-core/src/step/block.rs
+  - crates/fsm-core/src/step/guard.rs
+  - crates/fsm-core/src/step/transition.rs
+  - crates/fsm-core/src/step/create.rs
+  - crates/fsm-core/src/step/deadline.rs
+  - crates/fsm-core/src/step/mod.rs
+  - crates/fsm-core/src/step/micro.rs
+  - crates/fsm-core/src/step/validate.rs
   - crates/fsm-core/src/limits.rs
+  - crates/fsm-core/src/error.rs
   - crates/fsm-core/tests/raise_actions.rs
-status: planned
+  - crates/fsm-cli/tests/naive_caller/one_step_data.rs
+  - crates/fsm-cli/tests/naive_caller/harness.rs
+  - crates/fsm-cli/tests/naive_caller/reactive_flows.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Raise Block Action
@@ -43,3 +65,5 @@ merged_as: ""
 - Identity: a machine with no `raise` serializes without the key and keeps its committed `machine_id`.
 
 - **Done when:** `cargo test -p fsm-core --test raise_actions` passes every case above, `MAX_RAISES_PER_BLOCK` is absent from the genesis limits block, every `examples/` machine keeps its `machine_id`, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `RaiseSpec` on `Block`, `TransitionSpec`, and `DeadlineSpec`; `raise` parsed in `parse_block` and forwarded from transitions and deadlines; serialized only when present (`serialize.rs` for state blocks, `machine_impl.rs` for transitions and deadlines). Field presence is `validate/blocks.rs`'s (`def/limit_raises`, `def/unknown_event`, the two `def/shape`s) and value typing is `compile.rs`'s (`def/assign_type`) — the same split `emit` uses — with four new `ExprSlot` variants so admission charges the payload expressions. `step/block.rs` bundles effects and raises into `PipelineOutputs`; `micro.rs` seeds and refills the queue; the trace carries a `raises` list per block, absent when empty. Deviations from the footprint: `machine_impl.rs`, `serialize.rs`, `compile.rs`, `validate/blocks.rs`, `validate/reactive.rs` (a raise's `with` is an eventless-`evt` source too), `analyze/eventless.rs` and `analyze/creation.rs` (the noop rule and the override-dependence scan see raises), `guard.rs`, `machine.rs`, `trace.rs`, `transition.rs`, `create.rs`, `deadline.rs`, `micro.rs`, `step/validate.rs` (the `raised_from` hint), `error.rs`, SPEC, and the naive-caller files all had to move with the new key.

@@ -40,6 +40,11 @@ pub(crate) const SPEC_ROWS: &[(&str, &str, &str)] = &[
         r#"{"format":"fsm.machine/1","name":"eevt2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[{"name":"x","ty":"int","init":"0"}],"events":[{"name":"e","fields":[{"name":"x","ty":"int"}]}],"transitions":[{"from":"a","on":"e","if":"evt.x > 0","to":"b"}]}"#,
     ),
     (
+        "def/limit_raises",
+        r#"{"format":"fsm.machine/1","name":"lr","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"tick","fields":[],"internal":true},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b","raise":[{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"}]}]}"#,
+        r#"{"format":"fsm.machine/1","name":"lr2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[{"name":"tick","fields":[],"internal":true},{"name":"go","fields":[]}],"transitions":[{"from":"a","on":"go","to":"b","raise":[{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"},{"event":"tick"}]}]}"#,
+    ),
+    (
         "def/eventless_cycle",
         r#"{"format":"fsm.machine/1","name":"ecyc","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","to":"b"},{"from":"b","to":"a"}]}"#,
         r#"{"format":"fsm.machine/1","name":"ecyc2","states":[{"name":"a"},{"name":"b"}],"initial":"a","context":[],"events":[],"transitions":[{"from":"a","to":"b"}]}"#,

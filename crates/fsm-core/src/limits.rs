@@ -16,6 +16,13 @@ pub const MAX_CTX_VARS: usize = 64;
 pub const MAX_FIELDS: usize = 32;
 pub const MAX_SETS_PER_BLOCK: usize = 32;
 pub const MAX_EMITS_PER_BLOCK: usize = 8;
+/// Maximum `raise` entries in one block, mirroring `MAX_EMITS_PER_BLOCK`.
+///
+/// Deliberately *not* part of the genesis `limits` block, for the reason
+/// `MAX_PAYLOAD_BYTES` gives: that block is hash-verified on fold, so adding
+/// a key there would make every store written by an earlier build unreadable
+/// instead of migratable.
+pub const MAX_RAISES_PER_BLOCK: usize = 8;
 pub const MAX_INVARIANTS: usize = 64;
 pub const MAX_DEF_BYTES: usize = 256 * 1024;
 /// Maximum worst-case expression-evaluation cost of a machine.

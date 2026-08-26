@@ -218,6 +218,15 @@ pub(super) fn owner_emit_slot(owner: &ExprSlotOwner, i: usize, arg: &str) -> Exp
     }
 }
 
+pub(super) fn owner_raise_slot(owner: &ExprSlotOwner, i: usize, field: &str) -> ExprSlot {
+    match owner {
+        ExprSlotOwner::Transition(t) => ExprSlot::TransitionRaiseArg(*t, i, field.into()),
+        ExprSlotOwner::Deadline(deadline) => ExprSlot::DeadlineRaiseArg(*deadline, i, field.into()),
+        ExprSlotOwner::Entry(n) => ExprSlot::StateEntryRaiseArg(n.clone(), i, field.into()),
+        ExprSlotOwner::Exit(n) => ExprSlot::StateExitRaiseArg(n.clone(), i, field.into()),
+    }
+}
+
 pub(super) fn val_matches(v: &Val, ty: &TySpec) -> bool {
     match (v, ty) {
         (Val::Int(_), TySpec::Int)

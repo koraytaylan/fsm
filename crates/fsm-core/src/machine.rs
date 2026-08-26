@@ -103,12 +103,20 @@ pub enum ExprSlot {
     StateExitSet(String, usize),
     StateEntryEmitArg(String, usize, String),
     StateExitEmitArg(String, usize, String),
+    /// A `with` field of the indexed raise in the indexed transition's block.
+    TransitionRaiseArg(usize, usize, String),
+    /// A `with` field of the indexed raise in the named state's entry block.
+    StateEntryRaiseArg(String, usize, String),
+    /// A `with` field of the indexed raise in the named state's exit block.
+    StateExitRaiseArg(String, usize, String),
     /// The `after` expression of the indexed deadline definition.
     DeadlineAfter(usize),
     /// The indexed context assignment of the indexed deadline definition.
     DeadlineSet(usize, usize),
     /// An effect argument of the indexed emit in the indexed deadline definition.
     DeadlineEmitArg(usize, usize, String),
+    /// A `with` field of the indexed raise in the indexed deadline definition.
+    DeadlineRaiseArg(usize, usize, String),
     Invariant(usize),
 }
 

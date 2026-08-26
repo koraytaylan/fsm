@@ -23,13 +23,14 @@ pub fn eventless_noop_findings(m: &CompiledMachine) -> Vec<Finding> {
                 && transition.to.is_none()
                 && transition.sets.is_empty()
                 && transition.emits.is_empty()
+                && transition.raises.is_empty()
         })
         .map(|(index, transition)| {
             Finding::warn(
                 "def/eventless_internal_noop",
                 format!("/transitions/{index}"),
                 format!(
-                    "eventless transition {index} from {} has no to, do, or emit",
+                    "eventless transition {index} from {} has no to, do, emit, or raise",
                     transition.from
                 ),
                 "give it a target or an action; as written it can only burn a microstep",

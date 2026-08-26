@@ -100,6 +100,11 @@ fn create_path_depends_on_override(m: &CompiledMachine, t: &Tree) -> bool {
                             srcs.push(src.as_str());
                         }
                     }
+                    for raise in &b.raises {
+                        for (_, src) in &raise.with {
+                            srcs.push(src.as_str());
+                        }
+                    }
                 }
             }
         }

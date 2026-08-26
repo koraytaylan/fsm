@@ -115,6 +115,16 @@ pub(super) fn compile_with_compatibility(
             BlockOwner::Exit(n) => ExprSlot::StateExitEmitArg(n.clone(), i, arg.into()),
         }
     };
+    let raise_slot = |owner: &BlockOwner, i: usize, field: &str| -> ExprSlot {
+        match owner {
+            BlockOwner::Transition(t) => ExprSlot::TransitionRaiseArg(*t, i, field.into()),
+            BlockOwner::Deadline(deadline) => {
+                ExprSlot::DeadlineRaiseArg(*deadline, i, field.into())
+            }
+            BlockOwner::Entry(n) => ExprSlot::StateEntryRaiseArg(n.clone(), i, field.into()),
+            BlockOwner::Exit(n) => ExprSlot::StateExitRaiseArg(n.clone(), i, field.into()),
+        }
+    };
     let check_block = |block: &Block,
                        scope: &Scope<'_>,
                        path: &str,
@@ -184,6 +194,33 @@ pub(super) fn compile_with_compatibility(
                                 "match the effect field type",
                             ));
                         }
+                    }
+                }
+            }
+        }
+        // A raise's payload is typed exactly like a context assignment:
+        // class and decimal scale must match the declared field.
+        for (i, raise) in block.raises.iter().enumerate() {
+            let fields = event_map.get(&raise.event);
+            for (field, src) in &raise.with {
+                let Some(got) = bind(
+                    src,
+                    scope,
+                    &format!("{path}/raise/{i}/with/{field}"),
+                    raise_slot(owner, i, field),
+                    compiled_exprs,
+                    errs,
+                ) else {
+                    continue;
+                };
+                if let Some(want) = fields.and_then(|fs| fs.get(field)) {
+                    if *want != got {
+                        errs.push(Finding::err(
+                            "def/assign_type",
+                            format!("{path}/raise/{i}/with/{field}"),
+                            format!("cannot raise {}.{field} with {got} ({want})", raise.event),
+                            "make the scale and class match exactly",
+                        ));
                     }
                 }
             }
@@ -268,6 +305,7 @@ pub(super) fn compile_with_compatibility(
             &Block {
                 sets: deadline.sets.clone(),
                 emits: deadline.emits.clone(),
+                raises: deadline.raises.clone(),
             },
             &block_scope,
             &format!("/deadlines/{index}"),
@@ -350,6 +388,7 @@ pub(super) fn compile_with_compatibility(
         let block = Block {
             sets: t.sets.clone(),
             emits: t.emits.clone(),
+            raises: t.raises.clone(),
         };
         check_block(
             &block,

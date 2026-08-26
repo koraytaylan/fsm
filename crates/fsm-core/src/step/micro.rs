@@ -190,7 +190,7 @@ struct Macrostep {
 impl Macrostep {
     fn after_trigger(trigger: &mut Transitioned) -> Self {
         Self {
-            queue: VecDeque::new(),
+            queue: std::mem::take(&mut trigger.raises).into(),
             microsteps: Vec::new(),
             internal_unhandled: Vec::new(),
             effects: std::mem::take(&mut trigger.effects),
@@ -404,6 +404,10 @@ pub(super) fn run_to_quiescence(
         working.ctx = next.context.clone();
         working.history = next.history_after.clone();
         macrostep.effects.append(&mut next.effects);
+        // Breadth-first: an event raised while handling another lands behind
+        // every event already waiting, which is the only order under which
+        // "raised together, delivered together" is true.
+        macrostep.queue.extend(next.raises.drain(..));
         macrostep.microsteps.push(MicrostepTrace {
             index,
             trigger: kind,
@@ -579,6 +583,7 @@ fn apply_reaction(
             action: Block {
                 sets: transition.sets.clone(),
                 emits: transition.emits.clone(),
+                raises: transition.raises.clone(),
             },
             action_kind: BlockKind::Transition,
             owner: ExprSlotOwner::Transition(selection.transition_idx),

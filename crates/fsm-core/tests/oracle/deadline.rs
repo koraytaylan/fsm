@@ -246,6 +246,7 @@ fn apply_naive_deadline(
     let deadline_block = Block {
         sets: deadline.sets.clone(),
         emits: deadline.emits.clone(),
+        raises: deadline.raises.clone(),
     };
     if let Err(rejection) = apply_block(
         &deadline_block,

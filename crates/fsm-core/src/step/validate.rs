@@ -101,12 +101,35 @@ fn sendable_events(m: &CompiledMachine) -> String {
     }
 }
 
-/// Where the machine raises an internal event.
-///
-/// Until blocks can raise (workstream 0044's `raise`), the definition names
-/// no site; the hint then says only that the machine owns the event.
-fn raised_from(_m: &CompiledMachine, name: &str) -> String {
-    format!("nothing in the definition raises {name} yet")
+/// Where the machine raises an internal event, read out of the definition so
+/// the caller learns what actually produces it rather than being told no.
+fn raised_from(m: &CompiledMachine, name: &str) -> String {
+    let mut sites: Vec<String> = Vec::new();
+    for (node, _) in m.spec.walk_states() {
+        for (label, block) in [("entry", &node.entry), ("exit", &node.exit)] {
+            if block
+                .as_ref()
+                .is_some_and(|block| block.raises.iter().any(|raise| raise.event == name))
+            {
+                sites.push(format!("{label}({})", node.name));
+            }
+        }
+    }
+    for (index, transition) in m.spec.transitions.iter().enumerate() {
+        if transition.raises.iter().any(|raise| raise.event == name) {
+            sites.push(format!("transition {index} from {}", transition.from));
+        }
+    }
+    for (index, deadline) in m.spec.deadlines.iter().enumerate() {
+        if deadline.raises.iter().any(|raise| raise.event == name) {
+            sites.push(format!("deadline {index} ({})", deadline.name));
+        }
+    }
+    if sites.is_empty() {
+        format!("nothing in the definition raises {name} yet")
+    } else {
+        format!("{name} is raised by {}", sites.join(", "))
+    }
 }
 
 pub(super) fn reject(code: &'static str, what: &str) -> Rejection {

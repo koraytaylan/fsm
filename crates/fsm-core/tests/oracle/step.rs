@@ -219,6 +219,7 @@ pub fn naive_step_at(
     let tblock = fsm_core::spec::Block {
         sets: tr.sets.clone(),
         emits: tr.emits.clone(),
+        raises: tr.raises.clone(),
     };
     if let Err(r) = apply_block(&tblock, &mut ctx, &fields, true, budget, &mut effects) {
         return Outcome::Rejected(r);

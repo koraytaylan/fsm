@@ -586,6 +586,16 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 };
                 truncate_array(&mut v, &p, 1);
             }
+            "def/limit_raises" => {
+                let p = if path.is_empty() {
+                    "/transitions/0/raise".into()
+                } else if path.ends_with("/raise") {
+                    path.clone()
+                } else {
+                    format!("{path}/raise")
+                };
+                truncate_array(&mut v, &p, 1);
+            }
             "def/limit_cell" | "def/limit_transitions" => {
                 truncate_array(&mut v, "/transitions", 1);
             }

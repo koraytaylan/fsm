@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::json::Value;
 
-use super::{Block, FieldDecl, HistoryKind, StateNode, TySpec};
+use super::{Block, FieldDecl, HistoryKind, RaiseSpec, StateNode, TySpec};
 
 pub(super) fn v_str(s: impl Into<String>) -> Value {
     Value::Str(s.into())
@@ -29,6 +29,30 @@ pub(super) fn field_value(f: &FieldDecl) -> Value {
         ("name".into(), v_str(f.name.clone())),
         ("ty".into(), ty_spec_value(&f.ty)),
     ])
+}
+
+/// One `raise` entry; `with` is omitted when empty.
+pub(super) fn raise_value(raise: &RaiseSpec) -> Value {
+    let mut o = BTreeMap::new();
+    o.insert("event".into(), v_str(raise.event.clone()));
+    if !raise.with.is_empty() {
+        o.insert(
+            "with".into(),
+            v_obj(
+                raise
+                    .with
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v_str(v.clone()))),
+            ),
+        );
+    }
+    Value::Obj(o)
+}
+
+/// The `raise` array of a block, or nothing: a machine that raises nothing
+/// keeps its canonical bytes.
+pub(super) fn raises_value(raises: &[RaiseSpec]) -> Option<Value> {
+    (!raises.is_empty()).then(|| Value::Arr(raises.iter().map(raise_value).collect()))
 }
 
 fn block_value(b: &Block) -> Value {
@@ -69,6 +93,9 @@ fn block_value(b: &Block) -> Value {
                     .collect(),
             ),
         );
+    }
+    if let Some(raises) = raises_value(&b.raises) {
+        m.insert("raise".into(), raises);
     }
     Value::Obj(m)
 }
