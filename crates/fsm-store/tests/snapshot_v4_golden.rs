@@ -44,6 +44,8 @@ fn state_from_literal_machine() -> StoreState {
         history: BTreeMap::new(),
         deadlines: BTreeMap::from([("expire".into(), 1_200)]),
         pending: vec!["effect-z".into(), "effect-a".into()],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
 
     StoreState {

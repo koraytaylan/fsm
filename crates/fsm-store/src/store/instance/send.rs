@@ -168,6 +168,8 @@ impl Store {
                     history: a.history_after.clone(),
                     deadlines: a.deadlines_after.clone(),
                     pending,
+                    invocations: a.invocations_after.clone(),
+                    signals: BTreeMap::new(),
                 };
                 let sh = state_hash(&mid, instance_id, self.journal.last_seq + 1, &new);
                 let mut body = BTreeMap::new();

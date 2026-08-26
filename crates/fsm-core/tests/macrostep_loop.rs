@@ -49,6 +49,8 @@ fn instance(applied: &Applied) -> InstanceState {
         history: applied.history_after.clone(),
         deadlines: applied.deadlines_after.clone(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 
@@ -555,6 +557,8 @@ fn instance_state_has_exactly_its_six_fields() {
         history: BTreeMap::new(),
         deadlines: BTreeMap::new(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let InstanceState {
         status: _,
@@ -563,6 +567,8 @@ fn instance_state_has_exactly_its_six_fields() {
         history: _,
         deadlines: _,
         pending: _,
+        invocations: _,
+        signals: _,
     } = state;
 }
 

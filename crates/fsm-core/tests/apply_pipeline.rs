@@ -63,6 +63,8 @@ fn walkthrough_suspend_resume() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     apply(&m, &t, &mut st, "docs_ok", &empty());
     apply(&m, &t, &mut st, "docs_ok", &empty());
@@ -94,6 +96,8 @@ fn internal_note_added() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     apply(&m, &t, &mut st, "docs_ok", &empty());
     let visits = st.ctx.get("visits").unwrap().clone();
@@ -122,6 +126,8 @@ fn scored_completes() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     apply(&m, &t, &mut st, "docs_ok", &empty());
     apply(&m, &t, &mut st, "docs_ok", &empty());
@@ -158,6 +164,8 @@ fn monitor_does_not_block() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let a = apply(&m, &t, &mut st, "e", &empty());
     assert_eq!(a.monitor_flags, ["pos"]);
@@ -179,6 +187,8 @@ fn inst(m: &fsm_core::machine::CompiledMachine, t: &Tree) -> InstanceState {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

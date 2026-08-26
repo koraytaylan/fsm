@@ -40,6 +40,8 @@ fn state_after_create(m: &CompiledMachine, t: &Tree) -> InstanceState {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

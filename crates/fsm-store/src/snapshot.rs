@@ -377,6 +377,8 @@ fn snapshot_to_state_with_definition_limits(
             history,
             deadlines,
             pending,
+            invocations: BTreeMap::new(),
+            signals: BTreeMap::new(),
         };
         stored
             .tree

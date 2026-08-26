@@ -451,7 +451,13 @@ pub(super) fn run_to_quiescence(
         history: trigger.history_after.clone(),
         deadlines: state.deadlines.clone(),
         pending: state.pending.clone(),
+        invocations: trigger.invocations.clone(),
+        signals: state.signals.clone(),
     };
+    // Each microstep settles its own slots; the cancellations they produce
+    // accumulate across the macrostep, because a parent that entered and left
+    // an invoking state twice cancelled twice.
+    let mut cancelled_children = std::mem::take(&mut trigger.cancelled_children);
     let mut unsettled = trigger;
     loop {
         let index = macrostep.microsteps.len() as u32 + 1;
@@ -550,6 +556,8 @@ pub(super) fn run_to_quiescence(
         working.configuration = next.configuration_after.clone();
         working.ctx = next.context.clone();
         working.history = next.history_after.clone();
+        working.invocations = next.invocations.clone();
+        cancelled_children.append(&mut next.cancelled_children);
         macrostep.microsteps.push(MicrostepTrace {
             index,
             trigger: kind,
@@ -599,6 +607,8 @@ pub(super) fn run_to_quiescence(
         ctx_after: unsettled.context,
         history_after: unsettled.history_after,
         deadlines_after,
+        invocations_after: unsettled.invocations,
+        cancelled_children,
         effects: macrostep.effects,
         monitor_flags,
         status_after,

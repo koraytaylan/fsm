@@ -56,6 +56,8 @@ fn fixture(source: &str) -> Fixture {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
 
     let mut records = Vec::new();
@@ -163,6 +165,8 @@ fn replay_verifies_and_applies_due_deadline() {
         history: applied.transition.history_after.clone(),
         deadlines: applied.transition.deadlines_after.clone(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     push_record(
         &mut fixture.records,
@@ -418,6 +422,8 @@ fn replay_keeps_legacy_state_and_root_discriminators_readable() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
 
     let mut records = Vec::new();

@@ -351,6 +351,8 @@ fn durable_deadline_application_reopens_and_folds_exactly() {
         history: BTreeMap::new(),
         deadlines: BTreeMap::from([("audit_timeout".to_string(), 120)]),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     assert_eq!(
         store.state.instances.get("case-1"),

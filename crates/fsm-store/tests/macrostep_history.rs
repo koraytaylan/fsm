@@ -56,6 +56,8 @@ fn the_cascade_exceeds_the_standard_budget() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let payload = Value::Obj(BTreeMap::new());
     let mut standard = Budget::new(MAX_EVAL_TICKS);

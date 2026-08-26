@@ -296,6 +296,8 @@ fn the_depth_warning_still_admits_creates_and_steps_the_machine() {
         history: created.history_after.clone(),
         deadlines: created.deadlines_after.clone(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut budget = Budget::new(MACROSTEP_EVAL_TICKS);
     match step(

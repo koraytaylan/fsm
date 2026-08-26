@@ -11,8 +11,15 @@ touches:
   - crates/fsm-core/src/hashes.rs
   - crates/fsm-core/src/step/create.rs
   - crates/fsm-core/src/step/transition.rs
+  - crates/fsm-core/src/step/invoke.rs
+  - crates/fsm-core/src/step/mod.rs
+  - crates/fsm-core/src/step/micro.rs
+  - crates/fsm-core/src/spec/compile.rs
+  - crates/fsm-core/src/replay/apply.rs
+  - crates/fsm-store/src/store/instance/{create,send,poll}.rs
   - crates/fsm-core/tests/invocation_outbox.rs
-status: planned
+  - crates/fsm-core/tests/oracle/macrostep.rs
+status: done
 merged_as: ""
 ---
 # Invocation Outbox And State Format
@@ -41,3 +48,7 @@ The pure core cannot create an instance, so it does what it already does for eff
 - A machine with no invokes produces an empty `invocations` map, and its **v3** state hash differs from its v2 hash — assert this explicitly, because it is the fact that makes `4904` necessary and a reader will otherwise assume empty means unchanged.
 
 - **Done when:** `cargo test -p fsm-core --test invocation_outbox` passes every case above, the child-id golden vector is committed, the v2 hash function still returns its committed values, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `InstanceState` gains `invocations` and `signals` (74 construction sites across the workspace updated with them), `machine.rs` gains `Invocation`, `InvokeStatus`, `PendingSignal`, and `CancelledChild`, and `step/invoke.rs::settle_invocations` is the one place slots are inserted and removed — called by `apply_selected_transition` and by `create` immediately, not deferred like schedules, so a failing projection is attributed to the microstep that entered the state. `Applied` carries `invocations_after` and `cancelled_children`; the driver threads the map through `working` and accumulates cancellations across microsteps; the store's three writers and replay's three sites now carry the outbox forward, without which a slot would vanish on the next step.
+
+**Corrections.** (1) Step 1 and the architecture put `child_instance_id` in the state; it cannot live there. The pure core never learns an instance id — `InstanceState` has none, by design, because the id is the caller's handle on the state — so `Invocation` carries `{child_machine_id, status, overrides}` and the id is `hashes::child_instance_id(parent, slot)` computed wherever the parent's id is known. Nothing is lost: the v3 payload commits `instance_id` and the slot key, which are the id's only two inputs, so hashing the id as well would commit nothing new. (2) The plan's id formula concatenates `"fsm:child:1"` directly onto the parent id; the implementation puts the `0x0A` after the tag that every other hash in this workspace uses, keeping the domain-separation convention the same sentence claims to follow, and a golden vector — verified against an independent computation of those bytes — freezes it. (3) `compile.rs` was needed as well: an invoke's `with` must be compiled like any other expression, so `ExprSlot::InvokeWith(state, slot index, field)` binds against the entry-block scope. (4) The naive oracle grew its own outbox (a linear spec walk, expressions re-parsed from source) rather than being left to diverge, so the differential covers invocations the moment an enumerated machine declares one. (5) Plan 0009's inertness suite asserted `fsm.state/2` was the only format named anywhere — the proxy it needed for "the reactive plan bumped no format". This plan's bump is deliberate, so the guard is restated around the set this build declares (v1 legacy, v2 writer, v3 defined): an undeclared format literal in any source file still fails it, which is the tooth it always had.

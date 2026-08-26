@@ -130,6 +130,8 @@ fn historical_guardless_budget_rejection_still_full_folds() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let instance_id = "legacy-instance";
     let created_record = seal(

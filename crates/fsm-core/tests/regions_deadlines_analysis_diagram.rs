@@ -77,6 +77,8 @@ fn parallel_state(work_leaf: &str) -> InstanceState {
         history: BTreeMap::new(),
         deadlines: BTreeMap::new(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

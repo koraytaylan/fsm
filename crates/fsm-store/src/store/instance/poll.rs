@@ -94,6 +94,8 @@ impl Store {
                     history: transition.history_after.clone(),
                     deadlines: transition.deadlines_after.clone(),
                     pending,
+                    invocations: transition.invocations_after.clone(),
+                    signals: BTreeMap::new(),
                 };
                 let state_hash = state_hash(
                     &machine_id,

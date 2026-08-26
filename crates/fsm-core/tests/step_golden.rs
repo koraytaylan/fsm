@@ -51,6 +51,8 @@ fn scenario_goldens() {
             history: c.history_after,
             deadlines: c.deadlines_after,
             pending: vec![],
+            invocations: BTreeMap::new(),
+            signals: BTreeMap::new(),
         };
         let events = rec.get("events").and_then(Value::as_arr).unwrap();
         let mut last = None;

@@ -17,6 +17,7 @@ mod block;
 mod create;
 mod deadline;
 mod guard;
+mod invoke;
 mod micro;
 mod transition;
 mod validate;
@@ -32,7 +33,9 @@ use std::collections::BTreeMap;
 
 use crate::expr::eval::{Budget, Val};
 use crate::json::Value;
-use crate::machine::{ActiveConfiguration, CompiledMachine, InstanceState, Status};
+use crate::machine::{
+    ActiveConfiguration, CancelledChild, CompiledMachine, InstanceState, Invocation, Status,
+};
 use crate::spec::Block;
 
 #[derive(Clone)]
@@ -67,6 +70,12 @@ pub struct Applied {
     pub history_after: BTreeMap<String, String>,
     /// Active deadline name to absolute due timestamp after rescheduling.
     pub deadlines_after: BTreeMap<String, i64>,
+    /// Invocation slots after the whole macrostep, by slot id. A `Pending`
+    /// slot is a child the store has yet to create.
+    pub invocations_after: BTreeMap<String, Invocation>,
+    /// Children whose invoking state was exited while they were running: the
+    /// parent stopped waiting, so the store cancels them.
+    pub cancelled_children: Vec<CancelledChild>,
     /// Effects emitted by the accepted pipeline, in execution order.
     pub effects: Vec<EffectOut>,
     /// Names of monitor-mode invariants that failed.

@@ -26,6 +26,8 @@ fn docs_review_and_risk_review() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b = Budget::new(4096);
     match step(
@@ -114,6 +116,8 @@ fn state_at(m: &fsm_core::machine::CompiledMachine, t: &Tree, leaf: &str) -> Ins
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

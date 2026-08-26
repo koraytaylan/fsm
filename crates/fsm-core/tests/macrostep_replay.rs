@@ -43,6 +43,8 @@ fn instance(applied: &Applied, pending: Vec<String>) -> InstanceState {
         history: applied.history_after.clone(),
         deadlines: applied.deadlines_after.clone(),
         pending,
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

@@ -50,6 +50,8 @@ fn parallel_state() -> InstanceState {
         // the durable vector order, so the deliberately reversed input pins
         // both representations.
         pending: vec!["effect-z".into(), "effect-a".into()],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

@@ -6,13 +6,95 @@
 //!
 //! Plan 0009 task 4704.
 
+use fsm_core::expr::eval::Bindings;
 use fsm_core::expr::parser;
+use fsm_core::machine::{CancelledChild, Invocation, InvokeStatus};
 use fsm_core::trace::{DecisionTrace, MicrostepTrace, MicrostepTrigger, UnhandledInternalTrace};
 
 use super::deadline::{clear_terminal_region_deadlines, update_deadline_schedules};
 use super::eval::{Raised, eval_bool, eval_invariants, reject};
 use super::step::{NaiveMicro, SelectedCandidate, apply_candidate, select_event_candidate};
 use super::*;
+
+/// The invocation outbox, the dumbest possible way: walk the spec for each
+/// exited and entered state, drop the slots of the first and insert the slots
+/// of the second, evaluating each `with` expression from source against the
+/// context the pipeline produced.
+fn naive_invocations(
+    spec: &MachineSpec,
+    prior: &BTreeMap<String, Invocation>,
+    exited: &[String],
+    entered: &[String],
+    ctx: &BTreeMap<String, Val>,
+    budget: &mut Budget,
+) -> Result<(BTreeMap<String, Invocation>, Vec<CancelledChild>), Rejection> {
+    let mut invocations = prior.clone();
+    let mut cancelled = Vec::new();
+    let slots_of = |name: &str| -> Vec<fsm_core::spec::InvokeSpec> {
+        state_slices(spec)
+            .into_iter()
+            .find_map(|states| find(states, name).map(|node| node.invokes.clone()))
+            .unwrap_or_default()
+    };
+    for name in exited {
+        for invoke in slots_of(name) {
+            if let Some(gone) = invocations.remove(&invoke.id) {
+                if gone.status == InvokeStatus::Running {
+                    cancelled.push(CancelledChild {
+                        slot: invoke.id.clone(),
+                        child_instance_id: String::new(),
+                    });
+                }
+            }
+        }
+    }
+    let bindings = Bindings {
+        ctx,
+        evt: None,
+        active: None,
+    };
+    for name in entered {
+        for invoke in slots_of(name) {
+            let mut overrides = BTreeMap::new();
+            for (field, source) in &invoke.with {
+                let expression = parser::parse(source).map_err(|err| Rejection {
+                    code: "run/action_error",
+                    message: err.message,
+                    hint: err.hint,
+                    source_state: None,
+                    transition_idx: None,
+                    block: None,
+                    span: Some((err.span.start, err.span.end)),
+                    trace: Default::default(),
+                    cause: Some(err.code),
+                })?;
+                let value = eval(&expression, &bindings, budget, false)
+                    .0
+                    .map_err(|err| Rejection {
+                        code: "run/action_error",
+                        message: err.message,
+                        hint: err.hint,
+                        source_state: None,
+                        transition_idx: None,
+                        block: None,
+                        span: Some((err.span.start, err.span.end)),
+                        trace: Default::default(),
+                        cause: Some(err.code),
+                    })?;
+                overrides.insert(field.clone(), value);
+            }
+            invocations.insert(
+                invoke.id.clone(),
+                Invocation {
+                    child_machine_id: invoke.machine.clone(),
+                    status: InvokeStatus::Pending,
+                    overrides,
+                },
+            );
+        }
+    }
+    Ok((invocations, cancelled))
+}
 
 /// SPEC's ceiling, written as the number it is: the oracle must trip at the
 /// same boundary as the engine without reading the engine's constant.
@@ -200,6 +282,14 @@ pub(super) fn run_reactions(
     let mut history = first.history_after.clone();
     let mut deadlines = st.deadlines.clone();
     let mut status = st.status;
+    let (mut invocations, mut cancelled_children) = naive_invocations(
+        spec,
+        &st.invocations,
+        &first.exited,
+        &first.entered,
+        &first.ctx,
+        budget,
+    )?;
     let mut unsettled = first;
     let mut microsteps: Vec<MicrostepTrace> = Vec::new();
     let mut unhandled: Vec<UnhandledInternalTrace> = Vec::new();
@@ -237,6 +327,8 @@ pub(super) fn run_reactions(
                         history: history.clone(),
                         deadlines: deadlines.clone(),
                         pending: Vec::new(),
+                        invocations: BTreeMap::new(),
+                        signals: BTreeMap::new(),
                     };
                     let (selection, _) =
                         select_event_candidate(spec, &active, &view, &name, &payload, budget)?;
@@ -264,12 +356,24 @@ pub(super) fn run_reactions(
             history: history.clone(),
             deadlines: deadlines.clone(),
             pending: Vec::new(),
+            invocations: invocations.clone(),
+            signals: BTreeMap::new(),
         };
         let micro = apply_candidate(m, &view, &winner, &fields, sees_event, budget, &mut effects)?;
         let before = configuration.clone();
         configuration = micro.configuration_after.clone();
         ctx = micro.ctx.clone();
         history = micro.history_after.clone();
+        let (settled, mut cancelled) = naive_invocations(
+            spec,
+            &invocations,
+            &micro.exited,
+            &micro.entered,
+            &ctx,
+            budget,
+        )?;
+        invocations = settled;
+        cancelled_children.append(&mut cancelled);
         queue.extend(micro.raised.clone());
         queue.extend(done_state_events(spec, &micro.entered));
         queue.extend(done_region_events(spec, &before, &configuration));
@@ -296,6 +400,8 @@ pub(super) fn run_reactions(
         ctx_after: ctx,
         history_after: history,
         deadlines_after,
+        invocations_after: invocations,
+        cancelled_children,
         effects,
         monitor_flags,
         status_after,
@@ -466,6 +572,8 @@ mod tests {
             history: created.history_after,
             deadlines: created.deadlines_after,
             pending: Vec::new(),
+            invocations: BTreeMap::new(),
+            signals: BTreeMap::new(),
         };
         let mut b1 = Budget::new(4096 * 66);
         let mut b2 = Budget::new(4096 * 66);

@@ -308,6 +308,8 @@ fn emit_if_uses_compiled_scale() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut bud = fsm_core::expr::eval::Budget::new(4096);
     match fsm_core::step::step(

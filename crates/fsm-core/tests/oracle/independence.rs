@@ -37,6 +37,8 @@ fn hierarchical_entry_pipeline_leaf_b_n_11() {
         history: a.history_after,
         deadlines: BTreeMap::new(),
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b1 = Budget::new(4096);
     let mut b2 = Budget::new(4096);
@@ -67,6 +69,8 @@ fn oracle_emit_uses_pre_block_context() {
         history: created.history_after,
         deadlines: BTreeMap::new(),
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b1 = Budget::new(4096);
     let mut b2 = Budget::new(4096);
@@ -95,6 +99,8 @@ fn naive_step_matches_engine_and_not_wrong_apply() {
         history: a.history_after,
         deadlines: BTreeMap::new(),
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b1 = Budget::new(4096);
     let mut b2 = Budget::new(4096);
@@ -137,6 +143,8 @@ fn deadline_oracle_selects_document_first_tie_without_production_tables() {
         history: engine_created.history_after,
         deadlines: engine_created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let oracle_state = InstanceState {
         status: oracle_created.status_after,
@@ -145,6 +153,8 @@ fn deadline_oracle_selects_document_first_tie_without_production_tables() {
         history: oracle_created.history_after,
         deadlines: oracle_created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
 
     let mut engine_budget = Budget::new(4096);

@@ -75,6 +75,8 @@ fn unhandled_vs_not_enabled() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b = Budget::new(4096);
     match step(&m, &t, &st, "docs_ok", &obj(&[]), 0, &mut b) {
@@ -107,6 +109,8 @@ fn ignore_unhandled() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b = Budget::new(64);
     assert!(matches!(
@@ -129,6 +133,8 @@ fn not_enabled_false_guard() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b = Budget::new(64);
     match step(&m, &t, &st, "e", &obj(&[]), 0, &mut b) {

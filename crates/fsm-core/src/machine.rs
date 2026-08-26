@@ -77,6 +77,70 @@ impl ActiveConfiguration {
     }
 }
 
+/// How far one invocation slot has got.
+///
+/// The core moves a slot to `Pending` and off the state entirely; only the
+/// store, which can perform I/O, moves it through `Running` and `Returned`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvokeStatus {
+    /// Declared by an entered state; no child exists yet.
+    Pending,
+    /// The child exists and has not settled.
+    Running,
+    /// The child settled and its result reached the parent.
+    Returned,
+}
+
+impl InvokeStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InvokeStatus::Pending => "pending",
+            InvokeStatus::Running => "running",
+            InvokeStatus::Returned => "returned",
+        }
+    }
+}
+
+/// One invocation slot on the active configuration: which machine to run,
+/// with which overrides, and how far it got.
+///
+/// `overrides` is the slot's `with` projection evaluated once, when the state
+/// was entered, so the child sees the values that entry pipeline computed and
+/// not whatever the context holds when the store gets round to enacting it.
+///
+/// The child's instance id is deliberately **not** here. It is
+/// [`crate::hashes::child_instance_id`] of the parent's id and the slot key,
+/// and the pure core never learns an instance id — `InstanceState` has none,
+/// because the id is the caller's handle on the state, not part of it. Every
+/// reader that knows the parent's id can derive the child's, and the state
+/// hash commits both inputs, so nothing is lost by not storing it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invocation {
+    pub child_machine_id: String,
+    pub status: InvokeStatus,
+    pub overrides: BTreeMap<String, crate::expr::eval::Val>,
+}
+
+/// A child an exiting state left running: the parent stopped waiting, so the
+/// store cancels it. The core records the fact and takes no action, because
+/// cancelling is I/O.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CancelledChild {
+    pub slot: String,
+    pub child_instance_id: String,
+}
+
+/// One signal a block emitted and nothing has delivered yet.
+///
+/// A signal is fire-and-forget: the sender's state carries it until the store
+/// delivers it, and delivery does not change the sender except to remove it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSignal {
+    pub target_instance_id: String,
+    pub event: String,
+    pub payload: BTreeMap<String, crate::expr::eval::Val>,
+}
+
 /// The complete durable state needed to evaluate an instance deterministically.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceState {
@@ -92,6 +156,10 @@ pub struct InstanceState {
     pub deadlines: BTreeMap<String, i64>,
     /// Host-owned identifiers for effects that have not been acknowledged.
     pub pending: Vec<String>,
+    /// Invocation slots of the active configuration, by slot id.
+    pub invocations: BTreeMap<String, Invocation>,
+    /// Signals emitted and not yet delivered, by signal id.
+    pub signals: BTreeMap<String, PendingSignal>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -109,6 +177,8 @@ pub enum ExprSlot {
     StateEntryRaiseArg(String, usize, String),
     /// A `with` field of the indexed raise in the named state's exit block.
     StateExitRaiseArg(String, usize, String),
+    /// A `with` field of the indexed invoke slot on the named state.
+    InvokeWith(String, usize, String),
     /// The `after` expression of the indexed deadline definition.
     DeadlineAfter(usize),
     /// The indexed context assignment of the indexed deadline definition.
@@ -152,6 +222,8 @@ mod tests {
             history: BTreeMap::new(),
             deadlines: BTreeMap::new(),
             pending: Vec::new(),
+            invocations: BTreeMap::new(),
+            signals: BTreeMap::new(),
         };
         assert!(st.history.is_empty());
         assert!(st.pending.is_empty());

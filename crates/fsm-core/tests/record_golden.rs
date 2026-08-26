@@ -35,6 +35,8 @@ fn chain_and_tamper() {
         history: created_state.history_after.clone(),
         deadlines: created_state.deadlines_after.clone(),
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let created_hash = fsm_core::hashes::state_hash(&mid, "i1", 2, &inst0);
     let defn = {

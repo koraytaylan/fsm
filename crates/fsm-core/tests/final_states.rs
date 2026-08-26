@@ -128,6 +128,8 @@ fn a_final_state_is_an_ordinary_leaf_otherwise() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut budget = Budget::new(MACROSTEP_EVAL_TICKS);
     match step(

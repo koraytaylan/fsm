@@ -114,6 +114,8 @@ fn state_from_created(created: fsm_core::step::Applied) -> InstanceState {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

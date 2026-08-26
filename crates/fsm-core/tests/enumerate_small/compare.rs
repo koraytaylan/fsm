@@ -95,6 +95,8 @@ pub(super) fn compare_run(src: &str) -> RunCounts {
         history: engine_create.history_after,
         deadlines: engine_create.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let initial_oracle = InstanceState {
         status: oracle_create.status_after,
@@ -103,6 +105,8 @@ pub(super) fn compare_run(src: &str) -> RunCounts {
         history: oracle_create.history_after,
         deadlines: oracle_create.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let all_sequences = sequences(&event_refs);
     let mut counts = RunCounts {
@@ -480,6 +484,8 @@ pub(super) fn state_from_create(
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 
@@ -491,6 +497,8 @@ pub(super) fn state_from_applied(applied: Applied) -> InstanceState {
         history: applied.history_after,
         deadlines: applied.deadlines_after,
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

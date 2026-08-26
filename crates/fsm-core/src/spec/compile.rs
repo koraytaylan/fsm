@@ -274,6 +274,40 @@ pub(super) fn compile_with_compatibility(
             walk_blocks(&n.states, check_block, scope, compiled_exprs, errs);
         }
     }
+    // An invoke's `with` is evaluated when its state is entered, so it reads
+    // exactly what an entry block reads: ctx, never evt (`def/invoke_evt`
+    // refuses that at admission, before this runs).
+    fn walk_invokes(
+        nodes: &[StateNode],
+        scope: &Scope<'_>,
+        compiled_exprs: &mut BTreeMap<ExprSlot, CompiledExpr>,
+        errs: &mut Vec<Finding>,
+        bind: &dyn Fn(
+            &str,
+            &Scope<'_>,
+            &str,
+            ExprSlot,
+            &mut BTreeMap<ExprSlot, CompiledExpr>,
+            &mut Vec<Finding>,
+        ) -> Option<Ty>,
+    ) {
+        for node in nodes {
+            for (index, invoke) in node.invokes.iter().enumerate() {
+                for (field, source) in &invoke.with {
+                    bind(
+                        source,
+                        scope,
+                        &format!("/states/{}/invoke/{index}/with/{field}", node.name),
+                        ExprSlot::InvokeWith(node.name.clone(), index, field.clone()),
+                        compiled_exprs,
+                        errs,
+                    );
+                }
+            }
+            walk_invokes(&node.states, scope, compiled_exprs, errs, bind);
+        }
+    }
+
     let block_scope = Scope {
         kind: ScopeKind::Block,
         ctx: &ctx_tys,
@@ -289,6 +323,7 @@ pub(super) fn compile_with_compatibility(
             &mut compiled_exprs,
             &mut errs,
         );
+        walk_invokes(states, &block_scope, &mut compiled_exprs, &mut errs, &bind);
     }
 
     for (index, deadline) in spec.deadlines.iter().enumerate() {

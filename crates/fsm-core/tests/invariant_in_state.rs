@@ -26,6 +26,8 @@ fn inst(m: &fsm_core::machine::CompiledMachine, t: &Tree) -> InstanceState {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 
@@ -50,6 +52,8 @@ fn in_sees_compound_ancestors_and_updates_on_transition() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b = fsm_core::expr::eval::Budget::new(4096);
     match step(&m, &t, &st, "go", &empty(), 0, &mut b) {
@@ -124,6 +128,8 @@ fn in_is_visible_across_parallel_regions_and_tracks_the_untouched_region() {
         history: created.history_after,
         deadlines: created.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
 
     // Moving the *left* region must not disturb the invariant's read of the

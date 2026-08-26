@@ -130,6 +130,40 @@ pub const STATE_FORMAT: &str = "fsm.state/2";
 /// Domain-separation tag paired with [`STATE_FORMAT`].
 pub const STATE_DOMAIN: &str = "fsm:state:2";
 
+/// State identity with the composition fields: `invocations` and `signals`
+/// join the payload, both always present even when empty.
+///
+/// Defined completely here, in one task, and written by nobody yet: the
+/// writer moves from [`STATE_FORMAT`] to this in the migration task, which
+/// bumps the store `VERSION` alongside it. One version string must mean one
+/// payload for its whole life, so a later task may populate `signals` but may
+/// not add it.
+pub const STATE_FORMAT_V3: &str = "fsm.state/3";
+/// Domain-separation tag paired with [`STATE_FORMAT_V3`].
+pub const STATE_DOMAIN_V3: &str = "fsm:state:3";
+
+/// Domain tag of the derived child instance id.
+pub const CHILD_DOMAIN: &str = "fsm:child:1";
+
+/// The instance id an invocation slot's child will have: a pure function of
+/// the parent's id and the slot name.
+///
+/// Deriving rather than allocating is what makes enactment idempotent without
+/// consulting anything — re-running it computes the same id and the store
+/// answers `duplicate: true` — and lets any reader compute a child's id from
+/// its parent's id and the definition alone. The framing follows this
+/// workspace's domain-separation convention (tag, then `0x0A`), with a `0x00`
+/// between the two variable-length parts so no `(parent, slot)` pair can be
+/// read as another.
+pub fn child_instance_id(parent_instance_id: &str, slot: &str) -> String {
+    let mut material = CHILD_DOMAIN.as_bytes().to_vec();
+    material.push(0x0A);
+    material.extend_from_slice(parent_instance_id.as_bytes());
+    material.push(0x00);
+    material.extend_from_slice(slot.as_bytes());
+    format!("inst-{}", &to_hex(&crate::sha256::sha256(&material))[..24])
+}
+
 /// Encode an active configuration in the canonical tagged JSON shape.
 pub fn configuration_value(configuration: &ActiveConfiguration) -> Value {
     match configuration {
@@ -157,6 +191,97 @@ pub fn configuration_value(configuration: &ActiveConfiguration) -> Value {
 /// The hash binds the active configuration and absolute deadline schedules in
 /// addition to context, history, lifecycle status, and pending effects.
 pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String {
+    let material = state_material(STATE_FORMAT, machine_id, instance_id, seq, st);
+    let hex = to_hex(&domain_hash(STATE_DOMAIN, &material));
+    format!("sha256:{hex}")
+}
+
+/// [`STATE_FORMAT_V3`] state identity: the v2 payload plus `invocations` and
+/// `signals`, each canonically ordered and always present.
+///
+/// The empty maps are written, not omitted. An omit-when-empty rule would be
+/// a second thing about the format to remember and buys nothing: unlike the
+/// record's `microsteps` key, whose absence had to preserve bytes an earlier
+/// build wrote, this format is new and nothing depends on its silence.
+pub fn state_hash_v3(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceState) -> String {
+    let mut material = state_material(STATE_FORMAT_V3, machine_id, instance_id, seq, st);
+    if let Value::Obj(obj) = &mut material {
+        obj.insert("invocations".into(), invocations_value(st));
+        obj.insert("signals".into(), signals_value(st));
+    }
+    let hex = to_hex(&domain_hash(STATE_DOMAIN_V3, &material));
+    format!("sha256:{hex}")
+}
+
+/// Invocation slots as canonical material, ordered by slot id.
+///
+/// The child's instance id is not among the committed fields: it is
+/// [`child_instance_id`] of `instance_id` and the slot key, both of which the
+/// payload already commits, so hashing it again would commit nothing new.
+pub fn invocations_value(st: &InstanceState) -> Value {
+    Value::Obj(
+        st.invocations
+            .iter()
+            .map(|(slot, invocation)| {
+                let overrides = invocation
+                    .overrides
+                    .iter()
+                    .map(|(name, value)| (name.clone(), Value::Str(value.canonical_string())))
+                    .collect();
+                (
+                    slot.clone(),
+                    Value::Obj(BTreeMap::from([
+                        (
+                            "child_machine_id".into(),
+                            Value::Str(invocation.child_machine_id.clone()),
+                        ),
+                        (
+                            "status".into(),
+                            Value::Str(invocation.status.as_str().into()),
+                        ),
+                        ("overrides".into(), Value::Obj(overrides)),
+                    ])),
+                )
+            })
+            .collect(),
+    )
+}
+
+/// Undelivered signals as canonical material, ordered by signal id.
+pub fn signals_value(st: &InstanceState) -> Value {
+    Value::Obj(
+        st.signals
+            .iter()
+            .map(|(id, signal)| {
+                let payload = signal
+                    .payload
+                    .iter()
+                    .map(|(name, value)| (name.clone(), Value::Str(value.canonical_string())))
+                    .collect();
+                (
+                    id.clone(),
+                    Value::Obj(BTreeMap::from([
+                        (
+                            "target_instance_id".into(),
+                            Value::Str(signal.target_instance_id.clone()),
+                        ),
+                        ("event".into(), Value::Str(signal.event.clone())),
+                        ("payload".into(), Value::Obj(payload)),
+                    ])),
+                )
+            })
+            .collect(),
+    )
+}
+
+/// The keys `fsm.state/2` and `fsm.state/3` share, in canonical form.
+fn state_material(
+    format: &str,
+    machine_id: &str,
+    instance_id: &str,
+    seq: u64,
+    st: &InstanceState,
+) -> Value {
     let mut ctx = BTreeMap::new();
     for (k, v) in &st.ctx {
         ctx.insert(k.clone(), Value::Str(v.canonical_string()));
@@ -173,7 +298,7 @@ pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceSt
         .map(|(name, due_ms)| (name.clone(), Value::Num(due_ms.to_string())))
         .collect();
     let mut obj = BTreeMap::new();
-    obj.insert("format".into(), Value::Str(STATE_FORMAT.into()));
+    obj.insert("format".into(), Value::Str(format.into()));
     obj.insert("machine_id".into(), Value::Str(machine_id.into()));
     obj.insert("instance_id".into(), Value::Str(instance_id.into()));
     obj.insert("seq".into(), Value::Num(seq.to_string()));
@@ -189,8 +314,7 @@ pub fn state_hash(machine_id: &str, instance_id: &str, seq: u64, st: &InstanceSt
         "pending".into(),
         Value::Arr(pending.into_iter().map(Value::Str).collect()),
     );
-    let hex = to_hex(&domain_hash(STATE_DOMAIN, &Value::Obj(obj)));
-    format!("sha256:{hex}")
+    Value::Obj(obj)
 }
 
 /// Historical state hash used only to verify records written before store

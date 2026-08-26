@@ -9,6 +9,7 @@ use crate::tree::Tree;
 
 use super::block::{PipelineOutputs, apply_block, find_node, reject_pipeline};
 use super::guard::val_matches;
+use super::invoke::settle_invocations;
 use super::micro::{EngineSelector, ReactionSelector, invariant_failure, run_to_quiescence};
 use super::transition::Transitioned;
 use super::validate::reject;
@@ -149,6 +150,14 @@ pub fn create_with(
     // Creation's trigger microstep is the initial entry itself: no source, no
     // exits, and the whole entered chain. From here it is an ordinary
     // macrostep.
+    let (invocations, cancelled_children) =
+        match settle_invocations(m, t, &BTreeMap::new(), &[], &entered, &ctx, &mut budget) {
+            Ok(settled) => settled,
+            Err(mut rejection) => {
+                rejection.code = "run/create_failed";
+                return Err(rejection);
+            }
+        };
     let trigger = Transitioned {
         configuration_after,
         context: ctx,
@@ -159,6 +168,8 @@ pub fn create_with(
         candidates: Vec::new(),
         exited: Vec::new(),
         entered,
+        invocations,
+        cancelled_children,
         internal: false,
         region: None,
         source_state: String::new(),
@@ -171,6 +182,8 @@ pub fn create_with(
         history: BTreeMap::new(),
         deadlines: BTreeMap::new(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     run_to_quiescence(m, t, &nothing_yet, trigger, now_ms, &mut budget, selector)
         .map_err(|rejection| create_failed(rejection, m))

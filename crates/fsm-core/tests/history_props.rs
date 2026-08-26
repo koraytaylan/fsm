@@ -32,6 +32,8 @@ fn history_properties() {
             history: c.history_after,
             deadlines: c.deadlines_after,
             pending: vec![],
+            invocations: BTreeMap::new(),
+            signals: BTreeMap::new(),
         };
         // drive to risk_review
         for ev in ["docs_ok", "docs_ok"] {

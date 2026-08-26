@@ -14,7 +14,7 @@ use std::path::Path;
 
 use fsm_core::canon::canon_bytes;
 use fsm_core::expr::eval::Budget;
-use fsm_core::hashes::{STATE_FORMAT, machine_id, state_hash};
+use fsm_core::hashes::{STATE_FORMAT, STATE_FORMAT_V3, machine_id, state_hash};
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::limits::MAX_EVAL_TICKS;
 use fsm_core::machine::{CompiledMachine, InstanceState};
@@ -113,6 +113,8 @@ fn instance(applied: &Applied) -> InstanceState {
         history: applied.history_after.clone(),
         deadlines: applied.deadlines_after.clone(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 
@@ -335,9 +337,23 @@ fn genesis_limits_carry_no_reactive_ceiling() {
     assert_eq!(committed.get("genesis_limits"), Some(&limits));
 }
 
+/// Every state format named anywhere in the workspace is one this build
+/// declares and can read.
+///
+/// Plan 0009 wrote this as "v2 is the only current format", which was the
+/// proxy it needed: the reactive plan bumped no format, and a stray literal
+/// would have meant it had. Plan 0010's composition fields are a deliberate
+/// bump, so the guard is restated around the declared set — an undeclared
+/// format string in any source file is still what it catches, which is the
+/// tooth it always had.
 #[test]
-fn the_state_format_is_unchanged_and_no_newer_one_exists() {
-    assert_eq!(STATE_FORMAT, "fsm.state/2");
+fn every_state_format_named_in_the_workspace_is_one_this_build_declares() {
+    assert_eq!(STATE_FORMAT, "fsm.state/2", "the writer's format");
+    let declared = BTreeSet::from([
+        "1".to_string(),
+        STATE_FORMAT.rsplit('/').next().unwrap().to_string(),
+        STATE_FORMAT_V3.rsplit('/').next().unwrap().to_string(),
+    ]);
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut versions = BTreeSet::new();
     let mut stack = vec![root];
@@ -364,9 +380,8 @@ fn the_state_format_is_unchanged_and_no_newer_one_exists() {
         }
     }
     assert_eq!(
-        versions,
-        BTreeSet::from(["1".to_string(), "2".to_string()]),
-        "a state format other than the legacy 1 and the current 2 appears in the workspace"
+        versions, declared,
+        "a state format this build does not declare appears in the workspace"
     );
 }
 

@@ -149,6 +149,8 @@ fn apply_instance_created(st: &mut StoreState, rec: &Record) -> Result<(), Repla
             .iter()
             .map(|e| format!("{iid}/0/{}", e.k))
             .collect(),
+        invocations: a.invocations_after,
+        signals: BTreeMap::new(),
     };
     if let Some(want) = rec.body.get("state_hash").and_then(Value::as_str) {
         let got =
@@ -271,6 +273,8 @@ fn apply_event_applied(st: &mut StoreState, rec: &Record) -> Result<(), ReplayEr
                 history: a.history_after,
                 deadlines: a.deadlines_after,
                 pending,
+                invocations: a.invocations_after,
+                signals: BTreeMap::new(),
             };
             let want = rec.body.get("state_hash").and_then(Value::as_str).ok_or(
                 ReplayError::FieldMismatch {
@@ -510,6 +514,8 @@ fn apply_deadline_applied(st: &mut StoreState, rec: &Record) -> Result<(), Repla
                 history: applied.transition.history_after,
                 deadlines: applied.transition.deadlines_after,
                 pending,
+                invocations: applied.transition.invocations_after,
+                signals: BTreeMap::new(),
             };
             verify_record_state_hash(rec, &mid, iid, &new)?;
             st.instances.insert(iid.into(), new);

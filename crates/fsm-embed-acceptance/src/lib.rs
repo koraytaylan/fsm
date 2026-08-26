@@ -88,6 +88,8 @@ pub fn start(
         history: a.history_after,
         deadlines: a.deadlines_after,
         pending: a.effects.iter().map(|e| e.k.to_string()).collect(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     })
 }
 
@@ -132,6 +134,8 @@ fn advance_from_applied(st: &InstanceState, a: Applied) -> Advance {
             history: a.history_after,
             deadlines: a.deadlines_after,
             pending,
+            invocations: BTreeMap::new(),
+            signals: BTreeMap::new(),
         },
         exited: a.exited,
         entered: a.entered,
@@ -339,6 +343,8 @@ pub fn from_row(m: &Machine, row: &Value) -> Result<InstanceState, EmbedError> {
         history,
         deadlines,
         pending,
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     m.tree
         .validate_instance_state(&m.compiled, &state)

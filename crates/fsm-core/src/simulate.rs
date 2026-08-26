@@ -78,6 +78,8 @@ pub fn simulate(
         history: created.history_after.clone(),
         deadlines: created.deadlines_after.clone(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut steps = Vec::new();
     let mut stopped_at = None;

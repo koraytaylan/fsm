@@ -31,6 +31,8 @@ fn instance(applied: &Applied) -> InstanceState {
         history: applied.history_after.clone(),
         deadlines: applied.deadlines_after.clone(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 
@@ -215,6 +217,8 @@ fn the_sealed_state_has_no_queue_residue() {
         history: _,
         deadlines: _,
         pending: _,
+        invocations: _,
+        signals: _,
     } = &sealed;
     let by_hand = InstanceState {
         status: fsm_core::machine::Status::Running,
@@ -229,6 +233,8 @@ fn the_sealed_state_has_no_queue_residue() {
         history: BTreeMap::new(),
         deadlines: BTreeMap::new(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     assert_eq!(sealed, by_hand);
     assert_eq!(

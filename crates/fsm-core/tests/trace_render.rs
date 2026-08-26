@@ -22,6 +22,8 @@ fn traces_and_hashes() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut b = Budget::new(4096);
     let a = match step(
@@ -80,6 +82,8 @@ fn traces_and_hashes() {
         history: BTreeMap::from([("c".into(), "l".into())]),
         deadlines: BTreeMap::new(),
         pending: vec!["p1".into()],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let h1 = state_hash("mid", "iid", 1, &st1);
     st1.configuration = ActiveConfiguration::Sequential { leaf: "b".into() };
@@ -113,6 +117,8 @@ fn traces_and_hashes() {
                 history: BTreeMap::from([("c".into(), "l".into())]),
                 deadlines: BTreeMap::new(),
                 pending: vec!["p1".into()],
+                invocations: BTreeMap::new(),
+                signals: BTreeMap::new(),
             }
         )
     );
@@ -152,6 +158,8 @@ fn go(m: &fsm_core::machine::CompiledMachine, t: &Tree) -> Outcome {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut budget = Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
     step(
@@ -182,6 +190,8 @@ fn a_non_reactive_trace_emits_no_reaction_keys() {
         history: c.history_after,
         deadlines: c.deadlines_after,
         pending: vec![],
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut budget = Budget::new(4096);
     let Outcome::Applied(a) = step(

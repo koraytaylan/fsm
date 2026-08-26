@@ -45,6 +45,8 @@ fn state_from_applied(applied: Applied, pending: Vec<String>) -> InstanceState {
         history: applied.history_after,
         deadlines: applied.deadlines_after,
         pending,
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 
@@ -69,6 +71,8 @@ fn literal_state(leaf: &str, history: &[(&str, &str)]) -> InstanceState {
             .collect(),
         deadlines: BTreeMap::new(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     }
 }
 

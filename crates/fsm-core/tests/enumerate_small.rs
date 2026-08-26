@@ -343,6 +343,8 @@ fn enumerate_parallel_global_winner_differential() {
             history: engine_create.history_after,
             deadlines: BTreeMap::new(),
             pending: Vec::new(),
+            invocations: BTreeMap::new(),
+            signals: BTreeMap::new(),
         };
         let mut engine_budget = Budget::new(4096);
         let mut oracle_budget = Budget::new(4096);

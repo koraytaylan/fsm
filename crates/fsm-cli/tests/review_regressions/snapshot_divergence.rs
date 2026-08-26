@@ -337,6 +337,8 @@ fn rewrite_snap_context(dir: &std::path::Path, snap_seq: u64) {
                 history,
                 deadlines,
                 pending,
+                invocations: BTreeMap::new(),
+                signals: BTreeMap::new(),
             };
             inst.insert(
                 "state_hash".into(),
@@ -469,6 +471,8 @@ fn rewrite_snap_field(dir: &std::path::Path, kind: &str, snap_seq: u64) {
                 history,
                 deadlines,
                 pending,
+                invocations: BTreeMap::new(),
+                signals: BTreeMap::new(),
             };
             inst.insert(
                 "state_hash".into(),

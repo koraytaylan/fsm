@@ -12,13 +12,17 @@ use std::collections::BTreeMap;
 use crate::expr::eval::{Bindings, Budget, Val, eval};
 use crate::expr::parser;
 use crate::expr::typeck::{ScopeKind, Ty, annotate_if_widening};
-use crate::machine::{ActiveConfiguration, CompiledMachine, ExprSlot, InstanceState, Status};
+use crate::machine::{
+    ActiveConfiguration, CancelledChild, CompiledMachine, ExprSlot, InstanceState, Invocation,
+    Status,
+};
 use crate::spec::{Block, DeadlineSpec, HistoryKind};
 use crate::trace::{BlockKind, BlockTrace, DecisionTrace, LevelTrace};
 use crate::tree::{NodeKind, Tree};
 
 use super::block::{PipelineOutputs, apply_block, find_node, reject_pipeline};
 use super::guard::spec_scope;
+use super::invoke::settle_invocations;
 use super::micro::InternalEvent;
 use super::validate::reject;
 use super::{EffectOut, ExprSlotOwner, Rejection};
@@ -58,6 +62,10 @@ pub(super) struct Transitioned {
     pub(super) candidates: Vec<LevelTrace>,
     pub(super) exited: Vec<u16>,
     pub(super) entered: Vec<u16>,
+    /// Invocation slots after this microstep's exits and entries.
+    pub(super) invocations: BTreeMap<String, Invocation>,
+    /// Children this microstep's exits left running, for the store to cancel.
+    pub(super) cancelled_children: Vec<CancelledChild>,
     pub(super) internal: bool,
     pub(super) region: Option<String>,
     pub(super) source_state: String,
@@ -258,6 +266,17 @@ pub(super) fn apply_selected_transition(
         }
     }
 
+    let (invocations, cancelled_children) = settle_invocations(
+        machine,
+        tree,
+        &state.invocations,
+        &exited_ids,
+        &entered_ids,
+        &context,
+        budget,
+    )
+    .map_err(|rejection| reject_pipeline(rejection, pipeline.clone(), &candidates))?;
+
     Ok(Transitioned {
         configuration_after,
         context,
@@ -268,6 +287,8 @@ pub(super) fn apply_selected_transition(
         candidates,
         exited: exited_ids,
         entered: entered_ids,
+        invocations,
+        cancelled_children,
         internal,
         region,
         source_state: tree.names[source as usize].clone(),

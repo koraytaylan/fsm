@@ -74,6 +74,8 @@ pub fn naive_create_at(
         history: BTreeMap::new(),
         deadlines: BTreeMap::new(),
         pending: Vec::new(),
+        invocations: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let first = NaiveMicro {
         configuration_after,
