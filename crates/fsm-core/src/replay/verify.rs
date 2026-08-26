@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::json::Value;
 use crate::machine::InstanceState;
-use crate::record::Record;
+use crate::record::{Record, microsteps_value};
 use crate::step::Rejection;
+use crate::trace::MicrostepTrace;
 
 use super::{ReplayError, state_hash_for_record};
 
@@ -35,6 +36,40 @@ pub(super) fn verify_record_state_hash(
         });
     }
     Ok(())
+}
+
+/// Verify the `microsteps` claim in both directions: a journaled array must
+/// match the re-derived reactions entry for entry, and an absent key requires
+/// that replay derived none. The second half is what turns the array from
+/// decoration into a tamper-evident claim.
+///
+/// No historical-compiler exception exists or may be added: the reactive
+/// features are opt-in syntax, so a definition written before they existed
+/// cannot acquire a reaction on recompilation, and SPEC's legacy-compiler rule
+/// stays scoped to the history-shape bug it was written for.
+pub(super) fn verify_microsteps(
+    record: &Record,
+    derived: &[MicrostepTrace],
+) -> Result<(), ReplayError> {
+    let claimed = record
+        .body
+        .get("microsteps")
+        .and_then(Value::as_arr)
+        .unwrap_or(&[]);
+    let expected = microsteps_value(derived);
+    let expected = expected.as_ref().and_then(Value::as_arr).unwrap_or(&[]);
+    let first_difference = claimed
+        .iter()
+        .zip(expected)
+        .position(|(claimed, expected)| claimed != expected)
+        .or_else(|| (claimed.len() != expected.len()).then_some(claimed.len().min(expected.len())));
+    match first_difference {
+        None => Ok(()),
+        Some(position) => Err(ReplayError::MicrostepMismatch {
+            seq: record.seq,
+            index: position as u32 + 1,
+        }),
+    }
 }
 
 pub(super) fn verify_rejection(

@@ -127,6 +127,12 @@ pub(super) fn replay_health(e: fsm_core::replay::ReplayError) -> JournalHealth {
                 field: field.into(),
             }
         }
+        fsm_core::replay::ReplayError::MicrostepMismatch { seq, index } => {
+            JournalHealth::ReplayMismatch {
+                seq,
+                field: format!("microsteps[{index}]"),
+            }
+        }
         fsm_core::replay::ReplayError::UnknownMachine { seq } => JournalHealth::ReplayMismatch {
             seq,
             field: "machine".into(),

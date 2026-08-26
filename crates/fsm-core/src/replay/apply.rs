@@ -15,7 +15,8 @@ use super::deadline::{
 use super::report::enabled_reports_value;
 use super::verify::{
     expected_deadline_rejected_details, expected_event_rejected_details,
-    expected_request_rejected_details, verify_record_state_hash, verify_rejection,
+    expected_request_rejected_details, verify_microsteps, verify_record_state_hash,
+    verify_rejection,
 };
 use super::{
     DefinitionCompileMode, ReplayError, STATE_ROOT_FORMAT, StoreState, StoredMachine,
@@ -179,6 +180,7 @@ fn apply_instance_created(st: &mut StoreState, rec: &Record) -> Result<(), Repla
             });
         }
     }
+    verify_microsteps(rec, &a.trace.microsteps)?;
     st.instances.insert(iid.into(), inst);
     st.instance_machines.insert(iid.into(), mid.into());
     claim_request_id(st, rec)?;
@@ -211,7 +213,10 @@ fn apply_event_applied(st: &mut StoreState, rec: &Record) -> Result<(), ReplayEr
         .get(iid)
         .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?
         .clone();
-    let mut bud = Budget::new(crate::limits::MAX_EVAL_TICKS);
+    // A live write ran under the macrostep budget; replaying under the
+    // standard one would fail a legitimately deep macrostep and surface as a
+    // mismatch on a healthy store, the worst diagnosis this system can give.
+    let mut bud = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
     match step(&m.compiled, &m.tree, &inst, ev, &payload, rec.ts, &mut bud) {
         Outcome::Applied(a) => {
             let want = rec.body.get("exited").and_then(Value::as_arr).ok_or(
@@ -252,6 +257,7 @@ fn apply_event_applied(st: &mut StoreState, rec: &Record) -> Result<(), ReplayEr
                     field: "source_state",
                 });
             }
+            verify_microsteps(rec, &a.trace.microsteps)?;
             let mut pending = inst.pending.clone();
             pending.extend(
                 a.effects
@@ -345,8 +351,8 @@ fn apply_event_rejected_or_ignored(
             found: got,
         });
     }
-    let mut bud = Budget::new(crate::limits::MAX_EVAL_TICKS);
-    let out = step(&m.compiled, &m.tree, inst, ev, &payload, rec.ts, &mut bud);
+    let out =
+        super::replay_sealed_step(&m.compiled, &m.tree, inst, ev, &payload, rec.ts, &rec.body);
     match (rec.kind, &out) {
         (RecordKind::EventRejected, Outcome::Rejected(r)) => {
             let code =
@@ -477,7 +483,7 @@ fn apply_deadline_applied(st: &mut StoreState, rec: &Record) -> Result<(), Repla
         .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?
         .clone();
     let expected_deadline = record_deadline(rec)?;
-    let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+    let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
     match poll_deadline(
         &machine.compiled,
         &machine.tree,
@@ -488,6 +494,7 @@ fn apply_deadline_applied(st: &mut StoreState, rec: &Record) -> Result<(), Repla
         DeadlineOutcome::Applied(applied) => {
             verify_deadline(rec, &expected_deadline, &applied.deadline, false)?;
             verify_deadline_transition(rec, &applied.transition)?;
+            verify_microsteps(rec, &applied.transition.trace.microsteps)?;
             let mut pending = instance.pending.clone();
             pending.extend(
                 applied
@@ -539,7 +546,7 @@ fn apply_deadline_rejected(st: &mut StoreState, rec: &Record) -> Result<(), Repl
         .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
     verify_record_state_hash(rec, &mid, iid, instance)?;
     let expected_deadline = record_deadline(rec)?;
-    let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+    let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
     match poll_deadline(
         &machine.compiled,
         &machine.tree,
@@ -592,7 +599,7 @@ fn apply_deadline_not_due(st: &mut StoreState, rec: &Record) -> Result<(), Repla
         .ok_or(ReplayError::UnknownInstance { seq: rec.seq })?;
     verify_record_state_hash(rec, &mid, iid, instance)?;
     let expected_next = record_next_deadline(rec)?;
-    let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+    let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
     match poll_deadline(
         &machine.compiled,
         &machine.tree,
@@ -774,7 +781,7 @@ fn apply_request_rejected(st: &mut StoreState, rec: &Record) -> Result<(), Repla
                 .machines
                 .get(&mid)
                 .ok_or(ReplayError::UnknownMachine { seq: rec.seq })?;
-            let mut budget = Budget::new(crate::limits::MAX_EVAL_TICKS);
+            let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
             match poll_deadline(&machine.compiled, &machine.tree, inst, rec.ts, &mut budget) {
                 DeadlineOutcome::Rejected(rejected) if rejected.deadline.is_none() => {
                     let request_id = rec.body.get("request_id").and_then(Value::as_str);

@@ -352,7 +352,14 @@ instead of panicking. When verifying an `event_rejected` record in a historical
 journal, a reader MUST also accept the historical enabled-event diagnostic that
 did not charge omitted guards; current diagnostics charge their implicit `true`
 exactly like runtime selection. This diagnostic compatibility applies only to
-sealed rejection details, never to a new enabled-event scan.
+sealed rejection details, never to a new enabled-event scan. Likewise, a sealed
+`event_rejected` whose details carry `cause: internal/budget` can only have
+been written when one step's budget was 4096 ticks and the compiler of that
+day did not charge omitted guards: when the macrostep budget reproduces no
+rejection, a reader MUST re-run that record under the historical single-step
+budget and accept an exact match. This applies to sealed rejections alone,
+never to a new operation; no sealed deadline rejection can carry that cause,
+because a deadline poll visits no event guard.
 
 ### Record kinds
 
@@ -398,8 +405,14 @@ bytes without rewriting or guessing.
 
 Verification: the stored line MUST equal its canonical re-serialization; seq
 is consecutive; `prev` matches the prior hash; `hash` is recomputed; fold
-re-applies through `step`/`create`/`poll_deadline` using the record timestamp
-and checks journaled `state_hash` / `exited` / `entered` / `source_state`.
+re-applies through `step`/`create`/`poll_deadline` — as macrosteps, under the
+macrostep budget — using the record timestamp and checks journaled
+`state_hash` / `exited` / `entered` / `source_state`, and `microsteps` in
+both directions: a journaled array MUST match the re-derived reactions entry
+for entry, and an absent key requires that replay derived none. No
+historical-compiler exception applies to reactions: the reactive shapes are
+opt-in syntax, so a definition written before them cannot acquire one on
+recompilation.
 Duplicate `request_id` values are a fold error. `effect_acked` and
 `instance_cancelled` commit the post-operation instance `state_hash`. A record
 carrying `state_root` commits the complete logical store state after that
@@ -569,16 +582,18 @@ be literal words. Otherwise the result *type* would depend on a runtime value
 
 Evaluation is total, deterministic, and strict left-to-right. `and`/`or`
 short-circuit; `if` evaluates only the taken branch. One `Budget` is shared
-across every expression evaluation of a single create, step, deadline poll, or
-enabled-event scan; each AST-node visit, including an omitted guard's implicit
-`true`, decrements it;
+across every expression evaluation of a single create, step, or deadline poll
+— each a whole macrostep, budgeted at 4096 × (64 + 2) ticks (Appendix B) —
+or of a single enabled-event scan, budgeted at 4096; each AST-node visit,
+including an omitted guard's implicit `true`, decrements it;
 exhaustion is `internal/budget` (an engine-invariant breach, never a user
 error). Compilation limits the definition's worst-case evaluation cost — all
 compiled AST nodes plus one tick per distinct event with an omitted `if` — to
 4096, so a fresh standard budget cannot exhaust on a definition accepted by
-the current compiler during create, step, deadline poll, or enabled-event
-analysis. A caller-supplied smaller or already-consumed budget may still
-exhaust. All
+the current compiler during an enabled-event scan, and the macrostep budget,
+sized for the trigger, `MAX_MICROSTEPS` reactions, and the closing scan at
+that cost each, cannot exhaust during create, step, or deadline poll. A
+caller-supplied smaller or already-consumed budget may still exhaust. All
 `Int`/`Ts`/`Dur` arithmetic uses checked operations, including
 `-(i64::MIN)` → `run/overflow`. Decimal arithmetic delegates to the decimal
 module (`Overflow` → `run/overflow`).

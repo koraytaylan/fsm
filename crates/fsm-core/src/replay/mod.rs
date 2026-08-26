@@ -4,12 +4,15 @@
 
 use std::collections::BTreeMap;
 
+use crate::expr::eval::Budget;
 use crate::hashes::{
     STATE_FORMAT, configuration_value, domain_hash, legacy_state_hash, state_hash,
 };
 use crate::json::Value;
+use crate::limits::{MACROSTEP_EVAL_TICKS, MAX_EVAL_TICKS};
 use crate::machine::{ActiveConfiguration, CompiledMachine, InstanceState};
 use crate::record::{Record, RecordKind};
+use crate::step::{Outcome, step};
 use crate::tree::Tree;
 
 mod apply;
@@ -25,6 +28,53 @@ use apply::apply;
 pub use ctx::{ctx_val_json, ctx_val_string, parse_ctx_json, parse_ctx_val};
 
 /// Format discriminator for newly written logical store-state roots.
+/// Re-run the step a sealed `event_applied`, `event_rejected`, or
+/// `event_ignored` record describes, as the macrostep it was.
+///
+/// Every live write runs under the macrostep budget, and a definition the
+/// current compiler accepts cannot exhaust it — the budget is sized for the
+/// trigger, `MAX_MICROSTEPS` reactions, and the closing scan at the compile
+/// limit each — so a sealed `internal/budget` cause can only come from a
+/// journal written when one step's budget was `MAX_EVAL_TICKS` and the
+/// compiler of that day did not charge an omitted guard's implicit `true`.
+/// Such a record, and only such a record, is re-run under that budget when
+/// the macrostep budget reproduces no rejection: the budget counterpart of
+/// the historical enabled-event diagnostic rule, for sealed rejections alone,
+/// never for a new operation. A deadline poll visits no event guard, so no
+/// sealed deadline rejection can carry that cause and none is re-run this way.
+pub fn replay_sealed_step(
+    machine: &CompiledMachine,
+    tree: &Tree,
+    instance: &InstanceState,
+    event: &str,
+    payload: &Value,
+    now_ms: i64,
+    body: &Value,
+) -> Outcome {
+    let mut budget = Budget::new(MACROSTEP_EVAL_TICKS);
+    let outcome = step(machine, tree, instance, event, payload, now_ms, &mut budget);
+    if matches!(outcome, Outcome::Rejected(_)) || !claims_budget_exhaustion(body) {
+        return outcome;
+    }
+    let mut historical = Budget::new(MAX_EVAL_TICKS);
+    step(
+        machine,
+        tree,
+        instance,
+        event,
+        payload,
+        now_ms,
+        &mut historical,
+    )
+}
+
+fn claims_budget_exhaustion(body: &Value) -> bool {
+    body.get("details")
+        .and_then(|details| details.get("cause"))
+        .and_then(Value::as_str)
+        == Some("internal/budget")
+}
+
 pub const STATE_ROOT_FORMAT: &str = "fsm.state-root/3";
 /// Hash domain paired with [`STATE_ROOT_FORMAT`].
 pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:3";
@@ -244,6 +294,13 @@ pub enum ReplayError {
     FieldMismatch {
         seq: u64,
         field: &'static str,
+    },
+    /// The journaled `microsteps` claim disagrees with the re-derived
+    /// reactions at the 1-based `index` (an absent key against derived
+    /// reactions, or a spurious key against none, reports index 1).
+    MicrostepMismatch {
+        seq: u64,
+        index: u32,
     },
     UnknownMachine {
         seq: u64,

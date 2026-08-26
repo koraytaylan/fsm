@@ -6,7 +6,9 @@ use fsm_core::hashes::{STATE_FORMAT, configuration_value, state_hash};
 use fsm_core::json::Value;
 use fsm_core::machine::{ActiveConfiguration, InstanceState};
 use fsm_core::record::{Record, RecordKind};
-use fsm_core::replay::{NopSink, StoreState, StoredMachine, ctx_val_json, fold_with};
+use fsm_core::replay::{
+    NopSink, StoreState, StoredMachine, ctx_val_json, fold_with, replay_sealed_step,
+};
 use fsm_core::step::{DeadlineOutcome, Outcome, poll_deadline, step};
 use fsm_core::tree::Tree;
 
@@ -127,7 +129,10 @@ pub(super) fn reconstruct_applied(
     let mid = pre.instance_machines.get(iid)?;
     let m = pre.machines.get(mid)?;
     let inst = pre.instances.get(iid)?;
-    let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+    // History and explain re-apply a record as the macrostep it was; the
+    // standard budget would fail a legitimately deep cascade the live write
+    // accepted and silently drop its trace.
+    let mut bud = Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
     match step(&m.compiled, &m.tree, inst, ev, &payload, rec.ts, &mut bud) {
         Outcome::Applied(a) => {
             let mut post_inst = inst.clone();
@@ -195,7 +200,7 @@ pub(super) fn reconstruct_deadline_applied(
     let machine_id = pre.instance_machines.get(instance_id)?;
     let machine = pre.machines.get(machine_id)?;
     let instance = pre.instances.get(instance_id)?;
-    let mut budget = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+    let mut budget = Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
     let DeadlineOutcome::Applied(applied) = poll_deadline(
         &machine.compiled,
         &machine.tree,
@@ -465,15 +470,14 @@ pub(super) fn history_entry(
                                         .get("payload")
                                         .cloned()
                                         .unwrap_or(Value::Obj(BTreeMap::new()));
-                                    let mut bud = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
-                                    if let Outcome::Rejected(r) = step(
+                                    if let Outcome::Rejected(r) = replay_sealed_step(
                                         &m.compiled,
                                         &m.tree,
                                         inst,
                                         ev,
                                         &payload,
                                         rec.ts,
-                                        &mut bud,
+                                        &rec.body,
                                     ) {
                                         e.insert("trace".into(), r.trace.to_value());
                                     }
@@ -488,7 +492,7 @@ pub(super) fn history_entry(
                         if let (Some(machine), Some(instance)) =
                             (pre.machines.get(machine_id), pre.instances.get(iid))
                         {
-                            let mut budget = Budget::new(fsm_core::limits::MAX_EVAL_TICKS);
+                            let mut budget = Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
                             if let DeadlineOutcome::Rejected(rejected) = poll_deadline(
                                 &machine.compiled,
                                 &machine.tree,
