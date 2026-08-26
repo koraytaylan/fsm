@@ -258,7 +258,7 @@ fn migration_preview(
 
 /// The wall clock, for a preview's "if this happened now".
 fn clock_now() -> i64 {
-    crate::clock::SystemClock.now_ms()
+    crate::clock::Clock::now_ms(&mut crate::clock::SystemClock)
 }
 
 pub(in crate::mcp::tools) fn run_invocation_start(

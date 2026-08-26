@@ -189,6 +189,155 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
     }
 }
 
+/// `fsm migrate --from <machine> --to <machine>` — move a cohort.
+///
+/// **Not atomic, by construction.** This is N idempotent operations, not a
+/// transaction: a crash halfway leaves half the cohort migrated, and
+/// re-running finishes it. A transaction across N instances would need a
+/// two-phase commit this store deliberately does not have, and pretending
+/// otherwise would be a promise that breaks exactly when it matters.
+fn migrate_cohort(ctx: &mut Ctx, args: &Args) -> u8 {
+    let (Some(from), Some(to)) = (args.flags.get("from"), args.flags.get("to")) else {
+        return emit_error(
+            ctx,
+            &ErrorObj::new("args", "migrate --from <machine> --to <machine>"),
+        );
+    };
+    let dry_run = args.switches.contains("dry-run");
+    let limit = args
+        .flags
+        .get("limit")
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .unwrap_or(usize::MAX);
+
+    // A dry run reads; a real run writes. Opening read-only for the dry run
+    // means a monitoring session can ask without holding the writer.
+    let mut store = match if dry_run {
+        crate::store::Store::open_read_only(&ctx.data_dir)
+    } else {
+        crate::store::Store::open(&ctx.data_dir)
+    } {
+        Ok(store) => store,
+        Err(error) => return emit_error(ctx, &error),
+    };
+
+    let source = match store.resolve_machine(from) {
+        Ok(machine) => machine.compiled.machine_id.clone(),
+        Err(error) => return emit_error(ctx, &error),
+    };
+    let target = match store.resolve_machine(to) {
+        Ok(machine) => machine.clone(),
+        Err(error) => return emit_error(ctx, &error),
+    };
+    let source_machine = store.state.machines[&source].clone();
+    let cohort: Vec<(String, fsm_core::machine::InstanceState)> = store
+        .state
+        .instances
+        .iter()
+        .filter(|(id, _)| store.state.instance_machines.get(*id) == Some(&source))
+        .map(|(id, state)| (id.clone(), state.clone()))
+        .collect();
+
+    // Everything is previewed before anything is written: an operator sees
+    // "412 migrate cleanly, 8 are in a state your map does not cover" rather
+    // than discovering the eight one at a time.
+    let mut budget = fsm_core::expr::eval::Budget::new(fsm_core::limits::MACROSTEP_EVAL_TICKS);
+    let now_ms = crate::clock::Clock::now_ms(&mut crate::clock::SystemClock);
+    let groups = fsm_core::migrate::preview::preview_all(
+        &source_machine.compiled,
+        &target.compiled,
+        &target.tree,
+        &cohort,
+        now_ms,
+        &mut budget,
+    );
+    let refused: std::collections::BTreeSet<String> = groups
+        .iter()
+        .filter(|group| group.code.is_some())
+        .flat_map(|group| group.instances.iter().cloned())
+        .collect();
+
+    let mut lines: Vec<Value> = groups
+        .iter()
+        .map(|group| {
+            let mut entry = BTreeMap::from([
+                ("count".to_string(), Value::Num(group.count.to_string())),
+                (
+                    "outcome".into(),
+                    Value::Str(group.code.unwrap_or("clean").into()),
+                ),
+            ]);
+            if !group.detail.is_empty() {
+                entry.insert("detail".into(), Value::Str(group.detail.clone()));
+            }
+            Value::Obj(entry)
+        })
+        .collect();
+
+    let mut migrated = 0usize;
+    let mut replayed = 0usize;
+    let mut failed: Vec<Value> = Vec::new();
+    if !dry_run {
+        for (id, _) in &cohort {
+            if migrated + replayed >= limit {
+                break;
+            }
+            if refused.contains(id) {
+                continue;
+            }
+            // Both halves of the key come from content the journal already
+            // holds, so an interrupted run re-derives it and the store
+            // replays what it already did instead of migrating twice.
+            let request_id = format!("migrate-{id}-{}", target.compiled.machine_id);
+            match store.migrate_instance(id, to, &request_id) {
+                Ok(response) => {
+                    let duplicate =
+                        response.get("duplicate").and_then(Value::as_bool) == Some(true);
+                    if duplicate {
+                        replayed += 1;
+                    } else {
+                        migrated += 1;
+                    }
+                    lines.push(Value::Obj(BTreeMap::from([
+                        ("instance_id".to_string(), Value::Str(id.clone())),
+                        (
+                            "outcome".into(),
+                            Value::Str(if duplicate { "replayed" } else { "migrated" }.into()),
+                        ),
+                        ("request_id".into(), Value::Str(request_id)),
+                    ])));
+                }
+                Err(error) => {
+                    // The preview did not predict this one, which is a
+                    // surprise rather than a known exclusion.
+                    failed.push(Value::Obj(BTreeMap::from([
+                        ("instance_id".to_string(), Value::Str(id.clone())),
+                        ("code".into(), Value::Str(error.code.clone())),
+                    ])));
+                }
+            }
+        }
+    }
+
+    let summary = Value::Obj(BTreeMap::from([
+        ("ok".to_string(), Value::Str("true".into())),
+        ("dry_run".into(), Value::Bool(dry_run)),
+        ("from_machine_id".into(), Value::Str(source)),
+        (
+            "to_machine_id".into(),
+            Value::Str(target.compiled.machine_id.clone()),
+        ),
+        ("cohort".into(), Value::Num(cohort.len().to_string())),
+        ("migrated".into(), Value::Num(migrated.to_string())),
+        ("replayed".into(), Value::Num(replayed.to_string())),
+        ("skipped".into(), Value::Num(refused.len().to_string())),
+        ("groups".into(), Value::Arr(lines)),
+        ("failed".into(), Value::Arr(failed.clone())),
+    ]));
+    emit_success(ctx, &summary);
+    u8::from(!failed.is_empty())
+}
+
 fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
     let mut m = BTreeMap::new();
     m.insert(
@@ -413,6 +562,14 @@ pub static SPECS: &[CmdSpec] = &[
         switches: &[],
         help: "Replay journal",
         run: journal_replay,
+    },
+    CmdSpec {
+        path: &["migrate"],
+        positionals: &[],
+        flags: &["from", "to", "limit"],
+        switches: &["dry-run"],
+        help: "Migrate every instance of one machine onto a superseding one. Not atomic: N idempotent operations, so a crash halfway leaves half the cohort migrated and re-running finishes it",
+        run: migrate_cohort,
     },
     CmdSpec {
         path: &["doctor"],

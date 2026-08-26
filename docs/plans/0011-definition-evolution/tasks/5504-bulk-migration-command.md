@@ -9,7 +9,8 @@ gated: false
 touches:
   - crates/fsm-cli/src/cli/ops.rs
   - crates/fsm-cli/tests/bulk_migration.rs
-status: planned
+  - crates/fsm-cli/tests/bulk_migration.rs
+status: done
 merged_as: ""
 ---
 # Bulk Migration Command
@@ -39,3 +40,7 @@ A cohort migration is N independent journaled operations and never a transaction
 - Help text names the non-atomicity.
 
 - **Done when:** `cargo test -p fsm-cli --test bulk_migration` passes every case above including the interrupt-and-resume run producing exactly ten records, the grouped preview precedes any write, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `migrate_cohort` beside `doctor` and `repair`, previewing first and grouping by outcome, deriving every key, honouring `--limit`, printing one identifier-only line per instance and a closing summary, exiting non-zero only on an unpredicted failure, and naming its own non-atomicity in the help text. The suite covers the clean cohort, the mixed one with its grouped refusal naming the blocking state, the dry run, resumption, the limit, identifier-only output, the writer-lock refusal, and the help text.
+
+**Corrections.** The resumption test observes five migrations and a five-instance cohort on the second run rather than "five migrations plus five replays": the cohort is *every instance still on the source machine*, so an instance that already moved is no longer in it. The property the plan is after — ten instances leave ten records, never fifteen — is asserted directly, a third run finds nothing to do, and the derived key's replay is proven on its own, which is what a resumed run actually relies on.
