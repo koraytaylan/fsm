@@ -24,6 +24,76 @@ use crate::store::Store;
 /// processes have one number to explain rather than two.
 pub const DEFAULT_INTERVAL_MS: u64 = 250;
 
+thread_local! {
+    /// A feed parked for its caller to drive by hand, instead of by a timer.
+    static PARKED: std::cell::RefCell<Option<Feed>> = const { std::cell::RefCell::new(None) };
+    /// Whether sessions started on this thread park their feed.
+    static BY_HAND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Sessions on this thread hand their feed over instead of spawning a poller.
+///
+/// A push stream driven by a timer cannot be byte-compared: the notification
+/// lands wherever the scheduler puts it. A golden that needs the bytes drives
+/// the same `poll_once` the timer would call, at a point it chooses — and a
+/// feed driven by an injected trigger writes exactly what one driven by its
+/// timer writes, because it is the same pass.
+///
+/// The mode is per-thread, so one test arming it cannot reach another test
+/// running beside it. Hold the guard for as long as the session lives.
+#[derive(Debug)]
+pub struct ByHand(());
+
+impl ByHand {
+    /// Arm hand-driving for this thread.
+    pub fn arm() -> Self {
+        BY_HAND.with(|on| on.set(true));
+        Self(())
+    }
+
+    /// Run the pass the timer would have run. Returns notifications written.
+    pub fn poll(&self) -> usize {
+        PARKED.with(|slot| match slot.borrow_mut().as_mut() {
+            Some(feed) => feed.poll_once(),
+            None => 0,
+        })
+    }
+
+    /// Whether a session has handed its feed over yet.
+    pub fn parked(&self) -> bool {
+        PARKED.with(|slot| slot.borrow().is_some())
+    }
+}
+
+impl Drop for ByHand {
+    fn drop(&mut self) {
+        BY_HAND.with(|on| on.set(false));
+        release_parked();
+    }
+}
+
+/// Park a feed for the caller to drive, if this thread asked for that.
+/// Answers whether it took the feed; a session that hears `false` spawns.
+pub(super) fn park(feed: Feed) -> bool {
+    if !BY_HAND.with(std::cell::Cell::get) {
+        return false;
+    }
+    PARKED.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(feed);
+        }
+    });
+    true
+}
+
+/// Drop any parked feed. Idempotent, and called when a session ends.
+pub(super) fn release_parked() {
+    PARKED.with(|slot| {
+        slot.borrow_mut().take();
+    });
+}
+
 /// One session's view of the journal, between polls.
 pub struct Feed {
     data_dir: PathBuf,

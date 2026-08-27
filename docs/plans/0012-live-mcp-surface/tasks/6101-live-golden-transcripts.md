@@ -11,7 +11,11 @@ gated: false
 touches:
   - crates/fsm-cli/tests/mcp_live_golden.rs
   - crates/fsm-cli/tests/fixtures/mcp_live/session.expected
-status: planned
+  - crates/fsm-cli/tests/fixtures/mcp_live/quiet.expected
+  - crates/fsm-cli/src/mcp/watch.rs
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/src/mcp/notify.rs
+status: done
 merged_as: ""
 ---
 # Live Golden Transcripts
@@ -38,3 +42,16 @@ A push surface is only trustworthy if its whole stream is byte-compared, and the
 - A session that subscribes to nothing produces the pre-plan transcript apart from the `initialize` line, asserted against a second committed fixture.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_live_golden` byte-compares a full live session including notifications, progress, and both silences, the feed is driven deterministically with one separate timing-tolerant test, the fixture is hand-derived, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** The injected trigger step 3 asks for is `watch::ByHand`: a guard that arms hand-driving for **its own thread**, so a session started on that thread parks its feed instead of spawning a poller and the caller runs the pass itself. Per-thread rather than global because the test binary runs its tests concurrently, and a global switch is one test reaching into another. The session's bookkeeping is unchanged — `FeedHandle::parked()` is tracked and shut down exactly like a spawned one — so a hand-driven session is the same session, which is the whole point of driving it by hand.
+
+Lines reach the server through a `Scripted` reader that runs a hook after each line is answered. The server is blocked reading when the hook runs, so whatever the pass emits lands between two responses, in one place, every run. The hook runs after *every* line, not only the write: a feed that spoke twice about one change would appear in the golden as an extra line.
+
+The session is the one step 2 lists, and the stream it produces is twelve lines: the `initialize` result, the subscribe result, the write's result, the `resources/updated` the write caused, the resource read, the level change, two progress notifications and the simulate result, two `debug` log lines for the arriving cancellation and the skip it caused, and the unsubscribe result. Id 7 is answered by silence, and so are both notifications.
+
+**Corrections.**
+
+- *A byte-exact fixture cannot be hand-derived, but the property step 5 is protecting can be.* Instance reports carry state hashes; nobody derives a sha256 by hand, and a fixture that omitted them would compare less than the whole stream. So the fixture is generated (`REGEN_MCP_LIVE=1`, following `mcp_full`'s house pattern) **and** the test carries an independently hand-written expectation of the entire stream's shape — every line, in order, by method or by the id it answers — asserted before the bytes are. A fixture that drifted to match a wrong implementation still fails, which is the property step 5 wants. It earned its keep during development: suppressing the `resources/updated` notification failed the shape assertion first, ahead of the byte compare.
+- *`touches` was three files short.* The injected trigger is production code by construction — the seam has to be where the feed is spawned — so `watch.rs`, `serve.rs` and `notify.rs` carry it, and the quiet session's fixture is a second file.
+- *The three-operating-system claim is asserted by proxy.* This host runs one; what the suite can check, it checks — no absolute path, no temp directory, no `\r`, and no ISO-8601 instant anywhere in the fixture (the negotiated `2025-06-18` is a protocol version, not a timestamp, and the test says so). CI runs the other two.
+- *"The pre-plan transcript apart from the `initialize` line" is asserted as a property, not against a pre-plan file.* A session that subscribes to nothing is compared to its own committed fixture and asserted to contain no `notifications/` line at all, and both fixtures are asserted to share one identical `initialize` result. Diffing against a file from before the plan would pin the old capabilities, which is a claim this plan deliberately falsifies.

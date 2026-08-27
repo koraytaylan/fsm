@@ -308,6 +308,15 @@ impl Live {
         let from_seq = crate::store::Store::open_read_only(&data_dir)
             .map(|store| store.journal.last_seq)
             .unwrap_or(0);
+        // A test driving the feed by hand takes it here; everyone else gets
+        // the timer. The session's own bookkeeping is the same either way,
+        // so a hand-driven session is the same session.
+        if watch::park(watch::Feed::new(&data_dir, watched, writer, from_seq)) {
+            self.feed = Some(FeedHandle::parked());
+            return;
+        }
+        let writer = output.clone_handle();
+        let watched = self.subscriptions.clone_handle();
         self.feed = Some(FeedHandle::spawn(move |stop| {
             let mut feed = watch::Feed::new(&data_dir, watched, writer, from_seq);
             feed.run(stop, FEED_INTERVAL_MS);
@@ -320,6 +329,7 @@ impl Live {
         if let Some(mut feed) = self.feed.take() {
             feed.stop_and_join();
         }
+        watch::release_parked();
     }
 }
 

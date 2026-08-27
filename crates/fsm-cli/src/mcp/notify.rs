@@ -183,6 +183,18 @@ impl FeedHandle {
         }
     }
 
+    /// A handle to a feed nobody spawned, because its caller drives it.
+    ///
+    /// The session tracks it exactly like a spawned one — one feed per
+    /// session, stopped on every exit path — so hand-driving changes when
+    /// the pass runs and nothing else.
+    pub fn parked() -> Self {
+        Self {
+            stop: Arc::new(AtomicBool::new(false)),
+            join: None,
+        }
+    }
+
     /// Ask the feed to stop, and wait for it.
     pub fn stop_and_join(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
