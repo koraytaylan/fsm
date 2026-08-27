@@ -43,6 +43,8 @@ pub const JOURNAL_VERIFY: &str = "Check that the journal is what it says it is: 
 
 pub const JOURNAL_REPLAY: &str = "Re-execute the journal through the engine and check that every recorded outcome is the outcome the engine produces today. Not the same as journal_verify: that checks the bytes and the chain, this checks the semantics, and a store can verify clean and still diverge. Reports the recomputed state_root — compare it across runs, machines, or against a backup — and names the earliest diverging seq. Optional to_seq replays a prefix.";
 
+pub const STORE_DOCTOR: &str = "Diagnose the store: its health and format, record and segment counts, whether a snapshot cache is present and how far behind it has fallen, and whether another process holds the writer — the commonest non-fatal surprise. Where the recovery table prescribes a repair, it hands you that exact command and never runs it: a person decides whether to destroy anything. Works on a store that will not open, which is when you need it.";
+
 /// The display names a host shows beside each tool.
 ///
 /// They live here, beside the descriptions, because a title and a
@@ -70,3 +72,4 @@ pub const INSTANCE_ELICIT_TITLE: &str = "Ask and send";
 pub const EXPLAIN_STEP_TITLE: &str = "Explain a step";
 pub const JOURNAL_VERIFY_TITLE: &str = "Verify the journal";
 pub const JOURNAL_REPLAY_TITLE: &str = "Replay the journal";
+pub const STORE_DOCTOR_TITLE: &str = "Diagnose the store";

@@ -187,6 +187,36 @@ pub(super) fn schema_journal_replay_out() -> Value {
     schema_obj(p, &["replayed_records", "matches", "message"], true)
 }
 
+/// The state of one store: what is wrong, what holds it, what it caches,
+/// and the command a person would run.
+pub(super) fn schema_store_doctor_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("health".into(), ty("string"));
+    p.insert("message".into(), ty("string"));
+    p.insert("version".into(), ty("string"));
+    p.insert("readable".into(), ty("boolean"));
+    p.insert("records".into(), ty("number"));
+    p.insert("segments".into(), ty("array"));
+    p.insert("snapshot".into(), ty("object"));
+    p.insert("writer_lock".into(), ty("object"));
+    p.insert("orphans".into(), ty("array"));
+    p.insert("remedy".into(), ty("string"));
+    p.insert("migration_required_from".into(), ty("string"));
+    schema_obj(
+        p,
+        &[
+            "health",
+            "message",
+            "version",
+            "readable",
+            "records",
+            "snapshot",
+            "writer_lock",
+        ],
+        true,
+    )
+}
+
 pub(super) fn schema_deadline_poll_out() -> Value {
     let mut p = instance_core_props();
     p.insert("deadline_applied".into(), ty("boolean"));

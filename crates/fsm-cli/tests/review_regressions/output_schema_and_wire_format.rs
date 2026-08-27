@@ -190,7 +190,7 @@ fn output_schemas_are_field_level() {
         ),
     ];
     let reg = fsm_cli::mcp::tools::registry();
-    assert_eq!(reg.len(), 22);
+    assert_eq!(reg.len(), 23);
     for (name, fields) in expect {
         let t = reg.iter().find(|t| t.name == *name).expect(name);
         let out = (t.output_schema)();

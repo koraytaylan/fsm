@@ -7,13 +7,23 @@ depends_on:
   - journal-replay-tool
 gated: false
 touches:
+  - crates/fsm-store/src/journal_io/mod.rs
+  - crates/fsm-cli/src/cli/ops.rs
+  - crates/fsm-cli/tests/tool_schemas.rs
+  - crates/fsm-cli/tests/mcp_full.rs
+  - crates/fsm-cli/tests/mcp_regions_deadlines.rs
+  - crates/fsm-cli/tests/naive_caller/core_tests.rs
+  - crates/fsm-cli/tests/review_regressions/output_schema_and_wire_format.rs
+  - crates/fsm-cli/tests/mcp_affordance_golden.rs
+  - crates/fsm-cli/tests/fixtures/
+  - docs/EMBEDDING.md
   - crates/fsm-store/src/journal_io/classify.rs
   - crates/fsm-cli/src/cli/ops.rs
   - crates/fsm-cli/src/mcp/tools/handlers/audit.rs
   - crates/fsm-cli/src/mcp/tools/mod.rs
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/tests/audit_doctor.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Store Doctor Tool
@@ -43,3 +53,16 @@ The `remedy` field is this plan's answer to not exposing `repair`: the model dia
 - Its structured output validates against its declared output schema.
 
 - **Done when:** `cargo test -p fsm-cli --test audit_doctor` passes every case above, health matches `fsm doctor` exactly, remedies match SPEC verbatim, the tool works without a healthy open and writes nothing, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `journal_io::diagnose` is one computation with two renderers — `fsm doctor` prints it, `store_doctor` returns it — because two implementations of "what is wrong with this store" would eventually disagree, and an operator holding two answers has none. The CLI's output is byte-identical; only where the answer is computed moved.
+
+The tool reports health and format, record and segment counts, the snapshot cache's presence **and how far behind it is**, whether another process holds the writer and which one, orphaned children when the store is readable at all, and — where SPEC's recovery table prescribes a repair — that exact command, asserted against the literal text in `docs/SPEC.md` and never run. Interior damage gets no command, because the table says there is none. It answers for a store nothing can open, which is the case it exists for.
+
+Twenty-three tools measure **34 544** bytes against the 38 000 ceiling, leaving 3 456 for `instance_annotate`.
+
+**Corrections.**
+
+- *The writer-lock probe is a shared lock, held for the length of the call.* An exclusive holder makes it fail, which is the answer wanted. The cost is a microseconds-wide window in which a writer starting up could see the store as busy; the alternative — reading a pid and guessing whether that process is alive — is not portable and would be a guess. The code says so where somebody would otherwise wonder.
+- *Staleness needs a number, so it has one:* a snapshot 1 000 records or more behind the tail is reported stale, and `records_behind` is reported alongside so a reader can judge for themselves rather than trusting the threshold.
+- *`orphans` is present only when the store is readable*, per step 5's reasoning applied to the same failure: an empty list on an unopenable store would read as "checked, and none found".
+- *The `records` count comes from the segment walk, not from a `Store`.* A store that will not open has no `journal.last_seq` to report, and the walk has the number anyway.

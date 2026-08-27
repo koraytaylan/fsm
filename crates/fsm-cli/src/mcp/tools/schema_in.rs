@@ -89,6 +89,11 @@ pub(super) fn schema_journal_replay_in() -> Value {
     schema_obj(p, &[], false)
 }
 
+/// No arguments: a diagnosis is of the store this server was pointed at.
+pub(super) fn schema_store_doctor_in() -> Value {
+    schema_obj(BTreeMap::new(), &[], false)
+}
+
 pub(super) fn schema_deadline_poll_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

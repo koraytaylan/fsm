@@ -27,7 +27,7 @@ mod tests;
 mod types;
 mod verify;
 
-pub use classify::classify;
+pub use classify::{Diagnosis, classify, diagnose};
 pub use init::init;
 pub use load::load_records;
 pub use open::open;

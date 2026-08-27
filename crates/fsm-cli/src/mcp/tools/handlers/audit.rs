@@ -416,3 +416,121 @@ fn replay_error_seq(error: &fsm_core::replay::ReplayError) -> Option<u64> {
         _ => None,
     }
 }
+
+/// What is wrong with this store, and the exact command that fixes it.
+pub(in crate::mcp::tools) fn run_store_doctor(
+    store: &mut Store,
+    _clock: &mut dyn Clock,
+    _args: &Value,
+) -> Result<Value, ErrorObj> {
+    let data_dir = store.data_dir.clone();
+    Ok(doctor_report(&data_dir))
+}
+
+/// Diagnose one data directory, open or not.
+///
+/// This is the tool that exists for the store that will not open, so it
+/// takes a path and never needs one that does. `remedy` carries SPEC's
+/// recovery command **verbatim** where the table prescribes one and is
+/// absent where the posture is "no repair" — the tool never runs it, because
+/// a person decides whether to destroy anything.
+pub fn doctor_report(data_dir: &std::path::Path) -> Value {
+    let diagnosis = fsm_store::journal_io::diagnose(data_dir);
+    let mut out = std::collections::BTreeMap::from([
+        (
+            "health".to_string(),
+            Value::Str(health_name(&diagnosis.health).to_string()),
+        ),
+        (
+            "message".to_string(),
+            Value::Str(diagnosis.health.message()),
+        ),
+        ("version".to_string(), Value::Str(diagnosis.version.clone())),
+        ("readable".to_string(), Value::Bool(diagnosis.readable)),
+        (
+            "records".to_string(),
+            Value::Num(diagnosis.records.to_string()),
+        ),
+        (
+            "segments".to_string(),
+            Value::Arr(
+                diagnosis
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        Value::Obj(std::collections::BTreeMap::from([
+                            ("segment".to_string(), Value::Str(segment.segment.clone())),
+                            (
+                                "records".to_string(),
+                                Value::Num(segment.records.to_string()),
+                            ),
+                            ("status".to_string(), Value::Str(segment.status.clone())),
+                        ]))
+                    })
+                    .collect(),
+            ),
+        ),
+        (
+            "snapshot".to_string(),
+            Value::Obj(std::collections::BTreeMap::from([
+                (
+                    "present".to_string(),
+                    Value::Bool(diagnosis.snapshot_seq.is_some()),
+                ),
+                (
+                    "seq".to_string(),
+                    match diagnosis.snapshot_seq {
+                        Some(seq) => Value::Num(seq.to_string()),
+                        None => Value::Null,
+                    },
+                ),
+                (
+                    "records_behind".to_string(),
+                    Value::Num(diagnosis.snapshot_behind.to_string()),
+                ),
+                // Presence alone tells an operator nothing; how far behind it
+                // is tells them whether every open is paying for the tail.
+                (
+                    "stale".to_string(),
+                    Value::Bool(
+                        diagnosis.snapshot_seq.is_some()
+                            && diagnosis.snapshot_behind >= STALE_AFTER,
+                    ),
+                ),
+            ])),
+        ),
+        (
+            "writer_lock".to_string(),
+            Value::Obj(std::collections::BTreeMap::from([
+                ("held".to_string(), Value::Bool(diagnosis.writer_lock_held)),
+                (
+                    "holder".to_string(),
+                    match diagnosis.writer_lock_holder {
+                        Some(pid) => Value::Num(pid.to_string()),
+                        None => Value::Null,
+                    },
+                ),
+            ])),
+        ),
+    ]);
+    if let Some(found) = &diagnosis.migration_required_from {
+        out.insert(
+            "migration_required_from".to_string(),
+            Value::Str(found.clone()),
+        );
+    }
+    // Only when the store could be read at all. An always-present empty list
+    // would read as "checked, and there are none".
+    if diagnosis.readable {
+        out.insert("orphans".to_string(), Value::Arr(diagnosis.orphans.clone()));
+    }
+    if let Some(remedy) = remedy(&diagnosis.health) {
+        out.insert("remedy".to_string(), Value::Str(remedy.to_string()));
+    }
+    Value::Obj(out)
+}
+
+/// How far behind the journal a snapshot may fall before it is worth saying
+/// so. One rotation's worth of records: below that, re-reading the tail is
+/// cheaper than anybody's attention.
+const STALE_AFTER: u64 = 1_000;

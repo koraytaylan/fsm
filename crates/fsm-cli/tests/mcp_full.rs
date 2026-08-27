@@ -129,6 +129,7 @@ fn nineteen_tools_in_order() {
             "explain_step",
             "journal_verify",
             "journal_replay",
+            "store_doctor",
             "instance_elicit",
             "simulate",
         ]

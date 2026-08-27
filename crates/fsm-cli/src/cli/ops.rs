@@ -339,41 +339,36 @@ fn migrate_cohort(ctx: &mut Ctx, args: &Args) -> u8 {
 }
 
 fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
+    // One computation, two renderers: this prints the diagnosis and
+    // `store_doctor` returns it. What is reported here is unchanged; only
+    // where it is computed moved.
+    let diagnosis = crate::journal_io::diagnose(&ctx.data_dir);
+    if !diagnosis.readable {
+        // The refusal an unreadable store gives, in the words it gives it.
+        match crate::store::Store::open_read_only(&ctx.data_dir) {
+            Ok(_) => {}
+            Err(error) => return emit_error(ctx, &error),
+        }
+    }
     let mut m = BTreeMap::new();
     m.insert(
         "data_dir".into(),
         Value::Str(ctx.data_dir.display().to_string()),
     );
-    let format = detect_store_format(&ctx.data_dir);
-    match crate::store::Store::open_read_only(&ctx.data_dir) {
-        Ok(_) => {
-            m.insert("readable".into(), Value::Bool(true));
-        }
-        Err(error) => {
-            return emit_error(ctx, &error);
-        }
-    }
-    let ver = match &format {
-        DetectedStoreFormat::Current => crate::journal_io::STORE_VERSION.to_string(),
-        DetectedStoreFormat::Migratable { found } | DetectedStoreFormat::Incompatible { found } => {
-            found.clone()
-        }
-        DetectedStoreFormat::Empty | DetectedStoreFormat::Unreadable { .. } => String::new(),
-    };
-    m.insert("version".into(), Value::Str(ver.clone()));
-    if let DetectedStoreFormat::Migratable { found } = &format {
+    m.insert("readable".into(), Value::Bool(true));
+    m.insert("version".into(), Value::Str(diagnosis.version.clone()));
+    if let Some(found) = &diagnosis.migration_required_from {
         m.insert("migration_required_from".into(), Value::Str(found.clone()));
     }
-    let snaps = crate::snapshot::listed_snaps(&ctx.data_dir).len();
-    m.insert("snapshots".into(), Value::Num(snaps.to_string()));
-    let v = verify(&ctx.data_dir);
-    m.insert("verify".into(), Value::Str(format!("{:?}", v.health)));
-    // Running children nobody references: reported here, settled only by an
-    // explicit `repair --cancel-orphans`, because an open must never write.
-    let orphans = crate::store::Store::open_read_only(&ctx.data_dir)
-        .map(|store| store.orphaned_children())
-        .unwrap_or_default();
-    m.insert("orphans".into(), Value::Arr(orphans));
+    m.insert(
+        "snapshots".into(),
+        Value::Num(diagnosis.snapshots.to_string()),
+    );
+    m.insert(
+        "verify".into(),
+        Value::Str(format!("{:?}", diagnosis.health)),
+    );
+    m.insert("orphans".into(), Value::Arr(diagnosis.orphans.clone()));
     m.insert(
         "FSM_DATA_DIR".into(),
         Value::Str(std::env::var("FSM_DATA_DIR").unwrap_or_default()),
