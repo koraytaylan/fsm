@@ -136,6 +136,24 @@ pub struct Unstartable {
     pub error: ExecError,
 }
 
+/// A pending effect that passed every start rule and is waiting only on a
+/// concurrency slot.
+struct Candidate {
+    effect: PendingEffect,
+    argv: Vec<String>,
+    timeout_ms: i64,
+    attempt: u32,
+}
+
+/// What a concurrency cap held back on one tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Capped {
+    /// Candidates that passed every start rule and got no slot.
+    pub deferred: usize,
+    /// Handler processes running after this tick's starts.
+    pub inflight: usize,
+}
+
 /// The executor's brain.
 pub struct Scheduler {
     table: HandlerTable,
@@ -150,6 +168,8 @@ pub struct Scheduler {
     /// to retry. An operator watching a quiet tick should be able to tell
     /// "waiting" from "nothing to do".
     deferred: Vec<String>,
+    /// What a concurrency cap held back this tick, when one bound.
+    capped: Option<Capped>,
     parked_advances: BTreeMap<(String, String), u64>,
 }
 
@@ -166,8 +186,29 @@ impl Scheduler {
             stalled: Vec::new(),
             reported_stalls: BTreeSet::new(),
             deferred: Vec::new(),
+            capped: None,
             parked_advances: BTreeMap::new(),
         }
+    }
+
+    /// Whether a slot is free for one more run on this instance.
+    ///
+    /// Counted from the process-local in-flight map rather than from the
+    /// journal, and that is the whole point: a cap on concurrency is a
+    /// statement about what *this* process is running now. A fresh scheduler
+    /// after a restart correctly starts up to the cap again — the orphaned
+    /// children of the previous process are gone, and their effects are still
+    /// pending precisely because nothing acked them.
+    fn has_room_for(&self, instance_id: &str) -> bool {
+        if self.inflight.len() >= self.table.max_inflight as usize {
+            return false;
+        }
+        let on_instance = self
+            .inflight
+            .values()
+            .filter(|inflight| inflight.effect.instance_id == instance_id)
+            .count();
+        on_instance < self.table.max_inflight_per_instance as usize
     }
 
     /// The handler for an effect name, for the driver that has to settle a run.
@@ -198,7 +239,9 @@ impl Scheduler {
         self.deferred.clear();
         self.unstartable.clear();
         self.stalled.clear();
+        self.capped = None;
         let mut directives: Vec<Directive> = Vec::new();
+        let mut candidates: Vec<Candidate> = Vec::new();
 
         // 1. Start a handler for pending work nobody has claimed or started.
         for effect in &obs.pending {
@@ -278,7 +321,9 @@ impl Scheduler {
                     // table the loop can repair. The driver acks it `failed`
                     // so the machine's own failure path can fire; skipping it
                     // silently would leave the effect pending forever with no
-                    // diagnostic anywhere.
+                    // diagnostic anywhere. Deliberately *before* the caps: it
+                    // costs no subprocess, so a concurrency bound has no
+                    // business deferring it.
                     self.unstartable.push(Unstartable {
                         effect: effect.clone(),
                         error,
@@ -286,21 +331,52 @@ impl Scheduler {
                     continue;
                 }
             };
-            self.inflight.insert(
-                effect.effect_id.clone(),
-                Inflight {
-                    effect: effect.clone(),
-                    deadline_ms: now_ms.saturating_add(handler.timeout_ms),
-                    killed: false,
-                },
-            );
-            directives.push(Directive::Start {
+            candidates.push(Candidate {
                 effect: effect.clone(),
                 argv,
                 timeout_ms: handler.timeout_ms,
                 attempt,
             });
         }
+
+        // A stable total order before the caps, because a cap that takes an
+        // arbitrary prefix of an unordered set makes the same observation
+        // produce different directives on different runs — and restart
+        // equivalence is the property everything else here rests on.
+        // `effect_id` is `{instance}/{seq}/{k}` and is therefore a total
+        // order over the candidates. It is a *lexicographic* one, so `/10/`
+        // sorts before `/9/`; that is fair enough for this task, whose
+        // subject is that an order exists and is applied, and `7602` replaces
+        // it with the round-robin the fairness rule wants.
+        candidates.sort_by(|left, right| left.effect.effect_id.cmp(&right.effect.effect_id));
+
+        let mut capped = 0usize;
+        for candidate in candidates {
+            if !self.has_room_for(&candidate.effect.instance_id) {
+                capped += 1;
+                continue;
+            }
+            self.inflight.insert(
+                candidate.effect.effect_id.clone(),
+                Inflight {
+                    effect: candidate.effect.clone(),
+                    deadline_ms: now_ms.saturating_add(candidate.timeout_ms),
+                    killed: false,
+                },
+            );
+            directives.push(Directive::Start {
+                effect: candidate.effect,
+                argv: candidate.argv,
+                timeout_ms: candidate.timeout_ms,
+                attempt: candidate.attempt,
+            });
+        }
+        // Silent truncation reads as "nothing to do", which is exactly the
+        // failure an operator cannot diagnose. Said once per tick.
+        self.capped = (capped > 0).then_some(Capped {
+            deferred: capped,
+            inflight: self.inflight.len(),
+        });
 
         // 3. Resume an advance whose ack is journaled but whose event is not.
         // This is what survives a kill between the two writes, and it equally
@@ -447,6 +523,11 @@ impl Scheduler {
     /// Effects this tick deferred because they are waiting to retry.
     pub fn deferred(&self) -> &[String] {
         &self.deferred
+    }
+
+    /// What a concurrency cap held back this tick, when one bound.
+    pub fn capped(&self) -> Option<Capped> {
+        self.capped
     }
 
     pub fn unhandled(&self) -> &[String] {

@@ -302,6 +302,16 @@ fn plan(
             .iter()
             .map(|effect_id| format!("waiting to retry {effect_id}")),
     );
+    // One line per tick, never one per effect: an outbox of five hundred
+    // would otherwise drown the trace it is meant to explain. Counts only —
+    // deterministic on every host, which is what the byte-compared golden
+    // session needs.
+    if let Some(capped) = scheduler.capped() {
+        lines.push(format!(
+            "error exec/inflight_deferred deferred={} inflight={}",
+            capped.deferred, capped.inflight
+        ));
+    }
     Ok(Plan {
         observation,
         directives,

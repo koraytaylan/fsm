@@ -69,6 +69,36 @@ pub const DEFAULT_MAX_BACKOFF_MS: i64 = 60_000;
 /// A closed set, so a misspelling is refused rather than quietly meaning
 /// "never retry".
 pub const FAILURE_CLASSES: &[&str] = &["nonzero_exit", "timeout", "spawn", "mcp_error"];
+
+/// Handler processes this executor runs at once when a table does not say.
+///
+/// Eight is chosen to be a bound an existing table almost certainly never
+/// hits: before this cap an outbox holding five hundred pending effects
+/// spawned five hundred subprocesses, so the default has to fix that without
+/// changing what a normal deployment does.
+pub const DEFAULT_MAX_INFLIGHT: u32 = 8;
+/// The most a table may ask for, per host.
+///
+/// Sixty-four concurrent subprocesses is already past what one node with one
+/// journal writer can usefully drive; a table asking for more has a typo in it.
+pub const MAX_MAX_INFLIGHT: u32 = 64;
+/// Handler processes one instance may occupy at once, when a table does not
+/// say.
+///
+/// Two rather than one: a workflow whose state emits a pair of effects should
+/// not be serialised by the default, and a workflow whose outbox holds forty
+/// should not take every slot on the host.
+pub const DEFAULT_MAX_INFLIGHT_PER_INSTANCE: u32 = 2;
+/// The most a table may ask for, per instance.
+pub const MAX_MAX_INFLIGHT_PER_INSTANCE: u32 = 16;
+
+/// The table's top-level keys, closed for the same reason the handler's are.
+const TABLE_KEYS: &[&str] = &[
+    "format",
+    "handlers",
+    "max_inflight",
+    "max_inflight_per_instance",
+];
 const ADVANCE_KEYS: &[&str] = &["event", "payload", "stamps"];
 
 /// The domain event to send after an outcome, exactly as the table declares it.
@@ -145,6 +175,20 @@ impl Retry {
 pub struct HandlerTable {
     /// Effect name to its single handler.
     pub handlers: BTreeMap<String, HandlerSpec>,
+    /// Handler processes this executor may run at once, across every instance.
+    pub max_inflight: u32,
+    /// Handler processes one instance may occupy at once.
+    pub max_inflight_per_instance: u32,
+}
+
+impl Default for HandlerTable {
+    fn default() -> Self {
+        Self {
+            handlers: BTreeMap::new(),
+            max_inflight: DEFAULT_MAX_INFLIGHT,
+            max_inflight_per_instance: DEFAULT_MAX_INFLIGHT_PER_INSTANCE,
+        }
+    }
 }
 
 impl HandlerTable {
@@ -157,7 +201,7 @@ impl HandlerTable {
             )
         })?;
         if let Some(fields) = document.as_obj() {
-            reject_unknown_keys(fields.keys(), &["format", "handlers"], Vec::new())?;
+            reject_unknown_keys(fields.keys(), TABLE_KEYS, Vec::new())?;
         }
         match document.get("format").and_then(Value::as_str) {
             Some(FORMAT) => {}
@@ -199,8 +243,50 @@ impl HandlerTable {
             }
             handlers.insert(spec.effect.clone(), spec);
         }
-        Ok(HandlerTable { handlers })
+        Ok(HandlerTable {
+            handlers,
+            max_inflight: bounded_cap(
+                document.get("max_inflight"),
+                "max_inflight",
+                DEFAULT_MAX_INFLIGHT,
+                MAX_MAX_INFLIGHT,
+            )?,
+            max_inflight_per_instance: bounded_cap(
+                document.get("max_inflight_per_instance"),
+                "max_inflight_per_instance",
+                DEFAULT_MAX_INFLIGHT_PER_INSTANCE,
+                MAX_MAX_INFLIGHT_PER_INSTANCE,
+            )?,
+        })
     }
+}
+
+/// One optional whole-number cap, from 1 to `ceiling`, defaulting to `fallback`.
+///
+/// Zero is refused rather than read as "unbounded": a table that says
+/// `max_inflight: 0` almost certainly means "do not limit me", and honouring
+/// that reading would start nothing at all — an executor that looks hung.
+fn bounded_cap(
+    raw: Option<&Value>,
+    field: &'static str,
+    fallback: u32,
+    ceiling: u32,
+) -> Result<u32, ExecError> {
+    let Some(raw) = raw else {
+        return Ok(fallback);
+    };
+    raw.as_num()
+        .and_then(|token| token.parse::<u32>().ok())
+        .filter(|value| (1..=ceiling).contains(value))
+        .ok_or_else(|| {
+            config_error(
+                format!("{field} must be a whole number from 1 to {ceiling}"),
+                vec![
+                    ("field", Value::Str(field.into())),
+                    ("max", Value::Num(ceiling.to_string())),
+                ],
+            )
+        })
 }
 
 fn parse_handler(index: usize, entry: &Value) -> Result<HandlerSpec, ExecError> {

@@ -10,8 +10,9 @@ gated: false
 touches:
   - crates/fsm-execute/src/config.rs
   - crates/fsm-execute/src/sched.rs
+  - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/tests/concurrency.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Inflight Concurrency Cap
@@ -42,3 +43,15 @@ An outbox holding five hundred pending effects currently spawns five hundred sub
 - Restart: a fresh scheduler with an empty `inflight` fed the same observation emits up to the cap, which is correct — the cap is about this process's concurrency, not about journal state.
 
 - **Done when:** `cargo test -p fsm-execute --test concurrency` passes every case above, both caps bind deterministically over a stable order, deferrals are logged rather than silent, non-`Start` directives are never deferred, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `max_inflight` (default 8, 1 to 64) and `max_inflight_per_instance` (default 2, 1 to 16), both optional, both in the table's closed top-level key set — which the table did not have before, since `format` and `handlers` were checked against an inline pair. Zero is refused rather than read as "unbounded": a table saying `max_inflight: 0` almost certainly means "do not limit me", and honouring that reading would start nothing at all, which is an executor that looks hung.
+
+The start rule now builds **candidates** and admits them in a second pass, so ordering and capping happen where they can be reasoned about. Candidates are sorted by `effect_id` — `{instance}/{seq}/{k}`, a total order — before any cap is applied, because a cap that takes an arbitrary prefix of an unordered set makes the same observation produce different directives on different runs. A hundred runs of a forty-candidate observation are asserted byte-identical. The order is *lexicographic*, so `/10/` sorts before `/9/`; `7602` replaces it with the round-robin fairness needs, and this task establishes only that an order exists and is applied.
+
+Slots are counted from the process-local `inflight` map, which is the one legitimate use of it: a cap on concurrency is a statement about what **this** process is running now. A fresh scheduler fed the same observation fills to the cap again, which is correct — its predecessor's children are gone, and their effects are still pending precisely because nothing acked them. Asserted rather than assumed.
+
+Only `Start` is capped, and an unstartable effect is pushed to `unstartable` **before** the caps are reached: a `Kill`, a `SendEvent`, a `PollDeadline`, and a failed argv substitution are all bookkeeping against the journal, cost no subprocess, and must never be deferred by a concurrency bound. The row that pins this puts a full executor past a handler's timeout with a due deadline outstanding and asserts both kills and the poll still come out.
+
+A tick that defers says so once, with counts only — `error exec/inflight_deferred deferred=38 inflight=2` — asserted end to end through the driver rather than only at the accessor, because the scheduler can report a deferral all it likes and it means nothing if the line never reaches the trace. One line per tick, never one per effect: an outbox of five hundred would drown the trace it is meant to explain.
+
+Documentation of the two keys belongs to `7802`, which updates the `fsm.handlers/1` field table for every key this plan adds in one pass.
