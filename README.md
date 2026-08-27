@@ -99,6 +99,7 @@ Claude Desktop `mcpServers` JSON:
 | auditable implementation | zero dependencies, no unsafe |
 | unattended execution | `fsm execute` is a separate one-node process with **at-least-once** execution at the process boundary and exactly-once journaling: one ack per effect, whatever it survived |
 | explicit composition | a child instance exists because a record says so, and its id is derived from its parent and slot — never allocated, never guessed |
+| accurate tool annotations | read-only, destructive, and idempotent hints are derived from the code that enforces them, not declared alongside it |
 | live subscriptions | a subscribed resource notifies on change, from a poll loop that takes no lock and perturbs no writer |
 | explicit evolution | an instance changes definition because a record says so, under a mapping the new definition declares and its hash covers |
 

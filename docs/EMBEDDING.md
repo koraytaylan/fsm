@@ -370,6 +370,106 @@ and threading a cancellation token through the pure core would cost the core
 its purity and buy nothing. Cancel a `simulate` of a thousand events and it
 stops within one event; cancel an `instance_send` and it completes.
 
+## Affordances
+
+Three protocol affordances this server offers are all cases where it already
+holds the answer and used to keep it: what each tool is safe to do, what an
+identifier can be spelled as, and what a person still has to decide.
+
+### What the annotations claim
+
+Every tool in `tools/list` carries a `title` and four hints. None of them is
+declared beside the tool; each is derived from the code that already enforces
+it, so a hint cannot drift from the behaviour it describes.
+
+| Hint | Where it comes from |
+|---|---|
+| `readOnlyHint` | the negation of `MUTATING_TOOLS`, the same constant a read-only server refuses on |
+| `destructiveHint` | true for `instance_cancel` only: cancelling ends an instance and no later event revives it |
+| `idempotentHint` | true for exactly the mutating tools — see below |
+| `openWorldHint` | false everywhere: no tool call reaches past one data directory. Effects reach the world; the executor runs them |
+
+The read-only tools are therefore `machine_list`, `machine_get`,
+`machine_analyze`, `machine_diagram`, `instance_get`, `instance_list`,
+`instance_history`, and `simulate`. The mutating ones are `machine_create`,
+`instance_create`, `instance_send`, `deadline_poll`, `effect_ack`,
+`instance_cancel`, `instance_migrate`, `invocation_start`,
+`invocation_return`, `signal_deliver`, and `instance_elicit`.
+
+**The idempotency claim is exact, and stronger than most servers can make.**
+Every mutating tool requires a `request_id`. The store keys on the pair of
+that id and a fingerprint of the request's content: retrying with identical
+content replays the first outcome and returns `duplicate: true`, and reusing
+the same key with **different** content is **refused rather than replayed**,
+as `req/request_id_conflict`. That last clause is the one to understand
+before auto-approving retries: a client that reuses a key for a new request
+gets an error, never a silent second write and never a silently discarded
+one. `machine_create` qualifies through content addressing — an identical
+spec is the same machine — and `if_exists: "return_existing"` is its
+idempotent form.
+
+### What completes, and what does not
+
+`completion/complete` answers two reference types, because the protocol
+defines two. Resource template variables: the `{id}` in `fsm://machine/{id}`,
+`fsm://instance/{id}`, and `fsm://instance/{id}/history`, offered
+newest-first in the order `resources/list` shows them. And prompt arguments:
+`instance_id` on `drive_instance` and `diagnose_instance`, and `event` on
+`drive_instance`.
+
+**Tool arguments do not complete.** The protocol has no reference type for
+them, and inventing a private fourth one would be a message no client sends.
+
+Matching is a case-sensitive prefix, because every identifier here is
+case-sensitive and a suggestion that then fails validation is worse than
+none. At most 100 values come back, with `total` counting the matches before
+truncation and `hasMore` saying the rest exist.
+
+The `event` completion is the one worth knowing about: when the request
+carries `context.arguments.instance_id` — the resolved-argument context the
+`2025-06-18` revision defines — the answer is that instance's own enabled
+events, the same analysis `instance_get` reports. Without that context it
+returns **empty by design**: guessing from the catalogue would offer events
+that cannot fire against the instance in question, which is worse than
+offering nothing.
+
+### Asking a person: `instance_elicit`
+
+A workflow at a human gate can ask. `instance_elicit(instance_id, event,
+request_id)` derives a form from the event's declared fields, sends it as an
+`elicitation/create` request, and — on an answer of `accept` — coerces the
+content into a typed payload and sends the event down the ordinary
+`instance_send` path with your `request_id`. There is no elicitation record
+and no new record kind: what happened to the workflow is that an event
+arrived.
+
+Three limits, stated together because a caller needs all three:
+
+- **The client must advertise `elicitation`** in its `initialize`
+  capabilities. Without it the tool refuses and names `instance_send` as the
+  direct path.
+- **Nesting is capped at one.** A second ask while one is outstanding is
+  refused as `req/elicit_nested` rather than queued.
+- **There is a 300-second timeout.** After it the tool returns
+  `req/elicit_timeout`.
+
+A `decline`, a `cancel`, a timeout, a nesting refusal, and an answer that
+fails coercion all do the same thing to the store: **nothing**. No record is
+written and the `request_id` is not consumed, so it is still yours to use for
+whatever you do instead. While an ask is outstanding the client keeps
+working: its notifications are handled and its requests are answered, though
+the ones that need the store are told to retry, since the tool that asked is
+holding it.
+
+**The server still never parses natural language.** That is what makes this
+feature compatible with the oldest rule in this project rather than an
+exception to it: the request carries a schema derived from typed
+declarations, the response is structured data, and every value is validated
+against the same declarations an external `instance_send` is validated
+against — a raw JSON number for a decimal is `req/number_token` here exactly
+as it is there. An elicitation that returned prose for the server to
+interpret is out of scope permanently, not merely for now.
+
 ## Executing workflows
 
 Everything above leaves the *running* of effects to you. `fsm execute` is the

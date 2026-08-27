@@ -7,10 +7,11 @@ depends_on:
   - affordance-goldens
 gated: false
 touches:
+  - crates/fsm-cli/tests/spec_appendix.rs
   - docs/EMBEDDING.md
   - README.md
   - crates/fsm-cli/tests/affordance_doc.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Affordance Docs
@@ -40,3 +41,11 @@ merged_as: ""
 - The banned-vocabulary scan in `crates/fsm-cli/tests/policy.rs` passes over the new prose.
 
 - **Done when:** EMBEDDING documents every annotation's derivation, the exact idempotency claim, what is and is not completable, and the elicitation path with all three limits and the compatibility argument; README carries the guarantee row; `cargo test -p fsm-cli --test affordance_doc --test policy` passes with the doc pinned to `MUTATING_TOOLS`; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** An *Affordances* section covering all three: where each hint comes from and what it claims, what completes and what deliberately does not, and the elicitation path with its three limits stated in one place. The idempotency claim is spelled out to its last clause — a reused key with different content is **refused rather than replayed**, as `req/request_id_conflict` — because that is the sentence a host operator needs before auto-approving retries.
+
+The prose is pinned to the code rather than trusted: `affordance_doc.rs` reads the two tool lists back out of the section and compares both against `MUTATING_TOOLS`, so the guide cannot drift from the gate in either direction; it checks that the destructive row names `instance_cancel` and no other tool; and it asserts the documented 300 seconds against `DEFAULT_TIMEOUT_MS`. README gains the annotation-accuracy row.
+
+**Corrections.**
+
+- *The guarantee row count moves again, from 22 to 23.* `spec_appendix` counts the README's rows, so adding one is a two-file change — the test doing its job, as in 6103.
