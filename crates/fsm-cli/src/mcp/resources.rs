@@ -14,9 +14,15 @@ pub fn list(store: Option<&Store>) -> Value {
         resource(
             "fsm://docs/spec",
             "Machine spec & expression reference",
+            "Machine spec & expression reference",
             "text/markdown",
         ),
-        resource("fsm://docs/examples", "Worked examples", "text/markdown"),
+        resource(
+            "fsm://docs/examples",
+            "Worked examples",
+            "Worked examples",
+            "text/markdown",
+        ),
     ];
     if let Some(st) = store {
         let mut machines: Vec<_> = st.state.machines.iter().collect();
@@ -30,8 +36,13 @@ pub fn list(store: Option<&Store>) -> Value {
             std::cmp::Reverse(seq)
         });
         for (id, m) in machines.into_iter().take(50) {
+            // The identifier is the id — a client keys on it and a golden
+            // pins it — and the title is the name a person wrote, which for
+            // every machine that is not addressed by its hash is a different
+            // string.
             items.push(resource(
                 &format!("fsm://machine/{id}"),
+                id,
                 &m.compiled.spec.name,
                 "application/json",
             ));
@@ -49,9 +60,36 @@ pub fn list(store: Option<&Store>) -> Value {
             .collect();
         instances.sort_by_key(|(seq, id)| (std::cmp::Reverse(*seq), (*id).clone()));
         for (_, id) in instances.into_iter().take(50) {
+            // Machine and current state, from what the listing already holds.
+            // Not from `instance_report`: a title is worth one map lookup and
+            // a leaf read, and never worth an `enabled_events` scan per row —
+            // a listing that renders a view per entry gets slow exactly when
+            // a store gets interesting.
+            let title = match (
+                st.state.instance_machines.get(id),
+                st.state.instances.get(id),
+            ) {
+                (Some(machine_id), Some(instance)) => {
+                    let machine = st
+                        .state
+                        .machines
+                        .get(machine_id)
+                        .map(|m| m.compiled.spec.name.as_str())
+                        .unwrap_or(machine_id.as_str());
+                    match instance.configuration.sequential_leaf() {
+                        Some(leaf) => format!("{machine} — {leaf}"),
+                        // A regional configuration has no single leaf, and
+                        // naming one of several regions would be a lie a
+                        // reader cannot see through.
+                        None => format!("{machine} — regions"),
+                    }
+                }
+                _ => id.clone(),
+            };
             items.push(resource(
                 &format!("fsm://instance/{id}"),
                 id,
+                &title,
                 "application/json",
             ));
         }
@@ -147,10 +185,13 @@ fn not_found(uri: &str) -> ErrorObj {
     ErrorObj::new("mcp/resource_not_found", uri).hint("Resource not found")
 }
 
-fn resource(uri: &str, name: &str, mime: &str) -> Value {
+/// `name` identifies, `title` is read. They are separate fields because they
+/// answer separate questions, and collapsing them loses the answer to one.
+fn resource(uri: &str, name: &str, title: &str, mime: &str) -> Value {
     let mut m = BTreeMap::new();
     m.insert("uri".into(), Value::Str(uri.into()));
     m.insert("name".into(), Value::Str(name.into()));
+    m.insert("title".into(), Value::Str(title.into()));
     m.insert("mimeType".into(), Value::Str(mime.into()));
     Value::Obj(m)
 }

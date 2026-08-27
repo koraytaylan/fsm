@@ -11,6 +11,9 @@ pub const AUTHOR_MACHINE: &str =
 pub fn list() -> Value {
     let mut arg = BTreeMap::new();
     arg.insert("name".into(), Value::Str("goal".into()));
+    // A client rendering this as a form shows the title on the field and the
+    // description under it; with only a name it shows `goal`.
+    arg.insert("title".into(), Value::Str("Goal".into()));
     arg.insert(
         "description".into(),
         Value::Str("What the workflow must accomplish.".into()),
@@ -18,6 +21,7 @@ pub fn list() -> Value {
     arg.insert("required".into(), Value::Bool(true));
     let mut p = BTreeMap::new();
     p.insert("name".into(), Value::Str("author_machine".into()));
+    p.insert("title".into(), Value::Str("Author a machine".into()));
     p.insert("description".into(), Value::Str(AUTHOR_MACHINE.into()));
     p.insert("arguments".into(), Value::Arr(vec![Value::Obj(arg)]));
     Value::Obj(BTreeMap::from([(

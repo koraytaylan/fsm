@@ -17,6 +17,11 @@ use fsm_core::json::{JsonLimits, Value, parse};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
+/// Rendered views are counted per process, so the test that asserts a
+/// listing renders none needs the other tests in this binary to hold still
+/// while it looks. Every test takes it; they are all fast.
+static VIEWS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct TestDirectory(PathBuf);
 
 impl TestDirectory {
@@ -107,6 +112,7 @@ fn body_of(read: &Value) -> Value {
 
 #[test]
 fn an_instance_resource_says_exactly_what_the_tool_says() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let directory = TestDirectory::create();
     let mut store = one_instance(&directory);
     let mut clock = FixedClock::new(2_000, 1);
@@ -136,6 +142,7 @@ fn an_instance_resource_says_exactly_what_the_tool_says() {
 
 #[test]
 fn the_history_resource_is_a_bounded_page() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let directory = TestDirectory::create();
     let mut store = one_instance(&directory);
     let mut clock = FixedClock::new(2_000, 1);
@@ -163,6 +170,7 @@ fn the_history_resource_is_a_bounded_page() {
 
 #[test]
 fn both_templates_are_listed_with_their_mime_types() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let listed = resources::templates();
     let templates = listed
         .get("resourceTemplates")
@@ -201,6 +209,7 @@ fn both_templates_are_listed_with_their_mime_types() {
 
 #[test]
 fn the_listing_is_most_recent_first_and_capped() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let directory = TestDirectory::create();
     let mut store = Store::open(directory.path()).unwrap();
     let mut clock = FixedClock::new(1_000, 1);
@@ -236,6 +245,7 @@ fn the_listing_is_most_recent_first_and_capped() {
 
 #[test]
 fn a_child_instance_is_listed_and_ordered_with_the_rest() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     // The case an `instance_created` scan would have dropped: a child has no
     // creation record of its own.
     let directory = TestDirectory::create();
@@ -290,6 +300,7 @@ fn a_child_instance_is_listed_and_ordered_with_the_rest() {
 
 #[test]
 fn everything_unknown_is_the_one_not_found() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let directory = TestDirectory::create();
     let store = one_instance(&directory);
     for uri in [
@@ -309,6 +320,7 @@ fn everything_unknown_is_the_one_not_found() {
 
 #[test]
 fn the_documentation_and_machine_resources_did_not_move() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let directory = TestDirectory::create();
     let store = one_instance(&directory);
     let listed = resources::list(Some(&store));
@@ -341,6 +353,7 @@ fn the_documentation_and_machine_resources_did_not_move() {
 
 #[test]
 fn a_store_with_no_instances_lists_only_docs_and_machines() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let directory = TestDirectory::create();
     let mut store = Store::open(directory.path()).unwrap();
     store
@@ -360,6 +373,7 @@ fn a_store_with_no_instances_lists_only_docs_and_machines() {
 
 #[test]
 fn a_settled_instance_reads_as_settled() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
     let directory = TestDirectory::create();
     let mut store = one_instance(&directory);
     store.cancel_instance("inst-1", "cancel-1").unwrap();
@@ -368,4 +382,188 @@ fn a_settled_instance_reads_as_settled() {
         body.get("status").and_then(Value::as_str),
         Some("cancelled")
     );
+}
+
+// ---------------------------------------------------------------------------
+// Titles: `name` identifies, `title` is read. Plan 0013 task 6202.
+// ---------------------------------------------------------------------------
+
+fn entries(listing: &Value) -> Vec<Value> {
+    listing
+        .get("resources")
+        .and_then(Value::as_arr)
+        .expect("resources")
+        .to_vec()
+}
+
+#[test]
+fn every_listed_resource_and_template_carries_a_title() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
+    let directory = TestDirectory::create();
+    let store = one_instance(&directory);
+    for entry in entries(&resources::list(Some(&store))) {
+        let uri = entry.get("uri").and_then(Value::as_str).unwrap();
+        for field in ["name", "title"] {
+            let got = entry.get(field).and_then(Value::as_str).unwrap_or("");
+            assert!(!got.is_empty(), "{uri} has no {field}");
+        }
+    }
+    let templates = resources::templates();
+    for entry in templates
+        .get("resourceTemplates")
+        .and_then(Value::as_arr)
+        .unwrap()
+    {
+        let uri = entry.get("uriTemplate").and_then(Value::as_str).unwrap();
+        let title = entry.get("title").and_then(Value::as_str).unwrap_or("");
+        assert!(!title.is_empty(), "{uri} has no title");
+        assert_ne!(
+            title, uri,
+            "a title that restates the URI tells a reader nothing"
+        );
+    }
+}
+
+#[test]
+fn the_documentation_resources_keep_the_names_clients_key_on() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
+    let directory = TestDirectory::create();
+    let store = one_instance(&directory);
+    let listed = entries(&resources::list(Some(&store)));
+    let by_uri = |uri: &str| {
+        listed
+            .iter()
+            .find(|e| e.get("uri").and_then(Value::as_str) == Some(uri))
+            .cloned()
+            .unwrap_or_else(|| panic!("{uri} missing"))
+    };
+    assert_eq!(
+        by_uri("fsm://docs/spec")
+            .get("name")
+            .and_then(Value::as_str),
+        Some("Machine spec & expression reference"),
+        "this task adds a field and changes no name"
+    );
+    assert_eq!(
+        by_uri("fsm://docs/examples")
+            .get("name")
+            .and_then(Value::as_str),
+        Some("Worked examples")
+    );
+    assert_eq!(
+        by_uri("fsm://instance/inst-1")
+            .get("name")
+            .and_then(Value::as_str),
+        Some("inst-1")
+    );
+}
+
+#[test]
+fn a_machine_is_named_by_its_identifier_and_titled_by_its_name() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
+    let directory = TestDirectory::create();
+    let store = one_instance(&directory);
+    let entry = entries(&resources::list(Some(&store)))
+        .into_iter()
+        .find(|e| {
+            e.get("uri")
+                .and_then(Value::as_str)
+                .is_some_and(|uri| uri.starts_with("fsm://machine/"))
+        })
+        .expect("the machine is listed");
+    let uri = entry.get("uri").and_then(Value::as_str).unwrap();
+    let id = uri.trim_start_matches("fsm://machine/");
+    assert_eq!(entry.get("name").and_then(Value::as_str), Some(id));
+    assert_eq!(entry.get("title").and_then(Value::as_str), Some("res_case"));
+    assert_ne!(
+        entry.get("name"),
+        entry.get("title"),
+        "a machine's identifier and the name somebody wrote are different facts"
+    );
+}
+
+#[test]
+fn an_instance_is_titled_by_its_machine_and_where_it_is() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
+    let directory = TestDirectory::create();
+    let mut store = one_instance(&directory);
+    let title_now = || {
+        entries(&resources::list(Some(&store)))
+            .into_iter()
+            .find(|e| e.get("uri").and_then(Value::as_str) == Some("fsm://instance/inst-1"))
+            .and_then(|e| e.get("title").and_then(Value::as_str).map(str::to_string))
+            .unwrap()
+    };
+    // The helper has already driven this instance to its terminal state.
+    assert_eq!(
+        title_now(),
+        "res_case — done",
+        "a listing is readable at a glance or it is a list of opaque ids"
+    );
+
+    // And a fresh instance is titled where *it* is: the title follows the
+    // instance rather than being stamped once at creation.
+    let mut clock = FixedClock::new(3_000, 1);
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "res_case",
+            "inst-2",
+            "create-2",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let fresh = entries(&resources::list(Some(&store)))
+        .into_iter()
+        .find(|e| e.get("uri").and_then(Value::as_str) == Some("fsm://instance/inst-2"))
+        .unwrap();
+    assert_eq!(
+        fresh.get("title").and_then(Value::as_str),
+        Some("res_case — intake")
+    );
+}
+
+#[test]
+fn a_listing_renders_no_instance_views() {
+    let _views = VIEWS.lock().unwrap_or_else(|e| e.into_inner());
+    // The expensive read in this store is a view: it scans enabled events,
+    // which evaluates every guard leaving the configuration. A title is worth
+    // a map lookup and a leaf read; it is never worth one of those per row.
+    let directory = TestDirectory::create();
+    let mut store = Store::open(directory.path()).unwrap();
+    let mut clock = FixedClock::new(1_000, 1);
+    store
+        .define_machine_on(&mut clock, value(CASE), false, false)
+        .unwrap();
+    for n in 0..60 {
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                "res_case",
+                &format!("inst-{n}"),
+                &format!("create-{n}"),
+                None,
+                &BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+    }
+    let before = fsm_cli::store::views_rendered();
+    let listed = entries(&resources::list(Some(&store)));
+    let after = fsm_cli::store::views_rendered();
+    assert!(listed.len() >= 50, "the instances are listed");
+    assert_eq!(
+        after,
+        before,
+        "listing 60 instances rendered {} views",
+        after - before
+    );
+
+    // One read of one instance renders exactly one, so the counter is live
+    // rather than broken.
+    let before = fsm_cli::store::views_rendered();
+    resources::read("fsm://instance/inst-1", Some(&store)).unwrap();
+    assert_eq!(fsm_cli::store::views_rendered(), before + 1);
 }

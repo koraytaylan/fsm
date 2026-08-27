@@ -126,3 +126,29 @@ fn the_live_surface_is_documented() {
         "README's guarantee table must carry the live subscription row"
     );
 }
+
+/// A client rendering the prompt as a form shows titles on the fields.
+///
+/// Plan 0013 task 6202.
+#[test]
+fn the_prompt_and_its_arguments_are_titled() {
+    let listed = list();
+    let prompts = listed.get("prompts").and_then(Value::as_arr).unwrap();
+    assert_eq!(prompts.len(), 1);
+    let prompt = &prompts[0];
+    assert_eq!(
+        prompt.get("name").and_then(Value::as_str),
+        Some("author_machine"),
+        "the identifier a client calls is unchanged"
+    );
+    assert_eq!(
+        prompt.get("title").and_then(Value::as_str),
+        Some("Author a machine")
+    );
+    for argument in prompt.get("arguments").and_then(Value::as_arr).unwrap() {
+        let name = argument.get("name").and_then(Value::as_str).unwrap();
+        let title = argument.get("title").and_then(Value::as_str).unwrap_or("");
+        assert!(!title.is_empty(), "argument {name} has no title");
+        assert_ne!(title, name, "a title that repeats the name says nothing");
+    }
+}

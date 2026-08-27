@@ -45,6 +45,7 @@ pub use json_helpers::{
     number_token_error,
 };
 pub use lifecycle::DefineOutcome;
+pub use view::views_rendered;
 
 use reconstruct::{
     health_err, insert_configuration_fields, insert_transition_configuration_fields,

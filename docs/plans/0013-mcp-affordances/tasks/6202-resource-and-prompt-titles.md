@@ -10,7 +10,10 @@ touches:
   - crates/fsm-cli/src/mcp/prompts.rs
   - crates/fsm-cli/tests/mcp_resources.rs
   - crates/fsm-cli/tests/mcp_prompts.rs
-status: planned
+  - crates/fsm-store/src/store/view.rs
+  - crates/fsm-store/src/store/mod.rs
+  - crates/fsm-cli/tests/fixtures/transcripts/
+status: done
 merged_as: ""
 ---
 # Resource And Prompt Titles
@@ -37,3 +40,14 @@ merged_as: ""
 - `resources/read` results are unchanged: this task touches listings only.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_resources --test mcp_prompts` passes with titles present everywhere and every `name` unchanged, listings do no extra per-entry render, the three goldens are updated, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** Every listed resource carries a `title`; every template already did. A machine is `name`d by its identifier and titled by the name somebody wrote. An instance is titled `machine — leaf`, from the two map lookups the listing already performs — a regional configuration has no single leaf, so it says `machine — regions` rather than naming one region and implying it is the whole story. The prompt and its `goal` argument are titled for a client rendering them as a form.
+
+The no-extra-render claim is checked rather than asserted in prose: `fsm_store` counts rendered views, listing sixty instances renders none, and reading one instance renders exactly one — the control that keeps the counter honest.
+
+**Corrections.**
+
+- *Step 4 and step 1 disagree about a machine entry's `name`, and step 1 is right.* The `name` was the spec name, so "its `name` stays the identifier" required changing it to the `machine_id`; the test step 6 asks for — `name` and `title` differ — cannot pass otherwise. It is also the better answer since plan 0011: a superseded machine and its replacement share a spec name, so a listing keyed on that name is ambiguous exactly where an operator is looking. Every other `name` — both documentation resources, every instance, the prompt — is byte-identical.
+- *Counting views needs one file more than `touches` names.* The counter lives beside the render it counts, in `fsm-store`, and is re-exported by the store facade. A test that measured time instead would be a flake generator, and one that read the source for a call would break on the first refactor.
+- *Every test in `mcp_resources.rs` now takes one mutex.* The counter is per-process, and thirteen sibling tests rendering views beside the one counting them is a race, not a measurement.
+- *Only the three `mcp_full` transcripts moved.* Their listings hold the two documentation resources, so each gained exactly one `title` per entry — verified field by field rather than by eye.

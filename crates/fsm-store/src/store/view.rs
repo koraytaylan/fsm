@@ -13,6 +13,20 @@ use super::reconstruct::{
 };
 use super::{ErrorObj, Store};
 
+/// How many instance views this process has rendered.
+///
+/// A view is the expensive read in this store: it scans enabled events,
+/// which evaluates every guard leaving the current configuration. One per
+/// `instance_get` is the price of the answer; one per row of a listing is a
+/// listing that gets slow exactly when a store gets interesting. Counting
+/// them is how a test can say which of the two is happening.
+static VIEWS_RENDERED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The number of instance views rendered so far in this process.
+pub fn views_rendered() -> u64 {
+    VIEWS_RENDERED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 impl Store {
     pub fn instance_view(
         &self,
@@ -20,6 +34,7 @@ impl Store {
         request_id: Option<&str>,
         duplicate: Option<bool>,
     ) -> Result<Value, ErrorObj> {
+        VIEWS_RENDERED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let inst = self.state.instances.get(instance_id).ok_or_else(|| {
             let e = ErrorObj::new("req/instance_not_found", instance_id)
                 .hint("use a known instance id from details.known_instances")
