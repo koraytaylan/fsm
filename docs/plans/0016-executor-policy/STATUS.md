@@ -1,8 +1,8 @@
-# Plan 0016 — Executor Policy — 🚧 In progress
+# Plan 0016 — Executor Policy — ✅ Complete
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file. Task-level truth lives in [tasks/](tasks/) frontmatter; Makina's integration coordinator updates both layers.
 
-- **Status:** 🚧 In progress.
+- **Status:** ✅ Complete.
 
 - **Goal:** give the executor the policy it was deliberately shipped without — journaled retries with deterministic backoff, exhaustion that still fires the machine's failure path, bounded concurrency with per-instance fairness — and a second handler kind that calls another MCP server's tool.
 - **Root cause:** a transient failure is currently a permanent one because there is no retry, nothing bounds in-flight handlers so one instance's queue can starve the store, and an engine that speaks MCP fluently as a server has to shell out to reach the ecosystem it belongs to.
