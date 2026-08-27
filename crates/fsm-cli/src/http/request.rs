@@ -103,12 +103,32 @@ pub fn read_request(input: &mut dyn BufRead) -> Result<Request, Refusal> {
     })
 }
 
+/// How large the head was, for the total-request backstop.
+impl Head {
+    pub fn head_bytes(&self) -> usize {
+        self.method.len()
+            + self.path.len()
+            + self.query.len()
+            + self
+                .headers
+                .iter()
+                .map(|(name, value)| name.len() + value.len() + 4)
+                .sum::<usize>()
+    }
+}
+
 /// The body a head declared, refused if it is over the limit or short.
 pub fn read_body(input: &mut dyn BufRead, head: &Head) -> Result<Vec<u8>, Refusal> {
     // Checked before the buffer exists: a length a client supplied is a
     // claim, not an allocation.
     if head.content_length > MAX_BODY_BYTES {
         return Err(Refusal::new(413, "body over the limit"));
+    }
+    // And the backstop over the whole request, so three individually-legal
+    // maxima cannot be combined into something larger than any of them was
+    // meant to allow.
+    if head.head_bytes().saturating_add(head.content_length) > super::server::MAX_REQUEST_BYTES {
+        return Err(Refusal::new(413, "request over the limit"));
     }
     let mut body = vec![0u8; head.content_length];
     if head.content_length > 0 && input.read_exact(&mut body).is_err() {

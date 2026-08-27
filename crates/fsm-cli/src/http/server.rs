@@ -27,7 +27,18 @@ pub const MAX_CONNECTIONS: usize = 64;
 pub const MAX_REQUESTS_PER_CONNECTION: u32 = 256;
 
 /// How long a socket may stay silent before it is closed.
+///
+/// Armed at accept and **re-armed between keep-alive requests**: a
+/// connection that goes quiet after its first request must cost the same
+/// bounded time as one that never spoke at all.
 pub const IO_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The ceiling over one whole request — line, headers and body together.
+///
+/// A backstop over the individual bounds, so an adversary cannot combine
+/// three individually-legal maxima into something larger than any of them
+/// was meant to allow.
+pub const MAX_REQUEST_BYTES: usize = super::request::MAX_BODY_BYTES + 64 * 1024;
 
 /// How long the accept loop sleeps between polls while nothing arrives.
 ///
@@ -173,6 +184,19 @@ fn refuse(mut socket: TcpStream) {
 
 /// One connection: requests until the handler says close, the cap is
 /// reached, the peer goes away, or the server is stopping.
+///
+/// The order every request passes through, and the whole cost argument:
+///
+/// 1. the connection cap, before a thread exists;
+/// 2. read and write timeouts, armed here and re-armed per request;
+/// 3. the request line and header bounds, before any header is interpreted;
+/// 4. `Origin`, then `Authorization` — both from the head alone;
+/// 5. the `Content-Length` bound, before a single body byte is read;
+/// 6. the body;
+/// 7. the session, and only then the engine.
+///
+/// Each stage refuses without doing the next stage's work, so a stranger's
+/// traffic costs a thread and a timeout and nothing else.
 fn serve_connection(socket: TcpStream, handler: &dyn Handler, stop: &AtomicBool) {
     // Set at accept, so a connection that stops talking costs one thread for
     // a bounded time and no more.
@@ -188,6 +212,10 @@ fn serve_connection(socket: TcpStream, handler: &dyn Handler, stop: &AtomicBool)
         if stop.load(Ordering::Relaxed) {
             return;
         }
+        // Re-armed per request: an idle keep-alive connection is bounded by
+        // the same window as a silent new one, rather than living forever
+        // because it once said something.
+        let _ = input.get_ref().set_read_timeout(Some(IO_TIMEOUT));
         match handler.handle(&mut input, &mut output) {
             Ok(Flow::KeepAlive) => {}
             // A write to a socket the peer reset is that connection ending,

@@ -9,9 +9,10 @@ depends_on:
   - http-response-writing
 gated: false
 touches:
+  - crates/fsm-cli/src/http/request.rs
   - crates/fsm-cli/src/http/server.rs
   - crates/fsm-cli/tests/http_limits.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Request Limits And Timeouts
@@ -42,3 +43,13 @@ Every bound `6902` defined has to be enforced where it is cheapest — before au
 - No refusal path allocates a buffer sized from unvalidated client input — assert by review and pin with a case sending a `Content-Length` of `usize::MAX`.
 
 - **Done when:** `cargo test -p fsm-cli --test http_limits` passes every case above, refusals happen in the documented order with no wasted work, the `Content-Length: usize::MAX` case allocates nothing, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** The pipeline's order is written down where it runs, in `serve_connection`, because the order **is** the cost argument: connection cap, timeouts armed, request line and header bounds, `Origin`, `Authorization`, the `Content-Length` bound, the body, the session, and only then the engine. Each stage refuses without doing the next stage's work, and each of those refusals is asserted over a real socket.
+
+Two proofs matter most and are direct: an oversized `Content-Length` with **no body at all** gets an immediate `413`, which is only possible if nothing waited for those bytes; and the same request with a bad origin gets `403`, or with a bad token `401`, which is only possible if those checks precede the body.
+
+A total-request backstop caps line, headers and body together, so three individually-legal maxima cannot be combined into something larger than any of them was meant to allow. The read timeout is re-armed **per request**, so an idle keep-alive connection is bounded by the same window as a silent new one rather than living forever because it once spoke.
+
+**Corrections.**
+
+- *The slow-loris and idle-keep-alive cases assert the shape, not the wait.* The window is thirty seconds and no suite should spend it; what is checked is that a dawdling client costs its own thread while everyone else is served, and that the documented constant is the one the server uses.
