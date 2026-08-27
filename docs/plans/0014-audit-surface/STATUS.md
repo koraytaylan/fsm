@@ -1,8 +1,8 @@
-# Plan 0014 — Audit Surface — 🚧 In progress
+# Plan 0014 — Audit Surface — ✅ Complete
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file. Task-level truth lives in [tasks/](tasks/) frontmatter; Makina's integration coordinator updates both layers.
 
-- **Status:** 🚧 In progress.
+- **Status:** ✅ Complete.
 
 - **Goal:** put the five CLI-only audit capabilities — `explain`, `journal verify`, `journal replay`, `doctor`, and `annotate` — into the MCP surface, and keep the server alive when the store will not open so the diagnostic tools are reachable at the moment they are needed.
 - **Root cause:** the primary operator of this engine is a model, and the model cannot verify the hash chain it is told is tamper-evident, cannot reach the best diagnostic affordance in the system, cannot leave a note in the audit trail it is producing, and — when a store is genuinely unhealthy — loses its server entirely, because `serve` exits with one stderr line the user may never see.
