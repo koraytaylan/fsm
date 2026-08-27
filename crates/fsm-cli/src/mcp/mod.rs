@@ -4,7 +4,10 @@
 // stays inside its own file: a module cannot be declared without its file,
 // so the shells and the declarations land together or neither compiles.
 pub mod cancel;
+// Plan 0013's two modules land together for the same reason.
+pub mod complete;
 pub mod descriptions;
+pub mod elicit;
 pub mod jsonrpc;
 pub mod logging;
 pub mod notify;

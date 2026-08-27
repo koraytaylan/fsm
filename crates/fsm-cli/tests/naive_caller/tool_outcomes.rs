@@ -852,6 +852,7 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         request_id: Some(id.clone()),
         meta: None,
         cancel: cancellations.flag(&id),
+        ..Default::default()
     };
     match fsm_cli::mcp::tools::dispatch_with(
         &mut st,

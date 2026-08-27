@@ -957,6 +957,7 @@ fn one_step_every_non_infra_code() {
         request_id: Some(id.clone()),
         meta: None,
         cancel: cancellations.flag(&id),
+        ..Default::default()
     };
     let err =
         fsm_cli::mcp::tools::dispatch_with(&mut st, &mut clock, "simulate", &args, &withdrawn)
@@ -968,6 +969,7 @@ fn one_step_every_non_infra_code() {
         request_id: Some(live_id.clone()),
         meta: None,
         cancel: cancellations.flag(&live_id),
+        ..Default::default()
     };
     fsm_cli::mcp::tools::dispatch_with(&mut st, &mut clock, "simulate", &args, &live)
         .expect("the same call under a live id runs");

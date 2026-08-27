@@ -22,6 +22,12 @@ pub struct ToolCtx<'a> {
     pub meta: Option<Value>,
     /// Whether the client has withdrawn this request.
     pub cancel: crate::mcp::cancel::CancelFlag,
+    /// Both halves of the session, for a tool that asks the client a
+    /// question and waits for the answer. `None` outside a protocol session —
+    /// the CLI, and every test that is not one.
+    pub io: Option<&'a std::cell::RefCell<crate::mcp::notify::SessionIo<'a>>>,
+    /// Whether the client advertised `elicitation` at `initialize`.
+    pub client_elicitation: bool,
 }
 
 /// Dispatch with no request context: the CLI and every test that is not a

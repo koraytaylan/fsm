@@ -279,6 +279,10 @@ struct Live {
     subscriptions: subscribe::Subscriptions,
     level: Option<logging::Level>,
     cancellations: cancel::Cancellations,
+    /// Whether the client advertised `elicitation` at `initialize`. Captured
+    /// here because `initialize` is the only place it appears; consulted by
+    /// the tool that would otherwise ask a client that cannot answer.
+    client_elicitation: bool,
     /// The change feed, spawned on the first successful subscribe and
     /// stopped when the session ends. A server nobody subscribes to spawns
     /// nothing and does no I/O between requests — which is what keeps every
@@ -364,7 +368,11 @@ pub fn serve_session_with(
     let mut initialized_notified = false;
     let mut live = Live::default();
     loop {
-        match read_capped_line(&mut input, LINE_CAP)? {
+        // Bound rather than matched in place: the borrow of `input` ends at
+        // the semicolon, which is what lets a request arm lend the same
+        // reader to a `SessionIo`.
+        let line = read_capped_line(&mut input, LINE_CAP)?;
+        match line {
             Line::Eof => {
                 // Every send already flushed under the lock, so there is
                 // nothing left buffered to push — and nothing to say: a
@@ -480,6 +488,13 @@ pub fn serve_session_with(
                             );
                             continue;
                         }
+                        // The session's two halves, borrowed for this one
+                        // request: a server-to-client request writes through
+                        // the notifier and reads its answer from this same
+                        // input.
+                        let io = std::cell::RefCell::new(crate::mcp::notify::SessionIo::new(
+                            &output, &mut input,
+                        ));
                         handle_request(
                             &output,
                             store.as_deref_mut(),
@@ -490,6 +505,7 @@ pub fn serve_session_with(
                             &method,
                             params,
                             mode_note,
+                            Some(&io),
                         )?;
                         drive_executor(
                             executor.as_deref_mut(),
@@ -561,8 +577,8 @@ fn drive_executor(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn handle_request(
-    output: &Notifier,
+fn handle_request<'a>(
+    output: &'a Notifier,
     store: Option<&mut Store>,
     clock: &mut dyn Clock,
     initialized: &mut bool,
@@ -571,6 +587,7 @@ fn handle_request(
     method: &str,
     params: Option<Value>,
     mode_note: &'static str,
+    io: Option<&'a std::cell::RefCell<crate::mcp::notify::SessionIo<'a>>>,
 ) -> std::io::Result<()> {
     match method {
         "ping" => send_line(output, &result_response(id, Value::Obj(Default::default()))),
@@ -581,6 +598,11 @@ fn handle_request(
                 .and_then(Value::as_str);
             let version = negotiate(offered);
             *initialized = true;
+            // The only message that carries what the client can do. A tool
+            // that would ask the client a question needs to know whether
+            // there is anybody able to answer, and it cannot see `initialize`
+            // from where it runs.
+            live.client_elicitation = super::elicit::client_supports(params.as_ref());
             send_line(
                 output,
                 &result_response(id, initialize_result(version, mode_note)),
@@ -591,6 +613,11 @@ fn handle_request(
             &rpc_error(id, NOT_INITIALIZED, "Server not initialized"),
         ),
         "tools/list" => send_line(output, &result_response(id, tools::tools_list_result())),
+        "completion/complete" => match super::complete::complete(params.as_ref(), store.as_deref())
+        {
+            Ok(result) => send_line(output, &result_response(id, result)),
+            Err(invalid) => send_line(output, &rpc_error(id, INVALID_PARAMS, &invalid.0)),
+        },
         "resources/list" => send_line(
             output,
             &result_response(id, super::resources::list(store.as_deref())),
@@ -727,6 +754,11 @@ fn handle_request(
                 request_id: Some(id.clone()),
                 meta: params.as_ref().and_then(|p| p.get("_meta")).cloned(),
                 cancel: live.cancellations.flag(&id),
+                // Both halves of the session, for the one tool that will ask
+                // the client a question and wait for the answer. Unused until
+                // `6401`; provided here so that task never touches this loop.
+                io,
+                client_elicitation: live.client_elicitation,
             };
             if name == "fsm_ping" {
                 send_line(output, &result_response(id, fsm_ping_result()))
@@ -793,6 +825,12 @@ fn initialize_result(version: &str, mode_note: &'static str) -> Value {
     caps.insert("prompts".into(), Value::Obj(prompts));
     caps.insert(
         "logging".into(),
+        Value::Obj(std::collections::BTreeMap::new()),
+    );
+    // Completion has no options to negotiate: either a server can spell its
+    // own identifiers or it cannot.
+    caps.insert(
+        "completions".into(),
         Value::Obj(std::collections::BTreeMap::new()),
     );
     let mut info = std::collections::BTreeMap::new();

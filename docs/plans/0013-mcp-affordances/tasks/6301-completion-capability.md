@@ -11,7 +11,11 @@ touches:
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/src/mcp/serve.rs
   - crates/fsm-cli/tests/mcp_completion.rs
-status: planned
+  - crates/fsm-cli/src/mcp/notify.rs
+  - crates/fsm-cli/src/mcp/tools/dispatch.rs
+  - crates/fsm-cli/tests/fixtures/transcripts/
+  - crates/fsm-cli/tests/fixtures/mcp_live/
+status: done
 merged_as: ""
 ---
 # Completion Capability
@@ -48,3 +52,17 @@ The shared half of completion — the capability, the routing, the truncation co
 - `SessionIo` exists, carries both the notifier and the session input, and is reachable from the tool-call path — asserted by a test that constructs one, since `6401` depends on it existing.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_completion` passes every case above including both error rulings and the truncation contract, the request and response shapes are verified against the specification, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `completions: {}` is advertised, `completion/complete` is routed, and `complete.rs` holds everything that is not "which values": the request shape verified against the `2025-06-18` schema (`ref` is `ref/prompt` with a `name` or `ref/resource` with a `uri`; `argument` is `{name, value}`; `context.arguments` carries previously-resolved arguments), a case-sensitive prefix filter, the supplier's own order kept, truncation at 100 with `total` counted **before** it and `hasMore` saying so, and both error rulings — an unknown `ref.type` is `INVALID_PARAMS`, an unknown argument name is an empty completion. A session with no store answers empty rather than failing.
+
+`SessionIo` carries a session's two halves — the one writer, and the input the loop is reading — so 6401 can write a request and read its response without reshaping the loop. Threading it needed one change to the loop itself: the line is bound before it is matched, because a `match` scrutinee holds its temporaries for the whole match and the arm has to borrow the same reader.
+
+`elicit.rs` lands as a shell with the one function that is genuinely 6301's: whether the client advertised `elicitation`, captured at `initialize` because that is the only message carrying it.
+
+**Corrections.**
+
+- *The truncation seam is a public function, not a private supplier stub.* The tests step 6 asks for need to feed 250 candidates through the rules; `completion_from(candidates, prefix)` is the one place filtering, ordering and truncation live, and `values_for` feeds it. A test-only injection point would have been a second path through the same rules.
+- *`SessionIo` lives in `notify.rs`, beside the writer it holds.* A third module for a two-field borrow would separate it from the `Notifier` it half is.
+- *The captured client capability is observable through the seam that needs it.* `Live` is private to `serve.rs` by design, so the flag is asserted as the pure predicate `elicit::client_supports` and carried on `ToolCtx`, which is where 6403 reads it. A test that could read `Live` directly would mean `Live` was public, which is a worse trade than this one.
+- *Three test files stopped naming every `ToolCtx` field.* They now spread `..Default::default()`, so the next field added to the context does not break a suite that does not care about it.
+- *Seven goldens gained `"completions":{}`.* Verified field by field: one added key in the `initialize` result, nothing else.

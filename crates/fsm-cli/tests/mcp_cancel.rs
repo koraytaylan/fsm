@@ -203,6 +203,7 @@ fn a_cancelled_call_returns_a_tool_error_and_stops_early() {
         request_id: Some(id.clone()),
         meta: None,
         cancel: cancellations.flag(&id),
+        ..Default::default()
     };
     let error = fsm_cli::mcp::tools::dispatch_with(
         &mut store,
@@ -244,6 +245,7 @@ fn a_cancelled_history_call_stops_between_chunks() {
         request_id: Some(id.clone()),
         meta: None,
         cancel: cancellations.flag(&id),
+        ..Default::default()
     };
     let error = fsm_cli::mcp::tools::dispatch_with(
         &mut store,
@@ -292,6 +294,7 @@ fn a_single_step_is_not_interrupted_mid_call() {
         request_id: Some(id.clone()),
         meta: None,
         cancel: cancellations.flag(&id),
+        ..Default::default()
     };
     let result = fsm_cli::mcp::tools::dispatch_with(
         &mut store,

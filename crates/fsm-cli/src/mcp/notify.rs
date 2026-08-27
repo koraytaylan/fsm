@@ -228,3 +228,49 @@ pub fn sleep_unless_stopped(stop: &AtomicBool, total_ms: u64) {
         slept += slice;
     }
 }
+
+/// One session's two halves: the writer everything shares, and the input the
+/// serve loop is reading.
+///
+/// A server-to-client request — elicitation is the only one this server makes
+/// — has to write a request and then read lines until its response arrives,
+/// and neither half is reachable from a tool handler on its own. This is the
+/// borrow that carries both, defined here with the writer it holds.
+///
+/// It exists ahead of its first caller for the same reason `ToolCtx` did: the
+/// task that owns the serve loop provides the seam, so the task that needs it
+/// does not have to reshape the loop.
+///
+/// Plan 0013 task 6301.
+pub struct SessionIo<'a> {
+    notifier: &'a Notifier,
+    input: &'a mut dyn std::io::BufRead,
+}
+
+impl<'a> SessionIo<'a> {
+    /// Both halves of one session, borrowed for one request.
+    pub fn new(notifier: &'a Notifier, input: &'a mut dyn std::io::BufRead) -> Self {
+        Self { notifier, input }
+    }
+
+    /// The one writer.
+    pub fn notifier(&self) -> &Notifier {
+        self.notifier
+    }
+
+    /// The next line the client sent, or `None` at end of input.
+    ///
+    /// The caller is mid-request when it reads this, so it must be prepared
+    /// for a line that is not the response it is waiting for.
+    pub fn read_line(&mut self) -> std::io::Result<Option<String>> {
+        let mut line = String::new();
+        let read = self.input.read_line(&mut line)?;
+        if read == 0 {
+            return Ok(None);
+        }
+        while line.ends_with('\n') || line.ends_with('\r') {
+            line.pop();
+        }
+        Ok(Some(line))
+    }
+}
