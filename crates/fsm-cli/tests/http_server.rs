@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use fsm_cli::http::server::{
     Bound, Flow, Handler, MAX_CONNECTIONS, MAX_REQUESTS_PER_CONNECTION, bind, serve_bound,
@@ -167,29 +167,25 @@ fn a_connection_is_closed_after_its_request_cap() {
 #[test]
 fn the_connection_cap_refuses_and_the_held_ones_keep_working() {
     let server = Running::start(None);
-    // Hold the cap open. Each connection sends nothing, so each occupies a
-    // thread without finishing.
+    // Hold the cap open, and *prove* each one is held: a connection that is
+    // merely queued in the listen backlog occupies no slot, so each is made
+    // to complete a request before the next is opened. Without that the
+    // test races the accept loop rather than testing the cap — and races it
+    // differently in release, which is exactly how it first failed.
     let mut held = Vec::new();
     for _ in 0..MAX_CONNECTIONS {
-        held.push(TcpStream::connect(server.addr).expect("within the cap"));
+        let mut connection = TcpStream::connect(server.addr).expect("within the cap");
+        let answered = request(&mut connection, "/hold").expect("accepted and answered");
+        assert!(answered.contains("200 OK"));
+        held.push(connection);
     }
-    // The server needs a moment to accept them all before the next one is
-    // over the line; without this the test races the accept loop rather
-    // than testing the cap.
-    let deadline = Instant::now() + Duration::from_secs(5);
+    // Every slot is now genuinely occupied by a connection the server has
+    // accepted and is waiting on, so the next one is over the line.
+    let mut extra = TcpStream::connect(server.addr).unwrap();
+    write!(extra, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();
+    extra.flush().unwrap();
     let mut refused = String::new();
-    while Instant::now() < deadline {
-        let mut extra = TcpStream::connect(server.addr).unwrap();
-        write!(extra, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();
-        extra.flush().unwrap();
-        let mut text = String::new();
-        let _ = extra.read_to_string(&mut text);
-        if text.contains("503") {
-            refused = text;
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    let _ = extra.read_to_string(&mut refused);
     assert!(
         refused.contains("503 Service Unavailable"),
         "the {}th connection was not refused: {refused:?}",

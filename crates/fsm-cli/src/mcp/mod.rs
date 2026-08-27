@@ -10,6 +10,7 @@ pub mod descriptions;
 pub mod elicit;
 pub mod jsonrpc;
 pub mod logging;
+pub mod methods;
 pub mod notify;
 pub mod progress;
 pub mod prompts;
