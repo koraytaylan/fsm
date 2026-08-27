@@ -37,8 +37,9 @@ pub struct Endpoint {
     pub path: String,
     /// The single writer. One process holds the lock and every client talks
     /// to that process, which is what turns the store's oldest constraint
-    /// into the thing that makes many clients safe.
-    store: Mutex<Option<Store>>,
+    /// into the thing that makes many clients safe. Every call in this file
+    /// goes through it — a guard nothing calls guards nothing.
+    store: super::writer::SerializedWriter,
     sessions: Sessions,
     lives: Mutex<BTreeMap<String, Live>>,
     /// Inbound responses, per session, waiting for whoever asked.
@@ -64,7 +65,7 @@ impl Endpoint {
     pub fn new(path: &str, store: Option<Store>, mode_note: &'static str) -> Self {
         Self {
             path: path.to_string(),
-            store: Mutex::new(store),
+            store: super::writer::SerializedWriter::new(store),
             sessions: Sessions::default(),
             lives: Mutex::new(BTreeMap::new()),
             mailboxes: Mutex::new(BTreeMap::new()),
@@ -289,19 +290,21 @@ impl Endpoint {
             let mut lives = self.lives.lock_safe();
             let live = lives.entry(session_id.clone()).or_default();
             let mut initialized = true;
-            let mut store = self.store.lock_safe();
-            let _ = handle_request(
-                &notifier,
-                store.as_mut(),
-                clock,
-                &mut initialized,
-                live,
-                id,
-                method,
-                params,
-                self.mode_note,
-                Some(&io),
-            );
+            // Every session's call, through one lock, for the whole call.
+            self.store.with_store(|store| {
+                let _ = handle_request(
+                    &notifier,
+                    store,
+                    clock,
+                    &mut initialized,
+                    live,
+                    id,
+                    method,
+                    params,
+                    self.mode_note,
+                    Some(&io),
+                );
+            });
         }
 
         let written = sink.text();

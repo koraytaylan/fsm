@@ -7,10 +7,11 @@ depends_on:
   - sse-stream-endpoint
 gated: false
 touches:
+  - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/src/http/writer.rs
   - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/tests/http_multi_client.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Serialized Writer
@@ -39,3 +40,9 @@ Single-writer stops being the limitation clients trip over and becomes the seria
 - Throughput sanity: the measured serialized rate is reported in the commit message against the append-latency numbers `crates/fsm-store/tests/append_latency.rs` already records.
 
 - **Done when:** `cargo test -p fsm-cli --test http_multi_client` passes every case above, concurrent sessions produce a gapless coherent journal, verify does not block writes, a panicking call does not poison the store for others, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** One `Store` behind one mutex, and `endpoint.rs`'s call site replaced so every session's dispatch goes through it — a guard nothing calls guards nothing. The module doc carries the three arguments the design rests on: a mutex rather than a queue, because engine operations are bounded by the evaluation budget and a queue would add latency and a second failure mode for nothing; reads take the lock too, because the reason there is no half-applied macrostep to observe is that the lock is held across the whole call; and that is affordable precisely because the two calls whose cost grows with the journal read through `open_read_only` and never pass through here.
+
+Each of those is a test rather than a claim. Eight threads across four sessions apply 400 events with a gapless journal that verifies clean; two hundred reads taken during a hundred writes always find the leaf and the counter agreeing; and writes complete *during* a `journal_verify`, which is the proof that the long reads take no lock.
+
+Cross-session idempotency is pinned because it is what makes many clients safe rather than merely possible: the same key and content replays in another session, and the same key with different content is refused.
