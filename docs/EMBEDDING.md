@@ -391,7 +391,7 @@ it, so a hint cannot drift from the behaviour it describes.
 
 The read-only tools are therefore `machine_list`, `machine_get`,
 `machine_analyze`, `machine_diagram`, `instance_get`, `instance_list`,
-`instance_history`, `explain_step`, and `simulate`. The mutating ones are `machine_create`,
+`instance_history`, `explain_step`, `journal_verify`, and `simulate`. The mutating ones are `machine_create`,
 `instance_create`, `instance_send`, `deadline_poll`, `effect_ack`,
 `instance_cancel`, `instance_migrate`, `invocation_start`,
 `invocation_return`, `signal_deliver`, and `instance_elicit`.

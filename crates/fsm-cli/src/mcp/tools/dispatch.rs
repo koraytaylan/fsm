@@ -71,6 +71,9 @@ pub fn dispatch_with(
             "simulate" => {
                 super::handlers::run_simulate_with(store, clock, args, &progress, &ctx.cancel)
             }
+            "journal_verify" => {
+                super::handlers::run_journal_verify_with(store, clock, args, &progress, &ctx.cancel)
+            }
             _ => super::handlers::run_instance_history_with(
                 store,
                 clock,

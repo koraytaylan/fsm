@@ -161,6 +161,20 @@ pub(super) fn schema_explain_step_out() -> Value {
     schema_obj(p, &["seq", "kind"], true)
 }
 
+/// A verdict in the recovery table's vocabulary, with the count actually
+/// walked and — where the table prescribes one — the remedy to run.
+pub(super) fn schema_journal_verify_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("health".into(), ty("string"));
+    p.insert("verified_records".into(), ty("number"));
+    p.insert("message".into(), ty("string"));
+    p.insert("first_bad_seq".into(), ty("number"));
+    p.insert("blast_radius".into(), ty("string"));
+    p.insert("remedy".into(), ty("string"));
+    p.insert("segments".into(), ty("array"));
+    schema_obj(p, &["health", "verified_records", "message"], true)
+}
+
 pub(super) fn schema_deadline_poll_out() -> Value {
     let mut p = instance_core_props();
     p.insert("deadline_applied".into(), ty("boolean"));

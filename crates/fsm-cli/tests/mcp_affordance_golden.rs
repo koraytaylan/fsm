@@ -273,7 +273,7 @@ fn the_answers_are_the_ones_this_plan_promised() {
     // the only destructive one.
     let tools = reply("2");
     let listed = tools.get("tools").and_then(Value::as_arr).unwrap();
-    assert_eq!(listed.len(), 20);
+    assert_eq!(listed.len(), 21);
     for tool in listed {
         let name = tool.get("name").and_then(Value::as_str).unwrap();
         assert!(tool.get("title").is_some(), "{name} has no title");

@@ -39,6 +39,8 @@ pub const INSTANCE_ELICIT: &str = "Ask the user for a declared event's fields, t
 
 pub const EXPLAIN_STEP: &str = "Reach for this when a workflow did something surprising. Given one journaled seq from instance_history, it reconstructs the decision: which transitions were candidates, which guard decided and how it evaluated, what each action computed with before and after values, and which invariants held. Read-only. A seq that is not this instance's, or is not in the journal, is an error rather than an empty trace.";
 
+pub const JOURNAL_VERIFY: &str = "Check that the journal is what it says it is: every record's hash chains to the one before it, and the folded state matches. Reports one of the seven recovery-table health names, the records actually walked, and — where the table prescribes one — the exact remedy command, which it never runs. Optional from_seq/to_seq check a window. Takes no lock, so it is safe beside a running executor.";
+
 /// The display names a host shows beside each tool.
 ///
 /// They live here, beside the descriptions, because a title and a
@@ -64,3 +66,4 @@ pub const INSTANCE_HISTORY_TITLE: &str = "Read history";
 pub const SIMULATE_TITLE: &str = "Simulate events";
 pub const INSTANCE_ELICIT_TITLE: &str = "Ask and send";
 pub const EXPLAIN_STEP_TITLE: &str = "Explain a step";
+pub const JOURNAL_VERIFY_TITLE: &str = "Verify the journal";

@@ -29,6 +29,7 @@ fn current_regions_deadlines_public_contract() {
             "instance_list",
             "instance_history",
             "explain_step",
+            "journal_verify",
             "instance_elicit",
             "simulate",
         ]

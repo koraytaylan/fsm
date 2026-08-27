@@ -7,13 +7,23 @@ depends_on:
   - explain-step-tool
 gated: false
 touches:
+  - crates/fsm-store/src/journal_io/mod.rs
+  - crates/fsm-cli/src/mcp/tools/dispatch.rs
+  - crates/fsm-cli/tests/tool_schemas.rs
+  - crates/fsm-cli/tests/mcp_full.rs
+  - crates/fsm-cli/tests/mcp_regions_deadlines.rs
+  - crates/fsm-cli/tests/naive_caller/core_tests.rs
+  - crates/fsm-cli/tests/review_regressions/output_schema_and_wire_format.rs
+  - crates/fsm-cli/tests/mcp_affordance_golden.rs
+  - crates/fsm-cli/tests/fixtures/
+  - docs/EMBEDDING.md
   - crates/fsm-store/src/journal_io/verify.rs
   - crates/fsm-cli/src/mcp/tools/handlers/audit.rs
   - crates/fsm-cli/src/mcp/tools/mod.rs
   - crates/fsm-cli/src/mcp/tools/schema_in.rs
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/tests/audit_verify.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Journal Verify Tool
@@ -44,3 +54,16 @@ The README claims tamper-evident history and this is the operation that checks i
 - The tool is absent from `MUTATING_TOOLS` and works on a read-only server.
 
 - **Done when:** `cargo test -p fsm-cli --test audit_verify` and `cargo test -p fsm-store` pass, the incremental seam changes no conclusion, progress and cancellation are wired, remedies match SPEC verbatim, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `verify_segments_with` is the same loop with a place to stand: every 256 records it hands the caller the running count and the last verified seq, and takes back `Continue` or `Stop`. `verify_segments` is now that function with a callback that never stops, so nothing about what verification *decides* changed — asserted directly, by running both entry points over four fixtures (clean, torn, spaced, rewritten seq) and comparing every segment's status, count and seq range.
+
+`journal_verify(from_seq?, to_seq?)` reports the recovery table's own health name, the records it walked, the classifier's own message, and — where the table prescribes one — the exact remedy command, which it never runs. Interior damage carries SPEC's blast radius in SPEC's words and **no** remedy, because the table says there is none. It joins `PROGRESS_TOOLS`, making it the first genuine consumer of plan 0012's reporter and flag: a token gets a report per batch and a final one, no token gets silence, and a cancelled call stops at a record boundary with `req/cancelled`.
+
+Twenty-one tools measure **32 293** bytes against the 38 000 ceiling, leaving 5 707 for the three still to come.
+
+**Corrections.**
+
+- *The report is a function of a **path**, not of an open `Store`.* The store you most want verified is the one that will not open — `Store::open_read_only` refuses a torn or broken journal outright — so a diagnostic that needed a healthy store to report an unhealthy one would be useless exactly when it is wanted. `tools::verify_report(data_dir, …)` is what the tool calls with `store.data_dir`, and what 6701's degraded mode will call with no store at all. Every damaged-store test in this suite goes through it.
+- *`to_seq` stops the walk at a batch boundary, not at the record.* The callback fires every 256 records, so a window inside one batch saves no work; what it does bound exactly is `verified_records`, computed from the window's seqs rather than by a second count. Both are stated in the code.
+- *`from_seq` bounds the count, not the start.* A chain is only checkable from its anchor, so the walk always begins at the journal's start.
+- *`StateHashMismatch` covers `ReplayMismatch` and `StoreIo` covers `MissingGenesis` and `VersionMismatch`.* The health enum has ten variants and the recovery table names seven postures; the mapping is stated in one place and the classifier's own message says which of the two it was. Step 3's rule — never a new word for an existing condition — is what forced the mapping rather than three more names.

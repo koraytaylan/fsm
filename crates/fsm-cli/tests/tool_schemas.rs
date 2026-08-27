@@ -28,6 +28,7 @@ fn registry_order() {
             "instance_list",
             "instance_history",
             "explain_step",
+            "journal_verify",
             "instance_elicit",
             "simulate",
         ]

@@ -74,6 +74,14 @@ pub(super) fn schema_explain_step_in() -> Value {
     schema_obj(p, &["instance_id", "seq"], false)
 }
 
+/// An optional window. Both absent means the whole journal.
+pub(super) fn schema_journal_verify_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("from_seq".into(), ty_num(0, i64::MAX));
+    p.insert("to_seq".into(), ty_num(0, i64::MAX));
+    schema_obj(p, &[], false)
+}
+
 pub(super) fn schema_deadline_poll_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

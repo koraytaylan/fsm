@@ -181,9 +181,11 @@ fn output_schemas_are_field_level() {
         ("instance_elicit", &["action", "applied", "event"]),
         // An explanation is a journal entry with its decision attached.
         ("explain_step", &["seq", "kind", "trace"]),
+        // A verdict, what was walked, and the operator's next step.
+        ("journal_verify", &["health", "verified_records", "remedy"]),
     ];
     let reg = fsm_cli::mcp::tools::registry();
-    assert_eq!(reg.len(), 20);
+    assert_eq!(reg.len(), 21);
     for (name, fields) in expect {
         let t = reg.iter().find(|t| t.name == *name).expect(name);
         let out = (t.output_schema)();
