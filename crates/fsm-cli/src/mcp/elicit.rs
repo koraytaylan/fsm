@@ -56,10 +56,145 @@ pub fn client_supports(params: Option<&Value>) -> bool {
         .is_some()
 }
 
-/// The elicitation request's `requestedSchema`, derived from an event's
-/// declared fields. `6402`.
-pub fn schema_for_event(_machine: &Value, _event: &str) -> Value {
-    unimplemented!("plan 0013 task 6402")
+/// The elicitation request's `requestedSchema`, derived from an event's own
+/// declared fields.
+///
+/// The protocol restricts an elicitation schema to a **flat object of
+/// primitive properties**, which is exactly the shape a declared event
+/// already has — so the form a person fills in is generated from the
+/// machine's types rather than written twice.
+///
+/// The match over declared types is exhaustive on purpose: a field type that
+/// cannot be expressed as a flat primitive would be a compile error here,
+/// which is a better place to find out than a client's parser.
+pub fn schema_for_event(
+    machine: &fsm_core::machine::CompiledMachine,
+    event: &str,
+) -> Result<Value, ErrorObj> {
+    let declared = machine
+        .spec
+        .events
+        .iter()
+        .find(|e| e.name == event)
+        .ok_or_else(|| {
+            ErrorObj::new("req/event_unknown", event)
+                .hint("name one of the machine's declared events")
+        })?;
+    if declared.internal {
+        return Err(ErrorObj::new("req/event_internal", event)
+            .hint("only the machine raises an internal event; nobody can be asked to send one"));
+    }
+    let mut properties = std::collections::BTreeMap::new();
+    let mut required = Vec::new();
+    for field in &declared.fields {
+        properties.insert(field.name.clone(), property(&field.ty, machine)?);
+        // Every field is required: `validate_event` demands the exact
+        // declared set, so an optional property would produce a form whose
+        // answer the engine then rejects.
+        required.push(Value::Str(field.name.clone()));
+    }
+    Ok(Value::Obj(std::collections::BTreeMap::from([
+        ("type".to_string(), Value::Str("object".into())),
+        ("properties".to_string(), Value::Obj(properties)),
+        ("required".to_string(), Value::Arr(required)),
+    ])))
+}
+
+/// One declared type as one primitive property.
+///
+/// **Decimals and timestamps are strings.** SPEC's rule is that numerics are
+/// strings everywhere and that a raw JSON number is `req/number_token`;
+/// emitting `{"type": "number"}` for a decimal would invite a client to
+/// return a float, which is the one value this engine refuses to accept
+/// anywhere. An `int` is an `integer` because it has no scale to lose, and
+/// the coercion below turns the answer back into the string the engine
+/// takes.
+fn property(
+    ty: &fsm_core::spec::TySpec,
+    machine: &fsm_core::machine::CompiledMachine,
+) -> Result<Value, ErrorObj> {
+    use fsm_core::spec::TySpec;
+    let mut property = std::collections::BTreeMap::new();
+    match ty {
+        TySpec::Str => {
+            property.insert("type".to_string(), Value::Str("string".into()));
+        }
+        TySpec::Int => {
+            property.insert("type".to_string(), Value::Str("integer".into()));
+        }
+        TySpec::Bool => {
+            property.insert("type".to_string(), Value::Str("boolean".into()));
+        }
+        TySpec::Enum { of } => {
+            let variants = machine.spec.enums.get(of).cloned().unwrap_or_default();
+            property.insert("type".to_string(), Value::Str("string".into()));
+            property.insert(
+                "enum".to_string(),
+                // Declaration order, which is the order the author wrote and
+                // the order a person should see.
+                Value::Arr(variants.into_iter().map(Value::Str).collect()),
+            );
+        }
+        TySpec::Dec { scale } => {
+            property.insert("type".to_string(), Value::Str("string".into()));
+            property.insert(
+                "description".to_string(),
+                Value::Str(format!("decimal with exactly {scale} fraction digits")),
+            );
+        }
+        TySpec::Ts => {
+            property.insert("type".to_string(), Value::Str("string".into()));
+            property.insert("format".to_string(), Value::Str("date-time".into()));
+        }
+        TySpec::Dur => {
+            property.insert("type".to_string(), Value::Str("string".into()));
+            property.insert(
+                "description".to_string(),
+                Value::Str("duration in whole milliseconds".into()),
+            );
+        }
+    }
+    Ok(Value::Obj(property))
+}
+
+/// The answer, turned into a payload and validated exactly as a sent one is.
+///
+/// One conversion happens on the way in: an `int` property is an `integer`
+/// in the schema, so a conforming client returns a JSON number, and the
+/// engine takes its numerics as strings. Every other field is passed through
+/// untouched — including a number where the schema asked for a string, which
+/// is a client contradicting its own form and is refused as
+/// `req/number_token`, exactly as an external payload would be.
+///
+/// Validation itself is `validate_event`: the same function the ordinary
+/// send path calls, so an elicited value and a sent value cannot be judged
+/// by two different rules.
+pub fn payload_from_content(
+    machine: &fsm_core::machine::CompiledMachine,
+    event: &str,
+    content: &Value,
+) -> Result<Value, ErrorObj> {
+    let declared = machine.spec.events.iter().find(|e| e.name == event);
+    let object = content.as_obj().cloned().unwrap_or_default();
+    let mut payload = std::collections::BTreeMap::new();
+    for (name, given) in object {
+        let ty = declared
+            .and_then(|e| e.fields.iter().find(|f| f.name == name))
+            .map(|f| &f.ty);
+        let value = match (ty, &given) {
+            (Some(fsm_core::spec::TySpec::Int), Value::Num(n)) => Value::Str(n.clone()),
+            _ => given,
+        };
+        // An unknown key is kept rather than dropped: `validate_event`
+        // reports it as `req/field_unknown`, and a silently discarded answer
+        // is worse than a refused one.
+        payload.insert(name, value);
+    }
+    let payload = Value::Obj(payload);
+    fsm_core::step::validate_event(machine, event, &payload).map_err(|rejection| {
+        ErrorObj::new(rejection.code, rejection.message.clone()).hint(rejection.hint.clone())
+    })?;
+    Ok(payload)
 }
 
 /// Ask the client something and wait for its answer, with the nesting cap.
