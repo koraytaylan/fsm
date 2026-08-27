@@ -13,7 +13,10 @@ touches:
   - crates/fsm-cli/src/mcp/tools/handlers/simulate.rs
   - crates/fsm-cli/src/mcp/tools/handlers/instance.rs
   - crates/fsm-cli/tests/mcp_progress.rs
-status: planned
+  - crates/fsm-cli/src/mcp/tools/mod.rs
+  - crates/fsm-cli/src/mcp/tools/handlers/mod.rs
+  - crates/fsm-cli/tests/mcp_progress.rs
+status: done
 merged_as: ""
 ---
 # Progress Notifications
@@ -42,3 +45,7 @@ A call that takes a while and says nothing is indistinguishable from a hung serv
 - No other tool emits progress — assert across a session exercising every tool with a token supplied.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_progress` passes every case above, a call without a token emits nothing and keeps its golden, timing comes from the injected clock, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `ProgressReporter` with `discarding`, `new`, `from_meta`, and a `report` that takes the caller's `now_ms`; `PROGRESS_TOOLS`; `run_simulate_with` and `run_instance_history_with`, routed from `dispatch_with` only when a token is present; and the suite — a string token and a numeric one echoed verbatim, a final report at the total, silence without a token, fifty steps collapsing under the rate limit, a single step reporting once, a history page finishing complete, and seven other tools reporting nothing with a token supplied.
+
+**Corrections.** (1) `simulate` reports once per **rendered step** rather than once per event sent to the pure function: the pure `simulate` takes the whole event list and returns when the work is done, so a per-event report around it would be fiction. The rendering loop is the real per-item work the handler does, and it has the same count. (2) `instance_history` assembles its page in one store call, so it reports per chunk of the assembled page rather than per chunk of an incremental read — the numbers describe what the caller asked for, which is what a progress bar is about. (3) The reporter takes `now_ms` as a parameter rather than holding a clock: a handler already has the injected clock, and a second copy inside the reporter would be a second answer to what time it is.

@@ -41,7 +41,27 @@ pub fn dispatch_with(
     args: &Value,
     ctx: &ToolCtx<'_>,
 ) -> Result<Value, ErrorObj> {
-    let _ = ctx;
+    // A call that carried a `progressToken` gets a live reporter; one that
+    // did not gets a discarding one, so a handler never asks whether anyone
+    // is listening — and a discarding reporter emits nothing at all, which
+    // is what keeps every existing golden byte-identical.
+    let progress =
+        crate::mcp::progress::ProgressReporter::from_meta(ctx.meta.as_ref(), ctx.notifier);
+    if progress.is_live() && super::PROGRESS_TOOLS.contains(&name) {
+        if let Some(refusal) = read_only_refusal(store, name, args) {
+            return Err(attach_request_id(refusal, args));
+        }
+        let spec = registry()
+            .into_iter()
+            .find(|t| t.name == name)
+            .ok_or_else(|| ErrorObj::new("req/args_invalid", format!("unknown tool {name}")))?;
+        validate_args(&(spec.input_schema)(), args).map_err(|e| attach_request_id(e, args))?;
+        return match name {
+            "simulate" => super::handlers::run_simulate_with(store, clock, args, &progress),
+            _ => super::handlers::run_instance_history_with(store, clock, args, &progress),
+        }
+        .map_err(|e| attach_request_id(e, args));
+    }
     let spec = registry()
         .into_iter()
         .find(|t| t.name == name)

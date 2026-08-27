@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::mcp::progress::ProgressReporter;
 use fsm_core::json::Value;
 use fsm_core::simulate::{OnReject, simulate};
 use fsm_core::spec::compile_accepted;
@@ -12,8 +13,17 @@ use crate::mcp::tools::dispatch::str_arg;
 
 pub(in crate::mcp::tools) fn run_simulate(
     store: &mut Store,
-    _c: &mut dyn Clock,
+    clock: &mut dyn Clock,
     args: &Value,
+) -> Result<Value, ErrorObj> {
+    run_simulate_with(store, clock, args, &ProgressReporter::discarding())
+}
+
+pub(in crate::mcp::tools) fn run_simulate_with(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+    progress: &ProgressReporter,
 ) -> Result<Value, ErrorObj> {
     let has_spec = args.get("spec").is_some();
     let has_machine = str_arg(args, "machine").is_some();
@@ -90,7 +100,11 @@ pub(in crate::mcp::tools) fn run_simulate(
         .map_err(|rejection| ErrorObj::from_rejection(&rejection))?;
     let mut from_configuration = created.configuration_after.clone();
     let mut steps = Vec::new();
-    for st in &report.steps {
+    // The size is known up front, so every report carries its denominator.
+    let total = report.steps.len() as u64;
+    for (index, st) in report.steps.iter().enumerate() {
+        let done = index as u64 + 1;
+        progress.report(clock.now_ms(), done, Some(total), None, done == total);
         let mut m = BTreeMap::new();
         m.insert("index".into(), Value::Num(st.index.to_string()));
         m.insert("event".into(), Value::Str(st.event.clone()));

@@ -86,6 +86,13 @@ pub const LINKED_TOOLS: &[&str] = &[
     "instance_get",
 ];
 
+/// The tools that take long enough to report progress.
+///
+/// Two, deliberately: a report on a call that returns in a microsecond is
+/// noise, and this plan does not add reports it cannot justify. Both know
+/// their size up front, so both send a `total`.
+pub const PROGRESS_TOOLS: &[&str] = &["simulate", "instance_history"];
+
 pub struct ToolSpec {
     pub name: &'static str,
     pub description: &'static str,

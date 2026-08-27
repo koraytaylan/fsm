@@ -491,3 +491,32 @@ pub(in crate::mcp::tools) fn run_instance_history(
         .unwrap_or(true);
     store.history_page(iid, from, limit, include_trace, include_rejected)
 }
+
+/// The same page, reporting as it goes.
+///
+/// A page is assembled in one call, so the reports are about the entries the
+/// caller asked for rather than invented steps: one per chunk of the page,
+/// with the page's own size as the denominator.
+pub(in crate::mcp::tools) fn run_instance_history_with(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+    progress: &crate::mcp::progress::ProgressReporter,
+) -> Result<Value, ErrorObj> {
+    let page = run_instance_history(store, clock, args)?;
+    let total = page
+        .get("entries")
+        .and_then(Value::as_arr)
+        .map(<[Value]>::len)
+        .unwrap_or(0) as u64;
+    const CHUNK: u64 = 10;
+    let mut done = 0;
+    while done < total {
+        done = (done + CHUNK).min(total);
+        progress.report(clock.now_ms(), done, Some(total), None, done == total);
+    }
+    if total == 0 {
+        progress.report(clock.now_ms(), 0, Some(0), None, true);
+    }
+    Ok(page)
+}
