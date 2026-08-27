@@ -8,7 +8,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/serve.rs
   - crates/fsm-cli/tests/degraded_serve.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Degraded Serve Mode
@@ -38,3 +38,14 @@ Today an unhealthy store makes the server vanish before the client ever connects
 - The process exit code is 0 on a clean client disconnect from a degraded session — a degraded server that ran correctly did not fail.
 
 - **Done when:** `cargo test -p fsm-cli --test degraded_serve` passes every case above, an unhealthy store starts a server instead of killing one, healthy transcripts are byte-identical, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** A store that will not open no longer kills the server. The session starts, `initialize` succeeds with unchanged capabilities, `tools/list` is unchanged, and the documentation resources still read — they are constants in the binary. An instance resource is `-32002`, which is what "nobody can read this" already means here.
+
+The client hears about it once, at `error` level, as soon as it is allowed to hear anything: the health, the detail, and the sentence "call store_doctor for the diagnosis". `instructions` gains a degraded note in the style of the read-only and embedded ones, naming `store_doctor` — that sentence is how a model finds out what to do next. The stderr line stays and gains `mode=degraded`, plus `executor=none` when `--execute` was asked for, since there is nothing to write to.
+
+The mode is **reported, never selected**: there is no flag, because it is not a way to run a server, it is what happened to one. A healthy session is untouched — same instructions, no notifications, byte-identical transcript — which is the claim that matters for every working deployment, and it is asserted directly.
+
+**Corrections.**
+
+- *`StoreSlot` is not the shape that fits.* `serve_session_with` already takes `Option<&mut Store>`, so "no store" is already representable; what was missing was *why*. `serve_session_degraded` takes the detail string and `Live` carries it. An enum would have meant rewriting every store access in the loop to say the same thing the `Option` already says.
+- *The health travels as text, not as a `JournalHealth`.* The open path already renders its refusal as an `ErrorObj` with a code and a message; re-deriving a health enum here would be a second classification beside the one `store_doctor` performs, and the two could disagree.

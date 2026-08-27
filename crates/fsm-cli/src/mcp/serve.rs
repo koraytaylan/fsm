@@ -206,26 +206,42 @@ pub fn serve_dir_with(
     input: impl BufRead,
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
+    let mut degraded: Option<String> = None;
     let opened = match &mode {
         // A read-only open takes no lock and creates nothing, which is what
         // lets this process watch a data directory the executor is writing.
         ServeMode::ReadOnly => Store::open_read_only(dir),
         ServeMode::Writer | ServeMode::Embedded(_) => Store::open(dir),
     };
+    // A store that will not open used to kill the server, which is exactly
+    // backwards: diagnosis is the one case where the server must not vanish.
+    // The session starts, `initialize` succeeds, the tool list is unchanged,
+    // and the diagnostic tools answer from the directory itself.
     let mut store = match opened {
         Ok(s) => Some(s),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "fsm store open failed: {}", e.message);
-            return Err(std::io::Error::other(e.message));
+            degraded = Some(format!("{}: {}", e.code, e.message));
+            None
         }
+    };
+    // Reported, never selected: there is no `--degraded` flag, because it is
+    // not a way to run a server, it is what happened to one.
+    let reported_mode = match &degraded {
+        Some(_) => "degraded",
+        None => mode_name(&mode),
     };
     // One startup line per process, on stderr: stdout is the protocol stream,
     // and no tick trace may depend on this line.
     let _ = writeln!(
         std::io::stderr(),
-        "fsm serve: mode={} data_dir={}",
-        mode_name(&mode),
-        dir.display()
+        "fsm serve: mode={reported_mode} data_dir={}{}",
+        dir.display(),
+        if degraded.is_some() {
+            " executor=none"
+        } else {
+            ""
+        }
     );
     let mut clock = SystemClock;
     // A read-only handle is one consistent prefix, frozen at the moment it was
@@ -237,14 +253,18 @@ pub fn serve_dir_with(
         ServeMode::Writer | ServeMode::Embedded(_) => None,
     };
     let mut executor = match mode {
+        // Nothing to write to, so nothing to run: an executor in a degraded
+        // session would tick against a store that will not open.
+        ServeMode::Embedded(_) if degraded.is_some() => None,
         ServeMode::Embedded(loop_) => Some(loop_),
         ServeMode::Writer | ServeMode::ReadOnly => None,
     };
-    serve_session_with(
+    serve_session_degraded(
         store.as_mut(),
         &mut clock,
         executor.as_deref_mut(),
         refresh.as_deref(),
+        degraded.as_deref(),
         input,
         output,
     )
@@ -283,6 +303,9 @@ struct Live {
     /// here because `initialize` is the only place it appears; consulted by
     /// the tool that would otherwise ask a client that cannot answer.
     client_elicitation: bool,
+    /// Why the store would not open, when it would not. A client hears this
+    /// once, at `error` level, as soon as it is allowed to hear anything.
+    degraded: Option<String>,
     /// The change feed, spawned on the first successful subscribe and
     /// stopped when the session ends. A server nobody subscribes to spawns
     /// nothing and does no I/O between requests — which is what keeps every
@@ -346,10 +369,25 @@ impl Live {
 /// conversation, never overnight; that is why it is not the default and why
 /// the unattended claim belongs to a separate executor process.
 pub fn serve_session_with(
+    store: Option<&mut Store>,
+    clock: &mut dyn Clock,
+    executor: Option<&mut ExecutorLoop>,
+    refresh: Option<&std::path::Path>,
+    input: impl BufRead,
+    output: impl Write + Send + 'static,
+) -> std::io::Result<()> {
+    serve_session_degraded(store, clock, executor, refresh, None, input, output)
+}
+
+/// The protocol loop, with one more thing it may have to say: that the store
+/// it was pointed at would not open.
+#[allow(clippy::too_many_arguments)]
+pub fn serve_session_degraded(
     mut store: Option<&mut Store>,
     clock: &mut dyn Clock,
     mut executor: Option<&mut ExecutorLoop>,
     refresh: Option<&std::path::Path>,
+    degraded: Option<&str>,
     mut input: impl BufRead,
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
@@ -363,10 +401,13 @@ pub fn serve_session_with(
     // Derived once: the mode is a property of how this session was started,
     // and an operator reading a transcript should be able to tell which one
     // ran without reading the launch command.
-    let mode_note = mode_note(store.as_deref(), executor.is_some());
+    let mode_note = mode_note(store.as_deref(), executor.is_some(), degraded.is_some());
     let mut initialized = false;
     let mut initialized_notified = false;
-    let mut live = Live::default();
+    let mut live = Live {
+        degraded: degraded.map(str::to_string),
+        ..Live::default()
+    };
     loop {
         // Bound rather than matched in place: the borrow of `input` ends at
         // the semicolon, which is what lets a request arm lend the same
@@ -626,7 +667,30 @@ fn handle_request<'a>(
             send_line(
                 output,
                 &result_response(id, initialize_result(version, mode_note)),
-            )
+            )?;
+            // A client that only reads stdout would otherwise never learn
+            // why every store-backed call is failing. Said once, at `error`,
+            // and only now: nothing may be sent before `initialize`.
+            if let Some(detail) = live.degraded.clone() {
+                logging::message(
+                    output,
+                    live.level,
+                    *initialized,
+                    logging::Level::Error,
+                    "fsm.store",
+                    || {
+                        Value::Obj(BTreeMap::from([
+                            ("degraded".to_string(), Value::Bool(true)),
+                            ("detail".to_string(), Value::Str(detail.clone())),
+                            (
+                                "next".to_string(),
+                                Value::Str("call store_doctor for the diagnosis".into()),
+                            ),
+                        ]))
+                    },
+                );
+            }
+            Ok(())
         }
         _ if !*initialized => send_line(
             output,
@@ -817,8 +881,10 @@ fn handle_request<'a>(
 /// The default mode adds nothing at all: the instructions are part of a
 /// byte-compared transcript, and a mode that changes them would move that
 /// golden for every existing deployment.
-fn mode_note(store: Option<&Store>, embedded: bool) -> &'static str {
-    if store.is_some_and(|store| store.journal.is_read_only()) {
+fn mode_note(store: Option<&Store>, embedded: bool, degraded: bool) -> &'static str {
+    if degraded {
+        "\n\nThis server could not open its store (mode=degraded): every tool that reads or writes instances is refused, and the documentation resources still work. Call store_doctor for the health, the blast radius, and the exact repair command; journal_verify and explain_step answer too."
+    } else if store.is_some_and(|store| store.journal.is_read_only()) {
         "\n\nThis server is running read-only (mode=read-only): the effect executor owns the writer, so machine_create, instance_create, instance_send, deadline_poll, effect_ack, and instance_cancel are refused here. Read tools work normally, and a machine_create with dry_run still validates."
     } else if embedded {
         "\n\nThis server runs the effect executor inline (mode=embedded): handlers run on this thread, one tick per request you send, so a workflow advances while you are talking to it and pauses when you stop."
