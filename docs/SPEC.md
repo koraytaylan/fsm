@@ -711,6 +711,7 @@ because a deadline poll visits no event guard.
 | `signal_delivered` | `sender_instance_id`, `signal_id`, `target_instance_id`, `event`, `payload`, `outcome`, `request_id`, `sender_state_hash`, `state_format`, optional `target_state_hash`, optional `microsteps` |
 | `instance_migrated` | `instance_id`, `from_machine_id`, `to_machine_id`, `configuration_before`, `configuration_after`, `dropped_history`, `rescheduled_deadlines`, `request_id`, `state_hash`, `state_format`, optional `microsteps` |
 | `annotated` | `instance_id`, `request_id`, `note` |
+| `effect_attempted` | `instance_id`, `effect_id`, `attempt` (1-based, strictly `last + 1`), `outcome` (always `failed`), `request_id`, `state_hash`, `state_format`, optional `result`. Leaves the effect pending and changes no logical state: a retry counter kept in memory is lost by exactly the restart it exists to survive, so the attempt count is derived from these records. A *successful* attempt is an ordinary `effect_acked` and writes none of these |
 | `state_checkpoint` | `state_root`, `state_root_format` |
 
 `microsteps` is the macrostep's reaction list: `[{index, trigger, event?,

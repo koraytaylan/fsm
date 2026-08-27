@@ -424,3 +424,37 @@ pub(super) fn apply_annotated(st: &mut StoreState, rec: &Record) -> Result<(), R
     claim_request_id(st, rec)?;
     Ok(())
 }
+
+/// One failed attempt at an effect.
+///
+/// It claims its `request_id` and changes nothing else: the effect stays
+/// pending and the instance stays where it was. That is what makes a retry a
+/// retry rather than a re-emit, and it is the property the whole retry
+/// design rests on — a journal with attempt records folds to exactly the
+/// state the same journal without them folds to.
+pub(super) fn apply_effect_attempted(st: &mut StoreState, rec: &Record) -> Result<(), ReplayError> {
+    let instance_id =
+        rec.body
+            .get("instance_id")
+            .and_then(Value::as_str)
+            .ok_or(ReplayError::FieldMismatch {
+                seq: rec.seq,
+                field: "instance_id",
+            })?;
+    if !st.instances.contains_key(instance_id) {
+        return Err(ReplayError::UnknownInstance { seq: rec.seq });
+    }
+    for field in ["effect_id", "outcome"] {
+        if rec.body.get(field).and_then(Value::as_str).is_none() {
+            return Err(ReplayError::FieldMismatch {
+                seq: rec.seq,
+                field: match field {
+                    "effect_id" => "effect_id",
+                    _ => "outcome",
+                },
+            });
+        }
+    }
+    claim_request_id(st, rec)?;
+    Ok(())
+}

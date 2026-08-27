@@ -6,12 +6,15 @@ kind: task
 depends_on: []
 gated: false
 touches:
+  - crates/fsm-store/src/store/idempotency.rs
+  - crates/fsm-store/src/store/instance/mod.rs
+  - docs/SPEC.md
   - crates/fsm-core/src/record.rs
   - crates/fsm-core/src/replay/apply.rs
   - crates/fsm-store/src/store/instance/ack.rs
   - crates/fsm-store/src/store/idempotency.rs
   - crates/fsm-store/tests/effect_attempts.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Attempt Record Kind
@@ -48,3 +51,12 @@ A retry kept in process memory is lost by exactly the restart it exists to survi
 - `effect_acked` records are byte-identical to those the pre-change build produced for the same inputs.
 
 - **Done when:** `cargo test -p fsm-store --test effect_attempts` passes every case above, an attempt changes no logical state and leaves the effect pending, the attempt sequence is gapless by construction, cold-path replay reconstructs from the journal, `effect_acked` is unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `effect_attempted` is a record: 1-based, strictly `last + 1`, always `failed`, carrying the same bounded capture an ack carries — and clearing nothing. The effect stays pending and the instance stays where it was, which is what makes a retry a retry rather than a re-emit, and the suite asserts it directly by folding a journal with attempts and one without to the same state.
+
+All four exhaustive matches the plan warned about were extended: the fold, `instances_touched`, the body-shape check, and `RecordKind::all`. The fifth — `replay_duplicate`, which is `if`/`matches!` rather than a `match` — got its arm, and the cold-path test is what proves it: the store is dropped, reopened, and the same key re-issued, so the answer comes from the journal rather than from the in-memory cache that makes a same-process retry look fine with no arm at all.
+
+**Corrections.**
+
+- *The unknown-effect refusal is now one writer, shared with `ack_effect`.* An attempt and an ack are refused for the same reason, and two copies of that refusal would eventually be refused in two vocabularies for one mistake.
+- *SPEC's record table gained the kind in this commit*, as its own gate requires: a record kind that exists and is undocumented fails `spec_appendix`, which is that test doing its job.

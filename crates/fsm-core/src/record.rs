@@ -44,6 +44,14 @@ pub enum RecordKind {
     RequestRejected,
     InstanceCancelled,
     Annotated,
+    /// One failed attempt at an effect, which leaves the effect pending.
+    ///
+    /// A retry counter kept in memory is lost by exactly the restart it
+    /// exists to survive, so an attempt is a record and the count is
+    /// derived. A *successful* attempt is an ordinary `effect_acked` and
+    /// writes none of these — which is why counting them gives the failed
+    /// count directly.
+    EffectAttempted,
     StateCheckpoint,
 }
 
@@ -72,7 +80,8 @@ pub fn instances_touched(record: &Record) -> Vec<&str> {
         | RecordKind::EffectAcked
         | RecordKind::RequestRejected
         | RecordKind::InstanceCancelled
-        | RecordKind::Annotated => field("instance_id").into_iter().collect(),
+        | RecordKind::Annotated
+        | RecordKind::EffectAttempted => field("instance_id").into_iter().collect(),
         RecordKind::InstanceInvoked | RecordKind::InvocationReturned => field("parent_instance_id")
             .into_iter()
             .chain(field("child_instance_id"))
@@ -105,6 +114,7 @@ impl RecordKind {
             RecordKind::RequestRejected => "request_rejected",
             RecordKind::InstanceCancelled => "instance_cancelled",
             RecordKind::Annotated => "annotated",
+            RecordKind::EffectAttempted => "effect_attempted",
             RecordKind::StateCheckpoint => "state_checkpoint",
         }
     }
@@ -128,13 +138,14 @@ impl RecordKind {
             "request_rejected" => Self::RequestRejected,
             "instance_cancelled" => Self::InstanceCancelled,
             "annotated" => Self::Annotated,
+            "effect_attempted" => Self::EffectAttempted,
             "state_checkpoint" => Self::StateCheckpoint,
             _ => return None,
         })
     }
 
     /// Every recognized record kind in stable protocol order.
-    pub fn all() -> [RecordKind; 18] {
+    pub fn all() -> [RecordKind; 19] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -153,6 +164,7 @@ impl RecordKind {
             Self::RequestRejected,
             Self::InstanceCancelled,
             Self::Annotated,
+            Self::EffectAttempted,
             Self::StateCheckpoint,
         ]
     }
@@ -714,6 +726,19 @@ fn body_ok(kind: RecordKind, body: &Value) -> bool {
         }
         RecordKind::Annotated => {
             req_str(body, "instance_id") && req_str(body, "request_id") && req_str(body, "note")
+        }
+        RecordKind::EffectAttempted => {
+            req_str(body, "instance_id")
+                && req_str(body, "effect_id")
+                && req_str(body, "request_id")
+                // Always `failed`: a successful attempt is an ack.
+                && body.get("outcome").and_then(Value::as_str) == Some("failed")
+                && body
+                    .get("attempt")
+                    .and_then(Value::as_num)
+                    .and_then(|attempt| attempt.parse::<u64>().ok())
+                    .is_some_and(|attempt| attempt >= 1)
+                && is_state_hash(body.get("state_hash"))
         }
         RecordKind::StateCheckpoint => is_state_hash(body.get("state_root")),
     };

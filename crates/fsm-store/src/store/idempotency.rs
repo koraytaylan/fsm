@@ -185,6 +185,35 @@ impl Store {
             }
             return Some(Ok(Value::Obj(m)));
         }
+        if rec.kind == RecordKind::EffectAttempted {
+            // Rebuilt from the journal rather than from the response cache.
+            // The warm path is served by that cache, so a same-process retry
+            // works with no arm here at all — and the cold path, after the
+            // restart a retry exists to survive, is exactly the case this
+            // record kind is for.
+            let field = |name: &str| {
+                rec.body
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string()
+            };
+            let attempt = rec
+                .body
+                .get("attempt")
+                .and_then(Value::as_num)
+                .and_then(|attempt| attempt.parse().ok())
+                .unwrap_or(1);
+            return Some(Ok(super::instance::ack::attempted_response(
+                &field("instance_id"),
+                &field("effect_id"),
+                request_id,
+                attempt,
+                rec.body.get("result").cloned(),
+                rec.seq,
+                true,
+            )));
+        }
         // Rebuilt from the journal, not from the response cache: the cold
         // path is the one the executor's resumption and every second client
         // depend on, and a missing arm falls through this chain silently.
@@ -428,6 +457,25 @@ impl Store {
         fsm_core::hashes::request_fp(
             "poll_deadline",
             &BTreeMap::from([("instance_id".into(), Value::Str(instance_id.into()))]),
+        )
+    }
+
+    /// One attempt's fingerprint: the effect, the attempt number, and what
+    /// it produced.
+    pub(super) fn fp_attempt(
+        instance_id: &str,
+        effect_id: &str,
+        attempt: u64,
+        result: Option<&Value>,
+    ) -> String {
+        fsm_core::hashes::request_fp(
+            "effect_attempted",
+            &BTreeMap::from([
+                ("instance_id".to_string(), Value::Str(instance_id.into())),
+                ("effect_id".to_string(), Value::Str(effect_id.into())),
+                ("attempt".to_string(), Value::Num(attempt.to_string())),
+                ("result".to_string(), result.cloned().unwrap_or(Value::Null)),
+            ]),
         )
     }
 

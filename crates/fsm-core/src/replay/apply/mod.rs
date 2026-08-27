@@ -42,8 +42,8 @@ mod signal;
 use deadline_records::{apply_deadline_applied, apply_deadline_not_due, apply_deadline_rejected};
 use event::{apply_event_applied, apply_event_rejected_or_ignored};
 use instance::{
-    apply_annotated, apply_effect_acked, apply_instance_cancelled, apply_instance_created,
-    apply_request_rejected,
+    apply_annotated, apply_effect_acked, apply_effect_attempted, apply_instance_cancelled,
+    apply_instance_created, apply_request_rejected,
 };
 use invoke::{apply_instance_invoked, apply_invocation_returned};
 use migrate::apply_instance_migrated;
@@ -73,6 +73,7 @@ pub(super) fn apply(
         RecordKind::RequestRejected => apply_request_rejected(st, rec),
         RecordKind::InstanceCancelled => apply_instance_cancelled(st, rec),
         RecordKind::Annotated => apply_annotated(st, rec),
+        RecordKind::EffectAttempted => apply_effect_attempted(st, rec),
         RecordKind::StateCheckpoint => Ok(()),
     };
     applied?;
