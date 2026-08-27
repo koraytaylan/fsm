@@ -9,7 +9,7 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-cli/tests/executor_policy_chaos.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Executor Policy Chaos
@@ -39,3 +39,13 @@ Retry exists to survive a restart, so the suite that proves it has to restart th
 - Iteration count is configurable via the env override, and the committed default is the one the wall-time measurement justified — stated in the commit message alongside the measurement.
 
 - **Done when:** `cargo test -p fsm-cli --test executor_policy_chaos` passes 200 seeded iterations across all five restart points with gapless attempts, at most `attempts` records per effect, exactly one ack, no retried cancellation, and caps respected by a fresh scheduler; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** Five restart points crossed with five fixtures, seeded, with `POLICY_CHAOS_SEED` to replay one and the seed, fixture, and point in every failure message. The journal invariants are the plan's, with one tightened: at most `attempts - 1` records per effect rather than `attempts`, because the last failure is acked rather than journaled — a bound the code actually guarantees is worth more than one it merely satisfies.
+
+**The mutation test changed the suite, which is the point of running it.** Swapping the journal-derived count for a process-local counter — the bug this task names — passed **every** journal assertion. It would: the store refuses an out-of-order attempt, the effect stays pending, and the next tick quietly fixes the number, so the records end up identical while the handler runs an extra time per restart. The suite now counts handler runs against a per-point bound derived from what the journal already knew, and that bound is what turns the mutation red. Without it this task would have shipped a suite that certified a policy turning "three tries" into four runs.
+
+Two things the fixtures taught. A cancelled instance cannot carry a fabricated attempt record: the scheduler never starts an effect of one, and a run killed by cancellation is settled rather than retried, so the first version of the harness was asserting against a state the system cannot produce. The seeded loop now lands the restart on the cancellation itself, and a separate row covers the reachable case — attempt one journaled, *then* cancelled — where a successor reads "one failed attempt, budget remaining" and must still not act. And the resume loop drains outboxes rather than stopping at the first terminal instance, because a terminal instance's remaining effects are still acked (plan 0008's rule) and stopping early would hide what the successor did with them.
+
+The MCP fixture drives **this project's own server**: `fsm serve --read-only` on the same data directory, asked for an instance that does not exist, which is a tool error and therefore the `mcp_error` class. A second stub would only prove the stub.
+
+**Budget, measured rather than assumed.** On this Linux host, 40 iterations take 9.1 s in debug and 2.3 s in release; 200 take 45.0 s in debug. `ci.yml` runs both profiles across three operating systems under a 45-minute ceiling that `crash_harness.rs` and `executor_chaos.rs` already dominate, and Windows process creation is far costlier. The committed default is **40** — about twelve seconds per Linux job — with the depth behind `FSM_POLICY_CHAOS_ITERS`, and a row asserts that 40 still reaches every restart point and every fixture, so a default too low to cover what the suite claims would itself be red.
