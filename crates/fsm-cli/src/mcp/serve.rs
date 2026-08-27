@@ -432,7 +432,14 @@ pub fn serve_session_with(
                             params,
                             mode_note,
                         )?;
-                        drive_executor(executor.as_deref_mut(), store.as_deref_mut(), clock);
+                        drive_executor(
+                            executor.as_deref_mut(),
+                            store.as_deref_mut(),
+                            clock,
+                            &output,
+                            &live,
+                            initialized,
+                        );
                     }
                 }
             }
@@ -463,12 +470,34 @@ fn drive_executor(
     executor: Option<&mut ExecutorLoop>,
     store: Option<&mut Store>,
     clock: &mut dyn Clock,
+    output: &Notifier,
+    live: &Live,
+    initialized: bool,
 ) {
     let (Some(executor), Some(store)) = (executor, store) else {
         return;
     };
     for line in executor.tick(store, clock) {
+        // Both audiences, deliberately. An operator reading a terminal must
+        // not lose output because a client attached, and a later reader who
+        // "cleans up the duplication" would take that away from them.
         let _ = writeln!(std::io::stderr(), "fsm execute: {line}");
+        logging::message(
+            output,
+            live.level,
+            initialized,
+            logging::Level::Info,
+            "fsm.execute",
+            // Structured, not a rendered sentence: `{"line": ...}` is what a
+            // client can act on, and the line already carries identifiers
+            // only — no path, pid, or duration, by plan 0008's rule.
+            || {
+                Value::Obj(std::collections::BTreeMap::from([(
+                    "line".to_string(),
+                    Value::Str(line.clone()),
+                )]))
+            },
+        );
     }
 }
 
@@ -585,7 +614,7 @@ fn handle_request(
                     &rpc_error(
                         id,
                         INVALID_PARAMS,
-                        "level must be one of emergency, alert, critical, error, warning, notice, info, debug",
+                        &format!("level must be one of {}", logging::Level::names()),
                     ),
                 ),
             }

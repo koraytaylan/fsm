@@ -9,7 +9,9 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/logging.rs
   - crates/fsm-cli/tests/mcp_logging.rs
-status: planned
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/tests/mcp_logging.rs
+status: done
 merged_as: ""
 ---
 # Logging Capability
@@ -38,3 +40,7 @@ The embedded executor writes its tick lines to stderr, where the model driving t
 - Level changes take effect for the next message without restarting anything.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_logging` passes every case above, embedded executor ticks reach both the client and stderr, nothing is emitted pre-initialize, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** the eight levels with their severity order, `DEFAULT_LEVEL`, `message_params`, and a `message` that checks the threshold and the initialize state before it renders anything; the executor tick wired to both audiences; the refusal that lists every level; and the suite — all eight names accepted, an unknown one naming them, the default, a level taking effect immediately, silence before initialize, an embedded tick reaching the client with a structured `data` and no path, pid, or duration, and a quiet session staying quiet.
+
+**Corrections.** (1) The level lives on the session's `Live` state rather than inside `logging.rs`, because `5702` already routed `logging/setLevel` there and a second home for the same value is a second answer to "what level is this session at". `message` takes it as a parameter, which is what lets the threshold be checked before the data is built. (2) `data` is built by a closure, so a dropped message never pays for its own contents — the point of checking the threshold first.
