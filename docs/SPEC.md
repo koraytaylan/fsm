@@ -334,6 +334,7 @@ each microstep's candidates and pipeline.
 | `req/event_unknown` | undeclared event | — |
 | `req/event_internal` | an event declared `internal`, or a `$`-prefixed generated name, sent from outside | name where the machine raises it and list the sendable events |
 | `req/invoke_slot_state` | `invoke_child` against a slot that is not `pending` | name the slot's current status and the slots the instance has |
+| `req/cancelled` | the client withdrew the request; the call stopped at its next coarse boundary | say that a single engine step is not interruptible |
 | `req/signal_target` | a `signal` addressed to its own sender | name `raise` as the construct for an event to this instance |
 | `req/migrate_settled` | migrating an instance that is completed or cancelled | say which status it holds; a settled instance has nothing to migrate |
 | `req/migrate_unmapped` | the instance's active state has no entry in the mapping | name the state and the mapping's keys |
@@ -1094,6 +1095,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `io/read` — read failed
 - `io/write` — write failed
 - `req/args_invalid` — tool/CLI arguments invalid
+- `req/cancelled` — the client cancelled the request
 - `req/event_internal` — an internal or generated event sent from outside
 - `req/event_unknown` — undeclared event
 - `req/field_missing` — declared field absent

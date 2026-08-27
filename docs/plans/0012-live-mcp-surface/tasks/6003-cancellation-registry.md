@@ -13,7 +13,10 @@ touches:
   - crates/fsm-cli/src/mcp/tools/handlers/simulate.rs
   - crates/fsm-cli/src/mcp/tools/handlers/instance.rs
   - crates/fsm-cli/tests/mcp_cancel.rs
-status: planned
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-core/src/error.rs
+  - docs/SPEC.md
+status: done
 merged_as: ""
 ---
 # Cancellation Registry
@@ -43,3 +46,13 @@ merged_as: ""
 - A `step`-only tool such as `instance_send` is not interrupted mid-call, and the test asserts it completes — pinning the documented limit rather than leaving it implicit.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_cancel` passes every case above including the no-response rules and the documented non-interruption of a single step, `req/cancelled` is returned as a tool error, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `Cancellations` is a shareable registry — `Arc<Mutex<BTreeSet<String>>>` — that the serve loop clones a per-request `CancelFlag` out of and hands to `ToolCtx`, so one call can consult its own cancellation from inside its own loops without holding a borrow of the session. `simulate` checks between rendered steps and `instance_history` between chunks; both return `CancelFlag::refusal()`, a tool error carrying `req/cancelled` whose hint states the limit the plan accepts. A request whose id was already cancelled is skipped in the read loop before it reaches `handle_request`: nothing is written, and the id is cleared so the next request reusing it runs. The arriving `notifications/cancelled` and the skip it causes are both visible at `debug` through 6001's logger.
+
+**Corrections.**
+
+- *Step 2 says "do not edit `serve.rs`"; steps 3 and 5 cannot be honoured anywhere else.* Pre-dispatch is by definition a decision the read loop makes before dispatching, and "send no response" is a decision about the response the read loop would otherwise write. 5702's routing arm did land already, as the step says — what it lacked was the body, the pre-dispatch check and the debug line. `touches` now names the file.
+- *`BTreeSet<Value>` is not available: `Value` is not `Ord`.* Ids are keyed by their canonical text, which also settles a question the plan does not raise — `1` and `"1"` are different requests, and canonical text keeps them different.
+- *Method names.* `cancelled` rather than `is_cancelled`, matching `CancelFlag::cancelled`; `finish` rather than `clear`, because it clears exactly one consumed id rather than the registry.
+- *Registering `req/cancelled` reaches four more files.* `ALL_CODES` and both SPEC listings in the same commit, per the contributing rules, plus the one-step row and the driven outcome the every-code gates require. The one-step recovery is the same call under an id the client has not withdrawn: cancelling consumes no idempotency key, because it is a decision about this call and not about the work.
+- *"Byte-identical to the pre-plan build" is 6101's assertion, not one this suite can make.* Here the honest local form is that a session which cancels nothing emits no notifications at all; the golden transcripts pin the bytes.

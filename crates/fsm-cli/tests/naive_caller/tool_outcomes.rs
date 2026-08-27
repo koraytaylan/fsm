@@ -842,6 +842,27 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         Ok(v) => note_ok(&v, &mut out),
         Err(e) => note_err(&e, &mut out),
     }
+    // A call the client withdrew: dispatched with its id already cancelled,
+    // it stops at the first coarse boundary inside the tool.
+    let id = Value::Num("77".into());
+    let mut cancellations = fsm_cli::mcp::cancel::Cancellations::default();
+    cancellations.cancel(&id);
+    let ctx = fsm_cli::mcp::tools::ToolCtx {
+        notifier: None,
+        request_id: Some(id.clone()),
+        meta: None,
+        cancel: cancellations.flag(&id),
+    };
+    match fsm_cli::mcp::tools::dispatch_with(
+        &mut st,
+        &mut clock,
+        "instance_history",
+        &obj(&[("instance_id", Value::Str("inst-actc".into()))]),
+        &ctx,
+    ) {
+        Ok(v) => note_ok(&v, &mut out),
+        Err(e) => note_err(&e, &mut out),
+    }
     out
 }
 

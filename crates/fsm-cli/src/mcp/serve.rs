@@ -1,5 +1,6 @@
 //! Blocking newline-delimited MCP serve loop.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -410,6 +411,31 @@ pub fn serve_session_with(
                                 params.as_ref().and_then(|p| p.get("requestId"))
                             {
                                 live.cancellations.cancel(requested);
+                                // An id nobody is running is accepted in
+                                // silence — the client may be racing a reply
+                                // it has not read yet, which is not an error.
+                                // It is still worth saying at `debug`, where
+                                // an operator asking "did my cancel arrive?"
+                                // can see that it did.
+                                let reason = params
+                                    .as_ref()
+                                    .and_then(|p| p.get("reason"))
+                                    .cloned()
+                                    .unwrap_or(Value::Null);
+                                let requested = requested.clone();
+                                logging::message(
+                                    &output,
+                                    live.level,
+                                    initialized,
+                                    logging::Level::Debug,
+                                    "fsm.serve",
+                                    || {
+                                        Value::Obj(BTreeMap::from([
+                                            ("cancel_requested".to_string(), requested.clone()),
+                                            ("reason".to_string(), reason.clone()),
+                                        ]))
+                                    },
+                                );
                             }
                         }
                     }
@@ -421,6 +447,29 @@ pub fn serve_session_with(
                             );
                         }
                         refresh_read_only(store.as_deref_mut(), refresh);
+                        // A client can cancel request 7 while the server is
+                        // still working on request 6. Per the specification a
+                        // request that was never executed gets **no**
+                        // response — not an error, not a courtesy reply — and
+                        // the id is cleared so a client reusing it later is
+                        // not silently cancelled by a stale entry.
+                        if live.cancellations.cancelled(&id) {
+                            live.cancellations.finish(&id);
+                            logging::message(
+                                &output,
+                                live.level,
+                                initialized,
+                                logging::Level::Debug,
+                                "fsm.serve",
+                                || {
+                                    Value::Obj(BTreeMap::from([
+                                        ("cancelled".to_string(), id.clone()),
+                                        ("method".to_string(), Value::Str(method.clone())),
+                                    ]))
+                                },
+                            );
+                            continue;
+                        }
                         handle_request(
                             &output,
                             store.as_deref_mut(),
@@ -667,6 +716,7 @@ fn handle_request(
                 notifier: Some(output),
                 request_id: Some(id.clone()),
                 meta: params.as_ref().and_then(|p| p.get("_meta")).cloned(),
+                cancel: live.cancellations.flag(&id),
             };
             if name == "fsm_ping" {
                 send_line(output, &result_response(id, fsm_ping_result()))

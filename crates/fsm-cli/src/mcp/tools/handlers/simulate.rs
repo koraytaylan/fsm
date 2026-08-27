@@ -16,7 +16,13 @@ pub(in crate::mcp::tools) fn run_simulate(
     clock: &mut dyn Clock,
     args: &Value,
 ) -> Result<Value, ErrorObj> {
-    run_simulate_with(store, clock, args, &ProgressReporter::discarding())
+    run_simulate_with(
+        store,
+        clock,
+        args,
+        &ProgressReporter::discarding(),
+        &crate::mcp::cancel::CancelFlag::default(),
+    )
 }
 
 pub(in crate::mcp::tools) fn run_simulate_with(
@@ -24,6 +30,7 @@ pub(in crate::mcp::tools) fn run_simulate_with(
     clock: &mut dyn Clock,
     args: &Value,
     progress: &ProgressReporter,
+    cancel: &crate::mcp::cancel::CancelFlag,
 ) -> Result<Value, ErrorObj> {
     let has_spec = args.get("spec").is_some();
     let has_machine = str_arg(args, "machine").is_some();
@@ -103,6 +110,12 @@ pub(in crate::mcp::tools) fn run_simulate_with(
     // The size is known up front, so every report carries its denominator.
     let total = report.steps.len() as u64;
     for (index, st) in report.steps.iter().enumerate() {
+        // A coarse boundary: the call was dispatched, so a cancellation is a
+        // tool outcome rather than a transport error, and the steps after
+        // this point are not rendered.
+        if cancel.cancelled() {
+            return Err(crate::mcp::cancel::CancelFlag::refusal());
+        }
         let done = index as u64 + 1;
         progress.report(clock.now_ms(), done, Some(total), None, done == total);
         let mut m = BTreeMap::new();

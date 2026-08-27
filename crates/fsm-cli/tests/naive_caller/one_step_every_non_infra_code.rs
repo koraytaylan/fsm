@@ -937,6 +937,42 @@ fn one_step_every_non_infra_code() {
     .expect("an oversized request consumes no request_id, so the same key still works");
     seen.insert("req/payload_too_large");
 
+    // req/cancelled: the client withdrew the request, so the call stopped at
+    // its next coarse boundary. Nothing was journalled and no idempotency key
+    // was consumed — cancelling is a decision about *this* call, not about the
+    // work — so the one-step recovery is the same call under an id the client
+    // has not withdrawn.
+    let id = Value::Num("31".into());
+    let mut cancellations = fsm_cli::mcp::cancel::Cancellations::default();
+    cancellations.cancel(&id);
+    let args = obj(&[
+        ("machine", Value::Str("case_review".into())),
+        (
+            "events",
+            Value::Arr(vec![obj(&[("name", Value::Str("docs_ok".into()))])]),
+        ),
+    ]);
+    let withdrawn = fsm_cli::mcp::tools::ToolCtx {
+        notifier: None,
+        request_id: Some(id.clone()),
+        meta: None,
+        cancel: cancellations.flag(&id),
+    };
+    let err =
+        fsm_cli::mcp::tools::dispatch_with(&mut st, &mut clock, "simulate", &args, &withdrawn)
+            .expect_err("a withdrawn call does not run");
+    assert_eq!(err.code, "req/cancelled");
+    let live_id = Value::Num("32".into());
+    let live = fsm_cli::mcp::tools::ToolCtx {
+        notifier: None,
+        request_id: Some(live_id.clone()),
+        meta: None,
+        cancel: cancellations.flag(&live_id),
+    };
+    fsm_cli::mcp::tools::dispatch_with(&mut st, &mut clock, "simulate", &args, &live)
+        .expect("the same call under a live id runs");
+    seen.insert("req/cancelled");
+
     let mut missing = Vec::new();
     for c in ALL_CODES {
         if INFRA.iter().any(|(a, _)| a == c) {

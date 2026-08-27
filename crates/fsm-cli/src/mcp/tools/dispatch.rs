@@ -20,6 +20,8 @@ pub struct ToolCtx<'a> {
     pub request_id: Option<Value>,
     /// The request's `_meta`, where a progress token lives.
     pub meta: Option<Value>,
+    /// Whether the client has withdrawn this request.
+    pub cancel: crate::mcp::cancel::CancelFlag,
 }
 
 /// Dispatch with no request context: the CLI and every test that is not a
@@ -47,7 +49,10 @@ pub fn dispatch_with(
     // is what keeps every existing golden byte-identical.
     let progress =
         crate::mcp::progress::ProgressReporter::from_meta(ctx.meta.as_ref(), ctx.notifier);
-    if progress.is_live() && super::PROGRESS_TOOLS.contains(&name) {
+    // The two tools with coarse loops take the flag as well as the reporter:
+    // they are the same two loops, and a call that can report where it is can
+    // also notice that nobody is waiting for it any more.
+    if (progress.is_live() || ctx.cancel.cancelled()) && super::PROGRESS_TOOLS.contains(&name) {
         if let Some(refusal) = read_only_refusal(store, name, args) {
             return Err(attach_request_id(refusal, args));
         }
@@ -57,8 +62,16 @@ pub fn dispatch_with(
             .ok_or_else(|| ErrorObj::new("req/args_invalid", format!("unknown tool {name}")))?;
         validate_args(&(spec.input_schema)(), args).map_err(|e| attach_request_id(e, args))?;
         return match name {
-            "simulate" => super::handlers::run_simulate_with(store, clock, args, &progress),
-            _ => super::handlers::run_instance_history_with(store, clock, args, &progress),
+            "simulate" => {
+                super::handlers::run_simulate_with(store, clock, args, &progress, &ctx.cancel)
+            }
+            _ => super::handlers::run_instance_history_with(
+                store,
+                clock,
+                args,
+                &progress,
+                &ctx.cancel,
+            ),
         }
         .map_err(|e| attach_request_id(e, args));
     }

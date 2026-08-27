@@ -502,7 +502,11 @@ pub(in crate::mcp::tools) fn run_instance_history_with(
     clock: &mut dyn Clock,
     args: &Value,
     progress: &crate::mcp::progress::ProgressReporter,
+    cancel: &crate::mcp::cancel::CancelFlag,
 ) -> Result<Value, ErrorObj> {
+    if cancel.cancelled() {
+        return Err(crate::mcp::cancel::CancelFlag::refusal());
+    }
     let page = run_instance_history(store, clock, args)?;
     let total = page
         .get("entries")
@@ -512,6 +516,9 @@ pub(in crate::mcp::tools) fn run_instance_history_with(
     const CHUNK: u64 = 10;
     let mut done = 0;
     while done < total {
+        if cancel.cancelled() {
+            return Err(crate::mcp::cancel::CancelFlag::refusal());
+        }
         done = (done + CHUNK).min(total);
         progress.report(clock.now_ms(), done, Some(total), None, done == total);
     }
