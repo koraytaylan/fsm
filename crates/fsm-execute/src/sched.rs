@@ -5,6 +5,39 @@
 //! empty in-flight map reaches the same conclusions its killed predecessor
 //! did. Time arrives as a parameter because the driver owns the one clock in
 //! the process; that is what keeps every decision a function of its inputs.
+//!
+//! # The two orderings, and why there are exactly two
+//!
+//! **Document order** decides everything the *engine* decides — which
+//! transition wins, which effects an entry emits and in what sequence. It is
+//! SPEC's, not this crate's, and nothing here may reinterpret it.
+//!
+//! **Round-robin selection order** decides which candidates get the scarce
+//! concurrency slots when more work is ready than the caps allow. Candidates
+//! are ordered by `(position within their own instance's queue, instance_id,
+//! effect_id)`, so every instance's first pending effect is considered before
+//! any instance's second. Ordering by `effect_id` alone would let the
+//! lexicographically-first instance take every slot forever — a starvation bug
+//! that only appears in the stores big enough to matter.
+//!
+//! The position is the effect's index within its instance's *candidate* list,
+//! itself ordered by `effect_id`, so the whole ordering is a pure function of
+//! one observation and needs no memory between ticks. That is what keeps
+//! restart equivalence intact: a fresh scheduler fed the same observation
+//! produces the identical ordering.
+//!
+//! There are exactly two. A third — priority, age, effect name — would need a
+//! source of truth outside the observation, and every fact this crate decides
+//! from is either in the journal or in the operator's table.
+//!
+//! The round-robin does not *rotate*: the tie-break at each position is
+//! `instance_id`, so more permanently-busy instances than global slots leaves
+//! the highest-sorting ones waiting until one of the others empties. A
+//! rotating cursor would close that window and would cost restart equivalence
+//! with it, since two executors reading the same journal prefix would disagree
+//! about whose turn it was. What this ordering buys is that no instance can
+//! convert *more queued work* into *more of the host*, which is the starvation
+//! that shows up in real stores.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -143,6 +176,8 @@ struct Candidate {
     argv: Vec<String>,
     timeout_ms: i64,
     attempt: u32,
+    /// Index within its own instance's candidate list, filled by the sort.
+    position: u32,
 }
 
 /// What a concurrency cap held back on one tick.
@@ -336,23 +371,49 @@ impl Scheduler {
                 argv,
                 timeout_ms: handler.timeout_ms,
                 attempt,
+                position: 0,
             });
         }
 
-        // A stable total order before the caps, because a cap that takes an
-        // arbitrary prefix of an unordered set makes the same observation
-        // produce different directives on different runs — and restart
-        // equivalence is the property everything else here rests on.
-        // `effect_id` is `{instance}/{seq}/{k}` and is therefore a total
-        // order over the candidates. It is a *lexicographic* one, so `/10/`
-        // sorts before `/9/`; that is fair enough for this task, whose
-        // subject is that an order exists and is applied, and `7602` replaces
-        // it with the round-robin the fairness rule wants.
+        // A total order before the caps, because a cap that takes an arbitrary
+        // prefix of an unordered set makes the same observation produce
+        // different directives on different runs — and restart equivalence is
+        // the property everything else here rests on.
+        //
+        // Two passes. The first puts candidates in `effect_id` order, which is
+        // a total order because `effect_id` is `{instance}/{seq}/{k}`, and
+        // assigns each one its position in its own instance's queue. The
+        // second is the round-robin the module doc describes: position first,
+        // so every instance's first effect is considered before any
+        // instance's second, and `instance_id` then `effect_id` to break the
+        // ties deterministically.
+        //
+        // Only candidates are counted, so an effect inside its backoff window
+        // — which never reached this list — neither occupies a position nor
+        // pushes its instance's later effects down the round.
         candidates.sort_by(|left, right| left.effect.effect_id.cmp(&right.effect.effect_id));
+        let mut queued: BTreeMap<String, u32> = BTreeMap::new();
+        for candidate in &mut candidates {
+            let position = queued
+                .entry(candidate.effect.instance_id.clone())
+                .or_default();
+            candidate.position = *position;
+            *position += 1;
+        }
+        candidates.sort_by(|left, right| {
+            left.position
+                .cmp(&right.position)
+                .then_with(|| left.effect.instance_id.cmp(&right.effect.instance_id))
+                .then_with(|| left.effect.effect_id.cmp(&right.effect.effect_id))
+        });
 
         let mut capped = 0usize;
         for candidate in candidates {
             if !self.has_room_for(&candidate.effect.instance_id) {
+                // `continue`, never `break`: an instance already at its
+                // per-instance cap is skipped at every position, and the slot
+                // it could not use goes to the next instance in the round
+                // rather than being lost for the tick.
                 capped += 1;
                 continue;
             }

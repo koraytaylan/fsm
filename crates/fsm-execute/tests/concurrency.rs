@@ -141,14 +141,16 @@ fn with_both_caps_the_binding_one_wins_in_each_direction() {
         Scheduler::new(table(r#""max_inflight":32,"max_inflight_per_instance":3,"#));
     let started = starts(&per_instance.on_observation(&spread(2, 10), NOW));
     assert_eq!(started.len(), 6, "three per instance, two instances");
+    // Round-robin, per `7602`: every instance's first effect before any
+    // instance's second.
     assert_eq!(
         started,
         [
             "case-00/3/0",
-            "case-00/3/1",
-            "case-00/3/2",
             "case-01/3/0",
+            "case-00/3/1",
             "case-01/3/1",
+            "case-00/3/2",
             "case-01/3/2",
         ]
     );
@@ -273,22 +275,34 @@ fn a_table_with_neither_key_gets_the_documented_defaults() {
     assert_eq!(DEFAULT_MAX_INFLIGHT, 8);
     assert_eq!(DEFAULT_MAX_INFLIGHT_PER_INSTANCE, 2);
 
-    // And the defaults are the ones actually applied.
+    // And the defaults are the ones actually applied. Ten instances of four
+    // under the round-robin: the eight slots go to eight *different*
+    // instances, because every instance's first effect is considered before
+    // any instance's second. An `effect_id` ordering would have spent all
+    // eight on `case-00` through `case-03`.
     let mut scheduler = Scheduler::new(table(""));
     let started = starts(&scheduler.on_observation(&spread(10, 4), NOW));
-    assert_eq!(started.len(), 8, "eight globally");
     assert_eq!(
         started,
         [
             "case-00/3/0",
-            "case-00/3/1",
             "case-01/3/0",
-            "case-01/3/1",
             "case-02/3/0",
-            "case-02/3/1",
             "case-03/3/0",
-            "case-03/3/1",
+            "case-04/3/0",
+            "case-05/3/0",
+            "case-06/3/0",
+            "case-07/3/0",
         ],
+        "eight globally, one apiece"
+    );
+
+    // The per-instance default binds when there is only one instance to
+    // spend the slots on.
+    let mut alone = Scheduler::new(table(""));
+    assert_eq!(
+        starts(&alone.on_observation(&spread(1, 4), NOW)),
+        ["case-00/3/0", "case-00/3/1"],
         "two per instance"
     );
 }
