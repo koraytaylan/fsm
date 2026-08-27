@@ -44,6 +44,16 @@ pub fn next_request_id() -> String {
     format!("fsm-elicit-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
 }
 
+/// Start the ids again from one.
+///
+/// For a golden, which has to know what the server will write before it
+/// writes it. The counter is process-wide, so a caller doing this holds
+/// whatever turn keeps its neighbours from taking an id in between — the
+/// same shape `args::reset_request_ids` already has.
+pub fn reset_request_ids() {
+    NEXT_ID.store(1, Ordering::Relaxed);
+}
+
 /// Whether the client said it can be asked.
 ///
 /// Captured at `initialize`, because that is the only message that carries

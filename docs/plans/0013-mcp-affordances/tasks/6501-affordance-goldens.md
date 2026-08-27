@@ -10,7 +10,8 @@ gated: false
 touches:
   - crates/fsm-cli/tests/mcp_affordance_golden.rs
   - crates/fsm-cli/tests/fixtures/mcp_affordance/session.expected
-status: planned
+  - crates/fsm-cli/src/mcp/elicit.rs
+status: done
 merged_as: ""
 ---
 # Affordance Goldens
@@ -39,3 +40,12 @@ Four of this plan's surfaces are wire shapes a client parses, so the proof is a 
 - The fixture contains no machine-specific string.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_affordance_golden` byte-compares a session covering the four list shapes, four completions, both elicitation outcomes, and the interleaved client request, the fixture is hand-derived and platform-independent, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** One session, fourteen written lines, byte-compared: the four list shapes, four completions, both elicitation outcomes, and — between the first `elicitation/create` and its answer — a `ping` answered while the question was outstanding. That interleaving is the case a refactor is most likely to break and least likely to be noticed breaking, so it is in the golden by name rather than in a comment.
+
+The stream's shape is written out by hand in the test and asserted before the bytes, the same arrangement 6101 uses and for the same reason. Suppressing `idempotentHint` during development failed it, then it was restored.
+
+**Corrections.**
+
+- *A byte-exact fixture cannot be hand-derived; the property step 6 protects can be.* Tool listings carry schemas and instance views carry hashes. So the fixture is generated (`REGEN_AFFORDANCE=1`) and the test carries an independent hand-written expectation of every line in order, plus explicit assertions for the claims inside it a reader would otherwise verify by eye: nineteen tools each with a title and four hints, the event completion answering `["decide","defer"]` from the named instance, the same question without context answering emptily *in* the stream rather than being absent from it, and the declined ask reporting `applied: false`.
+- *The golden needs the server's request ids to be predictable, so the counter can be reset.* Ids are process-wide and monotonic; a script that answers `fsm-elicit-1` needs the session to start from one. `elicit::reset_request_ids` mirrors `args::reset_request_ids`, and this suite's sessions take turns so a neighbour cannot take an id in between.
