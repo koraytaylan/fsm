@@ -92,7 +92,7 @@ impl Head {
 /// The socket's own read timeout is what bounds a client that stops
 /// mid-request: a short read becomes `408`, never a wait without end.
 pub fn read_request(input: &mut dyn BufRead) -> Result<Request, Refusal> {
-    let head = read_head(input)?;
+    let head = read_head(input)?.ok_or_else(|| Refusal::new(400, "no request"))?;
     let body = read_body(input, &head)?;
     Ok(Request {
         method: head.method,
@@ -140,8 +140,16 @@ pub fn read_body(input: &mut dyn BufRead, head: &Head) -> Result<Vec<u8>, Refusa
 }
 
 /// Read the request line and the headers, and nothing after them.
-pub fn read_head(input: &mut dyn BufRead) -> Result<Head, Refusal> {
-    let line = read_line(input, MAX_REQUEST_LINE, 414)?;
+///
+/// `Ok(None)` is a client that closed the connection between requests, which
+/// is how a keep-alive connection ends and is not an error: answering it
+/// would write a response nobody asked for onto a socket nobody is reading.
+pub fn read_head(input: &mut dyn BufRead) -> Result<Option<Head>, Refusal> {
+    let line = match read_line(input, MAX_REQUEST_LINE, 414) {
+        Ok(line) => line,
+        Err(refusal) if refusal.message == "the client closed the connection" => return Ok(None),
+        Err(refusal) => return Err(refusal),
+    };
     if line.is_empty() {
         return Err(Refusal::new(400, "empty request line"));
     }
@@ -206,13 +214,13 @@ pub fn read_head(input: &mut dyn BufRead) -> Result<Head, Refusal> {
             Err(_) => return Err(Refusal::new(400, "malformed Content-Length")),
         },
     };
-    Ok(Head {
+    Ok(Some(Head {
         method: method.to_string(),
         path: path.to_string(),
         query: query.to_string(),
         headers,
         content_length: declared,
-    })
+    }))
 }
 
 /// Read the header block: names lowercased, values verbatim.

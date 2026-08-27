@@ -625,7 +625,13 @@ impl super::server::Handler for EndpointHandler {
         output: &mut dyn Write,
     ) -> std::io::Result<super::server::Flow> {
         let head = match super::request::read_head(input) {
-            Ok(head) => head,
+            // The client closed the connection between requests, which is
+            // how keep-alive ends. Writing a refusal here would put a
+            // response nobody asked for onto a socket nobody is reading —
+            // and a client that read it back would find two responses to one
+            // request.
+            Ok(None) => return Ok(super::server::Flow::Close),
+            Ok(Some(head)) => head,
             Err(refusal) => {
                 write_response(output, &Response::text(refusal.status, &refusal.message))?;
                 return Ok(super::server::Flow::Close);

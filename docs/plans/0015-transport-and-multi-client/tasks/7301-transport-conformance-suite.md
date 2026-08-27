@@ -9,9 +9,11 @@ depends_on:
   - lock-contention-degradation
 gated: false
 touches:
+  - crates/fsm-cli/src/http/request.rs
+  - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/tests/http_conformance.rs
   - crates/fsm-cli/tests/isolated_fuzz_targets.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Transport Conformance Suite
@@ -41,3 +43,12 @@ For a hand-rolled network parser the hostile half of this suite matters more tha
 - Wall time on the slowest CI platform is measured and stated in the commit message; the suite is table-driven rather than iteration-based, so if it is too slow the fix is fewer redundant hostile cases, not a lower iteration count.
 
 - **Done when:** `cargo test -p fsm-cli --test http_conformance --test isolated_fuzz_targets` passes, every hostile shape returns a documented status with no panic and a still-healthy listener, cross-transport response equivalence holds, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** Everything through a real loopback socket on an ephemeral port. The happy path runs end to end — initialize, a call, a subscription, a stream, a write, teardown — and the hostile path is a table of eighteen shapes, each asserting its documented status **and** that a well-formed request straight afterwards is still answered. Two sessions writing concurrently leave a journal that classifies `Ok`, and the same two tool calls over stdio and over HTTP produce byte-identical JSON-RPC objects, which is the assertion that says the transport is not making protocol decisions.
+
+**Wall time: 1.0 second**, three runs, on this host. No iteration knob was needed: the suite is table-driven rather than iteration-based, so it adds nothing meaningful to the shared 45-minute CI budget and there is nothing to put behind an env override.
+
+**Corrections.**
+
+- *A keep-alive connection ending is not a request to refuse.* Driving the transport over real sockets found it: after answering, the loop read again, saw the client's clean close, and wrote a `400` onto a socket nobody was reading — which a client reading back found as a second response to one request. `read_head` now reports a clean close as `Ok(None)` and the handler closes silently.
+- *Two hostile cases needed the client to stop talking, not to go quiet.* A short body and an unterminated header block only reach the server as "the request never arrived" when the write half is shut down; without that they wait out the thirty-second read timeout, which is correct behaviour and a terrible test.
