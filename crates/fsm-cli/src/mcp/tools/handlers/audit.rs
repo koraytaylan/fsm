@@ -326,7 +326,10 @@ pub fn replay_report(
         .get("to_seq")
         .and_then(Value::as_num)
         .and_then(|n| n.parse::<u64>().ok());
-    let records = fsm_store::journal_io::load_records(data_dir)
+    // The intact prefix, not the whole journal: a torn final record is a
+    // fact about the store, and "I cannot answer at all" is a worse answer
+    // than "I replayed the twelve records that are whole".
+    let records = fsm_store::journal_io::load_intact_prefix(data_dir)
         .map_err(|e| ErrorObj::new("io/read", e).hint("the journal could not be read at all"))?;
     let records: Vec<fsm_core::record::Record> = match to_seq {
         Some(to) => records.into_iter().filter(|r| r.seq <= to).collect(),

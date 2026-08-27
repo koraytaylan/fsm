@@ -29,7 +29,7 @@ mod verify;
 
 pub use classify::{Diagnosis, classify, diagnose};
 pub use init::init;
-pub use load::load_records;
+pub use load::{load_intact_prefix, load_records};
 pub use open::open;
 pub(crate) use open::open_read_only;
 pub use paths::journal_dir;

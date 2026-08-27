@@ -8,9 +8,20 @@ depends_on:
   - store-doctor-tool
 gated: false
 touches:
+  - crates/fsm-cli/src/mcp/tools/mod.rs
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-core/src/error.rs
+  - docs/SPEC.md
+  - crates/fsm-store/src/journal_io/load.rs
+  - crates/fsm-store/src/journal_io/mod.rs
+  - crates/fsm-cli/src/mcp/tools/handlers/audit.rs
+  - crates/fsm-cli/tests/naive_caller/session_outcomes.rs
+  - crates/fsm-cli/tests/naive_caller/one_step_elicit.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
+  - crates/fsm-cli/tests/naive_caller/main.rs
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - crates/fsm-cli/tests/degraded_gating.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Degraded Tool Gating
@@ -39,3 +50,17 @@ A caller that stumbles into a refusal should learn exactly what it would have le
 - Gate ordering is pinned: a test that makes both gates applicable asserts the degraded reason wins.
 
 - **Done when:** `cargo test -p fsm-cli --test degraded_gating` passes every case above, the three diagnostic tools answer from a classification, refusals carry the same facts as `store_doctor`, dry-run authoring still works, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `DEGRADED_TOOLS` names the three that answer, beside `MUTATING_TOOLS` and for the same reason. `dispatch_degraded` takes a **path** rather than a store — there is no store — and routes in the order step 5 asks for: the dry-run bypass first, so authoring still works when it is most useful; then the degraded gate, which is the stronger constraint and so must win over read-only; then everything else is refused.
+
+A refusal carries `store/degraded` with the health, the message, the blast radius and the remedy — read from `doctor_report`, the same function `store_doctor` returns, so the two cannot disagree. That equality is asserted field by field for **every** store-backed tool, not sampled. The hint names `store_doctor`, or the exact repair command when the table prescribes one.
+
+`tools/list` is byte-identical to a healthy server's, asserted by canonical bytes: a shrinking list would have a client cache a surface that reappears when the store is repaired.
+
+**Corrections.**
+
+- *`journal_replay` could not answer for a torn store, which is half the point of allowing it.* `load_records` refuses a journal whose final record is half-written — correct for an *open*, wrong for a diagnosis. `load_intact_prefix` loads the authoritative prefix and stops at the tear, so replay reports how much of the journal is whole. "I cannot answer at all" is a worse answer than "twelve records replayed".
+- *A torn tail still opens read-only, so it is not degraded.* The both-gates-apply test needs a store nothing can open, which is interior damage — the fixture makes one by breaking canonicality on top of the tear.
+- *A dry-run create runs against `Store::open_memory`.* The registry's handler takes a `&mut Store` and a definition is checked against the engine rather than the store, so a scratch in-memory store is what lets the same handler answer with nothing on disk.
+- *One more file split.* Driving the degraded refusal put `tool_outcomes.rs` over the thousand-line ceiling; the outcomes whose *setup* is a session or a directory now live in `session_outcomes.rs`.
+- *`serve.rs` is at exactly 1 000 lines.* The next task touching it has to split it first; noting it here so nobody discovers it as a surprise.

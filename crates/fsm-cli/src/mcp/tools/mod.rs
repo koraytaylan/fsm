@@ -20,7 +20,7 @@ mod validate;
 #[cfg(test)]
 mod tests;
 
-pub use dispatch::{ToolCtx, dispatch, dispatch_with};
+pub use dispatch::{ToolCtx, dispatch, dispatch_degraded, dispatch_with};
 pub use handlers::{doctor_report, machine_summary, replay_report, verify_report};
 pub use validate::validate_args;
 
@@ -79,6 +79,14 @@ pub const MUTATING_TOOLS: &[&str] = &[
 /// The tools whose result names exactly one instance, and therefore carries
 /// a link to it.
 ///
+/// The tools that answer when the store will not open.
+///
+/// All three work from a **classification** rather than from a healthy open,
+/// which is why `6604` had to: the store most in need of a diagnosis is the
+/// one nothing can open. Named once, beside `MUTATING_TOOLS`, so the gate
+/// and the documentation read the same list.
+pub const DEGRADED_TOOLS: &[&str] = &["store_doctor", "journal_verify", "journal_replay"];
+
 /// One list rather than six match arms, beside `MUTATING_TOOLS` for the same
 /// reason: membership is a fact about the tool, and a fact kept in one place
 /// cannot disagree with itself. `instance_list` is deliberately absent — a

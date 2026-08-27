@@ -178,3 +178,84 @@ pub(super) fn expect_seq_arg(args: &Value) -> Option<u64> {
         _ => None,
     })
 }
+
+/// Dispatch a tool call against a store that would not open.
+///
+/// The gates are ordered on purpose: a dry-run `machine_create` first,
+/// because validating a definition needs no store and refusing it would
+/// block authoring exactly when it is most useful — the same ruling plan
+/// 0008 made for read-only mode. Then the degraded gate, which is a stronger
+/// constraint than read-only and so must be checked before it: a read-only
+/// *and* degraded server has to report the reason that actually applies.
+///
+/// A refusal carries the health, the blast radius and the remedy — the same
+/// three facts `store_doctor` returns, from the same source, so the two can
+/// never disagree. An error that only said "unavailable" would make a model
+/// retry instead of diagnose.
+pub fn dispatch_degraded(
+    data_dir: &std::path::Path,
+    clock: &mut dyn Clock,
+    name: &str,
+    args: &Value,
+    ctx: &ToolCtx<'_>,
+) -> Result<Value, ErrorObj> {
+    let spec = registry()
+        .into_iter()
+        .find(|t| t.name == name)
+        .ok_or_else(|| ErrorObj::new("req/args_invalid", format!("unknown tool {name}")))?;
+    validate_args(&(spec.input_schema)(), args).map_err(|e| attach_request_id(e, args))?;
+
+    if name == "machine_create" && args.get("dry_run").and_then(Value::as_bool) == Some(true) {
+        // A definition is checked against the engine, not against the store,
+        // so this needs nothing on disk.
+        let mut scratch = Store::open_memory()?;
+        return (spec.run)(&mut scratch, clock, args).map_err(|e| attach_request_id(e, args));
+    }
+    if super::DEGRADED_TOOLS.contains(&name) {
+        let progress =
+            crate::mcp::progress::ProgressReporter::from_meta(ctx.meta.as_ref(), ctx.notifier);
+        return match name {
+            "store_doctor" => Ok(super::handlers::doctor_report(data_dir)),
+            "journal_verify" => {
+                super::handlers::verify_report(data_dir, args, clock, &progress, &ctx.cancel)
+            }
+            _ => super::handlers::replay_report(data_dir, args, clock, &progress, &ctx.cancel),
+        }
+        .map_err(|e| attach_request_id(e, args));
+    }
+    Err(attach_request_id(degraded_refusal(data_dir, name), args))
+}
+
+/// The refusal a store-backed tool gets while the store will not open.
+fn degraded_refusal(data_dir: &std::path::Path, name: &str) -> ErrorObj {
+    let diagnosis = super::handlers::doctor_report(data_dir);
+    let text = |field: &str| {
+        diagnosis
+            .get(field)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let health = text("health");
+    let mut details = std::collections::BTreeMap::from([
+        ("health".to_string(), Value::Str(health.clone())),
+        ("message".to_string(), Value::Str(text("message"))),
+    ]);
+    if let Some(radius) = diagnosis.get("blast_radius") {
+        details.insert("blast_radius".to_string(), radius.clone());
+    }
+    let remedy = diagnosis.get("remedy").cloned();
+    if let Some(remedy) = &remedy {
+        details.insert("remedy".to_string(), remedy.clone());
+    }
+    let hint = match remedy.as_ref().and_then(Value::as_str) {
+        Some(command) => format!("run `{command}`, or call store_doctor for the full diagnosis"),
+        None => "call store_doctor for the full diagnosis; this store has no repair".to_string(),
+    };
+    ErrorObj::new(
+        "store/degraded",
+        format!("{name} needs a store, and this one is {health}"),
+    )
+    .hint(hint)
+    .details(Value::Obj(details))
+}

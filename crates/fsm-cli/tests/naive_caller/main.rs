@@ -8,4 +8,5 @@ mod one_step_data;
 mod one_step_elicit;
 mod one_step_every_non_infra_code;
 mod reactive_flows;
+mod session_outcomes;
 mod tool_outcomes;

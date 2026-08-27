@@ -21,6 +21,41 @@ use crate::harness::obj;
 ///
 /// None of them journals anything or claims a key, so in every case the
 /// recovery is the same call again — or the direct path the hint names.
+/// The refusal a store-backed tool gets while the store will not open, and
+/// the step that recovers it: repair the store, which the refusal names.
+pub(crate) fn degraded_row(clock: &mut FixedClock, seen: &mut BTreeSet<&'static str>) {
+    let empty = std::env::temp_dir().join(format!(
+        "fsm-degraded-row-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let _ = std::fs::create_dir_all(&empty);
+    let error = fsm_cli::mcp::tools::dispatch_degraded(
+        &empty,
+        clock,
+        "instance_get",
+        &obj(&[("instance_id", Value::Str("inst-anything".into()))]),
+        &ToolCtx::default(),
+    )
+    .expect_err("there is no store to read");
+    assert_eq!(error.code, "store/degraded");
+    // The one step: the refusal points at the diagnosis, which answers.
+    assert!(error.hint.contains("store_doctor"), "{}", error.hint);
+    fsm_cli::mcp::tools::dispatch_degraded(
+        &empty,
+        clock,
+        "store_doctor",
+        &obj(&[]),
+        &ToolCtx::default(),
+    )
+    .expect("the diagnosis answers where the read could not");
+    let _ = std::fs::remove_dir_all(&empty);
+    seen.insert("store/degraded");
+}
+
 pub(crate) fn elicitation_rows(
     st: &mut Store,
     clock: &mut FixedClock,

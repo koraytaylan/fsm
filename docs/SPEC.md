@@ -1139,6 +1139,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `run/overflow` — checked arithmetic overflow
 - `run/unhandled` — no candidate on the chain
 - `store/chain_broken` — interior hash/seq break
+- `store/degraded` — a store-backed call on a server that could not open its store
 - `store/lock` — lock I/O
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed

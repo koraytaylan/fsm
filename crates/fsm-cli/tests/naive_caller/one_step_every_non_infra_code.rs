@@ -976,6 +976,7 @@ fn one_step_every_non_infra_code() {
     seen.insert("req/cancelled");
 
     crate::one_step_elicit::elicitation_rows(&mut st, &mut clock, &mut seen);
+    crate::one_step_elicit::degraded_row(&mut clock, &mut seen);
 
     let mut missing = Vec::new();
     for c in ALL_CODES {

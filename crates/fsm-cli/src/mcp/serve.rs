@@ -265,6 +265,7 @@ pub fn serve_dir_with(
         executor.as_deref_mut(),
         refresh.as_deref(),
         degraded.as_deref(),
+        degraded.as_ref().map(|_| dir),
         input,
         output,
     )
@@ -306,6 +307,9 @@ struct Live {
     /// Why the store would not open, when it would not. A client hears this
     /// once, at `error` level, as soon as it is allowed to hear anything.
     degraded: Option<String>,
+    /// The directory to diagnose while degraded. Every answer a degraded
+    /// session gives is a function of this path, because there is no store.
+    degraded_dir: Option<std::path::PathBuf>,
     /// The change feed, spawned on the first successful subscribe and
     /// stopped when the session ends. A server nobody subscribes to spawns
     /// nothing and does no I/O between requests — which is what keeps every
@@ -376,7 +380,7 @@ pub fn serve_session_with(
     input: impl BufRead,
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
-    serve_session_degraded(store, clock, executor, refresh, None, input, output)
+    serve_session_degraded(store, clock, executor, refresh, None, None, input, output)
 }
 
 /// The protocol loop, with one more thing it may have to say: that the store
@@ -388,6 +392,7 @@ pub fn serve_session_degraded(
     mut executor: Option<&mut ExecutorLoop>,
     refresh: Option<&std::path::Path>,
     degraded: Option<&str>,
+    degraded_dir: Option<&std::path::Path>,
     mut input: impl BufRead,
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
@@ -406,6 +411,7 @@ pub fn serve_session_degraded(
     let mut initialized_notified = false;
     let mut live = Live {
         degraded: degraded.map(str::to_string),
+        degraded_dir: degraded_dir.map(std::path::Path::to_path_buf),
         ..Live::default()
     };
     loop {
@@ -856,15 +862,19 @@ fn handle_request<'a>(
                     ),
                 )
             } else {
-                match store {
-                    Some(st) => match tools::dispatch_with(st, clock, name, &args, &ctx) {
-                        Ok(v) => send_line(output, &result_response(id, tool_ok(name, v))),
-                        Err(e) => send_line(output, &result_response(id, tool_error(&e))),
-                    },
-                    None => send_line(
-                        output,
-                        &result_response(id, tool_error(&ErrorObj::new("io/read", "no store"))),
-                    ),
+                let called = match (store, live.degraded_dir.clone()) {
+                    (Some(st), _) => tools::dispatch_with(st, clock, name, &args, &ctx),
+                    // Degraded: the diagnostic tools answer from the
+                    // directory itself, and everything else is refused with
+                    // the diagnosis rather than with "unavailable".
+                    (None, Some(data_dir)) => {
+                        tools::dispatch_degraded(&data_dir, clock, name, &args, &ctx)
+                    }
+                    (None, None) => Err(ErrorObj::new("io/read", "no store")),
+                };
+                match called {
+                    Ok(v) => send_line(output, &result_response(id, tool_ok(name, v))),
+                    Err(e) => send_line(output, &result_response(id, tool_error(&e))),
                 }
             }
         }
@@ -883,7 +893,7 @@ fn handle_request<'a>(
 /// golden for every existing deployment.
 fn mode_note(store: Option<&Store>, embedded: bool, degraded: bool) -> &'static str {
     if degraded {
-        "\n\nThis server could not open its store (mode=degraded): every tool that reads or writes instances is refused, and the documentation resources still work. Call store_doctor for the health, the blast radius, and the exact repair command; journal_verify and explain_step answer too."
+        "\n\nThis server could not open its store (mode=degraded): every tool that reads or writes instances is refused, and each refusal carries the health, the blast radius, and the remedy. Call store_doctor for the diagnosis; journal_verify and journal_replay also answer, a machine_create with dry_run still validates, and the documentation resources still read."
     } else if store.is_some_and(|store| store.journal.is_read_only()) {
         "\n\nThis server is running read-only (mode=read-only): the effect executor owns the writer, so machine_create, instance_create, instance_send, deadline_poll, effect_ack, and instance_cancel are refused here. Read tools work normally, and a machine_create with dry_run still validates."
     } else if embedded {

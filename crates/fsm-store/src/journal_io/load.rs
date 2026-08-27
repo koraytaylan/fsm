@@ -9,6 +9,17 @@ pub fn load_records(dir: &Path) -> Result<Vec<Record>, String> {
     load_records_with_active_meta(dir, FinalTailPolicy::Reject).map(|(records, _)| records)
 }
 
+/// Load the authoritative prefix, stopping at a torn final record instead of
+/// refusing the whole journal.
+///
+/// For a diagnosis only. An *open* must reject a torn tail — a store whose
+/// last record is half-written is not a store to serve from — but "how much
+/// of this journal is intact" is exactly the question a damaged store is
+/// asked, and refusing to answer it is not an answer.
+pub fn load_intact_prefix(dir: &Path) -> Result<Vec<Record>, String> {
+    load_records_with_active_meta(dir, FinalTailPolicy::Ignore).map(|(records, _)| records)
+}
+
 type ActiveSegmentMeta = (String, u64, u64, u32);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
