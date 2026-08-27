@@ -27,6 +27,7 @@ fn registry_order() {
             "instance_get",
             "instance_list",
             "instance_history",
+            "instance_elicit",
             "simulate",
         ]
     );

@@ -975,6 +975,8 @@ fn one_step_every_non_infra_code() {
         .expect("the same call under a live id runs");
     seen.insert("req/cancelled");
 
+    crate::one_step_elicit::elicitation_rows(&mut st, &mut clock, &mut seen);
+
     let mut missing = Vec::new();
     for c in ALL_CODES {
         if INFRA.iter().any(|(a, _)| a == c) {

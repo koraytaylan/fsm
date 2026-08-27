@@ -223,6 +223,9 @@ fn arguments_for(tool: &str) -> String {
         "invocation_start" | "invocation_return" => {
             r#"{"instance_id":"order-1","slot":"review","request_id":"req-f"}"#.to_string()
         }
+        "instance_elicit" => {
+            r#"{"instance_id":"order-1","event":"confirm","request_id":"req-i"}"#.to_string()
+        }
         "signal_deliver" => {
             r#"{"instance_id":"order-1","signal_id":"order-1/3/0","request_id":"req-g"}"#
                 .to_string()

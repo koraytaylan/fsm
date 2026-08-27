@@ -11,22 +11,6 @@ pub(crate) const INFRA: &[(&str, &str)] = &[
         "def/supersedes_self",
         "unreachable by construction: a definition would have to contain its own hash; the rule stands as defence in depth, like def/invoke_cycle",
     ),
-    // Elicitation's three outcomes reach a caller only through
-    // `instance_elicit`, which plan 0013 task 6403 adds; 6401 registers the
-    // codes because it is the task that returns them, and 6403's commit
-    // removes these three entries.
-    (
-        "req/elicit_failed",
-        "no tool reaches elicitation until plan 0013 task 6403",
-    ),
-    (
-        "req/elicit_nested",
-        "no tool reaches elicitation until plan 0013 task 6403",
-    ),
-    (
-        "req/elicit_timeout",
-        "no tool reaches elicitation until plan 0013 task 6403",
-    ),
     ("io/read", "filesystem failure is not a caller-shaped retry"),
     (
         "io/write",

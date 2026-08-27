@@ -8,6 +8,14 @@ depends_on:
   - tool-annotations-and-titles
 gated: false
 touches:
+  - crates/fsm-core/src/error.rs
+  - docs/SPEC.md
+  - docs/EMBEDDING.md
+  - crates/fsm-cli/tests/naive_caller/one_step_elicit.rs
+  - crates/fsm-cli/tests/naive_caller/one_step_every_non_infra_code.rs
+  - crates/fsm-cli/tests/naive_caller/infra_support.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
+  - crates/fsm-cli/tests/fixtures/transcripts/skeleton.out.jsonl
   - crates/fsm-cli/src/mcp/tools/mod.rs
   - crates/fsm-cli/src/mcp/tools/schema_in.rs
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
@@ -15,7 +23,7 @@ touches:
   - crates/fsm-cli/src/mcp/descriptions.rs
   - crates/fsm-cli/tests/tools_budget.rs
   - crates/fsm-cli/tests/elicit_tool.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Elicit Event Tool
@@ -49,3 +57,19 @@ A workflow at a human gate can now ask — and the journal records the event tha
 - Its structured output validates against its declared output schema via `tool_schemas.rs`.
 
 - **Done when:** `cargo test -p fsm-cli --test elicit_tool --test tool_schemas --test read_only` passes every case above, an accepted exchange journals only the event, declines and failures journal nothing and consume no key, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `instance_elicit(instance_id, event, request_id)` is the nineteenth tool and the first mutating one this plan adds. It refuses in order: no client able to answer, then an event that cannot fire — asking a person to fill in a form for an event the machine would reject is worse than refusing before the form is written. Then it derives the schema, asks through 6401's exchange, and on `accept` coerces the answer and sends it down the **ordinary** `instance_send` path with the caller's key. The journal shows one `event_applied` and no new record kind: what happened to the workflow is that an event arrived.
+
+`decline` and `cancel` return a structured result naming the action, journal nothing, and leave the key unclaimed — asserted by reusing it immediately afterwards. So do a timeout, a nesting refusal and a coercion failure.
+
+**The ceiling holds without moving.** Nineteen tools measure **30 188** bytes against 38 000. `instance_elicit` cost 2 556, more than the 1 700 projected — its description was shortened by 89 bytes rather than the number being raised — leaving **7 812** for plan 0014's five tools, or 1 562 each.
+
+All four elicitation codes now reach a caller, so both every-code gates lost their allowlist entries and gained real driven outcomes and one-step rows: no client to ask, a client that never answers, an ask inside an ask, and an answer that is an error. Each recovery is the same call again or the direct path the hint names, because none of them claims a key.
+
+**Corrections.**
+
+- *The refusal a read-only server gives is `io/write`, not a code of this task's own.* Every mutating tool gets the same mode-naming sentence from one place; a second vocabulary for the same refusal would be worse than the shared one.
+- *The tool needs a fifth registry shape.* `ToolSpec::run` cannot carry the session, so `instance_elicit` takes the branch `simulate` and `instance_history` already take: validated in `dispatch_with`, then run with the context. Its registry `run` is the CLI path and says there is nobody to ask.
+- *The one-step rows moved to their own file.* Adding four rows put `one_step_every_non_infra_code.rs` over the thousand-line ceiling; the four that need a scripted client on the other end of the wire are a seam, so they live in `one_step_elicit.rs`.
+- *Two suites serialise their id predictions.* Server request ids are monotonic per process, so a test that scripts an answer for the next one holds a turn while it learns the id and uses it — as does any test that consumes one by writing a question.
+- *EMBEDDING's read-only list moved from ten tools to eleven.* A documentation test checks that every gated tool is named there, which is the test doing its job.

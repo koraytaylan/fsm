@@ -119,6 +119,7 @@ pub const ALL_CODES: &[&str] = &[
     "req/elicit_failed",
     "req/elicit_nested",
     "req/elicit_timeout",
+    "req/elicit_unsupported",
     "req/event_internal",
     "req/event_unknown",
     "req/field_missing",

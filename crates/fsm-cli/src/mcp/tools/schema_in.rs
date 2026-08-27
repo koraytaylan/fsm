@@ -55,6 +55,17 @@ pub(super) fn schema_instance_send_in() -> Value {
     schema_obj(p, &["instance_id", "event", "request_id"], false)
 }
 
+/// An ask: which instance, which declared event, and the key its answer
+/// will be sent under.
+pub(super) fn schema_instance_elicit_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("event".into(), ty("string"));
+    p.insert("request_id".into(), ty("string"));
+    p.insert("message".into(), ty("string"));
+    schema_obj(p, &["instance_id", "event", "request_id"], false)
+}
+
 pub(super) fn schema_deadline_poll_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

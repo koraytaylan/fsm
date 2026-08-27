@@ -131,6 +131,23 @@ pub(super) fn schema_instance_send_out() -> Value {
     )
 }
 
+/// The two shapes one ask can produce: the sent event's view, or the action
+/// the person took instead. `action` is always there, so a caller reacts
+/// rather than guesses.
+pub(super) fn schema_instance_elicit_out() -> Value {
+    let mut p = instance_core_props();
+    p.insert("action".into(), ty("string"));
+    p.insert("applied".into(), ty("boolean"));
+    p.insert("event".into(), ty("string"));
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("duplicate".into(), ty("boolean"));
+    p.insert("request_id".into(), ty("string"));
+    p.insert("transition".into(), transition_obj());
+    p.insert("monitor_flags".into(), ty("array"));
+    p.insert("trace".into(), ty("object"));
+    schema_obj(p, &["action", "applied", "event", "instance_id"], true)
+}
+
 pub(super) fn schema_deadline_poll_out() -> Value {
     let mut p = instance_core_props();
     p.insert("deadline_applied".into(), ty("boolean"));

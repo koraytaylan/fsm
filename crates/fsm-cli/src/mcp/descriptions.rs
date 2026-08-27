@@ -35,6 +35,8 @@ pub const INSTANCE_LIST: &str =
 pub const INSTANCE_HISTORY: &str = "When you need the audit trail, page event and deadline records; include_trace recomputes decision traces.";
 pub const SIMULATE: &str = "When you want a what-if, simulate events without journaling or implicit time advancement; rejections are findings.";
 
+pub const INSTANCE_ELICIT: &str = "Ask the user for a declared event's fields, then send it. Use at a human gate when you lack the values: the form comes from the machine's own field types, and the answer is validated and journaled exactly like instance_send. Needs a client advertising elicitation; otherwise use instance_send. A declined ask writes nothing and leaves request_id unclaimed.";
+
 /// The display names a host shows beside each tool.
 ///
 /// They live here, beside the descriptions, because a title and a
@@ -58,3 +60,4 @@ pub const INSTANCE_GET_TITLE: &str = "Show instance";
 pub const INSTANCE_LIST_TITLE: &str = "List instances";
 pub const INSTANCE_HISTORY_TITLE: &str = "Read history";
 pub const SIMULATE_TITLE: &str = "Simulate events";
+pub const INSTANCE_ELICIT_TITLE: &str = "Ask and send";

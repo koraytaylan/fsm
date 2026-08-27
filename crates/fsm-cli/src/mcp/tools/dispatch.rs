@@ -88,6 +88,14 @@ pub fn dispatch_with(
     if let Some(refusal) = read_only_refusal(store, name, args) {
         return Err(attach_request_id(refusal, args));
     }
+    // The one tool that talks back to the client. It needs the session the
+    // registry's `run` cannot carry, so it takes the same shape the progress
+    // and cancellation tools take: validated here, then run with the context.
+    if name == "instance_elicit" && ctx.io.is_some() {
+        validate_args(&(spec.input_schema)(), args).map_err(|e| attach_request_id(e, args))?;
+        return super::handlers::run_instance_elicit_with(store, clock, args, ctx)
+            .map_err(|e| attach_request_id(e, args));
+    }
     if name == "instance_create" {
         if let Some(ctx) = args.get("context") {
             if !ctx.is_obj() {

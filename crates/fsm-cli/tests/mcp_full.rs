@@ -105,7 +105,7 @@ fn assert_transcript(ver: &str) {
 }
 
 #[test]
-fn eighteen_tools_in_order() {
+fn nineteen_tools_in_order() {
     assert_eq!(
         names(),
         [
@@ -126,6 +126,7 @@ fn eighteen_tools_in_order() {
             "instance_get",
             "instance_list",
             "instance_history",
+            "instance_elicit",
             "simulate",
         ]
     );

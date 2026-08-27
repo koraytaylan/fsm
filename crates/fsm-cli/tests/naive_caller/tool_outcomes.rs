@@ -842,6 +842,83 @@ fn drive_all_tool_outcomes() -> std::collections::BTreeSet<String> {
         Ok(v) => note_ok(&v, &mut out),
         Err(e) => note_err(&e, &mut out),
     }
+    // The four elicitation outcomes, each through a real dispatch: nobody to
+    // ask, nobody who answers, an answer that is an error, and an ask inside
+    // an ask.
+    {
+        use fsm_cli::mcp::notify::{Notifier, SessionIo, SharedSink};
+        let elicit_args = obj(&[
+            ("instance_id", Value::Str("inst-c1".into())),
+            ("event", Value::Str("docs_ok".into())),
+            ("request_id", Value::Str("elicit-1".into())),
+        ]);
+        // No session at all: the CLI path.
+        match dispatch(&mut st, &mut clock, "instance_elicit", &elicit_args) {
+            Ok(v) => note_ok(&v, &mut out),
+            Err(e) => note_err(&e, &mut out),
+        }
+        let sink = SharedSink::new();
+        let notifier = Notifier::new(Box::new(sink.writer()));
+        let mut silent = std::io::Cursor::new(Vec::new());
+        let io = std::cell::RefCell::new(SessionIo::new(&notifier, &mut silent));
+        // A client that never answers.
+        let ctx = fsm_cli::mcp::tools::ToolCtx {
+            io: Some(&io),
+            client_elicitation: true,
+            ..Default::default()
+        };
+        let mut impatient = FixedClock::new(1_000, fsm_cli::mcp::elicit::DEFAULT_TIMEOUT_MS + 1);
+        match fsm_cli::mcp::tools::dispatch_with(
+            &mut st,
+            &mut impatient,
+            "instance_elicit",
+            &elicit_args,
+            &ctx,
+        ) {
+            Ok(v) => note_ok(&v, &mut out),
+            Err(e) => note_err(&e, &mut out),
+        }
+        // An ask inside an ask.
+        let outstanding = io.borrow_mut();
+        match fsm_cli::mcp::tools::dispatch_with(
+            &mut st,
+            &mut clock,
+            "instance_elicit",
+            &elicit_args,
+            &ctx,
+        ) {
+            Ok(v) => note_ok(&v, &mut out),
+            Err(e) => note_err(&e, &mut out),
+        }
+        drop(outstanding);
+        // An answer that is an error.
+        let refusal = fsm_cli::mcp::elicit::next_request_id();
+        let next: u64 = refusal
+            .trim_start_matches("fsm-elicit-")
+            .parse()
+            .unwrap_or(0);
+        let script = format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":\"fsm-elicit-{}\",\"error\":{{\"code\":-32601,\"message\":\"no\"}}}}\n",
+            next + 1
+        );
+        let mut answered = std::io::Cursor::new(script.into_bytes());
+        let refusing = std::cell::RefCell::new(SessionIo::new(&notifier, &mut answered));
+        let ctx = fsm_cli::mcp::tools::ToolCtx {
+            io: Some(&refusing),
+            client_elicitation: true,
+            ..Default::default()
+        };
+        match fsm_cli::mcp::tools::dispatch_with(
+            &mut st,
+            &mut clock,
+            "instance_elicit",
+            &elicit_args,
+            &ctx,
+        ) {
+            Ok(v) => note_ok(&v, &mut out),
+            Err(e) => note_err(&e, &mut out),
+        }
+    }
     // A call the client withdrew: dispatched with its id already cancelled,
     // it stops at the first coarse boundary inside the tool.
     let id = Value::Num("77".into());
@@ -895,13 +972,6 @@ fn all_codes_hygiene() {
         "def/invoke_cycle",
         // Same shape: a definition would have to contain its own hash.
         "def/supersedes_self",
-        // Elicitation's three outcomes reach a caller only through
-        // `instance_elicit`, which plan 0013 task 6403 adds. Task 6401
-        // registers the codes because it is the task that returns them, and
-        // 6403's commit removes these three lines.
-        "req/elicit_failed",
-        "req/elicit_nested",
-        "req/elicit_timeout",
         // Plan 0011 registers its closed set of codes in one task so no
         // later task edits `error.rs`. Each line below names the task that
         // makes its code reachable and is removed by that task's commit.
