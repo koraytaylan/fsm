@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/serve.rs
   - crates/fsm-cli/tests/lock_degradation.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Lock Contention Degradation
@@ -40,3 +40,14 @@ A second stdio client dies at startup today, with one line on a stderr nobody re
 - The exit code is 0 on a clean disconnect from a contended session.
 
 - **Done when:** `cargo test -p fsm-cli --test lock_degradation` passes every case above, a contended start degrades instead of exiting on both transports, the contention message is distinct from the unhealthy-store message, uncontended transcripts are unchanged, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** A writable open now retries five times over roughly two seconds — the executor takes and releases the writer once a tick, so a collision at startup is expected rather than fatal — and then starts **read-only** instead of exiting. A client used to see a server that never appeared; it now sees one that says what happened.
+
+Contended and degraded travel through one slot with two reasons, because "unavailable" has two of them and only one is a fault. The words differ because the remedies are completely different: a degraded store is unhealthy and the note names `store_doctor`; a contended one is **healthy and busy** and the note says to stop the other writer or use the paired deployment. The suite asserts the two notes differ and that each names only its own remedy.
+
+It does not upgrade later. A session that silently became the writer halfway through would surprise both writers, so a client that wants the writer restarts. And it lives in the shared serve path, so stdio and HTTP get it together.
+
+**Corrections.**
+
+- *`Unavailable` replaced two parameters rather than adding a third.* The reason and the detail belong together, and `serve_session_degraded` was already carrying them apart.
+- *Both variants are boxed.* An enum is as large as its largest variant, and a `Store` beside an `ErrorObj` is a size difference clippy is right about.

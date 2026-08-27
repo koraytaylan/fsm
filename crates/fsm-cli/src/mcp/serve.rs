@@ -206,11 +206,20 @@ pub fn serve_dir_with(
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
     let mut degraded: Option<String> = None;
+    let mut contended = false;
     let opened = match &mode {
         // A read-only open takes no lock and creates nothing, which is what
         // lets this process watch a data directory the executor is writing.
         ServeMode::ReadOnly => Store::open_read_only(dir),
-        ServeMode::Writer | ServeMode::Embedded(_) => Store::open(dir),
+        ServeMode::Writer | ServeMode::Embedded(_) => match open_writer(dir) {
+            Ok(store) => Ok(store),
+            Err(WriterUnavailable::Contended(store)) => {
+                // Healthy and busy, which is not the same thing as broken.
+                contended = true;
+                Ok(*store)
+            }
+            Err(WriterUnavailable::Unhealthy(error)) => Err(*error),
+        },
     };
     // A store that will not open used to kill the server, which is exactly
     // backwards: diagnosis is the one case where the server must not vanish.
@@ -226,9 +235,10 @@ pub fn serve_dir_with(
     };
     // Reported, never selected: there is no `--degraded` flag, because it is
     // not a way to run a server, it is what happened to one.
-    let reported_mode = match &degraded {
-        Some(_) => "degraded",
-        None => mode_name(&mode),
+    let reported_mode = match (&degraded, contended) {
+        (Some(_), _) => "degraded",
+        (None, true) => "read-only (writer held elsewhere)",
+        (None, false) => mode_name(&mode),
     };
     // One startup line per process, on stderr: stdout is the protocol stream,
     // and no tick trace may depend on this line.
@@ -258,16 +268,106 @@ pub fn serve_dir_with(
         ServeMode::Embedded(loop_) => Some(loop_),
         ServeMode::Writer | ServeMode::ReadOnly => None,
     };
+    // A contended store is reported the way a degraded one is — through the
+    // same slot, because "unavailable" has two reasons and one of them is
+    // not a fault. The words differ because the remedies do: one is "run
+    // repair after a human looks", the other is "stop the other writer, or
+    // use the paired deployment".
+    let unavailable = match (&degraded, contended) {
+        (Some(detail), _) => Some(Unavailable {
+            contended: false,
+            detail,
+            data_dir: Some(dir),
+        }),
+        (None, true) => Some(Unavailable {
+            contended: true,
+            detail: CONTENDED_DETAIL,
+            data_dir: None,
+        }),
+        (None, false) => None,
+    };
     serve_session_degraded(
         store.as_mut(),
         &mut clock,
         executor.as_deref_mut(),
         refresh.as_deref(),
-        degraded.as_deref(),
-        degraded.as_ref().map(|_| dir),
+        unavailable,
         input,
         output,
     )
+}
+
+/// Why this session has less than a writer, and what to tell a client.
+///
+/// Two reasons, one slot. A **degraded** store is unhealthy: the remedy is a
+/// diagnosis and, after a person looks, a repair. A **contended** one is
+/// healthy and busy: the remedy is to stop the other writer, or to use the
+/// paired deployment where the executor writes and this server watches. One
+/// enum with two reasons is easier to hold in your head than two enums, and
+/// the words differ because the remedies do.
+pub struct Unavailable<'a> {
+    /// True when somebody else holds the writer; false when the store is
+    /// unhealthy.
+    pub contended: bool,
+    pub detail: &'a str,
+    /// The directory to diagnose, for the unhealthy case.
+    pub data_dir: Option<&'a std::path::Path>,
+}
+
+/// What a contended session tells its client.
+pub const CONTENDED_DETAIL: &str = "another process holds the writer; this session is read-only. Stop that writer, or use the paired deployment: the executor writes and this server watches.";
+
+/// Why a writable open did not produce a writer.
+enum WriterUnavailable {
+    /// Somebody else holds the lock: the store is **healthy and busy**.
+    /// A read-only handle comes back instead, boxed because a `Store` is
+    /// large and an enum is as big as its largest variant.
+    Contended(Box<Store>),
+    /// The store itself will not open, which is plan 0014's degraded mode.
+    Unhealthy(Box<ErrorObj>),
+}
+
+/// How many times a contended writer is retried, and how long between.
+///
+/// The executor takes and releases the writer once a tick, so a collision at
+/// startup is expected rather than fatal — but a server that retried forever
+/// would hang instead of telling anybody, so the window is small and then it
+/// is over.
+const WRITER_ATTEMPTS: u32 = 5;
+const WRITER_BACKOFF_MS: u64 = 400;
+
+/// Take the writer, waiting briefly for a holder to finish, and fall back to
+/// a read-only handle rather than to nothing.
+///
+/// Exiting here was the old behaviour and it was the wrong one: a client
+/// saw a server that never appeared. A contended store is *healthy and
+/// busy*, so the session starts, says so, and refuses writes with a message
+/// naming the holder — a different problem from plan 0014's unhealthy store,
+/// with a completely different remedy.
+fn open_writer(dir: &std::path::Path) -> Result<Store, WriterUnavailable> {
+    let mut last = None;
+    for attempt in 0..WRITER_ATTEMPTS {
+        match Store::open(dir) {
+            Ok(store) => return Ok(store),
+            Err(error) if error.code == "store/lock" => {
+                last = Some(error);
+                if attempt + 1 < WRITER_ATTEMPTS {
+                    std::thread::sleep(std::time::Duration::from_millis(WRITER_BACKOFF_MS));
+                }
+            }
+            Err(error) => return Err(WriterUnavailable::Unhealthy(Box::new(error))),
+        }
+    }
+    // The window is over. Read-only is a working server; no server is not.
+    // And this does not upgrade later: a session that silently became the
+    // writer halfway through would surprise both writers, so a client that
+    // wants the writer restarts.
+    match Store::open_read_only(dir) {
+        Ok(store) => Err(WriterUnavailable::Contended(Box::new(store))),
+        Err(error) => Err(WriterUnavailable::Unhealthy(Box::new(
+            last.unwrap_or(error),
+        ))),
+    }
 }
 
 /// The name that appears in the startup line and in `instructions`.
@@ -385,7 +485,7 @@ pub fn serve_session_with(
     input: impl BufRead,
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
-    serve_session_degraded(store, clock, executor, refresh, None, None, input, output)
+    serve_session_degraded(store, clock, executor, refresh, None, input, output)
 }
 
 /// The protocol loop, with one more thing it may have to say: that the store
@@ -396,11 +496,17 @@ pub fn serve_session_degraded(
     clock: &mut dyn Clock,
     mut executor: Option<&mut ExecutorLoop>,
     refresh: Option<&std::path::Path>,
-    degraded: Option<&str>,
-    degraded_dir: Option<&std::path::Path>,
+    unavailable: Option<Unavailable<'_>>,
     mut input: impl BufRead,
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
+    let degraded = unavailable
+        .as_ref()
+        .filter(|state| !state.contended)
+        .map(|state| state.detail);
+    let degraded_dir = unavailable.as_ref().and_then(|state| state.data_dir);
+    let contended = unavailable.as_ref().is_some_and(|state| state.contended);
+    let detail = unavailable.as_ref().map(|state| state.detail.to_string());
     // One writer for the whole session: the request path and, from `5901`,
     // a background change feed share it through cloned handles.
     let output = Notifier::new(Box::new(output));
@@ -411,11 +517,19 @@ pub fn serve_session_degraded(
     // Derived once: the mode is a property of how this session was started,
     // and an operator reading a transcript should be able to tell which one
     // ran without reading the launch command.
-    let mode_note = mode_note(store.as_deref(), executor.is_some(), degraded.is_some());
+    let mode_note = mode_note(
+        store.as_deref(),
+        executor.is_some(),
+        degraded.is_some(),
+        contended,
+    );
     let mut initialized = false;
     let mut initialized_notified = false;
     let mut live = Live {
-        degraded: degraded.map(str::to_string),
+        // Both reasons a store can be unavailable travel here, because a
+        // client needs to hear either one; only the *words* differ, and they
+        // differ because the remedies do.
+        degraded: detail,
         degraded_dir: degraded_dir.map(std::path::Path::to_path_buf),
         ..Live::default()
     };
@@ -654,8 +768,15 @@ fn drive_executor(
 /// The default mode adds nothing at all: the instructions are part of a
 /// byte-compared transcript, and a mode that changes them would move that
 /// golden for every existing deployment.
-fn mode_note(store: Option<&Store>, embedded: bool, degraded: bool) -> &'static str {
-    if degraded {
+fn mode_note(
+    store: Option<&Store>,
+    embedded: bool,
+    degraded: bool,
+    contended: bool,
+) -> &'static str {
+    if contended {
+        "\n\nThis server could not take the writer because another process holds it (mode=read-only, contended): the store is healthy and busy, not broken. Read tools work normally and writes are refused. Stop the other writer, or use the paired deployment where the executor writes and this server watches."
+    } else if degraded {
         "\n\nThis server could not open its store (mode=degraded): every tool that reads or writes instances is refused, and each refusal carries the health, the blast radius, and the remedy. Call store_doctor for the diagnosis; journal_verify and journal_replay also answer, a machine_create with dry_run still validates, and the documentation resources still read."
     } else if store.is_some_and(|store| store.journal.is_read_only()) {
         "\n\nThis server is running read-only (mode=read-only): the effect executor owns the writer, so machine_create, instance_create, instance_send, deadline_poll, effect_ack, and instance_cancel are refused here. Read tools work normally, and a machine_create with dry_run still validates."
