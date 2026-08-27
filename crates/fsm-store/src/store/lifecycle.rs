@@ -21,14 +21,15 @@ pub struct DefineOutcome {
     pub name: String,
 }
 
-/// The two derived indexes an open builds.
+/// The derived indexes an open builds.
 struct Indexes {
     history: BTreeMap<String, Vec<u64>>,
     parents: BTreeMap<String, (String, String)>,
+    machine_seqs: BTreeMap<String, u64>,
 }
 
 impl Store {
-    /// The two store-side indexes, built from one complete record vector.
+    /// The store-side indexes, built from one complete record vector.
     ///
     /// Both are derived, never journaled: `history` is every record touching
     /// an instance, in seq order, so its first entry is the record that
@@ -37,9 +38,13 @@ impl Store {
     /// answer to "when did this appear" once children exist. `parents` is the
     /// invocation edge, which has to be remembered because a child id derives
     /// from its parent through a hash and a hash does not invert.
+    /// `machine_seqs` is when each definition arrived, so "newest first" is a
+    /// map lookup rather than a scan of the journal per machine — which is
+    /// what a listing and an interactive completion both need it to be.
     fn index_records(records: &[fsm_core::record::Record]) -> Indexes {
         let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
         let mut parents: BTreeMap<String, (String, String)> = BTreeMap::new();
+        let mut machine_seqs: BTreeMap<String, u64> = BTreeMap::new();
         for record in records {
             for instance_id in fsm_core::record::instances_touched(record) {
                 history
@@ -57,8 +62,19 @@ impl Store {
                     parents.insert(child.into(), (parent.into(), slot.into()));
                 }
             }
+            if record.kind == fsm_core::record::RecordKind::MachineDefined
+                && let Some(machine_id) = record.body.get("machine_id").and_then(Value::as_str)
+            {
+                // First definition wins: redefining an identical spec is the
+                // same machine, and its age is when it first appeared.
+                machine_seqs.entry(machine_id.into()).or_insert(record.seq);
+            }
         }
-        Indexes { history, parents }
+        Indexes {
+            history,
+            parents,
+            machine_seqs,
+        }
     }
 
     pub fn open(data_dir: &Path) -> Result<Self, ErrorObj> {
@@ -83,13 +99,18 @@ impl Store {
         crate::ensure_persistence_directory(&snapshot_directory)
             .map_err(|error| ErrorObj::new("io/write", error.to_string()))?;
         let records = journal_io::load_records(data_dir).unwrap_or(sink.records);
-        let Indexes { history, parents } = Self::index_records(&records);
+        let Indexes {
+            history,
+            parents,
+            machine_seqs,
+        } = Self::index_records(&records);
         let tags = load_tags_from_records(&records);
         Ok(Store {
             journal,
             state,
             history,
             parents,
+            machine_seqs,
             records,
             data_dir: data_dir.to_path_buf(),
             last_responses: BTreeMap::new(),
@@ -127,13 +148,18 @@ impl Store {
                     return Err(ErrorObj::new("io/read", message));
                 }
             };
-        let Indexes { history, parents } = Self::index_records(&records);
+        let Indexes {
+            history,
+            parents,
+            machine_seqs,
+        } = Self::index_records(&records);
         let tags = load_tags_from_records(&records);
         Ok(Store {
             journal,
             state,
             history,
             parents,
+            machine_seqs,
             records,
             data_dir: data_dir.to_path_buf(),
             last_responses: BTreeMap::new(),
@@ -157,6 +183,7 @@ impl Store {
             state,
             history: BTreeMap::new(),
             parents: BTreeMap::new(),
+            machine_seqs: BTreeMap::new(),
             records,
             data_dir: PathBuf::from("<memory>"),
             last_responses: BTreeMap::new(),

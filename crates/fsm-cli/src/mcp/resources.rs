@@ -9,6 +9,42 @@ pub const EXAMPLES_MD: &str = include_str!("../../../../docs/EXAMPLES.md");
 /// The history resource's page size, matching `instance_history`'s default.
 const HISTORY_PAGE: usize = 50;
 
+/// Machine ids, most recent first, by the seq of the record that defined
+/// each one.
+///
+/// The listing and its completions read the same function, so they cannot
+/// disagree about which machine is newest — and a caller assembling a URI is
+/// offered the ids in the order the listing shows them.
+pub(crate) fn machine_ids(store: &Store) -> Vec<String> {
+    let mut machines: Vec<&String> = store.state.machines.keys().collect();
+    // `machine_seqs` is the store's own index of when each definition
+    // arrived, so this is a map lookup per machine rather than a journal scan
+    // per machine — which is what makes it safe to call on every keystroke.
+    machines.sort_by_key(|id| {
+        let seq = store.machine_seqs.get(*id).copied().unwrap_or(0);
+        (std::cmp::Reverse(seq), (*id).clone())
+    });
+    machines.into_iter().cloned().collect()
+}
+
+/// Instance ids, most recent first, by the seq of the record that brought
+/// each into existence.
+///
+/// `created_seq` reads the folded history rather than scanning for an
+/// `instance_created` record — a child instance has none, its creation being
+/// an `instance_invoked`, so a scan would silently omit exactly the
+/// instances composition creates.
+pub(crate) fn instance_ids(store: &Store) -> Vec<String> {
+    let mut instances: Vec<(u64, &String)> = store
+        .state
+        .instances
+        .keys()
+        .map(|id| (store.created_seq(id), id))
+        .collect();
+    instances.sort_by_key(|(seq, id)| (std::cmp::Reverse(*seq), (*id).clone()));
+    instances.into_iter().map(|(_, id)| id.clone()).collect()
+}
+
 pub fn list(store: Option<&Store>) -> Value {
     let mut items = vec![
         resource(
@@ -25,17 +61,11 @@ pub fn list(store: Option<&Store>) -> Value {
         ),
     ];
     if let Some(st) = store {
-        let mut machines: Vec<_> = st.state.machines.iter().collect();
-        machines.sort_by_key(|(id, _)| {
-            let seq = st
-                .records
-                .iter()
-                .find(|r| r.body.get("machine_id").and_then(Value::as_str) == Some(id.as_str()))
-                .map(|r| r.seq)
-                .unwrap_or(0);
-            std::cmp::Reverse(seq)
-        });
-        for (id, m) in machines.into_iter().take(50) {
+        for id in machine_ids(st).into_iter().take(50) {
+            let Some(m) = st.state.machines.get(&id) else {
+                continue;
+            };
+            let id = &id;
             // The identifier is the id — a client keys on it and a golden
             // pins it — and the title is the name a person wrote, which for
             // every machine that is not addressed by its hash is a different
@@ -47,19 +77,8 @@ pub fn list(store: Option<&Store>) -> Value {
                 "application/json",
             ));
         }
-        // Most recent first, by the seq of the record that brought each
-        // instance into existence. Not by scanning for an `instance_created`
-        // record: a child has none — its creation is an `instance_invoked` —
-        // so that scan would silently omit every child, and it would add a
-        // second per-entry record walk to a listing that already pays one.
-        let mut instances: Vec<(u64, &String)> = st
-            .state
-            .instances
-            .keys()
-            .map(|id| (st.created_seq(id), id))
-            .collect();
-        instances.sort_by_key(|(seq, id)| (std::cmp::Reverse(*seq), (*id).clone()));
-        for (_, id) in instances.into_iter().take(50) {
+        for id in instance_ids(st).into_iter().take(50) {
+            let id = &id;
             // Machine and current state, from what the listing already holds.
             // Not from `instance_report`: a title is worth one map lookup and
             // a leaf read, and never worth an `enabled_events` scan per row —

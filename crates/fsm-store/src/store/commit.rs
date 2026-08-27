@@ -39,6 +39,16 @@ impl Store {
     }
 
     pub(super) fn note_record(&mut self, rec: &Record) {
+        if rec.kind == fsm_core::record::RecordKind::MachineDefined
+            && let Some(machine_id) = rec
+                .body
+                .get("machine_id")
+                .and_then(fsm_core::json::Value::as_str)
+        {
+            self.machine_seqs
+                .entry(machine_id.into())
+                .or_insert(rec.seq);
+        }
         self.records.push(rec.clone());
         self.state.last_seq = rec.seq;
         self.state.last_hash = rec.hash.clone();

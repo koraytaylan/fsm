@@ -8,10 +8,13 @@ depends_on:
   - resource-and-prompt-titles
 gated: false
 touches:
+  - crates/fsm-store/src/store/lifecycle.rs
+  - crates/fsm-store/src/store/mod.rs
+  - crates/fsm-store/src/store/commit.rs
   - crates/fsm-cli/src/mcp/complete.rs
   - crates/fsm-cli/src/mcp/resources.rs
   - crates/fsm-cli/tests/mcp_completion_resources.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Resource Template Completion
@@ -42,3 +45,12 @@ The server holds every machine id and every instance id; a caller assembling a U
 - A completion request performs no journal walk — assert via a counter or by confirming the cost does not scale with journal length.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_completion_resources` passes every case above including the completion-to-read round trip and the shared-ordering assertion, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `machine_ids` and `instance_ids` are `pub(crate)` in `resources.rs` and are what both the listing and the completion read, so an ordering rule has one implementation. Instances order by `created_seq`, which reads the folded history — a child's first record is its `instance_invoked`, so children are offered like any other instance, which a scan for `instance_created` would have hidden. Only `{id}` completes, and only as an id: a machine *name* under an id argument composes into a URI that fails to read.
+
+The no-journal-walk claim is proved by taking the journal away — `records.clear()`, then the same completions come back identical. That is only true because machine ordering stopped being a record scan.
+
+**Corrections.**
+
+- *Ordering machines by age needed a store index, not a scan.* `resources/list` was finding each machine's defining record by walking `records` — per machine, on every call — which is exactly what step 5 forbids for completion. `Store::machine_seqs` now records when each definition first arrived, built on open beside `history` and `parents` and extended in `note_record`, so "newest first" is a map lookup. The listing gets the same improvement for free, and the store had the precedent: two derived indexes already lived there for the same reason.
+- *The child test starts the invocation.* Entering an invoking state arms the slot; `invoke_child` is the record that brings the child into existence, and without it there is no child to offer.

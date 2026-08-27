@@ -132,11 +132,36 @@ pub fn completion_from(candidates: Vec<String>, prefix: &str) -> Value {
 /// empty for the same reason: a client that completes speculatively must not
 /// be broken by asking.
 pub(crate) fn values_for(
-    _ref_: &Ref,
-    _argument: &str,
+    ref_: &Ref,
+    argument: &str,
     _prefix: &str,
     _context: Option<&Value>,
-    _store: Option<&Store>,
+    store: Option<&Store>,
 ) -> Vec<String> {
-    Vec::new()
+    let Some(store) = store else {
+        return Vec::new();
+    };
+    match ref_ {
+        Ref::Resource(uri) => template_values(uri, argument, store),
+        Ref::Prompt(_) => Vec::new(),
+    }
+}
+
+/// The ids behind the three resource templates.
+///
+/// Only `{id}`, and only as an id: a machine's *name* under an id argument
+/// would compose into a URI that fails to read, which is worse than offering
+/// nothing. Ids come from the folded state — a completion is interactive and
+/// must not pay a journal walk to answer.
+fn template_values(uri: &str, argument: &str, store: &Store) -> Vec<String> {
+    if argument != "id" {
+        return Vec::new();
+    }
+    match uri {
+        "fsm://machine/{id}" => crate::mcp::resources::machine_ids(store),
+        "fsm://instance/{id}" | "fsm://instance/{id}/history" => {
+            crate::mcp::resources::instance_ids(store)
+        }
+        _ => Vec::new(),
+    }
 }

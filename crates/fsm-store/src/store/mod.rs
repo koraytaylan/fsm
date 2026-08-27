@@ -65,6 +65,13 @@ pub struct Store {
     /// derivation is a hash and does not invert, so the edge has to be
     /// remembered somewhere — and remembering it here costs no format.
     pub parents: BTreeMap<String, (String, String)>,
+    /// Machine id to the seq of the record that first defined it.
+    ///
+    /// Another derived index, for the same reason as `parents`: without it,
+    /// ordering the catalogue by age costs a journal scan per machine, which
+    /// a resource listing pays on every call and a completion would pay on
+    /// every keystroke.
+    pub machine_seqs: BTreeMap<String, u64>,
     pub records: Vec<Record>,
     pub data_dir: PathBuf,
     pub last_responses: BTreeMap<String, Value>,
