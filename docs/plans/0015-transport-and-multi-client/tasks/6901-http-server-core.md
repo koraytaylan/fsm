@@ -17,7 +17,7 @@ touches:
   - crates/fsm-cli/src/http/writer.rs
   - crates/fsm-cli/src/lib.rs
   - crates/fsm-cli/tests/http_server.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # HTTP Server Core
@@ -49,3 +49,13 @@ This is the first network-facing code in the workspace, so the accept loop is wr
 - All eight modules are declared and the crate compiles with the shells in place; `cargo doc --workspace --no-deps` is warning-free under `RUSTDOCFLAGS=-D warnings`.
 
 - **Done when:** `cargo test -p fsm-cli --test http_server` passes every case above including the connection cap, the timeouts, and panic isolation, no thread leaks across repeated start/stop, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** All eight modules are declared and scaffolded, and `server.rs` is complete: a non-blocking listener polled every 25 ms so the stop flag is honoured on a quiet server, one thread per connection, and a connection cap checked **before** a thread or any per-connection state exists — a cap checked after allocation is a description of what already happened. Keep-alive with a 256-request ceiling per connection, read and write timeouts set at accept, and every connection thread joined before `serve_bound` returns, which is what makes twenty start/stop cycles leak nothing.
+
+A panicking connection thread closes that connection and nothing else, with the reasoning in the code: everywhere else in this workspace a panic is a bug and aborts, and that is right — but here the input is a stranger's, and letting a stranger end the server for everyone else is the worse failure.
+
+**Corrections.**
+
+- *Binding and serving are separate functions.* `serve_http(addr, …)` blocks, so a caller that asked for port 0 could never learn the port. `bind` returns the listener with its actual address and `serve_bound` runs it; `serve_http` is the two together, which is what production uses.
+- *The silent-connection test asserts the shape, not the timeout.* The idle timeout is thirty seconds and no suite should wait for it; what is checked is that a silent socket costs one thread while every other client is served normally.
+- *A reset is provoked by shutting the read half down.* `TcpStream::set_linger` is unstable, and the property under test — the server writing to a peer that is not listening — is reachable without it.

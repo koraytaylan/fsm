@@ -16,4 +16,6 @@ pub mod render;
 // The durable store lives in `fsm-store` so embedders can depend on it without
 // depending on this binary crate. Re-exported here so `crate::store::…` paths
 // and existing `fsm_cli::store::…` importers keep resolving.
+pub mod http;
+
 pub use fsm_store::{clock, journal_io, snapshot, store};
