@@ -294,6 +294,14 @@ fn plan(
             .iter()
             .map(|effect_id| format!("stalled effect {effect_id}")),
     );
+    // A quiet tick that is waiting is not the same as a quiet tick with
+    // nothing to do, and an operator watching one should be able to tell.
+    lines.extend(
+        scheduler
+            .deferred()
+            .iter()
+            .map(|effect_id| format!("waiting to retry {effect_id}")),
+    );
     Ok(Plan {
         observation,
         directives,

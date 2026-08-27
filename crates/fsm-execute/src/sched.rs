@@ -146,6 +146,10 @@ pub struct Scheduler {
     unstartable: Vec<Unstartable>,
     stalled: Vec<String>,
     reported_stalls: BTreeSet<String>,
+    /// Effects this tick did nothing about *only* because they are waiting
+    /// to retry. An operator watching a quiet tick should be able to tell
+    /// "waiting" from "nothing to do".
+    deferred: Vec<String>,
     parked_advances: BTreeMap<(String, String), u64>,
 }
 
@@ -161,6 +165,7 @@ impl Scheduler {
             unstartable: Vec::new(),
             stalled: Vec::new(),
             reported_stalls: BTreeSet::new(),
+            deferred: Vec::new(),
             parked_advances: BTreeMap::new(),
         }
     }
@@ -190,6 +195,7 @@ impl Scheduler {
     /// journal, not this process's memory, is what prevents a repeat.
     pub fn on_observation(&mut self, obs: &Observation, now_ms: i64) -> Vec<Directive> {
         self.unhandled.clear();
+        self.deferred.clear();
         self.unstartable.clear();
         self.stalled.clear();
         let mut directives: Vec<Directive> = Vec::new();
@@ -225,6 +231,8 @@ impl Scheduler {
             // does not hold a slot, it simply does not act yet.
             if state.attempt > 0 && now_ms < ready_at(&handler.retry, state.attempt, state.last_ts)
             {
+                // Identifiers only: no path, no pid, no duration.
+                self.deferred.push(effect.effect_id.clone());
                 continue;
             }
             // A key this attempt already claimed means the attempt was
@@ -425,6 +433,11 @@ impl Scheduler {
     }
 
     /// Pending effects seen with no handler, for the loop to log once each.
+    /// Effects this tick deferred because they are waiting to retry.
+    pub fn deferred(&self) -> &[String] {
+        &self.deferred
+    }
+
     pub fn unhandled(&self) -> &[String] {
         &self.unhandled
     }
@@ -491,16 +504,29 @@ fn no_effect_directed_twice(directives: &[Directive]) -> bool {
 
 /// When the next attempt may start, from the last attempt's record timestamp.
 ///
-/// Computed from the journal, never from a clock read, so two processes
-/// reading the same records agree about when the wait ends. The wait doubles
-/// per attempt and stops at the ceiling: a handler whose dependency is down
-/// should back off, and a handler whose dependency is down for an hour
-/// should not back off for a week.
+/// `due_ms = last_attempt_ts + min(backoff_ms * 2^(attempt - 1), max_backoff_ms)`
+///
+/// Every term comes from a journaled fact or the handler table. The
+/// timestamp is the record's own, not something this process remembers, so a
+/// restarted executor computes the identical deadline and **resumes** the
+/// same wait rather than restarting it.
+///
+/// **No jitter, and no randomness of any kind.** The restart-equivalence
+/// property plan 0008 pins requires that the same observation and the same
+/// `now_ms` produce the same directives; randomness would break that for a
+/// benefit — spreading a thundering herd across many nodes — that does not
+/// apply to a single-node executor.
 pub fn ready_at(retry: &crate::config::Retry, attempt: u32, last_ts: i64) -> i64 {
     last_ts.saturating_add(backoff_for(retry, attempt))
 }
 
 /// The wait after the `attempt`-th failure.
+///
+/// The shift and the multiply are both saturating. `2^15` against a large
+/// `backoff_ms` overflows a naive multiply, and an overflowed deadline lands
+/// in the past — which would turn backoff into a busy loop, the exact
+/// opposite of what it is for. Saturating means the ceiling wins, which is
+/// the answer the table asked for anyway.
 pub fn backoff_for(retry: &crate::config::Retry, attempt: u32) -> i64 {
     let doublings = attempt.saturating_sub(1).min(30);
     let factor = 1_i64 << doublings;

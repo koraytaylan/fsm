@@ -7,9 +7,10 @@ depends_on:
   - attempt-aware-scheduler
 gated: false
 touches:
+  - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/src/sched.rs
   - crates/fsm-execute/tests/backoff.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Backoff Schedule
@@ -38,3 +39,11 @@ There is deliberately no jitter, and that is a decision rather than an omission:
 - A deferred-by-backoff tick emits its log line with identifiers only — no path, pid, or duration.
 
 - **Done when:** `cargo test -p fsm-execute --test backoff` passes every case above including the overflow saturation and the 100-run determinism check, the deadline derives entirely from journaled facts, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `due_ms = last_attempt_ts + min(backoff_ms * 2^(attempt - 1), max_backoff_ms)`, with every term from a journaled fact or the handler table. The timestamp is the record's own, so an executor that comes up an hour later **resumes** the wait rather than restarting it — asserted by an observation whose record is an hour old being immediately due.
+
+The shift and the multiply saturate. A large base against a high attempt overflows a naive multiply and an overflowed deadline lands in the past, which would turn backoff into a busy loop — the exact opposite of what it is for. Sixteen attempts against `i64::MAX / 4` are asserted to stay positive and under the ceiling.
+
+**No jitter and no randomness**, with the reasoning in the module doc: restart equivalence requires that the same observation and the same `now_ms` produce the same directives, and spreading a thundering herd is a benefit that does not apply to one node. A hundred runs of one scenario produce byte-identical directive sequences.
+
+A tick that defers only because of backoff says so, with identifiers only — an operator watching a quiet tick can tell "waiting to retry" from "nothing to do".
