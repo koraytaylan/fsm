@@ -1,8 +1,8 @@
-# Plan 0012 — Live MCP Surface — 🚧 In progress
+# Plan 0012 — Live MCP Surface — ✅ Complete
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file. Task-level truth lives in [tasks/](tasks/) frontmatter; Makina's integration coordinator updates both layers.
 
-- **Status:** 🚧 In progress.
+- **Status:** ✅ Complete.
 
 - **Goal:** a server that can speak first — instances addressable as resources, subscriptions that push `notifications/resources/updated` when a workflow advances, list-changed notifications, structured logging, progress on long calls, and cancellation that is honest about what it can interrupt.
 - **Root cause:** every `listChanged` is false, `subscribe` is false, there is no logging capability, cancellation is written to stderr and discarded, and the loop blocks on the client — so an engine whose whole premise is that things happen while nobody is watching can only be polled; and instances, the live objects, have no URI to watch in the first place.
