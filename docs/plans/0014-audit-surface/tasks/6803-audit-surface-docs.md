@@ -7,11 +7,12 @@ depends_on:
   - audit-surface-proof
 gated: false
 touches:
+  - crates/fsm-cli/tests/spec_appendix.rs
   - docs/EMBEDDING.md
   - docs/SPEC.md
   - README.md
   - crates/fsm-cli/tests/audit_doc.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Audit Surface Docs
@@ -40,3 +41,15 @@ The most important sentence in this documentation is the one explaining what the
 - `cargo test -p fsm-cli --test spec_appendix` still passes — this task adds a cross-reference to SPEC and no new codes.
 
 - **Done when:** EMBEDDING documents all five tools, the verify-versus-replay distinction, how to read a health, degraded mode, and the reasoned exclusion of `repair`; SPEC carries the cross-reference; README carries the guarantee row; `cargo test -p fsm-cli --test audit_doc --test policy --test spec_appendix` passes; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** An *Auditing a store* section: a table of what each of the five tools proves and what it costs, the verify-versus-replay distinction spelled out because a reader would otherwise assume they are the same tool twice, how to read a health with SPEC's postures reproduced, and degraded mode down to its authoring exception.
+
+The sentence the task calls most important has its reasoning beside it: `repair` destroys data, its safety argument is that a person reads the quarantined bytes first, and that argument does not survive being automated — so the tools hand over the command and somebody with the authority to lose those bytes runs it. Adding a repair tool later would be undoing a decision, and the guide says so.
+
+SPEC gains a pointer, not a second source of truth: the recovery table names which tools report it and says the postures there are normative. README gains the audit-posture row.
+
+The prose is pinned: every audit tool is asserted present by registry name, every health by **enum variant** rather than by a list in the test, and the remedy is *generated* from a torn store and searched for in both documents — so a paraphrase in either fails the build.
+
+**Corrections.**
+
+- *The guarantee row count moves from 23 to 24*, as it did in 6103 and 6502. `spec_appendix` counts the README's rows, so adding one is a two-file change.

@@ -798,6 +798,12 @@ corruption. Mutating methods on a read-only Store refuse with `io/write`.
 | `LockIo` | refuse; actual lock acquisition or contention fault |
 | `StoreIo` | refuse as `io/read`; repair the filesystem or input fault |
 
+The MCP tools `journal_verify` and `store_doctor` report these names and, where
+this table prescribes one, its remedy command verbatim; `journal_replay` checks
+the complementary property, that replaying the journal reproduces the outcomes
+it recorded. The postures above are normative — those tools report them and do
+not restate them.
+
 #### Durability across platforms
 
 Every append fsyncs the segment **file** before returning, on every platform.

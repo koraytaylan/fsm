@@ -471,6 +471,81 @@ against — a raw JSON number for a decimal is `req/number_token` here exactly
 as it is there. An elicitation that returned prose for the server to
 interpret is out of scope permanently, not merely for now.
 
+## Auditing a store
+
+Five tools answer the question "is this store what it says it is, and why did
+it do that". They read; none of them writes, and none of them repairs.
+
+| Tool | What it proves | What it costs |
+|---|---|---|
+| `explain_step` | why one journaled step did what it did: every candidate transition, each guard's verdict, what every action computed, and how the invariants came out | one record, reconstructed |
+| `journal_verify` | that the bytes and the hash chain are what they should be | a walk over the journal, at 256 records a batch |
+| `journal_replay` | that the outcomes the journal recorded are the outcomes the engine produces **today** | a full fold through the engine |
+| `store_doctor` | the state of the store: health, format, counts, snapshot staleness, and who holds the writer | one classification pass |
+| `instance_annotate` | nothing — it *writes* a note into the trail, and changes no logical state | one record |
+
+**`journal_verify` and `journal_replay` are not the same tool twice.**
+Verification checks the bytes and the chain: that nothing was edited.
+Replay re-executes the journal through the engine and checks that what was
+recorded is what the engine produces now. A store can verify perfectly and
+still fail replay — that is the engine's semantics having drifted, and it is
+the one failure verification cannot see. Replay also reports a `state_root`,
+which is what makes two runs, two machines, or a store and its backup
+comparable at all.
+
+### Reading a health
+
+`journal_verify` and `store_doctor` report one of the seven names
+`docs/SPEC.md` §Recovery defines, and never a new word for an existing
+condition:
+
+| Health | Posture |
+|---|---|
+| `Ok` | open |
+| `TornTail` | refuse; remedy `fsm repair --truncate-torn-tail` |
+| `ChainBroken` | refuse; interior; no repair |
+| `StateHashMismatch` | refuse; no repair |
+| `NonCanonical` | refuse; no repair |
+| `LockIo` | refuse; a lock acquisition or contention fault |
+| `StoreIo` | refuse; repair the filesystem or input fault |
+
+Where the table prescribes a command, the tool returns it **verbatim** in
+`remedy` — the exact string, never a paraphrase, because you may run it.
+Where the posture is "no repair", `remedy` is absent rather than empty, and
+`blast_radius` says how much of the journal is unverifiable.
+
+### Why `repair` is not a tool
+
+`fsm repair --truncate-torn-tail` destroys data. Its safety argument is that
+a person reads the quarantined tail bytes first and decides they are
+expendable — and that argument does not survive being automated. So the
+audit surface diagnoses precisely and hands over the command, and somebody
+with the authority to lose those bytes runs it.
+
+This is a decision, not an oversight. Adding a repair tool later would be
+undoing it, and whoever does should know that is what they are doing.
+
+### When the store will not open
+
+A server pointed at a store it cannot open **starts anyway**, because
+diagnosis is exactly the case where it must not vanish. That state is called
+degraded, and it is reported rather than selected: there is no flag for it.
+
+`initialize` succeeds, capabilities are unchanged, and `tools/list` is the
+same list — a shrinking list would have a client cache a surface that
+reappears once the store is repaired. Three tools answer, from a
+classification rather than an open: `store_doctor`, `journal_verify`, and
+`journal_replay`. A `machine_create` with `dry_run: true` also works, because
+checking a definition needs no store and refusing it would block authoring
+at the moment it is most useful.
+
+Every other tool is refused with `store/degraded`, carrying the health, the
+blast radius, and the remedy — the same three facts `store_doctor` would
+give you. An error that only said "unavailable" would make a model retry
+instead of diagnose. The documentation resources keep working throughout,
+and the client is told once, at `error` level, why everything else is
+failing.
+
 ## Executing workflows
 
 Everything above leaves the *running* of effects to you. `fsm execute` is the
