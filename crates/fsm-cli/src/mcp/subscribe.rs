@@ -78,3 +78,22 @@ impl Subscriptions {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
+
+/// Whether a record changes what `resources/list` would return.
+///
+/// Membership, not movement: a machine being defined, an instance being
+/// created, and an instance being **invoked** — because a child joins the
+/// listing without a creation record of its own, and a child that appears in
+/// `resources/list` without a `list_changed` is a listing a client never
+/// re-reads.
+///
+/// Deliberately not every advancing record. An `event_applied` leaves the
+/// listing's membership exactly as it was, and a client that re-listed on
+/// every transition would be worse off than one that polled.
+pub fn changes_the_listing(kind: fsm_core::record::RecordKind) -> bool {
+    use fsm_core::record::RecordKind;
+    matches!(
+        kind,
+        RecordKind::MachineDefined | RecordKind::InstanceCreated | RecordKind::InstanceInvoked
+    )
+}

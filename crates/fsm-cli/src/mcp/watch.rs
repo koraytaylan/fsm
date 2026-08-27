@@ -77,7 +77,12 @@ impl Feed {
         // blocked behind this walk and these writes.
         let watching = self.watched.snapshot();
         let mut uris: BTreeSet<String> = BTreeSet::new();
+        // Decided from the same walk: the feed already has these records in
+        // hand, and a second read would be slower and able to disagree with
+        // the first.
+        let mut listing_changed = false;
         for record in store.records.iter().filter(|r| r.seq > self.watermark) {
+            listing_changed |= super::subscribe::changes_the_listing(record.kind);
             // The exhaustive per-kind mapping, not a probe for a field named
             // `instance_id`: composition records name a parent and a child,
             // or a sender and a target, and a probe would silently never tell
@@ -106,6 +111,24 @@ impl Feed {
                 // The watermark stays where it was: the next poll re-derives
                 // this same batch. A duplicate notification is harmless; a
                 // missed one is not.
+                return sent;
+            }
+            sent += 1;
+        }
+        // After the batch's updates, so a client that reacts by re-listing
+        // sees a listing consistent with what it was just told. Emitted
+        // independently of any subscription: this notification is about the
+        // *listing*, not about a resource, and a session that negotiated the
+        // capability gets it whether or not it watches anything.
+        if listing_changed {
+            if self
+                .out
+                .notify(
+                    "notifications/resources/list_changed",
+                    Value::Obj(std::collections::BTreeMap::new()),
+                )
+                .is_err()
+            {
                 return sent;
             }
             sent += 1;

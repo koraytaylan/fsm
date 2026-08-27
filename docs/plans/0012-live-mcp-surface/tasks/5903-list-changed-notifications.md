@@ -9,7 +9,10 @@ gated: false
 touches:
   - crates/fsm-cli/src/mcp/subscribe.rs
   - crates/fsm-cli/tests/mcp_list_changed.rs
-status: planned
+  - crates/fsm-cli/src/mcp/watch.rs
+  - crates/fsm-cli/tests/mcp_list_changed.rs
+  - crates/fsm-cli/tests/mcp_change_feed.rs
+status: done
 merged_as: ""
 ---
 # List Changed Notifications
@@ -38,3 +41,5 @@ merged_as: ""
 - A session whose client negotiated an older protocol version still receives it, since the capability exists in all three accepted revisions.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_list_changed` passes every case above including the once-per-batch rule and the ordering guarantee, no unadvertised notification is ever sent, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `subscribe::changes_the_listing` as the one membership rule, emitted from the feed's existing walk after the batch's updates, and the suite — one creation, a five-joiner batch, an invoked child, movement alone, the ordering, the two notifications that are never sent, and the notification's exact bytes. Three assertions in `5902`'s suite moved from counting notifications to naming the URIs reported, since a batch that creates something now carries one more line than it did — the URIs are what those tests were ever about.

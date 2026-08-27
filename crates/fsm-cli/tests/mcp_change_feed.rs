@@ -286,9 +286,12 @@ fn a_definition_notifies_its_machine_uri() {
         .define_machine_on(&mut clock, value(CHILD), false, false)
         .unwrap();
     // The new definition is a different machine, so the watched URI is not
-    // in the batch.
-    assert_eq!(feed.poll_once(), 0);
-    assert!(notified(&sink).is_empty());
+    // in the batch — though the listing changed, which `5903` reports.
+    feed.poll_once();
+    assert!(
+        notified(&sink).is_empty(),
+        "no resource the session watches was updated"
+    );
 
     let child_uri = format!("fsm://machine/{}", machine_id(&value(CHILD)));
     let (mut feed, sink) = watching(&directory, &[&child_uri]);
@@ -296,8 +299,8 @@ fn a_definition_notifies_its_machine_uri() {
     store
         .define_machine_on(&mut clock, value(&another), false, false)
         .unwrap();
-    assert_eq!(feed.poll_once(), 0, "a different machine again");
-    let _ = sink;
+    feed.poll_once();
+    assert!(notified(&sink).is_empty(), "a different machine again");
 }
 
 #[test]
@@ -331,14 +334,16 @@ fn composition_records_notify_both_sides() {
     // And so is a subscriber on the child, by the same record.
     let (mut child_feed, child_sink) = watching(&directory, &[&format!("fsm://instance/{child}")]);
     store.invoke_child("p1", "down", "inv-1").unwrap();
-    assert_eq!(parent_feed.poll_once(), 1);
-    assert_eq!(
-        child_feed.poll_once(),
-        1,
-        "a field-name probe would miss this"
-    );
+    // Each feed reports the URI it watches, plus the one `list_changed` the
+    // child joining the listing earns.
+    parent_feed.poll_once();
+    child_feed.poll_once();
     assert_eq!(notified(&parent_sink), ["fsm://instance/p1".to_string()]);
-    assert_eq!(notified(&child_sink), [format!("fsm://instance/{child}")]);
+    assert_eq!(
+        notified(&child_sink),
+        [format!("fsm://instance/{child}")],
+        "a field-name probe would miss the child entirely"
+    );
 
     // The return notifies both sides too.
     store
@@ -346,8 +351,8 @@ fn composition_records_notify_both_sides() {
         .unwrap();
     assert_eq!(child_feed.poll_once(), 1);
     store.invocation_return("p1", "down", "ret-1").unwrap();
-    assert_eq!(parent_feed.poll_once(), 1);
-    assert_eq!(child_feed.poll_once(), 1);
+    assert_eq!(parent_feed.poll_once(), 1, "the return reaches the parent");
+    assert_eq!(child_feed.poll_once(), 1, "and the child");
 }
 
 #[test]
