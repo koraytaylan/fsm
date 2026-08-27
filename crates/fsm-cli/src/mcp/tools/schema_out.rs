@@ -217,6 +217,17 @@ pub(super) fn schema_store_doctor_out() -> Value {
     )
 }
 
+/// The note, where it landed, and the instance exactly as it was.
+pub(super) fn schema_instance_annotate_out() -> Value {
+    let mut p = instance_core_props();
+    p.insert("note".into(), ty("string"));
+    p.insert("seq".into(), ty("number"));
+    p.insert("duplicate".into(), ty("boolean"));
+    p.insert("request_id".into(), ty("string"));
+    p.insert("instance_id".into(), ty("string"));
+    schema_obj(p, &["note", "duplicate", "instance_id", "request_id"], true)
+}
+
 pub(super) fn schema_deadline_poll_out() -> Value {
     let mut p = instance_core_props();
     p.insert("deadline_applied".into(), ty("boolean"));

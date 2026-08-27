@@ -32,6 +32,7 @@ fn current_regions_deadlines_public_contract() {
             "journal_verify",
             "journal_replay",
             "store_doctor",
+            "instance_annotate",
             "instance_elicit",
             "simulate",
         ]

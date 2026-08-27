@@ -154,6 +154,7 @@ fn arguments(name: &str) -> &'static str {
         }
         "instance_get" | "instance_history" => r#"{"instance_id":"inst-g"}"#,
         "instance_elicit" => r#"{"instance_id":"inst-g","event":"push","request_id":"g9"}"#,
+        "instance_annotate" => r#"{"instance_id":"inst-g","note":"a note","request_id":"g10"}"#,
         "explain_step" => r#"{"instance_id":"inst-g","seq":1}"#,
         "simulate" => r#"{"machine":"gating_case","events":[{"name":"push"}]}"#,
         other => panic!("no arguments authored for {other}"),

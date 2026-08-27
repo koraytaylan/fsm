@@ -94,6 +94,15 @@ pub(super) fn schema_store_doctor_in() -> Value {
     schema_obj(BTreeMap::new(), &[], false)
 }
 
+/// A note, and the key it is written under.
+pub(super) fn schema_instance_annotate_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("note".into(), ty("string"));
+    p.insert("request_id".into(), ty("string"));
+    schema_obj(p, &["instance_id", "note", "request_id"], false)
+}
+
 pub(super) fn schema_deadline_poll_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

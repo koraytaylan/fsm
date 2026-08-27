@@ -7,6 +7,16 @@ depends_on:
   - store-doctor-tool
 gated: false
 touches:
+  - crates/fsm-cli/tests/tool_schemas.rs
+  - crates/fsm-cli/tests/mcp_full.rs
+  - crates/fsm-cli/tests/mcp_regions_deadlines.rs
+  - crates/fsm-cli/tests/naive_caller/core_tests.rs
+  - crates/fsm-cli/tests/review_regressions/output_schema_and_wire_format.rs
+  - crates/fsm-cli/tests/mcp_affordance_golden.rs
+  - crates/fsm-cli/tests/degraded_gating.rs
+  - crates/fsm-cli/tests/serve_modes.rs
+  - crates/fsm-cli/tests/fixtures/
+  - docs/EMBEDDING.md
   - crates/fsm-cli/src/mcp/tools/handlers/instance.rs
   - crates/fsm-cli/src/mcp/tools/mod.rs
   - crates/fsm-cli/src/mcp/tools/schema_in.rs
@@ -14,7 +24,7 @@ touches:
   - crates/fsm-cli/src/mcp/descriptions.rs
   - crates/fsm-cli/tests/tools_budget.rs
   - crates/fsm-cli/tests/audit_annotate.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Instance Annotate Tool
@@ -45,3 +55,14 @@ The `annotated` record kind is in SPEC and in the CLI, and nothing in the MCP su
 - Its structured output validates against its declared output schema.
 
 - **Done when:** `cargo test -p fsm-cli --test audit_annotate --test tool_schemas --test read_only` passes every case above, an annotation changes no logical state, size limiting reuses the existing store rule, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `instance_annotate(instance_id, note, request_id)` wraps `Store::annotate` and returns the note, the seq it landed at, whether it was a replay, and the instance view **unchanged** — so one call confirms both that the note landed and that nothing moved. The description says so too, because "annotate" reads like it might do more and a caller who believed it advanced a workflow would find out at the worst possible moment. Annotating a completed or a cancelled instance is legal and pinned: a note about why something ended is exactly the note somebody wants to leave.
+
+No second size rule: an oversized note is `req/payload_too_large` from the store's own check, journals nothing, and leaves the key unconsumed — asserted by correcting and resending under the same key.
+
+**The ceiling held without moving. Twenty-four tools measure 36 256 bytes against 38 000.** 6201 projected 37 832 for exactly these six; the six landed 1 576 bytes under that projection, and 1 744 bytes of headroom remain.
+
+**Corrections.**
+
+- *`Store::annotate` returns neither a seq nor a duplicate flag, so the tool derives both.* The seq comes from the idempotency slot, which holds the original record's seq on a replay — the record a caller would actually go and read. "Duplicate" is `journal.last_seq` unchanged across the call, which is what a replay *is*.
+- *Eight suites and two fixtures count the tools or enumerate arguments for them.* Every one is a gate noticing a new tool, which is what they are for.

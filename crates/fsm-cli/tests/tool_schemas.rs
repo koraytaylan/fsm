@@ -31,6 +31,7 @@ fn registry_order() {
             "journal_verify",
             "journal_replay",
             "store_doctor",
+            "instance_annotate",
             "instance_elicit",
             "simulate",
         ]

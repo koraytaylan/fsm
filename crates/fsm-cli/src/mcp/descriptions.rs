@@ -45,6 +45,8 @@ pub const JOURNAL_REPLAY: &str = "Re-execute the journal through the engine and 
 
 pub const STORE_DOCTOR: &str = "Diagnose the store: its health and format, record and segment counts, whether a snapshot cache is present and how far behind it has fallen, and whether another process holds the writer — the commonest non-fatal surprise. Where the recovery table prescribes a repair, it hands you that exact command and never runs it: a person decides whether to destroy anything. Works on a store that will not open, which is when you need it.";
 
+pub const INSTANCE_ANNOTATE: &str = "Leave a note in an instance's audit trail: why you cancelled it, what a person said, which ticket it belongs to. Changes no logical state — it writes one annotated record and moves nothing — and the note appears in instance_history at the returned seq. Requires request_id; a note over the payload limit is req/payload_too_large and claims no key. Legal on a completed or cancelled instance.";
+
 /// The display names a host shows beside each tool.
 ///
 /// They live here, beside the descriptions, because a title and a
@@ -73,3 +75,4 @@ pub const EXPLAIN_STEP_TITLE: &str = "Explain a step";
 pub const JOURNAL_VERIFY_TITLE: &str = "Verify the journal";
 pub const JOURNAL_REPLAY_TITLE: &str = "Replay the journal";
 pub const STORE_DOCTOR_TITLE: &str = "Diagnose the store";
+pub const INSTANCE_ANNOTATE_TITLE: &str = "Leave a note";

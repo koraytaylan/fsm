@@ -59,7 +59,7 @@ fn timed_parallel_machine() -> Value {
 #[test]
 fn deadline_poll_is_registered_after_instance_send_with_configuration_schema() {
     let tool_names = names();
-    assert_eq!(tool_names.len(), 23);
+    assert_eq!(tool_names.len(), 24);
     let send = tool_names
         .iter()
         .position(|name| *name == "instance_send")

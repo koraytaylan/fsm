@@ -537,3 +537,43 @@ pub fn doctor_report(data_dir: &std::path::Path) -> Value {
 /// so. One rotation's worth of records: below that, re-reading the tail is
 /// cheaper than anybody's attention.
 const STALE_AFTER: u64 = 1_000;
+
+/// Leave a note in the audit trail.
+///
+/// **Changes no logical state.** It claims a `request_id`, it writes one
+/// `annotated` record, it appears in the history — and it moves nothing.
+/// "Annotate" reads like it might do more, and a caller who believed it
+/// advanced a workflow would find out at the worst possible moment.
+pub(in crate::mcp::tools) fn run_instance_annotate(
+    store: &mut Store,
+    _clock: &mut dyn Clock,
+    args: &Value,
+) -> Result<Value, ErrorObj> {
+    let instance_id = str_arg(args, "instance_id").unwrap_or("").to_string();
+    let request_id = str_arg(args, "request_id").unwrap_or("").to_string();
+    let note = str_arg(args, "note").unwrap_or("");
+    // A replay writes nothing, which is how this tells one from a first
+    // call: the store's own answer is the same either way.
+    let before = store.journal.last_seq;
+    let written = store.annotate(&instance_id, &request_id, note)?;
+    let duplicate = store.journal.last_seq == before;
+
+    let mut out = written.as_obj().cloned().unwrap_or_default();
+    out.insert("duplicate".to_string(), Value::Bool(duplicate));
+    out.insert("instance_id".to_string(), Value::Str(instance_id.clone()));
+    // The seq the note landed at — the original one on a replay, which is
+    // the record a caller would go and read.
+    if let Some(slot) = store.state.dedup.get(&request_id) {
+        out.insert("seq".to_string(), Value::Num(slot.seq.to_string()));
+    }
+    // And the view, unchanged, so a caller can confirm the note landed
+    // *and* that nothing moved, without a second call.
+    if let Ok(view) = store.instance_report(&instance_id)
+        && let Some(fields) = view.as_obj()
+    {
+        for (name, value) in fields {
+            out.entry(name.clone()).or_insert_with(|| value.clone());
+        }
+    }
+    Ok(Value::Obj(out))
+}

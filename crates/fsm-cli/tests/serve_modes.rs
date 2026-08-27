@@ -226,6 +226,9 @@ fn arguments_for(tool: &str) -> String {
         "instance_elicit" => {
             r#"{"instance_id":"order-1","event":"confirm","request_id":"req-i"}"#.to_string()
         }
+        "instance_annotate" => {
+            r#"{"instance_id":"order-1","note":"why","request_id":"req-j"}"#.to_string()
+        }
         "signal_deliver" => {
             r#"{"instance_id":"order-1","signal_id":"order-1/3/0","request_id":"req-g"}"#
                 .to_string()

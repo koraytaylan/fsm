@@ -394,7 +394,8 @@ The read-only tools are therefore `machine_list`, `machine_get`,
 `instance_history`, `explain_step`, `journal_verify`, `journal_replay`, `store_doctor`, and `simulate`. The mutating ones are `machine_create`,
 `instance_create`, `instance_send`, `deadline_poll`, `effect_ack`,
 `instance_cancel`, `instance_migrate`, `invocation_start`,
-`invocation_return`, `signal_deliver`, and `instance_elicit`.
+`invocation_return`, `signal_deliver`, `instance_elicit`, and
+`instance_annotate`.
 
 **The idempotency claim is exact, and stronger than most servers can make.**
 Every mutating tool requires a `request_id`. The store keys on the pair of
@@ -580,12 +581,13 @@ directory and it can call `machine_list`, `machine_get`, `machine_analyze`,
 `machine_diagram`, `instance_get`, `instance_list`, `instance_history`, and
 `simulate` while the executor writes.
 
-What it cannot do there is write. These eleven refuse with a message naming
+What it cannot do there is write. These twelve refuse with a message naming
 the mode: `machine_create`, `instance_create`, `instance_send`,
 `deadline_poll`, `effect_ack`, `instance_cancel`, `instance_migrate`,
 `invocation_start`, `invocation_return`, `signal_deliver`,
-`instance_elicit` — the last because an ask that could not send the answer
-would waste a person's time. A `machine_create` with `dry_run`, and
+`instance_elicit`, `instance_annotate` — the ask because an answer it could not
+send would waste a person's time, the note because it writes a record like any
+other. A `machine_create` with `dry_run`, and
 an `instance_migrate` with `dry_run`, both still
 answer, because checking a definition and asking what a migration would do are
 reading, not writing.
