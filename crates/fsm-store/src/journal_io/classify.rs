@@ -121,7 +121,13 @@ fn writer_lock(dir: &Path) -> (bool, Option<u32>) {
                     v.get("pid")
                         .and_then(fsm_core::json::Value::as_num)
                         .and_then(|pid| pid.parse().ok())
-                });
+                })
+                // A server diagnosing the store it is itself holding would
+                // otherwise report its own pid, which tells the operator
+                // nothing they did not know and makes the answer differ
+                // between two identical runs. "Held, by somebody else" is
+                // the fact worth naming.
+                .filter(|pid| *pid != std::process::id());
             (true, holder)
         }
         // A lock call that failed for any other reason says nothing about

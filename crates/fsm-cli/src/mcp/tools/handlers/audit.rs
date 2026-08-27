@@ -329,8 +329,23 @@ pub fn replay_report(
     // The intact prefix, not the whole journal: a torn final record is a
     // fact about the store, and "I cannot answer at all" is a worse answer
     // than "I replayed the twelve records that are whole".
-    let records = fsm_store::journal_io::load_intact_prefix(data_dir)
-        .map_err(|e| ErrorObj::new("io/read", e).hint("the journal could not be read at all"))?;
+    //
+    // A journal that will not load even that far is reported rather than
+    // refused, for the same reason: a diagnosis that declines to diagnose is
+    // no use to the caller holding a broken store.
+    let records = match fsm_store::journal_io::load_intact_prefix(data_dir) {
+        Ok(records) => records,
+        Err(error) => {
+            return Ok(Value::Obj(std::collections::BTreeMap::from([
+                ("replayed_records".to_string(), Value::Num("0".into())),
+                ("matches".to_string(), Value::Bool(false)),
+                (
+                    "message".to_string(),
+                    Value::Str(format!("the journal could not be read: {error}")),
+                ),
+            ])));
+        }
+    };
     let records: Vec<fsm_core::record::Record> = match to_seq {
         Some(to) => records.into_iter().filter(|r| r.seq <= to).collect(),
         None => records,

@@ -232,9 +232,11 @@ fn the_writer_lock_is_reported_while_somebody_holds_it() {
         "something else has the writer is the commonest non-fatal surprise"
     );
     assert_eq!(
-        nested(&report, "writer_lock", "holder").as_deref(),
-        Some(std::process::id().to_string().as_str()),
-        "and the lock file says which process"
+        nested(&report, "writer_lock", "holder"),
+        None,
+        "the holder is this very process, which tells an operator nothing \
+         they did not know — and naming it would make two identical runs \
+         report different things"
     );
     drop(writer);
 

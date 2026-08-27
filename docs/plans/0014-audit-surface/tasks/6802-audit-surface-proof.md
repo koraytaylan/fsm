@@ -9,9 +9,12 @@ depends_on:
   - explain-step-tool
 gated: false
 touches:
+  - crates/fsm-store/src/journal_io/classify.rs
+  - crates/fsm-cli/src/mcp/tools/handlers/audit.rs
+  - crates/fsm-cli/tests/audit_doctor.rs
   - crates/fsm-cli/tests/audit_golden.rs
   - crates/fsm-cli/tests/fixtures/audit/session.expected
-status: planned
+status: done
 merged_as: ""
 ---
 # Audit Surface Proof
@@ -41,3 +44,14 @@ These tools are only worth having if they are right about a **broken** store, so
 - The suite passes on all three CI operating systems from one fixture.
 
 - **Done when:** `cargo test -p fsm-cli --test audit_golden` passes, corrupted stores are built in-test, every health and remedy matches SPEC verbatim, degraded mode is proven end to end, cross-surface agreement holds, no read tool mutates anything, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** One byte-compared healthy session over all five audit tools, and three corrupted stores built in the test — a space inside a record for `NonCanonical`, a cut final line for `TornTail`, a rewritten `prev` for `ChainBroken` — each asserted against the health SPEC names, with the remedy checked against the literal string in `docs/SPEC.md` and the no-repair postures asserted to offer none. Degraded mode is exercised end to end against two of them: the three diagnostic tools answer, `instance_get` is refused with the same health and remedy `store_doctor` reports, and a dry-run `machine_create` still works.
+
+Cross-surface agreement is asserted for all three pairs, and the read-only property directly: after every read-side tool runs, the journal bytes, `VERSION` and the snapshot set are unchanged.
+
+**Corrections.**
+
+- *`store_doctor` reported its own pid, which no golden can contain.* A server diagnosing the store it is itself holding was reporting `holder: <me>` — true, useless, and different on every run. The holder is now reported only when it is **somebody else**, which is the fact an operator actually wants; `held` still says yes either way.
+- *`journal_replay` could not answer for a `NonCanonical` store*, whose very first record fails to load. A diagnosis that declines to diagnose is no use to the caller holding a broken store, so an unloadable journal is now reported as `matches: false` with the reason rather than raised as an error.
+- *Two of the fixture's writes were not clock-injected.* `send_event` reads the process clock, so two runs journalled different timestamps and hashed differently; the golden pins the clock the way `mcp_full` does and sends through the injected path.
+- *A read-side test cannot assert "no snapshots exist".* Dropping a **writable** store handle writes a shutdown snapshot — the store closing, not a tool writing — so the assertion compares the snapshot set before and after instead.
