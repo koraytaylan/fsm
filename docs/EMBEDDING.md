@@ -733,14 +733,27 @@ the executor can ever run.
 | Field | Rule |
 |---|---|
 | `format` | exactly `fsm.handlers/1` |
+| `handlers` | a non-empty array of handler objects |
+| `max_inflight` | optional, top level. Handler processes this executor runs at once, `1` to `64`; default `8` |
+| `max_inflight_per_instance` | optional, top level. Handler processes one instance may occupy at once, `1` to `16`; default `2` |
 | `effect` | a non-empty effect name the machine declares; unique across the table |
-| `argv` | non-empty array of strings. `argv[0]` is the command and must be a **literal rooted path** — no `{placeholder}`, no bare name |
+| `kind` | optional, `"process"` (default) or `"mcp"` |
+| `argv` | non-empty array of strings. `argv[0]` is the command and must be a **literal rooted path** — no `{placeholder}`, no bare name. **Identical for both kinds** |
+| `tool` | required for `kind: "mcp"`, refused otherwise. The one tool name this handler calls |
+| `arguments` | optional for `kind: "mcp"`, refused otherwise. An object; `{placeholder}` substitutes in **string values** at any depth |
 | `timeout_ms` | a whole number of milliseconds, `1` to `86400000`; the run is killed past it |
+| `retry` | optional. An object with `attempts` (total including the first, `1` to `16`; default `1`), `backoff_ms` (default `1000`), `max_backoff_ms` (default `60000`), and `on`, an array of failure classes |
 | `on_ok` / `on_failed` | optional. An object with a non-empty `event`, an optional `payload` **object** (default `{}`), and an optional `stamps` array of field names (default `[]`) the store fills from the clock |
 
-Every other key is refused. A misspelled `on_okay` that validated would ack
-effects and never advance, which at run time is indistinguishable from a
-deliberately undeclared advance.
+Every other key is refused, at the top level and inside a handler alike. A
+misspelled `on_okay` that validated would ack effects and never advance, which
+at run time is indistinguishable from a deliberately undeclared advance — and a
+misspelled `max_in_flight` would spawn without a bound while looking like it
+had one.
+
+A table that says none of the new keys means exactly what it meant before they
+existed: `kind` defaults to `process`, `retry` defaults to one attempt, and the
+two caps are bounds a normal deployment never reaches.
 
 `{placeholder}` in any element after `argv[0]` is replaced by the effect
 argument of that name, rendered in the same canonical form the engine persists
@@ -759,6 +772,189 @@ whole thing, so a permanent record keeps a tamper-evident reference to output
 it does not store. Bytes that are not valid UTF-8 survive as replacement
 characters, and a character the cap cut in half is dropped rather than
 rendered, so an ack never fails to journal because of what a handler printed.
+
+### Retry, backoff, and dead letters
+
+`retry` is per handler and absent means `attempts: 1` — one try, exactly what a
+table written before this feature meant.
+
+```json
+"retry": { "attempts": 3, "backoff_ms": 2000, "max_backoff_ms": 60000, "on": ["timeout", "nonzero_exit"] }
+```
+
+**Attempts are journaled, not remembered.** Each failed attempt that will be
+tried again writes an `effect_attempted` record; the count comes from those
+records and from nothing a process holds in memory. That is the whole point: a
+retry counter kept in memory is lost by exactly the restart it exists to
+survive, so a restarted executor resumes mid-retry at the number its
+predecessor would have reached. The final failure is **acked** rather than
+journaled as an attempt, so a three-attempt handler leaves two records.
+
+**The backoff is a formula, not a schedule:**
+
+```
+due_ms = last_attempt_ts + min(backoff_ms * 2 ^ (attempt - 1), max_backoff_ms)
+```
+
+Every term comes from a journaled fact or the table. `last_attempt_ts` is the
+record's own timestamp, so an executor that comes up an hour later **resumes**
+the wait rather than restarting it. The multiply and the shift saturate: an
+overflowed deadline would land in the past and turn backoff into a busy loop,
+which is the opposite of what it is for. An effect inside its window produces
+**no directive at all** — the executor does not sleep and does not hold a
+concurrency slot, it simply does not act yet — and the tick says so, so an
+operator watching a quiet tick can tell "waiting to retry" from "nothing to do".
+
+**There is no jitter, and that is a decision rather than an omission.** Jitter
+would make the scheduler non-deterministic, and determinism is what makes
+restart equivalence testable: the same observation and the same `now_ms` must
+produce the same directives, or a chaos suite cannot assert anything. Jitter
+exists to spread a thundering herd across many nodes, and this executor is
+single-node — there is no herd to spread.
+
+`on` is the closed set of failure classes a policy may name:
+
+| Class | Raised by |
+|---|---|
+| `nonzero_exit` | the handler exited non-zero |
+| `timeout` | the run passed `timeout_ms` and was killed |
+| `spawn` | the command could not be started |
+| `mcp_error` | a tool call failed — `kind: "mcp"` handlers only |
+
+Omitting `on` means every class **that kind can produce**, so a process handler
+never silently carries `mcp_error`, which would retry nothing.
+
+**`"cancelled"` is not a class and cannot be made one.** A handler killed
+because its instance was cancelled must never be restarted: somebody decided
+that instance was over, and a retry would spend the budget undoing their
+decision. Writing `"cancelled"` in `on` is refused at startup with that reason,
+because it is the one class an operator will try to configure. A failure the
+executor cannot honestly repeat is likewise never retried — an argv template
+naming an argument the emit did not produce fails identically every time, and a
+server that violates the protocol produces the same broken exchange next time.
+
+**Exhaustion is an ordinary failure.** When the last attempt fails, the effect
+is acked `failed` through the same path every other failure takes, with
+`result.error` set to `exec/retries_exhausted`, `result.attempts` naming the
+count, and `result.class` preserving the cause that `error` replaced. There is
+no terminal state and no new record kind: the ack is already the terminal fact.
+So a machine that models a failure path **keeps working unchanged** — its
+`on_failed` event fires exactly as it did before retry existed.
+
+A handler with **no** `on_failed` still stalls its instance deliberately, which
+is what an undeclared failure path has always meant. The instance sits where it
+was with nothing in its outbox to say why, and that is precisely why the
+dead-letter report exists:
+
+```console
+$ fsm execute --list-dead
+$ fsm execute --list-dead --since 412
+```
+
+Every effect acked `failed` whose result carries the exhaustion cause, with its
+instance, effect name, attempt count, failure class, and the last attempt's
+capture. `--since` is exclusive, so passing the newest `seq` you have seen
+returns what has died since. The report is **derived from the journal at read
+time and stores nothing**: a dead-letter queue with its own state would be a
+second source of truth about what happened to an effect, and it would drift
+from the first the moment one of them was pruned, restored, or replayed. Both
+it and the `dead_letters` field on `fsm execute --check` read through
+`Store::open_read_only`, which takes no lock, so either answers while the
+executor is running.
+
+### Concurrency and fairness
+
+An outbox holding five hundred pending effects would spawn five hundred
+subprocesses, so two caps bound it: `max_inflight` (default 8) across the whole
+executor, and `max_inflight_per_instance` (default 2) within one instance. Both
+are counted over the handler processes **this process** is running now — a cap
+on concurrency is a statement about this executor, so a restarted one correctly
+fills up to the cap again, its predecessor's children being gone and their
+effects still pending precisely because nothing acked them.
+
+Only starts are capped. A kill, an advance event, and a deadline poll are
+bookkeeping against the journal, cost no subprocess, and are never deferred by a
+concurrency bound — a timed-out handler that could not be killed because the
+host was busy would be the worst version of that bug.
+
+Candidates are taken in a **round-robin**: ordered by position in their own
+instance's queue, then `instance_id`, then `effect_id`, so every instance's
+first pending effect is considered before any instance's second. Ordering by
+`effect_id` alone would let the lexicographically-first instance take every slot
+forever. The ordering is a pure function of one observation and needs no memory
+between ticks, which is what keeps a restarted executor's decisions identical.
+It does not *rotate*: with more permanently-busy instances than global slots,
+the highest-sorting ones wait until one of the others empties. A rotating cursor
+would close that window and cost restart equivalence with it, since two
+executors reading the same journal would disagree about whose turn it was. What
+the ordering does buy is that no instance can convert more queued work into more
+of the host.
+
+A tick that defers says so, once per tick with counts only:
+
+```
+error exec/inflight_deferred deferred=38 inflight=2
+```
+
+Silent truncation reads as "nothing to do", which is exactly the failure an
+operator cannot diagnose.
+
+### `kind: "mcp"`: an effect that calls another server's tool
+
+A handler may be an MCP server the executor talks to over its stdio, rather than
+a command whose exit status is the answer:
+
+```json
+{
+  "effect": "summarize_case",
+  "kind": "mcp",
+  "argv": ["/usr/local/bin/case-tools", "--stdio"],
+  "tool": "summarize",
+  "arguments": { "case_id": "{case_id}", "mode": "brief" },
+  "timeout_ms": 60000,
+  "retry": { "attempts": 3, "backoff_ms": 2000, "on": ["mcp_error", "timeout"] },
+  "on_ok": { "event": "summarized" },
+  "on_failed": { "event": "summary_failed" }
+}
+```
+
+**The security boundary does not widen by one inch.** `argv[0]` is still a
+literal rooted path with no `{placeholder}` and no bare name — the same rule,
+enforced by the same code, for both kinds. `tool` is one fixed name the operator
+wrote. `arguments` is a template the operator wrote, whose placeholders name
+effect arguments by the same `{name}` rule and the same canonical rendering
+`argv` uses. **Nothing about a handler is constructed from machine-emitted
+data.** Substitution applies to string values only, at any nesting depth:
+numbers, booleans, and object **keys** are copied verbatim, because letting an
+effect argument choose a property name would let emitted data reshape the call.
+A placeholder that fills a whole string still produces a string.
+
+**One effect is one tool call**, and the exchange is fixed: `initialize` at
+protocol version `2025-06-18`, `notifications/initialized`, one `tools/call`,
+and the response to it. A handler that needs two calls is **two effects**, which
+keeps each independently retryable, independently journaled, and independently
+visible in the outbox. **One process per effect**, with no pooling and no
+long-lived connections — the same isolation every subprocess handler gets.
+Notifications and log messages the server sends while the call is outstanding
+are ignored: a server that logs is not a server that failed. The server's
+standard error is captured with the same bound and digest a process handler's
+is, so a crashing server leaves evidence.
+
+The result becomes the ack deterministically:
+
+| Server response | Ack |
+|---|---|
+| result with `isError` absent or false | `ok`, `result.structured` = `structuredContent` if present, else `content` |
+| result with `isError: true` | `failed`, `result.error` = `mcp/tool_error`, with the content kept |
+| JSON-RPC error | `failed`, `result.error` = `mcp/rpc_error`, with `code` and `message` |
+| timeout, spawn failure, protocol violation | `failed`, `result.error` = `exec/timeout`, `exec/spawn`, or `exec/mcp_protocol` |
+
+Deterministic and bounded, both for the same reason: the store fingerprints the
+ack over this object, so a value carrying a timestamp, a pid, or an OS message
+would turn a re-issued ack into a conflict instead of a replay, and a result
+past 4 KiB is truncated on a character boundary with a SHA-256 of the whole
+value beside it rather than pushing the ack past the journal's payload limit. A
+result that fits is journaled as it came — an object stays an object.
 
 Validate a table before pointing it at a store:
 

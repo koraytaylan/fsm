@@ -121,3 +121,180 @@ fn the_support_table_carries_the_fifth_crate() {
         "a fifth workspace crate owes its readers a support row"
     );
 }
+
+/// Every key the handler-table parser accepts, from the parser's own reach.
+///
+/// Asserted against what the code enforces rather than a list kept here: a key
+/// added to the closed set and left undocumented is a key an operator cannot
+/// discover, and this is where that becomes a red test rather than a support
+/// question.
+const DOCUMENTED_KEYS: &[&str] = &[
+    "format",
+    "handlers",
+    "max_inflight",
+    "max_inflight_per_instance",
+    "effect",
+    "kind",
+    "argv",
+    "tool",
+    "arguments",
+    "timeout_ms",
+    "retry",
+    "on_ok",
+    "on_failed",
+    "attempts",
+    "backoff_ms",
+    "max_backoff_ms",
+    "on",
+];
+
+/// The field table of the `fsm.handlers/1` section.
+fn field_table() -> String {
+    let embedding = embedding();
+    let start = embedding
+        .find("### The handler table: `fsm.handlers/1`")
+        .expect("EMBEDDING documents the handler table");
+    let rest = &embedding[start..];
+    let end = rest.find("\n### ").unwrap_or(rest.len());
+    rest[..end].to_string()
+}
+
+#[test]
+fn every_handler_table_key_appears_in_the_field_table() {
+    let table = field_table();
+    for key in DOCUMENTED_KEYS {
+        assert!(
+            table.contains(&format!("`{key}`")),
+            "{key} is accepted by the parser but absent from EMBEDDING's field table"
+        );
+    }
+}
+
+#[test]
+fn every_failure_class_and_both_handler_kinds_are_documented() {
+    for class in fsm_execute::config::FAILURE_CLASSES {
+        assert!(
+            embedding().contains(class),
+            "{class} is a valid retry.on entry and appears nowhere in EMBEDDING.md"
+        );
+    }
+    for kind in ["`\"process\"`", "`\"mcp\"`"] {
+        assert!(embedding().contains(kind), "{kind} is undocumented");
+    }
+}
+
+#[test]
+fn the_ranges_and_defaults_of_every_bound_are_stated() {
+    let table = field_table();
+    // The numbers an operator has to type, each from the constant the parser
+    // enforces, so a widened bound cannot ship with a narrow doc.
+    for value in [
+        fsm_execute::config::MAX_ATTEMPTS.to_string(),
+        fsm_execute::config::DEFAULT_BACKOFF_MS.to_string(),
+        fsm_execute::config::DEFAULT_MAX_BACKOFF_MS.to_string(),
+        fsm_execute::config::DEFAULT_MAX_INFLIGHT.to_string(),
+        fsm_execute::config::MAX_MAX_INFLIGHT.to_string(),
+        fsm_execute::config::DEFAULT_MAX_INFLIGHT_PER_INSTANCE.to_string(),
+        fsm_execute::config::MAX_MAX_INFLIGHT_PER_INSTANCE.to_string(),
+    ] {
+        assert!(
+            table.contains(&value),
+            "{value} is nowhere in the field table"
+        );
+    }
+}
+
+#[test]
+fn the_backoff_formula_and_the_no_jitter_reason_are_stated() {
+    let embedding = embedding();
+    assert!(
+        embedding.contains("last_attempt_ts + min(backoff_ms * 2 ^ (attempt - 1), max_backoff_ms)"),
+        "the formula an operator predicts a wait with must appear verbatim"
+    );
+    // The first thing a reviewer asks about, answered where they will ask it.
+    assert!(
+        embedding.contains("no jitter"),
+        "the decision is undocumented"
+    );
+    assert!(
+        embedding.contains("thundering herd"),
+        "the reason jitter exists elsewhere, and does not here, is the answer"
+    );
+    assert!(
+        embedding.contains("restart equivalence"),
+        "determinism is why there is no jitter, and the doc has to say so"
+    );
+}
+
+#[test]
+fn exhaustion_and_the_report_that_finds_a_stall_are_documented() {
+    let embedding = embedding();
+    assert!(embedding.contains("exec/retries_exhausted"));
+    assert!(
+        embedding.contains("fsm execute --list-dead"),
+        "the way to find a stalled instance has to be findable"
+    );
+    assert!(
+        embedding.contains("--since"),
+        "the bounded form is undocumented"
+    );
+    assert!(
+        embedding.contains("`on_failed` still stalls")
+            || embedding.contains("no** `on_failed` still stalls"),
+        "the stall is why the report exists, and must be stated beside it"
+    );
+}
+
+#[test]
+fn cancelled_is_documented_as_unretryable() {
+    let embedding = embedding();
+    assert!(
+        embedding.contains("`\"cancelled\"` is not a class"),
+        "the one class an operator will try to configure needs its refusal stated"
+    );
+}
+
+#[test]
+fn the_mcp_kind_restates_the_argv_rule_rather_than_relaxing_it() {
+    let embedding = embedding();
+    let start = embedding
+        .find("### `kind: \"mcp\"`")
+        .expect("EMBEDDING documents the mcp handler kind");
+    let section = &embedding[start..];
+    let end = section.find("\nValidate a table").unwrap_or(section.len());
+    let section = &section[..end];
+    assert!(
+        section.contains("literal rooted path"),
+        "the security argument is that the rule did not move, so it is restated here"
+    );
+    assert!(section.contains("One effect is one tool call"), "{section}");
+    assert!(section.contains("One process per effect"), "{section}");
+    for row in ["mcp/tool_error", "mcp/rpc_error", "exec/mcp_protocol"] {
+        assert!(section.contains(row), "the result mapping omits {row}");
+    }
+}
+
+#[test]
+fn the_two_caps_and_the_fairness_rule_are_documented() {
+    let embedding = embedding();
+    assert!(
+        embedding.contains("round-robin"),
+        "the ordering is undocumented"
+    );
+    assert!(
+        embedding.contains("exec/inflight_deferred"),
+        "a deferral an operator sees in a trace must be findable in the docs"
+    );
+    assert!(
+        embedding.contains("Silent truncation"),
+        "why deferrals are logged rather than silent is the point of logging them"
+    );
+}
+
+#[test]
+fn the_readme_names_what_an_effect_can_now_reach() {
+    assert!(
+        readme().contains("MCP server"),
+        "an effect calling another server's tool is the capability, and the front page owes it a sentence"
+    );
+}

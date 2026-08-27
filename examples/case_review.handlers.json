@@ -1,0 +1,36 @@
+{
+  "format": "fsm.handlers/1",
+  "max_inflight": 16,
+  "max_inflight_per_instance": 2,
+  "handlers": [
+    {
+      "effect": "notify_reviewer",
+      "argv": ["/usr/local/bin/notify-reviewer", "--case", "{case_id}", "--quiet"],
+      "timeout_ms": 30000,
+      "retry": {
+        "attempts": 3,
+        "backoff_ms": 2000,
+        "max_backoff_ms": 60000,
+        "on": ["timeout", "nonzero_exit"]
+      },
+      "on_ok": { "event": "reviewer_notified", "payload": {}, "stamps": ["at"] },
+      "on_failed": { "event": "reviewer_unreachable", "payload": {} }
+    },
+    {
+      "effect": "summarize_case",
+      "kind": "mcp",
+      "argv": ["/usr/local/bin/case-tools", "--stdio"],
+      "tool": "summarize",
+      "arguments": { "case_id": "{case_id}", "mode": "brief", "max_paragraphs": 3 },
+      "timeout_ms": 60000,
+      "retry": {
+        "attempts": 3,
+        "backoff_ms": 2000,
+        "max_backoff_ms": 60000,
+        "on": ["mcp_error", "timeout"]
+      },
+      "on_ok": { "event": "case_summarized" },
+      "on_failed": { "event": "summary_unavailable" }
+    }
+  ]
+}

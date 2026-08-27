@@ -8,11 +8,12 @@ depends_on:
 gated: false
 touches:
   - docs/EMBEDDING.md
-  - docs/SPEC.md
   - README.md
-  - examples/order_lifecycle.handlers.json
+  - examples/case_review.handlers.json
   - crates/fsm-cli/tests/executor_doc.rs
-status: planned
+  - crates/fsm-execute/tests/config.rs
+  - crates/fsm-cli/tests/executor_policy_chaos.rs
+status: done
 merged_as: ""
 ---
 # Executor Policy Docs
@@ -43,3 +44,15 @@ The handler table is the operator's whole interface to this plan, so every new k
 - The banned-vocabulary scan in `crates/fsm-cli/tests/policy.rs` passes over the new prose and the new example.
 
 - **Done when:** EMBEDDING documents every new key with ranges, defaults, and the two contested reasons; SPEC lists `effect_attempted`; README names the MCP handler capability; the example demonstrates both new features; `cargo test -p fsm-cli --test executor_doc --test spec_appendix --test examples --test policy` passes; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** Every new key joins the one `fsm.handlers/1` field table rather than a second one, and a test asserts the set is complete **against the parser** — a key added to the closed set and left undocumented is a key an operator cannot discover, and this is where that becomes a red test instead of a support question. The ranges and defaults are asserted against the constants the parser enforces, so a widened bound cannot ship with a narrow doc.
+
+Three sections carry the reasoning rather than only the rules: retry (journaled attempts, the formula in full, and the no-jitter decision with its reason), exhaustion (the ordinary ack, the still-firing `on_failed`, the deliberate stall, and `--list-dead` as the way to find one), and the caps with the round-robin and the logged deferral. `"cancelled"` gets its own paragraph because it is the one class an operator will try to configure.
+
+The `mcp` section **restates** the security boundary rather than referring to it, and a test pins that restatement inside the section: the argument is that the rule did not move, and a reader meeting the new kind has to see it there rather than be sent back a page.
+
+**On the example.** `examples/order_lifecycle.handlers.json` is pinned twice over — the README demo runs it and `config.rs` holds it to "no committed table changes meaning" — so the new features went into a sibling, `examples/case_review.handlers.json`, in the repository's neutral vocabulary: a retried process handler, an `mcp` handler with a templated `arguments` object, and both caps. That `config.rs` assertion now names the pre-plan table rather than scanning every example, since holding a documentation fixture to a rule written for deployments would be holding it to the wrong rule.
+
+`docs/SPEC.md` needed nothing: `7401` added `effect_attempted` to the record-kinds table when it added the kind, and `spec_appendix`'s both-directions assertion has been passing since.
+
+**Correction.** `7801`'s harness carried a `get(...).is_none()` the all-targets clippy pass flags; fixed here.

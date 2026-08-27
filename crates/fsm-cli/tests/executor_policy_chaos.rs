@@ -884,7 +884,7 @@ fn an_instance_cancelled_mid_retry_is_never_tried_again() {
         "the successor added an attempt to a cancelled instance"
     );
     assert!(
-        journal.acks.get(effect_id).is_none(),
+        !journal.acks.contains_key(effect_id),
         "a cancelled instance's effect was acked by the successor"
     );
     // And the handler itself never ran again.

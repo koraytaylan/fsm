@@ -38,6 +38,12 @@ loopback by default**; exposing it to a network is a deployment decision that
 means putting it behind a reverse proxy that terminates TLS. See
 [docs/EMBEDDING.md](docs/EMBEDDING.md#serving-over-http).
 
+A handler may also be another **MCP server**, which the executor talks to over
+its stdio and calls one tool on — so an effect can reach the ecosystem this
+engine belongs to rather than only the commands on one host. Handlers retry on
+a deterministic backoff, run under a concurrency cap, and leave a dead-letter
+report behind when they give up.
+
 The pairing is the point: only the executor writes, and a model on
 `fsm serve --read-only` subscribes to `fsm://instance/{id}` and is notified
 when that instance advances, rather than polling to find out. See
