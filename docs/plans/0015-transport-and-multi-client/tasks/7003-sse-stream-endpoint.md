@@ -7,10 +7,11 @@ depends_on:
   - post-endpoint
 gated: false
 touches:
+  - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/src/http/sse.rs
   - crates/fsm-cli/src/http/endpoint.rs
   - crates/fsm-cli/tests/http_sse.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # SSE Stream Endpoint
@@ -40,3 +41,13 @@ This is where plan 0012's whole point survives the change of transport: the chan
 - A slow client that stops reading does not block other sessions — assert a second session's stream keeps receiving.
 
 - **Done when:** `cargo test -p fsm-cli --test http_sse` passes every case above, notification payloads byte-match the stdio golden, `notify.rs` and `watch.rs` are unmodified by this task, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** GET on the endpoint path opens the session's one stream, requiring `Accept: text/event-stream` and refusing a second with `409` — two streams would split notification ordering with nothing to reassemble it, and a client that wants two can open two sessions for nothing. Event ids are assigned where the replay buffer records them, so the wire and the buffer agree by construction rather than by two pieces of code staying in step, and the buffer is bounded at 256 events with a resuming client told plainly when something older was dropped.
+
+`notify.rs` and `watch.rs` are **unmodified**, which the task made the test of the whole design: a `Notifier` over a `SessionStream` writes the same bytes for the same event as one over stdout, asserted by producing both and comparing the payload.
+
+A disconnect releases the stream slot and leaves the **session** alive, so a client that comes back gets its subscriptions back — which is what 7004 resumes on. A `DELETE` closes the stream and says nothing on the way out: there is nothing to say and the client may already be gone.
+
+**Corrections.**
+
+- *The gap flag is about the caller's position, not the buffer's history.* A client resuming from near the end missed nothing, and telling it otherwise would send it looking for events that were never lost.

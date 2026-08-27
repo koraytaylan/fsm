@@ -16,6 +16,7 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use super::request::Request;
 use super::response::{Response, StreamWriter, begin_stream, write_response};
 use super::session::{SESSION_HEADER, SessionError, Sessions, VERSION_HEADER};
+use super::sse::{Stream, write_event};
 use crate::clock::Clock;
 use crate::mcp::jsonrpc::{Incoming, WireError, parse_line};
 use crate::mcp::methods::handle_request;
@@ -41,6 +42,9 @@ pub struct Endpoint {
     lives: Mutex<BTreeMap<String, Live>>,
     /// Inbound responses, per session, waiting for whoever asked.
     mailboxes: Mutex<BTreeMap<String, std::sync::Arc<Mailbox>>>,
+    /// Each session's event stream: what it has sent, and whether anybody is
+    /// reading it.
+    streams: Mutex<BTreeMap<String, std::sync::Arc<Stream>>>,
     mode_note: &'static str,
 }
 
@@ -61,6 +65,7 @@ impl Endpoint {
             sessions: Sessions::default(),
             lives: Mutex::new(BTreeMap::new()),
             mailboxes: Mutex::new(BTreeMap::new()),
+            streams: Mutex::new(BTreeMap::new()),
             mode_note,
         }
     }
@@ -83,15 +88,18 @@ impl Endpoint {
             "POST" => self.post(request, clock, out),
             // `7003` fills the stream in; until then the method is routed
             // and answered rather than silently unhandled.
-            "GET" => write_response(
-                out,
-                &Response::error(405).with_header("Allow", ALLOWED_METHODS),
-            ),
+            "GET" => self.stream(request, clock, out),
             "DELETE" => {
                 let id = request.header(SESSION_HEADER).unwrap_or("");
                 if self.sessions.close(id) {
                     self.lives.lock_safe().remove(id);
                     self.mailboxes.lock_safe().remove(id);
+                    // The stream closes with the session, and says nothing
+                    // on its way out: there is nothing to say and the client
+                    // may already be gone.
+                    if let Some(stream) = self.streams.lock_safe().remove(id) {
+                        stream.release();
+                    }
                     write_response(out, &Response::text(200, "session ended"))
                 } else {
                     write_response(out, &Response::error(404))
@@ -325,6 +333,75 @@ impl Endpoint {
             message.insert("error".to_string(), error);
         }
         mailbox.post(Value::Obj(message));
+    }
+
+    /// The stream state for one session, created on first use.
+    pub fn stream_state(&self, session_id: &str) -> std::sync::Arc<Stream> {
+        let mut streams = self.streams.lock_safe();
+        streams
+            .entry(session_id.to_string())
+            .or_insert_with(|| std::sync::Arc::new(Stream::default()))
+            .clone()
+    }
+
+    /// GET: the session's one event stream.
+    ///
+    /// Everything a server says unprompted travels here — plan 0012's
+    /// notifications, plan 0013's questions — through a notifier this file
+    /// hands a socket instead of a pipe.
+    fn stream(
+        &self,
+        request: &Request,
+        clock: &mut dyn Clock,
+        out: &mut dyn Write,
+    ) -> std::io::Result<()> {
+        // A stream a client did not ask for is not a stream to open.
+        if !request
+            .header("accept")
+            .is_some_and(|accept| accept.contains("text/event-stream"))
+        {
+            return write_response(out, &Response::error(406));
+        }
+        let session_id = match self.sessions.touch(
+            request.header(SESSION_HEADER),
+            request.header(VERSION_HEADER),
+            clock.now_ms(),
+        ) {
+            Ok(id) => id,
+            Err(error) => return write_response(out, &Response::error(error.status())),
+        };
+        let stream = self.stream_state(&session_id);
+        // One stream per session. Two would split notification ordering with
+        // nothing to reassemble it; a client that wants two opens two
+        // sessions, which costs nothing.
+        if !stream.claim() {
+            return write_response(out, &Response::error(409));
+        }
+        begin_stream(out)?;
+
+        // A client that comes back after a disconnect resumes from where it
+        // stopped, which is `7004`'s subject; the id it names is honoured
+        // here because the buffer and the wire agree by construction.
+        if let Some(last) = request
+            .header("last-event-id")
+            .and_then(|id| id.parse::<u64>().ok())
+        {
+            let (missed, gap) = stream.replay_after(last);
+            if gap {
+                // A gap the buffer could not keep is said plainly rather
+                // than papered over: a client that thinks it caught up and
+                // has not is worse off than one that knows.
+                let _ = write_event(
+                    out,
+                    last,
+                    b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"level\":\"warning\",\"logger\":\"fsm.http\",\"data\":{\"resumed_with_gap\":true}}}",
+                );
+            }
+            for event in missed {
+                write_event(out, event.id, &event.data)?;
+            }
+        }
+        Ok(())
     }
 
     fn mailbox(&self, session_id: &str) -> std::sync::Arc<Mailbox> {
