@@ -7,3 +7,8 @@
 # Normalise to LF in the working tree on every platform. `text=auto` still
 # detects and leaves binary files alone.
 * text=auto eol=lf
+
+# HTTP fixtures are wire bytes: their CRLFs *are* the protocol, and a
+# normalisation that turned them into LFs would leave a corpus of requests no
+# HTTP parser should accept. Git leaves these exactly as committed.
+*.raw -text -diff

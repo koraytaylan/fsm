@@ -152,7 +152,8 @@ jobs:
           seed canon_roundtrip  crates/fsm-core/tests/fixtures/canon
           seed record_line      crates/fsm-core/tests/fixtures/records
           seed jsonrpc_loop     crates/fsm-cli/tests/fixtures/transcripts
-          for t in json_parse expr_parse decimal_parse canon_roundtrip record_line jsonrpc_loop; do
+          seed http_request     crates/fsm-cli/tests/fixtures/http
+          for t in json_parse expr_parse decimal_parse canon_roundtrip record_line jsonrpc_loop http_request; do
             echo "== fuzz-smoke: $t"
             cargo fuzz run --fuzz-dir fuzz "$t" -- -runs=2048
           done

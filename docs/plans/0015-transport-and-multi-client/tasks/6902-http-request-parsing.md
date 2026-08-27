@@ -7,11 +7,15 @@ depends_on:
   - http-server-core
 gated: false
 touches:
+  - crates/fsm-cli/tests/fixtures/http/
+  - crates/fsm-cli/tests/isolated_fuzz_targets.rs
+  - .github/workflows/release.yml
+  - CONTRIBUTING.md
   - crates/fsm-cli/src/http/request.rs
   - crates/fsm-cli/tests/http_request_parse.rs
   - fuzz/fuzz_targets/http_request.rs
   - fuzz/Cargo.toml
-status: planned
+status: done
 merged_as: ""
 ---
 # HTTP Request Parsing
@@ -44,3 +48,13 @@ A hand-rolled parser on a socket is where a zero-dependency project earns or los
 - **No input panics:** a table-driven case list of at least 40 malformed requests, each asserted to produce a status code rather than an unwind.
 
 - **Done when:** `cargo test -p fsm-cli --test http_request_parse --test isolated_fuzz_targets` passes, every bound and every malformed shape produces its documented code with no panic, the fuzz target is registered with a seed corpus, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** Every bound is a named constant with its status beside it, and each is checked **before** the thing it bounds exists — most importantly the body, which is refused on the client's *claim* rather than after a buffer that size has been allocated. Both smuggling shapes are refused rather than reconciled: two `Content-Length`s, or a length beside a `Transfer-Encoding`. Chunked is `411` with a message naming what this server does read. Obsolete folding is `400` rather than un-folded. Header names are matched case-insensitively and values are kept byte for byte, including internal spacing.
+
+Forty-four malformed requests are driven as raw bytes and each must produce a status rather than an unwind, and the fuzz target makes the same claim continuously — registered in `fuzz/Cargo.toml`, seeded from a committed corpus, run by the release job, and run over that corpus on every PR through `isolated_fuzz_targets`.
+
+**Corrections.**
+
+- *Lines are read a byte at a time, not with `read_until`.* `read_until` grows its buffer as far as the input goes, which would let a client make this allocate megabytes before being refused for exceeding eight kilobytes. The cap is the point, so the read honours it as it goes.
+- *A request target must be origin-form.* Absolute-form and `*` are refused: this server has one endpoint path, and accepting a form it will never route is an invitation to disagree about what the path was.
+- *`505` joins the statuses.* A request that is not HTTP/1.x is told which version this server speaks rather than being parsed anyway.

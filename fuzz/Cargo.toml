@@ -47,3 +47,9 @@ name = "jsonrpc_loop"
 path = "fuzz_targets/jsonrpc_loop.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "http_request"
+path = "fuzz_targets/http_request.rs"
+test = false
+doc = false

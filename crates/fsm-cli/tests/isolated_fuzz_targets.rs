@@ -54,6 +54,7 @@ fn isolated_fuzz_targets_driver() {
     );
     for name in [
         "jsonrpc_loop.rs",
+        "http_request.rs",
         "expr_parse.rs",
         "record_line.rs",
         "json_parse.rs",
@@ -67,6 +68,33 @@ fn isolated_fuzz_targets_driver() {
             "missing shipped target {name}"
         );
     }
+
+    // The HTTP parser over the corpus the fuzz job seeds it with: whatever
+    // the bytes are, this answers with a request or a status and never an
+    // unwind. Running the subject here is what makes the target's claim
+    // checkable on every PR, not only on a release tag.
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/http");
+    let mut seeds = 0;
+    for entry in std::fs::read_dir(&corpus)
+        .expect("the http seed corpus")
+        .flatten()
+    {
+        let bytes = std::fs::read(entry.path()).expect("a seed");
+        let mut input = std::io::BufReader::new(Cursor::new(bytes.clone()));
+        match fsm_cli::http::request::read_request(&mut input) {
+            Ok(request) => {
+                assert!(!request.method.is_empty());
+                assert!(request.path.starts_with('/'));
+                assert!(request.body.len() <= bytes.len());
+            }
+            Err(refusal) => {
+                assert!((400..=505).contains(&refusal.status));
+                assert!(!refusal.message.is_empty());
+            }
+        }
+        seeds += 1;
+    }
+    assert!(seeds >= 6, "the http corpus is {seeds} seeds");
 
     let rec = fsm_core::record::seal(
         0,
