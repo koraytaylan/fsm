@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/http/response.rs
   - crates/fsm-cli/tests/http_response_write.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # HTTP Response Writing
@@ -39,3 +39,14 @@ The streaming writer is the whole reason this file is separate: an SSE stream ha
 - A response to a `HEAD`-like path writes headers and no body if that path is supported, or `405` if it is not.
 
 - **Done when:** `cargo test -p fsm-cli --test http_response_write` passes every case above, SSE framing byte-matches its fixture and flushes per event, a `Notifier` works unmodified over the stream writer, no error body leaks internals, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** Two shapes and no third: a complete response that always declares its `Content-Length` — including an empty body, because a reader that has to guess where a response ends will guess wrong once — and a stream that declares none, with the event-stream headers and a flush after every event.
+
+`StreamWriter` implements `Write`, so plan 0012's `Notifier` holds one exactly as it holds stdout: one line in, one framed event out, and **nothing above the transport changes**. That is asserted with the unmodified notifier rather than described.
+
+Every refusal is a status line and a short sentence. The bodies are scanned in the test for `/tmp`, `/home`, `panic`, `unwrap`, `src/` and `backtrace`: a stranger learns the status code, and everything else about a failure stays on the operator's stderr.
+
+**Corrections.**
+
+- *The keep-alive is a comment, so it does not consume an event id.* An SSE comment is not an event; numbering it would make a resuming client skip one.
+- *`405`, `406`, `415` and `429` are in the reason table too.* The endpoint tasks will need them, and a table with holes invites a second one.
