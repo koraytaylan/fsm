@@ -7,9 +7,12 @@ depends_on:
   - origin-and-binding-policy
 gated: false
 touches:
+  - crates/fsm-cli/src/http/endpoint.rs
+  - crates/fsm-cli/src/http/mod.rs
+  - crates/fsm-cli/src/args.rs
   - crates/fsm-cli/src/http/security.rs
   - crates/fsm-cli/tests/http_auth.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Bearer Token Auth
@@ -40,3 +43,13 @@ A static token is a deliberate deviation from the specification's OAuth recommen
 - The constant-time comparison has no early return — assert by reading the implementation in review, and pin the behaviour with a test over equal-length and differing-length inputs.
 
 - **Done when:** `cargo test -p fsm-cli --test http_auth` passes every case above, the token is never accepted from an argument and never appears in output, comparison is constant time, a tokenless remote bind refuses to start, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** The token comes from `--http-token-file` or `FSM_HTTP_TOKEN` and **never** from an argument: an argument is visible in `ps` to every user on the host, and offering the option would invite its use. A file gives up exactly one trailing newline and nothing else — a token is bytes, and trimming whitespace would silently accept a different secret than the one on disk — and an empty one refuses at startup.
+
+The comparison accumulates a difference across every byte of both values and compares once at the end: no early return, no length short-circuit. A wrong token and a missing one produce **byte-identical** refusals, asserted as such, with `WWW-Authenticate: Bearer` and no hint about which of the two it was.
+
+Order: `Origin` first, then the token, then the session, then the body. A request failing both checks is told about the origin, which is the one it can fix without a credential — and a non-loopback bind with no token is a startup refusal rather than a warning somebody scrolls past.
+
+**Corrections.**
+
+- *This landed with 7101.* The two tasks are one file and one ordering; splitting the policy across two commits would have meant a half-built posture in between, which is the one state this module must never be in. The suite covers both.

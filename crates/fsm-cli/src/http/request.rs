@@ -60,11 +60,67 @@ impl Refusal {
     }
 }
 
+/// A request's head: everything before the body.
+///
+/// Separate from the body because the checks that refuse a request —
+/// `Origin`, then authentication — are decided entirely from the head, and a
+/// stranger's rejected request should cost this server one header block
+/// rather than sixteen megabytes.
+#[derive(Debug, Clone, Default)]
+pub struct Head {
+    pub method: String,
+    pub path: String,
+    pub query: String,
+    pub headers: Vec<(String, String)>,
+    /// How many bytes of body the client said it is sending.
+    pub content_length: usize,
+}
+
+impl Head {
+    /// One header by name, compared ASCII-case-insensitively.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        let wanted = name.to_ascii_lowercase();
+        self.headers
+            .iter()
+            .find(|(header, _)| *header == wanted)
+            .map(|(_, value)| value.as_str())
+    }
+}
+
 /// Read and parse one request, or say which refusal it earned.
 ///
 /// The socket's own read timeout is what bounds a client that stops
 /// mid-request: a short read becomes `408`, never a wait without end.
 pub fn read_request(input: &mut dyn BufRead) -> Result<Request, Refusal> {
+    let head = read_head(input)?;
+    let body = read_body(input, &head)?;
+    Ok(Request {
+        method: head.method,
+        path: head.path,
+        query: head.query,
+        headers: head.headers,
+        body,
+    })
+}
+
+/// The body a head declared, refused if it is over the limit or short.
+pub fn read_body(input: &mut dyn BufRead, head: &Head) -> Result<Vec<u8>, Refusal> {
+    // Checked before the buffer exists: a length a client supplied is a
+    // claim, not an allocation.
+    if head.content_length > MAX_BODY_BYTES {
+        return Err(Refusal::new(413, "body over the limit"));
+    }
+    let mut body = vec![0u8; head.content_length];
+    if head.content_length > 0 && input.read_exact(&mut body).is_err() {
+        // Short, or the socket went quiet. Either way the request never
+        // arrived.
+        return Err(Refusal::new(408, "the body did not arrive"));
+    }
+    Ok(body)
+}
+
+/// Read the request line and the headers, and nothing after them.
+pub fn read_head(input: &mut dyn BufRead) -> Result<Head, Refusal> {
     let line = read_line(input, MAX_REQUEST_LINE, 414)?;
     if line.is_empty() {
         return Err(Refusal::new(400, "empty request line"));
@@ -130,24 +186,12 @@ pub fn read_request(input: &mut dyn BufRead) -> Result<Request, Refusal> {
             Err(_) => return Err(Refusal::new(400, "malformed Content-Length")),
         },
     };
-    // Checked before the buffer exists: a length a client supplied is a
-    // claim, not an allocation.
-    if declared > MAX_BODY_BYTES {
-        return Err(Refusal::new(413, "body over the limit"));
-    }
-    let mut body = vec![0u8; declared];
-    if declared > 0 && input.read_exact(&mut body).is_err() {
-        // Short, or the socket went quiet. Either way the request never
-        // arrived.
-        return Err(Refusal::new(408, "the body did not arrive"));
-    }
-
-    Ok(Request {
+    Ok(Head {
         method: method.to_string(),
         path: path.to_string(),
         query: query.to_string(),
         headers,
-        body,
+        content_length: declared,
     })
 }
 

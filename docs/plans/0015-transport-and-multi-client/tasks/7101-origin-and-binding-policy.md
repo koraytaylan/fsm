@@ -7,10 +7,13 @@ depends_on:
   - http-server-core
 gated: false
 touches:
+  - crates/fsm-cli/src/http/endpoint.rs
+  - crates/fsm-cli/src/http/mod.rs
+  - crates/fsm-cli/src/http/request.rs
   - crates/fsm-cli/src/http/security.rs
   - crates/fsm-cli/src/args.rs
   - crates/fsm-cli/tests/http_origin.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Origin And Binding Policy
@@ -40,3 +43,14 @@ There is no TLS in this binary and there will not be one, so the security postur
 - The help text for `--http-allow-remote` contains the no-TLS sentence — assert it, so the warning cannot be trimmed later.
 
 - **Done when:** `cargo test -p fsm-cli --test http_origin` passes every case above, loopback is the default and remote requires an explicit flag whose help names the risk, `Origin` is validated on every method with exact matching, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** A bare `--http 8080` binds loopback, because a bare port is what somebody types when they have not thought about the network. Anything else requires `--http-allow-remote`, whose help text names the cost in one sentence — this binary has no TLS, so put it behind a proxy that terminates it — and a refusal to start quotes that same sentence.
+
+`Origin` is validated on **every** method, compared exactly on scheme, host and port, with no wildcards and no suffix matching: `evil-localhost` ends in `localhost`, which is what a suffix match would have missed. A **missing** origin is refused too, because this is the DNS-rebinding defence and it is not optional in any configuration. The check runs before session lookup and before the body is read at all — which needed the parser split into a head and a body, so a stranger's rejected request costs one header block rather than sixteen megabytes.
+
+The startup line names the bind, the remote state, the allow-list, and whether anything is authenticating.
+
+**Corrections.**
+
+- *`--http-origin` takes a comma-separated list rather than repeating.* The argument parser holds flags in a map, so a repeated flag overwrites; a list is the shape that works with the parser this CLI has.
+- *The parser gained `read_head` and `read_body`.* Ordering the checks before the body is the point of step 6, and a parser that reads both in one call cannot honour it.

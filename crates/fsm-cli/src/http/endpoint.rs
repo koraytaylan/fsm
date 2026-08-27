@@ -15,6 +15,7 @@ use fsm_core::json::{JsonLimits, Value, parse};
 
 use super::request::Request;
 use super::response::{Response, StreamWriter, begin_stream, write_response};
+use super::security::{Policy, origin_allowed, presented_token, token_matches};
 use super::session::{SESSION_HEADER, SessionError, Sessions, VERSION_HEADER};
 use super::sse::{Stream, write_event};
 use crate::clock::Clock;
@@ -45,6 +46,8 @@ pub struct Endpoint {
     /// Each session's event stream: what it has sent, and whether anybody is
     /// reading it.
     streams: Mutex<BTreeMap<String, std::sync::Arc<Stream>>>,
+    /// What this server will answer, and from whom.
+    policy: Option<Policy>,
     mode_note: &'static str,
 }
 
@@ -66,12 +69,51 @@ impl Endpoint {
             lives: Mutex::new(BTreeMap::new()),
             mailboxes: Mutex::new(BTreeMap::new()),
             streams: Mutex::new(BTreeMap::new()),
+            policy: None,
             mode_note,
         }
     }
 
+    /// The same endpoint, with a posture to enforce.
+    pub fn with_policy(mut self, policy: Policy) -> Self {
+        self.path = policy.path.clone();
+        self.policy = Some(policy);
+        self
+    }
+
     pub fn sessions(&self) -> &Sessions {
         &self.sessions
+    }
+
+    /// Whether this request may be answered at all, and what to say if not.
+    ///
+    /// Ordered deliberately: `Origin` first, because it is the
+    /// DNS-rebinding defence and it costs one string comparison; then the
+    /// token. A request failing both is told about the origin, which is the
+    /// one it can fix without a credential.
+    pub fn admits(&self, method: &str, headers: &[(String, String)]) -> Option<Response> {
+        let Some(policy) = &self.policy else {
+            return None;
+        };
+        let header = |name: &str| {
+            headers
+                .iter()
+                .find(|(header, _)| header == name)
+                .map(|(_, value)| value.as_str())
+        };
+        let _ = method;
+        if !origin_allowed(header("origin"), &policy.origins) {
+            return Some(Response::error(403));
+        }
+        if let Some(expected) = &policy.token {
+            let presented = presented_token(header("authorization"));
+            if !presented.is_some_and(|token| token_matches(token, expected)) {
+                // No detail: not "wrong token", not "no token", not a length
+                // hint. A stranger learns that credentials are required.
+                return Some(Response::error(401).with_header("WWW-Authenticate", "Bearer"));
+            }
+        }
+        None
     }
 
     /// Route one request by path and method, writing the whole response.
@@ -556,4 +598,58 @@ impl<T> LockSafe<T> for Mutex<T> {
 /// Parse a JSON body, for callers that have one.
 pub fn json_body(body: &[u8]) -> Option<Value> {
     parse(body, &JsonLimits::DEFAULT).ok()
+}
+
+/// One endpoint, answering connections.
+///
+/// The order is the security posture: a head, then `Origin`, then the token,
+/// and only then the body. A rejected request costs this server one header
+/// block rather than sixteen megabytes.
+pub struct EndpointHandler {
+    endpoint: std::sync::Arc<Endpoint>,
+}
+
+impl EndpointHandler {
+    pub fn new(endpoint: std::sync::Arc<Endpoint>) -> Self {
+        Self { endpoint }
+    }
+}
+
+impl super::server::Handler for EndpointHandler {
+    fn handle(
+        &self,
+        input: &mut dyn std::io::BufRead,
+        output: &mut dyn Write,
+    ) -> std::io::Result<super::server::Flow> {
+        let head = match super::request::read_head(input) {
+            Ok(head) => head,
+            Err(refusal) => {
+                write_response(output, &Response::text(refusal.status, &refusal.message))?;
+                return Ok(super::server::Flow::Close);
+            }
+        };
+        if let Some(refusal) = self.endpoint.admits(&head.method, &head.headers) {
+            write_response(output, &refusal)?;
+            // The body was never read, so this connection cannot carry
+            // another request: closing is the honest end.
+            return Ok(super::server::Flow::Close);
+        }
+        let body = match super::request::read_body(input, &head) {
+            Ok(body) => body,
+            Err(refusal) => {
+                write_response(output, &Response::text(refusal.status, &refusal.message))?;
+                return Ok(super::server::Flow::Close);
+            }
+        };
+        let request = Request {
+            method: head.method,
+            path: head.path,
+            query: head.query,
+            headers: head.headers,
+            body,
+        };
+        let mut clock = crate::clock::SystemClock;
+        self.endpoint.serve(&request, &mut clock, output)?;
+        Ok(super::server::Flow::KeepAlive)
+    }
 }

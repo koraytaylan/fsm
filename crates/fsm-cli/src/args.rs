@@ -134,6 +134,9 @@ fn serve_run(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(mode) => mode,
         Err(code) => return code,
     };
+    if let Some(addr) = args.flags.get("http") {
+        return crate::http::run_http(ctx, args, addr, mode);
+    }
     match crate::mcp::serve::run_with_mode(&ctx.data_dir, mode) {
         Ok(()) => 0,
         Err(_) => 1,
@@ -143,9 +146,15 @@ fn serve_run(ctx: &mut Ctx, args: &Args) -> u8 {
 static SERVE: CmdSpec = CmdSpec {
     path: &["serve"],
     positionals: &[],
-    flags: &["handlers"],
-    switches: &["read-only", "execute"],
-    help: "Run the MCP stdio server",
+    flags: &[
+        "handlers",
+        "http",
+        "http-path",
+        "http-origin",
+        "http-token-file",
+    ],
+    switches: &["read-only", "execute", "http-allow-remote"],
+    help: "Run the MCP server over stdio, or over HTTP with --http",
     run: serve_run,
 };
 
