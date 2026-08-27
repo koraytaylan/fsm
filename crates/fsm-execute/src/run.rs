@@ -389,7 +389,9 @@ pub struct Exhaustion {
 /// the evidence an operator needs. A successful call's ack carries the tool's
 /// answer; the server's logs would only crowd it.
 ///
-/// `7703` extends this with the cap and digest a chatty tool needs.
+/// **Bounded**, for the reason the process kind's capture is: a journal record
+/// is permanent, so a chatty tool must not be able to push an ack past
+/// `MAX_PAYLOAD_BYTES` and fail to journal at all.
 fn mcp_ack_result(outcome: &McpOutcome, stderr: &BoundedBytes) -> Value {
     let mut result = BTreeMap::new();
     match outcome {
@@ -397,7 +399,7 @@ fn mcp_ack_result(outcome: &McpOutcome, stderr: &BoundedBytes) -> Value {
             structured,
             is_error,
         } => {
-            result.insert("structured".into(), structured.clone());
+            insert_structured(&mut result, structured);
             if *is_error {
                 result.insert("error".into(), Value::Str("mcp/tool_error".into()));
             }
@@ -416,6 +418,42 @@ fn mcp_ack_result(outcome: &McpOutcome, stderr: &BoundedBytes) -> Value {
         insert_stream(&mut result, "stderr", stderr);
     }
     Value::Obj(result)
+}
+
+/// Put a tool's answer into the ack, typed when it fits and digested when it
+/// does not.
+///
+/// A result inside the cap is journaled **as it came** — an object stays an
+/// object — because a tool that returns typed data should not have it
+/// flattened into rendered text on the way to the journal. Only a result that
+/// must be truncated becomes a string, and then `structured_sha256` is present
+/// to say so: the digest's presence is what tells a later reader that the text
+/// is a prefix, exactly as it does for a handler's `stdout`.
+///
+/// The truncation goes through [`BoundedBytes`] rather than a second
+/// implementation, so a multi-byte character straddling the cap is dropped on
+/// its boundary instead of being rendered half-formed. An ack must never fail
+/// to journal because of what a tool returned.
+fn insert_structured(result: &mut BTreeMap<String, Value>, structured: &Value) {
+    let mut canonical = Vec::new();
+    fsm_core::json::write_canonical(structured, &mut canonical);
+    if canonical.len() <= ACK_OUTPUT_CAP {
+        result.insert("structured".into(), structured.clone());
+        return;
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    let digest = to_hex(&hasher.finalize());
+    canonical.truncate(ACK_OUTPUT_CAP);
+    insert_stream(
+        result,
+        "structured",
+        &BoundedBytes {
+            bytes: canonical,
+            truncated: true,
+            sha256: Some(digest),
+        },
+    );
 }
 
 /// Put one captured stream into the ack, with its digest when the capture is

@@ -108,6 +108,18 @@ fn main() {
         "content-only" => say(
             r#"{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"summary"}]}}"#,
         ),
+        // Far past the ack's output cap, so the result must be truncated and
+        // digested rather than journaled whole.
+        "huge-result" => say(&format!(
+            r#"{{"jsonrpc":"2.0","id":2,"result":{{"structuredContent":{{"note":"{}"}}}}}}"#,
+            "n".repeat(20_000)
+        )),
+        // Multi-byte characters arranged so the cap falls inside one, which is
+        // the case a naive truncation renders half-formed.
+        "wide-result" => say(&format!(
+            r#"{{"jsonrpc":"2.0","id":2,"result":{{"structuredContent":{{"note":"{}"}}}}}}"#,
+            r"\u00e9".repeat(6_000)
+        )),
         "noisy-stderr" => {
             eprint!("{}", "e".repeat(9000));
             let _ = std::io::stderr().flush();
