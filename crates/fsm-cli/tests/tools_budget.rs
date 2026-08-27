@@ -9,12 +9,26 @@ use fsm_core::canon::canon_bytes;
 fn tools_list_budget() {
     // 20 000 until plan 0009's reactive fields (21 000), then plan 0010's
     // three composition tools with their schemas (24 000), then plan 0011's
-    // migration tool and the tree fields on the instance view (26 000). The
-    // per-description word caps below are what bound a model's reading cost;
-    // this ceiling only stops the listing growing unnoticed, so it moves when
-    // a capability does and not otherwise.
+    // migration tool and the tree fields on the instance view (26 000).
+    //
+    // Plan 0013 sets this number **once for the whole plan sequence**, and
+    // the arithmetic is on the record so nobody has to redo it. Eighteen
+    // annotated tools measure 27 632 bytes; titles and the four hints cost
+    // about 135 bytes a tool, so the annotations themselves are roughly
+    // 2 400 of that. Six tools are still to come — `instance_elicit` from
+    // this plan, and `explain_step`, `journal_verify`, `journal_replay`,
+    // `store_doctor` and `instance_annotate` from plan 0014 — and the
+    // current mean is 1 535 bytes a tool. Allowing 1 700 each, a tenth over
+    // the mean for the audit tools' richer output schemas, gives 10 200 and
+    // a total of 37 832.
+    //
+    // So: 38 000, and no higher. `6403` and `6801` assert they fit under it
+    // rather than raising it; a tool that does not fit shortens its
+    // description, because a ceiling that only ever goes up is not a budget.
+    // `tools/list` is sent once per session and every byte of it is context
+    // the model pays for before it has read a single fact about the store.
     let bytes = canon_bytes(&tools_list_result());
-    assert!(bytes.len() <= 26_000, "tools/list is {} bytes", bytes.len());
+    assert!(bytes.len() <= 38_000, "tools/list is {} bytes", bytes.len());
 }
 
 #[test]

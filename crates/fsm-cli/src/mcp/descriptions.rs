@@ -34,3 +34,27 @@ pub const INSTANCE_LIST: &str =
     "When you need running work, list instances by machine, active state in any region, or status.";
 pub const INSTANCE_HISTORY: &str = "When you need the audit trail, page event and deadline records; include_trace recomputes decision traces.";
 pub const SIMULATE: &str = "When you want a what-if, simulate events without journaling or implicit time advancement; rejections are findings.";
+
+/// The display names a host shows beside each tool.
+///
+/// They live here, beside the descriptions, because a title and a
+/// description that drift apart are two answers to the same question. Short
+/// enough to read in a menu; the description says the rest.
+pub const MACHINE_CREATE_TITLE: &str = "Create machine";
+pub const MACHINE_LIST_TITLE: &str = "List machines";
+pub const MACHINE_GET_TITLE: &str = "Get machine";
+pub const MACHINE_ANALYZE_TITLE: &str = "Analyse machine";
+pub const MACHINE_DIAGRAM_TITLE: &str = "Draw machine";
+pub const INSTANCE_CREATE_TITLE: &str = "Start instance";
+pub const INSTANCE_SEND_TITLE: &str = "Send event";
+pub const DEADLINE_POLL_TITLE: &str = "Poll deadlines";
+pub const EFFECT_ACK_TITLE: &str = "Acknowledge effect";
+pub const INSTANCE_CANCEL_TITLE: &str = "Cancel instance";
+pub const INSTANCE_MIGRATE_TITLE: &str = "Migrate instance";
+pub const INVOCATION_START_TITLE: &str = "Start child";
+pub const INVOCATION_RETURN_TITLE: &str = "Return from child";
+pub const SIGNAL_DELIVER_TITLE: &str = "Deliver signal";
+pub const INSTANCE_GET_TITLE: &str = "Show instance";
+pub const INSTANCE_LIST_TITLE: &str = "List instances";
+pub const INSTANCE_HISTORY_TITLE: &str = "Read history";
+pub const SIMULATE_TITLE: &str = "Simulate events";

@@ -10,7 +10,8 @@ touches:
   - crates/fsm-cli/src/mcp/descriptions.rs
   - crates/fsm-cli/tests/tool_annotations.rs
   - crates/fsm-cli/tests/tools_budget.rs
-status: planned
+  - crates/fsm-cli/tests/fixtures/transcripts/skeleton.out.jsonl
+status: done
 merged_as: ""
 ---
 # Tool Annotations And Titles
@@ -41,3 +42,12 @@ Every hint here is derived from a fact the code already owns, because a second h
 - `tool_schemas.rs` still passes: adding annotations changes no input or output schema.
 
 - **Done when:** `cargo test -p fsm-cli --test tool_annotations --test tools_budget --test tool_schemas` passes, every hint is derived from `MUTATING_TOOLS` rather than declared, the `tools/list` golden is updated, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `ToolSpec` gains a `title`, because a display name is a human fact and there is nowhere to derive it from. Nothing else is declared: `annotations(name)` is one function over `MUTATING_TOOLS` and a one-entry `DESTRUCTIVE_TOOLS`, so a hint cannot disagree with the read/write split the store gate already keeps honest. The tests assert the derivation rather than today's values — including for a tool name that is not in the registry at all, which is the check that the two are one expression and not two lists that happen to agree.
+
+**The ceiling, set once for the sequence: 38 000 bytes.** Eighteen annotated tools measure **27 632**. Titles and four hints cost about 135 bytes a tool, so roughly 2 400 of that is new. Six tools remain — `instance_elicit` here, and `explain_step`, `journal_verify`, `journal_replay`, `store_doctor`, `instance_annotate` in plan 0014 — against a current mean of 1 535 bytes a tool. Allowing **1 700 each**, a tenth over the mean for the audit tools' richer output schemas, is 10 200, for a projected 37 832 and 168 bytes of slack. 6403 and 6801 assert they fit; neither raises it.
+
+**Corrections.**
+
+- *`annotations` is a free function, not a `ToolSpec` field.* Step 1 asks for `annotations: fn() -> Value` per tool, which is the second table step 2 forbids — eighteen function pointers are eighteen declarations. One function over the constant is what step 2 actually asks for, and `tools_list_result` calls it per entry.
+- *One golden moved, not several.* Only `mcp_skeleton`'s plain transcript carries a `tools/list` result; the `mcp_full` transcripts do not. Its diff was checked key by key: every tool gained exactly `title` and `annotations`, none lost a key, and no existing value changed.
