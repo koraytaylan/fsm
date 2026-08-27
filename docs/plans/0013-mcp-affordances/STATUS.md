@@ -1,8 +1,8 @@
-# Plan 0013 — MCP Affordances — 🚧 In progress
+# Plan 0013 — MCP Affordances — ✅ Complete
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file. Task-level truth lives in [tasks/](tasks/) frontmatter; Makina's integration coordinator updates both layers.
 
-- **Status:** 🚧 In progress.
+- **Status:** ✅ Complete.
 
 - **Goal:** publish the facts the server already holds — derived tool annotations and titles so a host can auto-approve reads and gate writes, completion of machine ids, instance ids, and enabled event names, and an elicitation path that turns a machine's typed event fields into a form a person can fill in.
 - **Root cause:** `tools/list` carries no `title` and no `annotations` even though `MUTATING_TOOLS` already encodes the read/write split and every mutating tool is exactly-once by `request_id`; `completion/complete` is unimplemented even though the server holds every id and computes `enabled_events` for its own purposes; and a workflow at a human gate stalls until somebody thinks to send the event.
