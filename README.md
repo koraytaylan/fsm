@@ -26,6 +26,18 @@ fsm execute --data-dir ./data --handlers examples/order_lifecycle.handlers.json 
 fsm serve --read-only --data-dir ./data
 ```
 
+A second transport, for when more than one client needs the same store:
+
+```
+fsm serve --http 8080 --data-dir ./data
+```
+
+One process serves every client and holds the writer, so two clients share a
+store instead of fighting over it. **The HTTP transport has no TLS and binds
+loopback by default**; exposing it to a network is a deployment decision that
+means putting it behind a reverse proxy that terminates TLS. See
+[docs/EMBEDDING.md](docs/EMBEDDING.md#serving-over-http).
+
 The pairing is the point: only the executor writes, and a model on
 `fsm serve --read-only` subscribes to `fsm://instance/{id}` and is notified
 when that instance advances, rather than polling to find out. See

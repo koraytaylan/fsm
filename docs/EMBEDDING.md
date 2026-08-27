@@ -546,6 +546,150 @@ instead of diagnose. The documentation resources keep working throughout,
 and the client is told once, at `error` level, why everything else is
 failing.
 
+## Serving over HTTP
+
+`fsm serve` speaks stdio by default: one client, spawned as a child process,
+for the life of that process. `fsm serve --http <addr>` speaks the MCP
+**Streamable HTTP** transport instead, and the difference that matters is not
+the wire format — it is that one process serves every client and that process
+is the single writer.
+
+```
+fsm serve --http 8080 --data-dir ./data
+fsm serve --http 127.0.0.1:9000 --http-path /mcp --data-dir ./data
+```
+
+| Flag | What it does |
+|---|---|
+| `--http <addr>` | serve HTTP on `<addr>`. A bare port binds loopback |
+| `--http-path <path>` | the endpoint path. Default `/mcp` |
+| `--http-allow-remote` | permit a non-loopback bind. Read the security section first |
+| `--http-origin <list>` | extra allowed origins, comma-separated |
+| `--http-token-file <path>` | read the bearer token from a file |
+
+Choose stdio when one client owns the store and is happy to spawn a child
+process. Choose HTTP when more than one client needs the same store, when the
+client is a browser, or when the store lives on a different machine from the
+person using it.
+
+### Sessions
+
+`initialize` mints a session and returns it in `Mcp-Session-Id`. Every later
+request must carry that header. A request without it is `400`; one naming a
+session this server does not have is **`404`, and `404` means re-initialize**
+rather than retry — sessions expire after 30 minutes idle, and `DELETE` on
+the endpoint ends one immediately. A server holds at most 32 at once and
+refuses the thirty-third with `503`.
+
+`MCP-Protocol-Version` is checked on every request against the version
+negotiated at `initialize`; a mismatch is `400`. An absent header is treated
+as the negotiated version.
+
+### The event stream
+
+`GET` on the endpoint with `Accept: text/event-stream` opens the session's
+stream, and everything the server says unprompted travels on it — plan 0012's
+notifications, progress reports, and the elicitation requests plan 0013 added.
+**One stream per session**: a second `GET` is `409`, because two would split
+notification ordering with nothing to reassemble it. A client that wants two
+streams opens two sessions.
+
+Reconnect with `Last-Event-ID` to resume. The buffer holds **256 events or
+1 MiB, whichever comes first**; an id whose events have been evicted is `409`
+and means re-initialize, and an id this session never issued is `400`. A
+disconnect frees the stream slot and leaves the session — and its
+subscriptions — alone.
+
+### Many clients, one writer
+
+Every session's call goes through one mutex around one `Store`. The
+single-writer constraint stops being the thing clients trip over and becomes
+the serialization point they share: two clients, or a browser and a terminal,
+or a person and a scheduled job, can all work against one store because they
+are all talking to the process that holds the lock. Reads take that lock too,
+because the reason there is no half-applied macrostep to observe is that it
+is held across the whole call.
+
+`journal_verify` and `journal_replay` are the exception, and deliberately:
+they read through `open_read_only`, take no lock, and so cannot block a
+writer no matter how long they run.
+
+Three deployment shapes, following plan 0008's run modes:
+
+- **One HTTP server as the writer.** Many clients, one process, one lock.
+- **An executor plus a read-only HTTP server.** The executor owns the writer
+  and the server watches; clients read and subscribe.
+- **A contended server.** If another process holds the writer, `serve` retries
+  briefly and then starts **read-only**, saying so in its startup line, in an
+  error-level notification, and in `instructions`. That is *healthy and busy*,
+  not broken — the remedy is to stop the other writer or to use the paired
+  deployment, and it is deliberately distinct from an unhealthy store, whose
+  remedy is `store_doctor` and a repair.
+
+### Status codes
+
+| Code | When |
+|---|---|
+| `200` | a request answered, in JSON or as a stream |
+| `202` | a notification or a response accepted; no body |
+| `400` | malformed request, missing session id, protocol-version mismatch, unknown `Last-Event-ID` |
+| `401` | missing or wrong bearer token |
+| `403` | missing or unlisted `Origin` |
+| `404` | unknown path, unknown or expired session |
+| `405` | a method this endpoint does not route |
+| `406` | a stream is needed and the client does not accept one |
+| `408` | the request did not arrive in time |
+| `409` | a second stream for one session, or a `Last-Event-ID` that has been evicted |
+| `411` | a chunked request; this server reads `Content-Length` bodies |
+| `413` | a body, or a whole request, over the limit |
+| `414` | a request line over 8 KiB |
+| `431` | too many headers, or headers too large |
+| `500` | an internal failure |
+| `503` | too many connections, or too many sessions |
+
+### Security
+
+State it plainly, because a reader who infers a security model from a flag
+list will infer one this binary does not have:
+
+- **Loopback by default.** A bare `--http 8080` binds `127.0.0.1`. A
+  non-loopback bind requires `--http-allow-remote` **and** a token, or the
+  server refuses to start.
+- **`Origin` is validated on every request, in every configuration**,
+  including loopback. It is compared exactly — scheme, host, port — with no
+  wildcards and no suffix matching. A missing `Origin` is refused. This is the
+  DNS-rebinding defence and it is not optional.
+- **A static bearer token**, compared in constant time over the full length.
+  It is read from `--http-token-file` or `FSM_HTTP_TOKEN`, and **never** from
+  a command-line argument, because arguments are visible in `ps` to every user
+  on the host.
+- **There is no TLS in this binary.** There will not be one. Exposing this
+  server beyond loopback means putting it behind a reverse proxy that
+  terminates TLS; anything else puts your traffic and your token in the clear.
+
+**Session ids, and what they are not.** An id is
+`sha256("fsm:session:1" || seed || counter || pid || nanos)` truncated to 32
+hex characters. The seed is 32 bytes from `/dev/urandom` where that is
+readable, read once at start; where it is not — Windows — it is two `u64`s
+from `RandomState`, which the standard library seeds from the operating
+system per process, hashed with the process id. **That is process-seeded
+entropy, not a CSPRNG**, and the reason is concrete: Rust's standard library
+has no random-number API, this workspace has zero dependencies, and
+`unsafe_code = "forbid"` rules out calling `getrandom` or
+`BCryptGenRandom` directly. Treat the session id as **defence in depth**. The
+controls that carry the weight are the loopback default, `Origin` validation,
+and the token.
+
+**The OAuth deviation.** The MCP specification recommends that an HTTP
+transport behave as an OAuth 2.1 resource server. This one does not, and the
+reason is the same constraint: with zero dependencies and no TLS, a partial
+OAuth implementation over cleartext would be worse than an honest static
+token — it would look like a security model while providing less than one.
+Closing the gap would require a TLS implementation or a mandated proxy, token
+introspection against an authorization server, and protected-resource
+discovery metadata. Until then this is a documented decision rather than an
+omission.
+
 ## Executing workflows
 
 Everything above leaves the *running* of effects to you. `fsm execute` is the

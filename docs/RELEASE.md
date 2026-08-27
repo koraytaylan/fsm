@@ -158,6 +158,10 @@ enforced by jobs in `release.yml`, not by this list.
   end-to-end.
 - `manual:` MCP Inspector: connect, list all 18 tools, run the golden loop
   end-to-end.
+- `manual:` a real MCP client over the **HTTP transport**: connect to
+  `fsm serve --http`, complete initialize through teardown, and observe at
+  least one notification arrive on the SSE stream. A conformance suite
+  driving a socket is not the same as a client that has to like what it sees.
 - `manual:` an LLM authors and drives the case-review machine from a
   natural-language brief, unaided, in a bounded number of tool calls.
 - `manual:` replay [`EXAMPLES.md`](EXAMPLES.md) transcripts under `FSM_CLOCK_MS`

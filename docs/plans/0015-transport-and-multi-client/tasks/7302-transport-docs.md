@@ -12,7 +12,7 @@ touches:
   - docs/API-POLICY.md
   - README.md
   - crates/fsm-cli/tests/transport_doc.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Transport Docs
@@ -46,3 +46,13 @@ The security section is the most important prose in this plan, because a reader 
 - `cargo doc --workspace --no-deps` is warning-free under `RUSTDOCFLAGS=-D warnings`.
 
 - **Done when:** EMBEDDING documents the transport, the session lifecycle, resumability, the multi-client shapes, and an unhedged security boundary including the OAuth deviation; API-POLICY names the HTTP compatibility surface; README carries the snippet and the non-claim; `cargo test -p fsm-cli --test transport_doc --test policy` passes; and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** *Serving over HTTP* covers the two transports and when to choose each, every flag, sessions including the `404`-means-re-initialize rule, the one-stream-per-session limit, resumability with its two bounds and its two refusals, the three deployment shapes, the full status table, and the multi-client story with the serialized-writer reasoning.
+
+The security subsection states the boundary without hedging: loopback by default; `Origin` on every request in every configuration; a static bearer token compared in constant time and read from a file or the environment because arguments are visible in `ps`; and **there is no TLS in this binary**, so remote exposure means a proxy that terminates it.
+
+Two honest caveats are stated rather than left to be discovered. The session id is a hash over a start-time seed, a counter, the pid and the clock, and it is **not a CSPRNG** — std has no RNG API, the workspace has no dependencies, and `unsafe` is forbidden — so it is defence in depth and the loopback default, `Origin`, and the token are what carry the weight. And the **OAuth deviation**: the specification recommends resource-server behaviour, this transport does not implement it, a partial OAuth over cleartext would look like a security model while providing less than one, and closing the gap would take a TLS implementation or a mandated proxy, token introspection, and discovery metadata.
+
+API-POLICY records the wire surface — path, headers, session semantics, status codes — as a compatibility surface under the same policy as the tool schemas. RELEASE gains a manual pass for the second transport, because a suite driving a socket is not a client that has to like what it sees. README gains the snippet and the non-claim.
+
+The prose is pinned: flags read out of `args.rs`, every status compared against the response module's own table, and each of the three sentences that must not be trimmed asserted by its own words.

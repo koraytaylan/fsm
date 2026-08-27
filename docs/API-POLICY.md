@@ -66,6 +66,13 @@ component. While both the major and minor are zero, each patch release is a
 new compatibility boundary and may contain either compatible or breaking
 changes.
 
+The **HTTP transport's wire surface is a compatibility surface** under this
+same policy: the endpoint path, the `Mcp-Session-Id` and
+`MCP-Protocol-Version` headers, the session semantics — including that `404`
+means re-initialize — and the status codes each condition returns. A client
+depends on those exactly as it depends on a tool's input schema, and they move
+only when a tool schema could.
+
 The initial tagged library surface includes these current contracts and
 migration paths from historical untagged builds:
 
