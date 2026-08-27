@@ -7,10 +7,14 @@ depends_on:
   - completion-capability
 gated: false
 touches:
+  - crates/fsm-core/src/error.rs
+  - docs/SPEC.md
+  - crates/fsm-cli/tests/naive_caller/infra_support.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
   - crates/fsm-cli/src/mcp/jsonrpc.rs
   - crates/fsm-cli/src/mcp/elicit.rs
   - crates/fsm-cli/tests/mcp_inbound_responses.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Inbound Response Routing
@@ -44,3 +48,14 @@ The serve loop has never parsed a response, because the server has never sent a 
 - Server-generated ids are monotonic and carry the `fsm-elicit-` prefix; a client using the same literal ids does not collide.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_inbound_responses` passes every case above including the interleaved-client-request case, the nesting cap, and the timeout, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `Incoming::Response` is a message with an id and a `result` or an `error` and no `method`; a message carrying both a method and a result is `Invalid`, because guessing which the sender meant is how a protocol loop starts inventing semantics. A response arriving when nothing is waiting is dropped with a `debug` line rather than ending a working session.
+
+`request_and_await` writes one request under an `fsm-elicit-N` id — monotonic, and prefixed so no client id can collide — and reads until its answer. While it waits the client keeps working: notifications are handled, a `notifications/cancelled` naming the outstanding id ends the wait, and inbound requests are **answered**. The nesting cap is structural: the session's halves are borrowed for the whole exchange, so a second ask cannot take them, and `ask` turns the failed borrow into `req/elicit_nested` rather than a panic.
+
+**Corrections.**
+
+- *A client request arriving mid-wait cannot be re-entered into the request handler.* The tool that asked the question is holding `&mut Store`; re-entering would need it again, which does not typecheck and would not be sound if it did. What lands instead answers what is answerable without the store — `ping`, `tools/list`, `prompts/list`, `resources/templates/list` — and answers everything else with `-32004` and "retry after answering it". That keeps the deadlock closed, which is the reason step 5 exists: the client is never left waiting for a response it will not get.
+- *The timeout bounds a talking client, not a silent one.* It is checked before each read, so a client that sends nothing leaves the loop blocked in `read_line` until the transport closes. Bounding silence needs a reader that can be woken, which stdio does not portably provide. The module doc says so rather than implying otherwise.
+- *Three codes are registered here and allowlisted until 6403.* `req/elicit_timeout`, `req/elicit_nested` and `req/elicit_failed` are returned by this task's code but reachable by a caller only through `instance_elicit`. Both every-code gates carry an entry naming 6403 as the task that makes them reachable and removes the entry — the precedent plan 0011 set for exactly this.
+- *The suite serialises its id predictions.* Ids are monotonic per process and the tests run concurrently, so predicting the next one means holding a lock while it is taken and used.

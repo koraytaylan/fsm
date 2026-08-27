@@ -895,6 +895,13 @@ fn all_codes_hygiene() {
         "def/invoke_cycle",
         // Same shape: a definition would have to contain its own hash.
         "def/supersedes_self",
+        // Elicitation's three outcomes reach a caller only through
+        // `instance_elicit`, which plan 0013 task 6403 adds. Task 6401
+        // registers the codes because it is the task that returns them, and
+        // 6403's commit removes these three lines.
+        "req/elicit_failed",
+        "req/elicit_nested",
+        "req/elicit_timeout",
         // Plan 0011 registers its closed set of codes in one task so no
         // later task edits `error.rs`. Each line below names the task that
         // makes its code reachable and is removed by that task's commit.

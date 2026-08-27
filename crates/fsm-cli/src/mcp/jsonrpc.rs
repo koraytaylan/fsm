@@ -25,6 +25,13 @@ pub enum Incoming {
         method: String,
         params: Option<Value>,
     },
+    /// An answer to a request **this server** made. Elicitation is the only
+    /// one it makes, and before that this loop had no reason to parse one.
+    Response {
+        id: Value,
+        result: Option<Value>,
+        error: Option<Value>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,11 +51,21 @@ pub fn parse_line(line: &str) -> Result<Incoming, WireError> {
         Some("2.0") => {}
         _ => return Err(WireError::Invalid),
     }
-    let method = obj
-        .get("method")
-        .and_then(Value::as_str)
-        .ok_or(WireError::Invalid)?
-        .to_string();
+    let result = obj.get("result").cloned();
+    let error = obj.get("error").cloned();
+    let answers = result.is_some() || error.is_some();
+    let named = obj.get("method").and_then(Value::as_str);
+    // A message carrying both a method and a result is neither a request nor
+    // a response, and guessing which one the sender meant is how a protocol
+    // loop starts inventing semantics.
+    if answers && named.is_some() {
+        return Err(WireError::Invalid);
+    }
+    if answers {
+        let id = obj.get("id").cloned().ok_or(WireError::Invalid)?;
+        return Ok(Incoming::Response { id, result, error });
+    }
+    let method = named.ok_or(WireError::Invalid)?.to_string();
     let params = obj.get("params").cloned();
     if let Some(id) = obj.get("id").cloned() {
         Ok(Incoming::Request { id, method, params })

@@ -398,6 +398,26 @@ pub fn serve_session_with(
                     continue;
                 }
                 match parse_line(&line) {
+                    // An answer to a request this server made, arriving when
+                    // nothing is waiting for it. A client bug, and dropping
+                    // it is strictly better than ending a working session
+                    // over it — said at `debug`, where somebody looking for
+                    // it will find it.
+                    Ok(Incoming::Response { id, .. }) => {
+                        logging::message(
+                            &output,
+                            live.level,
+                            initialized,
+                            logging::Level::Debug,
+                            "fsm.serve",
+                            || {
+                                Value::Obj(BTreeMap::from([(
+                                    "unmatched_response".to_string(),
+                                    id.clone(),
+                                )]))
+                            },
+                        );
+                    }
                     Err(WireError::Parse(_)) => {
                         send_line(&output, &rpc_error(Value::Null, PARSE_ERROR, "parse error"))?;
                     }

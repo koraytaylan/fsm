@@ -332,6 +332,9 @@ each microstep's candidates and pipeline.
 | `run/create_failed` | creation failed; **unjournaled** | wrap the inner error |
 | `run/overflow` | checked arithmetic in an action/guard | operand strings |
 | `req/event_unknown` | undeclared event | — |
+| `req/elicit_nested` | a second elicitation while one is outstanding | name the outstanding question |
+| `req/elicit_failed` | the client answered an elicitation with an error, or cancelled it | say that nothing was journaled and the `request_id` is unclaimed |
+| `req/elicit_timeout` | no answer to an elicitation within the limit, or the client left | offer `instance_send` as the direct path |
 | `req/event_internal` | an event declared `internal`, or a `$`-prefixed generated name, sent from outside | name where the machine raises it and list the sendable events |
 | `req/invoke_slot_state` | `invoke_child` against a slot that is not `pending` | name the slot's current status and the slots the instance has |
 | `req/cancelled` | the client withdrew the request; the call stopped at its next coarse boundary | say that a single engine step is not interruptible |
@@ -1096,6 +1099,9 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `io/write` — write failed
 - `req/args_invalid` — tool/CLI arguments invalid
 - `req/cancelled` — the client cancelled the request
+- `req/elicit_failed` — an elicitation the client refused or cancelled
+- `req/elicit_nested` — an elicitation while one is outstanding
+- `req/elicit_timeout` — an elicitation nobody answered in time
 - `req/event_internal` — an internal or generated event sent from outside
 - `req/event_unknown` — undeclared event
 - `req/field_missing` — declared field absent
