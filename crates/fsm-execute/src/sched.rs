@@ -222,8 +222,19 @@ impl Scheduler {
                 .unwrap_or_default();
             let attempt = state.attempt.saturating_add(1);
             if attempt > handler.retry.attempts {
-                // Out of attempts. The ack path takes over, which is where
-                // exhaustion becomes the machine's own failure path.
+                // The journal records at least as many failed attempts as the
+                // table now allows, which the ordinary flow cannot produce:
+                // the last attempt is acked rather than journaled, so a
+                // three-attempt handler leaves two records. This is a table
+                // whose `attempts` was lowered while the effect was part way
+                // through, and there is nothing honest to do about it here.
+                // Acking it would mean journaling a failure this process never
+                // observed, so it is reported as the stall it is, once, and
+                // the operator decides — raise `attempts` back, or ack it by
+                // hand.
+                if self.reported_stalls.insert(effect.effect_id.clone()) {
+                    self.stalled.push(effect.effect_id.clone());
+                }
                 continue;
             }
             // Still inside the backoff window: **no directive at all**. That

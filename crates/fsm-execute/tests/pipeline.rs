@@ -250,6 +250,7 @@ fn a_clean_run_acks_then_sends_the_declared_advance_in_that_order() {
             &effect,
             completed(0, "supplier notified"),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     assert_eq!(settled, SettleOutcome::Advanced);
@@ -308,6 +309,7 @@ fn a_non_zero_exit_acks_failed_and_sends_the_failure_advance() {
             &effect,
             completed(3, "supplier unreachable"),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     assert_eq!(settled, SettleOutcome::Advanced);
@@ -333,6 +335,7 @@ fn a_failure_with_no_declared_advance_leaves_the_instance_in_place() {
             &effect,
             completed(1, ""),
             &handler,
+            None,
         )
         .unwrap();
     assert_eq!(settled, SettleOutcome::AckedNoAdvance);
@@ -377,6 +380,7 @@ fn every_killed_or_unstartable_run_acks_failed_with_its_documented_result() {
                 &effect,
                 outcome.clone(),
                 &handler("request_confirmation"),
+                None,
             )
             .unwrap();
         let acked = fixture.records_of_kind(RecordKind::EffectAcked);
@@ -398,6 +402,7 @@ fn every_killed_or_unstartable_run_acks_failed_with_its_documented_result() {
             &effect,
             outcome,
             &handler("request_confirmation"),
+            None,
         );
         assert!(again.is_ok(), "{again:?}");
         assert_eq!(fixture.records_of_kind(RecordKind::EffectAcked).len(), 1);
@@ -415,6 +420,7 @@ fn an_effect_of_a_terminal_instance_acks_without_advancing() {
             &effect,
             completed(1, ""),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     assert_eq!(fixture.status(), "completed");
@@ -431,6 +437,7 @@ fn an_effect_of_a_terminal_instance_acks_without_advancing() {
             &effect,
             completed(0, ""),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     let notify = fixture.pending_effect(0);
@@ -443,6 +450,7 @@ fn an_effect_of_a_terminal_instance_acks_without_advancing() {
             &notify,
             completed(0, ""),
             &handler("notify_customer"),
+            None,
         )
         .unwrap();
     // `finalize`'s guard is false, so the engine would refuse the advance.
@@ -490,6 +498,7 @@ fn a_cancelled_instance_acks_but_never_advances() {
             &effect,
             completed(0, ""),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     assert_eq!(settled, SettleOutcome::AckedNoAdvance);
@@ -525,6 +534,7 @@ fn acking_an_effect_another_path_already_settled_is_benign() {
             &effect,
             completed(0, "late"),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     assert_eq!(settled, SettleOutcome::AlreadySettled);
@@ -546,6 +556,7 @@ fn a_fresh_pipeline_re_settling_the_same_run_changes_nothing() {
             &effect,
             completed(0, "sent"),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     let records_after_first = fixture.store.records.len();
@@ -557,6 +568,7 @@ fn a_fresh_pipeline_re_settling_the_same_run_changes_nothing() {
             &effect,
             completed(0, "sent"),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     assert_eq!(settled, SettleOutcome::AckedNoAdvance);
@@ -659,6 +671,7 @@ fn a_stale_expect_seq_is_retried_under_the_same_request_id() {
             &effect,
             completed(0, "sent"),
             &handler("request_confirmation"),
+            None,
         )
         .unwrap();
     assert_eq!(settled, SettleOutcome::Advanced);

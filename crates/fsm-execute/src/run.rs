@@ -20,7 +20,7 @@ use fsm_store::store::Store;
 use crate::config::{Advance, HandlerSpec};
 use crate::effect::PendingEffect;
 use crate::error::ExecError;
-use crate::rid::{ack_rid, event_rid, poll_rid};
+use crate::rid::{ack_rid, attempt_rid, event_rid, poll_rid};
 
 /// Bytes of one captured stream that reach the journal.
 pub const ACK_OUTPUT_CAP: usize = 4096;
@@ -219,6 +219,36 @@ impl RunOutcome {
         matches!(self, RunOutcome::Completed { status: 0, .. })
     }
 
+    /// Which retry class this failure belongs to, or `None` when no policy
+    /// may act on it.
+    ///
+    /// `None` is not "unclassified": it is the executor refusing to retry, and
+    /// each case is a deliberate refusal rather than a gap.
+    ///
+    /// * A clean exit is not a failure at all.
+    /// * A run killed because its **instance was cancelled** must never be
+    ///   restarted. The cancellation is a decision somebody took about the
+    ///   whole instance, and re-running the handler would spend the operator's
+    ///   retry budget undoing it.
+    /// * An argv the effect's own arguments cannot fill is a fault in the
+    ///   handler table, not a transient failure of the world. The same
+    ///   substitution against the same journaled args fails identically every
+    ///   time, so a retry is a guaranteed waste of the budget.
+    pub fn failure_class(&self) -> Option<&'static str> {
+        match self {
+            RunOutcome::Completed { status: 0, .. } => None,
+            RunOutcome::Completed { .. } => Some("nonzero_exit"),
+            RunOutcome::Killed {
+                reason: KillReason::Timeout,
+            } => Some("timeout"),
+            RunOutcome::Killed {
+                reason: KillReason::Cancelled,
+            } => None,
+            RunOutcome::SpawnFailed { .. } => Some("spawn"),
+            RunOutcome::NotStarted { .. } => None,
+        }
+    }
+
     /// The deterministic `result` the ack is fingerprinted over.
     ///
     /// No timestamp, duration, or pid may enter it: the store keys idempotency
@@ -253,6 +283,45 @@ impl RunOutcome {
         }
         Value::Obj(result)
     }
+
+    /// The ack `result` for the failure that used up a handler's retry budget.
+    ///
+    /// The last run's capture is kept whole — an operator reading a dead
+    /// letter wants the output of the attempt that finally gave up — and three
+    /// keys are laid over it: `error`, which every failure path in this crate
+    /// already uses for its cause, `attempts`, which names how many runs it
+    /// took to get here, and `class`, which preserves the cause `error` was
+    /// carrying before exhaustion took its place. Without `class` a timeout
+    /// and a non-zero exit would be indistinguishable after the fact.
+    ///
+    /// Still fingerprint-safe: `attempts` is derived from the journal and
+    /// `class` from the outcome, so a re-issued ack rebuilds the same bytes.
+    pub fn exhausted_ack_result(&self, attempts: u32, class: &str) -> Value {
+        let mut result = match self.ack_result() {
+            Value::Obj(fields) => fields,
+            _ => BTreeMap::new(),
+        };
+        result.insert(
+            "error".into(),
+            Value::Str(crate::error::RETRIES_EXHAUSTED.into()),
+        );
+        result.insert("attempts".into(), Value::Num(attempts.to_string()));
+        result.insert("class".into(), Value::Str(class.into()));
+        Value::Obj(result)
+    }
+}
+
+/// A failure that used up its handler's retry budget.
+///
+/// Carried into the ack rather than decided there, because the count comes
+/// from the journal and the class from the finished run — two facts the
+/// writing half has no business re-deriving.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Exhaustion {
+    /// Total attempts made, including the first.
+    pub attempts: u32,
+    /// The failure class the policy had been retrying.
+    pub class: &'static str,
 }
 
 /// Put one captured stream into the ack, with its digest when the capture is
@@ -585,15 +654,24 @@ impl Pipeline {
         effect: &PendingEffect,
         outcome: RunOutcome,
         handler: &HandlerSpec,
+        exhausted: Option<Exhaustion>,
     ) -> Result<SettleOutcome, ExecError> {
         let acked = if outcome.succeeded() { "ok" } else { "failed" };
+        // Exhaustion is a failure like any other from here on: same ack, same
+        // outcome word, same declared advance. Only the `result` says how it
+        // got here, which is what leaves an existing `on_failed` path working
+        // unchanged and makes the dead-letter report derivable.
+        let result = match exhausted {
+            Some(exhaustion) => outcome.exhausted_ack_result(exhaustion.attempts, exhaustion.class),
+            None => outcome.ack_result(),
+        };
         let ack_seq = match store.ack_effect_outcome_on(
             clock,
             &effect.instance_id,
             &effect.effect_id,
             &ack_rid(&effect.effect_id),
             acked,
-            Some(outcome.ack_result()),
+            Some(result),
         ) {
             Ok(response) => response
                 .get("seq")
@@ -626,6 +704,46 @@ impl Pipeline {
             advance,
             ack_seq,
         )
+    }
+
+    /// Journal one failed attempt, leaving the effect pending.
+    ///
+    /// The counterpart to [`Pipeline::settle`] for a failure the policy will
+    /// try again: nothing is acked, nothing is advanced, and the effect stays
+    /// in the outbox where the next scan finds it. The record is the whole
+    /// point — it is what makes the count and the backoff deadline survive a
+    /// restart, since a process that dies between the failure and the retry
+    /// remembers nothing.
+    ///
+    /// The run's capture goes into the record so an operator reading a
+    /// dead letter can see why each earlier attempt failed, not only the last.
+    ///
+    /// `Ok(false)` means another writer had already settled the effect — the
+    /// same benign race [`Pipeline::settle`] reports as
+    /// [`SettleOutcome::AlreadySettled`].
+    pub fn attempt(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        effect: &PendingEffect,
+        outcome: &RunOutcome,
+        attempt: u32,
+    ) -> Result<bool, ExecError> {
+        match store.attempt_effect_on(
+            clock,
+            &effect.instance_id,
+            &effect.effect_id,
+            &attempt_rid(&effect.effect_id, attempt),
+            u64::from(attempt),
+            Some(outcome.ack_result()),
+        ) {
+            Ok(_) => Ok(true),
+            // The store journals a `request_rejected` for an attempt against
+            // an effect that is not pending and returns this exact code,
+            // exactly as it does for an ack of one.
+            Err(error) if error.code == "req/field_unknown" => Ok(false),
+            Err(error) => Err(ExecError::store(&error)),
+        }
     }
 
     /// Send an advance for an effect already acknowledged in a previous life.

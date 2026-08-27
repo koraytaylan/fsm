@@ -79,6 +79,9 @@ fn stub_handler() {
     if std::env::args().any(|argument| argument == "stub:ok") {
         std::process::exit(0);
     }
+    if std::env::args().any(|argument| argument == "stub:fail") {
+        std::process::exit(3);
+    }
 }
 
 fn stub_table_json() -> String {
@@ -325,5 +328,249 @@ fn driven_ticks_journal_the_ack_and_the_advance_without_holding_the_lock() {
     assert_eq!(
         store.state.instances["order-1"].status.as_str(),
         "completed"
+    );
+}
+
+/// A table whose handler always fails and is retried twice, so one run of the
+/// tick loop leaves exactly one dead letter behind.
+fn exhausting_table_json() -> String {
+    let stub = std::env::current_exe()
+        .expect("the test binary knows its own path")
+        .to_string_lossy()
+        .into_owned();
+    format!(
+        r#"{{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {{
+      "effect": "request_confirmation",
+      "argv": ["{stub}", "stub_handler", "--exact", "--nocapture", "stub:fail"],
+      "timeout_ms": 30000,
+      "retry": {{"attempts": 2, "backoff_ms": 1, "max_backoff_ms": 10, "on": ["nonzero_exit"]}},
+      "on_ok": {{"event": "confirmed", "payload": {{}}, "stamps": ["at"]}}
+    }}
+  ]
+}}"#
+    )
+}
+
+/// Drive a store to one exhausted effect and hand back its data directory.
+///
+/// No `on_failed` on purpose: this is the shape the report exists for — the
+/// instance is left running with nothing in its outbox to say why.
+fn store_with_one_dead_letter(test_name: &str) -> TestDirectory {
+    let directory = TestDirectory::create(test_name);
+    let mut store = open_writer(directory.path());
+    let mut clock = FixedClock::new(1_000, 1);
+    store
+        .define_machine_on(&mut clock, machine(), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "order_confirmation_cmd",
+            "order-1",
+            "req-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    store
+        .send_event_stamp_on(
+            &mut clock,
+            "order-1",
+            "submit",
+            &mut Value::Obj(BTreeMap::new()),
+            "req-submit",
+            None,
+            &[],
+        )
+        .unwrap();
+    drop(store);
+
+    let table = HandlerTable::parse(&exhausting_table_json()).unwrap();
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        fsm_execute::service::advancing_effects(&table),
+    );
+    let mut scheduler = Scheduler::new(table);
+    let mut runner = Runner::new().unwrap();
+    let mut pipeline = Pipeline;
+    let mut executor_clock = FixedClock::new(5_000, 1);
+    let mut now_ms = 5_000_i64;
+    for _ in 0..120 {
+        tick(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            directory.path(),
+            &mut executor_clock,
+            now_ms,
+        );
+        now_ms += 100;
+        let opened = Store::open_read_only(directory.path()).unwrap();
+        let acked = opened
+            .records
+            .iter()
+            .any(|record| record.kind == RecordKind::EffectAcked);
+        drop(opened);
+        if acked {
+            return directory;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("the handler never exhausted its retry budget");
+}
+
+fn list_dead(data_dir: &Path, extra: &[&str]) -> Value {
+    let mut args = vec![
+        "--json".to_string(),
+        "--data-dir".to_string(),
+        data_dir.to_string_lossy().into_owned(),
+        "execute".to_string(),
+        "--list-dead".to_string(),
+    ];
+    args.extend(extra.iter().map(|argument| (*argument).to_string()));
+    let output = Command::new(binary())
+        .args(&args)
+        .output()
+        .expect("run fsm execute --list-dead");
+    assert!(output.status.success(), "{output:?}");
+    parse(&output.stdout, &JsonLimits::DEFAULT).expect("one canonical JSON frame")
+}
+
+#[test]
+fn list_dead_names_the_instance_the_effect_and_the_last_capture() {
+    let directory = store_with_one_dead_letter("list-dead");
+    let framed = list_dead(directory.path(), &[]);
+    let letters = framed
+        .get("dead_letters")
+        .and_then(Value::as_arr)
+        .expect("the report is an array");
+    assert_eq!(letters.len(), 1, "{framed:?}");
+    let letter = &letters[0];
+    assert_eq!(
+        letter.get("instance_id").and_then(Value::as_str),
+        Some("order-1")
+    );
+    assert_eq!(
+        letter.get("effect").and_then(Value::as_str),
+        Some("request_confirmation")
+    );
+    assert_eq!(letter.get("attempts").and_then(Value::as_num), Some("2"));
+    assert_eq!(
+        letter.get("class").and_then(Value::as_str),
+        Some("nonzero_exit")
+    );
+    // The last attempt's capture, whole: an operator reading a dead letter
+    // wants the output of the run that finally gave up.
+    assert_eq!(
+        letter
+            .get("result")
+            .and_then(|result| result.get("status"))
+            .and_then(Value::as_num),
+        Some("3")
+    );
+    assert_eq!(
+        letter
+            .get("result")
+            .and_then(|result| result.get("error"))
+            .and_then(Value::as_str),
+        Some("exec/retries_exhausted")
+    );
+}
+
+#[test]
+fn list_dead_since_bounds_the_report() {
+    let directory = store_with_one_dead_letter("list-dead-since");
+    let framed = list_dead(directory.path(), &[]);
+    let seq = framed
+        .get("dead_letters")
+        .and_then(Value::as_arr)
+        .and_then(|letters| letters.first())
+        .and_then(|letter| letter.get("seq"))
+        .and_then(Value::as_num)
+        .and_then(|seq| seq.parse::<u64>().ok())
+        .expect("the entry carries its record seq");
+
+    let after = list_dead(directory.path(), &["--since", &seq.to_string()]);
+    assert_eq!(after.get("count").and_then(Value::as_num), Some("0"));
+    let before = list_dead(directory.path(), &["--since", &(seq - 1).to_string()]);
+    assert_eq!(before.get("count").and_then(Value::as_num), Some("1"));
+}
+
+#[test]
+fn list_dead_reports_none_for_a_store_that_never_gave_up() {
+    let directory = TestDirectory::create("list-dead-clean");
+    drop(open_writer(directory.path()));
+    let framed = list_dead(directory.path(), &[]);
+    assert_eq!(framed.get("count").and_then(Value::as_num), Some("0"));
+    assert_eq!(
+        framed.get("dead_letters").and_then(Value::as_arr),
+        Some(&[][..])
+    );
+}
+
+#[test]
+fn list_dead_answers_while_the_executor_holds_the_writer() {
+    let directory = store_with_one_dead_letter("list-dead-live");
+    // Held across the whole call: the report opens read-only, which takes no
+    // lock, so an operator can ask this of a running system.
+    let writer = open_writer(directory.path());
+    let framed = list_dead(directory.path(), &[]);
+    assert_eq!(framed.get("count").and_then(Value::as_num), Some("1"));
+    drop(writer);
+}
+
+#[test]
+fn a_non_numeric_since_is_a_usage_error() {
+    let directory = TestDirectory::create("list-dead-bad-since");
+    let output = Command::new(binary())
+        .args([
+            "--data-dir",
+            &directory.path().to_string_lossy(),
+            "execute",
+            "--list-dead",
+            "--since",
+            "yesterday",
+        ])
+        .output()
+        .expect("run fsm execute --list-dead --since yesterday");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--since"));
+}
+
+#[test]
+fn the_pre_flight_reports_what_has_already_given_up() {
+    let directory = store_with_one_dead_letter("check-dead");
+    let handlers = directory.path().join("handlers.json");
+    fs::write(&handlers, exhausting_table_json()).unwrap();
+
+    let output = Command::new(binary())
+        .args([
+            "--json",
+            "--data-dir",
+            &directory.path().to_string_lossy(),
+            "execute",
+            "--check",
+            "--handlers",
+            &handlers.to_string_lossy(),
+        ])
+        .output()
+        .expect("run fsm execute --check");
+    assert!(output.status.success(), "{output:?}");
+    let framed = parse(&output.stdout, &JsonLimits::DEFAULT).expect("one canonical JSON frame");
+    // "Your table is valid" is only half of what a pre-flight owes an
+    // operator: an effect that exhausted under the previous run is still
+    // sitting there with an instance stalled behind it.
+    assert_eq!(
+        framed
+            .get("dead_letters")
+            .and_then(Value::as_arr)
+            .map(<[Value]>::len),
+        Some(1),
+        "{framed:?}"
     );
 }

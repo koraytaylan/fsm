@@ -766,6 +766,14 @@ Validate a table before pointing it at a store:
 $ fsm execute --check --handlers ./handlers.json
 ```
 
+The pre-flight also reports the store's `dead_letters`, so "your table is
+valid" is not the only thing it tells you: an effect that exhausted its retry
+budget under the previous run is still sitting there, acked failed, possibly
+with an instance stalled behind it. Ask the same question on its own with
+`fsm execute --list-dead`, or `--list-dead --since <seq>` for what has died
+since you last looked. Both read through `Store::open_read_only`, which takes
+no lock, so either answers while the executor is running.
+
 ### Idempotency: why a restarted executor is safe
 
 The executor never invents a `request_id`. Every key is derived from content
@@ -774,6 +782,7 @@ the journal already holds:
 | Write | Key |
 |---|---|
 | ack | `exec-ack-{effect_id}` |
+| failed attempt | `exec-try-{effect_id}-{attempt}` |
 | advance event | `exec-ev-{effect_id}-{event}` |
 | deadline poll | `exec-poll-{len}-{instance_id}-{deadline}-{due_ms}` |
 

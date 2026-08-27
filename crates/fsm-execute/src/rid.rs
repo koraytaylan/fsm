@@ -34,19 +34,21 @@ pub fn ack_rid(effect_id: &str) -> String {
     format!("exec-ack-{effect_id}")
 }
 
-/// The key for the advance event one effect's outcome triggers.
-///
-/// The event name is part of the key because one effect's `on_ok` and
-/// `on_failed` name different events, and each is its own write.
 /// The key one attempt at an effect claims.
 ///
 /// Derived from journaled content like every other key here, so a restart
 /// re-issuing the same attempt replays rather than writing a second record
-/// for the same try.
+/// for the same try. The attempt number is part of the key because each try
+/// is its own write: sharing one key across tries would make the second
+/// attempt replay the first instead of being recorded.
 pub fn attempt_rid(effect_id: &str, attempt: u32) -> String {
     format!("exec-try-{effect_id}-{attempt}")
 }
 
+/// The key for the advance event one effect's outcome triggers.
+///
+/// The event name is part of the key because one effect's `on_ok` and
+/// `on_failed` name different events, and each is its own write.
 pub fn event_rid(effect_id: &str, event: &str) -> String {
     format!("exec-ev-{effect_id}-{event}")
 }

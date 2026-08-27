@@ -41,6 +41,7 @@
 #![allow(clippy::result_large_err, clippy::collapsible_if)]
 
 pub mod config;
+pub mod dead;
 pub mod effect;
 pub mod error;
 pub mod rid;

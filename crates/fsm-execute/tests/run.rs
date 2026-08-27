@@ -388,3 +388,107 @@ fn a_bounded_capture_of_nothing_is_an_empty_string() {
     assert!(!empty.truncated);
     assert_eq!(empty.sha256, None);
 }
+
+#[test]
+fn only_a_failure_the_world_might_answer_differently_carries_a_retry_class() {
+    // A clean exit is not a failure at all.
+    assert_eq!(
+        RunOutcome::Completed {
+            status: 0,
+            stdout: BoundedBytes::empty(),
+            stderr: BoundedBytes::empty(),
+        }
+        .failure_class(),
+        None
+    );
+    assert_eq!(
+        RunOutcome::Completed {
+            status: 3,
+            stdout: BoundedBytes::empty(),
+            stderr: BoundedBytes::empty(),
+        }
+        .failure_class(),
+        Some("nonzero_exit")
+    );
+    assert_eq!(
+        RunOutcome::Killed {
+            reason: KillReason::Timeout
+        }
+        .failure_class(),
+        Some("timeout")
+    );
+    // The one that matters most: a run killed because its instance was
+    // cancelled must never be restarted, whatever a table says. Somebody
+    // decided this instance was over, and a retry would spend the budget
+    // undoing that decision.
+    assert_eq!(
+        RunOutcome::Killed {
+            reason: KillReason::Cancelled
+        }
+        .failure_class(),
+        None
+    );
+    assert_eq!(
+        RunOutcome::SpawnFailed {
+            argv0: "/usr/bin/missing".into()
+        }
+        .failure_class(),
+        Some("spawn")
+    );
+    // An argv the effect's own arguments cannot fill is a fault in the handler
+    // table. The same substitution against the same journaled args fails
+    // identically every time, so retrying is a guaranteed waste.
+    assert_eq!(
+        RunOutcome::NotStarted {
+            code: "exec/effect_unresolved",
+            detail: "case".into(),
+        }
+        .failure_class(),
+        None
+    );
+}
+
+#[test]
+fn an_exhausted_result_keeps_the_last_capture_and_names_the_cause_it_replaced() {
+    let timed_out = RunOutcome::Killed {
+        reason: KillReason::Timeout,
+    };
+    // Before exhaustion the cause is the kill's own code.
+    assert_eq!(
+        timed_out.ack_result().get("error").and_then(Value::as_str),
+        Some("exec/timeout")
+    );
+    let exhausted = timed_out.exhausted_ack_result(4, "timeout");
+    assert_eq!(
+        exhausted.get("error").and_then(Value::as_str),
+        Some("exec/retries_exhausted")
+    );
+    assert_eq!(exhausted.get("attempts").and_then(Value::as_num), Some("4"));
+    // `class` is what keeps a timeout distinguishable from a non-zero exit
+    // after `error` has been taken over by the exhaustion cause.
+    assert_eq!(
+        exhausted.get("class").and_then(Value::as_str),
+        Some("timeout")
+    );
+    assert_eq!(exhausted.get("status").and_then(Value::as_num), Some("-1"));
+
+    // A non-zero exit has no `error` of its own, so nothing is displaced and
+    // the whole capture survives.
+    let mut stdout = BoundedBytes::empty();
+    stdout.bytes = b"reviewer unreachable\n".to_vec();
+    let failed = RunOutcome::Completed {
+        status: 3,
+        stdout,
+        stderr: BoundedBytes::empty(),
+    };
+    let exhausted = failed.exhausted_ack_result(3, "nonzero_exit");
+    assert_eq!(exhausted.get("status").and_then(Value::as_num), Some("3"));
+    assert_eq!(
+        exhausted.get("stdout").and_then(Value::as_str),
+        Some("reviewer unreachable\n")
+    );
+    assert_eq!(
+        exhausted.get("class").and_then(Value::as_str),
+        Some("nonzero_exit")
+    );
+}

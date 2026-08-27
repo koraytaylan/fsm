@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use fsm_core::json::Value;
 use fsm_execute::config::HandlerTable;
+use fsm_execute::dead::{self, DeadLetter};
 use fsm_execute::error::ExecError;
 use fsm_execute::service;
 
@@ -23,8 +24,8 @@ const DEFAULT_POLL_INTERVAL_MS: u64 = 250;
 pub static SPECS: &[CmdSpec] = &[CmdSpec {
     path: &["execute"],
     positionals: &[],
-    flags: &["handlers", "poll-interval-ms"],
-    switches: &["check", "exclusive"],
+    flags: &["handlers", "poll-interval-ms", "since"],
+    switches: &["check", "exclusive", "list-dead"],
     help: "Run the effect executor against a data dir",
     run: execute,
 }];
@@ -80,6 +81,12 @@ pub fn serve_mode(ctx: &mut Ctx, args: &Args) -> Result<ServeMode, u8> {
 }
 
 fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
+    // Answered before the handler table is even looked for: an operator
+    // asking what died does not need the table that ran it, and often does
+    // not have it to hand.
+    if args.switches.contains("list-dead") {
+        return list_dead(ctx, args);
+    }
     let Some(source) = args.flags.get("handlers") else {
         return emit_error(
             ctx,
@@ -98,7 +105,11 @@ fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
         Err(error) => return report(ctx, &error),
     };
     if args.switches.contains("check") {
-        emit_success(ctx, &resolved_handlers(&table));
+        let letters = match dead_letters_for(&ctx.data_dir) {
+            Ok(letters) => letters,
+            Err(error) => return report(ctx, &error),
+        };
+        emit_success(ctx, &resolved_handlers(&table, letters));
         return 0;
     }
     let poll_interval_ms = match poll_interval(args) {
@@ -138,8 +149,15 @@ fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
     }
 }
 
-/// What `--check` prints: the closed command set, as resolved.
-fn resolved_handlers(table: &HandlerTable) -> Value {
+/// What `--check` prints: the closed command set, as resolved, and what has
+/// already given up.
+///
+/// The two belong together because `--check` is the pre-flight an operator
+/// runs before starting the executor, and "your table is valid" is only half
+/// of what they need to know: an effect that exhausted its budget under the
+/// *previous* run is still sitting there, acked failed, with an instance that
+/// may be stalled behind it.
+fn resolved_handlers(table: &HandlerTable, letters: Vec<DeadLetter>) -> Value {
     let handlers: Vec<Value> = table
         .handlers
         .values()
@@ -171,7 +189,56 @@ fn resolved_handlers(table: &HandlerTable) -> Value {
             Value::Str(fsm_execute::config::FORMAT.into()),
         ),
         ("handlers".into(), Value::Arr(handlers)),
+        ("dead_letters".into(), dead::to_value(&letters)),
     ]))
+}
+
+/// `fsm execute --list-dead [--since <seq>]`: every effect that gave up.
+///
+/// Read through `Store::open_read_only`, which takes no lock, so this answers
+/// while the executor is running.
+fn list_dead(ctx: &mut Ctx, args: &Args) -> u8 {
+    let since = match since(args) {
+        Ok(since) => since,
+        Err(error) => return emit_error(ctx, &error),
+    };
+    let letters = match dead::report(&ctx.data_dir, since) {
+        Ok(letters) => letters,
+        Err(error) => return report(ctx, &error),
+    };
+    emit_success(
+        ctx,
+        &Value::Obj(BTreeMap::from([
+            ("ok".into(), Value::Str("true".into())),
+            ("dead_letters".into(), dead::to_value(&letters)),
+            ("count".into(), Value::Num(letters.len().to_string())),
+        ])),
+    );
+    0
+}
+
+/// The dead letters `--check` reports, or none when there is no store yet.
+///
+/// A data directory that does not exist has no journal, so it provably has no
+/// dead letters — an empty report is the true answer, not a silenced failure.
+/// A directory that exists and cannot be read is a real fault and is reported
+/// as one: the executor could not have run against it either.
+fn dead_letters_for(data_dir: &std::path::Path) -> Result<Vec<DeadLetter>, ExecError> {
+    if !data_dir.exists() {
+        return Ok(Vec::new());
+    }
+    dead::report(data_dir, 0)
+}
+
+/// `--since <seq>`, exclusive, defaulting to the whole history.
+fn since(args: &Args) -> Result<u64, ErrorObj> {
+    let Some(raw) = args.flags.get("since") else {
+        return Ok(0);
+    };
+    raw.parse::<u64>().map_err(|_| {
+        ErrorObj::new("args", "--since must be a whole record seq")
+            .hint("pass the seq of the newest dead letter you have seen, for example --since 42")
+    })
 }
 
 /// Prove the writer lock is free before claiming exclusive use of a data dir.

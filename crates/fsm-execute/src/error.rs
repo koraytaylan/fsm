@@ -14,6 +14,14 @@
 use fsm_core::json::Value;
 use fsm_store::store::ErrorObj;
 
+/// The ack cause an effect that used up its retry budget carries.
+///
+/// Named once here because two modules must agree on it exactly: the settle
+/// path writes it into the ack's `result`, and the dead-letter report finds
+/// exhausted effects by looking for it. A literal in each place would be one
+/// typo away from a report that silently lists nothing.
+pub const RETRIES_EXHAUSTED: &str = "exec/retries_exhausted";
+
 /// Every code this crate can raise, in the order the architecture lists them.
 ///
 /// Task `4101`'s doc test asserts each entry appears in `docs/EMBEDDING.md`,
@@ -31,7 +39,7 @@ pub const ALL_CODES: &[&str] = &[
     "exec/signal",
     // Plan 0016 registers its codes in one task, so no later task edits
     // this file.
-    "exec/retries_exhausted",
+    RETRIES_EXHAUSTED,
     "exec/mcp_protocol",
     "exec/mcp_tool",
     "exec/inflight_deferred",

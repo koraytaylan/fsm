@@ -27,7 +27,7 @@ use fsm_store::store::Store;
 use crate::config::{Advance, HandlerTable};
 use crate::effect::PendingEffect;
 use crate::error::ExecError;
-use crate::run::{KillReason, Pipeline, RunOutcome, Runner, SettleOutcome};
+use crate::run::{Exhaustion, KillReason, Pipeline, RunOutcome, Runner, SettleOutcome};
 use crate::sched::{Directive, Scheduler};
 use crate::watch::{Observation, Watcher};
 
@@ -558,12 +558,19 @@ fn settle_phase(
     lines
 }
 
-/// Ack one outcome and report what the journal now says.
+/// Settle one finished run: retry it, or ack it and report what the journal
+/// now says.
 ///
-/// `scheduler.complete` runs on **every** path out of here — advanced, acked
-/// without an advance, already settled, or a store failure. An effect left
-/// marked in flight is invisible to the start rule for the life of the
-/// process, which is the one way this loop can wedge itself.
+/// The retry decision belongs here and nowhere else, because only a finished
+/// run knows *how* it failed and only the journal knows how many times it has
+/// already. A failure of a retried class with budget left is journaled as an
+/// attempt and left pending; everything else is acked, and the last attempt of
+/// a retried class is acked with the exhaustion cause.
+///
+/// `scheduler.complete` runs on **every** path out of here — retried,
+/// advanced, acked without an advance, already settled, or a store failure. An
+/// effect left marked in flight is invisible to the start rule for the life of
+/// the process, which is the one way this loop can wedge itself.
 fn settle(
     scheduler: &mut Scheduler,
     pipeline: &mut Pipeline,
@@ -573,13 +580,96 @@ fn settle(
     outcome: RunOutcome,
     parked_at_seq: u64,
 ) -> Vec<String> {
-    let mut lines = Vec::new();
     let Some(handler) = scheduler.handler(&effect.effect_name).cloned() else {
         // The table changed under a restart, or a human acked something this
         // executor has no handler for. Either way there is nothing to write.
         scheduler.complete(&effect.effect_id);
         return vec![format!("unhandled effect {}", effect.effect_id)];
     };
+    // A success, and a failure of a class this handler does not retry, settle
+    // exactly as they did before retry existed — which is what leaves every
+    // committed table producing byte-identical acks. Deriving the count costs
+    // a journal scan, so it is not paid on either of those paths.
+    let Some(class) = outcome
+        .failure_class()
+        .filter(|class| handler.retry.retries(class))
+    else {
+        return settle_now(
+            scheduler,
+            pipeline,
+            store,
+            clock,
+            effect,
+            outcome,
+            &handler,
+            None,
+            parked_at_seq,
+        );
+    };
+    // This run's number, from the journal rather than from anything this
+    // process remembers: a restarted executor must reach the same count its
+    // killed predecessor would have.
+    let attempt = u32::try_from(store.attempts_for(&effect.instance_id, &effect.effect_id))
+        .unwrap_or(u32::MAX)
+        .saturating_add(1);
+    if attempt >= handler.retry.attempts {
+        return settle_now(
+            scheduler,
+            pipeline,
+            store,
+            clock,
+            effect,
+            outcome,
+            &handler,
+            Some(Exhaustion {
+                attempts: attempt,
+                class,
+            }),
+            parked_at_seq,
+        );
+    }
+    let mut lines = Vec::new();
+    match pipeline.attempt(store, clock, effect, &outcome, attempt) {
+        // Identifiers only: which effect, which try, and the key that makes
+        // re-deriving this attempt after a restart a replay rather than a
+        // second record.
+        Ok(true) => lines.push(format!(
+            "attempt {attempt} failed {} request_id={}",
+            effect.effect_id,
+            crate::rid::attempt_rid(&effect.effect_id, attempt)
+        )),
+        Ok(false) => lines.push(format!("already-settled {}", effect.effect_id)),
+        Err(error) => lines.push(error_line(&error)),
+    }
+    // Cleared on every path, exactly as in `settle_now`: an effect left marked
+    // in flight is invisible to the start rule for the life of the process,
+    // and this one is meant to be started again.
+    scheduler.complete(&effect.effect_id);
+    lines
+}
+
+/// Ack one finished run and send whatever advance it enables.
+#[allow(clippy::too_many_arguments)]
+fn settle_now(
+    scheduler: &mut Scheduler,
+    pipeline: &mut Pipeline,
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    effect: &PendingEffect,
+    outcome: RunOutcome,
+    handler: &crate::config::HandlerSpec,
+    exhausted: Option<Exhaustion>,
+    parked_at_seq: u64,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    // Said before the ack, so a trace reads in the order things happened: the
+    // budget ran out, and *therefore* this effect was acked failed.
+    if let Some(exhaustion) = exhausted {
+        lines.push(format!(
+            "exhausted {} {} {} attempts={}",
+            effect.effect_name, effect.effect_id, effect.instance_id, exhaustion.attempts
+        ));
+    }
     let acked = if outcome.succeeded() { "ok" } else { "failed" };
     let advance = if outcome.succeeded() {
         handler.on_ok.as_ref()
@@ -587,7 +677,7 @@ fn settle(
         handler.on_failed.as_ref()
     };
     let event = advance.map(|advance| advance.event.clone());
-    match pipeline.settle(store, clock, effect, outcome, &handler) {
+    match pipeline.settle(store, clock, effect, outcome, handler, exhausted) {
         Ok(settled) => {
             if settled != SettleOutcome::AlreadySettled {
                 lines.push(format!(
