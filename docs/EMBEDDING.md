@@ -865,6 +865,10 @@ and do not appear in SPEC.md's appendix.
 | `exec/mode` | `--exclusive` found another writer holding the data directory |
 | `exec/invoke` | creating a child or returning its result failed; the store's own code is preserved in `details` |
 | `exec/signal` | delivering a signal failed; the store's own code is preserved in `details` |
+| `exec/retries_exhausted` | a handler failed its last attempt; the effect is acked `failed` so the machine's own failure path still fires |
+| `exec/mcp_protocol` | an MCP handler's server did not speak the protocol: no `initialize` result, or a malformed message |
+| `exec/mcp_tool` | an MCP handler's tool call returned an error result |
+| `exec/inflight_deferred` | a run was deferred because the in-flight cap was reached; it is attempted on a later tick, and nothing is journaled |
 
 ### Migrating a cohort
 

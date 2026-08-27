@@ -6,10 +6,11 @@ kind: task
 depends_on: []
 gated: false
 touches:
+  - docs/EMBEDDING.md
   - crates/fsm-execute/src/config.rs
   - crates/fsm-execute/src/error.rs
   - crates/fsm-execute/tests/config.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Retry Policy Config
@@ -40,3 +41,13 @@ Retry belongs in the operator's table rather than in a machine definition, becau
 - `ALL_CODES` entries are unique, non-empty, and prefixed `exec/`.
 
 - **Done when:** `cargo test -p fsm-execute --test config` passes every case above, an absent `retry` preserves today's behaviour exactly, `"cancelled"` is refused with its explanation, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `retry` is `{attempts, backoff_ms, max_backoff_ms, on}` inside the handler's closed key set, so `retries` and `attemps` are refused rather than silently ignored — the same reasoning that already refuses `on_okay`. Absent means `attempts: 1`, which is exactly today's behaviour, and a test walks every committed example table asserting none of them changed meaning.
+
+`attempts` is the **total** including the first, 1 through 16: a table that would retry sixty times has a typo in it, and refusing the typo is worth more than serving the one operator who meant it. `on` is a closed set of four classes, and **`cancelled` is refused by name** with the reason in the message — a handler killed because its instance was cancelled must never be restarted, and that is the rule most likely to be requested as a feature later, so its words are pinned.
+
+This plan's four codes are registered here so no later task edits `error.rs`, and all four are documented in EMBEDDING's executor table in the same commit, because the doc test requires it.
+
+**Corrections.**
+
+- *The crate's own closed-set count moved from ten to fourteen.* It is asserted in two places in `error.rs`; both say what the number means now.

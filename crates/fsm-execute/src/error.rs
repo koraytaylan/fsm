@@ -29,6 +29,12 @@ pub const ALL_CODES: &[&str] = &[
     "exec/mode",
     "exec/invoke",
     "exec/signal",
+    // Plan 0016 registers its codes in one task, so no later task edits
+    // this file.
+    "exec/retries_exhausted",
+    "exec/mcp_protocol",
+    "exec/mcp_tool",
+    "exec/inflight_deferred",
 ];
 
 /// One executor failure, carrying enough to report the fault without the
@@ -130,7 +136,11 @@ mod tests {
             assert!(code.len() > "exec/".len(), "{code} has an empty suffix");
             assert!(seen.insert(*code), "{code} is listed twice");
         }
-        assert_eq!(seen.len(), 10, "the closed set is ten codes");
+        assert_eq!(
+            seen.len(),
+            14,
+            "the closed set is fourteen codes since plan 0016"
+        );
     }
 
     #[test]

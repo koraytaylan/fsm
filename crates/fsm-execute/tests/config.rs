@@ -369,3 +369,208 @@ fn a_table_that_is_not_json_is_refused_with_the_byte_that_broke_it() {
         "the offset points at the brace the trailing comma orphaned"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Retry policy. Plan 0016 task 7402.
+// ---------------------------------------------------------------------------
+
+/// A table with one handler carrying whatever retry block is given.
+fn with_retry(retry: &str) -> Result<HandlerTable, ExecError> {
+    let block = if retry.is_empty() {
+        String::new()
+    } else {
+        format!(r#","retry":{retry}"#)
+    };
+    HandlerTable::parse(&format!(
+        r#"{{"format":"fsm.handlers/1","handlers":[{{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000{block}}}]}}"#
+    ))
+}
+
+fn handler(table: &HandlerTable) -> &fsm_execute::config::HandlerSpec {
+    table.handlers.get("notify").expect("the handler")
+}
+
+#[test]
+fn a_table_without_retry_means_exactly_todays_behaviour() {
+    let table = with_retry("").expect("today's table still parses");
+    let retry = &handler(&table).retry;
+    assert_eq!(retry.attempts, 1, "one attempt, as before");
+    assert!(
+        !retry.retries("timeout"),
+        "and nothing is retried, whatever the class"
+    );
+    assert_eq!(retry.backoff_ms, fsm_execute::config::DEFAULT_BACKOFF_MS);
+    assert_eq!(
+        retry.max_backoff_ms,
+        fsm_execute::config::DEFAULT_MAX_BACKOFF_MS
+    );
+}
+
+#[test]
+fn a_full_block_parses_and_a_partial_one_takes_the_documented_defaults() {
+    let table = with_retry(
+        r#"{"attempts":4,"backoff_ms":250,"max_backoff_ms":5000,"on":["timeout","spawn"]}"#,
+    )
+    .expect("a full block");
+    let retry = &handler(&table).retry;
+    assert_eq!(retry.attempts, 4);
+    assert_eq!(retry.backoff_ms, 250);
+    assert_eq!(retry.max_backoff_ms, 5_000);
+    assert_eq!(retry.on, ["timeout", "spawn"]);
+    assert!(retry.retries("timeout"));
+    assert!(
+        !retry.retries("nonzero_exit"),
+        "a class the table did not name is not retried"
+    );
+
+    let table = with_retry(r#"{"attempts":3}"#).expect("attempts alone");
+    let retry = &handler(&table).retry;
+    assert_eq!(retry.attempts, 3);
+    assert_eq!(retry.backoff_ms, fsm_execute::config::DEFAULT_BACKOFF_MS);
+    assert_eq!(
+        retry.max_backoff_ms,
+        fsm_execute::config::DEFAULT_MAX_BACKOFF_MS
+    );
+    assert!(
+        retry.retries("nonzero_exit") && retry.retries("mcp_error"),
+        "an absent `on` means every class"
+    );
+}
+
+#[test]
+fn the_attempt_bounds_are_one_and_sixteen() {
+    for attempts in [1, fsm_execute::config::MAX_ATTEMPTS] {
+        assert!(
+            with_retry(&format!(r#"{{"attempts":{attempts}}}"#)).is_ok(),
+            "{attempts} is inside the bounds"
+        );
+    }
+    for attempts in [0, fsm_execute::config::MAX_ATTEMPTS + 1] {
+        let error =
+            with_retry(&format!(r#"{{"attempts":{attempts}}}"#)).expect_err("outside the bounds");
+        assert_eq!(error.code, "exec/config", "{attempts}");
+        assert_eq!(detail(&error, "handler_index"), "0");
+    }
+}
+
+#[test]
+fn a_ceiling_below_the_floor_is_refused() {
+    let error = with_retry(r#"{"attempts":3,"backoff_ms":5000,"max_backoff_ms":1000}"#)
+        .expect_err("a ceiling below the floor");
+    assert_eq!(error.code, "exec/config");
+    assert!(
+        error.message.contains("max_backoff_ms"),
+        "{}",
+        error.message
+    );
+    for field in ["backoff_ms", "max_backoff_ms"] {
+        assert!(
+            error
+                .details
+                .as_ref()
+                .is_some_and(|d| d.get(field).is_some()),
+            "both numbers belong in the details: {error:?}"
+        );
+    }
+    // Zero and negative waits are refused too.
+    assert!(with_retry(r#"{"backoff_ms":0}"#).is_err());
+    assert!(with_retry(r#"{"max_backoff_ms":-1}"#).is_err());
+}
+
+#[test]
+fn an_unknown_failure_class_is_refused_with_the_valid_list() {
+    let error = with_retry(r#"{"attempts":2,"on":["flakey"]}"#).expect_err("no such class");
+    assert_eq!(error.code, "exec/config");
+    assert!(error.message.contains("flakey"), "{}", error.message);
+    for class in fsm_execute::config::FAILURE_CLASSES {
+        assert!(
+            error.message.contains(class),
+            "the valid list must be in the message: {}",
+            error.message
+        );
+    }
+}
+
+#[test]
+fn cancelled_is_refused_by_name_and_the_reason_is_pinned() {
+    // The rule most likely to be requested as a feature later, so its words
+    // are pinned: a handler killed because its instance was cancelled must
+    // never be restarted.
+    let error = with_retry(r#"{"attempts":3,"on":["timeout","cancelled"]}"#)
+        .expect_err("cancelled is not retryable");
+    assert_eq!(error.code, "exec/config");
+    assert!(
+        error
+            .message
+            .contains("cancelled is not a retryable failure class"),
+        "{}",
+        error.message
+    );
+    assert!(
+        error.message.contains("must never be restarted"),
+        "the reason travels with the refusal: {}",
+        error.message
+    );
+}
+
+#[test]
+fn a_misspelled_key_is_refused_by_the_closed_set() {
+    // The same reasoning that refuses `on_okay` today.
+    let misspelled = HandlerTable::parse(
+        r#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000,"retries":{"attempts":3}}]}"#,
+    )
+    .expect_err("retries is not retry");
+    assert_eq!(misspelled.code, "exec/config");
+
+    let inside = with_retry(r#"{"attemps":3}"#).expect_err("a typo inside the block");
+    assert_eq!(inside.code, "exec/config");
+    assert_eq!(detail(&inside, "handler_index"), "0");
+}
+
+#[test]
+fn every_committed_example_table_still_means_one_attempt() {
+    // No committed table changes meaning when this lands.
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(root.join("examples"))
+        .expect("examples")
+        .flatten()
+    {
+        let path = entry.path();
+        if !path.to_string_lossy().ends_with(".handlers.json") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("readable");
+        let table = HandlerTable::parse(&text)
+            .unwrap_or_else(|error| panic!("{} no longer validates: {error:?}", path.display()));
+        for (effect, spec) in &table.handlers {
+            assert_eq!(
+                spec.retry.attempts,
+                1,
+                "{}'s {effect} changed meaning",
+                path.display()
+            );
+        }
+        checked += 1;
+    }
+    assert!(checked > 0, "no example tables were checked");
+}
+
+#[test]
+fn the_plans_codes_are_registered_and_well_formed() {
+    let codes = fsm_execute::error::ALL_CODES;
+    for code in [
+        "exec/retries_exhausted",
+        "exec/mcp_protocol",
+        "exec/mcp_tool",
+        "exec/inflight_deferred",
+    ] {
+        assert!(codes.contains(&code), "{code} is not registered");
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for code in codes {
+        assert!(code.starts_with("exec/"), "{code}");
+        assert!(code.len() > "exec/".len(), "{code}");
+        assert!(seen.insert(*code), "{code} is listed twice");
+    }
+}

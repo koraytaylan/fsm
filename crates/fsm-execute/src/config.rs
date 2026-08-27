@@ -44,7 +44,31 @@ pub const FORMAT: &str = "fsm.handlers/1";
 /// is far past any sane subprocess and leaves that arithmetic exact.
 pub const MAX_TIMEOUT_MS: i64 = 24 * 60 * 60 * 1000;
 
-const HANDLER_KEYS: &[&str] = &["effect", "argv", "timeout_ms", "on_ok", "on_failed"];
+const HANDLER_KEYS: &[&str] = &[
+    "effect",
+    "argv",
+    "timeout_ms",
+    "on_ok",
+    "on_failed",
+    "retry",
+];
+const RETRY_KEYS: &[&str] = &["attempts", "backoff_ms", "max_backoff_ms", "on"];
+
+/// The most attempts a table may ask for.
+///
+/// A table that would retry sixty times has a typo in it, and refusing the
+/// typo is worth more than serving the one operator who meant it.
+pub const MAX_ATTEMPTS: u32 = 16;
+/// The wait before the second attempt, when a table does not say.
+pub const DEFAULT_BACKOFF_MS: i64 = 1_000;
+/// The ceiling that wait grows to, when a table does not say.
+pub const DEFAULT_MAX_BACKOFF_MS: i64 = 60_000;
+
+/// The failure classes a retry may apply to.
+///
+/// A closed set, so a misspelling is refused rather than quietly meaning
+/// "never retry".
+pub const FAILURE_CLASSES: &[&str] = &["nonzero_exit", "timeout", "spawn", "mcp_error"];
 const ADVANCE_KEYS: &[&str] = &["event", "payload", "stamps"];
 
 /// The domain event to send after an outcome, exactly as the table declares it.
@@ -75,6 +99,45 @@ pub struct HandlerSpec {
     pub on_ok: Option<Advance>,
     /// What to send when it does not.
     pub on_failed: Option<Advance>,
+    /// How many times to try, and how long to wait between.
+    pub retry: Retry,
+}
+
+/// A handler's retry policy.
+///
+/// Absent from a table means `attempts: 1` — exactly today's behaviour — so
+/// no committed table changes meaning when this lands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Retry {
+    /// **Total** attempts including the first, 1 through 16.
+    pub attempts: u32,
+    /// The wait before the second attempt.
+    pub backoff_ms: i64,
+    /// The ceiling that wait grows to.
+    pub max_backoff_ms: i64,
+    /// Which failure classes are retried.
+    pub on: Vec<String>,
+}
+
+impl Default for Retry {
+    fn default() -> Self {
+        Self {
+            attempts: 1,
+            backoff_ms: DEFAULT_BACKOFF_MS,
+            max_backoff_ms: DEFAULT_MAX_BACKOFF_MS,
+            on: FAILURE_CLASSES
+                .iter()
+                .map(|class| (*class).to_string())
+                .collect(),
+        }
+    }
+}
+
+impl Retry {
+    /// Whether this policy retries a failure of that class.
+    pub fn retries(&self, class: &str) -> bool {
+        self.attempts > 1 && self.on.iter().any(|allowed| allowed == class)
+    }
 }
 
 /// The closed set of commands the executor can ever run.
@@ -169,12 +232,148 @@ fn parse_handler(index: usize, entry: &Value) -> Result<HandlerSpec, ExecError> 
     let timeout_ms = parse_timeout(index, fields.get("timeout_ms"))?;
     let on_ok = parse_advance(index, "on_ok", fields.get("on_ok"))?;
     let on_failed = parse_advance(index, "on_failed", fields.get("on_failed"))?;
+    let retry = parse_retry(index, fields.get("retry"))?;
     Ok(HandlerSpec {
         effect,
         argv,
         timeout_ms,
         on_ok,
         on_failed,
+        retry,
+    })
+}
+
+/// The retry block, or the default that means "once, as today".
+fn parse_retry(index: usize, raw: Option<&Value>) -> Result<Retry, ExecError> {
+    let Some(raw) = raw else {
+        return Ok(Retry::default());
+    };
+    let Some(fields) = raw.as_obj() else {
+        return Err(handler_error(
+            index,
+            "retry",
+            "retry must be an object",
+            Vec::new(),
+        ));
+    };
+    reject_unknown_keys(
+        fields.keys(),
+        RETRY_KEYS,
+        vec![("handler_index", Value::Num(index.to_string()))],
+    )?;
+    let default = Retry::default();
+
+    let attempts = match fields.get("attempts") {
+        None => default.attempts,
+        Some(raw) => {
+            let parsed = raw
+                .as_num()
+                .and_then(|token| token.parse::<u32>().ok())
+                .filter(|attempts| (1..=MAX_ATTEMPTS).contains(attempts));
+            parsed.ok_or_else(|| {
+                handler_error(
+                    index,
+                    "retry.attempts",
+                    format!("attempts is the total including the first, from 1 to {MAX_ATTEMPTS}"),
+                    vec![("max_attempts", Value::Num(MAX_ATTEMPTS.to_string()))],
+                )
+            })?
+        }
+    };
+    let millis = |field: &'static str, fallback: i64| -> Result<i64, ExecError> {
+        match fields.get(field.trim_start_matches("retry.")) {
+            None => Ok(fallback),
+            Some(raw) => raw
+                .as_num()
+                .and_then(|token| token.parse::<i64>().ok())
+                .filter(|value| *value > 0)
+                .ok_or_else(|| {
+                    handler_error(
+                        index,
+                        field,
+                        format!("{field} must be a positive whole number of milliseconds"),
+                        Vec::new(),
+                    )
+                }),
+        }
+    };
+    let backoff_ms = millis("retry.backoff_ms", default.backoff_ms)?;
+    let max_backoff_ms = millis("retry.max_backoff_ms", default.max_backoff_ms)?;
+    if max_backoff_ms < backoff_ms {
+        return Err(handler_error(
+            index,
+            "retry.max_backoff_ms",
+            "max_backoff_ms must be at least backoff_ms",
+            vec![
+                ("backoff_ms", Value::Num(backoff_ms.to_string())),
+                ("max_backoff_ms", Value::Num(max_backoff_ms.to_string())),
+            ],
+        ));
+    }
+
+    let on = match fields.get("on") {
+        None => default.on,
+        Some(raw) => {
+            let Some(entries) = raw.as_arr() else {
+                return Err(handler_error(
+                    index,
+                    "retry.on",
+                    "on must be an array of failure classes",
+                    Vec::new(),
+                ));
+            };
+            let mut classes = Vec::new();
+            for entry in entries {
+                let class = entry.as_str().unwrap_or_default();
+                // The one kill that means stop. A handler killed because its
+                // instance was cancelled must never be restarted, and a table
+                // author who tries to make it retryable deserves an error
+                // rather than silence.
+                if class == "cancelled" {
+                    return Err(handler_error(
+                        index,
+                        "retry.on",
+                        "cancelled is not a retryable failure class: a handler killed because its instance was cancelled must never be restarted",
+                        vec![(
+                            "valid",
+                            Value::Arr(
+                                FAILURE_CLASSES
+                                    .iter()
+                                    .map(|class| Value::Str((*class).into()))
+                                    .collect(),
+                            ),
+                        )],
+                    ));
+                }
+                if !FAILURE_CLASSES.contains(&class) {
+                    return Err(handler_error(
+                        index,
+                        "retry.on",
+                        format!(
+                            "unknown failure class {class}; valid: {}",
+                            FAILURE_CLASSES.join(", ")
+                        ),
+                        vec![(
+                            "valid",
+                            Value::Arr(
+                                FAILURE_CLASSES
+                                    .iter()
+                                    .map(|class| Value::Str((*class).into()))
+                                    .collect(),
+                            ),
+                        )],
+                    ));
+                }
+                classes.push(class.to_string());
+            }
+            classes
+        }
+    };
+    Ok(Retry {
+        attempts,
+        backoff_ms,
+        max_backoff_ms,
+        on,
     })
 }
 
