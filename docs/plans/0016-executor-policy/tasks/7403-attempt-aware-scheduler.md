@@ -8,11 +8,12 @@ depends_on:
   - retry-policy-config
 gated: false
 touches:
+  - crates/fsm-execute/tests/sched.rs
   - crates/fsm-execute/src/watch.rs
   - crates/fsm-execute/src/sched.rs
   - crates/fsm-execute/src/rid.rs
   - crates/fsm-execute/tests/sched_retry.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Attempt Aware Scheduler
@@ -43,3 +44,14 @@ The whole point of journaling attempts is that a fresh process reaches the same 
 - The watcher performs one journal walk per scan, not two.
 
 - **Done when:** `cargo test -p fsm-execute --test sched_retry` passes every case above including restart equivalence mid-retry, backoff emits no directive rather than sleeping, cancelled outcomes are never retried, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** The observation carries per-effect attempt state — the highest journaled attempt and that record's own `ts` — read in the same walk the watcher already performs. The start rule is now: a pending effect with a handler, nothing in flight, an unclaimed ack key, an **unclaimed attempt key**, attempts remaining, and a backoff deadline at or before now.
+
+An effect inside its backoff window produces **no directive at all**, which is what makes backoff free: the executor does not sleep and does not hold a slot, it simply does not act yet. And the deadline is computed from the record's timestamp rather than from a clock read, so two processes reading the same journal agree about when the wait ends — which is what restart equivalence means here, and the suite pins it with a fresh scheduler starting attempt 3 rather than attempt 1.
+
+The wait doubles per attempt and stops at the ceiling: a handler whose dependency is down should back off, and one whose dependency is down for an hour should not back off for a week.
+
+**Corrections.**
+
+- *`Directive::Start` gained an `attempt` field.* The runner needs to know which attempt it is running to claim the right key, and deriving it a second time downstream would be a second answer to a question the scheduler already answered.
+- *`ready_at` and `backoff_for` live in `sched.rs` and land here rather than in 7501.* The start rule cannot be written without them; 7501 documents and extends the schedule rather than inventing it.

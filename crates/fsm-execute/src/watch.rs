@@ -77,6 +77,12 @@ pub struct Observation {
     pub cancellations: Vec<String>,
     /// The executor's own claimed idempotency keys, from the journal.
     pub claimed_request_ids: BTreeSet<String>,
+    /// What has already been tried, per effect, read from the journal.
+    ///
+    /// The whole point of journaling attempts is that a fresh process
+    /// reaches the same conclusion its killed predecessor did, so this is
+    /// derived from records rather than remembered between ticks.
+    pub attempts: BTreeMap<String, AttemptState>,
     /// Status and counts per observed instance.
     pub instance_states: BTreeMap<String, InstanceSnap>,
     /// Slots waiting for their child to exist, parent first.
@@ -172,6 +178,7 @@ impl Watcher {
             from_seq: self.last_seq,
             to_seq: store.journal.last_seq,
             claimed_request_ids: claimed_executor_keys(&store),
+            attempts: attempt_state(&store),
             ..Observation::default()
         };
         let mut memo = BTreeMap::new();
@@ -426,6 +433,44 @@ fn advance_already_sent(claimed: &BTreeSet<String>, effect_id: &str) -> bool {
 /// The full dedup map holds one entry per request the store has *ever* served;
 /// copying that several times a second would cost real memory for no purpose,
 /// since the executor only ever asks about keys it derived itself.
+/// What one effect has already been through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AttemptState {
+    /// The highest attempt number journaled for it.
+    pub attempt: u32,
+    /// When that attempt was recorded, by the record's own `ts`.
+    ///
+    /// The record's timestamp rather than a clock read: a backoff deadline
+    /// computed from the journal is the same deadline in every process that
+    /// reads it.
+    pub last_ts: i64,
+}
+
+/// Every effect's attempt state, from the journal.
+fn attempt_state(store: &Store) -> BTreeMap<String, AttemptState> {
+    let mut out: BTreeMap<String, AttemptState> = BTreeMap::new();
+    for record in &store.records {
+        if record.kind != RecordKind::EffectAttempted {
+            continue;
+        }
+        let Some(effect_id) = record.body.get("effect_id").and_then(Value::as_str) else {
+            continue;
+        };
+        let attempt = record
+            .body
+            .get("attempt")
+            .and_then(Value::as_num)
+            .and_then(|attempt| attempt.parse::<u32>().ok())
+            .unwrap_or(0);
+        let state = out.entry(effect_id.to_string()).or_default();
+        if attempt >= state.attempt {
+            state.attempt = attempt;
+            state.last_ts = record.ts;
+        }
+    }
+    out
+}
+
 fn claimed_executor_keys(store: &Store) -> BTreeSet<String> {
     store
         .state

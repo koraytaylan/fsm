@@ -83,7 +83,9 @@ fn a_pending_effect_with_a_handler_starts_once_with_substituted_argv() {
             effect,
             argv,
             timeout_ms,
+            attempt,
         } => {
+            assert_eq!(*attempt, 1, "a first run is attempt one");
             assert_eq!(effect.effect_id, "case-1/3/0");
             assert_eq!(
                 argv,

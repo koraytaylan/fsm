@@ -28,6 +28,8 @@ pub enum Directive {
         argv: Vec<String>,
         /// Milliseconds before the run is killed.
         timeout_ms: i64,
+        /// Which attempt this is, 1-based, derived from the journal.
+        attempt: u32,
     },
     /// Stop an in-flight handler.
     Kill {
@@ -205,6 +207,35 @@ impl Scheduler {
             if self.inflight.contains_key(&effect.effect_id) {
                 continue;
             }
+            // What this effect has already been through, from the journal
+            // rather than from anything this process remembers.
+            let state = obs
+                .attempts
+                .get(&effect.effect_id)
+                .copied()
+                .unwrap_or_default();
+            let attempt = state.attempt.saturating_add(1);
+            if attempt > handler.retry.attempts {
+                // Out of attempts. The ack path takes over, which is where
+                // exhaustion becomes the machine's own failure path.
+                continue;
+            }
+            // Still inside the backoff window: **no directive at all**. That
+            // is what makes backoff free — the executor does not sleep and
+            // does not hold a slot, it simply does not act yet.
+            if state.attempt > 0 && now_ms < ready_at(&handler.retry, state.attempt, state.last_ts)
+            {
+                continue;
+            }
+            // A key this attempt already claimed means the attempt was
+            // journaled and this is a restart re-deriving it: acting again
+            // could never be recorded.
+            if obs
+                .claimed_request_ids
+                .contains(&crate::rid::attempt_rid(&effect.effect_id, attempt))
+            {
+                continue;
+            }
             // A claimed ack key means some writer already settled this effect,
             // or burned the key on a rejection — or, for a creation-time id
             // after an instance id was re-used, that a *previous* life's
@@ -248,6 +279,7 @@ impl Scheduler {
                 effect: effect.clone(),
                 argv,
                 timeout_ms: handler.timeout_ms,
+                attempt,
             });
         }
 
@@ -455,4 +487,23 @@ fn no_effect_directed_twice(directives: &[Directive]) -> bool {
         .iter()
         .filter_map(Directive::effect_id)
         .all(|effect_id| seen.insert(effect_id))
+}
+
+/// When the next attempt may start, from the last attempt's record timestamp.
+///
+/// Computed from the journal, never from a clock read, so two processes
+/// reading the same records agree about when the wait ends. The wait doubles
+/// per attempt and stops at the ceiling: a handler whose dependency is down
+/// should back off, and a handler whose dependency is down for an hour
+/// should not back off for a week.
+pub fn ready_at(retry: &crate::config::Retry, attempt: u32, last_ts: i64) -> i64 {
+    last_ts.saturating_add(backoff_for(retry, attempt))
+}
+
+/// The wait after the `attempt`-th failure.
+pub fn backoff_for(retry: &crate::config::Retry, attempt: u32) -> i64 {
+    let doublings = attempt.saturating_sub(1).min(30);
+    let factor = 1_i64 << doublings;
+    let grown = retry.backoff_ms.saturating_mul(factor);
+    grown.min(retry.max_backoff_ms).max(retry.backoff_ms)
 }
