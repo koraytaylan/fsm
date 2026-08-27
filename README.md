@@ -26,8 +26,9 @@ fsm execute --data-dir ./data --handlers examples/order_lifecycle.handlers.json 
 fsm serve --read-only --data-dir ./data
 ```
 
-The pairing is the point: only the executor writes, and `fsm serve --read-only`
-lets the model watch its acks and transitions arrive live. See
+The pairing is the point: only the executor writes, and a model on
+`fsm serve --read-only` subscribes to `fsm://instance/{id}` and is notified
+when that instance advances, rather than polling to find out. See
 [docs/EMBEDDING.md](docs/EMBEDDING.md#executing-workflows) for the handler-table
 format and the three run modes.
 
@@ -98,6 +99,7 @@ Claude Desktop `mcpServers` JSON:
 | auditable implementation | zero dependencies, no unsafe |
 | unattended execution | `fsm execute` is a separate one-node process with **at-least-once** execution at the process boundary and exactly-once journaling: one ack per effect, whatever it survived |
 | explicit composition | a child instance exists because a record says so, and its id is derived from its parent and slot — never allocated, never guessed |
+| live subscriptions | a subscribed resource notifies on change, from a poll loop that takes no lock and perturbs no writer |
 | explicit evolution | an instance changes definition because a record says so, under a mapping the new definition declares and its hash covers |
 
 Honest non-claims: this is a **single-node** single-writer engine. There is no

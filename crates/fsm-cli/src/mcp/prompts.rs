@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::store::ErrorObj;
 
-pub const INSTRUCTIONS: &str = "fsm runs deterministic, auditable state machines with either one state tree or multiple orthogonal regions. Specs may include explicit deadlines. Workflow: read fsm://docs/spec → machine_create (dry_run first) → instance_create → instance_send. Consult tagged configuration, enabled_events, and deadlines_pending instead of guessing. Time never advances implicitly: call deadline_poll when due. Decimal values are JSON strings (\"125.50\"), never numbers. Execute pending effects, then acknowledge each with effect_ack. Retry the SAME request_id after a timeout and a NEW one after correcting content. Use simulate for event sequences without recording; it does not poll deadlines.";
+pub const INSTRUCTIONS: &str = "fsm runs deterministic, auditable state machines with either one state tree or multiple orthogonal regions. Specs may include explicit deadlines. Workflow: read fsm://docs/spec → machine_create (dry_run first) → instance_create → instance_send. Consult tagged configuration, enabled_events, and deadlines_pending instead of guessing. Time never advances implicitly: call deadline_poll when due. Decimal values are JSON strings (\"125.50\"), never numbers. Execute pending effects, then acknowledge each with effect_ack. Retry the SAME request_id after a timeout and a NEW one after correcting content. Use simulate for event sequences without recording; it does not poll deadlines. Subscribe to fsm://instance/{id} to be told when an instance advances instead of polling instance_get.";
 
 pub const AUTHOR_MACHINE: &str =
     "Guided flow to author, validate, and prove a new machine from a goal.";

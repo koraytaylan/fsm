@@ -308,6 +308,68 @@ can correct the payload and resend under the same key.
   caused only by an explicit event step or deadline poll, both with caller-owned
   time in the pure core.
 
+## Watching a store live
+
+A model that wants to know when an instance advances has two options, and
+until this existed only one of them worked: call `instance_get` in a loop, or
+subscribe and be told. Subscribe.
+
+Two resource URIs describe an instance:
+
+- `fsm://instance/{id}` — the instance as `instance_get` reports it:
+  configuration, context, enabled events, pending effects and deadlines, and
+  its place in any invocation tree.
+- `fsm://instance/{id}/history` — the first page of its records, at the same
+  default limit `instance_history` uses. Page with the tool; a resource that
+  could return an unbounded journal will one day return an unbounded journal.
+
+`resources/subscribe` takes one `uri` and is scoped to the session that called
+it: subscriptions are not shared between clients and do not outlive the
+connection. One session may watch at most **64** URIs, which is a number
+chosen to be far above what any real client watches and far below what would
+turn one poll into a scan; the sixty-fifth is refused rather than silently
+dropped, so a client that leaks subscriptions finds out.
+
+A subscribed URI produces `notifications/resources/updated` when a journal
+record touches its instance — any record: an applied event, a refusal, an
+effect ack, a deadline poll, a migration. Separately, and whether or not you
+subscribe to anything, `notifications/resources/list_changed` says that the
+resource *listing* changed: a machine was defined, an instance was created, or
+a child instance was invoked.
+
+The feed behind both is a poll, not a watch on the filesystem. It runs every
+**250 ms**, takes no lock, opens the store read-only, and returns after one
+integer comparison when nothing has happened — so a subscriber costs a
+quiescent server nothing measurable and perturbs a writer not at all. Budget
+for a change to arrive within a poll interval of the write that caused it, and
+do not build anything that depends on arriving sooner. A batch of records
+touching one instance produces one notification, not one per record: the
+notification says *something changed here*, and the resource read that follows
+says what.
+
+`logging/setLevel` selects a severity, from `emergency` through `debug`, and
+the server sends `notifications/message` at or above it. The default is
+`info`. In embedded executor mode this is also how executor ticks reach the
+client: a tick that did work says so, and at `debug` a tick that did nothing
+says that too.
+
+A tool call that carries `_meta.progressToken` gets `notifications/progress`
+as it runs. Two tools report: `simulate`, per rendered step, and
+`instance_history`, per page chunk. Progress is rate-limited to one
+notification per 100 ms with the final report always sent, so a token on a
+short call costs one notification rather than a burst.
+
+`notifications/cancelled` withdraws a request, and it does two things
+honestly: a request whose id is already cancelled is never dispatched and
+never answered, and a dispatched call stops at its next coarse loop boundary —
+between simulated events, between history chunks — returning the tool error
+`req/cancelled`. It does **not** interrupt work in progress inside a single
+engine step: **a single tool call is not interruptible mid-step**. Engine
+operations are bounded by the evaluation budget and are short by construction,
+and threading a cancellation token through the pure core would cost the core
+its purity and buy nothing. Cancel a `simulate` of a thousand events and it
+stops within one event; cancel an `instance_send` and it completes.
+
 ## Executing workflows
 
 Everything above leaves the *running* of effects to you. `fsm execute` is the

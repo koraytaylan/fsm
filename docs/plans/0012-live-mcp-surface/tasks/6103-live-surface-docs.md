@@ -11,7 +11,10 @@ touches:
   - README.md
   - crates/fsm-cli/src/mcp/prompts.rs
   - crates/fsm-cli/tests/mcp_prompts.rs
-status: planned
+  - crates/fsm-cli/tests/spec_appendix.rs
+  - crates/fsm-cli/tests/fixtures/transcripts/
+  - crates/fsm-cli/tests/fixtures/mcp_live/
+status: done
 merged_as: ""
 ---
 # Live Surface Docs
@@ -39,3 +42,15 @@ The README currently promises live watching that does not exist; after this plan
 - Every transcript golden embedding `instructions` is updated and passes.
 
 - **Done when:** EMBEDDING documents the live surface including the honest cancellation limit, README's read-only paragraph is corrected and carries the new guarantee row, `instructions` gains exactly one sentence with its goldens updated, `cargo test -p fsm-cli --test mcp_prompts --test policy` passes, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** *Watching a store live* in EMBEDDING covers the two instance URIs, the per-session 64-URI subscription cap, what `resources/updated` and `list_changed` each mean, the 250 ms cadence and the latency to budget for, the logging levels and the executor ticks that now reach a client, progress tokens on the two tools that report them, and cancellation — with the limit in the same paragraph that advertises it, in the words the task asks for: **a single tool call is not interruptible mid-step**, and a worked pair, cancel a thousand-event `simulate` and it stops within one event, cancel an `instance_send` and it completes.
+
+README's read-only paragraph now says what is true: a model on `fsm serve --read-only` subscribes to `fsm://instance/{id}` and is told when that instance advances, rather than polling. The guarantee table gains the live-subscription row.
+
+`instructions` grows by one sentence — *"Subscribe to fsm://instance/{id} to be told when an instance advances instead of polling instance_get."* — and the test pins both that it is there and that it is one sentence, with a byte ceiling beneath it, because every session pays for that string.
+
+**Corrections.**
+
+- *Seven golden files embed `instructions`.* `mcp_full`'s three revisions, both `mcp_skeleton` transcripts, and 6101's two live fixtures. Each moves by exactly one line, and all seven are regenerated in this commit, as step 6 requires.
+- *`spec_appendix` counts the README's guarantee rows.* Adding a row is adding a row: the count moves from 21 to 22 in the same commit, which is the test doing its job rather than an obstacle to it.
+- *The documentation tests live in `mcp_prompts.rs`.* The task names that file and its subject is the same one — what the live surface tells a reader and a model — so a second test file would only spread one concern across two.

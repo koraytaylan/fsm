@@ -62,3 +62,67 @@ fn instructions() {
         assert!(INSTRUCTIONS.contains(p), "{p}");
     }
 }
+
+/// Every session pays for these bytes, so growth is bounded on purpose.
+///
+/// The live surface earned exactly one sentence: a model that does not know
+/// it may subscribe will poll `instance_get` in a loop forever, which is the
+/// one thing this plan exists to stop. A second sentence would have to earn
+/// its place the same way.
+#[test]
+fn the_subscription_sentence_is_one_sentence() {
+    assert!(
+        INSTRUCTIONS.contains("Subscribe to fsm://instance/{id}"),
+        "a model is told it may subscribe rather than poll"
+    );
+    let sentences = INSTRUCTIONS.matches("fsm://instance/{id}").count();
+    assert_eq!(sentences, 1, "one mention, one sentence");
+    assert!(
+        INSTRUCTIONS.len() <= 820,
+        "instructions are {} bytes; every session reads them",
+        INSTRUCTIONS.len()
+    );
+}
+
+/// The live surface is documented where an embedder looks for it, with the
+/// numbers and the limit that a reader would otherwise have to find in the
+/// source.
+#[test]
+fn the_live_surface_is_documented() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let embedding = std::fs::read_to_string(root.join("docs/EMBEDDING.md")).unwrap();
+    let readme = std::fs::read_to_string(root.join("README.md")).unwrap();
+
+    for needle in [
+        "fsm://instance/{id}/history",
+        "resources/subscribe",
+        "notifications/resources/updated",
+        "notifications/resources/list_changed",
+        // The two numbers a reader would otherwise have to read the source
+        // for: how many URIs one session may watch, and how long a change can
+        // take to arrive.
+        "64",
+        "250 ms",
+        "progressToken",
+        "logging/setLevel",
+    ] {
+        assert!(
+            embedding.contains(needle),
+            "EMBEDDING.md must document {needle}"
+        );
+    }
+    // The honest caveat cannot be quietly dropped: it is asserted by
+    // sentence, not by keyword.
+    assert!(
+        embedding.contains("a single tool call is not interruptible mid-step"),
+        "EMBEDDING.md must state the cancellation limit beside the capability"
+    );
+    assert!(
+        !readme.contains("watch its acks and transitions arrive live"),
+        "README still promises the read-only watching that never existed"
+    );
+    assert!(
+        readme.contains("live subscriptions"),
+        "README's guarantee table must carry the live subscription row"
+    );
+}
