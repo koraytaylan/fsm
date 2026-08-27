@@ -26,6 +26,47 @@ pub const KEEPALIVE_MS: u64 = 15_000;
 /// what it missed rather than being handed a gap silently.
 pub const REPLAY_EVENTS: usize = 256;
 
+/// And how many bytes, whichever comes first.
+///
+/// Counted as the buffer grows and shrinks, so the bound is real rather than
+/// nominal. It follows that a handful of large payloads — a big
+/// `instance_history` notification, say — evicts more aggressively than 256
+/// small ones do, which is the correct trade: the cost this bounds is
+/// memory, and memory is bytes rather than events.
+pub const REPLAY_BYTES: usize = 1024 * 1024;
+
+/// Why a resume was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeError {
+    /// The id was issued and has since been evicted: `409`, with a message
+    /// telling the client to re-initialize. Resuming from the oldest
+    /// retained event instead would hand it a gap it cannot detect, which is
+    /// the one outcome worse than refusing.
+    Evicted,
+    /// The id was never issued on this session: `400`. A client error rather
+    /// than an expiry, and distinguishing them tells the client which of the
+    /// two to fix.
+    Unknown,
+}
+
+impl ResumeError {
+    pub fn status(self) -> u16 {
+        match self {
+            ResumeError::Evicted => 409,
+            ResumeError::Unknown => 400,
+        }
+    }
+
+    pub fn message(self) -> &'static str {
+        match self {
+            ResumeError::Evicted => {
+                "the events after that id are no longer buffered; re-initialize"
+            }
+            ResumeError::Unknown => "that event id was never issued on this session",
+        }
+    }
+}
+
 /// One event that was written, kept in case a client comes back for it.
 #[derive(Debug, Clone)]
 pub struct Kept {
@@ -40,6 +81,11 @@ pub struct Stream {
     kept: Mutex<Vec<Kept>>,
     next_id: Mutex<u64>,
     open: AtomicBool,
+    /// The buffer's size in bytes, kept as it grows and shrinks.
+    bytes: Mutex<usize>,
+    /// The oldest id that was ever evicted, so an id below the buffer can be
+    /// told apart from one that was never issued.
+    evicted_through: Mutex<u64>,
 }
 
 impl Stream {
@@ -76,15 +122,63 @@ impl Stream {
         *next += 1;
         let id = *next;
         let mut kept = self.kept.lock().unwrap_or_else(|e| e.into_inner());
+        let mut bytes = self.bytes.lock().unwrap_or_else(|e| e.into_inner());
         kept.push(Kept {
             id,
             data: data.to_vec(),
         });
-        let extra = kept.len().saturating_sub(REPLAY_EVENTS);
-        if extra > 0 {
-            kept.drain(..extra);
+        *bytes += data.len();
+        // Both bounds, oldest first, whichever is reached.
+        while kept.len() > REPLAY_EVENTS || (*bytes > REPLAY_BYTES && kept.len() > 1) {
+            let dropped = kept.remove(0);
+            *bytes -= dropped.data.len();
+            *self
+                .evicted_through
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = dropped.id;
         }
         id
+    }
+
+    /// How many bytes the buffer is holding.
+    pub fn buffered_bytes(&self) -> usize {
+        *self.bytes.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// How many events it is holding.
+    pub fn buffered_events(&self) -> usize {
+        self.kept.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+
+    /// Forget everything: on `DELETE`, and on expiry.
+    pub fn forget(&self) {
+        self.kept.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        *self.bytes.lock().unwrap_or_else(|e| e.into_inner()) = 0;
+    }
+
+    /// The events a client resuming after `id` should receive, or why it
+    /// cannot resume at all.
+    ///
+    /// Replayed from the buffer and never re-derived: the buffer holds the
+    /// bytes that were actually sent, and regenerating them could produce
+    /// something different if the store has moved on. A replayed event must
+    /// be *the event that was sent*.
+    pub fn resume_after(&self, id: u64) -> Result<Vec<Kept>, ResumeError> {
+        let kept = self.kept.lock().unwrap_or_else(|e| e.into_inner());
+        let issued = *self.next_id.lock().unwrap_or_else(|e| e.into_inner());
+        if id > issued {
+            return Err(ResumeError::Unknown);
+        }
+        let evicted_through = *self
+            .evicted_through
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // Everything after `id` must still be here. If the buffer starts
+        // later than the next event this client wants, what it wants is gone.
+        if id < evicted_through {
+            return Err(ResumeError::Evicted);
+        }
+        Ok(kept.iter().filter(|event| event.id > id).cloned().collect())
     }
 
     /// Everything kept after `id`, oldest first, and whether anything older

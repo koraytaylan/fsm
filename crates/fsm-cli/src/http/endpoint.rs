@@ -99,6 +99,9 @@ impl Endpoint {
                     // may already be gone.
                     if let Some(stream) = self.streams.lock_safe().remove(id) {
                         stream.release();
+                        // A disconnected client's buffer must not outlive
+                        // the session it belonged to.
+                        stream.forget();
                     }
                     write_response(out, &Response::text(200, "session ended"))
                 } else {
@@ -377,29 +380,30 @@ impl Endpoint {
         if !stream.claim() {
             return write_response(out, &Response::error(409));
         }
-        begin_stream(out)?;
-
         // A client that comes back after a disconnect resumes from where it
-        // stopped, which is `7004`'s subject; the id it names is honoured
-        // here because the buffer and the wire agree by construction.
-        if let Some(last) = request
+        // stopped. The two ways that can fail are different failures and get
+        // different answers: an id whose events were evicted is `409` and
+        // "re-initialize", because resuming from the oldest retained event
+        // would hand the client a gap it cannot detect; an id this session
+        // never issued is `400`, because that is the client's mistake rather
+        // than time passing.
+        let resume = match request
             .header("last-event-id")
             .and_then(|id| id.parse::<u64>().ok())
         {
-            let (missed, gap) = stream.replay_after(last);
-            if gap {
-                // A gap the buffer could not keep is said plainly rather
-                // than papered over: a client that thinks it caught up and
-                // has not is worse off than one that knows.
-                let _ = write_event(
-                    out,
-                    last,
-                    b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"level\":\"warning\",\"logger\":\"fsm.http\",\"data\":{\"resumed_with_gap\":true}}}",
-                );
-            }
-            for event in missed {
-                write_event(out, event.id, &event.data)?;
-            }
+            None => Vec::new(),
+            Some(last) => match stream.resume_after(last) {
+                Ok(missed) => missed,
+                Err(error) => {
+                    stream.release();
+                    return write_response(out, &Response::text(error.status(), error.message()));
+                }
+            },
+        };
+        begin_stream(out)?;
+        for event in resume {
+            // The bytes that were sent, not bytes regenerated now.
+            write_event(out, event.id, &event.data)?;
         }
         Ok(())
     }

@@ -153,15 +153,22 @@ pub fn serve_bound(
 }
 
 /// The smallest honest refusal: no allocation, no thread, no keep-alive.
+///
+/// Written as **one** buffer in one call, then the write half is shut down
+/// before the socket is dropped. `write!` with a format issues a syscall per
+/// fragment, and a client reading a response that arrives in pieces on a
+/// connection about to close can see a reset partway through — which is a
+/// truncated refusal, and a refusal nobody can read is not one.
 fn refuse(mut socket: TcpStream) {
     let _ = socket.set_write_timeout(Some(IO_TIMEOUT));
     let body = "too many connections";
-    let _ = write!(
-        socket,
+    let response = format!(
         "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
+    let _ = socket.write_all(response.as_bytes());
     let _ = socket.flush();
+    let _ = socket.shutdown(std::net::Shutdown::Write);
 }
 
 /// One connection: requests until the handler says close, the cap is
