@@ -10,7 +10,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/http/session.rs
   - crates/fsm-cli/tests/http_session.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Session Lifecycle
@@ -43,3 +43,13 @@ Over stdio a session is the process; over HTTP it is a header, and everything pl
 - A session's logging level and cancellation set are independent across sessions.
 
 - **Done when:** `cargo test -p fsm-cli --test http_session` passes every case above, session ids use §0070's construction with no RNG, no dependency, and no `unsafe`, unknown sessions return `404` rather than `400`, per-session state is provably independent, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `Session` holds exactly what the stdio session held per client — subscriptions, level, cancellations, the outstanding ask, the negotiated version, the initialized flag, and the last event id — and `Sessions` holds up to 32 of them, sweeping expired ones **on access** rather than from a timer thread, because a server with no clients should be doing nothing at all. The three refusals are the three the specification assigns: no header is `400`, an unknown or expired id is `404` so a client re-initializes rather than retrying, and a stated protocol version that is not the negotiated one is `400`. An absent version header is the negotiated one, per the specification's own backwards-compatibility guidance.
+
+Ids are `hex(sha256("fsm:session:1" || seed || counter || pid || nanos))[..32]` with the seed read **once** per process. A thousand ids are asserted distinct, to share no four-character prefix between consecutive pairs, and not to recover creation order when sorted — a counter or a clock in the clear would fail all three.
+
+**Corrections.**
+
+- *`/dev/urandom` is an endless stream, and `fs::read` on it does not return.* The first run of this suite was killed by the OOM killer. The seed is read with `read_exact` on an open handle for exactly 32 bytes — which is what "read the seed" has to mean for a character device.
+- *The fallback is exercised as a subprocess.* The seed is process-wide and read once, so forcing the Windows path inside a test that has already minted an id would prove nothing. `FSM_HTTP_SEED_FALLBACK=1` runs an ignored child test that prints a thousand ids, and the parent asserts they are distinct — so the branch only Windows takes is executed on every platform's CI run.
+- *The idle window runs from last use, not from creation*, and the test says so explicitly: a session used just under the limit survives well past its own age.
