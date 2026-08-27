@@ -49,7 +49,7 @@ fn the_documented_split_is_the_enforced_split() {
         let end = rest.find('.').unwrap_or(rest.len());
         rest[..end]
             .split('`')
-            .filter(|token| names().contains(&token))
+            .filter(|token| names().contains(token))
             .map(str::to_string)
             .collect()
     };

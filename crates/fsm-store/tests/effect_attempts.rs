@@ -3,6 +3,11 @@
 //!
 //! Plan 0016 task 7401.
 
+// A helper here hands back the store's own `ErrorObj`, as
+// `journal_record_bounds.rs` does: boxing it would only make every assertion
+// dereference to read a code.
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeMap;
 
 use fsm_core::json::{JsonLimits, Value, parse};

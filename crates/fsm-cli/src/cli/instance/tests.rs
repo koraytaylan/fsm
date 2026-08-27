@@ -121,7 +121,7 @@ fn over_precision_context() {
         &mut c,
         &Args {
             positionals: vec!["decm".into()],
-            flags: BTreeMap::from([("context".into(), "amt=1.505".into())]),
+            flags: BTreeMap::from([("context", "amt=1.505".into())]),
             switches: Default::default(),
         },
     );
@@ -140,8 +140,8 @@ fn send_applied_rejected_idempotent_seq() {
             &Args {
                 positionals: vec![iid.clone(), "docs_ok".into()],
                 flags: BTreeMap::from([
-                    ("request-id".into(), "R1".into()),
-                    ("expect-seq".into(), seq.to_string())
+                    ("request-id", "R1".into()),
+                    ("expect-seq", seq.to_string())
                 ]),
                 switches: Default::default()
             }
@@ -153,7 +153,7 @@ fn send_applied_rejected_idempotent_seq() {
             &mut c,
             &Args {
                 positionals: vec![iid.clone(), "scored".into()],
-                flags: BTreeMap::from([("request-id".into(), "bad".into())]),
+                flags: BTreeMap::from([("request-id", "bad".into())]),
                 switches: Default::default()
             }
         ),
@@ -165,7 +165,7 @@ fn send_applied_rejected_idempotent_seq() {
             &mut c,
             &Args {
                 positionals: vec![iid.clone(), "docs_ok".into()],
-                flags: BTreeMap::from([("request-id".into(), "R1".into())]),
+                flags: BTreeMap::from([("request-id", "R1".into())]),
                 switches: Default::default()
             }
         ),
@@ -178,9 +178,9 @@ fn send_applied_rejected_idempotent_seq() {
             &Args {
                 positionals: vec![iid.clone(), "note_added".into()],
                 flags: BTreeMap::from([
-                    ("request-id".into(), "stale".into()),
-                    ("expect-seq".into(), "0".into()),
-                    ("payload".into(), r#"{"text":"hi"}"#.into())
+                    ("request-id", "stale".into()),
+                    ("expect-seq", "0".into()),
+                    ("payload", r#"{"text":"hi"}"#.into())
                 ]),
                 switches: Default::default()
             }
@@ -206,9 +206,9 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
             &Args {
                 positionals: vec!["t1".into(), "tick".into()],
                 flags: BTreeMap::from([
-                    ("request-id".into(), "st".into()),
-                    ("stamp".into(), "at".into()),
-                    ("payload".into(), "{}".into())
+                    ("request-id", "st".into()),
+                    ("stamp", "at".into()),
+                    ("payload", "{}".into())
                 ]),
                 switches: Default::default()
             }
@@ -237,7 +237,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
         &mut c,
         &Args {
             positionals: vec![iid.clone(), "docs_ok".into()],
-            flags: BTreeMap::from([("request-id".into(), "d1".into())]),
+            flags: BTreeMap::from([("request-id", "d1".into())]),
             switches: Default::default(),
         },
     );
@@ -255,7 +255,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
                 &mut c,
                 &Args {
                     positionals: vec![iid.clone(), eid.clone()],
-                    flags: BTreeMap::from([("outcome".into(), "ok".into())]),
+                    flags: BTreeMap::from([("outcome", "ok".into())]),
                     switches: Default::default()
                 }
             ),
@@ -267,7 +267,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
             &mut c,
             &Args {
                 positionals: vec![iid.clone(), "nope".into()],
-                flags: BTreeMap::from([("outcome".into(), "ok".into())]),
+                flags: BTreeMap::from([("outcome", "ok".into())]),
                 switches: Default::default()
             }
         ),
@@ -300,7 +300,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
             &mut c,
             &Args {
                 positionals: vec![],
-                flags: BTreeMap::from([("status".into(), "running".into())]),
+                flags: BTreeMap::from([("status", "running".into())]),
                 switches: Default::default()
             }
         ),
@@ -311,10 +311,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
             &mut c,
             &Args {
                 positionals: vec![iid.clone()],
-                flags: BTreeMap::from([
-                    ("from-seq".into(), "0".into()),
-                    ("limit".into(), "10".into())
-                ]),
+                flags: BTreeMap::from([("from-seq", "0".into()), ("limit", "10".into())]),
                 switches: BTreeSet::from(["trace"])
             }
         ),
@@ -325,7 +322,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
             &mut c,
             &Args {
                 positionals: vec![iid.clone()],
-                flags: BTreeMap::from([("reason".into(), "done".into())]),
+                flags: BTreeMap::from([("reason", "done".into())]),
                 switches: Default::default()
             }
         ),
@@ -336,7 +333,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
             &mut c,
             &Args {
                 positionals: vec![iid.clone(), "docs_ok".into()],
-                flags: BTreeMap::from([("request-id".into(), "after".into())]),
+                flags: BTreeMap::from([("request-id", "after".into())]),
                 switches: Default::default()
             }
         ),
@@ -349,7 +346,7 @@ fn stamp_ack_cancel_annotate_show_ls_history() {
                 &mut c,
                 &Args {
                     positionals: vec![iid],
-                    flags: BTreeMap::from([("seq".into(), r.seq.to_string())]),
+                    flags: BTreeMap::from([("seq", r.seq.to_string())]),
                     switches: Default::default()
                 }
             ),

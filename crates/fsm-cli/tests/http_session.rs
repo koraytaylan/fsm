@@ -141,8 +141,12 @@ fn the_no_urandom_platform_is_exercised_on_every_platform() {
 }
 
 /// The child of the test above. Ignored, so it runs only when asked.
+///
+/// Its standard output *is* the result the parent reads, which is the one case
+/// the workspace's `print_stdout` denial exists to catch and this is not.
 #[test]
 #[ignore = "driven as a subprocess by the fallback test"]
+#[allow(clippy::print_stdout)]
 fn prints_a_thousand_fallback_ids() {
     assert_eq!(
         std::env::var("FSM_HTTP_SEED_FALLBACK").ok().as_deref(),

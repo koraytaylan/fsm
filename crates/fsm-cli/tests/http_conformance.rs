@@ -8,7 +8,7 @@
 //! Plan 0015 task 7301.
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -508,12 +508,7 @@ fn the_transport_does_not_change_the_protocol() {
             sink.writer(),
         )
         .unwrap();
-        let over_stdio = sink
-            .text()
-            .lines()
-            .last()
-            .map(|line| value(line))
-            .expect("an answer");
+        let over_stdio = sink.text().lines().last().map(value).expect("an answer");
 
         assert_eq!(
             fsm_core::canon::canon_bytes(&over_http),

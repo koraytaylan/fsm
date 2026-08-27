@@ -195,7 +195,9 @@ fn every_journaled_claim_is_checked() {
     let (records, _) = spanning_journal(&directory);
     let at = migration_index(&records);
 
-    let cases: Vec<(&str, Box<dyn Fn(&mut BTreeMap<String, Value>)>)> = vec![
+    /// One named tamper, applied to a record body before it is re-sealed.
+    type Tamper = (&'static str, Box<dyn Fn(&mut BTreeMap<String, Value>)>);
+    let cases: Vec<Tamper> = vec![
         (
             "configuration_after",
             Box::new(|body: &mut BTreeMap<String, Value>| {

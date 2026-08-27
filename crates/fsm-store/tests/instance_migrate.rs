@@ -3,6 +3,11 @@
 //!
 //! Plan 0011 task 5501.
 
+// Rows hand back the store's own `ErrorObj`, which is how the code under
+// test reports a failure. Boxing it would only make every assertion
+// dereference to read a code.
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};

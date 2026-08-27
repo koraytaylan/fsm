@@ -166,14 +166,13 @@ fn many_sessions_writing_at_once_leave_one_coherent_journal() {
         .filter(|record| record.kind == fsm_core::record::RecordKind::EventApplied)
         .count();
     assert_eq!(applied, 8 * 50, "an event was lost or applied twice");
-    assert_eq!(
+    assert!(
         store.state.instances["inst-m"]
             .ctx
             .get("seen")
             .map(|value| format!("{value:?}"))
             .unwrap_or_default()
             .contains("400"),
-        true,
         "the context counted every event"
     );
 

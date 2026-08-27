@@ -296,9 +296,9 @@ fn a_region_on_a_terminal_leaf_is_skipped_by_the_eventless_scan() {
 
 #[test]
 fn a_chain_of_three_eventless_transitions_settles_in_one_macrostep() {
-    let (m, t) = machine(&format!(
-        r#"{{"format":"fsm.machine/1","name":"m","states":[{{"name":"a"}},{{"name":"b"}},{{"name":"c"}},{{"name":"d"}},{{"name":"e"}}],"initial":"a","context":[],"events":[{{"name":"go","fields":[]}}],"deadlines":[{{"name":"in_b","from":"b","after":"dur(1, s)","to":"a"}},{{"name":"in_c","from":"c","after":"dur(2, s)","to":"a"}},{{"name":"in_e","from":"e","after":"dur(3, s)","to":"a"}}],"transitions":[{{"from":"a","on":"go","to":"b"}},{{"from":"b","to":"c"}},{{"from":"c","to":"d"}},{{"from":"d","to":"e"}}]}}"#
-    ));
+    let (m, t) = machine(
+        r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"},{"name":"b"},{"name":"c"},{"name":"d"},{"name":"e"}],"initial":"a","context":[],"events":[{"name":"go","fields":[]}],"deadlines":[{"name":"in_b","from":"b","after":"dur(1, s)","to":"a"},{"name":"in_c","from":"c","after":"dur(2, s)","to":"a"},{"name":"in_e","from":"e","after":"dur(3, s)","to":"a"}],"transitions":[{"from":"a","on":"go","to":"b"},{"from":"b","to":"c"},{"from":"c","to":"d"},{"from":"d","to":"e"}]}"#,
+    );
     let created = create(&m, &t, &BTreeMap::new(), 0).unwrap();
     let mut budget = Budget::new(MACROSTEP_EVAL_TICKS);
     let out = applied(step(

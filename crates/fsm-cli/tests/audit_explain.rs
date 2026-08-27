@@ -2,6 +2,11 @@
 //!
 //! Plan 0014 task 6601.
 
+// One helper hands back the store's own `ErrorObj`, which is what the code
+// under test reports a failure with. Boxing it here would only make every
+// assertion dereference to read a code.
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeMap;
 
 use fsm_cli::clock::FixedClock;

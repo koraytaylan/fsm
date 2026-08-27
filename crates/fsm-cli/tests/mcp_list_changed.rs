@@ -287,9 +287,8 @@ fn nothing_the_server_did_not_advertise_is_ever_sent() {
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#.to_string(),
         r#"{"jsonrpc":"2.0","id":3,"method":"prompts/list"}"#.to_string(),
         r#"{"jsonrpc":"2.0","id":4,"method":"resources/list"}"#.to_string(),
-        format!(
-            r#"{{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{{"name":"instance_create","arguments":{{"machine":"lc_case","request_id":"lc-1"}}}}}}"#
-        ),
+        r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"instance_create","arguments":{"machine":"lc_case","request_id":"lc-1"}}}"#
+            .to_string(),
         r#"{"jsonrpc":"2.0","id":6,"method":"resources/subscribe","params":{"uri":"fsm://docs/spec"}}"#.to_string(),
     ];
     serve_session(

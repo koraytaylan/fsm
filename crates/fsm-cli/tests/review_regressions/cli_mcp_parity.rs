@@ -415,7 +415,7 @@ fn history_and_explain_reconstruct_trace() {
         .iter()
         .filter_map(|e| e.get("kind").and_then(Value::as_str))
         .collect();
-    assert!(!kinds.iter().any(|k| *k == "EventRejected"));
+    assert!(!kinds.contains(&"EventRejected"));
 }
 
 #[test]

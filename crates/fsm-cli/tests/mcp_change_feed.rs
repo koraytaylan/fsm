@@ -165,12 +165,13 @@ fn ten_records_touching_one_instance_are_one_notification_each() {
         &directory,
         &["fsm://instance/inst-1", "fsm://instance/inst-1/history"],
     );
+    // The same event ten times: the subject is how many *notifications* ten
+    // records produce, not which event produced them.
     for index in 0..10 {
-        let event = if index % 2 == 0 { "go" } else { "go" };
         store
             .send_event(
                 "inst-1",
-                event,
+                "go",
                 Value::Obj(BTreeMap::new()),
                 &format!("go-{index}"),
                 None,

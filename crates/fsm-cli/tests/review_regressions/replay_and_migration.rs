@@ -136,7 +136,7 @@ fn altered_rejection_details_fail_replay() {
     let mut out = Vec::new();
     for l in &lines {
         out.extend_from_slice(l);
-        if !l.ends_with(&[b'\n']) {
+        if !l.ends_with(b"\n") {
             out.push(b'\n');
         }
     }
@@ -180,7 +180,7 @@ fn rewrite_last_record(dir: &std::path::Path, mut edit: impl FnMut(&mut BTreeMap
     let mut out = Vec::new();
     for l in &lines {
         out.extend_from_slice(l);
-        if !l.ends_with(&[b'\n']) {
+        if !l.ends_with(b"\n") {
             out.push(b'\n');
         }
     }
@@ -281,6 +281,7 @@ fn lock_held_store_open_writes_no_version() {
     std::fs::create_dir_all(dir.join("journal")).unwrap();
     let lock = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(true)
         .read(true)
         .write(true)
         .open(dir.join("journal/LOCK"))

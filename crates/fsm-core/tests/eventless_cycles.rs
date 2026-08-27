@@ -26,7 +26,7 @@ fn analysis(src: &str) -> Vec<Finding> {
 }
 
 fn refused(src: &str) -> Vec<Finding> {
-    compiled(src).err().expect("the definition is refused")
+    compiled(src).expect_err("the definition is refused")
 }
 
 fn sequential(states: &str, transitions: &str) -> String {

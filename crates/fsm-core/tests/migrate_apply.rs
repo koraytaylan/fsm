@@ -2,6 +2,11 @@
 //!
 //! Plan 0011 task 5401.
 
+// A helper hands back the engine's own `Rejection`, which is what a refused
+// migration *is*. Boxing it would only make every assertion dereference to
+// read a code.
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::{Budget, Val};

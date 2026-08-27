@@ -245,8 +245,8 @@ fn assert_coherent(directory: &TestDirectory, seed: u64, point: DeathPoint) {
 /// One seeded run: build a tree, die at the seed's point, resume, and assert.
 fn run_one(seed: u64) {
     let point = DeathPoint::of(seed);
-    let depth = 2 + usize::from(seed % 3 == 0);
-    let slots = 1 + usize::from(seed % 7 == 0);
+    let depth = 2 + usize::from(seed.is_multiple_of(3));
+    let slots = 1 + usize::from(seed.is_multiple_of(7));
     let directory = TestDirectory::create();
     let mut clock = FixedClock::new(BASE_MS + (seed % 1_000) as i64, 1);
 

@@ -115,9 +115,7 @@ fn generate(seed: u64) -> Option<Pair> {
         ""
     };
     let old = if parallel {
-        format!(
-            r#"{{"format":"fsm.machine/1","name":"p_old","regions":[{{"name":"left","states":[{{"name":"l0"}},{{"name":"l1"}}],"initial":"l0"}},{{"name":"right","states":[{{"name":"r0"}},{{"name":"r1"}}],"initial":"r0"}}],"context":[{{"name":"n","ty":"int","init":"1"}}],"events":[{{"name":"go","fields":[]}},{{"name":"tick","fields":[]}}],"transitions":[{{"from":"l0","on":"go","to":"l1","do":[{{"target":"n","value":"ctx.n + 1"}}]}},{{"from":"r0","on":"tick","to":"r1"}}]}}"#
-        )
+        r#"{"format":"fsm.machine/1","name":"p_old","regions":[{"name":"left","states":[{"name":"l0"},{"name":"l1"}],"initial":"l0"},{"name":"right","states":[{"name":"r0"},{"name":"r1"}],"initial":"r0"}],"context":[{"name":"n","ty":"int","init":"1"}],"events":[{"name":"go","fields":[]},{"name":"tick","fields":[]}],"transitions":[{"from":"l0","on":"go","to":"l1","do":[{"target":"n","value":"ctx.n + 1"}]},{"from":"r0","on":"tick","to":"r1"}]}"#.to_string()
     } else {
         let states = if compound {
             r#"{"name":"s0"},{"name":"s1","initial":"inner","states":[{"name":"inner"},{"name":"h","history":"shallow"}]},{"name":"s2"}"#

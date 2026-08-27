@@ -6,6 +6,11 @@
 //!
 //! Plan 0009 task 4704.
 
+// The generated/executed/refused counts are this suite's report to whoever
+// is reading a CI log: an enumeration that silently covered nothing looks
+// exactly like one that covered everything.
+#![allow(clippy::print_stderr)]
+
 use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::Budget;

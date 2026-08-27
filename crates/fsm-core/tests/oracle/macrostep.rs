@@ -6,6 +6,11 @@
 //!
 //! Plan 0009 task 4704.
 
+// The oracle mirrors the engine's own signature, `Rejection` included:
+// boxing it here would make the two shapes differ in the one place they
+// are supposed to match.
+#![allow(clippy::result_large_err)]
+
 use fsm_core::expr::eval::Bindings;
 use fsm_core::expr::parser;
 use fsm_core::machine::{CancelledChild, Invocation, InvokeStatus};
@@ -38,13 +43,13 @@ fn naive_invocations(
     };
     for name in exited {
         for invoke in slots_of(name) {
-            if let Some(gone) = invocations.remove(&invoke.id) {
-                if gone.status == InvokeStatus::Running {
-                    cancelled.push(CancelledChild {
-                        slot: invoke.id.clone(),
-                        child_instance_id: String::new(),
-                    });
-                }
+            if let Some(gone) = invocations.remove(&invoke.id)
+                && gone.status == InvokeStatus::Running
+            {
+                cancelled.push(CancelledChild {
+                    slot: invoke.id.clone(),
+                    child_instance_id: String::new(),
+                });
             }
         }
     }
@@ -127,12 +132,13 @@ fn done_state_events(spec: &MachineSpec, entered: &[String]) -> Raised {
             let Some(node) = find(states, name) else {
                 continue;
             };
-            if node.final_state && node.history.is_none() {
-                if let Some(parent) = parent_of(states, name) {
-                    let event = format!("$done.state.{parent}");
-                    if handled(spec, &event) {
-                        out.push((event, BTreeMap::new()));
-                    }
+            if node.final_state
+                && node.history.is_none()
+                && let Some(parent) = parent_of(states, name)
+            {
+                let event = format!("$done.state.{parent}");
+                if handled(spec, &event) {
+                    out.push((event, BTreeMap::new()));
                 }
             }
             break;

@@ -6,7 +6,6 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::Duration;
 
 use fsm_cli::http::server::{
     Bound, Flow, Handler, MAX_CONNECTIONS, MAX_REQUESTS_PER_CONNECTION, bind, serve_bound,
