@@ -135,7 +135,7 @@ pub(crate) fn values_for(
     ref_: &Ref,
     argument: &str,
     _prefix: &str,
-    _context: Option<&Value>,
+    context: Option<&Value>,
     store: Option<&Store>,
 ) -> Vec<String> {
     let Some(store) = store else {
@@ -143,8 +143,74 @@ pub(crate) fn values_for(
     };
     match ref_ {
         Ref::Resource(uri) => template_values(uri, argument, store),
-        Ref::Prompt(_) => Vec::new(),
+        Ref::Prompt(name) => prompt_values(name, argument, context, store),
     }
+}
+
+/// The arguments of the driving prompts.
+///
+/// `goal` is deliberately absent: free text has no candidate set, and an
+/// empty completion is the honest answer to "what might they type".
+fn prompt_values(
+    prompt: &str,
+    argument: &str,
+    context: Option<&Value>,
+    store: &Store,
+) -> Vec<String> {
+    match (prompt, argument) {
+        ("drive_instance" | "diagnose_instance", "instance_id") => {
+            crate::mcp::resources::instance_ids(store)
+        }
+        ("drive_instance", "event") => enabled_events(context, store),
+        _ => Vec::new(),
+    }
+}
+
+/// The events that can actually fire on the instance already named.
+///
+/// The `2025-06-18` revision carries previously-resolved arguments as
+/// `context.arguments`, which is what makes this possible: the instance is
+/// known by the time somebody is choosing an event for it, so the answer is
+/// that instance's own analysis rather than a guess from the catalogue.
+///
+/// Without that context the answer is **empty**. Offering every event in the
+/// store would suggest events that cannot fire against this instance, which
+/// is worse than offering nothing.
+fn enabled_events(context: Option<&Value>, store: &Store) -> Vec<String> {
+    let Some(instance_id) = context
+        .and_then(|c| c.get("arguments"))
+        .and_then(|a| a.get("instance_id"))
+        .and_then(Value::as_str)
+    else {
+        return Vec::new();
+    };
+    // The same view `instance_get` returns, so a completion and the tool
+    // cannot disagree about what is enabled. Internal and `$`-generated
+    // events are already excluded from it: an event nobody outside may send
+    // is not a suggestion.
+    let Ok(view) = store.instance_view(instance_id, None, None) else {
+        return Vec::new();
+    };
+    view.get("enabled_events")
+        .and_then(Value::as_arr)
+        .map(|events| {
+            events
+                .iter()
+                // `enabled` fires now; `depends_on_payload` fires depending
+                // on the payload — which the same caller is about to choose
+                // in the same call, so it is a real option and not a guess.
+                // `disabled` and the preempted states are neither.
+                .filter(|event| {
+                    matches!(
+                        event.get("status").and_then(Value::as_str),
+                        Some("enabled" | "depends_on_payload")
+                    )
+                })
+                .filter_map(|event| event.get("event").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The ids behind the three resource templates.

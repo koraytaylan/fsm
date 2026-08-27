@@ -7,10 +7,11 @@ depends_on:
   - resource-template-completion
 gated: false
 touches:
+  - crates/fsm-cli/tests/mcp_prompts.rs
   - crates/fsm-cli/src/mcp/prompts.rs
   - crates/fsm-cli/src/mcp/complete.rs
   - crates/fsm-cli/tests/mcp_completion_prompts.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Driving Prompts And Event Completion
@@ -42,3 +43,12 @@ This is where completion earns its place: an `event` argument completed from the
 - The `prompts/list` golden byte-matches its updated fixture.
 
 - **Done when:** `cargo test -p fsm-cli --test mcp_completion_prompts` passes every case above, `event` completion agrees with `instance_get`'s `enabled_events` and returns empty without context, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `drive_instance` and `diagnose_instance` sit beside `author_machine`, each a route through the surface rather than a paragraph: driving reads the view, sends only what is enabled under a fresh `request_id`, acknowledges effects, polls a due deadline, and subscribes rather than asking again; diagnosing walks the traced history to the seq that surprised you, explains that step, and compares what the definition allows against what was sent.
+
+`instance_id` completes on both from 6302's enumeration — one implementation, not a second. `event` completes from the named instance's own view, which is the same one `instance_get` returns, so a completion and the tool cannot disagree. Without `context.arguments.instance_id` the answer is empty: guessing from the catalogue would offer events that cannot fire against this instance. Internal and `$`-generated events never appear, because the analysis already excludes them — asserted here anyway, so the two stay connected.
+
+**Corrections.**
+
+- *`depends_on_payload` is offered alongside `enabled`.* Step 5 says "genuinely enabled", by which it means "not a guess from the catalogue" — and an event whose guard reads `evt` fires depending on a payload the same caller is about to choose in the same call. Hiding it would leave a payload-guarded machine completing to nothing, which is the failure the task exists to prevent. `disabled` and both preempted states are excluded.
+- *No `prompts/list` golden exists to update.* No committed transcript calls it; the listing is asserted structurally instead, and the two count assertions in `mcp_prompts.rs` move from one prompt to three.

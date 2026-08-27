@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 fn list_one_prompt() {
     let v = list();
     let arr = v.get("prompts").and_then(Value::as_arr).unwrap();
-    assert_eq!(arr.len(), 1);
+    // Three since plan 0013 task 6303: authoring, driving, diagnosing.
+    assert_eq!(arr.len(), 3);
     assert_eq!(
         arr[0].get("name").and_then(Value::as_str),
         Some("author_machine")
@@ -134,7 +135,7 @@ fn the_live_surface_is_documented() {
 fn the_prompt_and_its_arguments_are_titled() {
     let listed = list();
     let prompts = listed.get("prompts").and_then(Value::as_arr).unwrap();
-    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts.len(), 3);
     let prompt = &prompts[0];
     assert_eq!(
         prompt.get("name").and_then(Value::as_str),
@@ -145,7 +146,11 @@ fn the_prompt_and_its_arguments_are_titled() {
         prompt.get("title").and_then(Value::as_str),
         Some("Author a machine")
     );
-    for argument in prompt.get("arguments").and_then(Value::as_arr).unwrap() {
+    for argument in prompts
+        .iter()
+        .filter_map(|p| p.get("arguments").and_then(Value::as_arr))
+        .flatten()
+    {
         let name = argument.get("name").and_then(Value::as_str).unwrap();
         let title = argument.get("title").and_then(Value::as_str).unwrap_or("");
         assert!(!title.is_empty(), "argument {name} has no title");
