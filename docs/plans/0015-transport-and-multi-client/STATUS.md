@@ -1,8 +1,8 @@
-# Plan 0015 — Transport And Multi-Client — 🚧 In progress
+# Plan 0015 — Transport And Multi-Client — ✅ Complete
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file. Task-level truth lives in [tasks/](tasks/) frontmatter; Makina's integration coordinator updates both layers.
 
-- **Status:** 🚧 In progress.
+- **Status:** ✅ Complete.
 
 - **Goal:** a second transport — Streamable HTTP over a hand-rolled HTTP/1.1 server — so one process can serve many clients against one store, with sessions, server-sent events, an honest security boundary, and a `serve` that degrades instead of exiting when another process holds the writer.
 - **Root cause:** the only transport is a subprocess pipe, so a durable auditable journal whose whole value is being a shared source of truth is reachable only by child processes on one host; a second stdio client dies at startup because the writer lock is held; and there is nothing to authenticate to, which stops being fine the moment there is a socket.
