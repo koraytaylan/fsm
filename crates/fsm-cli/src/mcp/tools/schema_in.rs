@@ -66,6 +66,14 @@ pub(super) fn schema_instance_elicit_in() -> Value {
     schema_obj(p, &["instance_id", "event", "request_id"], false)
 }
 
+/// One journaled step: the instance whose story it is, and its seq.
+pub(super) fn schema_explain_step_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("instance_id".into(), ty("string"));
+    p.insert("seq".into(), ty_num(0, i64::MAX));
+    schema_obj(p, &["instance_id", "seq"], false)
+}
+
 pub(super) fn schema_deadline_poll_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

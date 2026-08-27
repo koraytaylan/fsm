@@ -25,27 +25,28 @@ pub use handlers::machine_summary;
 pub use validate::validate_args;
 
 use handlers::{
-    run_deadline_poll, run_effect_ack, run_instance_cancel, run_instance_create,
+    run_deadline_poll, run_effect_ack, run_explain_step, run_instance_cancel, run_instance_create,
     run_instance_elicit, run_instance_get, run_instance_history, run_instance_list,
     run_instance_migrate, run_instance_send, run_invocation_return, run_invocation_start,
     run_machine_analyze, run_machine_create, run_machine_diagram, run_machine_get,
     run_machine_list, run_signal_deliver, run_simulate,
 };
 use schema_in::{
-    schema_deadline_poll_in, schema_diagram_in, schema_effect_ack_in, schema_instance_cancel_in,
-    schema_instance_create_in, schema_instance_elicit_in, schema_instance_history_in,
-    schema_instance_id_in, schema_instance_list_in, schema_instance_migrate_in,
-    schema_instance_send_in, schema_invocation_slot_in, schema_machine_create_in,
-    schema_machine_list_in, schema_machine_ref_in, schema_signal_deliver_in, schema_simulate_in,
+    schema_deadline_poll_in, schema_diagram_in, schema_effect_ack_in, schema_explain_step_in,
+    schema_instance_cancel_in, schema_instance_create_in, schema_instance_elicit_in,
+    schema_instance_history_in, schema_instance_id_in, schema_instance_list_in,
+    schema_instance_migrate_in, schema_instance_send_in, schema_invocation_slot_in,
+    schema_machine_create_in, schema_machine_list_in, schema_machine_ref_in,
+    schema_signal_deliver_in, schema_simulate_in,
 };
 use schema_out::{
-    schema_deadline_poll_out, schema_effect_ack_out, schema_instance_cancel_out,
-    schema_instance_create_out, schema_instance_elicit_out, schema_instance_get_out,
-    schema_instance_history_out, schema_instance_list_out, schema_instance_migrate_out,
-    schema_instance_send_out, schema_invocation_return_out, schema_invocation_start_out,
-    schema_machine_analyze_out, schema_machine_create_out, schema_machine_diagram_out,
-    schema_machine_get_out, schema_machine_list_out, schema_signal_deliver_out,
-    schema_simulate_out,
+    schema_deadline_poll_out, schema_effect_ack_out, schema_explain_step_out,
+    schema_instance_cancel_out, schema_instance_create_out, schema_instance_elicit_out,
+    schema_instance_get_out, schema_instance_history_out, schema_instance_list_out,
+    schema_instance_migrate_out, schema_instance_send_out, schema_invocation_return_out,
+    schema_invocation_start_out, schema_machine_analyze_out, schema_machine_create_out,
+    schema_machine_diagram_out, schema_machine_get_out, schema_machine_list_out,
+    schema_signal_deliver_out, schema_simulate_out,
 };
 
 /// Every tool that reaches a store mutator, and therefore every tool a
@@ -244,6 +245,14 @@ pub fn registry() -> Vec<ToolSpec> {
             input_schema: schema_instance_history_in,
             output_schema: schema_instance_history_out,
             run: run_instance_history,
+        },
+        ToolSpec {
+            name: "explain_step",
+            title: descriptions::EXPLAIN_STEP_TITLE,
+            description: descriptions::EXPLAIN_STEP,
+            input_schema: schema_explain_step_in,
+            output_schema: schema_explain_step_out,
+            run: run_explain_step,
         },
         ToolSpec {
             name: "instance_elicit",

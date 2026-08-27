@@ -1,7 +1,9 @@
+mod audit;
 mod instance;
 mod machine;
 mod simulate;
 
+pub(super) use audit::run_explain_step;
 pub use machine::machine_summary;
 
 pub(super) use instance::{

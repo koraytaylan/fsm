@@ -148,6 +148,19 @@ pub(super) fn schema_instance_elicit_out() -> Value {
     schema_obj(p, &["action", "applied", "event", "instance_id"], true)
 }
 
+/// The trace `explain_seq` reconstructs, passed through as it stands.
+///
+/// The properties named here are the ones a caller can rely on; the rest of
+/// a history entry's fields come through as they are, because reshaping
+/// them is how this tool and `fsm explain --json` would diverge.
+pub(super) fn schema_explain_step_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("seq".into(), ty("number"));
+    p.insert("kind".into(), ty("string"));
+    p.insert("trace".into(), ty("object"));
+    schema_obj(p, &["seq", "kind"], true)
+}
+
 pub(super) fn schema_deadline_poll_out() -> Value {
     let mut p = instance_core_props();
     p.insert("deadline_applied".into(), ty("boolean"));

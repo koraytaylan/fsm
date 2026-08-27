@@ -37,6 +37,8 @@ pub const SIMULATE: &str = "When you want a what-if, simulate events without jou
 
 pub const INSTANCE_ELICIT: &str = "Ask the user for a declared event's fields, then send it. Use at a human gate when you lack the values: the form comes from the machine's own field types, and the answer is validated and journaled exactly like instance_send. Needs a client advertising elicitation; otherwise use instance_send. A declined ask writes nothing and leaves request_id unclaimed.";
 
+pub const EXPLAIN_STEP: &str = "Reach for this when a workflow did something surprising. Given one journaled seq from instance_history, it reconstructs the decision: which transitions were candidates, which guard decided and how it evaluated, what each action computed with before and after values, and which invariants held. Read-only. A seq that is not this instance's, or is not in the journal, is an error rather than an empty trace.";
+
 /// The display names a host shows beside each tool.
 ///
 /// They live here, beside the descriptions, because a title and a
@@ -61,3 +63,4 @@ pub const INSTANCE_LIST_TITLE: &str = "List instances";
 pub const INSTANCE_HISTORY_TITLE: &str = "Read history";
 pub const SIMULATE_TITLE: &str = "Simulate events";
 pub const INSTANCE_ELICIT_TITLE: &str = "Ask and send";
+pub const EXPLAIN_STEP_TITLE: &str = "Explain a step";

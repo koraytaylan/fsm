@@ -126,6 +126,7 @@ fn nineteen_tools_in_order() {
             "instance_get",
             "instance_list",
             "instance_history",
+            "explain_step",
             "instance_elicit",
             "simulate",
         ]

@@ -27,6 +27,7 @@ fn registry_order() {
             "instance_get",
             "instance_list",
             "instance_history",
+            "explain_step",
             "instance_elicit",
             "simulate",
         ]
@@ -103,7 +104,11 @@ fn validate_accept_and_reject() {
                         Value::Obj(inner)
                     }
                     "boolean" => Value::Bool(false),
-                    "number" => Value::Num("1".into()),
+                    // `integer` since plan 0014: `explain_step` is the first
+                    // tool whose *required* argument is a number, and a
+                    // sample builder that fell through to a string would
+                    // fail it for the wrong reason.
+                    "number" | "integer" => Value::Num("1".into()),
                     "array" => Value::Arr(vec![]),
                     _ => Value::Str("x".into()),
                 }
