@@ -574,3 +574,126 @@ fn the_pre_flight_reports_what_has_already_given_up() {
         "{framed:?}"
     );
 }
+
+/// An `fsm.handlers/1` table with the given keys spliced in, as a file.
+fn write_table(directory: &TestDirectory, extra: &str) -> PathBuf {
+    let handlers = directory.path().join("handlers.json");
+    fs::write(
+        &handlers,
+        format!(
+            r#"{{
+  "format": "fsm.handlers/1",
+  "handlers": [
+    {{
+      "effect": "summarize_case",
+      "argv": ["/usr/local/bin/case-tools", "--stdio"],
+      "timeout_ms": 60000{extra}
+    }}
+  ]
+}}"#
+        ),
+    )
+    .unwrap();
+    handlers
+}
+
+/// Run `--check` against a data dir that does not exist, so a store read would
+/// be visible as a created directory.
+fn check(directory: &TestDirectory, extra: &str) -> std::process::Output {
+    let handlers = write_table(directory, extra);
+    let data_dir = std::env::temp_dir().join(format!(
+        "fsm-execute-cmd-never-created-{}-{}",
+        std::process::id(),
+        TEMPORARY_DIRECTORY_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let output = Command::new(binary())
+        .args([
+            "--json",
+            "--data-dir",
+            &data_dir.to_string_lossy(),
+            "execute",
+            "--check",
+            "--handlers",
+            &handlers.to_string_lossy(),
+        ])
+        .output()
+        .expect("run fsm execute --check");
+    assert!(
+        !data_dir.exists(),
+        "a pre-flight must not create the data dir"
+    );
+    output
+}
+
+#[test]
+fn the_pre_flight_resolves_an_mcp_handler_before_opening_any_store() {
+    let directory = TestDirectory::create("check-mcp");
+    let output = check(
+        &directory,
+        r#","kind":"mcp","tool":"summarize","arguments":{"case_id":"{case_id}"}"#,
+    );
+    assert!(output.status.success(), "{output:?}");
+    let framed = parse(&output.stdout, &JsonLimits::DEFAULT).expect("one canonical JSON frame");
+    let handler = framed
+        .get("handlers")
+        .and_then(Value::as_arr)
+        .and_then(<[Value]>::first)
+        .expect("one resolved handler");
+    assert_eq!(handler.get("kind").and_then(Value::as_str), Some("mcp"));
+    assert_eq!(
+        handler.get("tool").and_then(Value::as_str),
+        Some("summarize")
+    );
+    assert_eq!(
+        handler
+            .get("arguments")
+            .and_then(|arguments| arguments.get("case_id"))
+            .and_then(Value::as_str),
+        Some("{case_id}")
+    );
+}
+
+#[test]
+fn the_pre_flight_reports_a_process_handler_as_one() {
+    let directory = TestDirectory::create("check-process");
+    let output = check(&directory, "");
+    assert!(output.status.success(), "{output:?}");
+    let framed = parse(&output.stdout, &JsonLimits::DEFAULT).expect("one canonical JSON frame");
+    let handler = framed
+        .get("handlers")
+        .and_then(Value::as_arr)
+        .and_then(<[Value]>::first)
+        .expect("one resolved handler");
+    assert_eq!(handler.get("kind").and_then(Value::as_str), Some("process"));
+    assert!(
+        handler.get("tool").is_none(),
+        "a process handler has no tool"
+    );
+}
+
+#[test]
+fn every_mcp_config_fault_is_reported_by_the_pre_flight() {
+    // Each of these is refused before any store is opened, which is the whole
+    // point of a pre-flight: a malformed table costs an error rather than a
+    // half-executed workflow.
+    let faults = [
+        (r#","kind":"mcp""#, "tool"),
+        (r#","kind":"mcp","tool":"""#, "tool"),
+        (r#","tool":"summarize""#, "tool"),
+        (r#","arguments":{}"#, "arguments"),
+        (r#","kind":"grpc""#, "grpc"),
+        (
+            r#","kind":"mcp","tool":"summarize","arguments":{"a":"{Bad}"}"#,
+            "arguments.a",
+        ),
+        (r#","retry":{"attempts":2,"on":["mcp_error"]}"#, "mcp_error"),
+    ];
+    for (extra, expected) in faults {
+        let directory = TestDirectory::create("check-mcp-fault");
+        let output = check(&directory, extra);
+        assert_eq!(output.status.code(), Some(2), "{extra}: {output:?}");
+        let rendered = String::from_utf8_lossy(&output.stderr);
+        assert!(rendered.contains("exec/config"), "{extra}: {rendered}");
+        assert!(rendered.contains(expected), "{extra}: {rendered}");
+    }
+}

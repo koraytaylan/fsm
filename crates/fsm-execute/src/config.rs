@@ -27,11 +27,14 @@
 
 use std::collections::BTreeMap;
 
-use fsm_core::expr::eval::Val;
 use fsm_core::json::{JsonLimits, Value, parse};
-use fsm_core::replay::ctx_val_string;
 
 use crate::error::ExecError;
+
+mod template;
+
+use template::{Segment, scan_template};
+pub use template::{substitute, substitute_arguments};
 
 /// The only format tag this crate accepts.
 pub const FORMAT: &str = "fsm.handlers/1";
@@ -46,7 +49,10 @@ pub const MAX_TIMEOUT_MS: i64 = 24 * 60 * 60 * 1000;
 
 const HANDLER_KEYS: &[&str] = &[
     "effect",
+    "kind",
     "argv",
+    "tool",
+    "arguments",
     "timeout_ms",
     "on_ok",
     "on_failed",
@@ -116,11 +122,61 @@ pub struct Advance {
     pub stamps: Vec<String>,
 }
 
+/// What the executor does with the command it runs.
+///
+/// The tool name and the argument template live *inside* the `Mcp` variant
+/// rather than beside it, for the reason [`Advance`] nests its payload: a
+/// `tool` without an MCP handler, or an MCP handler without a `tool`, is then
+/// unrepresentable rather than a validation rule somebody forgets.
+///
+/// **Neither variant widens the security boundary.** `argv[0]` is a literal
+/// rooted path for both; `tool` is a fixed name the operator wrote; and
+/// `arguments` is a template whose placeholders name effect args by the same
+/// rule `argv` uses. Nothing about a handler is constructed from data a
+/// machine emitted.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum HandlerKind {
+    /// Run the command and read its exit status.
+    ///
+    /// The default, and what every table written before this meant, so no
+    /// committed table changes behaviour.
+    #[default]
+    Process,
+    /// Run the command as an MCP server over its stdio and call one tool.
+    Mcp {
+        /// The one tool this handler calls, fixed by the operator.
+        tool: String,
+        /// The argument template. Placeholders substitute in **string** values
+        /// at any depth; numbers, booleans, and object keys are left alone.
+        arguments: Value,
+    },
+}
+
+impl HandlerKind {
+    /// The tag as the table spells it.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HandlerKind::Process => "process",
+            HandlerKind::Mcp { .. } => "mcp",
+        }
+    }
+
+    /// Whether this handler talks a protocol rather than reading an exit code.
+    pub fn is_mcp(&self) -> bool {
+        matches!(self, HandlerKind::Mcp { .. })
+    }
+}
+
+/// The two tags, for the error that lists them.
+const HANDLER_KINDS: &[&str] = &["process", "mcp"];
+
 /// One effect name bound to exactly one command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandlerSpec {
     /// The emitted effect name this handler answers.
     pub effect: String,
+    /// What running the command means, and what it needs to mean it.
+    pub kind: HandlerKind,
     /// The argv template, `argv[0]` first; `{placeholder}` names an effect arg.
     pub argv: Vec<String>,
     /// Milliseconds after which an in-flight run is killed.
@@ -314,13 +370,18 @@ fn parse_handler(index: usize, entry: &Value) -> Result<HandlerSpec, ExecError> 
             ));
         }
     };
+    // Deliberately identical for both kinds: a literal rooted `argv[0]`, no
+    // placeholder in the command position, no shell anywhere. The security
+    // argument for the second kind is that this rule did not move.
     let argv = parse_argv(index, fields.get("argv"))?;
+    let kind = parse_kind(index, fields)?;
     let timeout_ms = parse_timeout(index, fields.get("timeout_ms"))?;
     let on_ok = parse_advance(index, "on_ok", fields.get("on_ok"))?;
     let on_failed = parse_advance(index, "on_failed", fields.get("on_failed"))?;
-    let retry = parse_retry(index, fields.get("retry"))?;
+    let retry = parse_retry(index, &kind, fields.get("retry"))?;
     Ok(HandlerSpec {
         effect,
+        kind,
         argv,
         timeout_ms,
         on_ok,
@@ -329,10 +390,107 @@ fn parse_handler(index: usize, entry: &Value) -> Result<HandlerSpec, ExecError> 
     })
 }
 
+/// The handler kind, and the keys that belong to it and to no other.
+fn parse_kind(index: usize, fields: &BTreeMap<String, Value>) -> Result<HandlerKind, ExecError> {
+    let tag = match fields.get("kind") {
+        None => "process",
+        Some(Value::Str(tag)) => tag.as_str(),
+        Some(_) => {
+            return Err(unknown_kind(index, "a non-string"));
+        }
+    };
+    match tag {
+        "process" => {
+            // A key that does nothing is a key somebody will expect to work.
+            for orphan in ["tool", "arguments"] {
+                if fields.contains_key(orphan) {
+                    return Err(handler_error(
+                        index,
+                        orphan,
+                        format!("{orphan} belongs to a kind \"mcp\" handler and does nothing here"),
+                        vec![("kind", Value::Str("process".into()))],
+                    ));
+                }
+            }
+            Ok(HandlerKind::Process)
+        }
+        "mcp" => {
+            let tool = match fields.get("tool").and_then(Value::as_str) {
+                Some(tool) if !tool.is_empty() => tool.to_string(),
+                _ => {
+                    return Err(handler_error(
+                        index,
+                        "tool",
+                        "a kind \"mcp\" handler must name the one tool it calls",
+                        vec![("kind", Value::Str("mcp".into()))],
+                    ));
+                }
+            };
+            let arguments = match fields.get("arguments") {
+                None => Value::Obj(BTreeMap::new()),
+                Some(value) if value.as_obj().is_some() => value.clone(),
+                Some(_) => {
+                    return Err(handler_error(
+                        index,
+                        "arguments",
+                        "arguments must be an object, as a tool's input schema is",
+                        Vec::new(),
+                    ));
+                }
+            };
+            // Every placeholder is checked here, once, at startup — the same
+            // moment `argv`'s are — so a malformed template costs an error
+            // rather than a run-time failure of the first effect to reach it.
+            template::validate(&arguments, "arguments")
+                .map_err(|fault| handler_error(index, "arguments", fault.message, fault.details))?;
+            Ok(HandlerKind::Mcp { tool, arguments })
+        }
+        other => Err(unknown_kind(index, other)),
+    }
+}
+
+fn unknown_kind(index: usize, found: &str) -> ExecError {
+    handler_error(
+        index,
+        "kind",
+        format!(
+            "unknown handler kind {found}; valid: {}",
+            HANDLER_KINDS.join(", ")
+        ),
+        vec![(
+            "valid",
+            Value::Arr(
+                HANDLER_KINDS
+                    .iter()
+                    .map(|kind| Value::Str((*kind).into()))
+                    .collect(),
+            ),
+        )],
+    )
+}
+
+/// The failure classes a handler of this kind can actually produce.
+///
+/// `mcp_error` is a statement about a tool call, so a process handler that
+/// lists it has misunderstood something, and saying so beats retrying nothing.
+pub fn classes_for(kind: &HandlerKind) -> &'static [&'static str] {
+    match kind {
+        HandlerKind::Process => &FAILURE_CLASSES[..3],
+        HandlerKind::Mcp { .. } => FAILURE_CLASSES,
+    }
+}
+
 /// The retry block, or the default that means "once, as today".
-fn parse_retry(index: usize, raw: Option<&Value>) -> Result<Retry, ExecError> {
+fn parse_retry(index: usize, kind: &HandlerKind, raw: Option<&Value>) -> Result<Retry, ExecError> {
+    let valid = classes_for(kind);
     let Some(raw) = raw else {
-        return Ok(Retry::default());
+        return Ok(Retry {
+            // An absent block still means "any failure this kind can have",
+            // so the default `on` narrows with the kind rather than listing a
+            // class the handler could never produce.
+            on: valid.iter().map(|class| (*class).to_string()).collect(),
+            ..Retry::default()
+        });
     };
     let Some(fields) = raw.as_obj() else {
         return Err(handler_error(
@@ -398,7 +556,7 @@ fn parse_retry(index: usize, raw: Option<&Value>) -> Result<Retry, ExecError> {
     }
 
     let on = match fields.get("on") {
-        None => default.on,
+        None => valid.iter().map(|class| (*class).to_string()).collect(),
         Some(raw) => {
             let Some(entries) = raw.as_arr() else {
                 return Err(handler_error(
@@ -431,18 +589,28 @@ fn parse_retry(index: usize, raw: Option<&Value>) -> Result<Retry, ExecError> {
                         )],
                     ));
                 }
-                if !FAILURE_CLASSES.contains(&class) {
+                // A class this kind cannot produce is refused with the kind
+                // named, because `mcp_error` on a process handler is a
+                // misunderstanding worth correcting rather than a line that
+                // silently retries nothing.
+                if !valid.contains(&class) {
+                    let known = FAILURE_CLASSES.contains(&class);
+                    let message = if known {
+                        format!(
+                            "failure class {class} applies to a kind \"mcp\" handler; this one is kind \"{}\"",
+                            kind.as_str()
+                        )
+                    } else {
+                        format!("unknown failure class {class}; valid: {}", valid.join(", "))
+                    };
                     return Err(handler_error(
                         index,
                         "retry.on",
-                        format!(
-                            "unknown failure class {class}; valid: {}",
-                            FAILURE_CLASSES.join(", ")
-                        ),
+                        message,
                         vec![(
                             "valid",
                             Value::Arr(
-                                FAILURE_CLASSES
+                                valid
                                     .iter()
                                     .map(|class| Value::Str((*class).into()))
                                     .collect(),
@@ -637,133 +805,6 @@ fn parse_advance(
         payload,
         stamps,
     }))
-}
-
-/// Replace each `{name}` in `argv` with the string form of that effect arg.
-///
-/// The rendering is [`ctx_val_string`], the same canonical form the rest of
-/// the workspace persists context with, so an int, a decimal's scale, a
-/// timestamp, and a string all reach the handler exactly as the machine
-/// evaluated them.
-///
-/// Substitution is data-in, argv-out: one template element always produces
-/// exactly one argv element, whatever the substituted value contains. Nothing
-/// here re-splits on whitespace or expands a glob, and the runner passes the
-/// result to `Command::new(argv[0]).args(&argv[1..])` rather than to a shell,
-/// so a value carrying spaces, `;`, or `$(…)` is one opaque argument.
-pub fn substitute(argv: &[String], args: &BTreeMap<String, Val>) -> Result<Vec<String>, ExecError> {
-    argv.iter()
-        .map(|element| substitute_one(element, args))
-        .collect()
-}
-
-fn substitute_one(template: &str, args: &BTreeMap<String, Val>) -> Result<String, ExecError> {
-    let segments = scan_template(template).map_err(|fault| {
-        config_error(
-            format!("argv template has {}", fault.reason),
-            vec![
-                ("field", Value::Str("argv".into())),
-                ("offset", Value::Num(fault.offset.to_string())),
-            ],
-        )
-    })?;
-    let mut out = String::with_capacity(template.len());
-    for segment in segments {
-        match segment {
-            Segment::Literal(text) => out.push_str(text),
-            Segment::Placeholder(name) => {
-                let value = args.get(name).ok_or_else(|| {
-                    config_error(
-                        format!("this effect emitted no argument named {name}"),
-                        vec![
-                            ("field", Value::Str("argv".into())),
-                            ("placeholder", Value::Str(name.into())),
-                            (
-                                "arguments",
-                                Value::Arr(args.keys().cloned().map(Value::Str).collect()),
-                            ),
-                        ],
-                    )
-                })?;
-                out.push_str(&ctx_val_string(value));
-            }
-        }
-    }
-    Ok(out)
-}
-
-enum Segment<'a> {
-    Literal(&'a str),
-    Placeholder(&'a str),
-}
-
-/// A malformed `{placeholder}`, located by character offset.
-struct TemplateFault {
-    offset: usize,
-    reason: &'static str,
-}
-
-/// Split one argv template into literals and placeholders.
-///
-/// Scanned by hand rather than by pattern: this workspace has no regex, and
-/// the rule is small enough to read — a `{` opens a name of `[a-z_][a-z0-9_]*`
-/// that a `}` closes, and every `}` closes one.
-fn scan_template(template: &str) -> Result<Vec<Segment<'_>>, TemplateFault> {
-    let mut segments = Vec::new();
-    let mut literal_start = 0;
-    let mut cursor = 0;
-    while let Some(found) = template[cursor..].find(['{', '}']) {
-        let open = cursor + found;
-        if template.as_bytes()[open] == b'}' {
-            return Err(template_fault(
-                template,
-                open,
-                "a } that closes no placeholder",
-            ));
-        }
-        let Some(closed) = template[open..].find('}') else {
-            return Err(template_fault(template, open, "an unclosed { placeholder"));
-        };
-        let close = open + closed;
-        let name = &template[open + 1..close];
-        if !is_placeholder_name(name) {
-            return Err(template_fault(
-                template,
-                open,
-                "a placeholder name that is not [a-z_][a-z0-9_]*",
-            ));
-        }
-        if literal_start < open {
-            segments.push(Segment::Literal(&template[literal_start..open]));
-        }
-        segments.push(Segment::Placeholder(name));
-        cursor = close + 1;
-        literal_start = cursor;
-    }
-    if literal_start < template.len() {
-        segments.push(Segment::Literal(&template[literal_start..]));
-    }
-    Ok(segments)
-}
-
-/// Locate a fault by *character* offset, which is what an operator counts when
-/// looking at the string, even though the scan itself works in bytes.
-fn template_fault(template: &str, byte_offset: usize, reason: &'static str) -> TemplateFault {
-    TemplateFault {
-        offset: template[..byte_offset].chars().count(),
-        reason,
-    }
-}
-
-fn is_placeholder_name(name: &str) -> bool {
-    let mut characters = name.chars();
-    let Some(first) = characters.next() else {
-        return false;
-    };
-    if !(first.is_ascii_lowercase() || first == '_') {
-        return false;
-    }
-    characters.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 /// Refuse a key nobody reads.

@@ -431,10 +431,11 @@ fn a_full_block_parses_and_a_partial_one_takes_the_documented_defaults() {
         retry.max_backoff_ms,
         fsm_execute::config::DEFAULT_MAX_BACKOFF_MS
     );
-    assert!(
-        retry.retries("nonzero_exit") && retry.retries("mcp_error"),
-        "an absent `on` means every class"
-    );
+    // An absent `on` means every class *this kind can produce*. `with_retry`
+    // builds a process handler, and a process handler cannot fail with
+    // `mcp_error`, so listing it would be a class that retries nothing.
+    assert!(retry.retries("nonzero_exit") && retry.retries("timeout") && retry.retries("spawn"));
+    assert!(!retry.retries("mcp_error"), "not a process failure");
 }
 
 #[test]
@@ -482,7 +483,10 @@ fn an_unknown_failure_class_is_refused_with_the_valid_list() {
     let error = with_retry(r#"{"attempts":2,"on":["flakey"]}"#).expect_err("no such class");
     assert_eq!(error.code, "exec/config");
     assert!(error.message.contains("flakey"), "{}", error.message);
-    for class in fsm_execute::config::FAILURE_CLASSES {
+    // The list is the classes valid *for this handler's kind*: telling a
+    // process handler's author that `mcp_error` was available would send them
+    // to write a line that retries nothing.
+    for class in fsm_execute::config::classes_for(&fsm_execute::config::HandlerKind::Process) {
         assert!(
             error.message.contains(class),
             "the valid list must be in the message: {}",
@@ -548,6 +552,12 @@ fn every_committed_example_table_still_means_one_attempt() {
                 spec.retry.attempts,
                 1,
                 "{}'s {effect} changed meaning",
+                path.display()
+            );
+            assert_eq!(
+                spec.kind,
+                fsm_execute::config::HandlerKind::Process,
+                "{}'s {effect} is still a process handler",
                 path.display()
             );
         }

@@ -164,6 +164,10 @@ fn resolved_handlers(table: &HandlerTable, letters: Vec<DeadLetter>) -> Value {
         .map(|handler| {
             let mut fields = BTreeMap::from([
                 ("effect".into(), Value::Str(handler.effect.clone())),
+                // Named even when it is the default, so a pre-flight tells an
+                // operator which of their handlers talks a protocol and which
+                // reads an exit code.
+                ("kind".into(), Value::Str(handler.kind.as_str().to_string())),
                 (
                     "argv".into(),
                     Value::Arr(handler.argv.iter().cloned().map(Value::Str).collect()),
@@ -173,6 +177,10 @@ fn resolved_handlers(table: &HandlerTable, letters: Vec<DeadLetter>) -> Value {
                     Value::Num(handler.timeout_ms.to_string()),
                 ),
             ]);
+            if let fsm_execute::config::HandlerKind::Mcp { tool, arguments } = &handler.kind {
+                fields.insert("tool".into(), Value::Str(tool.clone()));
+                fields.insert("arguments".into(), arguments.clone());
+            }
             if let Some(advance) = &handler.on_ok {
                 fields.insert("on_ok".into(), Value::Str(advance.event.clone()));
             }
