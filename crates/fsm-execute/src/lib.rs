@@ -31,6 +31,17 @@
 //! is not rolled back by `fsm` — model the undo as a compensating effect the
 //! machine's failure path emits.
 //!
+//! # What it can reach
+//!
+//! A handler is either a **process**, whose exit status is the answer, or an
+//! **MCP server**, which the executor talks to over its stdio and calls one
+//! tool on. The second kind does not widen what the operator has authorised:
+//! `argv[0]` is still a literal rooted path from their own table, the tool
+//! name is fixed, and the arguments are a template they wrote. It does widen
+//! what a workflow can *do* — an effect can now call another MCP server's
+//! tool, which makes this engine an orchestrator of the ecosystem it belongs
+//! to rather than only a member of it.
+//!
 //! The executor is **single-node**: it inherits the store's single-writer
 //! ceiling, takes the writer only for the ticks that write, and observes
 //! through `Store::open_read_only`, which takes no lock and coexists with a
@@ -44,6 +55,7 @@ pub mod config;
 pub mod dead;
 pub mod effect;
 pub mod error;
+pub mod mcp_client;
 pub mod rid;
 pub mod run;
 pub mod sched;

@@ -1,9 +1,16 @@
-//! Subprocess execution and the one component that writes.
+//! Subprocess execution: what one handler run captured, and what it did.
 //!
 //! The runner spawns, reaps, and kills handler processes and reports what
-//! happened; the pipeline maps that outcome onto journaled reality through the
-//! store's own idempotent mutators. The split is deliberate: the runner owns
-//! no policy, and the pipeline spawns nothing.
+//! happened; the [`Pipeline`] in `run/pipeline.rs` maps that outcome onto
+//! journaled reality through the store's own idempotent mutators. The split is
+//! deliberate and now physical: the runner owns no policy, and the pipeline
+//! spawns nothing.
+//!
+//! Two kinds of run live here, and they differ in exactly one way — how the
+//! answer arrives. A process handler's answer is its exit status, read by
+//! `try_wait`; an MCP handler's is one tool call's result, read from the worker
+//! that holds its pipes. Everything else is shared: one child per effect, one
+//! timeout, one kill path, one bounded capture, one `Drop`.
 
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -11,16 +18,17 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use fsm_core::json::Value;
 use fsm_core::sha256::{Sha256, to_hex};
-use fsm_store::clock::Clock;
-use fsm_store::store::Store;
 
-use crate::config::{Advance, HandlerSpec};
-use crate::effect::PendingEffect;
 use crate::error::ExecError;
-use crate::rid::{ack_rid, attempt_rid, event_rid, poll_rid};
+use crate::mcp_client::{McpOutcome, ProtocolFault, converse};
+
+mod pipeline;
+
+pub use pipeline::{Pipeline, SettleOutcome};
 
 /// Bytes of one captured stream that reach the journal.
 pub const ACK_OUTPUT_CAP: usize = 4096;
@@ -176,6 +184,20 @@ impl KillReason {
     }
 }
 
+/// The one tool call a `kind: "mcp"` handler makes, with its arguments
+/// already substituted.
+///
+/// Built by the scheduler, which is where substitution lives for `argv` too:
+/// the runner receives a finished call and never looks at an effect's
+/// arguments, which is what keeps it unable to construct one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpCall {
+    /// The tool the operator's table named.
+    pub tool: String,
+    /// The substituted arguments object.
+    pub arguments: Value,
+}
+
 /// What one handler run did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunOutcome {
@@ -211,12 +233,31 @@ pub enum RunOutcome {
         /// What could not be resolved, in one identifier.
         detail: String,
     },
+    /// A `kind: "mcp"` handler's one tool call, and what the server wrote to
+    /// its standard error while making it.
+    ///
+    /// The capture is here for the same reason it is on a process run: a
+    /// server that crashes mid-conversation must leave evidence rather than
+    /// silence. It reaches the ack only on a failure, where it is the
+    /// diagnosis; a successful call's ack carries the tool's answer, not the
+    /// server's logs.
+    Mcp {
+        /// What the exchange did, at the protocol level.
+        outcome: McpOutcome,
+        /// The server's captured standard error.
+        stderr: BoundedBytes,
+    },
 }
 
 impl RunOutcome {
-    /// Whether this outcome acks `ok`. Only a clean exit does.
+    /// Whether this outcome acks `ok`. Only a clean exit, or a tool that
+    /// answered without raising its own error flag, does.
     pub fn succeeded(&self) -> bool {
-        matches!(self, RunOutcome::Completed { status: 0, .. })
+        match self {
+            RunOutcome::Completed { status: 0, .. } => true,
+            RunOutcome::Mcp { outcome, .. } => outcome.succeeded(),
+            _ => false,
+        }
     }
 
     /// Which retry class this failure belongs to, or `None` when no policy
@@ -246,6 +287,17 @@ impl RunOutcome {
             } => None,
             RunOutcome::SpawnFailed { .. } => Some("spawn"),
             RunOutcome::NotStarted { .. } => None,
+            // A tool that failed and a server that answered with a JSON-RPC
+            // error are both statements about the *call*, which the world may
+            // answer differently next time. A protocol violation is not: the
+            // server is broken, and running it again produces the same broken
+            // exchange.
+            RunOutcome::Mcp { outcome, .. } => match outcome {
+                McpOutcome::Answered { is_error: true, .. } | McpOutcome::RpcError { .. } => {
+                    Some("mcp_error")
+                }
+                McpOutcome::Answered { .. } | McpOutcome::Protocol(_) => None,
+            },
         }
     }
 
@@ -280,6 +332,7 @@ impl RunOutcome {
                 result.insert("error".into(), Value::Str((*code).into()));
                 result.insert("detail".into(), Value::Str(detail.clone()));
             }
+            RunOutcome::Mcp { outcome, stderr } => return mcp_ack_result(outcome, stderr),
         }
         Value::Obj(result)
     }
@@ -324,6 +377,47 @@ pub struct Exhaustion {
     pub class: &'static str,
 }
 
+/// Map one tool call onto the ack's `result`.
+///
+/// Deterministic by construction: every field is either the server's own
+/// answer or a constant from this crate. No timestamp, pid, duration, or
+/// elapsed value may enter it — the store fingerprints the ack over this
+/// object, and a re-issue whose content differs is a `req/request_id_conflict`
+/// rather than a replay.
+///
+/// The server's standard error rides along **only on a failure**, where it is
+/// the evidence an operator needs. A successful call's ack carries the tool's
+/// answer; the server's logs would only crowd it.
+///
+/// `7703` extends this with the cap and digest a chatty tool needs.
+fn mcp_ack_result(outcome: &McpOutcome, stderr: &BoundedBytes) -> Value {
+    let mut result = BTreeMap::new();
+    match outcome {
+        McpOutcome::Answered {
+            structured,
+            is_error,
+        } => {
+            result.insert("structured".into(), structured.clone());
+            if *is_error {
+                result.insert("error".into(), Value::Str("mcp/tool_error".into()));
+            }
+        }
+        McpOutcome::RpcError { code, message } => {
+            result.insert("error".into(), Value::Str("mcp/rpc_error".into()));
+            result.insert("code".into(), Value::Num(code.to_string()));
+            result.insert("message".into(), Value::Str(message.clone()));
+        }
+        McpOutcome::Protocol(fault) => {
+            result.insert("error".into(), Value::Str("exec/mcp_protocol".into()));
+            result.insert("detail".into(), Value::Str(fault.as_str().into()));
+        }
+    }
+    if !outcome.succeeded() {
+        insert_stream(&mut result, "stderr", stderr);
+    }
+    Value::Obj(result)
+}
+
 /// Put one captured stream into the ack, with its digest when the capture is
 /// only a prefix. The digest's presence is what tells a later reader that the
 /// text is not the whole output.
@@ -334,11 +428,76 @@ fn insert_stream(result: &mut BTreeMap<String, Value>, name: &str, stream: &Boun
     }
 }
 
-/// One child and the two files its output is going into.
-struct Running {
-    child: Child,
-    stdout_path: PathBuf,
-    stderr_path: PathBuf,
+/// One child, and whatever else is needed to learn what it did.
+///
+/// The two kinds differ in exactly one way — how the answer arrives — and
+/// share everything else: the runner owns the `Child` in both, so one kill
+/// path, one reap path, and one `Drop` cover them.
+enum Running {
+    /// A subprocess whose exit status is the answer.
+    Process {
+        child: Child,
+        stdout_path: PathBuf,
+        stderr_path: PathBuf,
+    },
+    /// An MCP server whose answer arrives from the worker holding its pipes.
+    Mcp {
+        child: Child,
+        stderr_path: PathBuf,
+        /// The worker's one message, once it has been taken off the channel.
+        answer: Option<McpOutcome>,
+        answers: Receiver<McpOutcome>,
+    },
+}
+
+impl Running {
+    fn child_mut(&mut self) -> &mut Child {
+        match self {
+            Running::Process { child, .. } | Running::Mcp { child, .. } => child,
+        }
+    }
+
+    /// Take the worker's answer if it has arrived, and say whether one is now
+    /// in hand.
+    ///
+    /// A worker that ended without sending — the one way a panic in the
+    /// conversation could surface — is read as a closed stream rather than
+    /// left in flight forever.
+    fn collect(&mut self) -> bool {
+        let Running::Mcp {
+            answer, answers, ..
+        } = self
+        else {
+            return false;
+        };
+        if answer.is_none() {
+            match answers.try_recv() {
+                Ok(received) => *answer = Some(received),
+                Err(TryRecvError::Empty) => {}
+                Err(TryRecvError::Disconnected) => {
+                    *answer = Some(McpOutcome::Protocol(ProtocolFault::Closed));
+                }
+            }
+        }
+        answer.is_some()
+    }
+
+    /// Remove the capture files nothing will ever read.
+    fn discard_captures(&self) {
+        match self {
+            Running::Process {
+                stdout_path,
+                stderr_path,
+                ..
+            } => {
+                let _ = std::fs::remove_file(stdout_path);
+                let _ = std::fs::remove_file(stderr_path);
+            }
+            Running::Mcp { stderr_path, .. } => {
+                let _ = std::fs::remove_file(stderr_path);
+            }
+        }
+    }
 }
 
 /// Distinguishes the scratch directories of two runners in one process, which
@@ -419,7 +578,18 @@ impl Runner {
     pub fn finished_effects(&mut self) -> Vec<String> {
         let mut finished = Vec::new();
         for (effect_id, running) in &mut self.children {
-            match running.child.try_wait() {
+            // An MCP run is over when the *conversation* is, not when the
+            // server exits: a server that answers and then lingers has done
+            // its job, and waiting for it to exit would hold the effect open
+            // for as long as it chose.
+            if running.collect() {
+                finished.push(effect_id.clone());
+                continue;
+            }
+            if matches!(running, Running::Mcp { .. }) {
+                continue;
+            }
+            match running.child_mut().try_wait() {
                 Ok(Some(_)) | Err(_) => finished.push(effect_id.clone()),
                 Ok(None) => {}
             }
@@ -441,7 +611,12 @@ impl Runner {
     /// or glob-expanded. Standard input is `/dev/null`: a handler must not be
     /// able to read the executor's own stdin, which under `fsm serve` is the
     /// MCP protocol stream.
-    pub fn spawn(&mut self, effect_id: String, argv: &[String]) -> Result<(), ExecError> {
+    pub fn spawn(
+        &mut self,
+        effect_id: String,
+        argv: &[String],
+        call: Option<&McpCall>,
+    ) -> Result<(), ExecError> {
         let Some((command, arguments)) = argv.split_first() else {
             return Err(spawn_error("", "a handler must name a command"));
         };
@@ -456,8 +631,13 @@ impl Runner {
             ));
         }
         let run = SPAWN_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let stdout_path = self.capture_path(&effect_id, run, "out");
         let stderr_path = self.capture_path(&effect_id, run, "err");
+        if let Some(call) = call {
+            let running = self.spawn_mcp(command, arguments, &stderr_path, call)?;
+            self.children.insert(effect_id, running);
+            return Ok(());
+        }
+        let stdout_path = self.capture_path(&effect_id, run, "out");
         let spawned = create_capture(&stdout_path, command).and_then(|stdout| {
             let stderr = create_capture(&stderr_path, command)?;
             Command::new(command)
@@ -479,7 +659,7 @@ impl Runner {
         };
         self.children.insert(
             effect_id,
-            Running {
+            Running::Process {
                 child,
                 stdout_path,
                 stderr_path,
@@ -488,13 +668,80 @@ impl Runner {
         Ok(())
     }
 
+    /// Start one MCP server and the worker that talks to it.
+    ///
+    /// **Pipes for stdin and stdout, a file for stderr.** The conversation is
+    /// short and strictly alternating, so neither pipe can fill; the server's
+    /// logs are unbounded chatter and go to a file for the same reason a
+    /// process handler's do — nobody is reading them until the run is over.
+    ///
+    /// The worker owns the pipes and the runner owns the child, which is what
+    /// lets one kill path serve both kinds: killing the child closes the
+    /// pipes, which ends the worker's read.
+    fn spawn_mcp(
+        &self,
+        command: &str,
+        arguments: &[String],
+        stderr_path: &Path,
+        call: &McpCall,
+    ) -> Result<Running, ExecError> {
+        let stderr = create_capture(stderr_path, command)?;
+        let spawned = Command::new(command)
+            .args(arguments)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::from(stderr))
+            .spawn();
+        let mut child = match spawned {
+            Ok(child) => child,
+            Err(error) => {
+                let _ = std::fs::remove_file(stderr_path);
+                return Err(spawn_error(command, &error.to_string()));
+            }
+        };
+        // Both are `Some` immediately after a piped spawn; treating their
+        // absence as a spawn failure keeps this free of an unwrap that would
+        // panic the executor for a subprocess's sake.
+        let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(stderr_path);
+            return Err(spawn_error(
+                command,
+                "the server's pipes could not be taken",
+            ));
+        };
+        let (sender, answers) = channel();
+        let tool = call.tool.clone();
+        let call_arguments = call.arguments.clone();
+        // Detached on purpose. The worker ends when the pipes close, and the
+        // runner closes them by killing the child — on a timeout, on a
+        // cancellation, and in `Drop`. Joining here would mean waiting for a
+        // subprocess inside a tick.
+        std::thread::spawn(move || {
+            let outcome = converse(stdin, stdout, &tool, &call_arguments);
+            // The receiver is gone when the effect was already settled, which
+            // is ordinary rather than an error.
+            let _ = sender.send(outcome);
+        });
+        Ok(Running::Mcp {
+            child,
+            stderr_path: stderr_path.to_path_buf(),
+            answer: None,
+            answers,
+        })
+    }
+
     /// Reap a finished child, non-blocking. The only caller of `try_wait`.
     ///
     /// A child killed by a signal has no exit code; it is reported as
     /// `status: -1` so the pipeline acks it `failed` rather than unwrapping a
     /// `None`.
     pub fn poll(&mut self, effect_id: &str) -> Option<RunOutcome> {
-        let waited = self.children.get_mut(effect_id)?.child.try_wait();
+        if matches!(self.children.get(effect_id)?, Running::Mcp { .. }) {
+            return self.poll_mcp(effect_id);
+        }
+        let waited = self.children.get_mut(effect_id)?.child_mut().try_wait();
         let status = match waited {
             Ok(Some(status)) => status.code().unwrap_or(-1),
             Ok(None) => return None,
@@ -503,17 +750,52 @@ impl Runner {
                 // go of the handle, or the run is both reported failed and
                 // left running with nothing able to reach it again.
                 if let Some(running) = self.children.get_mut(effect_id) {
-                    let _ = running.child.kill();
-                    let _ = running.child.wait();
+                    let _ = running.child_mut().kill();
+                    let _ = running.child_mut().wait();
                 }
                 -1
             }
         };
         let running = self.children.remove(effect_id)?;
+        let Running::Process {
+            stdout_path,
+            stderr_path,
+            ..
+        } = &running
+        else {
+            return None;
+        };
         Some(RunOutcome::Completed {
             status,
-            stdout: take_capture(&running.stdout_path),
-            stderr: take_capture(&running.stderr_path),
+            stdout: take_capture(stdout_path),
+            stderr: take_capture(stderr_path),
+        })
+    }
+
+    /// Collect a finished conversation and stop the server that held it.
+    ///
+    /// The server is killed rather than waited for. Its work is done the
+    /// moment it answers, and a server that keeps running after that would
+    /// otherwise hold a concurrency slot for as long as it liked.
+    fn poll_mcp(&mut self, effect_id: &str) -> Option<RunOutcome> {
+        let running = self.children.get_mut(effect_id)?;
+        if !running.collect() {
+            return None;
+        }
+        let mut running = self.children.remove(effect_id)?;
+        let _ = running.child_mut().kill();
+        let _ = running.child_mut().wait();
+        let Running::Mcp {
+            answer,
+            stderr_path,
+            ..
+        } = running
+        else {
+            return None;
+        };
+        Some(RunOutcome::Mcp {
+            outcome: answer?,
+            stderr: take_capture(&stderr_path),
         })
     }
 
@@ -530,10 +812,11 @@ impl Runner {
             return completed;
         }
         if let Some(mut running) = self.children.remove(effect_id) {
-            let _ = running.child.kill();
-            let _ = running.child.wait();
-            let _ = std::fs::remove_file(&running.stdout_path);
-            let _ = std::fs::remove_file(&running.stderr_path);
+            // Killing the child closes an MCP worker's pipes, which is how the
+            // worker learns the run is over: there is no second stop signal.
+            let _ = running.child_mut().kill();
+            let _ = running.child_mut().wait();
+            running.discard_captures();
         }
         RunOutcome::Killed { reason }
     }
@@ -566,8 +849,8 @@ impl Runner {
 impl Drop for Runner {
     fn drop(&mut self) {
         for (_, mut running) in std::mem::take(&mut self.children) {
-            let _ = running.child.kill();
-            let _ = running.child.wait();
+            let _ = running.child_mut().kill();
+            let _ = running.child_mut().wait();
         }
         let _ = std::fs::remove_dir_all(&self.scratch);
     }
@@ -620,279 +903,4 @@ fn spawn_error(argv0: &str, reason: &str) -> ExecError {
             "argv0".into(),
             Value::Str(argv0.into()),
         )])))
-}
-
-/// What settling one outcome did to the journal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettleOutcome {
-    /// Acked, and the declared advance event was sent.
-    Advanced,
-    /// Acked, and no advance was sent — none declared, or not enabled.
-    AckedNoAdvance,
-    /// Another path had already settled the effect.
-    AlreadySettled,
-}
-
-/// The one component that writes.
-///
-/// It holds no state: everything it needs to decide is either journaled or
-/// handed to it, which is why a fresh `Pipeline` after a restart behaves
-/// exactly like the one that died.
-pub struct Pipeline;
-
-impl Pipeline {
-    /// Ack one outcome, then send the declared advance event when the engine
-    /// says that event is enabled.
-    ///
-    /// Ack first, always. The ack is what clears the effect from the outbox,
-    /// so a kill between the two writes leaves a journal that says "this ran,
-    /// its advance did not" — which the next executor can read and finish.
-    pub fn settle(
-        &mut self,
-        store: &mut Store,
-        clock: &mut dyn Clock,
-        effect: &PendingEffect,
-        outcome: RunOutcome,
-        handler: &HandlerSpec,
-        exhausted: Option<Exhaustion>,
-    ) -> Result<SettleOutcome, ExecError> {
-        let acked = if outcome.succeeded() { "ok" } else { "failed" };
-        // Exhaustion is a failure like any other from here on: same ack, same
-        // outcome word, same declared advance. Only the `result` says how it
-        // got here, which is what leaves an existing `on_failed` path working
-        // unchanged and makes the dead-letter report derivable.
-        let result = match exhausted {
-            Some(exhaustion) => outcome.exhausted_ack_result(exhaustion.attempts, exhaustion.class),
-            None => outcome.ack_result(),
-        };
-        let ack_seq = match store.ack_effect_outcome_on(
-            clock,
-            &effect.instance_id,
-            &effect.effect_id,
-            &ack_rid(&effect.effect_id),
-            acked,
-            Some(result),
-        ) {
-            Ok(response) => response
-                .get("seq")
-                .and_then(Value::as_num)
-                .and_then(|seq| seq.parse::<u64>().ok()),
-            // The store journals a `request_rejected` record for an ack of an
-            // effect that is not pending and returns this exact code. Another
-            // path already settled it; that is benign, and the rejection also
-            // claims the derived key so a later re-issue replays it.
-            Err(error) if error.code == "req/field_unknown" => {
-                return Ok(SettleOutcome::AlreadySettled);
-            }
-            Err(error) => return Err(ExecError::store(&error)),
-        };
-        let declared = if outcome.succeeded() {
-            handler.on_ok.as_ref()
-        } else {
-            handler.on_failed.as_ref()
-        };
-        // No declared advance is a deliberate stall, not an omission: the
-        // instance waits for a deadline or an external event.
-        let Some(advance) = declared else {
-            return Ok(SettleOutcome::AckedNoAdvance);
-        };
-        self.advance(
-            store,
-            clock,
-            &effect.effect_id,
-            &effect.instance_id,
-            advance,
-            ack_seq,
-        )
-    }
-
-    /// Journal one failed attempt, leaving the effect pending.
-    ///
-    /// The counterpart to [`Pipeline::settle`] for a failure the policy will
-    /// try again: nothing is acked, nothing is advanced, and the effect stays
-    /// in the outbox where the next scan finds it. The record is the whole
-    /// point — it is what makes the count and the backoff deadline survive a
-    /// restart, since a process that dies between the failure and the retry
-    /// remembers nothing.
-    ///
-    /// The run's capture goes into the record so an operator reading a
-    /// dead letter can see why each earlier attempt failed, not only the last.
-    ///
-    /// `Ok(false)` means another writer had already settled the effect — the
-    /// same benign race [`Pipeline::settle`] reports as
-    /// [`SettleOutcome::AlreadySettled`].
-    pub fn attempt(
-        &mut self,
-        store: &mut Store,
-        clock: &mut dyn Clock,
-        effect: &PendingEffect,
-        outcome: &RunOutcome,
-        attempt: u32,
-    ) -> Result<bool, ExecError> {
-        match store.attempt_effect_on(
-            clock,
-            &effect.instance_id,
-            &effect.effect_id,
-            &attempt_rid(&effect.effect_id, attempt),
-            u64::from(attempt),
-            Some(outcome.ack_result()),
-        ) {
-            Ok(_) => Ok(true),
-            // The store journals a `request_rejected` for an attempt against
-            // an effect that is not pending and returns this exact code,
-            // exactly as it does for an ack of one.
-            Err(error) if error.code == "req/field_unknown" => Ok(false),
-            Err(error) => Err(ExecError::store(&error)),
-        }
-    }
-
-    /// Send an advance for an effect already acknowledged in a previous life.
-    ///
-    /// The ack is already in the journal, so there is no `expect_seq` to hold
-    /// anything still; the derived key makes a send that did land replay as
-    /// `duplicate: true` rather than transition a second time.
-    pub fn advance_only(
-        &mut self,
-        store: &mut Store,
-        clock: &mut dyn Clock,
-        effect_id: &str,
-        instance_id: &str,
-        advance: &Advance,
-    ) -> Result<SettleOutcome, ExecError> {
-        self.advance(store, clock, effect_id, instance_id, advance, None)
-    }
-
-    /// Poll one due deadline under a derived key.
-    ///
-    /// A `NotDue` observation is journaled and claims its key, exactly as SPEC
-    /// describes, so a repeat of the same observation replays rather than
-    /// polling again.
-    pub fn poll(
-        &mut self,
-        store: &mut Store,
-        clock: &mut dyn Clock,
-        instance_id: &str,
-        deadline: &str,
-        due_ms: i64,
-    ) -> Result<Value, ExecError> {
-        store
-            .poll_instance_deadline_on(
-                clock,
-                instance_id,
-                &poll_rid(instance_id, deadline, due_ms),
-                None,
-            )
-            .map_err(|error| ExecError::store(&error))
-    }
-
-    fn advance(
-        &mut self,
-        store: &mut Store,
-        clock: &mut dyn Clock,
-        effect_id: &str,
-        instance_id: &str,
-        advance: &Advance,
-        expect_seq: Option<u64>,
-    ) -> Result<SettleOutcome, ExecError> {
-        if !advance_is_enabled(store, instance_id, advance)? {
-            return Ok(SettleOutcome::AckedNoAdvance);
-        }
-        let request_id = event_rid(effect_id, &advance.event);
-        match send(store, clock, instance_id, advance, &request_id, expect_seq) {
-            Ok(()) => Ok(SettleOutcome::Advanced),
-            // Something else advanced the instance between the ack and the
-            // send. SPEC excludes `expect_seq` from the fingerprint and leaves
-            // the key unconsumed on a mismatch, so the same request_id is
-            // retried against the current seq.
-            Err(error) if error.code == "req/seq_mismatch" => {
-                let current = store.journal.last_seq;
-                if !advance_is_enabled(store, instance_id, advance)? {
-                    return Ok(SettleOutcome::AckedNoAdvance);
-                }
-                send(
-                    store,
-                    clock,
-                    instance_id,
-                    advance,
-                    &request_id,
-                    Some(current),
-                )
-                .map(|()| SettleOutcome::Advanced)
-                .map_err(|error| ExecError::store(&error))
-            }
-            Err(error) => Err(ExecError::store(&error)),
-        }
-    }
-}
-
-fn send(
-    store: &mut Store,
-    clock: &mut dyn Clock,
-    instance_id: &str,
-    advance: &Advance,
-    request_id: &str,
-    expect_seq: Option<u64>,
-) -> Result<(), fsm_store::store::ErrorObj> {
-    let stamps: Vec<&str> = advance.stamps.iter().map(String::as_str).collect();
-    // The store stamps into the payload it is given, so each attempt starts
-    // from the table's own value. The request fingerprint is taken before
-    // stamping, which is what lets a re-issue after a restart match even
-    // though the stamped timestamp differs.
-    let mut payload = advance.payload.clone();
-    store
-        .send_event_stamp_on(
-            clock,
-            instance_id,
-            &advance.event,
-            &mut payload,
-            request_id,
-            expect_seq,
-            &stamps,
-        )
-        .map(|_| ())
-}
-
-/// Whether the engine would accept this advance right now.
-///
-/// Two conditions, and neither is redundant. Presence in `enabled_events` is
-/// not a gate at all — every declared event appears there with a status. And
-/// the status alone is not enough either, because `enabled_events` reasons
-/// from the configuration rather than the lifecycle: cancelling an instance
-/// leaves its configuration in place, so a cancelled instance still reports
-/// its events as enabled and only `step` refuses — by journaling an
-/// `event_rejected` that burns the derived key for good.
-fn advance_is_enabled(
-    store: &Store,
-    instance_id: &str,
-    advance: &Advance,
-) -> Result<bool, ExecError> {
-    let view = store
-        .instance_view(instance_id, None, None)
-        .map_err(|error| ExecError::store(&error))?;
-    if view.get("status").and_then(Value::as_str) != Some("running") {
-        return Ok(false);
-    }
-    let Some(events) = view.get("enabled_events").and_then(Value::as_arr) else {
-        return Ok(false);
-    };
-    let Some(entry) = events
-        .iter()
-        .find(|event| event.get("event").and_then(Value::as_str) == Some(advance.event.as_str()))
-    else {
-        return Ok(false);
-    };
-    Ok(match entry.get("status").and_then(Value::as_str) {
-        Some("enabled") => true,
-        // A guard that reads the payload cannot be decided without one, so an
-        // advance that carries fields is worth attempting and one that carries
-        // nothing is not.
-        Some("depends_on_payload") => {
-            !advance.stamps.is_empty()
-                || advance
-                    .payload
-                    .as_obj()
-                    .is_some_and(|fields| !fields.is_empty())
-        }
-        _ => false,
-    })
 }

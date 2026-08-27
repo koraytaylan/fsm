@@ -350,12 +350,14 @@ fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> V
     }
     for directive in &plan.directives {
         match directive {
-            Directive::Start { effect, argv, .. } => {
+            Directive::Start {
+                effect, argv, call, ..
+            } => {
                 plan.lines.push(format!(
                     "observed pending {} {}",
                     effect.effect_name, effect.effect_id
                 ));
-                match runner.spawn(effect.effect_id.clone(), argv) {
+                match runner.spawn(effect.effect_id.clone(), argv, call.as_ref()) {
                     Ok(()) => plan.lines.push(format!(
                         "spawned handler {} {}",
                         effect.effect_name, effect.effect_id

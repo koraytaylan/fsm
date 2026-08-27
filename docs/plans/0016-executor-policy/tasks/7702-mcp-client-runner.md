@@ -10,8 +10,17 @@ touches:
   - crates/fsm-execute/src/mcp_client.rs
   - crates/fsm-execute/src/lib.rs
   - crates/fsm-execute/src/run.rs
+  - crates/fsm-execute/src/run/pipeline.rs
+  - crates/fsm-execute/src/sched.rs
+  - crates/fsm-execute/src/service.rs
+  - crates/fsm-execute/Cargo.toml
   - crates/fsm-execute/tests/mcp_client.rs
-status: planned
+  - crates/fsm-execute/tests/support/mcp_stub.rs
+  - crates/fsm-execute/tests/run.rs
+  - crates/fsm-execute/tests/sched.rs
+  - crates/fsm-cli/src/cli/execute.rs
+  - crates/fsm-cli/tests/executor_chaos.rs
+status: done
 merged_as: ""
 ---
 # MCP Client Runner
@@ -43,3 +52,19 @@ The executor already spawns processes under a timeout with bounded capture; this
 - The crate still has only `fsm-core` and `fsm-store` as path dependencies — `cargo tree -p fsm-execute --depth 1` is unchanged.
 
 - **Done when:** `cargo test -p fsm-execute --test mcp_client` passes every case above with a cross-platform stub server, every protocol violation is a bounded failure rather than a panic, one process per effect is enforced, no dependency is added, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** The exchange is exactly the five messages the step names and nothing else, written against this workspace's own JSON parser and writer. Protocol faults are a **closed set of `'static` identifiers** rather than OS strings, because a fault reaches the ack's `result` and the store fingerprints that object: a message carrying an `errno` or a path would turn a re-issued ack into a `req/request_id_conflict` instead of a replay. Seven of them, each a diagnosis an operator can act on.
+
+**Where the conversation runs.** A tool call takes as long as the tool takes, so it cannot happen inside a tick — the scheduler's deadline could never fire, and the concurrency caps `7601` just added would mean nothing if only one MCP effect could be in flight. It runs on a worker that owns the pipes while the **runner** owns the child, so one kill path serves both kinds: the deadline fires, `Runner::kill` kills the child, the pipes close, and the worker's read ends. There is no second timeout anywhere. `Running` became an enum over the two kinds, differing in exactly one way — how the answer arrives — and sharing the spawn, the capture, the kill, and the `Drop`.
+
+An MCP run is over when the **conversation** is, not when the server exits. A server that answers and then lingers has done its job, and waiting for it would let it hold a concurrency slot for as long as it chose; `poll` kills it once the answer is in hand.
+
+Substitution of the `arguments` template happens in the **scheduler**, beside `argv`'s, so the runner receives a finished call and never looks at an effect's arguments — which is what keeps it unable to construct one.
+
+**On the stub server.** The suite's usual trick is to re-execute the test binary with a marker argument. That does not work here, and the reason was measured rather than assumed: libtest writes a blank line and `running 1 test` to the child's **stdout** before the test body runs, and on a protocol stream that is a malformed message — precisely what the client under test is supposed to refuse. The stub is therefore a declared `[[bin]]`, the one target whose stdout carries only what it writes, with the reasoning in both the manifest and the fixture.
+
+One row accepts either `Closed` or `WriteFailed` for a server that has gone, and says why: they are the same fact seen from the two directions, and which one arrives first is a scheduling detail between two processes. Pinning either would be pinning the scheduler.
+
+**Corrections.** `run.rs` reached 1175 lines with the second kind in it, so `Pipeline` moved to `crates/fsm-execute/src/run/pipeline.rs` along the seam the module doc already named — the runner owns no policy and spawns processes; the pipeline owns no processes and writes. And `fsm execute`'s module doc claimed "no async runtime and no background thread"; it now names the one thread there is and states that it decides nothing.
+
+The result mapping is implemented here rather than left half-built, because `RunOutcome::succeeded` and `failure_class` had to be right the moment the variant existed. `7703` extends it with the cap and digest a chatty tool needs, and adds the end-to-end rows.

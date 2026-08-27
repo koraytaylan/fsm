@@ -10,5 +10,13 @@ repository.workspace = true
 fsm-core = { path = "../fsm-core" }
 fsm-store = { path = "../fsm-store" }
 
+# A scriptable MCP server for `tests/mcp_client.rs`. It is a `[[bin]]` rather
+# than the usual re-executed test binary because libtest writes its own banner
+# to a child's stdout, and on a protocol stream that is a malformed message —
+# precisely what the client under test is supposed to refuse.
+[[bin]]
+name = "fsm-mcp-stub"
+path = "tests/support/mcp_stub.rs"
+
 [lints]
 workspace = true

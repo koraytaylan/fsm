@@ -47,7 +47,7 @@ use crate::config::{Advance, HandlerSpec, HandlerTable, substitute};
 use crate::effect::PendingEffect;
 use crate::error::ExecError;
 use crate::rid::{ack_rid, event_rid, invoke_rid, poll_rid, return_rid, signal_rid};
-use crate::run::KillReason;
+use crate::run::{KillReason, McpCall};
 use crate::watch::Observation;
 
 /// One thing the executor should do this tick.
@@ -63,6 +63,14 @@ pub enum Directive {
         timeout_ms: i64,
         /// Which attempt this is, 1-based, derived from the journal.
         attempt: u32,
+        /// The tool call, for a `kind: "mcp"` handler, with its arguments
+        /// already substituted; `None` for a process handler.
+        ///
+        /// Substituted here rather than in the runner for the same reason
+        /// `argv` is: the runner receives a finished command and never looks
+        /// at an effect's arguments, which is what keeps it unable to
+        /// construct one.
+        call: Option<McpCall>,
     },
     /// Stop an in-flight handler.
     Kill {
@@ -174,6 +182,7 @@ pub struct Unstartable {
 struct Candidate {
     effect: PendingEffect,
     argv: Vec<String>,
+    call: Option<McpCall>,
     timeout_ms: i64,
     attempt: u32,
     /// Index within its own instance's candidate list, filled by the sort.
@@ -348,8 +357,18 @@ impl Scheduler {
                 }
                 continue;
             }
-            let argv = match substitute(&handler.argv, &effect.args) {
-                Ok(argv) => argv,
+            let started = substitute(&handler.argv, &effect.args).and_then(|argv| {
+                let call = match &handler.kind {
+                    crate::config::HandlerKind::Process => None,
+                    crate::config::HandlerKind::Mcp { tool, arguments } => Some(McpCall {
+                        tool: tool.clone(),
+                        arguments: crate::config::substitute_arguments(arguments, &effect.args)?,
+                    }),
+                };
+                Ok((argv, call))
+            });
+            let (argv, call) = match started {
+                Ok(started) => started,
                 Err(error) => {
                     // A placeholder naming an argument this emit did not
                     // produce is a run-time failure of *this* effect, not a
@@ -369,6 +388,7 @@ impl Scheduler {
             candidates.push(Candidate {
                 effect: effect.clone(),
                 argv,
+                call,
                 timeout_ms: handler.timeout_ms,
                 attempt,
                 position: 0,
@@ -428,6 +448,7 @@ impl Scheduler {
             directives.push(Directive::Start {
                 effect: candidate.effect,
                 argv: candidate.argv,
+                call: candidate.call,
                 timeout_ms: candidate.timeout_ms,
                 attempt: candidate.attempt,
             });

@@ -264,7 +264,7 @@ fn die_at(point: DeathPoint, directory: &TestDirectory, effect_id: &str, table: 
                 )]),
             )
             .unwrap();
-            runner.spawn(effect_id.to_string(), &argv).unwrap();
+            runner.spawn(effect_id.to_string(), &argv, None).unwrap();
             if point == DeathPoint::AfterReap {
                 // Reaped, its output collected, and then the process is gone
                 // before a single byte of that outcome reached the journal.

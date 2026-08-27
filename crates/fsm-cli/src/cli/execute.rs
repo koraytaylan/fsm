@@ -1,8 +1,15 @@
 //! `fsm execute` — the effect executor as a subcommand.
 //!
 //! Validate the operator's handler table, then run the scan → decide → spawn →
-//! settle loop until the process is stopped. There is no async runtime and no
-//! background thread: the loop is the process.
+//! settle loop until the process is stopped. There is no async runtime, and no
+//! thread decides anything: the loop is the process.
+//!
+//! One exception, and it decides nothing. A `kind: "mcp"` handler's
+//! conversation is a blocking dialogue, so it runs on a worker thread that
+//! does the talking and hands back one answer; the tick polls for it exactly
+//! as it polls a subprocess for its exit. The scheduler still owns the
+//! decisions, the runner still owns the child, and a timeout is still enforced
+//! by killing that child — which is what ends the worker.
 
 use std::collections::BTreeMap;
 

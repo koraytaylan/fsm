@@ -119,7 +119,9 @@ fn capture_files(runner: &Runner) -> Vec<PathBuf> {
 #[test]
 fn a_clean_exit_reports_status_zero_with_both_streams_captured() {
     let mut runner = Runner::new().unwrap();
-    runner.spawn("case-1/3/0".into(), &stub_argv("ok")).unwrap();
+    runner
+        .spawn("case-1/3/0".into(), &stub_argv("ok"), None)
+        .unwrap();
     match wait_for_outcome(&mut runner, "case-1/3/0") {
         RunOutcome::Completed {
             status,
@@ -145,7 +147,7 @@ fn a_clean_exit_reports_status_zero_with_both_streams_captured() {
 fn a_non_zero_exit_is_reported_verbatim() {
     let mut runner = Runner::new().unwrap();
     runner
-        .spawn("case-1/3/0".into(), &stub_argv("exit3"))
+        .spawn("case-1/3/0".into(), &stub_argv("exit3"), None)
         .unwrap();
     match wait_for_outcome(&mut runner, "case-1/3/0") {
         RunOutcome::Completed { status, .. } => assert_eq!(status, 3),
@@ -162,7 +164,7 @@ fn a_command_that_does_not_exist_fails_to_spawn_and_records_no_child() {
         "/nonexistent/fsm-handler"
     };
     let error = runner
-        .spawn("case-1/3/0".into(), &[missing.to_string()])
+        .spawn("case-1/3/0".into(), &[missing.to_string()], None)
         .unwrap_err();
     assert_eq!(error.code, "exec/spawn");
     assert!(error.message.contains(missing), "{error:?}");
@@ -173,7 +175,7 @@ fn a_command_that_does_not_exist_fails_to_spawn_and_records_no_child() {
 #[test]
 fn an_empty_argv_is_refused_rather_than_indexed_into() {
     let mut runner = Runner::new().unwrap();
-    let error = runner.spawn("case-1/3/0".into(), &[]).unwrap_err();
+    let error = runner.spawn("case-1/3/0".into(), &[], None).unwrap_err();
     assert_eq!(error.code, "exec/spawn");
 }
 
@@ -182,7 +184,7 @@ fn a_killed_run_reports_the_reason_it_was_given_and_leaves_no_child() {
     for reason in [KillReason::Timeout, KillReason::Cancelled] {
         let mut runner = Runner::new().unwrap();
         runner
-            .spawn("case-1/3/0".into(), &stub_argv("sleep"))
+            .spawn("case-1/3/0".into(), &stub_argv("sleep"), None)
             .unwrap();
         assert_eq!(runner.running_effects(), ["case-1/3/0"]);
         let outcome = runner.kill("case-1/3/0", reason);
@@ -202,7 +204,9 @@ fn killing_a_run_that_already_finished_reports_the_completion() {
     // directed. Journaling `exec/timeout` for it would send the machine down
     // its failure path for a run that succeeded.
     let mut runner = Runner::new().unwrap();
-    runner.spawn("case-1/3/0".into(), &stub_argv("ok")).unwrap();
+    runner
+        .spawn("case-1/3/0".into(), &stub_argv("ok"), None)
+        .unwrap();
     for _ in 0..400 {
         if !runner.finished_effects().is_empty() {
             break;
@@ -237,7 +241,9 @@ fn an_unstartable_run_is_journaled_under_its_own_code() {
 #[test]
 fn an_ack_result_is_deterministic_and_carries_no_varying_field() {
     let mut runner = Runner::new().unwrap();
-    runner.spawn("case-1/3/0".into(), &stub_argv("ok")).unwrap();
+    runner
+        .spawn("case-1/3/0".into(), &stub_argv("ok"), None)
+        .unwrap();
     let completed = wait_for_outcome(&mut runner, "case-1/3/0");
     assert_eq!(completed.ack_result(), completed.ack_result());
     let result = completed.ack_result();
@@ -277,7 +283,7 @@ fn an_ack_result_is_deterministic_and_carries_no_varying_field() {
 fn output_past_the_cap_is_truncated_and_digested() {
     let mut runner = Runner::new().unwrap();
     runner
-        .spawn("case-1/3/0".into(), &stub_argv("big"))
+        .spawn("case-1/3/0".into(), &stub_argv("big"), None)
         .unwrap();
     match wait_for_outcome(&mut runner, "case-1/3/0") {
         RunOutcome::Completed { stderr, .. } => {
@@ -303,7 +309,7 @@ fn a_handler_writing_past_the_pipe_buffer_still_completes() {
     const _: () = assert!(BIG_STREAM_BYTES > 64 * 1024);
     let mut runner = Runner::new().unwrap();
     runner
-        .spawn("case-1/3/0".into(), &stub_argv("big"))
+        .spawn("case-1/3/0".into(), &stub_argv("big"), None)
         .unwrap();
     match wait_for_outcome(&mut runner, "case-1/3/0") {
         RunOutcome::Completed { status, stderr, .. } => {
@@ -318,7 +324,7 @@ fn a_handler_writing_past_the_pipe_buffer_still_completes() {
 fn invalid_utf8_renders_lossily_and_truncates_on_a_character_boundary() {
     let mut runner = Runner::new().unwrap();
     runner
-        .spawn("case-1/3/0".into(), &stub_argv("binary"))
+        .spawn("case-1/3/0".into(), &stub_argv("binary"), None)
         .unwrap();
     match wait_for_outcome(&mut runner, "case-1/3/0") {
         RunOutcome::Completed { stderr, .. } => {
@@ -345,7 +351,9 @@ fn invalid_utf8_renders_lossily_and_truncates_on_a_character_boundary() {
 #[test]
 fn a_reaped_run_leaves_no_capture_files_behind() {
     let mut runner = Runner::new().unwrap();
-    runner.spawn("case-1/3/0".into(), &stub_argv("ok")).unwrap();
+    runner
+        .spawn("case-1/3/0".into(), &stub_argv("ok"), None)
+        .unwrap();
     wait_for_outcome(&mut runner, "case-1/3/0");
     assert!(runner.running_effects().is_empty());
     assert!(capture_files(&runner).is_empty());
@@ -358,7 +366,7 @@ fn dropping_the_runner_kills_a_live_child_and_removes_its_directory() {
         let mut runner = Runner::new().unwrap();
         scratch = runner.scratch_dir().to_path_buf();
         runner
-            .spawn("case-1/3/0".into(), &stub_argv("sleep"))
+            .spawn("case-1/3/0".into(), &stub_argv("sleep"), None)
             .unwrap();
         assert!(scratch.is_dir());
     }
