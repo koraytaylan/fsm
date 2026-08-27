@@ -7,12 +7,21 @@ depends_on:
   - journal-verify-tool
 gated: false
 touches:
+  - crates/fsm-cli/src/mcp/tools/dispatch.rs
+  - crates/fsm-cli/tests/tool_schemas.rs
+  - crates/fsm-cli/tests/mcp_full.rs
+  - crates/fsm-cli/tests/mcp_regions_deadlines.rs
+  - crates/fsm-cli/tests/naive_caller/core_tests.rs
+  - crates/fsm-cli/tests/review_regressions/output_schema_and_wire_format.rs
+  - crates/fsm-cli/tests/mcp_affordance_golden.rs
+  - crates/fsm-cli/tests/fixtures/
+  - docs/EMBEDDING.md
   - crates/fsm-cli/src/mcp/tools/handlers/audit.rs
   - crates/fsm-cli/src/mcp/tools/mod.rs
   - crates/fsm-cli/src/mcp/tools/schema_in.rs
   - crates/fsm-cli/src/mcp/tools/schema_out.rs
   - crates/fsm-cli/tests/audit_replay.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Journal Replay Tool
@@ -42,3 +51,16 @@ Replay determinism is a headline property of this engine, and the operation that
 - The tool is absent from `MUTATING_TOOLS` and works on a read-only server.
 
 - **Done when:** `cargo test -p fsm-cli --test audit_replay` passes every case above including the verify-clean-but-replay-divergent case, progress and cancellation are wired, nothing is written and no lock is taken, and `cargo test`, `cargo clippy --workspace -- -D warnings`, and `cargo fmt --check` succeed.
+
+**Landed:** `journal_replay(to_seq?)` folds the journal through the pure engine and reports whether every recorded outcome is the outcome the engine produces today, the recomputed `state_root` to compare against another run or a backup, and the **earliest** diverging seq — earliest because a difference propagates, so every later one is a consequence and only the first is a clue. The fold stops at the first mismatch on its own, so "earliest" is structural rather than a search.
+
+The seam needed no new code: `RecordSink` is already called per record, so progress and cancellation ride on it at the same 256-record cadence `journal_verify` uses, and the two tools feel alike from a client.
+
+The case that justifies having both is pinned: a store whose `state_hash` was rewritten and whose chain was then re-sealed over the change verifies **`Ok`** — the bytes and the chain are exactly as they should be — and replays **`matches: false`** at the seq that was touched.
+
+Twenty-two tools measure **33 357** bytes against the 38 000 ceiling, leaving 4 643 for the two still to come.
+
+**Corrections.**
+
+- *Like 6602, the report is a function of a path.* `replay_report(data_dir, …)` is what the tool calls, and it is what the degraded mode will call. A store whose records fail to load is reported as a divergence rather than a crash.
+- *A tampered `state_hash` only survives loading if the chain is re-sealed over it.* The record hash covers the body, so editing a state hash breaks the record hash and the journal will not load at all. The suite therefore re-seals with `record::seal` — the store's own primitive, same envelope, same domain tag — which is also what makes the verify-clean-replay-divergent case real rather than staged.

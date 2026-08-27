@@ -3,8 +3,11 @@ mod instance;
 mod machine;
 mod simulate;
 
-pub use audit::verify_report;
-pub(super) use audit::{run_explain_step, run_journal_verify, run_journal_verify_with};
+pub use audit::{replay_report, verify_report};
+pub(super) use audit::{
+    run_explain_step, run_journal_replay, run_journal_replay_with, run_journal_verify,
+    run_journal_verify_with,
+};
 pub use machine::machine_summary;
 
 pub(super) use instance::{

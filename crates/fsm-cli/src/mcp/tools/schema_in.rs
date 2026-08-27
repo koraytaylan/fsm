@@ -82,6 +82,13 @@ pub(super) fn schema_journal_verify_in() -> Value {
     schema_obj(p, &[], false)
 }
 
+/// An optional prefix. Absent means the whole journal.
+pub(super) fn schema_journal_replay_in() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("to_seq".into(), ty_num(0, i64::MAX));
+    schema_obj(p, &[], false)
+}
+
 pub(super) fn schema_deadline_poll_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("instance_id".into(), ty("string"));

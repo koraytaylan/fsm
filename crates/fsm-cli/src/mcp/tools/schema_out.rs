@@ -175,6 +175,18 @@ pub(super) fn schema_journal_verify_out() -> Value {
     schema_obj(p, &["health", "verified_records", "message"], true)
 }
 
+/// Whether today's engine agrees with what was recorded, and the root to
+/// compare against another store's.
+pub(super) fn schema_journal_replay_out() -> Value {
+    let mut p = BTreeMap::new();
+    p.insert("replayed_records".into(), ty("number"));
+    p.insert("matches".into(), ty("boolean"));
+    p.insert("state_root".into(), ty("string"));
+    p.insert("first_divergence_seq".into(), ty("number"));
+    p.insert("message".into(), ty("string"));
+    schema_obj(p, &["replayed_records", "matches", "message"], true)
+}
+
 pub(super) fn schema_deadline_poll_out() -> Value {
     let mut p = instance_core_props();
     p.insert("deadline_applied".into(), ty("boolean"));

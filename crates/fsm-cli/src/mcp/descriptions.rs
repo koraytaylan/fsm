@@ -41,6 +41,8 @@ pub const EXPLAIN_STEP: &str = "Reach for this when a workflow did something sur
 
 pub const JOURNAL_VERIFY: &str = "Check that the journal is what it says it is: every record's hash chains to the one before it, and the folded state matches. Reports one of the seven recovery-table health names, the records actually walked, and — where the table prescribes one — the exact remedy command, which it never runs. Optional from_seq/to_seq check a window. Takes no lock, so it is safe beside a running executor.";
 
+pub const JOURNAL_REPLAY: &str = "Re-execute the journal through the engine and check that every recorded outcome is the outcome the engine produces today. Not the same as journal_verify: that checks the bytes and the chain, this checks the semantics, and a store can verify clean and still diverge. Reports the recomputed state_root — compare it across runs, machines, or against a backup — and names the earliest diverging seq. Optional to_seq replays a prefix.";
+
 /// The display names a host shows beside each tool.
 ///
 /// They live here, beside the descriptions, because a title and a
@@ -67,3 +69,4 @@ pub const SIMULATE_TITLE: &str = "Simulate events";
 pub const INSTANCE_ELICIT_TITLE: &str = "Ask and send";
 pub const EXPLAIN_STEP_TITLE: &str = "Explain a step";
 pub const JOURNAL_VERIFY_TITLE: &str = "Verify the journal";
+pub const JOURNAL_REPLAY_TITLE: &str = "Replay the journal";

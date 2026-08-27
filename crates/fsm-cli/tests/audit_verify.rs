@@ -2,6 +2,10 @@
 //!
 //! Plan 0014 task 6602.
 
+// `ErrorObj` is 192 bytes and every tool returns one; boxing it in a test
+// helper would differ from the surface under test for no benefit.
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeMap;
 use std::fs;
 

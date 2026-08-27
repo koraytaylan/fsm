@@ -241,3 +241,178 @@ pub fn verify_report(
     }
     Ok(Value::Obj(out))
 }
+
+/// Re-execute the journal and see whether today's engine agrees with it.
+pub(in crate::mcp::tools) fn run_journal_replay(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+) -> Result<Value, ErrorObj> {
+    let data_dir = store.data_dir.clone();
+    replay_report(
+        &data_dir,
+        args,
+        clock,
+        &crate::mcp::progress::ProgressReporter::discarding(),
+        &crate::mcp::cancel::CancelFlag::default(),
+    )
+}
+
+pub(in crate::mcp::tools) fn run_journal_replay_with(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    args: &Value,
+    progress: &crate::mcp::progress::ProgressReporter,
+    cancel: &crate::mcp::cancel::CancelFlag,
+) -> Result<Value, ErrorObj> {
+    let data_dir = store.data_dir.clone();
+    replay_report(&data_dir, args, clock, progress, cancel)
+}
+
+/// What a fold reports as it goes.
+///
+/// The sink the pure fold already calls per record is the seam: replay needs
+/// no new one, and the cadence matches `journal_verify`'s so the two tools
+/// feel alike from a client.
+struct Watcher<'a> {
+    clock: &'a mut dyn Clock,
+    progress: &'a crate::mcp::progress::ProgressReporter,
+    cancel: &'a crate::mcp::cancel::CancelFlag,
+    seen: u64,
+    total: u64,
+    cancelled: bool,
+}
+
+impl fsm_core::replay::RecordSink for Watcher<'_> {
+    fn on_record(
+        &mut self,
+        record: &fsm_core::record::Record,
+        _state: &fsm_core::replay::StoreState,
+    ) {
+        self.seen += 1;
+        if !self.seen.is_multiple_of(fsm_store::journal_io::BATCH) {
+            return;
+        }
+        if self.cancel.cancelled() {
+            self.cancelled = true;
+            return;
+        }
+        self.progress.report(
+            self.clock.now_ms(),
+            self.seen,
+            Some(self.total.max(self.seen)),
+            Some(&format!("replayed through seq {}", record.seq)),
+            false,
+        );
+    }
+}
+
+/// Replay one data directory, whether or not anybody could open it.
+///
+/// **Replay is not verification.** Verification checks the bytes and the
+/// chain: that nothing was edited. Replay re-executes the engine and checks
+/// that the outcomes the journal recorded are the outcomes the engine
+/// produces today. A store can verify perfectly and still fail replay — that
+/// is the engine's semantics having drifted, and it is the one failure this
+/// catches and the other cannot.
+pub fn replay_report(
+    data_dir: &std::path::Path,
+    args: &Value,
+    clock: &mut dyn Clock,
+    progress: &crate::mcp::progress::ProgressReporter,
+    cancel: &crate::mcp::cancel::CancelFlag,
+) -> Result<Value, ErrorObj> {
+    let to_seq = args
+        .get("to_seq")
+        .and_then(Value::as_num)
+        .and_then(|n| n.parse::<u64>().ok());
+    let records = fsm_store::journal_io::load_records(data_dir)
+        .map_err(|e| ErrorObj::new("io/read", e).hint("the journal could not be read at all"))?;
+    let records: Vec<fsm_core::record::Record> = match to_seq {
+        Some(to) => records.into_iter().filter(|r| r.seq <= to).collect(),
+        None => records,
+    };
+    let total = records.len() as u64;
+    let mut watcher = Watcher {
+        clock,
+        progress,
+        cancel,
+        seen: 0,
+        total,
+        cancelled: false,
+    };
+    let folded = fsm_core::replay::fold_with(records, &mut watcher);
+    let seen = watcher.seen;
+    if watcher.cancelled {
+        return Err(crate::mcp::cancel::CancelFlag::refusal());
+    }
+    progress.report(
+        clock.now_ms(),
+        seen,
+        Some(total),
+        Some("replay complete"),
+        true,
+    );
+
+    let mut out = std::collections::BTreeMap::from([(
+        "replayed_records".to_string(),
+        Value::Num(seen.to_string()),
+    )]);
+    match folded {
+        Ok(state) => {
+            out.insert("matches".to_string(), Value::Bool(true));
+            // The root is what makes two stores comparable — two runs, two
+            // machines, a store against its backup — and comparing is most
+            // of what this tool is for.
+            out.insert(
+                "state_root".to_string(),
+                Value::Str(fsm_core::replay::state_root_at(&state, state.last_seq)),
+            );
+            out.insert(
+                "message".to_string(),
+                Value::Str(format!(
+                    "{seen} records replayed; every recorded outcome is the outcome the engine produces today"
+                )),
+            );
+        }
+        Err(fsm_core::replay::ReplayError::StateHashMismatch {
+            seq,
+            expected,
+            found,
+        }) => {
+            out.insert("matches".to_string(), Value::Bool(false));
+            // The *earliest* divergence: a difference propagates, so every
+            // later one is a consequence and only the first is a clue.
+            out.insert(
+                "first_divergence_seq".to_string(),
+                Value::Num(seq.to_string()),
+            );
+            out.insert(
+                "message".to_string(),
+                Value::Str(format!(
+                    "seq {seq} recorded state hash {expected} and replays as {found}"
+                )),
+            );
+        }
+        Err(other) => {
+            out.insert("matches".to_string(), Value::Bool(false));
+            if let Some(seq) = replay_error_seq(&other) {
+                out.insert(
+                    "first_divergence_seq".to_string(),
+                    Value::Num(seq.to_string()),
+                );
+            }
+            out.insert("message".to_string(), Value::Str(format!("{other:?}")));
+        }
+    }
+    Ok(Value::Obj(out))
+}
+
+/// The seq a replay failure names, when it names one.
+fn replay_error_seq(error: &fsm_core::replay::ReplayError) -> Option<u64> {
+    use fsm_core::replay::ReplayError as E;
+    match error {
+        E::StateHashMismatch { seq, .. } | E::FieldMismatch { seq, .. } => Some(*seq),
+        _ => None,
+    }
+}

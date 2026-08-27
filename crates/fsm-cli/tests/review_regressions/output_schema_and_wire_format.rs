@@ -183,9 +183,14 @@ fn output_schemas_are_field_level() {
         ("explain_step", &["seq", "kind", "trace"]),
         // A verdict, what was walked, and the operator's next step.
         ("journal_verify", &["health", "verified_records", "remedy"]),
+        // Whether the engine still agrees, and the root to compare.
+        (
+            "journal_replay",
+            &["replayed_records", "matches", "state_root"],
+        ),
     ];
     let reg = fsm_cli::mcp::tools::registry();
-    assert_eq!(reg.len(), 21);
+    assert_eq!(reg.len(), 22);
     for (name, fields) in expect {
         let t = reg.iter().find(|t| t.name == *name).expect(name);
         let out = (t.output_schema)();
