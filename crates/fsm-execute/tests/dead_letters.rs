@@ -394,7 +394,12 @@ fn a_failure_of_a_class_the_policy_does_not_retry_is_not_a_dead_letter() {
 fn succeeding_on_the_second_attempt_leaves_one_record_and_no_dead_letter() {
     let (directory, effect_id) = pending_notification("recovers");
     let counter = directory.path().join("attempts.txt");
-    let marker = format!("\"stub:count\",\"{}\"", counter.to_string_lossy());
+    // The counter path is interpolated into the table as JSON too, so it
+    // needs the same escaping the stub path gets.
+    let marker = format!(
+        "\"stub:count\",\"{}\"",
+        counter.to_string_lossy().replace('\\', "\\\\")
+    );
     run_to_settled(&directory, table(&marker, 3, r#"["nonzero_exit"]"#, true));
     let store = read_only(&directory);
 
