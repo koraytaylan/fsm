@@ -88,8 +88,8 @@ locally first if you want the answer sooner.
 ### Gate
 
 - `cargo fmt --all -- --check`
-- `cargo test --workspace`
-- `cargo test --workspace --release`
+- `cargo test --workspace --no-fail-fast`
+- `cargo test --workspace --release --no-fail-fast`
 - `cargo clippy --workspace -- -D warnings`
 - `cargo doc --workspace --no-deps`
 

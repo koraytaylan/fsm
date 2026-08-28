@@ -88,7 +88,10 @@ fn stub_table_json() -> String {
     let stub = std::env::current_exe()
         .expect("the test binary knows its own path")
         .to_string_lossy()
-        .into_owned();
+        // A Windows path is backslash-separated, and a backslash begins an
+        // escape in a JSON string: interpolating one raw makes the table
+        // unparseable on that platform and nowhere else.
+        .replace('\\', "\\\\");
     format!(
         r#"{{
   "format": "fsm.handlers/1",
@@ -337,7 +340,10 @@ fn exhausting_table_json() -> String {
     let stub = std::env::current_exe()
         .expect("the test binary knows its own path")
         .to_string_lossy()
-        .into_owned();
+        // A Windows path is backslash-separated, and a backslash begins an
+        // escape in a JSON string: interpolating one raw makes the table
+        // unparseable on that platform and nowhere else.
+        .replace('\\', "\\\\");
     format!(
         r#"{{
   "format": "fsm.handlers/1",

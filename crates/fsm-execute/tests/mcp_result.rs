@@ -318,7 +318,7 @@ fn review_machine() -> Value {
 
 /// A one-handler table of the given kind, with the given retry block.
 fn table(kind: &str, retry: &str) -> HandlerTable {
-    let stub = stub();
+    let stub = stub().replace('\\', "\\\\");
     let (kind_keys, argv) = match kind {
         "mcp" => (
             r#""kind":"mcp","tool":"summarize","arguments":{"case":"{case}"},"#.to_string(),
@@ -441,7 +441,7 @@ fn a_failure_path_fires_identically_for_both_handler_kinds() {
 #[test]
 fn a_successful_tool_call_fires_the_success_path() {
     let (directory, effect_id) = pending_notification("mcp-on-ok");
-    let stub = stub();
+    let stub = stub().replace('\\', "\\\\");
     let handlers = HandlerTable::parse(&format!(
         r#"{{
             "format":"fsm.handlers/1",

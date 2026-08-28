@@ -102,7 +102,9 @@ fn stub_path() -> String {
 /// `backoff.rs`'s subject, and a real wait here would only make this suite
 /// slow.
 fn table(marker: &str, attempts: u32, on: &str, on_failed: bool) -> HandlerTable {
-    let stub = stub_path();
+    // Escaped, because it is about to be interpolated into JSON; the raw
+    // form is what `stub_path()` returns for the assertions that read output.
+    let stub = stub_path().replace('\\', "\\\\");
     let failure_path = if on_failed {
         r#","on_failed":{"event":"notify_failed"}"#
     } else {

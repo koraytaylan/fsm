@@ -94,8 +94,12 @@ jobs:
           shared-key: gate-${{ matrix.os }}-${{ matrix.rust }}
           save-if: false
       - run: cargo fmt --all -- --check
-      - run: cargo test --workspace
-      - run: cargo test --workspace --release
+      # `--no-fail-fast`: without it cargo stops at the first failing test
+      # binary, so a platform-specific failure hides every later binary on
+      # that leg and a fix costs one whole CI round per hidden failure. The
+      # local recipe in CONTRIBUTING.md already runs it this way.
+      - run: cargo test --workspace --no-fail-fast
+      - run: cargo test --workspace --release --no-fail-fast
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo doc --workspace --no-deps
       # Mirror of ci.yml's gate: committed decimal vectors must regenerate

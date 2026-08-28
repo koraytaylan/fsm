@@ -51,8 +51,12 @@ jobs:
       # clippy has no file-length lint, so the thousand-line rule in
       # CONTRIBUTING.md is enforced by a script rather than by the compiler.
       - run: scripts/oversized-files.sh
-      - run: cargo test --workspace
-      - run: cargo test --workspace --release
+      # `--no-fail-fast`: without it cargo stops at the first failing test
+      # binary, so a platform-specific failure hides every later binary on
+      # that leg and a fix costs one whole CI round per hidden failure. The
+      # local recipe in CONTRIBUTING.md already runs it this way.
+      - run: cargo test --workspace --no-fail-fast
+      - run: cargo test --workspace --release --no-fail-fast
       # Not `--all-targets`: the test targets carry pre-existing clippy lint
       # debt. rustc warnings in tests are already denied through RUSTFLAGS
       # above, so this is narrower than it looks. Widen it once that debt is
