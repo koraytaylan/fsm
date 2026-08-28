@@ -93,7 +93,9 @@ locally first if you want the answer sooner.
 - `cargo clippy --workspace -- -D warnings`
 - `cargo doc --workspace --no-deps`
 - `cargo build --manifest-path fuzz/Cargo.toml --bins` — the fuzz crate is a
-  separate workspace, so nothing else compiles it
+  separate workspace, so nothing else compiles it. Linux legs only: the
+  targets are `#![no_main]` and libFuzzer provides the entry point, which the
+  MSVC linker will not (`LNK1561`)
 
 Not `clippy --all-targets`: the test targets carry pre-existing lint debt.
 rustc warnings in tests are denied through `RUSTFLAGS` regardless. Widen the

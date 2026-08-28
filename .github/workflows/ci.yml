@@ -69,7 +69,14 @@ jobs:
       # so, because the only job that builds them runs on a tag. This is a
       # plain build — the instrumented one still needs nightly and cargo-fuzz
       # in `release.yml` — and it is the cheap half that catches the rot.
-      - run: cargo build --manifest-path fuzz/Cargo.toml --bins
+      #
+      # Linux only, which is both where `fuzz-smoke` runs and the only place
+      # these can link at all: the targets are `#![no_main]` and libFuzzer
+      # supplies the entry point, so the MSVC linker refuses them outright
+      # (`LNK1561: entry point must be defined`).
+      - name: Fuzz targets still compile
+        if: runner.os == 'Linux'
+        run: cargo build --manifest-path fuzz/Cargo.toml --bins
       # Committed decimal vectors must be reproducible from the generator on
       # every leg; a stale fixture fails before it can mislead a release.
       - name: Decimal vectors regenerate byte-identically
