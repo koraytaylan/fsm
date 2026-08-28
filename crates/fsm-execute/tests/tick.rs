@@ -108,6 +108,27 @@ fn stub_table() -> HandlerTable {
 
 /// A machine whose confirmation state is terminal, so one effect drives one
 /// instance from trigger to finish.
+/// A table whose `on_ok` names an event this machine only accepts in the
+/// state the instance has already left.
+fn declined_advance_table() -> HandlerTable {
+    let stub = std::env::current_exe()
+        .expect("the test binary knows its own path")
+        .to_string_lossy()
+        .replace('\\', "\\\\");
+    HandlerTable::parse(&format!(
+        r#"{{
+            "format":"fsm.handlers/1",
+            "handlers":[{{
+                "effect":"request_confirmation",
+                "argv":["{stub}","stub_handler","--exact","--nocapture","stub:ok"],
+                "timeout_ms":30000,
+                "on_ok":{{"event":"submit","payload":{{}}}}
+            }}]
+        }}"#
+    ))
+    .expect("the declining table validates")
+}
+
 fn tick_machine() -> Value {
     parse(
         br#"{
@@ -259,4 +280,53 @@ fn a_lent_writer_produces_the_identical_trace_without_opening_anything() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert_eq!(lines, expected_trace(&effect_id));
+}
+
+/// An advance the engine declines is parked, not asked again on every tick.
+///
+/// Declining is correct here: `submit` belongs to `placed` and the instance
+/// is past it. Asking again a quarter of a second later, forever, is not —
+/// and that is what happened, because the ack's own record moved the journal
+/// past the seq the settle path parked at, so the directive was re-issued
+/// and the re-issue parked nothing. A table with one wrong `on_ok` became an
+/// unbounded log, which is how an operator's typo looks like a busy server.
+#[test]
+fn an_advance_the_state_declines_is_parked_rather_than_asked_every_tick() {
+    let (directory, _effect_id) = triggered_instance("pipe-tick-declined");
+    let table = declined_advance_table();
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        fsm_execute::service::advancing_effects(&table),
+    );
+    let mut scheduler = Scheduler::new(table);
+    let mut runner = Runner::new().unwrap();
+    let mut pipeline = Pipeline;
+    let mut clock = FixedClock::new(5_000, 1);
+
+    let mut lines = Vec::new();
+    for _ in 0..40 {
+        let now_ms = clock.now;
+        lines.extend(tick(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            directory.path(),
+            &mut clock,
+            now_ms,
+        ));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let asked = lines
+        .iter()
+        .filter(|line| line.starts_with("no-advance"))
+        .count();
+    assert!(
+        asked <= 2,
+        "the declined advance was asked {asked} times across 40 ticks: {lines:#?}"
+    );
+    assert!(
+        lines.iter().any(|line| line.starts_with("acked ok")),
+        "the effect itself should still settle: {lines:#?}"
+    );
 }

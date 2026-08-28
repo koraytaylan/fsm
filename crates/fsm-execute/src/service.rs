@@ -477,7 +477,18 @@ fn settle_phase(
                         ));
                         lines.extend(terminal_line(store, instance_id));
                     }
-                    Ok(_) => lines.push(format!("no-advance {effect_id} {event}")),
+                    Ok(_) => {
+                        // The same rule the settle path follows: an advance
+                        // the engine declined waits for the journal to move
+                        // rather than being asked again immediately. Without
+                        // the park here, the ack's own record moves the seq
+                        // past what `settle` parked, this directive is
+                        // re-issued on the next tick, and a table whose
+                        // `on_ok` names an event the instance's state does
+                        // not accept produces one line per poll forever.
+                        scheduler.park_advance(effect_id, event, plan.observation.to_seq);
+                        lines.push(format!("no-advance {effect_id} {event}"));
+                    }
                     Err(error) => lines.push(error_line(&error)),
                 }
             }
