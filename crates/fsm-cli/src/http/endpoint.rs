@@ -50,6 +50,15 @@ pub struct Endpoint {
     /// What this server will answer, and from whom.
     policy: Option<Policy>,
     mode_note: &'static str,
+    /// The server's stop flag, when this endpoint is being served by one.
+    ///
+    /// Its presence is also what tells `stream` whether it may hold a
+    /// connection: an endpoint a caller drives synchronously — every test in
+    /// `http_sse.rs`, and anything else that hands it one request at a time —
+    /// has no thread to block and no way to be told to stop, so it is handed
+    /// its headers and left alone. `watch::ByHand` splits the change feed the
+    /// same way and for the same reason.
+    stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 /// What one POST produced.
@@ -72,7 +81,17 @@ impl Endpoint {
             streams: Mutex::new(BTreeMap::new()),
             policy: None,
             mode_note,
+            stop: None,
         }
+    }
+
+    /// The same endpoint, told which flag ends its streams.
+    ///
+    /// Pass the flag the server itself was given, so a stop reaches the
+    /// connection threads parked in `stream` as well as the accept loop.
+    pub fn with_stop(mut self, stop: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.stop = Some(stop);
+        self
     }
 
     /// The same endpoint, with a posture to enforce.
@@ -282,6 +301,11 @@ impl Endpoint {
 
         let sink = SharedSink::new();
         let notifier = Notifier::new(Box::new(sink.writer()));
+        // Anything that outlives this request — the change feed a
+        // `resources/subscribe` starts — writes into the session's stream
+        // instead, because `sink` is this POST's body and stops being read
+        // the moment it is answered.
+        let feed_out = super::sse::recorder_for(self.stream_state(&session_id));
         let mailbox = self.mailbox(&session_id);
         let mut reader = MailboxReader::new(std::sync::Arc::clone(&mailbox));
         let io = std::cell::RefCell::new(SessionIo::new(&notifier, &mut reader));
@@ -303,6 +327,7 @@ impl Endpoint {
                     params,
                     self.mode_note,
                     Some(&io),
+                    Some(&feed_out),
                 );
             });
         }
@@ -446,11 +471,73 @@ impl Endpoint {
             },
         };
         begin_stream(out)?;
+        let mut last_id = stream.next_id();
         for event in resume {
             // The bytes that were sent, not bytes regenerated now.
             write_event(out, event.id, &event.data)?;
+            last_id = event.id;
         }
+        // A caller driving this endpoint by hand has its headers; it owns no
+        // thread this could park.
+        let Some(stop) = self.stop.clone() else {
+            return Ok(());
+        };
+        self.deliver(&session_id, &stream, last_id, &stop, out);
+        // The slot goes back so the same client can reconnect. The session,
+        // and its subscriptions, are deliberately untouched.
+        stream.release();
         Ok(())
+    }
+
+    /// Hold one session's stream open and write what the server says on it.
+    ///
+    /// Everything that speaks unprompted — the change feed, progress,
+    /// elicitation — records into `Stream`, which assigns each event its id.
+    /// This is the other half: the loop that carries those recorded events to
+    /// the socket. Without it the server produces notifications nobody can
+    /// read, which is what `resources/subscribe` did over HTTP before.
+    ///
+    /// It ends when the client goes away, the session does, or the server is
+    /// stopped — the last of those is why an endpoint without a stop flag
+    /// never enters here.
+    fn deliver(
+        &self,
+        session_id: &str,
+        stream: &std::sync::Arc<Stream>,
+        from_id: u64,
+        stop: &std::sync::atomic::AtomicBool,
+        out: &mut dyn Write,
+    ) {
+        use std::sync::atomic::Ordering;
+        // Short enough that a stop is honoured promptly, long enough that an
+        // idle stream costs one lock and one comparison four times a second.
+        const TICK: std::time::Duration = std::time::Duration::from_millis(250);
+        let mut last_id = from_id;
+        let mut silent_for = std::time::Duration::ZERO;
+        while !stop.load(Ordering::Relaxed) {
+            // Gone means expired or `DELETE`d; either way there is nothing
+            // left to speak for.
+            if self.sessions.with(session_id, |_| ()).is_none() {
+                return;
+            }
+            let (events, _gap) = stream.replay_after(last_id);
+            for event in events {
+                if write_event(out, event.id, &event.data).is_err() {
+                    return;
+                }
+                last_id = event.id;
+                silent_for = std::time::Duration::ZERO;
+            }
+            std::thread::sleep(TICK);
+            silent_for += TICK;
+            // A proxy in the middle must not decide a quiet stream is dead.
+            if silent_for >= std::time::Duration::from_millis(super::sse::KEEPALIVE_MS) {
+                if out.write_all(b": keepalive\n\n").is_err() || out.flush().is_err() {
+                    return;
+                }
+                silent_for = std::time::Duration::ZERO;
+            }
+        }
     }
 
     fn mailbox(&self, session_id: &str) -> std::sync::Arc<Mailbox> {

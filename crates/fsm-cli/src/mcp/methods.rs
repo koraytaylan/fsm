@@ -41,6 +41,10 @@ pub fn handle_request<'a>(
     params: Option<Value>,
     mode_note: &'static str,
     io: Option<&'a std::cell::RefCell<crate::mcp::notify::SessionIo<'a>>>,
+    // Where the change feed writes, when that is not where this request's
+    // answer goes. Over stdio the two are the same stream; over HTTP the
+    // answer goes into this POST's body and the feed must outlive it.
+    feed_out: Option<&Notifier>,
 ) -> std::io::Result<()> {
     match method {
         "ping" => send_line(output, &result_response(id, Value::Obj(Default::default()))),
@@ -145,7 +149,10 @@ pub fn handle_request<'a>(
             // before. It is never stopped when the last one goes: a session
             // that unsubscribes and resubscribes is common, and a parked feed
             // costs one integer comparison per interval.
-            live.ensure_feed(store.as_ref().map(|st| st.data_dir.clone()), output);
+            live.ensure_feed(
+                store.as_ref().map(|st| st.data_dir.clone()),
+                feed_out.unwrap_or(output),
+            );
             send_line(output, &result_response(id, Value::Obj(Default::default())))
         }
         "resources/unsubscribe" => {

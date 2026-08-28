@@ -87,9 +87,17 @@ pub fn run_http(ctx: &mut Ctx, args: &Args, addr: &str, mode: ServeMode) -> u8 {
         _ => crate::store::Store::open(&ctx.data_dir).ok(),
     };
     let bind = policy.bind;
-    let endpoint = Arc::new(endpoint::Endpoint::new(&policy.path, store, "").with_policy(policy));
+    // One flag for both halves: the accept loop stops taking connections and
+    // the streams parked in `Endpoint::deliver` end, rather than holding
+    // threads open past the server they belong to.
+    let stop = Arc::new(AtomicBool::new(false));
+    let endpoint = Arc::new(
+        endpoint::Endpoint::new(&policy.path, store, "")
+            .with_policy(policy)
+            .with_stop(Arc::clone(&stop)),
+    );
     let handler: Arc<dyn server::Handler> = Arc::new(endpoint::EndpointHandler::new(endpoint));
-    match server::serve_http(bind, handler, Arc::new(AtomicBool::new(false))) {
+    match server::serve_http(bind, handler, stop) {
         Ok(()) => 0,
         Err(_) => 1,
     }

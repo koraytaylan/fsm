@@ -259,3 +259,21 @@ impl<W: Write> Write for SessionStream<W> {
 pub fn notifier_for(stream: Arc<Stream>, out: impl Write + Send + 'static) -> Notifier {
     Notifier::new(Box::new(SessionStream::new(out, stream)))
 }
+
+/// A notifier that records into a session's stream without holding a socket.
+///
+/// The producer and the socket have different lifetimes: the change feed
+/// starts on `resources/subscribe`, which a client may send before it opens
+/// its stream, after it has disconnected, or while it is reconnecting. A
+/// notifier bound to whichever socket happened to exist at subscribe time
+/// would write into a request that has already been answered — which is
+/// exactly the bug this replaces.
+///
+/// So the feed writes here, into the replay buffer that already assigns
+/// every event its id, and the stream handler delivers from that buffer.
+/// One consequence worth stating: a notification produced while nobody is
+/// reading is kept rather than lost, and a client that reconnects with
+/// `Last-Event-ID` receives it.
+pub fn recorder_for(stream: Arc<Stream>) -> Notifier {
+    Notifier::new(Box::new(SessionStream::new(std::io::sink(), stream)))
+}

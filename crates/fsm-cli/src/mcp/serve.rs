@@ -692,6 +692,9 @@ pub fn serve_session_degraded(
                             params,
                             mode_note,
                             Some(&io),
+                            // stdout is both the answer and the stream, so
+                            // the feed writes where everything else does.
+                            None,
                         )?;
                         drive_executor(
                             executor.as_deref_mut(),
