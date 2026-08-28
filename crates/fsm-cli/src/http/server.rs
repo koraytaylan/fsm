@@ -117,6 +117,17 @@ pub fn serve_bound(
     while !stop.load(Ordering::Relaxed) {
         match bound.listener.accept() {
             Ok((socket, _peer)) => {
+                // The listener is non-blocking so the accept loop can poll the
+                // stop flag, and on macOS and Windows an accepted socket
+                // inherits that from its listener where on Linux it does not.
+                // Inherited, every read on this connection returns `WouldBlock`
+                // the instant the client has not sent the next byte yet: the
+                // handler reads an error rather than waiting, the connection is
+                // closed after one request, and both the refusal below and the
+                // per-connection timeouts stop meaning anything, because a
+                // timeout only applies to a blocking socket. Before the cap
+                // check, so a refusal is written to a blocking socket too.
+                let _ = socket.set_nonblocking(false);
                 // The cap first, before a thread or any per-connection
                 // state exists.
                 if live.load(Ordering::Relaxed) >= MAX_CONNECTIONS {

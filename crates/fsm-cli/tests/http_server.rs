@@ -103,13 +103,11 @@ fn request(stream: &mut TcpStream, path: &str) -> std::io::Result<String> {
 /// Read one response: status line, headers, and exactly `Content-Length`
 /// bytes of body.
 ///
-/// Straight off the socket, a byte at a time, because the two obvious
-/// shortcuts are both wrong on a keep-alive connection. A `BufReader` reads
-/// past this response and drops whatever it buffered when it goes out of
-/// scope, so the next response starts mid-stream; and holding one by cloning
-/// the socket per call is not portable — dropping the clone ends the
-/// connection on Windows and macOS, where the next request is met with a
-/// reset, while Unix `dup` semantics let it pass here unnoticed.
+/// Straight off the socket, a byte at a time: a `BufReader` built per call
+/// reads past this response and drops whatever it buffered when it goes out
+/// of scope, so the next response on a keep-alive connection would start
+/// mid-stream. Reading exactly what this response declares needs no buffer
+/// that outlives it and no second descriptor.
 fn read_response(stream: &mut TcpStream) -> std::io::Result<String> {
     let mut head = String::new();
     let mut length = 0usize;
@@ -162,6 +160,25 @@ fn one_connection_serves_two_requests() {
     let mut stream = TcpStream::connect(server.addr).unwrap();
     let first = request(&mut stream, "/one").unwrap();
     let second = request(&mut stream, "/two").unwrap();
+    assert!(first.ends_with("ok 1"), "{first}");
+    assert!(second.ends_with("ok 2"), "{second}");
+}
+
+/// A connection that pauses between requests is still served.
+///
+/// The pause is the whole test. With the next request already waiting in the
+/// socket a non-blocking connection answers it correctly and the bug hides;
+/// only a read that has to wait tells a blocking socket from one that
+/// returns `WouldBlock` and takes the connection down with it. That is why
+/// this suite was green on Linux, where an accepted socket does not inherit
+/// the listener's non-blocking mode, and red everywhere else.
+#[test]
+fn a_connection_that_pauses_between_requests_is_still_served() {
+    let server = Running::start(None);
+    let mut stream = TcpStream::connect(server.addr).unwrap();
+    let first = request(&mut stream, "/one").expect("the first answer");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let second = request(&mut stream, "/two").expect("an answer after the pause");
     assert!(first.ends_with("ok 1"), "{first}");
     assert!(second.ends_with("ok 2"), "{second}");
 }
