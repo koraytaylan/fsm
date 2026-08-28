@@ -62,9 +62,17 @@ pub enum Tok {
 
 pub fn lex(src: &str) -> Result<Vec<(Tok, Span)>, ExprError> {
     if src.len() > SOURCE_CAP {
+        // Back off to a character boundary: a span is a byte range into this
+        // source, and one ending mid-character cannot slice it. A caller
+        // underlining the error with `&src[span]` would panic on the error
+        // meant to help it.
+        let mut end = src.len().min(SOURCE_CAP + 1);
+        while end > 0 && !src.is_char_boundary(end) {
+            end -= 1;
+        }
         return Err(ExprError::new(
             "expr/too_long",
-            Span::new(0, src.len().min(SOURCE_CAP + 1)),
+            Span::new(0, end),
             "expression source exceeds 4096 bytes",
             "split the expression or shorten identifiers and literals",
         ));
@@ -305,10 +313,16 @@ pub fn lex(src: &str) -> Result<Vec<(Tok, Span)>, ExprError> {
                 ));
             }
             _ => {
+                // The whole character, not its first byte. `ctx.naïve` is
+                // not an exotic input, and it produced a span ending inside
+                // the `ï` — unusable for slicing, and describing a byte to
+                // somebody who typed a letter.
+                let width = src[i..].chars().next().map_or(1, char::len_utf8);
+                let what = &src[i..i + width];
                 return Err(lex_err(
                     i,
-                    i + 1,
-                    &format!("unexpected byte {b:?}"),
+                    i + width,
+                    &format!("unexpected character {what:?}"),
                     "check for an illegal character",
                 ));
             }
@@ -324,6 +338,48 @@ fn lex_err(start: usize, end: usize, message: &str, hint: &str) -> ExprError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every span this lexer reports must be able to slice the source it
+    /// describes.
+    ///
+    /// `Span` is documented as byte offsets into the verbatim source, and a
+    /// caller that underlines an error with `&src[span.start..span.end]` is
+    /// doing the obvious thing. Two sites did not honour that: the
+    /// unexpected-byte arm pointed one *byte* past the start of a multi-byte
+    /// character, so `ctx.naïve` produced `6..7` inside the `ï`; and the
+    /// over-length error's end was the byte cap itself, which the fuzzer
+    /// found by feeding it a source of replacement characters.
+    #[test]
+    fn every_reported_span_lands_on_character_boundaries() {
+        let long_multibyte: String = "\u{fffd}".repeat(SOURCE_CAP);
+        let cases = [
+            "ctx.na\u{ef}ve",
+            "\u{20ac}",
+            "ctx.a + \u{4e2d}\u{6587}",
+            long_multibyte.as_str(),
+        ];
+        for src in cases {
+            let Err(error) = lex(src) else {
+                panic!("{src:?} was expected to be refused");
+            };
+            let (start, end) = (error.span.start as usize, error.span.end as usize);
+            assert!(start <= end, "{src:?}: inverted span {start}..{end}");
+            assert!(
+                end <= src.len(),
+                "{src:?}: span {start}..{end} past the source"
+            );
+            assert!(
+                src.is_char_boundary(start),
+                "{src:?}: span start {start} is mid-character"
+            );
+            assert!(
+                src.is_char_boundary(end),
+                "{src:?}: span end {end} is mid-character"
+            );
+            // The property that matters to a caller: this does not panic.
+            let _ = &src[start..end];
+        }
+    }
 
     fn kinds(src: &str) -> Vec<Tok> {
         lex(src).unwrap().into_iter().map(|(t, _)| t).collect()
