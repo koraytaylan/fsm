@@ -61,7 +61,14 @@ pub fn validate_event(
             return Err(reject("req/field_missing", &f.name));
         };
         if raw.as_num().is_some() {
-            return Err(reject("req/number_token", &f.name));
+            // SPEC's error table promises this one teaches the fix — "quote
+            // it" — rather than repeating the field name back. The store's
+            // `number_token_error` already says it this way; a caller that
+            // meets the rule through the engine should read the same
+            // sentence as one that meets it through a request.
+            let mut rejection = reject("req/number_token", &f.name);
+            rejection.hint = format!("send {} as a JSON string", f.name);
+            return Err(rejection);
         }
         let v = parse_typed(raw, &f.ty).map_err(|c| reject(c, &f.name))?;
         if let Val::Enum { ty, variant } = &v {
