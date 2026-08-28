@@ -111,7 +111,16 @@ fn request(stream: &mut TcpStream, path: &str) -> std::io::Result<String> {
 fn read_response(stream: &mut TcpStream) -> std::io::Result<String> {
     let mut head = String::new();
     let mut length = 0usize;
-    while let Some(line) = read_line(stream)? {
+    loop {
+        let Some(line) = read_line(stream)? else {
+            // End of stream before any of it arrived is not a response at
+            // all, which is what a closed connection looks like from here —
+            // and is distinct from the blank line that ends a head.
+            if head.is_empty() {
+                return Ok(String::new());
+            }
+            break;
+        };
         if line.trim().is_empty() {
             break;
         }
