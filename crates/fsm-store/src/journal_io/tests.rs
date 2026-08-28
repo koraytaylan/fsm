@@ -239,6 +239,21 @@ fn migratable_marker_stamps_after_successful_open() {
 }
 
 #[test]
+fn a_path_that_is_a_file_is_not_a_store_on_any_platform() {
+    // Unix reads `<file>/VERSION` as `ENOTDIR` and Windows reads it as
+    // `NotFound`, and the second one is indistinguishable from an empty
+    // directory unless the kind of the path itself is checked.
+    let dir = tmp();
+    fs::create_dir_all(&*dir).unwrap();
+    let file = dir.join("journal-but-a-file");
+    fs::write(&file, b"not a store").unwrap();
+    assert!(matches!(
+        detect_store_format(&file),
+        DetectedStoreFormat::Unreadable { .. }
+    ));
+}
+
+#[test]
 fn every_prior_version_migrates_after_successful_full_fold() {
     for prior in 1..STORE_VERSION.parse::<u32>().unwrap() {
         let dir = tmp();

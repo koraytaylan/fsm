@@ -126,6 +126,16 @@ fn is_migratable_version(v: &str) -> bool {
 
 /// Classify an on-disk store directory without opening or locking it.
 pub fn detect_store_format(dir: &Path) -> DetectedStoreFormat {
+    // A path that exists and is not a directory is not a store, and saying so
+    // here is the only portable way to say it: reading `<file>/VERSION`
+    // fails with `ENOTDIR` on Unix, which falls to `Unreadable` below, but
+    // with `NotFound` on Windows, which would read as "no store here yet"
+    // and open an empty one over somebody's file.
+    if dir.exists() && !dir.is_dir() {
+        return DetectedStoreFormat::Unreadable {
+            err: format!("{} is not a directory", dir.display()),
+        };
+    }
     let ver = dir.join("VERSION");
     match crate::read_regular_string_capped(&ver, crate::PERSISTENCE_READ_CAP) {
         Ok(t) => {
