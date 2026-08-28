@@ -63,14 +63,11 @@ pub(crate) fn case() -> Value {
 }
 
 pub(crate) fn fsm_bin() -> std::path::PathBuf {
-    std::env::var_os("CARGO_BIN_EXE_fsm")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            // The fallback has to spell the executable the way the platform
-            // does; on Windows the binary is `fsm.exe`, so a bare `fsm` never
-            // exists and the test reports the binary as missing.
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../target/debug")
-                .join(format!("fsm{}", std::env::consts::EXE_SUFFIX))
-        })
+    // `CARGO_BIN_EXE_fsm` is set by cargo when this test is *compiled*, not
+    // when it runs, so the runtime lookup this used to do never found it and
+    // every call took the fallback below. That fallback assumes the default
+    // target directory, so the suite passed only where one was in use and
+    // reported the binary missing anywhere a `build.target-dir` is
+    // configured — a shared cache, a CI layout, anything but the default.
+    std::path::PathBuf::from(env!("CARGO_BIN_EXE_fsm"))
 }
