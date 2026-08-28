@@ -3,9 +3,9 @@
   "handlers": [
     {
       "effect": "request_confirmation",
-      "argv": ["/usr/local/bin/notify-supplier", "--order", "{order_id}", "--quiet"],
+      "argv": ["/usr/local/bin/notify-supplier", "--quiet"],
       "timeout_ms": 120000,
-      "on_ok": { "event": "confirmed", "payload": {}, "stamps": ["at"] },
+      "on_ok": { "event": "pick", "payload": {} },
       "on_failed": { "event": "cancel", "payload": {} }
     }
   ]

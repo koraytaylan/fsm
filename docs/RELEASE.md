@@ -152,10 +152,19 @@ enforced by jobs in `release.yml`, not by this list.
   `fsm serve --http`, complete initialize through teardown, and observe at
   least one notification arrive on the SSE stream. A conformance suite
   driving a socket is not the same as a client that has to like what it sees.
+  `http_notify.rs` now holds a socket open and asserts a subscribed session
+  is told when its instance advances — that path shipped broken once because
+  every test around it drove the endpoint one request at a time — but a test
+  that speaks the protocol correctly by construction still cannot tell you
+  whether a client that does not will get anywhere.
 - `manual:` an LLM authors and drives the case-review machine from a
   natural-language brief, unaided, in a bounded number of tool calls.
-- `manual:` replay [`EXAMPLES.md`](EXAMPLES.md) transcripts under `FSM_CLOCK_MS`
-  and compare output.
+- replay [`EXAMPLES.md`](EXAMPLES.md) transcripts and compare output — no
+  longer manual: `cargo test -p fsm-cli --test examples_transcripts` runs
+  every `$` line in that file against the built binary and checks what it
+  printed, `FSM_CLOCK_MS` prefixes included. It is in the gate, so a
+  transcript that drifts from the CLI fails before a tag rather than in front
+  of a reader.
 - `manual:` preview and then migrate a live cohort whose instances are in
   more than one state, and confirm the grouped refusal summary reads
   correctly to a person: the counts, the codes, and the state responsible for

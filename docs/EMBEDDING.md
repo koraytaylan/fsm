@@ -1136,6 +1136,28 @@ A returnable invocation is decided from the child's own status, never from
 elapsed time: the watcher reports a slot as returnable only when the child is
 `completed` or `cancelled`.
 
+### Reading the tree back
+
+The two directions are not symmetric, and the difference is worth knowing
+before you build a view on them.
+
+`instance_get`'s **`children` lists live invocations**: a slot appears while
+it is `pending` — carrying the child id it *will* have, because that id is a
+function of the parent and the slot and can be computed before the child
+exists — and while it is `running`. Once `invocation_return` settles the
+slot, the entry is gone, and a parent whose children have all returned
+reports `children: []`.
+
+`instance_get`'s **`parent` is permanent**: a child names the instance and
+slot that invoked it for as long as it exists, settled or not.
+
+So a question about what is happening now is answered by `children`, and a
+question about what happened is answered by the journal —
+`instance_history` holds the `instance_invoked` and `invocation_returned`
+records, and every edge the tree ever had is in them. `instance_list
+--roots-only` hides children at any status, which is what makes it a list of
+workflows rather than a list of instances.
+
 ## Errors
 
 Every error carries a namespaced `code`, a `message`, and a `hint` that states

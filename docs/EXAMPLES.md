@@ -13,11 +13,12 @@ uses a later injected timestamp and applies exactly that one due deadline.
 
 ```
 $ fsm validate examples/parallel_review_deadline.json
-ok: true
+created:    true
+dry_run:    true
 $ fsm machine add examples/parallel_review_deadline.json
 created: true
-$ FSM_CLOCK_MS=1000 fsm instance new parallel_review_deadline --request-id pr1
-configuration: {"kind":"parallel","leaves":{"audit":"auditing","review":"awaiting_review"}}
+$ FSM_CLOCK_MS=1000 fsm instance new parallel_review_deadline --request-id pr1 --json
+{"children":[],"configuration":{"kind":"parallel","leaves":{"audit":"auditing","review":"awaiting_review"}}, ...}
 $ fsm instance send inst-pr1 audit_ok --request-id pr-audit
 status: running
 $ FSM_CLOCK_MS=31000 fsm instance poll inst-pr1 --request-id pr-timeout
@@ -42,11 +43,11 @@ $ fsm machine add examples/case_review_child.json
 $ fsm machine add examples/case_review_parent.json
 $ fsm instance new case_review_parent --request-id new-1
 $ fsm instance send inst-new-1 open --request-id send-1
-$ fsm instance invoke inst-new-1 check --request-id inv-1
-{"child_instance_id":"inst-a111dfb0920dcaf7dd51064b", ...}
+$ fsm instance invoke inst-new-1 check --request-id inv-1 --json
+{"child_instance_id":"inst-a111dfb0920dcaf7dd51064b","child_machine_id":"case_review_child ...}
 $ fsm instance send inst-a111dfb0920dcaf7dd51064b clear --request-id child-1
-$ fsm instance return inst-new-1 check --request-id ret-1
-{"outcome":"completed", ...}
+$ fsm instance return inst-new-1 check --request-id ret-1 --json
+{"child_instance_id":"inst-a111dfb0920dcaf7dd51064b","duplicate":false,"ok":"true","outcom ...}
 $ fsm instance show inst-new-1
 leaf: decided
 ```
@@ -90,7 +91,8 @@ candidates and pipeline.
 
 ```
 $ fsm validate examples/parallel_fork_join.json
-ok: true
+created:    true
+dry_run:    true
 $ fsm machine add examples/parallel_fork_join.json
 created: true
 $ FSM_CLOCK_MS=1000 fsm instance new parallel_fork_join --request-id fj1
@@ -117,7 +119,8 @@ The spec is a tree `draft` → compound `review` (`peer_review`, `manager_review
 
 ```
 $ fsm validate examples/expense_approval.json
-ok: true
+created:    true
+dry_run:    true
 $ fsm machine add examples/expense_approval.json
 created: true
 $ fsm instance new expense_approval --request-id e1
@@ -140,7 +143,8 @@ Entering `fulfilment` emits `request_confirmation`. `note_added` is internal. An
 
 ```
 $ fsm validate examples/order_lifecycle.json
-ok: true
+created:    true
+dry_run:    true
 $ fsm machine add examples/order_lifecycle.json
 created: true
 $ fsm instance new order_lifecycle --request-id ol1
@@ -169,7 +173,8 @@ Intent: accumulate exact decimals and match inside a tolerance band using `abs` 
 
 ```
 $ fsm validate examples/invoice_matching.json
-ok: true
+created:    true
+dry_run:    true
 $ fsm machine add examples/invoice_matching.json
 created: true
 $ fsm instance new invoice_matching --request-id inv1
@@ -190,14 +195,30 @@ leaf: matched
 `examples/order_lifecycle.handlers.json`, for the `fsm execute` loop. When the
 instance enters `fulfilment`, the machine emits the `request_confirmation`
 effect; the table maps that effect to a supplier-notification subprocess and
-names the advance event (`confirmed`, with the `at` stamp from the ack) plus
-the failure event (`cancel`). Run it unattended with:
+names the advance event (`pick`) plus the failure event (`cancel`).
+
+Both events are ones `picking` accepts, which is the part of a table that is
+easy to get wrong: an `on_ok` naming an event the instance's state does not
+handle is journalled as an ack with no advance, and the executor holds the
+advance until the instance reaches a state that takes it. `request_confirmation`
+declares no fields, so the table's `argv` carries no `{placeholder}` — one
+naming an argument the emit did not produce is `exec/config` at run time, and
+`--check` cannot catch it because a table is validated on its own, without a
+machine.
+
+Run it unattended with:
 
 ```
 $ fsm execute --check --handlers examples/order_lifecycle.handlers.json
-ok: true
+ok:           true
 $ fsm execute --data-dir ./data --handlers examples/order_lifecycle.handlers.json
 ```
+
+`examples/case_review.handlers.json` is the other committed table, and it is
+**illustrative rather than runnable**: it shows retry, the `mcp` handler kind
+with a templated `arguments` object, and both concurrency caps, against effect
+names no example machine declares. Read it for the format; do not point
+`fsm execute` at it and expect work.
 
 See the *Executing workflows* section of [EMBEDDING.md](EMBEDDING.md#executing-workflows)
 for the full `fsm.handlers/1` format and the three run modes.
