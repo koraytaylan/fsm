@@ -11,75 +11,53 @@ moved or deleted, because library consumers pin it. There is no crates.io
 publish to undo — a git tag *is* the distribution artifact — so a mistake found
 late is superseded by a new patch version, never by rewriting the tag.
 
-## Initial release compatibility note
+## Upgrading from v0.1.0
 
-This first tagged release establishes the public surface at the workspace
-version declared in the root `Cargo.toml`, including parallel regions,
-explicit deadline polling, the `in(state)` invariant predicate, and machine
-composition.
+`v0.2.0` is a breaking release under the pre-`1.0` rule in
+[`API-POLICY.md`](API-POLICY.md): with a nonzero minor, the minor is the Cargo
+compatibility boundary, and this one moves. Nothing was removed from the
+`fsm-core` or `fsm-store` public API, but types a downstream matches
+exhaustively gained fields and variants, `TransitionSpec.on` became optional,
+and the persisted formats moved. The complete list is the migration list in
+[`API-POLICY.md`](API-POLICY.md). Migration paths from the untagged builds that
+preceded `v0.1.0` are in that tag's own copy of these two files, which is where
+they stay.
 
-**Upgrading an existing store.** This release moves the instance state format
-to `fsm.state/3` — which adds the composition fields — and the on-disk store
-to `VERSION` 9. A store at `VERSION` 1 through 8 is migrated on **first
-open**: the complete journal is folded using each record's own `state_format`
-discriminator and the marker is stamped forward on success. Interior records
-are never rewritten and old hashes are never recomputed under the new format,
-so a record written before this release keeps its `fsm.state/2` identity
-forever. A fold that fails refuses the open and leaves `VERSION` untouched.
-Snapshot caches move to `fsm.snapshot/5`; an older one beside a current
-journal is skipped and the state re-derived, because a snapshot is a
-disposable cache. The
-migration list remains relevant to consumers of
-historical untagged builds: `MachineSpec` now carries
-`topology` and `deadlines`; `Tree::build` takes the sequential initial (with
-`Tree::for_machine` preferred); `InstanceState` and `Applied` now carry tagged
-complete configurations and deadline state, while `SimStep` and `SimReport`
-carry tagged complete configurations;
-diagram overlays take `current_leaves`; pure create/step calls take
-caller-supplied timestamps; and `simulate::simulate` returns a typed creation
-rejection instead of a sentinel report. See the migration list in
-[`API-POLICY.md`](API-POLICY.md). The current persisted formats move to store
-`VERSION` 9, `fsm.state/3`, `fsm.state-root/3`, and `fsm.snapshot/5`. Stores at versions 1
-through 8 are full-folded and stamped forward without rewriting journal
-records; legacy state hashes and roots remain verifiable, each under the
-format its own record declares. New genesis records
-also bind the region, deadline, and aggregate expression-evaluation ceilings,
-while readers retain exact support for the historical limits object already
-sealed into older journals. Definitions exceeding the standard 4096-tick
-whole-machine worst-case evaluation cost (compiled AST nodes plus one implicit
-guard tick per distinct event with an omitted guard) fail compilation with
-`def/limit_eval` rather than reaching `internal/budget` during creation,
-execution, or enabled-event analysis. The exact historical genesis
-enables ceiling-free compatibility compilation of `machine_defined` records
-during a complete journal fold. New definition writes, `fold_from` snapshot
-tails, and current-genesis snapshots remain subject to the current ceiling.
-Historical folds additionally accept already-sealed rejection details produced
-before enabled-event analysis charged omitted guards; new diagnostics always
-use the corrected accounting. Current admission also closes the historical bug
-that allowed ownerless, child-bearing, terminal, or initial-bearing history
-pseudostates. Exact-historical-genesis full folds retain that admission only for
-sequential definitions without deadlines and reproduce the active/history
-states and global-name malformed-history initial descents the old stepper could
-seal; new writes and current-genesis snapshots use the strict shape.
-Current-valid parallel and deadline definitions appended after migration still
-full-fold under the historical genesis and receive no malformed-history
-exception. Persistence inputs are now bounded before allocation and static
-non-regular or symlinked journal/snapshot paths are not followed. Library and
-CLI inspection paths create nothing, take no advisory lock, perform no
-`VERSION` migration or stamping, and write no snapshot; mutating methods on a
-read-only `Store` fail with `io/write`. Downstream exhaustive matches must
-replace `journal_io::OpenError::Io` and `RepairError::Io` with their respective
-`ReadIo` and `WriteIo` variants, and handle
-`JournalIoError::RecordTooLarge { bytes, max_bytes }` on direct journal
-appends. The persistence ceiling is 16 MiB per `VERSION`, snapshot, or
-individual streamed journal record: exact is accepted, oversized authoritative
-input is `io/read`, an oversized append is refused before rotation/write as
-`io/write`, and an oversized disposable snapshot is skipped on read and
-refused before cache mutation on write. Stamped events are measured after stamp
-insertion; an oversized candidate leaves the caller value and built-in injected
-clock unchanged. `Clock` gains provided reservation/commit hooks, so existing
-custom implementations keep compiling with eager consumption and may override
-both hooks when abandoned reservations must not advance them.
+**What is new.** Machine composition — a state invokes another machine and
+reads its result through `$done.invoke.<slot>`, and one instance signals
+another. A bounded run-to-completion macrostep: eventless transitions,
+internal events from `raise`, and generated done events, sealed in one record.
+Journaled, idempotent definition migration under a `supersedes` block, with a
+preview and a cohort command. The standalone `fsm execute` effect executor,
+with journaled retries, deterministic backoff, bounded concurrency, and a
+handler kind that calls another MCP server's tool. A Streamable HTTP transport
+for `fsm serve`, with sessions and server-sent events. And ten more MCP tools —
+24 in total, up from 14 — including the five audit capabilities that were CLI
+only.
+
+**Upgrading a store.** The instance state format moves to `fsm.state/3`, which
+adds the composition fields, and the on-disk store to `VERSION` 9. A `v0.1.0`
+store is at `VERSION` 8 and is migrated on **first open**: the complete journal
+is folded using each record's own `state_format` discriminator, and the marker
+is stamped forward on success. Interior records are never rewritten and old
+hashes are never recomputed under the new format, so a record written by
+`v0.1.0` keeps its `fsm.state/2` identity forever, and `journal verify` still
+checks it under that format. A fold that fails refuses the open and leaves
+`VERSION` untouched. Stores at `VERSION` 1 through 8 are all accepted this way.
+Snapshot caches move to `fsm.snapshot/5`; a `fsm.snapshot/4` file beside a
+current journal is skipped and the state re-derived, because a snapshot is a
+disposable cache and bumping its format is never a data-loss event.
+
+**Definitions written for `v0.1.0` still compile**, and every `machine_id` they
+hash to is unchanged: the new spec fields are optional, and a definition
+without them canonicalizes exactly as it did. Adding a `supersedes` block
+produces a new machine rather than changing an existing one, because the block
+is inside the canonical bytes.
+
+**New error codes, no changed ones.** The `def/`, `req/`, and `run/` families
+gained codes for composition, reactive semantics, migration, and the executor.
+Adding a code is compatible; no situation that returned a code in `v0.1.0`
+returns a different one now.
 
 ## Before tagging
 
@@ -92,11 +70,12 @@ both hooks when abandoned reservations must not advance them.
   exercises stable at all.
 - `manual:` the host matrix below has been run against the candidate build.
 - `manual:` live-model acceptance has been run against the candidate build.
-- `manual:` if the `fsm-core`, `fsm-store`, or `fsm-execute` public API changed, the version
-  bump matches the semver rules in [`API-POLICY.md`](API-POLICY.md). While both
-  major and minor remain zero, each release advances the patch and is a Cargo
-  compatibility boundary; with a nonzero minor before `1.0`, the minor becomes
-  the breaking bump.
+- `manual:` if the `fsm-core`, `fsm-store`, or `fsm-execute` public API
+  changed, the version bump matches the semver rules in
+  [`API-POLICY.md`](API-POLICY.md). Before `1.0` the minor is the breaking bump
+  and the patch is the compatible one, so a release that adds a field to a
+  public struct, a variant to a public enum, or moves a persisted format
+  advances the minor.
 - Release notes are generated from the conventional-commit history by
   `cliff.toml`, so the commit messages *are* the changelog. Write them for a
   reader of the release, not for the diff.
@@ -133,10 +112,21 @@ gate once that debt is paid, and update `ci.yml` and `release.yml` together.
 
 - Workspace tests pin `fsm version` and MCP `serverInfo.version` to the workspace
   package version.
-- After changing the root manifest version, regenerate the byte-exact MCP
-  outputs with `REGEN_SKELETON=1 cargo +stable test -p fsm-cli --test
-  mcp_skeleton` and `REGEN_MCP_FULL=1 cargo +stable test -p fsm-cli --test
-  mcp_full`, then rerun both tests without the environment variables.
+- After changing the root manifest version, regenerate every byte-exact
+  fixture that carries `serverInfo.version`, then rerun each test without its
+  environment variable:
+
+  ```console
+  $ REGEN_SKELETON=1  cargo +stable test -p fsm-cli --test mcp_skeleton
+  $ REGEN_MCP_FULL=1  cargo +stable test -p fsm-cli --test mcp_full
+  $ REGEN_MCP_LIVE=1  cargo +stable test -p fsm-cli --test mcp_live_golden
+  $ REGEN_AFFORDANCE=1 cargo +stable test -p fsm-cli --test mcp_affordance_golden
+  $ REGEN_AUDIT=1     cargo +stable test -p fsm-cli --test audit_golden
+  ```
+
+  `grep -rl "$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)"
+  crates/*/tests/fixtures` is the check that no stamped fixture was missed: it
+  should list exactly the files those five tests own.
 - The `version` job refuses lightweight tags, dereferences the required
   annotated tag, and refuses a tagged commit that is not contained in
   `develop`, or a tag version that does not match the manifest. Containment
@@ -152,11 +142,11 @@ about a release candidate (the `ci.yml` gate re-run as `verify`, the downstream
 git-dependency build, decimal-vector regeneration, and the fuzz seed corpus) is
 enforced by jobs in `release.yml`, not by this list.
 
-- `manual:` Claude Code: connect, list all 18 tools, run the golden loop
+- `manual:` Claude Code: connect, list all 24 tools, run the golden loop
   end-to-end.
-- `manual:` Claude Desktop: connect, list all 18 tools, run the golden loop
+- `manual:` Claude Desktop: connect, list all 24 tools, run the golden loop
   end-to-end.
-- `manual:` MCP Inspector: connect, list all 18 tools, run the golden loop
+- `manual:` MCP Inspector: connect, list all 24 tools, run the golden loop
   end-to-end.
 - `manual:` a real MCP client over the **HTTP transport**: connect to
   `fsm serve --http`, complete initialize through teardown, and observe at
@@ -188,6 +178,12 @@ enforced by jobs in `release.yml`, not by this list.
   effect, and watch `fsm instance history` show the ack and the advance the
   table declares. The suite proves the loop against a stub; this proves the
   shipped binary against a handler an operator would actually write.
+- `manual:` the executor's policy surface against the shipped binary: a
+  handler that fails until its declared `max_attempts` is spent, so the backoff
+  is visible in `fsm instance history` and exhaustion fires the machine's
+  failure path rather than stalling the instance; `fsm execute --list-dead` on
+  the resulting dead letter; and one `mcp` handler kind driven against a real
+  second MCP server, since the suite proves that path against a stub process.
 - `manual:` re-run the latency harness and update the measured table in
   [`EMBEDDING.md`](EMBEDDING.md) if the numbers have moved materially:
   `FSM_BENCH_ROOT=/path/on/filesystem-under-test cargo +stable test --release -p fsm-store --test append_latency -- --ignored --nocapture`
@@ -244,11 +240,11 @@ Confirm the outcome from outside the workflow that produced it:
   `SHA256SUMS`;
 - `main` points at the tagged commit.
 
-## Initial release definition of done
+## Definition of done
 
-The initial release is done when the gate, the supported-consumer checks,
-version stamping, the manual acceptance list, and the tag pipeline are all
-complete and green.
+A release is done when the gate, the supported-consumer checks, version
+stamping, the manual acceptance list, and the tag pipeline are all complete and
+green.
 
 There are three supported consumers, and all three are in that list: the CLI,
 the MCP hosts, and a Rust program embedding `fsm-core` (optionally `fsm-store`).

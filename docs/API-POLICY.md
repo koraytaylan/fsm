@@ -7,10 +7,10 @@ What a downstream crate can rely on, and what it must expect to change.
 | Path | Status |
 |---|---|
 | `fsm` CLI (stdout contracts, exit codes) | supported |
-| `fsm serve` MCP tools (18 tools, schemas) | supported |
+| `fsm serve` MCP tools (24 tools, schemas) | supported |
 | `fsm-core` as a library dependency | supported |
 | `fsm-store` as a library dependency | supported |
-| `fsm-execute` as a library dependency | **provisional** — the effect executor's own surface. It ships with the `fsm execute` subcommand and is covered by that command's tests, but it has no outside-workspace acceptance check, and its types may change with the patch while the executor's design settles. Depend on it if you are hosting the loop yourself; pin a tag and expect to read the release notes. |
+| `fsm-execute` as a library dependency | **provisional** — the effect executor's own surface. It ships with the `fsm execute` subcommand and is covered by that command's tests, but it has no outside-workspace acceptance check, and its types may change with any release while the executor's design settles. Depend on it if you are hosting the loop yourself; pin a tag and expect to read the release notes. |
 | `fsm-cli` as a library dependency | **not** supported — it is a binary crate; its `lib` target exists only for its own tests |
 
 Each supported path has an acceptance check in [RELEASE.md](RELEASE.md).
@@ -62,9 +62,11 @@ immutable once published. Untagged `develop` commits carry no compatibility
 promise.
 
 Cargo's compatibility boundary before `1.0` is the leftmost non-zero version
-component. While both the major and minor are zero, each patch release is a
-new compatibility boundary and may contain either compatible or breaking
-changes.
+component. The major is zero and the minor is not, so **the minor is the
+breaking bump and the patch is the compatible one**: `0.2.1` is a drop-in
+replacement for `0.2.0`, while `0.3.0` may not be. A `0.1.x` pin does not
+resolve to `0.2.0`, which is deliberate — upgrading across a minor is a
+decision a consumer makes after reading the release notes.
 
 The **HTTP transport's wire surface is a compatibility surface** under this
 same policy: the endpoint path, the `Mcp-Session-Id` and
@@ -73,74 +75,105 @@ means re-initialize — and the status codes each condition returns. A client
 depends on those exactly as it depends on a tool's input schema, and they move
 only when a tool schema could.
 
-The initial tagged library surface includes these current contracts and
-migration paths from historical untagged builds:
+The **`Clock` trait's provided methods are part of that surface.** `now_ms` is
+required; `reserve_ms` and `commit_reserved_ms` have defaults, so an
+implementation written against any release keeps compiling and keeps eager
+consumption. Override both when an abandoned reservation must not advance the
+clock — a request that fails an unjournaled check should not consume a
+timestamp — as `GlobalClock` and `FixedClock` do. Adding a provided method is
+compatible; removing a default, or changing what an existing one does, is not.
 
-- `MachineSpec` replaces direct `states`/`initial` fields with `topology` and
-  adds `deadlines`; match `Topology` or use its state-group helpers.
-- Build complete trees with `Tree::for_machine`; the sequential-only
-  `Tree::build` constructor now also requires its top-level initial name.
-- `InstanceState.leaf` becomes tagged `configuration` and gains `deadlines`;
-  `Applied.leaf_after` becomes `configuration_after` and adds
-  `deadlines_after` plus the optional winning `region`.
-- Pure `create` and `step` calls take caller-supplied `now_ms`, and
-  `poll_deadline` is the explicit timed-transition entry point.
-- `SimStep` and `SimReport` expose complete configurations, and
-  `simulate::simulate` returns `Result<SimReport, Rejection>` so a failed
-  creation cannot masquerade as a successful report with a fabricated leaf.
-- `diagram::InstanceOverlay.current_leaf` becomes the set
-  `current_leaves`, allowing every parallel leaf to be marked.
-- Exhaustive diagnostic/persistence matches must handle deadline additions:
-  `RecordKind` gains `DeadlineApplied`, `DeadlineRejected`, and
-  `DeadlineNotDue` (`RecordKind::all()` now returns 14 entries), `ExprSlot`
-  gains deadline expression slots, and `BlockKind` gains `Deadline`.
-- `fsm_store::journal_io::OpenError::Io` is split into `ReadIo` and
-  `WriteIo`, and `RepairError::Io` is likewise split into `ReadIo` and
-  `WriteIo`, so downstream exhaustive matches can preserve the public
-  `io/read` versus `io/write` diagnostic contract. `JournalIoError` gains
-  `RecordTooLarge { bytes, max_bytes }` for a direct append refused before
-  rotation or persistence.
-- `fsm_store::store::Store::open_read_only` is the supported non-mutating
-  persistent-store loader. It takes no advisory lock and performs no creation,
-  migration, version stamping, or snapshot write; its mutating methods refuse
-  with `io/write`.
-- `fsm_store::clock::Clock` gains provided `reserve_ms` and
-  `commit_reserved_ms` hooks, so an existing implementation that defines only
-  `now_ms` keeps compiling and keeps its eager-consumption behavior. Override
-  both hooks to defer advancement until a stamped request has passed its
-  unjournaled checks; `GlobalClock` and `FixedClock` do this, so an abandoned
-  reservation does not advance either built-in injected clock.
-- Definition compilation now rejects more than 4096 worst-case evaluation
-  ticks with `def/limit_eval`: the sum of every compiled expression AST's nodes,
-  plus one tick per distinct event with an omitted `if`. This covers both the
-  stepper's single global selection and an enabled-event scan's independent
-  selection for every event, making the documented standard evaluation budget
-  sufficient for every accepted definition, including creation-time deadline
-  scheduling.
-  Complete replay of an exact-historical-genesis journal uses a compatibility
-  compiler that omits this new aggregate ceiling. New definition writes and
-  snapshot-tail folds continue to use the current ceiling; the journal format
-  has no per-definition version marker, so the compatibility distinction is
-  journal-level rather than a claim about when an individual record was
-  written. Historical-genesis folds also recognize the older enabled-event
-  rejection detail accounting, which did not charge omitted guards, so sealed
-  records remain replayable while all new scans use the corrected accounting.
-- Current definition admission rejects ownerless, child-bearing, terminal, or
-  initial-bearing history pseudostates with `def/shape`. The legacy compiler
-  admitted those shapes, so a complete exact-historical-genesis fold retains
-  that old admission only for sequential definitions without deadlines and
-  accepts the active/history state shapes the old stepper could seal, including
-  global-name descent from a malformed history `initial`. New
-  definition writes remain strict; this exception is journal-level migration,
-  not a supported way to author a new machine. Current-valid parallel and
-  deadline definitions later appended to that journal remain replayable and do
-  not receive the malformed-history exception.
-- `expr::typeck::Scope` gains a `states` field and `expr::eval::Bindings`
-  gains an `active` field, both exhaustive-match breaks, backing the new
-  `in(state)` invariant predicate: true iff `state` is the active leaf or a
-  compound ancestor of it, unioned across parallel regions. It typechecks to
-  only appear inside an invariant; elsewhere it is `expr/state_out_of_scope`,
-  and an undeclared or non-literal state name is `expr/unknown_state`.
+The `v0.2.0` library surface adds machine composition, reactive semantics,
+definition migration, and the effect executor. Nothing was removed, so a
+downstream that names items breaks only where it matches a type exhaustively,
+constructs one field-by-field, or depends on a persisted format. Migration
+paths from the untagged builds that preceded `v0.1.0` are in that tag's copy of
+this file. From `v0.1.0`:
+
+- **`TransitionSpec.on` is now `Option<String>`.** `None` is an eventless
+  transition, taken during the macrostep rather than on an external event.
+  `TransitionSpec::is_eventless` and `TransitionSpec::cell_key` read it without
+  matching the option, and `spec::ALWAYS_KEY` is the key an eventless
+  transition occupies.
+- **Spec structs gained fields.** `TransitionSpec`, `Block`, and
+  `DeadlineSpec` gain `raises` and `signals`; `StateNode` gains `final_state`
+  and `invokes`; `EventDecl` gains `internal`; `MachineSpec` gains
+  `supersedes`. The new types are `RaiseSpec`, `SignalSpec`, `InvokeSpec`,
+  `SupersedesSpec`, and `Catalogue`. A definition that sets none of them
+  canonicalizes exactly as it did under `v0.1.0`, so no `machine_id` moved.
+- **Compilation takes a catalogue when a definition invokes another machine.**
+  `compile_with_catalogue`, `compile_accepted_with_catalogue`, and
+  `validate_catalogue` are the composition-aware entry points; the existing
+  `compile` signatures are unchanged and still correct for a machine that
+  invokes nothing. `generated_event_names` reports the done events a
+  definition produces.
+- **`InstanceState` gains `invocations` and `signals`**, and `Applied` gains
+  `invocations_after`, `cancelled_children`, and `signals`. The supporting
+  types are `machine::Invocation`, `machine::InvokeStatus`,
+  `machine::PendingSignal`, and `machine::CancelledChild`.
+- **The macrostep entry points are additive.** `step_with`, `create_with`, and
+  `poll_deadline_with` take a selector; `react_from`, `deliver_generated`,
+  `schedule_for`, `parse_init_for`, and `eval_invariants_for` expose the pieces
+  a host driving its own loop needs, with `EngineSelector`,
+  `ReactionSelector`, `ReactionSelection`, `InternalEvent`, `InternalOrigin`,
+  and `DONE_INVOKE_PREFIX`. `step`, `create`, and `poll_deadline` keep their
+  `v0.1.0` signatures and run a full macrostep.
+- **Exhaustive diagnostic and persistence matches must handle the new
+  variants.** `RecordKind` gains `InstanceInvoked`, `InvocationReturned`,
+  `SignalDelivered`, `InstanceMigrated`, and `EffectAttempted`, so
+  `RecordKind::all()` now returns 19 entries. `ReplayError` gains
+  `MicrostepMismatch { seq, index }`. `ExprSlot` gains the raise, signal, and
+  `InvokeWith` slots.
+- **Trace types gained fields.** `DecisionTrace` gains `microsteps` and
+  `internal_unhandled`; `BlockTrace` gains `raises` and `signals`. The new
+  trace types are `MicrostepTrace`, `MicrostepTrigger`, `RaiseTrace`,
+  `SignalTrace`, and `UnhandledInternalTrace`. One record now carries the
+  whole cascade, which is why a reader that assumed one transition per record
+  needs the microstep list.
+- **`Tree` gains `final_owner`**, with `Tree::final_owner` and
+  `Tree::final_children` as the accessors, backing generated done events for
+  finished compounds and regions.
+- **State hashing moves to `fsm.state/3`.** `hashes::state_hash_v3`,
+  `STATE_DOMAIN_V3`, and `STATE_FORMAT_V3` are current; `state_hash_v2`,
+  `STATE_DOMAIN_V2`, and `STATE_FORMAT_V2` remain exported so a record written
+  by `v0.1.0` verifies under the format it declares. `CHILD_DOMAIN` and
+  `child_instance_id` derive a child instance id, and `invocations_value`,
+  `signals_value`, and `digest_of` are the new canonicalization helpers.
+- **New ceilings are public constants**: `MAX_MICROSTEPS`,
+  `MACROSTEP_EVAL_TICKS`, `MAX_RAISES_PER_BLOCK`, `MAX_SIGNALS_PER_BLOCK`,
+  `MAX_INVOKES_PER_STATE`, and `MAX_INVOKE_DEPTH`. A definition or a run that
+  exceeds one fails with a `def/limit_*` or `run/microstep_limit` code rather
+  than an `internal/budget`.
+- **`fsm_core::migrate` is a new module**: `preview`, `preview_all`, `migrate`,
+  `carry_over`, and `validate_supersedes`, returning `MigrationPreview`,
+  `PreviewGroup`, `MigrationReport`, `Migrated`, and `Carried`.
+- **`fsm_core::analyze` gained reactive and composition findings**:
+  `reactive_summary` and `ReactiveSummary`, `eventless_cycle_findings`,
+  `eventless_noop_findings`, and `invoke_findings`.
+  `replay::replay_sealed_step`, `record::microsteps_value`, and
+  `record::instances_touched` support replaying and reporting a sealed
+  macrostep.
+- **`fsm_store::store::Store` gained two public fields** — `parents` and
+  `machine_seqs` — so any field-by-field construction of it breaks. Its new
+  methods are `invoke_child`, `invoke_child_on`, `invocation_return`,
+  `invocation_return_on`, `signal_deliver`, `signal_deliver_on`,
+  `invoke_catalogue`, `parent_of`, `orphaned_children`, `cancel_orphans_on`,
+  `migrate_instance`, `migrate_instance_on`, `attempt_effect_on`,
+  `attempts_for`, `instance_report`, `machine_history`, and `created_seq`.
+  `fsm_store::journal_io` gains what the audit surface is built on:
+  `diagnose` and `Diagnosis`, which classify a data directory without opening
+  it for writing, so a store that will not open can still be diagnosed;
+  `load_intact_prefix`; and `verify_segments_with` with its `Walk` verdict and
+  `BATCH` callback interval, so a long verification can report progress and be
+  cancelled. `fsm_store::store::views_rendered` counts the instance views this
+  process has rendered.
+- **The persisted formats moved**: `journal_io::STORE_VERSION` is `9`, and
+  `snapshot::SNAPSHOT_FORMAT` and `SNAPSHOT_DOMAIN` are `fsm.snapshot/5`. See
+  [RELEASE.md](RELEASE.md) for what happens to a `v0.1.0` store on first open.
+- **`fsm-execute` is a new crate**, provisional under the table above. It is
+  the effect executor `fsm execute` runs: a handler table, journaled retries
+  with deterministic backoff, bounded concurrency with per-instance fairness,
+  and subprocess and MCP handler kinds.
 
 Changes a compiling downstream would notice include:
 
@@ -154,10 +187,8 @@ Changes a compiling downstream would notice include:
 
 Compatible changes include bug fixes that make behaviour match its
 documentation, additive functions and modules, better hints and messages, and
-performance improvements. While both major and minor remain zero, both
-categories advance the patch. If the project later adopts a nonzero minor
-before `1.0`, the minor is the breaking bump and the patch is the compatible
-bump.
+performance improvements. Those advance the patch; anything in the list above
+advances the minor, until `1.0` makes the major the breaking bump.
 
 Two clarifications, because they are the ones that bite:
 
@@ -197,7 +228,7 @@ Rules:
   supported format is folded and re-stamped on open. Records are never edited, so
   anything a record did not carry stays absent — a `request_id` claimed before
   fingerprints existed (format ≤ 6) can be replayed but not conflict-checked.
-  Store formats 1 through 7 and markerless journals are full-folded before the
+  Store formats 1 through 8 and markerless journals are full-folded before the
   `VERSION` marker is stamped 9.
 - **A store from a newer format is refused, not guessed at** (`store/version_mismatch`).
 - **Snapshots are a disposable cache.** An unreadable or stale-format snapshot is
