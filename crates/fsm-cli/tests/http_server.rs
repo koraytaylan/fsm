@@ -2,7 +2,7 @@
 //!
 //! Plan 0015 task 6901.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -102,15 +102,18 @@ fn request(stream: &mut TcpStream, path: &str) -> std::io::Result<String> {
 
 /// Read one response: status line, headers, and exactly `Content-Length`
 /// bytes of body.
+///
+/// Straight off the socket, a byte at a time, because the two obvious
+/// shortcuts are both wrong on a keep-alive connection. A `BufReader` reads
+/// past this response and drops whatever it buffered when it goes out of
+/// scope, so the next response starts mid-stream; and holding one by cloning
+/// the socket per call is not portable — dropping the clone ends the
+/// connection on Windows and macOS, where the next request is met with a
+/// reset, while Unix `dup` semantics let it pass here unnoticed.
 fn read_response(stream: &mut TcpStream) -> std::io::Result<String> {
-    let mut reader = BufReader::new(stream.try_clone()?);
     let mut head = String::new();
     let mut length = 0usize;
-    loop {
-        let mut line = String::new();
-        if reader.read_line(&mut line)? == 0 {
-            break;
-        }
+    while let Some(line) = read_line(stream)? {
         if line.trim().is_empty() {
             break;
         }
@@ -120,8 +123,27 @@ fn read_response(stream: &mut TcpStream) -> std::io::Result<String> {
         head.push_str(&line);
     }
     let mut body = vec![0u8; length];
-    reader.read_exact(&mut body)?;
+    stream.read_exact(&mut body)?;
     Ok(format!("{head}\r\n{}", String::from_utf8_lossy(&body)))
+}
+
+/// One line, terminator included. `None` is end of stream, which a blank
+/// line is not — the two are the same string once trimmed.
+fn read_line(stream: &mut TcpStream) -> std::io::Result<Option<String>> {
+    let mut line: Vec<u8> = Vec::new();
+    loop {
+        let mut byte = [0u8; 1];
+        match stream.read(&mut byte)? {
+            0 if line.is_empty() => return Ok(None),
+            0 => return Ok(Some(String::from_utf8_lossy(&line).into_owned())),
+            _ => {
+                line.push(byte[0]);
+                if byte[0] == b'\n' {
+                    return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+                }
+            }
+        }
+    }
 }
 
 #[test]
