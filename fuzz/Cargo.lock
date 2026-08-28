@@ -34,15 +34,24 @@ checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
 
 [[package]]
 name = "fsm-cli"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "fsm-core",
+ "fsm-execute",
  "fsm-store",
 ]
 
 [[package]]
 name = "fsm-core"
-version = "0.0.0"
+version = "0.2.0"
+
+[[package]]
+name = "fsm-execute"
+version = "0.2.0"
+dependencies = [
+ "fsm-core",
+ "fsm-store",
+]
 
 [[package]]
 name = "fsm-fuzz"
@@ -55,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "fsm-store"
-version = "0.0.0"
+version = "0.2.0"
 dependencies = [
  "fsm-core",
 ]

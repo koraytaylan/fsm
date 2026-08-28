@@ -63,6 +63,13 @@ jobs:
       # paid, and keep docs/RELEASE.md in step.
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo doc --workspace --no-deps
+      # The fuzz crate is its own workspace, so `--workspace` above never
+      # touches it and its targets drift out of the API they call. Two had:
+      # they stopped compiling somewhere in plans 0009-0016 and nothing said
+      # so, because the only job that builds them runs on a tag. This is a
+      # plain build — the instrumented one still needs nightly and cargo-fuzz
+      # in `release.yml` — and it is the cheap half that catches the rot.
+      - run: cargo build --manifest-path fuzz/Cargo.toml --bins
       # Committed decimal vectors must be reproducible from the generator on
       # every leg; a stale fixture fails before it can mislead a release.
       - name: Decimal vectors regenerate byte-identically

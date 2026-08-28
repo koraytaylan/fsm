@@ -12,10 +12,14 @@ fuzz_target!(|data: &[u8]| {
             assert!(fsm_core::expr::ast::depth(&e) <= 32);
         }
         Err(e) => {
-            assert!(e.span.start <= e.span.end);
-            assert!(e.span.end <= s.len());
-            assert!(s.is_char_boundary(e.span.start) || e.span.start == s.len());
-            assert!(s.is_char_boundary(e.span.end) || e.span.end == s.len());
+            // Spans are `u32` offsets into the source; the comparisons below
+            // are against `str` lengths, which are `usize`.
+            let start = e.span.start as usize;
+            let end = e.span.end as usize;
+            assert!(start <= end);
+            assert!(end <= s.len());
+            assert!(s.is_char_boundary(start) || start == s.len());
+            assert!(s.is_char_boundary(end) || end == s.len());
             assert!(!e.code.is_empty());
         }
     }

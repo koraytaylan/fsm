@@ -5,6 +5,13 @@ edition = "2024"
 rust-version = "1.89"
 publish = false
 
+# cargo-fuzz refuses a manifest without this marker — "does not look like a
+# cargo-fuzz manifest" — so without it every `cargo fuzz run` fails before it
+# builds anything. The targets below were exercised through `cargo build`
+# alone until the first tag actually ran the fuzz job.
+[package.metadata]
+cargo-fuzz = true
+
 [workspace]
 
 [dependencies]
