@@ -497,7 +497,7 @@ fn explicit_defaults_share_one_identity_path() {
 
 fn compile_s(s: &str) -> Result<fsm_core::machine::CompiledMachine, Vec<fsm_core::spec::Finding>> {
     let v = parse(s.as_bytes(), &JsonLimits::DEFAULT).unwrap();
-    let spec = parse_machine(&v).map_err(|e| e)?;
+    let spec = parse_machine(&v)?;
     compile(spec)
 }
 

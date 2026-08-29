@@ -125,10 +125,10 @@ fn delete_pointer(v: &mut Value, path: &str) {
             o.remove(*last);
         }
         Value::Arr(a) => {
-            if let Ok(i) = last.parse::<usize>() {
-                if i < a.len() {
-                    a.remove(i);
-                }
+            if let Ok(i) = last.parse::<usize>()
+                && i < a.len()
+            {
+                a.remove(i);
             }
         }
         _ => {}
@@ -167,10 +167,10 @@ fn set_pointer(v: &mut Value, path: &str, val: Value) {
             o.insert((*last).into(), val);
         }
         Value::Arr(a) => {
-            if let Ok(i) = last.parse::<usize>() {
-                if i < a.len() {
-                    a[i] = val;
-                }
+            if let Ok(i) = last.parse::<usize>()
+                && i < a.len()
+            {
+                a[i] = val;
             }
         }
         _ => {}
@@ -235,15 +235,13 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
     let mut v = bad.clone();
     let path = finding_path(err);
     let hint = finding_hint(err);
-    if let Value::Obj(o) = &mut v {
-        if let Some(n) = o
+    if let Value::Obj(o) = &mut v
+        && let Some(n) = o
             .get_mut("name")
             .and_then(|n| if let Value::Str(s) = n { Some(s) } else { None })
-        {
-            if !n.ends_with("_fix") {
-                n.push_str("_fix");
-            }
-        }
+        && !n.ends_with("_fix")
+    {
+        n.push_str("_fix");
     }
     match err.code.as_str() {
         "def/unknown_key" => delete_pointer(&mut v, &path),
@@ -277,40 +275,39 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             let _ = (&path, &hint);
         }
         "def/dup_name" => {
-            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
-                if st.len() > 1 {
-                    if let Some(Value::Obj(o)) = st.last_mut() {
-                        o.insert("name".into(), Value::Str("b".into()));
-                    }
-                }
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states"))
+                && st.len() > 1
+                && let Some(Value::Obj(o)) = st.last_mut()
+            {
+                o.insert("name".into(), Value::Str("b".into()));
             }
         }
         "def/reserved_ident" => {
-            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
-                if let Some(Value::Obj(o)) = st.first_mut() {
-                    o.insert("name".into(), Value::Str("a".into()));
-                }
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states"))
+                && let Some(Value::Obj(o)) = st.first_mut()
+            {
+                o.insert("name".into(), Value::Str("a".into()));
             }
             set_pointer(&mut v, "/initial", Value::Str("a".into()));
         }
         "def/unknown_state" | "def/initial_not_child" | "def/initial_is_history" => {
-            if let Some(n) = first_state_name(&v) {
-                if path.contains("initial") || path.is_empty() {
-                    let child = v
-                        .get("states")
-                        .and_then(Value::as_arr)
-                        .and_then(|st| st.first())
-                        .and_then(|c| c.get("states"))
-                        .and_then(Value::as_arr)
-                        .and_then(|a| a.iter().find(|x| x.get("history").is_none()))
-                        .and_then(|x| x.get("name"))
-                        .and_then(Value::as_str)
-                        .map(str::to_string);
-                    if let Some(ch) = child {
-                        set_pointer(&mut v, "/states/0/initial", Value::Str(ch));
-                    }
-                    set_pointer(&mut v, "/initial", Value::Str(n));
+            if let Some(n) = first_state_name(&v)
+                && (path.contains("initial") || path.is_empty())
+            {
+                let child = v
+                    .get("states")
+                    .and_then(Value::as_arr)
+                    .and_then(|st| st.first())
+                    .and_then(|c| c.get("states"))
+                    .and_then(Value::as_arr)
+                    .and_then(|a| a.iter().find(|x| x.get("history").is_none()))
+                    .and_then(|x| x.get("name"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                if let Some(ch) = child {
+                    set_pointer(&mut v, "/states/0/initial", Value::Str(ch));
                 }
+                set_pointer(&mut v, "/initial", Value::Str(n));
             }
         }
         "def/one_initial" => {
@@ -334,10 +331,10 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
         "def/eventless_evt" => {
             // The hint offers two fixes; the caller takes the second and
             // names the declared event that supplies `evt`.
-            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
-                if let Some(Value::Obj(t)) = tr.first_mut() {
-                    t.insert("on".into(), Value::Str("e".into()));
-                }
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions"))
+                && let Some(Value::Obj(t)) = tr.first_mut()
+            {
+                t.insert("on".into(), Value::Str("e".into()));
             }
         }
         "def/eventless_from_terminal" => {
@@ -355,47 +352,46 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             }
         }
         "def/terminal_has_transitions" => {
-            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
-                if let Some(Value::Obj(t)) = tr.first_mut() {
-                    t.insert("from".into(), Value::Str("a".into()));
-                }
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions"))
+                && let Some(Value::Obj(t)) = tr.first_mut()
+            {
+                t.insert("from".into(), Value::Str("a".into()));
             }
-            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
-                if let Some(Value::Obj(o)) = st.get_mut(1) {
-                    o.remove("terminal");
-                }
+            if let Some(Value::Arr(st)) = v.as_obj_mut().and_then(|o| o.get_mut("states"))
+                && let Some(Value::Obj(o)) = st.get_mut(1)
+            {
+                o.remove("terminal");
             }
         }
         "def/from_history" => {
-            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
-                if let Some(Value::Obj(t)) = tr.first_mut() {
-                    t.insert("from".into(), Value::Str("l".into()));
-                }
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions"))
+                && let Some(Value::Obj(t)) = tr.first_mut()
+            {
+                t.insert("from".into(), Value::Str("l".into()));
             }
         }
         "def/history_target_from_inside" => {
-            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
-                if let Some(Value::Obj(t)) = tr.first_mut() {
-                    t.insert("to".into(), Value::Str("r".into()));
-                }
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions"))
+                && let Some(Value::Obj(t)) = tr.first_mut()
+            {
+                t.insert("to".into(), Value::Str("r".into()));
             }
         }
         "def/multiple_history" => {
-            if let Some(Value::Arr(top)) = v.as_obj_mut().and_then(|o| o.get_mut("states")) {
-                if let Some(Value::Obj(c)) = top.first_mut() {
-                    if let Some(Value::Arr(ch)) = c.get_mut("states") {
-                        let mut seen = false;
-                        ch.retain(|n| {
-                            if n.get("history").is_some() {
-                                if seen {
-                                    return false;
-                                }
-                                seen = true;
-                            }
-                            true
-                        });
+            if let Some(Value::Arr(top)) = v.as_obj_mut().and_then(|o| o.get_mut("states"))
+                && let Some(Value::Obj(c)) = top.first_mut()
+                && let Some(Value::Arr(ch)) = c.get_mut("states")
+            {
+                let mut seen = false;
+                ch.retain(|n| {
+                    if n.get("history").is_some() {
+                        if seen {
+                            return false;
+                        }
+                        seen = true;
                     }
-                }
+                    true
+                });
             }
         }
         "def/unknown_event" => {
@@ -429,23 +425,20 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             );
         }
         "def/dup_set" => {
-            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
-                if let Some(Value::Obj(t)) = tr.first_mut() {
-                    if let Some(Value::Arr(d)) = t.get_mut("do") {
-                        d.truncate(1);
-                    }
-                }
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions"))
+                && let Some(Value::Obj(t)) = tr.first_mut()
+                && let Some(Value::Arr(d)) = t.get_mut("do")
+            {
+                d.truncate(1);
             }
         }
         "def/assign_type" => {
-            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
-                if let Some(Value::Obj(t)) = tr.first_mut() {
-                    if let Some(Value::Arr(d)) = t.get_mut("do") {
-                        if let Some(Value::Obj(s)) = d.first_mut() {
-                            s.insert("value".into(), Value::Str("1".into()));
-                        }
-                    }
-                }
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions"))
+                && let Some(Value::Obj(t)) = tr.first_mut()
+                && let Some(Value::Arr(d)) = t.get_mut("do")
+                && let Some(Value::Obj(s)) = d.first_mut()
+            {
+                s.insert("value".into(), Value::Str("1".into()));
             }
         }
         "def/cross_region" => {
@@ -554,12 +547,11 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
                 };
                 if let Some(Value::Arr(evs)) = v.as_obj_mut().and_then(|o| o.get_mut(bucket)) {
                     for ev in evs {
-                        if ev.get("name").and_then(Value::as_str) == Some(name) {
-                            if let Some(Value::Arr(f)) =
+                        if ev.get("name").and_then(Value::as_str) == Some(name)
+                            && let Some(Value::Arr(f)) =
                                 ev.as_obj_mut().and_then(|o| o.get_mut("fields"))
-                            {
-                                f.truncate(1);
-                            }
+                        {
+                            f.truncate(1);
                         }
                     }
                 } else {
@@ -673,11 +665,11 @@ pub(crate) fn repair_spec(bad: &Value, err: &fsm_cli::store::ErrorObj) -> Value 
             delete_pointer(&mut v, "/states/0/states/1/terminal");
         }
         "def/final_has_transitions" => {
-            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions")) {
-                if let Some(Value::Obj(t)) = tr.first_mut() {
-                    t.insert("from".into(), Value::Str("a".into()));
-                    t.insert("to".into(), Value::Str("f".into()));
-                }
+            if let Some(Value::Arr(tr)) = v.as_obj_mut().and_then(|o| o.get_mut("transitions"))
+                && let Some(Value::Obj(t)) = tr.first_mut()
+            {
+                t.insert("from".into(), Value::Str("a".into()));
+                t.insert("to".into(), Value::Str("f".into()));
             }
         }
         "def/final_is_initial" => {

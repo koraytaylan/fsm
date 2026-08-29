@@ -7,10 +7,10 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use crate::harness::{case, obj, store};
 
 fn note_codes(v: &Value, out: &mut std::collections::BTreeSet<String>) {
-    if let Some(c) = v.get("code").and_then(Value::as_str) {
-        if ALL_CODES.contains(&c) {
-            out.insert(c.to_string());
-        }
+    if let Some(c) = v.get("code").and_then(Value::as_str)
+        && ALL_CODES.contains(&c)
+    {
+        out.insert(c.to_string());
     }
     if let Some(arr) = v.get("findings").and_then(Value::as_arr) {
         for f in arr {
@@ -47,10 +47,10 @@ pub(crate) fn note_err(e: &fsm_cli::store::ErrorObj, out: &mut std::collections:
 pub(crate) fn note_ok(v: &Value, out: &mut std::collections::BTreeSet<String>) {
     if let Some(arr) = v.get("warnings").and_then(Value::as_arr) {
         for w in arr {
-            if let Some(c) = w.as_str() {
-                if ALL_CODES.contains(&c) {
-                    out.insert(c.to_string());
-                }
+            if let Some(c) = w.as_str()
+                && ALL_CODES.contains(&c)
+            {
+                out.insert(c.to_string());
             }
             note_codes(w, out);
         }

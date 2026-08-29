@@ -216,12 +216,12 @@ pub(super) fn apply_candidate(
     } else {
         let mut target = tr.to.clone().unwrap();
         let mut extra = Vec::new();
-        if let Some(tn) = find(states, &target) {
-            if tn.history.is_some() {
-                let owner = parent_of(states, &target).unwrap();
-                extra = hist_descent(states, &target, st.history.get(&owner).map(String::as_str));
-                target = owner;
-            }
+        if let Some(tn) = find(states, &target)
+            && tn.history.is_some()
+        {
+            let owner = parent_of(states, &target).unwrap();
+            extra = hist_descent(states, &target, st.history.get(&owner).map(String::as_str));
+            target = owner;
         }
         let external_self = tr.to.as_deref() == Some(winner.source.as_str());
         let dom = if external_self {
@@ -247,19 +247,19 @@ pub(super) fn apply_candidate(
     let mut raised = Vec::new();
     let mut signalled = Vec::new();
     for name in &exited {
-        if let Some(node) = find(states, name) {
-            if let Some(b) = &node.exit {
-                apply_block(
-                    b,
-                    &mut ctx,
-                    fields,
-                    false,
-                    budget,
-                    effects,
-                    &mut raised,
-                    &mut signalled,
-                )?;
-            }
+        if let Some(node) = find(states, name)
+            && let Some(b) = &node.exit
+        {
+            apply_block(
+                b,
+                &mut ctx,
+                fields,
+                false,
+                budget,
+                effects,
+                &mut raised,
+                &mut signalled,
+            )?;
         }
     }
     let tblock = fsm_core::spec::Block {
@@ -279,36 +279,36 @@ pub(super) fn apply_candidate(
         &mut signalled,
     )?;
     for name in &entered {
-        if let Some(node) = find(states, name) {
-            if let Some(b) = &node.entry {
-                apply_block(
-                    b,
-                    &mut ctx,
-                    fields,
-                    false,
-                    budget,
-                    effects,
-                    &mut raised,
-                    &mut signalled,
-                )?;
-            }
+        if let Some(node) = find(states, name)
+            && let Some(b) = &node.entry
+        {
+            apply_block(
+                b,
+                &mut ctx,
+                fields,
+                false,
+                budget,
+                effects,
+                &mut raised,
+                &mut signalled,
+            )?;
         }
     }
     let mut history_after = st.history.clone();
     for name in &exited {
-        if let Some(node) = find(states, name) {
-            if is_compound(node) {
-                for ch in &node.states {
-                    if let Some(hk) = ch.history {
-                        let bound = match hk {
-                            HistoryKind::Deep => winner.leaf.clone(),
-                            HistoryKind::Shallow => chain(states, &winner.leaf)
-                                .into_iter()
-                                .find(|n| parent_of(states, n).as_deref() == Some(name.as_str()))
-                                .unwrap_or_else(|| winner.leaf.clone()),
-                        };
-                        history_after.insert(name.clone(), bound);
-                    }
+        if let Some(node) = find(states, name)
+            && is_compound(node)
+        {
+            for ch in &node.states {
+                if let Some(hk) = ch.history {
+                    let bound = match hk {
+                        HistoryKind::Deep => winner.leaf.clone(),
+                        HistoryKind::Shallow => chain(states, &winner.leaf)
+                            .into_iter()
+                            .find(|n| parent_of(states, n).as_deref() == Some(name.as_str()))
+                            .unwrap_or_else(|| winner.leaf.clone()),
+                    };
+                    history_after.insert(name.clone(), bound);
                 }
             }
         }

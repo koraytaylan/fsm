@@ -6,8 +6,10 @@ kind: chore
 depends_on: []
 gated: false
 touches:
+  - crates/fsm-core/src/json/parse.rs
   - crates/fsm-core/tests/enumerate_small.rs
-  - crates/fsm-core/tests/enumerate_reactive.rs
+  - crates/fsm-core/tests/enumerate_small/compare.rs
+  - crates/fsm-core/tests/oracle.rs
   - crates/fsm-core/tests/oracle
   - crates/fsm-core/tests/spec_validate.rs
   - crates/fsm-core/tests/canon_golden.rs
@@ -18,9 +20,10 @@ touches:
   - crates/fsm-cli/src/cli/machine.rs
   - crates/fsm-cli/tests/crash_harness.rs
   - crates/fsm-cli/tests/cli_golden.rs
+  - crates/fsm-cli/tests/executor_chaos.rs
   - crates/fsm-cli/tests/naive_caller
   - crates/fsm-cli/tests/mcp_full.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # All-Targets Clippy Clean
@@ -31,7 +34,7 @@ The lint that is supposed to guard the riskiest change in this repository curren
 
 1. Fix the hard error first: `crates/fsm-core/tests/enumerate_small.rs:796` uses `eprintln!` against the workspace-level `print_stderr = "deny"`. Nothing behind it is visible until this compiles.
 2. That line prints a genuine summary an author wants when running the suite by hand, so **do not delete it**. Use whatever mechanism the workspace already provides for a test that must write to a stream; if none applies, `#[allow(clippy::print_stderr)]` with a reason comment naming why this test prints. The reason is the point — a bare `#[allow]` moves the problem instead of resolving it.
-3. Re-run `cargo clippy --workspace --all-targets` and work the remaining findings, roughly 95 across the files listed in `touches`, all predating plan 0009. Plans 0009 through 0016's own files were cleared in `46450d0` and should stay clean.
+3. Re-run `cargo clippy --workspace --all-targets` and work the remaining findings across the files listed in `touches`, all predating plan 0009. Plans 0009 through 0016's own files were cleared in `46450d0` and should stay clean. (Measured after the hard error was cleared: **73 findings, and two further hard errors** — `crash_harness.rs` and `cli_golden.rs` also violate the print denies, and the first run could not see them because it stopped compiling at `enumerate_small`. The pre-plan estimate of ~95 was taken from that truncated run.)
 4. Prefer the mechanical fix the lint suggests. The dominant kinds are `useless_conversion` on `&str` literals in flag tables and `type_complexity` on tuple-heavy test helpers.
 5. **A fix that changes what a test asserts is not a fix.** Where removing an `.into()` would change a type in a way that changes behaviour, `#[allow]` it and say why in the comment.
 6. For `type_complexity`, introduce a named type alias or struct where it makes the helper readable, and `#[allow]` with a reason where the tuple is genuinely clearer. `CONTRIBUTING.md` treats craft guidance as heuristics with a stated purpose, and "following it here made the code harder to read" is a complete answer — written down, not assumed.

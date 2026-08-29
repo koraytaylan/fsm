@@ -1,5 +1,13 @@
 //! Kill-and-recover harness. 1,000 iterations; never lower the floor.
 
+// This harness prints for two unrelated reasons and both are load-bearing.
+// The child process writes each committed request id to stdout, which is the
+// only channel the parent has for learning what the killed run acked — the
+// parent pipes it and parses it back at `acked`. And the classification tally
+// is the suite's report to whoever reads a CI log: a run where no kill landed
+// on a live store looks exactly like one where every kill did.
+#![allow(clippy::print_stdout)]
+
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};

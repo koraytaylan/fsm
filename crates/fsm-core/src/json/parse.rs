@@ -566,7 +566,7 @@ mod tests {
         let cap = JsonLimits::DEFAULT.max_bytes;
         let mut ok = Vec::with_capacity(cap);
         ok.push(b'"');
-        ok.extend(std::iter::repeat(b'a').take(cap - 2));
+        ok.extend(std::iter::repeat_n(b'a', cap - 2));
         ok.push(b'"');
         assert_eq!(ok.len(), cap);
         assert!(parse(&ok, &JsonLimits::DEFAULT).is_ok());

@@ -103,8 +103,8 @@ mod tests {
                 &Args {
                     positionals: vec!["case_review".into()],
                     flags: BTreeMap::from([
-                        ("format".into(), "mermaid".into()),
-                        ("o".into(), out.display().to_string())
+                        ("format", "mermaid".into()),
+                        ("o", out.display().to_string())
                     ]),
                     switches: Default::default()
                 }
@@ -117,7 +117,7 @@ mod tests {
                 &mut c,
                 &Args {
                     positionals: vec!["case_review".into()],
-                    flags: BTreeMap::from([("format".into(), "png".into())]),
+                    flags: BTreeMap::from([("format", "png".into())]),
                     switches: Default::default()
                 }
             ),
@@ -128,7 +128,7 @@ mod tests {
                 &mut c,
                 &Args {
                     positionals: vec!["case_review".into()],
-                    flags: BTreeMap::from([("instance".into(), "missing".into())]),
+                    flags: BTreeMap::from([("instance", "missing".into())]),
                     switches: Default::default()
                 }
             ),

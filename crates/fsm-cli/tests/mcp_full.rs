@@ -94,10 +94,8 @@ fn assert_transcript(ver: &str) {
     };
     let got = drive(input);
     if std::env::var("REGEN_MCP_FULL").ok().as_deref() == Some("1") {
-        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
-            "tests/fixtures/transcripts/full_{}.out.jsonl",
-            ver.replace('-', "-")
-        ));
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("tests/fixtures/transcripts/full_{ver}.out.jsonl"));
         std::fs::write(p, &got).unwrap();
         return;
     }

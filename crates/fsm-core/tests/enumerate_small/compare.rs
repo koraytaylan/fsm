@@ -308,20 +308,26 @@ pub(super) fn execute_macrostep_case(src: String, counts: &mut SuiteCounts) -> b
     true
 }
 
+/// One microstep reduced to comparable values, in trace order: index, trigger,
+/// source state, transition index, region, exit set, and entry set. The trigger
+/// is compared through its `Debug` rendering because the two interpreters build
+/// it from different types.
+type ComparableMicrostep = (
+    u32,
+    String,
+    String,
+    u32,
+    Option<String>,
+    Vec<String>,
+    Vec<String>,
+);
+
 /// Everything `assert_applied_parity` compares, plus the macrostep's
 /// reactions: each microstep's index, trigger, source, transition, region,
 /// exit set, and entry set, and every discarded internal event.
 pub(super) fn assert_macrostep_parity(engine: &Applied, oracle: &Applied, case: &str) {
     assert_applied_parity(engine, oracle, case);
-    let reactions = |applied: &Applied| -> Vec<(
-        u32,
-        String,
-        String,
-        u32,
-        Option<String>,
-        Vec<String>,
-        Vec<String>,
-    )> {
+    let reactions = |applied: &Applied| -> Vec<ComparableMicrostep> {
         applied
             .trace
             .microsteps

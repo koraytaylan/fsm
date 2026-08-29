@@ -58,6 +58,10 @@ const DEADLINE_MS: i64 = 30_000;
 static TEMPORARY_DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Where a restart lands, relative to the two writes that settle an effect.
+// The shared `After` prefix is the type's meaning, not an accident of naming:
+// every variant is a point *after* one specific write, and a name that dropped
+// it would read as the write itself rather than the instant behind it.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeathPoint {
     /// After the handler was spawned, before anyone reaped it.
@@ -381,12 +385,12 @@ fn observe(directory: &TestDirectory) -> Outcome {
                     .get("request_id")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
-                if let Some(rest) = request_id.strip_prefix("exec-ev-") {
-                    if let Some((effect_id, event)) = rest.rsplit_once('-') {
-                        *advances
-                            .entry((effect_id.to_string(), event.to_string()))
-                            .or_default() += 1;
-                    }
+                if let Some(rest) = request_id.strip_prefix("exec-ev-")
+                    && let Some((effect_id, event)) = rest.rsplit_once('-')
+                {
+                    *advances
+                        .entry((effect_id.to_string(), event.to_string()))
+                        .or_default() += 1;
                 }
             }
             _ => {}

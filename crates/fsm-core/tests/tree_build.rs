@@ -1,11 +1,15 @@
 use fsm_core::spec::load_machine_json;
 use fsm_core::tree::{NodeKind, Tree};
 
+/// One expected row of a compiled tree, in table order: name, parent, depth,
+/// node kind, and initial child.
+type ExpectedNode<'a> = (&'a str, Option<&'a str>, u8, &'a str, Option<&'a str>);
+
 #[test]
 fn case_review_tables() {
     let spec = load_machine_json(include_bytes!("fixtures/machines/case_review.json")).unwrap();
     let t = Tree::for_machine(&spec);
-    let rows: &[(&str, Option<&str>, u8, &str, Option<&str>)] = &[
+    let rows: &[ExpectedNode] = &[
         ("intake", None, 1, "leaf", None),
         ("in_review", None, 1, "compound", Some("docs_review")),
         ("resume_review", Some("in_review"), 2, "history", None),

@@ -3,6 +3,13 @@
 //! Every entry point runs the macrostep loop in `macrostep.rs`, written the
 //! dumbest possible way.
 
+// Every entry point returns the production `Rejection` by value, which clippy
+// reports as a large `Err`. Boxing it is exactly the wrong trade here: the
+// differential compares an oracle result against an engine result, and it is
+// only legible while the two signatures are the same signature. A test that
+// runs once per generated machine has no allocation budget worth defending.
+#![allow(clippy::result_large_err)]
+
 use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::{Bindings, Budget, Val, eval};

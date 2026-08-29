@@ -87,18 +87,14 @@ fn each_structural_rule() {
         codes_of(&s)
     );
 
-    let s = format!(
-        r#"{{"format":"fsm.machine/1","name":"m","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"e","fields":[]}}],"effects":[],"transitions":[{{"from":"a","on":"e","emit":[{{"effect":"nope","args":{{}}}}]}}]}}"#
-    );
+    let s = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"e","fields":[]}],"effects":[],"transitions":[{"from":"a","on":"e","emit":[{"effect":"nope","args":{}}]}]}"#.to_string();
     assert!(
         codes_of(&s).contains(&"def/unknown_effect"),
         "{:?}",
         codes_of(&s)
     );
 
-    let s = format!(
-        r#"{{"format":"fsm.machine/1","name":"m","states":[{{"name":"a"}}],"initial":"a","context":[{{"name":"r","ty":{{"enum":"Missing"}},"init":"x"}}],"events":[],"transitions":[]}}"#
-    );
+    let s = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[{"name":"r","ty":{"enum":"Missing"},"init":"x"}],"events":[],"transitions":[]}"#.to_string();
     assert!(
         codes_of(&s).contains(&"def/unknown_enum"),
         "{:?}",
@@ -163,24 +159,18 @@ fn each_structural_rule() {
         codes_of(&s)
     );
 
-    let s = format!(
-        r#"{{"format":"fsm.machine/1","name":"m","states":[{{"name":"a"}}],"initial":"a","context":[],"events":[{{"name":"$e","fields":[]}}],"transitions":[]}}"#
-    );
+    let s = r#"{"format":"fsm.machine/1","name":"m","states":[{"name":"a"}],"initial":"a","context":[],"events":[{"name":"$e","fields":[]}],"transitions":[]}"#.to_string();
     assert!(
         codes_of(&s).contains(&"def/reserved_ident"),
         "{:?}",
         codes_of(&s)
     );
 
-    let s = format!(
-        r#"{{"format":"fsm.machine/1","name":"m","regions":[],"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
-    );
+    let s = r#"{"format":"fsm.machine/1","name":"m","regions":[],"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#.to_string();
     let cs = parse_s_res(&s).err().unwrap_or_default();
     assert!(cs.contains(&"def/shape"), "{cs:?}");
 
-    let s = format!(
-        r#"{{"format":"fsm.machine/1","name":"m","deadlines":[],"states":[{{"name":"a"}}],"initial":"a","context":[],"events":[],"transitions":[]}}"#
-    );
+    let s = r#"{"format":"fsm.machine/1","name":"m","deadlines":[],"states":[{"name":"a"}],"initial":"a","context":[],"events":[],"transitions":[]}"#.to_string();
     assert!(parse_s_res(&s).is_ok());
 }
 
@@ -210,7 +200,7 @@ fn limit_sets_and_generated_bytes() {
     );
 
     let mut big = vec![b'{'; 1];
-    big.extend(std::iter::repeat(b'x').take(256 * 1024 + 10));
+    big.extend(std::iter::repeat_n(b'x', 256 * 1024 + 10));
     let r = load_machine_json(&big);
     assert!(r.unwrap_err().iter().any(|f| f.code == "def/limit_bytes"));
 }

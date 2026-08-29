@@ -314,7 +314,7 @@ mod tests {
         let mut c2 = ctx(&dir);
         let args2 = Args {
             positionals: vec![case()],
-            flags: BTreeMap::from([("if-exists".into(), "error".into())]),
+            flags: BTreeMap::from([("if-exists", "error".into())]),
             switches: Default::default(),
         };
         assert_eq!(add(&mut c2, &args2), 1);
@@ -348,7 +348,7 @@ mod tests {
                 &mut c,
                 &Args {
                     positionals: vec![],
-                    flags: BTreeMap::from([("name-contains".into(), "case".into())]),
+                    flags: BTreeMap::from([("name-contains", "case".into())]),
                     switches: Default::default()
                 }
             ),

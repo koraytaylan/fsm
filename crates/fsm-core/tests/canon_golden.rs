@@ -59,11 +59,11 @@ fn is_canonical_cases() {
     let limits = JsonLimits::DEFAULT;
     let v = parse(br#"{"b":1,"a":2}"#, &limits).unwrap();
     let c = canon_bytes(&v);
-    assert_eq!(is_canonical(&c, &limits).unwrap(), true);
+    assert!(is_canonical(&c, &limits).unwrap());
     let mut spaced = c.clone();
     spaced.insert(1, b' ');
-    assert_eq!(is_canonical(&spaced, &limits).unwrap(), false);
+    assert!(!is_canonical(&spaced, &limits).unwrap());
     // two keys swapped relative to canonical (canonical is a then b)
-    assert_eq!(is_canonical(br#"{"b":1,"a":2}"#, &limits).unwrap(), false);
+    assert!(!is_canonical(br#"{"b":1,"a":2}"#, &limits).unwrap());
     assert!(is_canonical(b"{", &limits).is_err());
 }

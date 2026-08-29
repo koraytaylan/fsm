@@ -322,6 +322,12 @@ pub(super) fn apply_signals(
     Ok(())
 }
 
+// The four sinks a block can write to are threaded one per parameter rather
+// than bundled into a state struct, because a struct shared with the engine is
+// where a bug common to both interpreters would hide, and one not shared with
+// it is a second model to keep in step with the spec. The naive version stays
+// naive.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn apply_block(
     block: &fsm_core::spec::Block,
     ctx: &mut BTreeMap<String, Val>,
@@ -369,10 +375,10 @@ pub(super) fn naive_validate(
                 return Err(reject("req/field_type", &f.name));
             }
         }
-        if let (Val::Dec(d), fsm_core::spec::TySpec::Dec { scale }) = (&v, &f.ty) {
-            if d.scale != *scale {
-                return Err(reject("req/field_scale", &f.name));
-            }
+        if let (Val::Dec(d), fsm_core::spec::TySpec::Dec { scale }) = (&v, &f.ty)
+            && d.scale != *scale
+        {
+            return Err(reject("req/field_scale", &f.name));
         }
         out.insert(f.name.clone(), v);
     }
@@ -499,8 +505,25 @@ pub(super) fn apply_entry_chain(
     signalled: &mut Signalled,
 ) -> Result<Vec<String>, Rejection> {
     let mut entered = vec![start.to_string()];
-    if let Some(node) = find(states, start) {
-        if let Some(b) = &node.entry {
+    if let Some(node) = find(states, start)
+        && let Some(b) = &node.entry
+    {
+        apply_block(
+            b,
+            ctx,
+            &BTreeMap::new(),
+            false,
+            budget,
+            effects,
+            raised,
+            signalled,
+        )?;
+    }
+    entered.extend(initial_descent(states, start));
+    for name in entered.iter().skip(1) {
+        if let Some(node) = find(states, name)
+            && let Some(b) = &node.entry
+        {
             apply_block(
                 b,
                 ctx,
@@ -511,23 +534,6 @@ pub(super) fn apply_entry_chain(
                 raised,
                 signalled,
             )?;
-        }
-    }
-    entered.extend(initial_descent(states, start));
-    for name in entered.iter().skip(1) {
-        if let Some(node) = find(states, name) {
-            if let Some(b) = &node.entry {
-                apply_block(
-                    b,
-                    ctx,
-                    &BTreeMap::new(),
-                    false,
-                    budget,
-                    effects,
-                    raised,
-                    signalled,
-                )?;
-            }
         }
     }
     Ok(entered)

@@ -65,5 +65,5 @@ fn node_and_transition_counts() {
         let decl = mm.matches(name).count();
         assert!(decl >= 1, "{name} missing");
     }
-    assert_eq!(mm.matches("-->").count() >= m.spec.transitions.len(), true);
+    assert!(mm.matches("-->").count() >= m.spec.transitions.len());
 }

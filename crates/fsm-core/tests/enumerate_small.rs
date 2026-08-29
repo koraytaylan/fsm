@@ -1,5 +1,11 @@
 //! Bounded small-machine differential against the deliberately naive oracle.
 
+// The generated/executed/sequence counts are this suite's report to whoever is
+// reading a CI log: an enumeration that silently covered nothing looks exactly
+// like one that covered everything. `enumerate_reactive` prints for the same
+// reason and carries the same allow.
+#![allow(clippy::print_stderr)]
+
 use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::Budget;
