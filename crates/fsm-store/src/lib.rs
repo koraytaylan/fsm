@@ -27,6 +27,7 @@
 pub mod base;
 pub mod clock;
 pub mod journal_io;
+pub mod seal_pin;
 pub mod seal_safety;
 pub mod snapshot;
 pub mod store;

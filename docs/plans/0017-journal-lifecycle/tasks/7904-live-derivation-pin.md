@@ -8,8 +8,9 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-store/src/seal_pin.rs
+  - crates/fsm-store/src/lib.rs
   - crates/fsm-store/tests/seal_pin.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Live Derivation Pin
