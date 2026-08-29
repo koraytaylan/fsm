@@ -207,7 +207,9 @@ enforced by jobs in `release.yml`, not by this list.
 - every shipped cargo-fuzz target builds and runs its committed seed corpus on
   nightly — gated by the release workflow's `fuzz-smoke` job on every tag push.
   Locally:
-  `rustup toolchain install nightly && cargo install cargo-fuzz && cargo +nightly fuzz run --fuzz-dir fuzz json_parse -- -runs=2048`
+  `rustup toolchain install nightly && cargo install cargo-fuzz && cargo +nightly fuzz run --fuzz-dir fuzz --target "$(rustc -vV | sed -n 's/^host: //p')" json_parse -- -runs=2048`
+  (the `--target` is not optional in the job: cargo-fuzz defaults it to the
+  platform its own binary was built for, and a prebuilt one is musl-linked)
   (repeat for each target, or run the job by pushing a tag candidate).
 
 ## Tagging and pushing

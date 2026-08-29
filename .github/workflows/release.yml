@@ -157,9 +157,18 @@ jobs:
           seed record_line      crates/fsm-core/tests/fixtures/records
           seed jsonrpc_loop     crates/fsm-cli/tests/fixtures/transcripts
           seed http_request     crates/fsm-cli/tests/fixtures/http
+          # cargo-fuzz defaults `--target` to the platform *it* was built
+          # for, not the host it is running on, and the prebuilt binary the
+          # install action fetches is musl-linked. Left to itself it builds
+          # for `x86_64-unknown-linux-musl`, which the minimal nightly above
+          # has no `std` for: "can't find crate for `std`", before a single
+          # input is fuzzed. Naming the host is the fix that does not depend
+          # on how cargo-fuzz arrived.
+          host="$(rustc -vV | sed -n 's/^host: //p')"
+          echo "fuzzing for $host"
           for t in json_parse expr_parse decimal_parse canon_roundtrip record_line jsonrpc_loop http_request; do
             echo "== fuzz-smoke: $t"
-            cargo fuzz run --fuzz-dir fuzz "$t" -- -runs=2048
+            cargo fuzz run --fuzz-dir fuzz --target "$host" "$t" -- -runs=2048
           done
 
   # What `cargo publish` is for a registry project: proof that the thing
