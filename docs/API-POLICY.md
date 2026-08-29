@@ -10,7 +10,7 @@ What a downstream crate can rely on, and what it must expect to change.
 | `fsm serve` MCP tools (24 tools, schemas) | supported |
 | `fsm-core` as a library dependency | supported |
 | `fsm-store` as a library dependency | supported |
-| `fsm-execute` as a library dependency | **provisional** — the effect executor's own surface. It ships with the `fsm execute` subcommand and is covered by that command's tests, but it has no outside-workspace acceptance check, and its types may change with any release while the executor's design settles. Depend on it if you are hosting the loop yourself; pin a tag and expect to read the release notes. |
+| `fsm-execute` as a library dependency | **provisional** — the effect executor's own surface. It ships with the `fsm execute` subcommand and is covered by that command's tests, but it has no outside-workspace acceptance check, and its types may change with any release while the executor's design settles. Depend on it if you are hosting the loop yourself; pin a tag and expect to read the release notes. The provisional surface is now **enumerated**: every public item is listed in `crates/fsm-execute/tests/fixtures/public_surface.txt` and `crates/fsm-execute/tests/public_surface.rs` fails on an undeclared addition or removal, so "provisional" bounds what it names rather than whatever the crate happens to expose. Enumerating it is not stabilising it. |
 | `fsm-cli` as a library dependency | **not** supported — it is a binary crate; its `lib` target exists only for its own tests |
 
 Each supported path has an acceptance check in [RELEASE.md](RELEASE.md).

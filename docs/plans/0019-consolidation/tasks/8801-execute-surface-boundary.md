@@ -7,9 +7,10 @@ depends_on: []
 gated: false
 touches:
   - crates/fsm-execute/tests/public_surface.rs
+  - crates/fsm-execute/tests/public_surface/scanner.rs
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - docs/API-POLICY.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Execute Surface Boundary
@@ -19,7 +20,7 @@ merged_as: ""
 **Steps:**
 
 1. Create `crates/fsm-execute/tests/public_surface.rs` comparing the crate's public items against a committed inventory at `crates/fsm-execute/tests/fixtures/public_surface.txt`.
-2. Generate the inventory by **scanning the crate's own source files** for `pub` items, in a stable, sorted, deterministic form: module path, item kind, and name for every public item, including public fields and enum variants, since those are what a downstream actually breaks on.
+2. Generate the inventory by **scanning the crate's own source files** for `pub` items, in a stable, sorted, deterministic form: module path, item kind, and name for every public item, including public fields and enum variants, since those are what a downstream actually breaks on. (The scanner and the gate together exceed the thousand-line ceiling, so the scanner is a `#[path]` sibling at `tests/public_surface/scanner.rs`; the module doc and the boundary tests stay in the root.)
 3. Source scanning is the approach because there is no other one available here. `cargo public-api` is a third-party dependency and the workspace has none; `cargo doc --output-format json` is nightly-only and CI runs stable and the MSRV. Hand-rolling the scanner is the same answer this project already gave for JSON, SHA-256, JSON-RPC, and MCP framing, and it is the only one consistent with the charter.
 4. Write down what the scanner cannot see, in its module doc, so nobody mistakes it for a complete public-API tool: items produced by macro expansion, and re-exports that widen visibility from a private module. Both are absent from `fsm-execute` today; the note is what makes their arrival visible rather than silent. A test that overstates its own coverage is worse than one that states its limits.
 5. A public item that is not in the inventory **fails the test**. That is the whole mechanism: an addition becomes a decision somebody records rather than one that accumulates between releases.
