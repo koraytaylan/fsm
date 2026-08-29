@@ -204,6 +204,10 @@ fn the_operation_creates_its_own_segment_final_checkpoint() {
     let store_path = directory.store();
     let archive = directory.archive("one");
     let mut store = populated(&store_path, 1, 0);
+    // A sealed store's handle holds only the live suffix, exactly as a
+    // reopened one does, so the archived cut record is looked up in the record
+    // set as it stood before the seal.
+    let before_seal = store.records.clone();
     let report = store
         .seal_and_archive(&archive, None)
         .expect("the seal runs");
@@ -217,15 +221,40 @@ fn the_operation_creates_its_own_segment_final_checkpoint() {
         last_segment.last_seq, report.sealed_through_seq,
         "the cut is not the last record of its segment"
     );
-    let cut_record = store
-        .records
-        .iter()
-        .find(|record| record.seq == report.sealed_through_seq)
-        .expect("the cut record is in the journal");
+    // The checkpoint is created *by* the seal and archived by it, so it is in
+    // neither the pre-seal record set nor the live suffix. It is in the
+    // archive, which is where this asserts it — a stronger claim than reading
+    // it out of memory, because it proves the bytes moved.
+    assert!(
+        !before_seal
+            .iter()
+            .any(|record| record.seq == report.sealed_through_seq),
+        "the cut already existed, so the operation did not create it"
+    );
+    let archived = fs::read_to_string(archive.join(&last_segment.name))
+        .expect("the archived segment is readable");
+    let last_line = archived
+        .lines()
+        .next_back()
+        .expect("the archived segment has a line");
+    let cut_record =
+        parse(last_line.as_bytes(), &JsonLimits::DEFAULT).expect("the archived record parses");
     assert_eq!(
-        cut_record.kind,
-        RecordKind::StateCheckpoint,
+        cut_record.get("kind").and_then(Value::as_str),
+        Some("state_checkpoint"),
         "the cut is not a state_checkpoint"
+    );
+    assert_eq!(
+        cut_record.get("seq").and_then(Value::as_num),
+        Some(report.sealed_through_seq.to_string().as_str()),
+        "the archive's last record is not the cut"
+    );
+    assert!(
+        !store
+            .records
+            .iter()
+            .any(|record| record.seq <= report.sealed_through_seq),
+        "the handle still holds records the seal moved into the archive"
     );
     // The seal landed in the fresh segment the rotation opened.
     assert_eq!(segment_names(&store_path).len(), 1);
@@ -297,6 +326,119 @@ fn two_seals_to_two_archives_leave_a_store_sealed_at_the_later_cut() {
 }
 
 #[test]
+fn a_second_seal_on_a_reopened_store_keeps_every_machine_and_instance() {
+    // The bug this pins: after one seal the live journal is a *suffix*, so a
+    // second seal that folded it from an empty state would write a base with
+    // no machines and no instances — and because a `journal_sealed` record
+    // applies as a no-op and no fold checks for genesis, that fold *succeeds*.
+    // The roots would then be committed over the empty file, the next open
+    // would recompute them and agree, and a year of history would be gone with
+    // nothing reporting an error. Reopening between the seals is the whole
+    // point: one handle keeps the full record set in memory and hides it.
+    let directory = TestDirectory::create("reopen-seal");
+    let store_path = directory.store();
+    let first = {
+        let mut store = populated(&store_path, 2, 1);
+        store
+            .seal_and_archive(&directory.archive("one"), None)
+            .expect("the first seal runs")
+    };
+
+    let mut reopened = Store::open(&store_path).expect("a sealed store reopens");
+    let machines_before = reopened.state.machines.len();
+    let instances_before = reopened.state.instances.len();
+    assert!(machines_before > 0 && instances_before > 0);
+    reopened
+        .annotate("live-0", "between-seals", "a note between the two seals")
+        .expect("the store still writes after a seal");
+    let second = reopened
+        .seal_and_archive(&directory.archive("two"), None)
+        .expect("a second seal on a reopened store runs");
+    assert!(second.sealed_through_seq > first.sealed_through_seq);
+    drop(reopened);
+
+    let twice = Store::open(&store_path).expect("a twice-sealed store reopens");
+    assert_eq!(
+        twice.state.machines.len(),
+        machines_before,
+        "the second seal dropped machines from the base"
+    );
+    assert_eq!(
+        twice.state.instances.len(),
+        instances_before,
+        "the second seal dropped instances from the base"
+    );
+    assert!(twice.state.instances.contains_key("live-0"));
+}
+
+#[test]
+fn a_second_seal_carries_the_historical_definition_ceiling_forward() {
+    // The genesis record holds the discriminator and genesis is below every
+    // cut, so after one seal only the base can answer. A second seal that
+    // asked the journal instead would write `current` and the next open would
+    // recompile machines admitted under the old ceiling.
+    let directory = TestDirectory::create("limits-forward");
+    let store_path = directory.store();
+    {
+        let mut store = populated(&store_path, 1, 0);
+        store
+            .seal_and_archive(&directory.archive("one"), None)
+            .expect("the first seal runs");
+    }
+    let before = fsm_store::base::read_header(&store_path)
+        .expect("the base header reads")
+        .expect("a sealed store has a base");
+    let mut reopened = Store::open(&store_path).expect("a sealed store reopens");
+    reopened
+        .annotate("live-0", "between-seals", "a note between the two seals")
+        .expect("the store still writes after a seal");
+    reopened
+        .seal_and_archive(&directory.archive("two"), None)
+        .expect("a second seal runs");
+    drop(reopened);
+    let after = fsm_store::base::read_header(&store_path)
+        .expect("the base header reads")
+        .expect("a twice-sealed store has a base");
+    assert_eq!(
+        after.definition_limits, before.definition_limits,
+        "the second seal changed the ceiling its machines were admitted under"
+    );
+}
+
+#[test]
+fn a_preview_on_a_sealed_store_counts_only_the_records_it_would_archive() {
+    // `cut + 1` is the record count only while the archive starts at the
+    // origin. On a store sealed once it over-reports by everything the first
+    // archive already took.
+    let directory = TestDirectory::create("preview-count");
+    let store_path = directory.store();
+    {
+        let mut store = populated(&store_path, 1, 0);
+        store
+            .seal_and_archive(&directory.archive("one"), None)
+            .expect("the first seal runs");
+    }
+    let mut reopened = Store::open(&store_path).expect("a sealed store reopens");
+    for index in 0..3 {
+        reopened
+            .annotate("live-0", &format!("note-{index}"), "a note")
+            .expect("the store still writes after a seal");
+    }
+    let preview = reopened.preview_seal(None).expect("the preview runs");
+    let run = reopened
+        .seal_and_archive(&directory.archive("two"), Some(preview.sealed_through_seq))
+        .expect("the second seal runs");
+    assert_eq!(
+        preview.records_sealed, run.records_sealed,
+        "the preview and the run disagree about how many records move"
+    );
+    assert!(
+        preview.records_sealed <= preview.sealed_through_seq,
+        "the preview counted records an earlier archive already holds"
+    );
+}
+
+#[test]
 fn a_read_only_store_is_refused_and_the_archive_directory_stays_empty() {
     let directory = TestDirectory::create("readonly");
     let store_path = directory.store();
@@ -364,6 +506,7 @@ fn a_pending_effect_seals_the_whole_segments_below_it_rather_than_refusing() {
         "the case needs an unacked effect to pin the cut"
     );
 
+    let before_seal = store.records.clone();
     let report = store
         .seal_and_archive(&archive, None)
         .expect("a pinned store seals the segments below the pin");
@@ -372,11 +515,10 @@ fn a_pending_effect_seals_the_whole_segments_below_it_rather_than_refusing() {
         "the seal did not stop at the segment boundary the pin allowed"
     );
     // No checkpoint was created: the cut already existed.
-    let cut_record = store
-        .records
+    let cut_record = before_seal
         .iter()
         .find(|record| record.seq == report.sealed_through_seq)
-        .expect("the cut record is in the journal");
+        .expect("the cut record was in the journal the seal read");
     assert_ne!(cut_record.kind, RecordKind::StateCheckpoint);
     // The seal is not adjacent to the prefix it sealed, and that is legal.
     let seal_record = store

@@ -594,6 +594,12 @@ pub struct BaseHeader {
     pub last_hash: String,
     pub base_state_root: String,
     pub base_dedup_fp_root: String,
+    /// Which ceiling the machines in this base were admitted under.
+    ///
+    /// In the header rather than only inside [`decode`] because the *writer*
+    /// needs it too: a second seal has no genesis record left to read, so the
+    /// discriminator can only come from the base the first seal wrote.
+    pub definition_limits: DefinitionLimits,
 }
 
 pub fn base_path(data_dir: &Path) -> std::path::PathBuf {
@@ -619,6 +625,11 @@ pub fn read_header(data_dir: &Path) -> Result<Option<BaseHeader>, ErrorObj> {
         last_hash: required_string(object, "last_hash")?,
         base_state_root: required_string(object, "base_state_root")?,
         base_dedup_fp_root: required_string(object, "base_dedup_fp_root")?,
+        definition_limits: object
+            .get("definition_limits")
+            .and_then(Value::as_str)
+            .and_then(DefinitionLimits::from_str)
+            .ok_or_else(|| unreadable("definition_limits"))?,
     }))
 }
 

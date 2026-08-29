@@ -69,7 +69,7 @@ use std::path::Path;
 
 use fsm_core::json::Value;
 use fsm_core::record::{Record, RecordKind, genesis_uses_historical_definition_limits};
-use fsm_core::replay::{NopSink, STATE_ROOT_FORMAT, StoreState, fold_with};
+use fsm_core::replay::{NopSink, STATE_ROOT_FORMAT, StoreState, fold_from, fold_with};
 
 use crate::archive::{ArchivedSegment, Manifest};
 use crate::base::{self, DefinitionLimits};
@@ -127,7 +127,11 @@ fn write_error(what: &str, path: &Path, error: impl std::fmt::Display) -> ErrorO
 /// Whether the store's machines were admitted under the historical ceiling.
 ///
 /// Read from the genesis record, which is below every possible cut — which is
-/// exactly why the base file has to carry the answer forward.
+/// exactly why the base file has to carry the answer forward, and why this is
+/// asked only of a store that still *has* its genesis record. A store sealed
+/// once has none, and answering `Current` from its absence would silently
+/// re-admit its machines under today's ceiling; [`Store::base_start`] takes
+/// the answer from the base instead.
 fn definition_limits(records: &[Record]) -> DefinitionLimits {
     let historical = records.first().is_some_and(|record| {
         record.seq == 0
@@ -166,6 +170,15 @@ fn segment_names(journal_dir: &Path) -> Result<Vec<(String, u64)>, ErrorObj> {
 /// The cut is the last record of its segment by construction, so the split is
 /// clean: every segment whose first sequence is at or below the cut is sealed
 /// whole, and the one the operation just rotated into is not.
+/// The first sequence the archive will hold.
+///
+/// Zero on a store that has never been sealed, and the first sequence of the
+/// oldest remaining segment on one that has. The preview and the run derive
+/// their record count from the same value so they cannot disagree.
+fn archive_first_seq(segments: &[(String, u64, u64)]) -> u64 {
+    segments.first().map(|(_, first, _)| *first).unwrap_or(0)
+}
+
 fn sealed_segments(journal_dir: &Path, cut: u64) -> Result<Vec<(String, u64, u64)>, ErrorObj> {
     let all = segment_names(journal_dir)?;
     let mut out = Vec::new();
@@ -206,7 +219,8 @@ impl Store {
         let cut = self.prospective_cut(expect_cut)?.seq();
         // The base state is built only to run the carry rule over it; a
         // preview reports the partition, not the file.
-        let (_base_state, carried) = self.prospective_base(cut)?;
+        let (_base_state, carried, _limits) = self.prospective_base(cut)?;
+        let segments = sealed_segments(&crate::journal_io::journal_dir(&self.data_dir), cut)?;
         Ok(SealReport {
             sealed_through_seq: cut,
             // The checkpoint does not exist yet, so neither does its hash. A
@@ -214,11 +228,13 @@ impl Store {
             // would be a guess.
             sealed_last_hash: String::new(),
             archive_id: String::new(),
-            records_sealed: cut + 1,
-            segments: sealed_segments(&crate::journal_io::journal_dir(&self.data_dir), cut)?
-                .into_iter()
-                .map(|(name, _, _)| name)
-                .collect(),
+            // Counted from the first segment the archive will hold, exactly as
+            // the run counts it. `cut + 1` is only right when the store has
+            // never been sealed, and a preview that over-reports by every
+            // record an earlier archive already took is a preview an operator
+            // would reasonably act on.
+            records_sealed: cut.saturating_sub(archive_first_seq(&segments)) + 1,
+            segments: segments.iter().map(|(name, _, _)| name.clone()).collect(),
             keys_carried: carried.carried_count(),
             keys_dropped: carried.dropped_count(),
             seal_record_seq: None,
@@ -278,27 +294,74 @@ impl Store {
             .collect())
     }
 
-    /// The state the base file would hold, and the ledger partition it carries.
-    fn prospective_base(&self, cut: u64) -> Result<(StoreState, CarryDecision), ErrorObj> {
-        // Fold exactly the prefix the archive will hold. For a head cut that is
-        // every record; for a boundary cut it is fewer, and reusing
-        // `self.state` would describe a state the archive does not contain.
+    /// Where a fold that builds the next base has to start.
+    ///
+    /// **A second seal does not start from nothing.** After one seal
+    /// `self.records` is the live suffix, so folding it from
+    /// `StoreState::default()` would produce a state missing every machine and
+    /// instance the first seal put in the base — and because `fold_records`
+    /// checks no genesis and a `journal_sealed` record applies as a no-op, a
+    /// suffix that is only the seal record folds *successfully* to an empty
+    /// state. Writing that as the new base and committing its roots would
+    /// destroy the store silently, which is the one failure mode this whole
+    /// operation exists to avoid. So the base is the start, exactly as it is
+    /// for every other reader in this crate.
+    ///
+    /// The same file answers the other question the journal can no longer
+    /// answer: which ceiling the machines were admitted under.
+    /// Returns the base state with the sequence it already accounts for, so
+    /// the caller folds only what the base does not already contain.
+    fn base_start(&self) -> Result<(Option<(StoreState, u64)>, DefinitionLimits), ErrorObj> {
+        // An inert `BASE` left by an interrupted earlier attempt is not a
+        // seal: the live journal still starts at the origin, so the same rule
+        // `chain_start` applies to the loader applies here.
+        if crate::journal_io::chain_start(&self.data_dir).is_origin() {
+            return Ok((None, definition_limits(&self.records)));
+        }
+        let header = base::read_header(&self.data_dir)?.ok_or_else(|| {
+            ErrorObj::new(
+                "store/base_missing",
+                "this store's journal starts above the origin and has no BASE state file",
+            )
+            .hint("restore the BASE the seal that removed the earlier segments wrote")
+        })?;
+        let (state, _seal) = base::open_from_base(&self.data_dir, &self.records)?;
+        let seq = header.seq;
+        Ok((Some((state, seq)), header.definition_limits))
+    }
+
+    /// The state the base file would hold, the ledger partition it carries,
+    /// and the ceiling its machines were admitted under.
+    fn prospective_base(
+        &self,
+        cut: u64,
+    ) -> Result<(StoreState, CarryDecision, DefinitionLimits), ErrorObj> {
+        let (start, limits) = self.base_start()?;
+        // Fold exactly the prefix the archive will hold onto the state the
+        // store already proved, and nothing the base already accounts for. A
+        // handle that has sealed once still holds the sealed records in
+        // memory, so the floor is the base's own sequence rather than the
+        // oldest record present — folding a record twice is how a second seal
+        // on one handle reports `store/chain_broken` on an idempotency field.
+        let floor = start.as_ref().map(|(_, seq)| *seq);
         let prefix: Vec<Record> = self
             .records
             .iter()
-            .filter(|record| record.seq <= cut)
+            .filter(|record| record.seq <= cut && floor.is_none_or(|seq| record.seq > seq))
             .cloned()
             .collect();
-        let mut base_state = fold_with(prefix, &mut NopSink)
-            .map_err(|error| ErrorObj::new("store/chain_broken", format!("{error:?}")))?;
+        let mut base_state = match start {
+            None => fold_with(prefix, &mut NopSink),
+            // A tail fold: the base is already authenticated, and a
+            // `machine_defined` record in the live suffix was admitted by the
+            // current writer under the current ceiling.
+            Some((state, _)) => fold_from(state, prefix, &mut NopSink),
+        }
+        .map_err(|error| ErrorObj::new("store/chain_broken", format!("{error:?}")))?;
         base_state.last_seq = cut;
-        let carried = seal_safety::carry_at_cut(
-            &base_state,
-            &self.records,
-            definition_limits(&self.records),
-        )?;
+        let carried = seal_safety::carry_at_cut(&base_state, &self.records, limits)?;
         base_state.dedup = carried.carried.clone();
-        Ok((base_state, carried))
+        Ok((base_state, carried, limits))
     }
 
     pub fn seal_and_archive_on(
@@ -327,7 +390,7 @@ impl Store {
         //    take, checked against the caller's assertion and against the pin
         //    *before* anything is appended, so a refused seal writes nothing.
         let cut = self.prospective_cut(expect_cut)?;
-        let (mut base_state, carried) = self.prospective_base(cut.seq())?;
+        let (mut base_state, carried, definition_limits) = self.prospective_base(cut.seq())?;
         let sealed_last_hash = match cut {
             Cut::CreateAtHead(seq) => {
                 let checkpoint = self.append_cut_checkpoint(clock, seq)?;
@@ -372,6 +435,7 @@ impl Store {
             .first()
             .map(|segment| segment.first_seq)
             .unwrap_or(0);
+        debug_assert_eq!(first_seq, archive_first_seq(&segments));
         let first_prev_hash = self
             .records
             .iter()
@@ -421,10 +485,8 @@ impl Store {
         // 6. Write BASE durably. `write_durable` writes a temporary file,
         //    fsyncs it, and renames; the directory fsync follows.
         let base_path = journal_dir.join(BASE_FILE);
-        let mut base_bytes = fsm_core::canon::canon_bytes(&base::encode(
-            &base_state,
-            definition_limits(&self.records),
-        ));
+        let mut base_bytes =
+            fsm_core::canon::canon_bytes(&base::encode(&base_state, definition_limits));
         base_bytes.push(b'\n');
         crate::write_durable(&base_path, &base_bytes)
             .map_err(|error| write_error("write", &base_path, error))?;
@@ -444,8 +506,14 @@ impl Store {
         crate::sync_dir(&journal_dir).map_err(|error| write_error("sync", &journal_dir, error))?;
 
         // 9. Drop every snapshot cache at or below the seal: it can no longer
-        //    be validated against records that are present.
+        //    be validated against records that are present. Then bring this
+        //    handle's record set down to what the directory now holds, so a
+        //    store that has just sealed answers exactly as one reopened after
+        //    the same seal — the alternative is a handle whose `explain` and
+        //    `verify` speak for records no longer here, and a second seal on
+        //    it folding a prefix the base already contains.
         drop_snapshots_through(&self.data_dir, cut);
+        self.records.retain(|record| record.seq > cut);
 
         Ok(SealReport {
             sealed_through_seq: cut,
