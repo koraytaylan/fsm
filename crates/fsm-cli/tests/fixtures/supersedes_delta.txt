@@ -1,0 +1,9 @@
+machine test --against — case_review
+  unchanged a_scored_review_above_the_bar_is_approved
+       mapped to: accepted
+  unchanged a_withdrawn_review_only_has_to_land_in_rejected
+       mapped to: rejected
+  unchanged a_poll_on_a_machine_with_no_deadline_changes_nothing
+  unchanged a_case_may_assert_nothing_and_still_have_to_run
+  4 unchanged, 0 changed, 0 refused, 0 uncovered
+  this is a report and never a gate: a corrected machine usually changes behaviour on purpose

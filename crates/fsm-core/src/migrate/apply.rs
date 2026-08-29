@@ -312,6 +312,34 @@ pub(crate) fn attempt(
 }
 
 /// One leaf's mapping, or the refusal that stops the whole migration.
+/// Map one leaf through a superseding definition's declared mapping.
+///
+/// **The** leaf mapping: the migration attempt calls this and so does anything
+/// that wants to know where a state would land, so no second implementation
+/// can drift from what a real migration does. Exposed for the `supersedes` case
+/// delta, which asks about states an instance is not currently in — including
+/// terminal ones, which a migration would refuse to move but whose committed
+/// expectations still have to be translated to be compared.
+pub fn mapped_leaf(
+    to: &CompiledMachine,
+    leaf: &str,
+    region: Option<&str>,
+) -> Result<String, Rejection> {
+    let Some(supersedes) = &to.spec.supersedes else {
+        return Err(reject(
+            "req/migrate_not_superseded",
+            format!("{} supersedes nothing", to.spec.name),
+            "migrate onto a definition whose supersedes block names the one this instance is on",
+        ));
+    };
+    let mapping: BTreeMap<&str, &str> = supersedes
+        .states
+        .iter()
+        .map(|(old, new)| (old.as_str(), new.as_str()))
+        .collect();
+    map_leaf(&mapping, leaf, region)
+}
+
 fn map_leaf(
     mapping: &BTreeMap<&str, &str>,
     leaf: &str,

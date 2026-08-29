@@ -241,9 +241,9 @@ pub static SPECS: &[CmdSpec] = &[
     CmdSpec {
         path: &["machine", "test"],
         positionals: &["machine"],
-        flags: &["cases", "case"],
+        flags: &["cases", "case", "against"],
         switches: &[],
-        help: "Run a case file against a machine, opening no store",
+        help: "Run a case file against a machine, opening no store; --against <old> reports the supersedes delta and never gates",
         run: crate::cli::machine_test::test,
     },
     CmdSpec {

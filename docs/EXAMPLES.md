@@ -222,3 +222,152 @@ names no example machine declares. Read it for the format; do not point
 
 See the *Executing workflows* section of [EMBEDDING.md](EMBEDDING.md#executing-workflows)
 for the full `fsm.handlers/1` format and the three run modes.
+
+## Machine cases
+
+Every example above shows what a machine *does*. A case file states what it
+**should** do, and turns a change that breaks it into a failing command rather
+than a discovery in production. Three case files are committed beside the
+machines they test:
+
+| case file | what it exercises |
+|---|---|
+| `examples/expense_approval.cases.json` | `send`, a context override, and a partial `expect` |
+| `examples/order_lifecycle.cases.json` | `ack`, and that an ack moves nothing |
+| `examples/parallel_review_deadline.cases.json` | `poll` at an explicit time |
+
+No committed example machine declares both an effect and a deadline, so all
+three script steps are exercised across three files rather than crammed into
+one machine that would exist only to hold them.
+
+A case file is a `fsm.cases/1` document. This is the whole of
+`examples/expense_approval.cases.json`'s third case:
+
+```json
+{
+  "name": "a_raised_limit_moves_the_boundary",
+  "context": {"limit": "1000.00"},
+  "script": [
+    {"send": "submit", "payload": {"amount": "900.00"}}
+  ],
+  "expect": {
+    "configuration": ["peer_review"],
+    "context": {"total": "900.00"}
+  }
+}
+```
+
+`context` overrides the machine's declared initial values before creation.
+Each `expect` field asserts **only itself**: this case says nothing about
+`enabled`, `effects`, or `terminal`, and stays true when they change.
+
+Run them:
+
+```
+$ fsm machine test examples/expense_approval.json --cases examples/expense_approval.cases.json
+machine test — expense_approval
+  ok   an_amount_within_the_limit_goes_to_peer_review
+  ok   an_amount_over_the_limit_goes_to_manager_review
+  ok   a_raised_limit_moves_the_boundary
+  ok   an_approval_from_peer_review_approves_and_finishes
+  4 passed, 0 failed
+$ fsm machine test examples/parallel_review_deadline.json --cases examples/parallel_review_deadline.cases.json
+machine test — parallel_review_deadline
+  ok   a_poll_before_the_deadline_changes_nothing
+  ok   a_poll_at_the_deadline_times_the_review_out
+  ok   an_approval_before_the_deadline_wins
+  3 passed, 0 failed
+```
+
+The command opens **no store**, takes no lock, claims no `request_id`, and
+writes nothing. It is a pure function of two files, so it is free to run in an
+editor loop and in CI over a repository of definitions that has never held a
+store.
+
+### What a failure looks like
+
+Success teaches nothing about the format. Take the first case, expect
+`manager_review` where the machine goes to `peer_review`, and write the total
+as `120.0` where the machine holds `120.00`:
+
+```json
+"expect": {"configuration": ["manager_review"], "context": {"total": "120.0"}}
+```
+
+Running `fsm machine test examples/expense_approval.json --cases broken.cases.json`
+against that edit exits **1** and prints:
+
+```text
+machine test — expense_approval
+  FAIL an_amount_within_the_limit_goes_to_peer_review
+       configuration (compared as a set) at step 0: expected manager_review, found peer_review
+       context.total (compared by key) at step 0: expected 120.0, found 120.00
+  0 passed, 1 failed
+```
+
+Two things to read here. The report names the **field**, both values, and the
+**step index**, so a ten-step script says where. And `120.0` is not `120.00`: a
+decimal's scale is part of its value in this engine, exact arithmetic is the
+reason, and a comparison that coerced one into the other would hide exactly the
+change a case exists to catch.
+
+The exit code tracks the result — zero when every case passes, non-zero when
+any fails — so CI can use it directly.
+
+### The `supersedes` delta
+
+This is the reason to keep case files rather than write them once. A definition
+that declares `supersedes` is claiming to be a corrected version of a specific
+earlier machine, and the earlier machine's cases are what check that claim:
+
+Run `fsm machine test new.json --cases old.cases.json --against old.json` and
+the report looks like this:
+
+```text
+machine test --against — case_review
+  unchanged a_scored_review_above_the_bar_is_approved
+       mapped to: accepted
+  changed   a_withdrawn_review_only_has_to_land_in_rejected
+       configuration: was rejected, now withdrawn
+  0 unchanged, 1 changed, 0 refused, 0 uncovered
+  this is a report and never a gate: a corrected machine usually changes behaviour on purpose
+```
+
+Expected configurations are translated through the mapping the new definition
+already declares, using **the same code** `fsm instance migrate` uses — so this
+report cannot disagree with what a real migration would do. Each case is
+`unchanged`, `changed` with the fields that moved, `refused` where the new
+definition rejects a script the old one accepted, or `uncovered` where the
+mapping has no entry for a state the case names. That last one is the same gap
+`migrate --dry-run` reports for instances, met here *before* any instance moves.
+
+**A completed run exits zero, whatever the deltas.** A corrected machine
+usually changes behaviour on purpose; a rule forbidding that would be wrong,
+and a gate with an override is a gate everyone overrides. Only an actual
+failure to run — a definition that does not compile, a missing mapping — is an
+error.
+
+### Regenerating a case file
+
+When a change to a machine is deliberate, `FSM_REGEN_FIXTURES=1` rewrites the
+`expect` blocks that moved, this repository's established fixture idiom:
+
+Running `FSM_REGEN_FIXTURES=1 fsm machine test machine.json --cases cases.json`
+prints what it rewrote, so the terminal and the version-control diff say the
+same thing:
+
+```text
+regenerated cases.json
+  a_raised_limit_moves_the_boundary configuration: peer_review -> manager_review
+```
+
+It **refuses to run against a case file that is untracked or has uncommitted
+modifications**, and that refusal is the point rather than a precaution: a case
+file rewritten from the code agrees with the code by construction and proves
+nothing at all. The only thing that makes it evidence again is a reviewer
+reading the diff, and a rewrite that cannot be reviewed as a diff is a rewrite
+that should not happen. It also never widens what a case asserts — a block
+naming one field still names one field afterwards — and leaves a case that
+*errored* alone, because writing an error into the file would encode the bug.
+
+Without the variable, the command never writes.

@@ -15,6 +15,7 @@
 //!
 //! Reading the file is the caller's job; this module takes bytes.
 
+pub mod delta;
 pub mod expect;
 pub mod format;
 pub mod run;

@@ -1,0 +1,37 @@
+{
+  "format": "fsm.cases/1",
+  "machine": "parallel_review_deadline",
+  "cases": [
+    {
+      "name": "a_poll_before_the_deadline_changes_nothing",
+      "script": [
+        {"poll": 29999}
+      ],
+      "expect": {
+        "configuration": ["awaiting_review", "auditing"]
+      }
+    },
+    {
+      "name": "a_poll_at_the_deadline_times_the_review_out",
+      "script": [
+        {"poll": 30000}
+      ],
+      "expect": {
+        "configuration": ["timed_out", "auditing"],
+        "terminal": false
+      }
+    },
+    {
+      "name": "an_approval_before_the_deadline_wins",
+      "script": [
+        {"send": "approve"},
+        {"poll": 30000},
+        {"send": "audit_ok"}
+      ],
+      "expect": {
+        "configuration": ["approved", "audit_complete"],
+        "terminal": true
+      }
+    }
+  ]
+}

@@ -290,6 +290,11 @@ pub(super) fn test(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(cases) => cases,
         Err(error) => return emit_error(ctx, &error),
     };
+    // The delta is a different operation with a different exit rule: it is a
+    // report, and a completed run succeeds whatever it found.
+    if let Some(against) = args.flags.get("against") {
+        return against_delta(ctx, &machine, &tree, &file, &cases, against);
+    }
     // Regeneration is a different operation with a different exit rule, and
     // the ordinary path below never writes.
     if crate::cli::machine_test_regen::requested() {
@@ -347,4 +352,148 @@ fn regenerate(
     print_report(&format!("regenerated {}\n", target.display()));
     print_report(&regen::render_changes(&regeneration));
     0
+}
+
+/// `--against <old.json>`: run the old machine's cases against the new
+/// definition and report which outcomes moved.
+///
+/// **A completed run exits zero, whatever the deltas.** A corrected machine
+/// usually changes behaviour on purpose; a rule forbidding that would be
+/// wrong, and a gate with an override is a gate everyone overrides. Only an
+/// actual failure to run is an error.
+fn against_delta(
+    ctx: &mut Ctx,
+    new: &CompiledMachine,
+    tree_new: &Tree,
+    file: &CaseFile,
+    cases: &[&Case],
+    against: &str,
+) -> u8 {
+    use fsm_core::cases::delta;
+    let old_text = match read_input_from(against, None) {
+        Ok(text) => text,
+        Err(error) => return emit_error(ctx, &error),
+    };
+    let (old, tree_old) = match definition(&old_text) {
+        Ok(compiled) => compiled,
+        Err(error) => return emit_error(ctx, &error),
+    };
+    if let Err(error) = delta::require_mapping(&old, new) {
+        return emit_error(
+            ctx,
+            &ErrorObj::new("args", error.message()).hint(concat!(
+                "add a `supersedes` block to the new definition naming the old machine's ",
+                "machine_id, which is the same mapping `fsm instance migrate` uses",
+            )),
+        );
+    }
+    let deltas = delta::delta_all(&old, &tree_old, new, tree_new, cases);
+    let value = delta_value(file, &deltas);
+    if ctx.json {
+        emit_success(ctx, &value);
+    } else {
+        print_report(&render_delta(&value));
+    }
+    0
+}
+
+fn delta_value(file: &CaseFile, deltas: &[fsm_core::cases::delta::CaseDelta]) -> Value {
+    use fsm_core::cases::delta::Outcome;
+    let rows = deltas
+        .iter()
+        .map(|delta| {
+            let mut row = BTreeMap::from([
+                ("name".to_string(), Value::Str(delta.name.clone())),
+                (
+                    "outcome".to_string(),
+                    Value::Str(delta.outcome.name().into()),
+                ),
+            ]);
+            if !delta.translated.is_empty() {
+                row.insert(
+                    "translated".into(),
+                    Value::Arr(delta.translated.iter().cloned().map(Value::Str).collect()),
+                );
+            }
+            match &delta.outcome {
+                Outcome::Changed(divergences) => {
+                    row.insert(
+                        "divergences".into(),
+                        Value::Arr(divergences.iter().map(divergence_value).collect()),
+                    );
+                }
+                Outcome::Refused { step, detail } => {
+                    row.insert("step".into(), Value::Num(step.to_string()));
+                    row.insert("detail".into(), Value::Str(detail.clone()));
+                }
+                Outcome::Uncovered { state, detail } => {
+                    row.insert("state".into(), Value::Str(state.clone()));
+                    row.insert("detail".into(), Value::Str(detail.clone()));
+                }
+                Outcome::Unchanged => {}
+            }
+            Value::Obj(row)
+        })
+        .collect();
+    let tally = fsm_core::cases::delta::tally(deltas);
+    let mut fields = BTreeMap::from([
+        ("machine".to_string(), Value::Str(file.machine.clone())),
+        ("cases".to_string(), Value::Arr(rows)),
+        ("report_only".to_string(), Value::Bool(true)),
+    ]);
+    for (name, count) in tally {
+        fields.insert(name.to_string(), Value::Num(count.to_string()));
+    }
+    Value::Obj(fields)
+}
+
+fn render_delta(report: &Value) -> String {
+    let mut out = String::new();
+    if let Some(machine) = report.get("machine").and_then(Value::as_str) {
+        out.push_str(&format!("machine test --against — {machine}\n"));
+    }
+    for case in report
+        .get("cases")
+        .and_then(Value::as_arr)
+        .unwrap_or(&Vec::new())
+    {
+        let text = |key: &str| case.get(key).and_then(Value::as_str).unwrap_or("");
+        out.push_str(&format!("  {:<9} {}\n", text("outcome"), text("name")));
+        if let Some(translated) = case.get("translated").and_then(Value::as_arr) {
+            let leaves: Vec<&str> = translated.iter().filter_map(Value::as_str).collect();
+            out.push_str(&format!("       mapped to: {}\n", leaves.join(", ")));
+        }
+        if !text("detail").is_empty() {
+            out.push_str(&format!("       {}\n", text("detail")));
+        }
+        for divergence in case
+            .get("divergences")
+            .and_then(Value::as_arr)
+            .unwrap_or(&Vec::new())
+        {
+            let field = |name: &str| divergence.get(name).and_then(Value::as_str).unwrap_or("");
+            out.push_str(&format!(
+                "       {}: was {}, now {}\n",
+                field("field"),
+                field("expected"),
+                field("found"),
+            ));
+        }
+    }
+    let count = |name: &str| {
+        report
+            .get(name)
+            .and_then(Value::as_num)
+            .unwrap_or("0")
+            .to_string()
+    };
+    out.push_str(&format!(
+        "  {} unchanged, {} changed, {} refused, {} uncovered\n",
+        count("unchanged"),
+        count("changed"),
+        count("refused"),
+        count("uncovered")
+    ));
+    out.push_str("  this is a report and never a gate: a corrected machine usually changes behaviour on purpose\n");
+    out
 }

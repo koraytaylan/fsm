@@ -1,0 +1,51 @@
+{
+  "format": "fsm.cases/1",
+  "machine": "expense_approval",
+  "cases": [
+    {
+      "name": "an_amount_within_the_limit_goes_to_peer_review",
+      "script": [
+        {"send": "submit", "payload": {"amount": "120.00"}}
+      ],
+      "expect": {
+        "configuration": ["peer_review"],
+        "context": {"total": "120.00", "approvals": "0", "limit": "500.00"},
+        "terminal": false
+      }
+    },
+    {
+      "name": "an_amount_over_the_limit_goes_to_manager_review",
+      "script": [
+        {"send": "submit", "payload": {"amount": "900.00"}}
+      ],
+      "expect": {
+        "configuration": ["manager_review"]
+      }
+    },
+    {
+      "name": "a_raised_limit_moves_the_boundary",
+      "context": {"limit": "1000.00"},
+      "script": [
+        {"send": "submit", "payload": {"amount": "900.00"}}
+      ],
+      "expect": {
+        "configuration": ["peer_review"],
+        "context": {"total": "900.00"}
+      }
+    },
+    {
+      "name": "an_approval_from_peer_review_approves_and_finishes",
+      "script": [
+        {"send": "submit", "payload": {"amount": "10.00"}},
+        {"send": "approve"}
+      ],
+      "expect": {
+        "configuration": ["approved"],
+        "context": {"approvals": "1"},
+        "enabled": [],
+        "effects": [],
+        "terminal": true
+      }
+    }
+  ]
+}

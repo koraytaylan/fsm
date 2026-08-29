@@ -1317,6 +1317,107 @@ records, and every edge the tree ever had is in them. `instance_list
 --roots-only` hides children at any status, which is what makes it a list of
 workflows rather than a list of instances.
 
+## Testing a machine with cases
+
+`fsm validate` proves a definition is well-formed, and a well-formed machine
+that approves the wrong requests is well-formed. A **case file** states what a
+machine should do and makes a change that breaks it fail:
+
+```
+fsm machine test <machine.json> --cases <cases.json> [--case <name>] [--json]
+```
+
+The command opens no store, takes no lock, claims no `request_id`, and writes nothing.
+It is a pure function of two files. The library entry points are
+`fsm_core::cases::format::parse_cases`, `cases::run::run_case`, and
+`cases::expect::diverge`; the CLI reads the files and renders, everything
+between is pure.
+
+### The document
+
+`fsm.cases/1`. **Every key set is closed at every level** — a file that
+silently ignored a mistyped `expects` would assert nothing and report success,
+which is worse than having no case file, because the author now believes
+something is checked. An unknown key is refused with `case/unknown_key`, naming
+the key and listing what is accepted.
+
+| level | accepted keys |
+|---|---|
+| document | `format`, `machine`, `cases` |
+| case | `name`, `context`, `script`, `expect` |
+| `send` step | `send`, `payload` |
+| `poll` step | `poll` |
+| `ack` step | `ack`, `outcome`, `result` |
+| `expect` | `configuration`, `context`, `enabled`, `effects`, `terminal` |
+
+`machine` is a name or content hash carried **for reporting only**; the
+definition under test comes from the command line, which is what lets one case
+file run against two definitions.
+
+A script step is exactly one of `send`, `poll`, or `ack`, discriminated by
+which key is present — zero and two are both refusals naming what was found.
+`poll` carries its own time in milliseconds, because `fsm-core` has no clock
+and must not acquire one: that is what makes a case that passes on one platform
+pass on every platform. An `ack` names a pending effect by the name it was
+emitted under, and **an ack drives nothing** — in pure terms it is exactly
+removal from `pending`, with no event, no transition, and no configuration
+change. A case does not inherit the executor's `on_ok` / `on_failed`
+follow-ups, because that mapping lives in a handler table rather than in the
+machine; a case that wants the follow-up event writes the `send` itself.
+
+Every `expect` field is optional and **absence means not asserted**, never
+"expect empty". A case naming only `configuration` asserts only configuration,
+and stays true when everything else changes.
+
+### The two comparison rules, which are asymmetric on purpose
+
+A reader will assume all four fields compare the same way. They do not, and
+each follows the engine's own rule:
+
+* **`effects` compare in emission order.** That order is deterministic and an
+  executor runs them in it, so a case that pins it pins something real.
+* **`configuration` and `enabled` compare as sets.** A configuration *is* a set
+  of active leaves, and the enabled-event scan order is an implementation
+  detail the spec does not fix.
+* **`context` compares key by key**, reporting each key that differs rather
+  than two whole maps to diff by eye. It compares through the canonical string,
+  so `10.0` and `10.00` are different: a decimal's scale is part of its value
+  here, and coercing one into the other would hide the change a case exists to
+  catch.
+
+Every divergence carries which rule it was compared under, so a failing
+`effects` beside a passing `configuration` explains itself.
+
+### Ceilings
+
+| limit | value |
+|---|---|
+| cases per file | 64 |
+| script steps per case | 64 |
+| document bytes | 65536 |
+
+Each is refused with its own code: `case/limit_cases`, `case/limit_steps`,
+`case/limit_bytes`. The byte ceiling is checked before parsing, so an oversized
+document is never walked.
+
+### The supersedes delta
+
+`--against <old.json>` runs a superseded machine's cases against the definition
+that supersedes it, translating expected configurations through the mapping the
+new definition already declares.
+It uses the same code `fsm instance migrate` uses, so the report cannot disagree with what a real migration would do. Each
+case reports as `unchanged`, `changed`, `refused`, or `uncovered`.
+
+It is a **report and never a gate**: a completed run exits zero whatever it
+found, because a corrected machine usually changes behaviour on purpose and a
+gate with an override is a gate everyone overrides.
+
+### Regeneration
+
+`FSM_REGEN_FIXTURES=1` rewrites the `expect` blocks that moved. It **refuses to
+run against an uncommitted or untracked file**, because a regeneration nobody reviews produces a case file that agrees with the code by construction and proves nothing. It never widens the set of fields a case asserts, and it leaves
+a case that errored alone.
+
 ## Errors
 
 Every error carries a namespaced `code`, a `message`, and a `hint` that states

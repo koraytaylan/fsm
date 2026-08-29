@@ -227,14 +227,17 @@ fn every_example_keeps_its_committed_machine_id() {
         );
         checked += 1;
     }
-    // Every machine in `examples/` has a pinned identity; `.handlers.json`
-    // is an executor table, not a machine.
+    // Every machine in `examples/` has a pinned identity. `.handlers.json` is
+    // an executor table and `.cases.json` is a case file: neither is a
+    // machine, so neither has a machine id to pin.
     let shipped = std::fs::read_dir(root.join("examples"))
         .unwrap()
         .filter_map(|entry| entry.ok())
         .filter(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
-            name.ends_with(".json") && !name.ends_with(".handlers.json")
+            name.ends_with(".json")
+                && !name.ends_with(".handlers.json")
+                && !name.ends_with(".cases.json")
         })
         .count();
     assert_eq!(checked, shipped, "every shipped example is pinned");

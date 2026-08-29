@@ -1,0 +1,40 @@
+{
+  "format": "fsm.cases/1",
+  "machine": "order_lifecycle",
+  "cases": [
+    {
+      "name": "entering_fulfilment_emits_a_confirmation_request",
+      "script": [
+        {"send": "place"}
+      ],
+      "expect": {
+        "configuration": ["picking"],
+        "effects": ["request_confirmation"]
+      }
+    },
+    {
+      "name": "acknowledging_the_effect_clears_it_and_moves_nothing",
+      "script": [
+        {"send": "place"},
+        {"ack": "request_confirmation", "outcome": "ok"}
+      ],
+      "expect": {
+        "configuration": ["picking"],
+        "effects": [],
+        "terminal": false
+      }
+    },
+    {
+      "name": "the_order_still_advances_after_the_acknowledgement",
+      "script": [
+        {"send": "place"},
+        {"ack": "request_confirmation", "outcome": "ok"},
+        {"send": "pick"},
+        {"send": "ship"}
+      ],
+      "expect": {
+        "configuration": ["awaiting_confirmation"]
+      }
+    }
+  ]
+}
