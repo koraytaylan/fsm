@@ -49,6 +49,8 @@ field fsm_execute::dead::DeadLetter::effect_name
 field fsm_execute::dead::DeadLetter::instance_id
 field fsm_execute::dead::DeadLetter::result
 field fsm_execute::dead::DeadLetter::seq
+field fsm_execute::dead::ReportHorizon::archive_id
+field fsm_execute::dead::ReportHorizon::sealed_through_seq
 field fsm_execute::effect::PendingEffect::args
 field fsm_execute::effect::PendingEffect::effect_id
 field fsm_execute::effect::PendingEffect::effect_name
@@ -158,7 +160,9 @@ fn fsm_execute::config::classes_for
 fn fsm_execute::config::substitute
 fn fsm_execute::config::substitute_arguments
 fn fsm_execute::dead::dead_letters
+fn fsm_execute::dead::horizon
 fn fsm_execute::dead::report
+fn fsm_execute::dead::report_with_horizon
 fn fsm_execute::dead::to_value
 fn fsm_execute::effect::resolve
 fn fsm_execute::mcp_client::converse
@@ -181,6 +185,7 @@ method fsm_execute::config::HandlerKind::is_mcp
 method fsm_execute::config::HandlerTable::parse
 method fsm_execute::config::Retry::retries
 method fsm_execute::dead::DeadLetter::to_value
+method fsm_execute::dead::ReportHorizon::to_value
 method fsm_execute::error::ExecError::details
 method fsm_execute::error::ExecError::from_store
 method fsm_execute::error::ExecError::hint
@@ -241,6 +246,7 @@ struct fsm_execute::config::HandlerSpec
 struct fsm_execute::config::HandlerTable
 struct fsm_execute::config::Retry
 struct fsm_execute::dead::DeadLetter
+struct fsm_execute::dead::ReportHorizon
 struct fsm_execute::effect::PendingEffect
 struct fsm_execute::error::ExecError
 struct fsm_execute::run::BoundedBytes

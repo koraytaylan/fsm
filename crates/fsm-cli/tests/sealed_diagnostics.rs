@@ -17,6 +17,24 @@ const CASE_REVIEW: &[u8] =
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
+/// A directory name no other run of this binary can produce.
+///
+/// A process id alone is not unique enough: a full `--workspace` run spawns
+/// thousands of short-lived processes, ids get reused, and a reused id names a
+/// directory a previous run may still be finishing with — which surfaces as a
+/// `store/lock` naming *this* process. `crash_harness.rs` learned the same
+/// thing and pins it with a test; this is that idiom.
+fn invocation_tag() -> String {
+    format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0)
+    )
+}
+
 struct TestDirectory(PathBuf);
 
 impl TestDirectory {
@@ -24,7 +42,7 @@ impl TestDirectory {
         let index = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
             "fsm-sealed-diag-{tag}-{}-{index}",
-            std::process::id()
+            invocation_tag()
         ));
         let _ = fs::remove_dir_all(&path);
         for sub in ["store", "archive"] {
@@ -107,6 +125,18 @@ fn seal_a_store(directory: &TestDirectory) -> u64 {
         .expect("the annotation succeeds");
     drop(store);
     report.sealed_through_seq
+}
+
+#[test]
+fn a_test_directory_is_unique_per_invocation() {
+    // Not decoration: a process id alone collided under a full `--workspace`
+    // run, and the symptom was a `store/lock` naming this very process — an
+    // earlier run's directory, reached through a reused id. `crash_harness.rs`
+    // pins the same property for the same reason.
+    let first = TestDirectory::create("uniqueness");
+    let second = TestDirectory::create("uniqueness");
+    assert_ne!(first.0, second.0);
+    assert!(invocation_tag() != format!("{}", std::process::id()));
 }
 
 #[test]

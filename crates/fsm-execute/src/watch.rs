@@ -447,6 +447,17 @@ pub struct AttemptState {
 }
 
 /// Every effect's attempt state, from the journal.
+/// The attempt count for every effect, derived from the records.
+///
+/// This scans the live journal and nothing else, and on a sealed store that is
+/// **complete** rather than merely convenient. Plan 0017's pin refuses to
+/// archive any record a pending effect's execution is derived from — its
+/// emitting record, its instance's creation record, and every one of its
+/// attempt records — so an archived attempt record for a pending effect cannot
+/// exist. Without that guarantee the count would fall silently, an exhausted
+/// effect would retry again, and `exec/retries_exhausted` would never fire.
+/// `crates/fsm-execute/tests/sealed_store.rs` proves it rather than assuming
+/// it; this comment is why the scan is safe, not a promise that it is.
 fn attempt_state(store: &Store) -> BTreeMap<String, AttemptState> {
     let mut out: BTreeMap<String, AttemptState> = BTreeMap::new();
     for record in &store.records {

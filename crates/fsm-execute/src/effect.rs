@@ -156,6 +156,15 @@ fn emitting_record<'a>(store: &'a Store, id: &EffectId<'_>) -> Result<&'a Record
 }
 
 /// Fold the journal prefix the emitting record was applied against.
+/// Fold the journal prefix the emitting record was applied against.
+///
+/// **On a sealed store this folds onto the base, not onto nothing.** Folding
+/// the live suffix from empty produces a state that is wrong rather than an
+/// error that is loud — and `replay_emits` then re-runs the emitting entry
+/// point against it to recover the effect's name and argv, so the symptom is a
+/// handler running with **stale or absent arguments**. That is the worst
+/// failure mode in plan 0017, which is why it is a fold origin and not a
+/// fallback.
 fn fold_before(store: &Store, record: &Record, id: &EffectId<'_>) -> Result<StoreState, ExecError> {
     let prefix: Vec<Record> = store
         .records
@@ -163,7 +172,19 @@ fn fold_before(store: &Store, record: &Record, id: &EffectId<'_>) -> Result<Stor
         .filter(|candidate| candidate.seq < record.seq)
         .cloned()
         .collect();
-    fold_with(prefix, &mut NopSink)
+    if fsm_store::journal_io::chain_start(&store.data_dir).is_origin() {
+        return fold_with(prefix, &mut NopSink).map_err(|error| {
+            unresolved(id, format!("the journal prefix does not fold: {error:?}"))
+        });
+    }
+    let (base, _seal) =
+        fsm_store::base::open_from_base(&store.data_dir, &store.records).map_err(|error| {
+            unresolved(
+                id,
+                format!("the sealed base does not open: {}", error.message),
+            )
+        })?;
+    fsm_core::replay::fold_from(base, prefix, &mut NopSink)
         .map_err(|error| unresolved(id, format!("the journal prefix does not fold: {error:?}")))
 }
 

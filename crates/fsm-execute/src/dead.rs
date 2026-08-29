@@ -153,3 +153,58 @@ pub fn report(data_dir: &Path, since: u64) -> Result<Vec<DeadLetter>, ExecError>
 pub fn to_value(letters: &[DeadLetter]) -> Value {
     Value::Arr(letters.iter().map(DeadLetter::to_value).collect())
 }
+
+/// What a dead-letter report could not see.
+///
+/// `dead_letters` scans the live journal for failed acks, so on a sealed store
+/// the ones below the cut are in the archive and the report is **short**. A
+/// short report that does not say it is short is exactly the failure this plan
+/// exists not to introduce: `fsm execute --list-dead` is what a stalled
+/// workflow leaves behind, and a version of it that under-reports silently is
+/// worse than none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportHorizon {
+    pub sealed_through_seq: u64,
+    pub archive_id: String,
+}
+
+impl ReportHorizon {
+    pub fn to_value(&self) -> Value {
+        Value::Obj(BTreeMap::from([
+            (
+                "sealed_through_seq".to_string(),
+                Value::Num(self.sealed_through_seq.to_string()),
+            ),
+            ("archive_id".to_string(), Value::Str(self.archive_id.clone())),
+            (
+                "note".to_string(),
+                Value::Str(
+                    "entries at or below this sequence are in the archive and are not in this                      report"
+                        .into(),
+                ),
+            ),
+        ]))
+    }
+}
+
+/// The seal a store carries, or `None` when it is not sealed.
+pub fn horizon(store: &Store) -> Option<ReportHorizon> {
+    if fsm_store::journal_io::chain_start(&store.data_dir).is_origin() {
+        return None;
+    }
+    fsm_store::base::open_from_base(&store.data_dir, &store.records)
+        .ok()
+        .map(|(_state, seal)| ReportHorizon {
+            sealed_through_seq: seal.sealed_through_seq,
+            archive_id: seal.archive_id,
+        })
+}
+
+/// The report for a path, with the horizon it could not see past.
+pub fn report_with_horizon(
+    data_dir: &Path,
+    since: u64,
+) -> Result<(Vec<DeadLetter>, Option<ReportHorizon>), ExecError> {
+    let store = Store::open_read_only(data_dir).map_err(|error| ExecError::store(&error))?;
+    Ok((dead_letters(&store, since), horizon(&store)))
+}

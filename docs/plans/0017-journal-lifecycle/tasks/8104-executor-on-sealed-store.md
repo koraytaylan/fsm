@@ -9,8 +9,11 @@ gated: false
 touches:
   - crates/fsm-execute/src/effect.rs
   - crates/fsm-execute/src/dead.rs
+  - crates/fsm-execute/src/watch.rs
   - crates/fsm-execute/tests/sealed_store.rs
-status: planned
+  - crates/fsm-execute/tests/fixtures/public_surface.txt
+  - crates/fsm-cli/src/cli/execute.rs
+status: done
 merged_as: ""
 ---
 # Executor On A Sealed Store
@@ -21,7 +24,7 @@ The executor keeps nothing in memory on purpose and re-derives everything by sca
 
 1. Fix `crates/fsm-execute/src/effect.rs::fold_before`. It builds the prefix as every record with `seq < record.seq` and calls `fold_with`, which folds **from empty**. On a sealed store that prefix is missing everything below the cut, so the fold produces a state that is wrong rather than a failure that is loud. Fold from the base instead, using the same `fold_from` the store's own open path uses, and take the base from the opened store rather than re-reading it.
 2. This is the defect that matters most in the plan, because its symptom is a handler running against **stale or absent arguments** rather than an error. `replay_emits` re-runs the pure entry point against `before` to recover an effect's name and argv; a `before` folded from the wrong origin re-runs it against the wrong context.
-3. `crates/fsm-execute/src/dead.rs::dead_letters` scans records for failed `effect_acked`. On a sealed store, acks below the cut are archived and the report silently shrinks. Report the seal alongside the results — the cut sequence and that entries below it are in the archive — so a short report is visibly short rather than apparently empty. `fsm execute --list-dead` exists because a stalled workflow leaves nothing else behind; a version of it that under-reports without saying so is the failure this whole plan is trying not to introduce.
+3. `crates/fsm-execute/src/dead.rs::dead_letters` scans records for failed `effect_acked`. Reporting the seal widens `fsm-execute`'s public surface by six items (`ReportHorizon`, its fields and method, `horizon`, `report_with_horizon`), which plan 0019's inventory refused until the addition was recorded — the boundary working as designed. On a sealed store, acks below the cut are archived and the report silently shrinks. Report the seal alongside the results — the cut sequence and that entries below it are in the archive — so a short report is visibly short rather than apparently empty. `fsm execute --list-dead` exists because a stalled workflow leaves nothing else behind; a version of it that under-reports without saying so is the failure this whole plan is trying not to introduce.
 4. `crates/fsm-execute/src/watch.rs::attempt_state` needs **no** change, and confirming that is part of this task rather than an assumption: `7904`'s pin makes it impossible to archive an attempt record for a pending effect, so the derived count is complete by construction. Add the test that proves it and a comment at the scan naming the pin as the reason it is safe, because the next reader will otherwise see an unbounded scan over a store that no longer holds everything.
 5. Change **no** executor semantics. Retry counts, backoff, caps, fairness, and every ack stay exactly as plan 0016 defined them. This task makes the derivations correct on a sealed store; it does not adjust what they conclude.
 6. Do not add a store-shape check to the scheduler. The scheduler is a pure function of one observation and must stay one; sealing is a fact about where the observation came from, not an input to the decision.

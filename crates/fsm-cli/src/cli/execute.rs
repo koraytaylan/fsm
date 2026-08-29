@@ -217,18 +217,22 @@ fn list_dead(ctx: &mut Ctx, args: &Args) -> u8 {
         Ok(since) => since,
         Err(error) => return emit_error(ctx, &error),
     };
-    let letters = match dead::report(&ctx.data_dir, since) {
-        Ok(letters) => letters,
+    let (letters, horizon) = match dead::report_with_horizon(&ctx.data_dir, since) {
+        Ok(answer) => answer,
         Err(error) => return report(ctx, &error),
     };
-    emit_success(
-        ctx,
-        &Value::Obj(BTreeMap::from([
-            ("ok".into(), Value::Str("true".into())),
-            ("dead_letters".into(), dead::to_value(&letters)),
-            ("count".into(), Value::Num(letters.len().to_string())),
-        ])),
-    );
+    let mut fields = BTreeMap::from([
+        ("ok".into(), Value::Str("true".into())),
+        ("dead_letters".into(), dead::to_value(&letters)),
+        ("count".into(), Value::Num(letters.len().to_string())),
+    ]);
+    // A short report says it is short. This command is what a stalled workflow
+    // leaves behind, and one that under-reports without saying so is worse
+    // than none.
+    if let Some(horizon) = &horizon {
+        fields.insert("sealed_before".into(), horizon.to_value());
+    }
+    emit_success(ctx, &Value::Obj(fields));
     0
 }
 
