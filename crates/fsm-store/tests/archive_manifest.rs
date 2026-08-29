@@ -106,6 +106,7 @@ fn build_archive(archive: &Path, records: &[Record], segments: usize) -> Manifes
         sealed_through_seq: last.seq,
         sealed_last_hash: last.hash.clone(),
         first_seq: records[0].seq,
+        first_prev_hash: records[0].prev.clone(),
         records: records.len() as u64,
         segments: described,
     }
@@ -344,6 +345,9 @@ fn the_archive_id_is_stable_and_moves_with_every_field() {
     moved.sealed_last_hash = "cd".repeat(32);
     assert_ne!(moved.archive_id(), baseline);
     let mut moved = manifest.clone();
+    moved.first_prev_hash = "12".repeat(32);
+    assert_ne!(moved.archive_id(), baseline);
+    let mut moved = manifest.clone();
     moved.segments[0].sha256 = "ef".repeat(32);
     assert_ne!(moved.archive_id(), baseline);
     let mut moved = manifest.clone();
@@ -369,6 +373,25 @@ fn a_manifest_whose_declared_archive_id_disagrees_with_its_contents_is_refused()
     fs::write(manifest_path(directory.path()), bytes).expect("the manifest is writable");
     let error = read_manifest(directory.path()).expect_err("a forged archive_id is refused");
     assert_eq!(error.code, "store/chain_broken");
+}
+
+#[test]
+fn a_later_archive_declares_the_predecessor_that_chains_it_to_the_earlier_one() {
+    // A store's second archive does not begin at genesis. Its first record's
+    // `prev` is the first archive's `sealed_last_hash`, and recording it is
+    // what lets whoever holds both archives chain them — and what lets this
+    // archive's own walk start from a value it can check.
+    let directory = TestDirectory::create("later");
+    for sub in ["a", "b"] {
+        fs::create_dir_all(directory.path().join(sub)).expect("the sub-directory is creatable");
+    }
+    let whole = chained_records(9);
+    let (earlier, later) = whole.split_at(4);
+    let first = build_archive(&directory.path().join("a"), earlier, 1);
+    let second = build_archive(&directory.path().join("b"), later, 1);
+    assert_eq!(second.first_prev_hash, first.sealed_last_hash);
+    write_manifest(&directory.path().join("b"), &second);
+    verify(&directory.path().join("b")).expect("a later archive verifies on its own");
 }
 
 #[test]

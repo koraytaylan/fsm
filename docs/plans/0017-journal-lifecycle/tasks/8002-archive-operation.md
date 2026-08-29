@@ -9,8 +9,14 @@ gated: false
 touches:
   - crates/fsm-store/src/store/seal.rs
   - crates/fsm-store/src/store/mod.rs
+  - crates/fsm-store/src/archive.rs
+  - crates/fsm-core/src/record/body_shape.rs
+  - crates/fsm-core/src/record.rs
+  - crates/fsm-core/tests/seal_record.rs
+  - crates/fsm-store/tests/archive_manifest.rs
+  - crates/fsm-store/tests/fixtures/archive_manifest_v1.json
   - crates/fsm-store/tests/archive_operation.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Archive Operation
@@ -30,9 +36,13 @@ The ordering is the durability contract, so it lives in one function read top to
    7. **Append the seal record.** This is the commit point.
    8. Remove the copied segments from the live journal; `fsync` the directory.
    9. Drop every snapshot cache at or below the seal, which can no longer be validated against records that are present.
-3. Understand why step 2 **creates** the cut rather than searching for one, and say so in a comment. A valid cut must satisfy two conditions at once: its record is a `state_checkpoint`, so the base derives from proven state; and it is the last record of a segment, because `should_rotate` fires on size and a segment the cut falls inside could only be archived by splitting it — which means rewriting published bytes, which this project never does. Nothing produces a sequence meeting both by chance, so the operation produces one from two primitives that already exist.
+3. Understand why step 2 **creates** the cut rather than searching for one, and say so in a comment. **It does both, and the plan's rule that a cut must be a `state_checkpoint` had to give.** Only a pending effect pins the cut, and a live store almost always has one — the executor settles each within a tick, so at any instant a few are in flight with their emitting records near the head. Requiring a checkpoint cut would then refuse every seal a running store ever asked for, which is the mistake the first shape of the carry rule made and was discarded for. So the cut is a **segment boundary**: the operation creates a fresh one at the head (checkpoint plus `force_rotate`, which is the better cut and costs nothing) when the pin allows it, and otherwise seals through the highest boundary that already exists below the pin. Sealing whole segments is the natural granularity anyway, since a segment the cut fell inside could only be archived by splitting it.
+
+   Two consequences follow and both are recorded rather than discovered. A seal taken below the head is **not adjacent** to the prefix it seals, so `7901`'s join assertion — `sealed_last_hash` equals the seal's own `prev` — is asserted only when `sealed_through_seq + 1` equals the seal's own sequence, and otherwise the body-shape check requires only a well-formed hash while the chain and the base file check the value. And `8101`'s rule that the first live record **is** the seal holds only for a head cut; the general rule is that the first live record's `prev` equals the base's `last_hash` and the seal is the first `journal_sealed` record in the live suffix.
+
+   The manifest gained a `first_prev_hash` for the same reason: a store's second archive does not begin at genesis, so its chain walk needs a predecessor it can check — and recording it lets whoever holds two archives of one store chain them together. A valid cut must satisfy two conditions at once: its record is a `state_checkpoint`, so the base derives from proven state; and it is the last record of a segment, because `should_rotate` fires on size and a segment the cut falls inside could only be archived by splitting it — which means rewriting published bytes, which this project never does. Nothing produces a sequence meeting both by chance, so the operation produces one from two primitives that already exist.
 4. Write the safety argument as a comment above the sequence: **copy, then seal, then remove.** Before step 7 nothing in the chain references any of the new files, so an interrupted run leaves inert bytes a re-run overwrites. After step 7 the removed segments are already in the archive and their records are below the seal, so the loader skips them by sequence and a re-run finishes the removal. An implementation that moves segments before appending the seal has a window where the records are gone and nothing says they were sealed, and a store interrupted in that window never opens again.
-5. Refuse an explicit `--before-seq` at or above the current `last_seq`, and refuse `--before-seq 0`. Naming the head as an existing seal point is a contradiction: the head is not yet a rotated checkpoint, and omitting the flag is how an operator asks to seal there.
+5. `--before-seq N` is an **assertion**, not a choice: it names the sequence the seal will seal through, exactly as `--dry-run` reported it, and the operation refuses if the answer has moved since. That is `expect_seq`'s pattern, and it is what stops a preview and a run from disagreeing about which prefix moved. Choosing a lower cut by hand is not offered, because the cut is determined by the pin and the segment boundaries and a hand-picked one would have to be re-validated against both anyway.
 6. Refuse when the archive directory does not exist rather than creating it. An operator who mistypes a path should not discover a new directory holding their history.
 7. Take the same position on Windows the store already takes: there is no portable directory `fsync`, the gap is classified and repaired on the next open rather than trusted, and this operation adds no new platform assumption. State it in a comment rather than inventing a mitigation.
 8. Do not delete anything from the archive on any failure path. A partial archive is inert; a partially deleted one is not recoverable.

@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 use fsm_core::hashes::{ARCHIVE_DOMAIN, domain_hash};
 use fsm_core::json::{JsonLimits, Value, parse};
-use fsm_core::record::{verify_line, zeros};
+use fsm_core::record::verify_line;
 use fsm_core::sha256::{Sha256, to_hex};
 
 use crate::store::ErrorObj;
@@ -60,6 +60,15 @@ pub struct Manifest {
     pub sealed_through_seq: u64,
     pub sealed_last_hash: String,
     pub first_seq: u64,
+    /// The `prev` of the first archived record.
+    ///
+    /// Zero for the first archive a store ever takes, because its first record
+    /// is genesis. For every later archive it is the previous archive's
+    /// `sealed_last_hash`, which is what lets two archives of one store be
+    /// chained together by whoever holds both — and what lets this archive's
+    /// own chain walk start from a value it can check rather than from an
+    /// origin it does not have.
+    pub first_prev_hash: String,
     pub records: u64,
     pub segments: Vec<ArchivedSegment>,
 }
@@ -112,6 +121,10 @@ impl Manifest {
                 Value::Str(self.sealed_last_hash.clone()),
             ),
             ("first_seq".into(), Value::Num(self.first_seq.to_string())),
+            (
+                "first_prev_hash".into(),
+                Value::Str(self.first_prev_hash.clone()),
+            ),
             ("records".into(), Value::Num(self.records.to_string())),
             ("segments".into(), Value::Arr(segments)),
         ])
@@ -181,6 +194,7 @@ impl Manifest {
             sealed_through_seq: number("sealed_through_seq")?,
             sealed_last_hash: text("sealed_last_hash")?,
             first_seq: number("first_seq")?,
+            first_prev_hash: text("first_prev_hash")?,
             records: number("records")?,
             segments,
         };
@@ -298,7 +312,9 @@ fn verify_digests(archive_dir: &Path, manifest: &Manifest) -> Result<(), ErrorOb
 
 fn verify_chain(archive_dir: &Path, manifest: &Manifest) -> Result<(), ErrorObj> {
     let mut expect = manifest.first_seq;
-    let mut previous = zeros();
+    // The walk starts from the manifest's own declared predecessor rather than
+    // from the chain origin: only a store's *first* archive begins at genesis.
+    let mut previous = manifest.first_prev_hash.clone();
     let mut counted = 0u64;
     let mut last_hash = None;
     for segment in &manifest.segments {

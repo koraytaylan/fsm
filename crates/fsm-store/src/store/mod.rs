@@ -34,6 +34,7 @@ mod instance;
 mod json_helpers;
 mod lifecycle;
 mod reconstruct;
+mod seal;
 mod snapshot_lifecycle;
 #[cfg(test)]
 mod tests;
@@ -45,6 +46,7 @@ pub use json_helpers::{
     number_token_error,
 };
 pub use lifecycle::DefineOutcome;
+pub use seal::{BASE_FILE, SealReport};
 pub use view::views_rendered;
 
 use reconstruct::{

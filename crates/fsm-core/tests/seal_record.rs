@@ -103,14 +103,35 @@ fn every_field_is_typed() {
 }
 
 #[test]
-fn a_seal_whose_last_hash_disagrees_with_its_predecessor_is_refused() {
-    // The seal is appended at `sealed_through_seq + 1`, so the join it names is
-    // already in the chain. The body asserts it; it does not create it, and a
-    // record where the two disagree is corrupt rather than merely inconsistent.
+fn an_adjacent_seal_whose_last_hash_disagrees_with_its_predecessor_is_refused() {
+    // A seal at `sealed_through_seq + 1` adjoins the prefix it seals, so the
+    // join it names is already in the chain. The body asserts it; it does not
+    // create it, and a record where the two disagree is corrupt rather than
+    // merely inconsistent.
     let previous = previous_hash();
     let mut body = seal_body(&previous);
     body.insert("sealed_last_hash".into(), Value::Str(hash(0x44)));
     assert!(verify_seal(40_001, &previous, body).is_err());
+}
+
+#[test]
+fn a_non_adjacent_seal_carries_a_hash_no_local_check_can_verify() {
+    // A cut at an earlier segment boundary puts the seal at the head instead,
+    // with other records between it and the prefix it seals. `sealed_last_hash`
+    // then names a record further back: the chain authenticates it and the base
+    // state file checks it, and the body-shape check can only require that it
+    // is a hash. Asserting the adjacent rule here would refuse every seal taken
+    // below the head.
+    let previous = previous_hash();
+    let body = seal_body(&previous);
+    assert!(
+        verify_seal(50_000, &previous, body).is_ok(),
+        "a seal below the head was refused for not adjoining its prefix"
+    );
+    // It must still be a hash: a non-adjacent seal is not an unchecked one.
+    let mut malformed = seal_body(&previous);
+    malformed.insert("sealed_last_hash".into(), Value::Str("not-a-hash".into()));
+    assert!(verify_seal(50_000, &previous, malformed).is_err());
 }
 
 #[test]

@@ -458,7 +458,7 @@ pub fn verify_line(line: &[u8], expect_seq: u64, expect_prev: &str) -> Result<Re
     if want != hash {
         return Err(RecordError::HashMismatch { seq });
     }
-    if !body_ok(kind, &rec.body, &rec.prev) {
+    if !body_ok(kind, &rec.body, rec.seq, &rec.prev) {
         return Err(RecordError::BodyInvalid { seq });
     }
     Ok(rec)

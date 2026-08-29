@@ -104,6 +104,30 @@ fn state_format_ok(body: &Value, required: bool) -> bool {
     }
 }
 
+/// A seal's `sealed_last_hash` must be a hash, and must be the seal's own
+/// `prev` when the seal adjoins the prefix it seals.
+///
+/// The `sha256:` prefix is added here because every hash in a record *body*
+/// carries it while the envelope's own `prev` does not.
+fn sealed_join_ok(body: &Value, seq: u64, prev: &str) -> bool {
+    let Some(sealed_last_hash) = body.get("sealed_last_hash").and_then(Value::as_str) else {
+        return false;
+    };
+    if !is_state_hash(body.get("sealed_last_hash")) {
+        return false;
+    }
+    let sealed_through_seq = body
+        .get("sealed_through_seq")
+        .and_then(Value::as_num)
+        .and_then(|raw| raw.parse::<u64>().ok());
+    if sealed_through_seq != Some(seq.saturating_sub(1)) {
+        // Not adjacent: the value names a record further back, which only the
+        // chain and the base state file can check.
+        return true;
+    }
+    sealed_last_hash == format!("sha256:{prev}")
+}
+
 fn root_format_ok(kind: RecordKind, body: &Value) -> bool {
     let Some(format) = body.get("state_root_format") else {
         return true;
@@ -154,10 +178,15 @@ fn rejection_ok(body: &Value) -> bool {
 
 /// Validate a record body against the required fields of its kind.
 ///
-/// `prev` is the record's own predecessor hash, needed by exactly one kind: a
-/// seal commits `sealed_last_hash`, and the only honest check of that claim is
-/// against the chain link the record already carries.
-pub(super) fn body_ok(kind: RecordKind, body: &Value, prev: &str) -> bool {
+/// `seq` and `prev` are the record's own envelope fields, needed by exactly one
+/// kind. A seal commits `sealed_last_hash`, the hash of the record at
+/// `sealed_through_seq`. When the seal sits **immediately** after that record —
+/// which is what a seal at the head produces — that hash is the seal's own
+/// `prev`, and the check is a fact rather than a coincidence. When the cut is
+/// an earlier segment boundary the seal is appended at the head instead, other
+/// records lie between, and no local check of the value is possible: the chain
+/// authenticates it, and the loader checks it against the base state file.
+pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> bool {
     let shape_ok = match kind {
         RecordKind::Genesis => {
             body.get("format").and_then(Value::as_str) == Some("fsm.journal/1")
@@ -342,13 +371,7 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, prev: &str) -> bool {
                     == Some(crate::hashes::BASE_DEDUP_FORMAT)
                 && body.get("state_root_format").and_then(Value::as_str)
                     == Some(crate::replay::STATE_ROOT_FORMAT)
-                // The seal is appended at `sealed_through_seq + 1`, so the join
-                // it names already exists in the chain and this asserts it
-                // rather than creating it. The `sha256:` prefix is added here
-                // because every hash in a record *body* carries it while the
-                // envelope's own `prev` does not.
-                && body.get("sealed_last_hash").and_then(Value::as_str)
-                    == Some(format!("sha256:{prev}").as_str())
+                && sealed_join_ok(body, seq, prev)
         }
     };
 
