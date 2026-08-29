@@ -548,6 +548,141 @@ instead of diagnose. The documentation resources keep working throughout,
 and the client is told once, at `error` level, why everything else is
 failing.
 
+## Sealing a journal prefix
+
+Every guarantee above is about what the store *keeps*. None of them is about
+what it costs to keep it. A journal that only grows makes disk track lifetime
+rather than workload, makes a cold open cost the whole history, and makes
+`journal verify` — the strongest claim this project makes — more expensive
+every week, which is exactly the incentive that stops people running it.
+
+Sealing is the answer, and it is not compaction: nothing is rewritten,
+summarized, or made denser. A prefix of the journal is **relocated
+unchanged** into an archive directory you name, and a `journal_sealed` record
+in the live chain says exactly what moved and what it hashed to. A record that
+is not the record that was written is not evidence, so the bytes in the
+archive are the bytes that were on disk.
+
+```console
+$ fsm journal archive --to /backup/fsm-2026-Q1 --dry-run
+$ fsm journal archive --to /backup/fsm-2026-Q1
+```
+
+### When to seal
+
+When the retention window you actually need is shorter than the history you
+have. After a seal, disk and cold-open cost track that window instead of the
+store's lifetime, and everything the store claimed about the sealed prefix is
+still checkable — with the archive present by walking it, and without it by
+checking that the seal's committed hashes match the base the store runs on.
+
+Sealing is always an explicit operator command with an explicit target. There
+is no schedule and no automatic trigger, for the same reason a deadline fires
+only when a caller polls: a store that reorganizes itself on a timer has a
+background writer, and this engine does not have one.
+
+### The cut is a segment boundary
+
+The operation **creates** its cut when it can: it appends a `state_checkpoint`
+and rotates, so the base derives from state a fold has already proved. When
+it cannot cut at the head — see the pin below — it seals through the highest
+segment boundary the cut is allowed to reach instead. Either way the cut is
+segment-final, because a segment the cut fell inside could only be archived
+by splitting it, and splitting means rewriting published bytes.
+
+`--before-seq N` **asserts** which sequence the seal will seal through, as
+`--dry-run` reported it. It does not pick a lower cut; it stops a preview and
+a run from disagreeing about which prefix moved.
+
+### What pins an archive
+
+A **pending effect** holds the records its execution is derived from. The
+executor keeps nothing in memory by design — the journal is its only memory —
+so a pending effect's emitting record, its instance's creation record, and
+every one of its attempt records are read back rather than remembered.
+Archiving any of them would not corrupt the store; it would change what the
+executor concludes, silently, which is worse.
+
+So a store with work in flight seals **lower** than one at rest, and
+`--dry-run` names the highest cut available. Only pending effects pin
+anything: an instance that has been running for a year and is waiting at a
+gate contributes nothing, whatever its age, because its whole history is
+derivable from the base.
+
+### Which idempotency keys survive, and why the rest may go
+
+A dropped `request_id` cannot be told apart later from one the store never
+saw — nothing records that it existed, so there is no honest way to report
+"this one expired". A seal therefore **carries** every key claimed above the
+cut, and every key whose claiming record names an instance that is **live** in
+the base state, whatever its sequence. Carried keys track live workload, not
+lifetime: a store with a thousand finished instances and three running ones
+carries three instances' keys.
+
+It drops the rest, and each dropped key is independently unreplayable. An
+event, poll, ack, or annotation against a settled instance is refused by that
+instance's terminal status. A `create` naming an instance that exists is
+refused with `req/instance_exists` — creating never replaces. And a machine
+definition is content-addressed, so re-adding it is idempotent by hash.
+
+One consequence is worth knowing before you meet it. A carried key whose
+claiming record is in the archive can no longer have its original response
+reconstructed, because that response is rebuilt by reading the record. Retrying
+such a key returns `store/sealed_replay_unavailable`: the request **was**
+applied and is not applied again, and the store refuses rather than guess at a
+thinner answer. Read the original outcome from the archive.
+
+### `store/archive_refused` is a size limit, not a veto
+
+Two things produce it, and the hint says which. Either the keys the cut must
+carry do not fit a base state file — clear it by sealing at an earlier cut, or
+by letting running instances settle — or the cut is at or above the pin, and
+the hint names the highest admissible cut. Neither is a rule against sealing a
+store that has work in flight.
+
+### What a sealed store's `verify` says
+
+Three verdicts, and the middle one is the point:
+
+| Presented | Verdict | Exit |
+|---|---|---|
+| the store is not sealed | *(no seal reported)* | `0` |
+| sealed, no archive given | `prefix_not_presented` | `7` |
+| sealed, `--with-archive <dir>` | `prefix_walked` | `0` |
+
+**A verification that did not read the sealed bytes never reports what one
+that did reports.** Without `--with-archive` the prefix is not read at all —
+not partially, not optimistically — and the middle verdict has its own exit
+code because a shell script reads only that. With the archive presented, the
+manifest, every segment digest, and the record at the cut are all checked, and
+only then is the answer the one an unsealed store gives.
+
+The per-segment digests are **plain, undomained SHA-256 over each file's exact
+bytes**, so `sha256sum seg-*.jsonl` reproduces them. Every other hash here is
+domain-separated; this one is not, on purpose, because an archive auditable
+only by the tool that wrote it is a weaker artifact than one auditable by
+`coreutils`.
+
+### The archive is yours
+
+`fsm` writes an archive once and never reads it again unless you ask with
+`--with-archive`. It does not manage retention, does not delete anything, and
+will not seal into a directory that already holds a `MANIFEST` — one seal, one
+archive, one manifest. Destroying archived bytes is a separate act you take
+with your own tools, exactly as `repair --truncate-torn-tail` is.
+
+### When a sealed store will not open
+
+| Condition | What it means | Remedy |
+|---|---|---|
+| `store/base_missing` | the journal starts above sequence zero and no base explains why — records were removed without a seal saying so | restore the journal's segments from backup, or restore the `BASE` the seal that removed them wrote |
+| `store/base_mismatch` | a base is present and does not match the seal that commits it, or its own declared roots | **no repair reconstructs a base.** The records it replaced are in the archive, not in this directory. Restore the `BASE` this store was sealed with |
+
+Neither is repairable from the data directory alone, and neither is offered a
+repair command, because a command that cannot work is worse than the truth.
+The base state file is **required**, never a cache: a missing or stale snapshot
+degrades to a fold, and a missing base refuses the open.
+
 ## Serving over HTTP
 
 `fsm serve` speaks stdio by default: one client, spawned as a child process,

@@ -121,8 +121,13 @@ Claude Desktop `mcpServers` JSON:
 | accurate tool annotations | read-only, destructive, and idempotent hints are derived from the code that enforces them, not declared alongside it |
 | live subscriptions | a subscribed resource notifies on change, from a poll loop that takes no lock and perturbs no writer |
 | explicit evolution | an instance changes definition because a record says so, under a mapping the new definition declares and its hash covers |
+| bounded retention | a sealed prefix is relocated unchanged into an archive you name, never rewritten, and stays checkable — with the archive by walking it, without it by the hashes the live chain still commits |
 
-Honest non-claims: this is a **single-node** single-writer engine. There is no
+Honest non-claims: this is a **single-node** single-writer engine. Sealing
+does not delete: it moves bytes to a directory you name and leaves destroying
+them to you. It does not run on a timer either — there is no scheduled or
+automatic archival, because a store that reorganizes itself on a timer has a
+background writer, and this one does not. There is no
 HA/replication or autonomous real-time scheduler; a deadline fires only when a
 caller polls. The throughput ceiling is a feature. The executor inherits that
 ceiling, and a handler killed mid-run is re-run by the next executor rather

@@ -115,7 +115,10 @@ fn readme_and_licenses() {
         .lines()
         .filter(|l| l.starts_with("|") && !l.contains("---") && !l.contains("Guarantee"))
         .count();
-    assert_eq!(rows, 24, "{rows}");
+    // 25 since plan 0017 added the bounded-retention row. The count is pinned
+    // rather than left open because a guarantee table that grows unnoticed is
+    // a table nobody re-reads.
+    assert_eq!(rows, 25, "{rows}");
     assert!(readme.contains("single-node"));
     let mit = std::fs::read_to_string(root.join("LICENSE-MIT")).unwrap();
     let ap = std::fs::read_to_string(root.join("LICENSE-APACHE")).unwrap();
