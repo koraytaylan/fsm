@@ -201,6 +201,12 @@ enforced by jobs in `release.yml`, not by this list.
 - `manual:` re-run the latency harness and update the measured table in
   [`EMBEDDING.md`](EMBEDDING.md) if the numbers have moved materially:
   `FSM_BENCH_ROOT=/path/on/filesystem-under-test cargo +stable test --release -p fsm-store --test append_latency -- --ignored --nocapture`
+  This step stays manual and is not replaced by
+  `crates/fsm-store/tests/append_guard.rs`, which runs in the ordinary suite.
+  They answer different questions: the guard asserts a wide ceiling and fails
+  on a collapse, and this harness produces the numbers a human reads. A guard
+  tight enough to notice a drift would be a flaky test on a shared runner, and
+  a flaky performance test is deleted within a month.
 - regenerate the decimal vectors and confirm they are byte-identical — enforced
   as a CI step on every gate leg and again in the release `verify` job, so a
   stale fixture fails long before a tag. Command (also run by CI):

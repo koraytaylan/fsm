@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-store/tests/append_guard.rs
   - docs/RELEASE.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Latency Regression Guard
