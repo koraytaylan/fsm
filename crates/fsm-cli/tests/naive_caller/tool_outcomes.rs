@@ -896,6 +896,10 @@ fn all_codes_hygiene() {
         "def/invoke_cycle",
         // Same shape: a definition would have to contain its own hash.
         "def/supersedes_self",
+        // `instance_create` takes no instance id: both surfaces derive
+        // `inst-<request_id>`, so a caller cannot name one that already
+        // exists. The guard closes the library API and the post-seal path.
+        "req/instance_exists",
         // Plan 0011 registers its closed set of codes in one task so no
         // later task edits `error.rs`. Each line below names the task that
         // makes its code reachable and is removed by that task's commit.
@@ -904,6 +908,10 @@ fn all_codes_hygiene() {
         // with; nothing writes a base until task 8002, and no tool surfaces
         // the refusal until task 8103 teaches `store_doctor` to classify it.
         "store/base_mismatch",
+        // Plan 0017 task 7903 registers the code a refused seal carries.
+        // Sealing is a CLI operation and this plan deliberately adds no tool,
+        // so no tool outcome ever produces it.
+        "store/archive_refused",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");

@@ -75,6 +75,17 @@ means re-initialize — and the status codes each condition returns. A client
 depends on those exactly as it depends on a tool's input schema, and they move
 only when a tool schema could.
 
+A **behaviour that used to succeed and now refuses is a breaking change**,
+and 0.3.0 carries one: `Store::create_instance` and its `_ctx`/`_ctx_on`
+siblings refuse an `instance_id` that already exists with the new
+`req/instance_exists`. They previously replaced the instance in place —
+resetting its configuration and wiping its context — which no caller could
+reach through the CLI or the MCP tools, because both derive
+`inst-<request_id>` and a repeat of the request replays instead. A library
+caller that passes its own instance ids, and any caller at all once a journal
+seal is allowed to drop the key that made the repeat a replay, could. Creating
+never replaces; the correct retry of a creation is its original `request_id`.
+
 The **`Clock` trait's provided methods are part of that surface.** `now_ms` is
 required; `reserve_ms` and `commit_reserved_ms` have defaults, so an
 implementation written against any release keeps compiling and keeps eager

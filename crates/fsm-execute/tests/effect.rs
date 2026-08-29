@@ -248,38 +248,47 @@ fn a_creation_time_emit_resolves_from_the_instance_created_record() {
 }
 
 #[test]
-fn a_re_created_instance_resolves_against_its_latest_creation() {
-    // Creation is not guarded against re-using an instance id, and both
-    // creations compose the same `{instance}/0/{k}` effect id. Resolving to
-    // the first creation's arguments would run the handler against values the
-    // instance no longer holds.
+fn one_instance_has_one_creation_so_a_creation_time_effect_id_is_unambiguous() {
+    // A creation-time effect id is `{instance}/0/{k}`, which names the
+    // instance's creation and not any particular one of them. This test used
+    // to pin which creation won, because the store let an instance id be
+    // re-used and the resolver had to prefer the latest. Plan 0017 task 7903
+    // closed that: `create` refuses an id that exists, so `{instance}/0/{k}`
+    // names exactly one record and there is nothing left to prefer.
     let directory = TestDirectory::create("effect-recreated");
     let (mut store, mut clock) = writer(&directory);
     store
         .define_machine_on(&mut clock, creation_emit_machine(), false, false)
         .unwrap();
-    for (request, case) in [
-        ("req-create-1", "case-first"),
-        ("req-create-2", "case-second"),
-    ] {
-        store
-            .create_instance_ctx_on(
-                &mut clock,
-                "case_intake_effects",
-                "case-2",
-                request,
-                None,
-                &overrides(&[("case_id", Val::Str(case.into()))]),
-                &[],
-            )
-            .unwrap();
-    }
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "case_intake_effects",
+            "case-2",
+            "req-create-1",
+            None,
+            &overrides(&[("case_id", Val::Str("case-first".into()))]),
+            &[],
+        )
+        .unwrap();
+    let refusal = store
+        .create_instance_ctx_on(
+            &mut clock,
+            "case_intake_effects",
+            "case-2",
+            "req-create-2",
+            None,
+            &overrides(&[("case_id", Val::Str("case-second".into()))]),
+            &[],
+        )
+        .expect_err("a second creation of one instance id is refused");
+    assert_eq!(refusal.code, "req/instance_exists");
     let ids = pending_ids(&store, "case-2");
     drop(store);
 
     let store = read_only(&directory);
     let opened = resolve(&store, &ids[0]).unwrap();
-    assert_eq!(argument(&opened, "case"), "case-second");
+    assert_eq!(argument(&opened, "case"), "case-first");
 }
 
 #[test]

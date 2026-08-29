@@ -13,8 +13,16 @@ pub(crate) const INFRA: &[(&str, &str)] = &[
     ),
     ("io/read", "filesystem failure is not a caller-shaped retry"),
     (
+        "req/instance_exists",
+        "unreachable from a tool: `instance_create` takes no instance id and both surfaces derive `inst-<request_id>`, so a caller cannot name one that exists. The guard closes the library API and the post-seal path where a dropped key lets a derived id repeat",
+    ),
+    (
         "io/write",
         "filesystem failure is not a caller-shaped retry",
+    ),
+    (
+        "store/archive_refused",
+        "an operator seals at an earlier cut or lets instances settle; there is no one-step retry that makes a base file smaller",
     ),
     (
         "store/base_mismatch",

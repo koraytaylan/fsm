@@ -65,6 +65,38 @@ impl Store {
         )? {
             return r;
         }
+        // `create` never replaces an instance. Without this, re-issuing a
+        // creation request under a key the store no longer holds silently
+        // resets the instance it already made — back to its initial
+        // configuration, with its context wiped and a second
+        // `instance_created` record in its history. Idempotency alone does not
+        // close that: the surfaces derive `inst-<request_id>`, so the same
+        // request produces the same id, and plan 0017's seal is allowed to
+        // drop the key that used to make the retry a replay. The refusal is
+        // what makes "a dropped create key cannot be applied twice" a fact
+        // rather than a hope about callers.
+        if self.state.instances.contains_key(instance_id) {
+            let mut details = BTreeMap::new();
+            details.insert("instance_id".into(), Value::Str(instance_id.into()));
+            if let Some(machine) = self.state.instance_machines.get(instance_id) {
+                details.insert("machine_id".into(), Value::Str(machine.clone()));
+            }
+            if let Some(instance) = self.state.instances.get(instance_id) {
+                details.insert("status".into(), Value::Str(instance.status.as_str().into()));
+            }
+            return Err(ErrorObj::new(
+                "req/instance_exists",
+                format!("instance {instance_id} already exists"),
+            )
+            .hint(concat!(
+                "creating never replaces: send an event to the instance that exists, ",
+                "or create a new one under a different id. To retry the original ",
+                "creation, reuse its original request_id — that replays the outcome ",
+                "instead of applying it again",
+            ))
+            .details(Value::Obj(details))
+            .request_id(request_id));
+        }
         if let Some(exp) = expect_seq {
             if exp != self.journal.last_seq {
                 let mut d = BTreeMap::new();

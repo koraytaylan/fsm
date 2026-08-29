@@ -1121,6 +1121,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `req/field_scale` — too many fraction digits
 - `req/field_type` — value does not match type
 - `req/field_unknown` — extra field
+- `req/instance_exists` — a `create` named an instance id that already exists. Creating NEVER replaces an instance: a retry of the original creation MUST reuse its original `request_id`, which replays the outcome
 - `req/instance_not_found` — unknown instance
 - `req/invoke_slot_state` — an invocation slot is not pending
 - `req/signal_target` — a signal addressed to its own sender
@@ -1149,6 +1150,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `run/not_enabled` — all guards false
 - `run/overflow` — checked arithmetic overflow
 - `run/unhandled` — no candidate on the chain
+- `store/archive_refused` — a proposed journal seal cannot be taken. It is a **size** limit, not a rule against sealing a store with work in flight: either the idempotency keys the cut must carry do not fit a base state file, or the cut is above the lowest sequence a live derivation still depends on. The hint names what clears it
 - `store/base_mismatch` — the base state a sealed store opens from does not match the seal record that commits it, or does not match its own declared roots. There is no repair: the records the base replaced are in the archive, not in this data directory
 - `store/chain_broken` — interior hash/seq break
 - `store/degraded` — a store-backed call on a server that could not open its store

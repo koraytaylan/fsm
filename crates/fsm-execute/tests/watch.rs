@@ -460,9 +460,13 @@ fn a_creation_time_effect_is_re_resolved_rather_than_remembered() {
         "a creation-time id is deliberately not remembered"
     );
 
+    // An instance has exactly one creation since plan 0017 task 7903, so there
+    // is no second one for the scan to follow. What the property was really
+    // about survives: the id is re-resolved on every scan rather than cached,
+    // which the unchanged `resolved_count` below is the evidence for.
     let mut writer = Writer::open(&directory);
     let second_request = writer.request_id();
-    writer
+    let refusal = writer
         .store
         .create_instance_ctx_on(
             &mut writer.clock,
@@ -473,14 +477,20 @@ fn a_creation_time_effect_is_re_resolved_rather_than_remembered() {
             &BTreeMap::from([("case_id".to_string(), Val::Str("case-second".into()))]),
             &[],
         )
-        .unwrap();
+        .expect_err("a second creation of one instance id is refused");
+    assert_eq!(refusal.code, "req/instance_exists");
     drop(writer);
 
     let second = scan(&mut watcher);
     assert_eq!(
         ctx_val_string(&second.pending[0].args["case"]),
-        "case-second",
-        "the scan follows the instance's current life"
+        "case-first",
+        "the scan re-resolved the creation-time id against the one creation"
+    );
+    assert_eq!(
+        watcher.resolved_count(),
+        0,
+        "a creation-time id is still not remembered between scans"
     );
 }
 
