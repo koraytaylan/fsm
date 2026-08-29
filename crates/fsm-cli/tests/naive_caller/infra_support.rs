@@ -17,6 +17,10 @@ pub(crate) const INFRA: &[(&str, &str)] = &[
         "filesystem failure is not a caller-shaped retry",
     ),
     (
+        "store/base_mismatch",
+        "a base state file that does not match its seal is an operator's restore, not a caller's retry: nothing reconstructs it from this directory",
+    ),
+    (
         "store/chain_broken",
         "corrupt journal requires repair, not a one-step retry",
     ),

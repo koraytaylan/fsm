@@ -24,6 +24,7 @@
     clippy::collapsible_match
 )]
 
+pub mod base;
 pub mod clock;
 pub mod journal_io;
 pub mod snapshot;

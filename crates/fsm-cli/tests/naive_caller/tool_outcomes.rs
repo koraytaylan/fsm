@@ -899,6 +899,11 @@ fn all_codes_hygiene() {
         // Plan 0011 registers its closed set of codes in one task so no
         // later task edits `error.rs`. Each line below names the task that
         // makes its code reachable and is removed by that task's commit.
+        //
+        // Plan 0017 task 7902 registers the code the base state file refuses
+        // with; nothing writes a base until task 8002, and no tool surfaces
+        // the refusal until task 8103 teaches `store_doctor` to classify it.
+        "store/base_mismatch",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");

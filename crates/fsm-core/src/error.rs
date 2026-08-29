@@ -153,6 +153,7 @@ pub const ALL_CODES: &[&str] = &[
     "run/not_enabled",
     "run/overflow",
     "run/unhandled",
+    "store/base_mismatch",
     "store/chain_broken",
     "store/degraded",
     "store/lock",

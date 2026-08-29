@@ -1149,6 +1149,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `run/not_enabled` — all guards false
 - `run/overflow` — checked arithmetic overflow
 - `run/unhandled` — no candidate on the chain
+- `store/base_mismatch` — the base state a sealed store opens from does not match the seal record that commits it, or does not match its own declared roots. There is no repair: the records the base replaced are in the archive, not in this data directory
 - `store/chain_broken` — interior hash/seq break
 - `store/degraded` — a store-backed call on a server that could not open its store
 - `store/lock` — lock I/O
