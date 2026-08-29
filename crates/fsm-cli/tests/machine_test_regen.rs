@@ -564,3 +564,106 @@ fn a_context_key_the_machine_does_not_declare_is_reported_not_invented() {
     );
     let _ = code;
 }
+
+/// One case that diverges and one that *errors*, so a run does both.
+const MIXED: &str = r#"{
+  "format": "fsm.cases/1",
+  "machine": "case_review",
+  "cases": [
+    {
+      "name": "diverges_and_can_be_rewritten",
+      "script": [{"send": "docs_ok"}],
+      "expect": {"configuration": ["approved"]}
+    },
+    {
+      "name": "errors_rather_than_diverges",
+      "script": [{"send": "docs_ok"}, {"ack": "nosuch", "outcome": "ok"}],
+      "expect": {"configuration": ["approved"]}
+    }
+  ]
+}
+"#;
+
+#[test]
+fn a_run_that_rewrote_some_cases_and_left_others_exits_non_zero() {
+    // The dangerous half of a partial regeneration: a CI wrapper that saw
+    // success here would carry on with a stale expectation nobody was told
+    // about, because the case it could not rewrite is still diverging.
+    let repo = Repo::create("partial", MIXED);
+    let (code, stdout, stderr) = repo.run(true, "cases.json");
+    assert_ne!(
+        code, 0,
+        "a run that left a diverging case alone exited zero: {stdout}{stderr}"
+    );
+    assert!(stdout.contains("diverges_and_can_be_rewritten"), "{stdout}");
+    assert!(stdout.contains("errors_rather_than_diverges"), "{stdout}");
+    // It did rewrite the one it could.
+    let file = parse_cases(repo.read().as_bytes()).expect("the file parses");
+    assert_eq!(
+        file.cases[0].expect.configuration.as_deref(),
+        Some(["docs_review".to_string()].as_slice())
+    );
+}
+
+#[test]
+fn regeneration_honours_json() {
+    // Both sibling paths branch on `--json`; this one printed prose onto
+    // stdout regardless, so `--json` emitted something no parser accepts.
+    let repo = Repo::create("json", CASES);
+    let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args([
+            "machine",
+            "test",
+            "machine.json",
+            "--cases",
+            "cases.json",
+            "--json",
+        ])
+        .current_dir(&repo.0)
+        .env("NO_COLOR", "1")
+        .env("FSM_REGEN_FIXTURES", "1")
+        .output()
+        .expect("the binary runs");
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    let value = fsm_core::json::parse(stdout.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT)
+        .unwrap_or_else(|error| {
+            panic!("regeneration emitted non-JSON under --json: {error:?}\n{stdout}")
+        });
+    assert_eq!(
+        value
+            .get("regenerated")
+            .and_then(fsm_core::json::Value::as_bool),
+        Some(true)
+    );
+    assert!(
+        value
+            .get("changes")
+            .and_then(fsm_core::json::Value::as_arr)
+            .is_some_and(|changes| !changes.is_empty()),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn the_rewritten_file_is_written_durably_rather_than_truncated_in_place() {
+    // `fs::write` truncates first: a crash or a full disk part-way through
+    // would leave the author holding a truncated `cases.json` — the evidence
+    // file the refusal above exists to keep reviewable. Asserted by its
+    // effect: the file is complete and parses after a rewrite.
+    let repo = Repo::create("durable", CASES);
+    assert_eq!(repo.run(true, "cases.json").0, 0);
+    let after = repo.read();
+    assert!(after.ends_with("}\n") || after.ends_with('}'), "{after}");
+    parse_cases(after.as_bytes()).expect("the rewritten file is complete and parses");
+    // And no temporary file was left beside it.
+    let strays: Vec<String> = fs::read_dir(&repo.0)
+        .expect("listable")
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("cases.json.") || name.ends_with(".tmp"))
+        .collect();
+    assert!(
+        strays.is_empty(),
+        "a temporary file was left behind: {strays:?}"
+    );
+}

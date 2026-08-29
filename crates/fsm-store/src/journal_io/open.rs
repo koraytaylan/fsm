@@ -66,6 +66,21 @@ pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<Opened, OpenError>
         if migrating {
             return Err(OpenError::Health(JournalHealth::MissingGenesis));
         }
+        // **Never over a base.** A sealed store's genesis is in the archive,
+        // so writing a fresh one here would abandon every machine and instance
+        // the base holds — and the new genesis would make that permanent. The
+        // classification below should already refuse such a directory; this is
+        // the second lock on the one door in this file that destroys data.
+        if crate::base::read_header(dir)
+            .map_err(|error| OpenError::ReadIo(error.message))?
+            .is_some()
+        {
+            return Err(OpenError::Health(JournalHealth::BaseMismatch {
+                detail: "this directory holds a base state file, so its genesis is in the \
+                         archive and a new one must never be written over it"
+                    .into(),
+            }));
+        }
         write_genesis_unlocked(&jdir).map_err(|e| OpenError::WriteIo(e.to_string()))?;
     }
     let health = classify(dir);

@@ -208,6 +208,75 @@ fn replay_to_a_sequence_above_the_seal_still_works() {
     assert_eq!(result.get("agreement").and_then(Value::as_bool), Some(true));
 }
 
+/// A store whose cut is an **existing segment boundary**, so the seal record
+/// lands far above it rather than at `cut + 1`.
+///
+/// Every other sealed fixture here cuts at the head, where the seal record is
+/// the very next sequence — which leaves the window `cut < n < seal_record_seq`
+/// empty, and that is why nothing caught a replay into it.
+fn seal_at_a_boundary(directory: &TestDirectory) -> (u64, u64) {
+    let mut store = build_store(directory);
+    store
+        .journal
+        .force_rotate()
+        .expect("the journal rotates on demand");
+    let boundary = store.state.last_seq;
+    store
+        .create_instance("case_review", "pending", "create-pending", None)
+        .expect("create succeeds");
+    store
+        .send_event(
+            "pending",
+            "docs_ok",
+            Value::Obj(BTreeMap::new()),
+            "send-pending",
+            None,
+        )
+        .expect("send succeeds");
+    assert!(
+        !store.state.instances["pending"].pending.is_empty(),
+        "the case needs an unacked effect to pin the cut"
+    );
+    let report = store
+        .seal_and_archive(&directory.archive(), None)
+        .expect("a pinned store seals the segments below the pin");
+    assert_eq!(report.sealed_through_seq, boundary);
+    let seal_seq = report
+        .seal_record_seq
+        .expect("a real seal appends a record");
+    assert!(
+        seal_seq > boundary + 1,
+        "this fixture needs a gap between the cut and the seal record"
+    );
+    drop(store);
+    (boundary, seal_seq)
+}
+
+#[test]
+fn replay_between_the_cut_and_the_seal_record_reports_a_healthy_store() {
+    // The seal record authenticates the base, and filtering the window by
+    // `--to-seq` used to filter it away — so a perfectly healthy store
+    // reported `agreement: false` with a bogus divergent sequence and exited
+    // non-zero, for every sequence between its cut and its seal record.
+    let directory = TestDirectory::create("replay-window");
+    let (cut, seal_seq) = seal_at_a_boundary(&directory);
+    for to in (cut + 1)..seal_seq {
+        let (code, result) = run(
+            &directory.store(),
+            &["journal", "replay", &format!("--to-seq={to}")],
+        );
+        assert_eq!(
+            code, 0,
+            "a healthy store failed replay at to-seq {to}: {result:?}"
+        );
+        assert_eq!(
+            result.get("agreement").and_then(Value::as_bool),
+            Some(true),
+            "at to-seq {to}: {result:?}"
+        );
+    }
+}
+
 #[test]
 fn doctor_reports_the_seal_on_a_healthy_sealed_store() {
     // "How much of this store is live" is the first question a sealed store is

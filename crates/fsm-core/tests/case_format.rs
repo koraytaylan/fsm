@@ -260,6 +260,16 @@ fn the_cases_ceiling_admits_the_limit_and_refuses_one_more() {
 }
 
 #[test]
+fn a_file_with_no_cases_is_refused() {
+    // It parsed, ran, reported "0 passed, 0 failed" and exited zero — a
+    // permanently green check asserting nothing, which is the failure this
+    // format's own module doc calls strictly worse than having no case file.
+    let rendered = rendered(&document("[]"));
+    assert!(rendered.contains("case/shape"), "{rendered}");
+    assert!(rendered.contains("asserts nothing"), "{rendered}");
+}
+
+#[test]
 fn two_cases_with_one_name_are_refused() {
     // A name is how a reader, `--case`, and every report address a case. A
     // duplicate makes all three ambiguous and each resolves it differently:
@@ -304,9 +314,12 @@ fn the_byte_ceiling_admits_the_limit_and_refuses_one_more_without_parsing_it() {
     assert_eq!(refusal[0].0, "case/limit_bytes");
 
     // And a document of exactly the ceiling is admitted on length: it fails,
-    // if at all, on its contents.
-    let padding = MAX_CASE_BYTES - document("[]").len();
-    let exact = document("[]").replace(
+    // if at all, on its contents. Padded through `machine`, which the parser
+    // carries for reporting only, around one real case — an empty file is
+    // refused on its own account.
+    let one = many_cases(1);
+    let padding = MAX_CASE_BYTES - one.len();
+    let exact = one.replace(
         "\"machine\":\"m\"",
         &format!("\"machine\":\"{}\"", "m".repeat(padding + 1)),
     );

@@ -215,13 +215,13 @@ impl ChainStart {
 /// a sealed store loads, classifies, and verifies correctly through the paths
 /// that already exist instead of through a second set of them.
 pub fn chain_start(dir: &Path) -> ChainStart {
-    // A base is consulted only when the live journal actually starts above the
-    // origin. Before a seal's commit point an interrupted run can have written
-    // `BASE` already, and that file is **inert**: nothing in the chain
-    // references it, every record it describes is still on disk, and a loader
-    // that trusted it would skip segments it has — turning a survivable
-    // interruption into a store that does not open. That is the other half of
-    // "before step 7 the new files are inert".
+    // `BASE` is only ever the base some seal record in the chain commits: a
+    // seal writes its new one under `BASE.pending` and renames it into place
+    // only after its record is durable, so an interrupted run never leaves an
+    // uncommitted base here. The origin check below is the second lock — a
+    // journal that still starts at zero has nothing sealed whatever files sit
+    // beside it, and a loader that trusted a base there would skip segments it
+    // has, turning a survivable interruption into a store that does not open.
     if journal_starts_at_origin(dir) {
         return ChainStart::default();
     }

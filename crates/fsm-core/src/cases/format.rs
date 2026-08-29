@@ -539,6 +539,21 @@ pub fn parse_cases(bytes: &[u8]) -> Result<CaseFile, Vec<Finding>> {
         ));
         return Err(errors);
     };
+    if entries.is_empty() {
+        // Bounded from below as well as above. A file with no cases parses,
+        // runs, reports "0 passed, 0 failed" and exits zero — a permanently
+        // green check that asserts nothing, which is the failure this format
+        // exists to prevent stated in its own module doc. An author who
+        // deletes their last case should hear about it.
+        errors.push(err(
+            "case/shape",
+            "/cases",
+            "a case file with no cases asserts nothing",
+            "add a case, or delete the file: a file that runs no cases reports success it did \
+             not earn",
+        ));
+        return Err(errors);
+    }
     if entries.len() > MAX_CASES_PER_FILE {
         errors.push(err(
             "case/limit_cases",

@@ -59,6 +59,11 @@ impl TestDirectory {
     fn archive(&self) -> PathBuf {
         self.0.join("archive")
     }
+
+    /// A second archive directory: one seal, one archive.
+    fn second_archive(&self) -> PathBuf {
+        self.0.join("other-archive")
+    }
 }
 
 impl Drop for TestDirectory {
@@ -647,4 +652,113 @@ fn the_seal_record_is_the_first_live_record_after_a_head_cut() {
     let first = store.records.first().expect("the live suffix is not empty");
     assert_eq!(first.kind, RecordKind::JournalSealed);
     assert_eq!(first.seq, report.sealed_through_seq + 1);
+}
+
+#[test]
+fn a_sealed_store_whose_live_segment_is_lost_never_gains_a_fresh_genesis() {
+    // The worst outcome this codebase can produce, and it was one power cut
+    // away: `classify` answers `MissingGenesis` for a sealed store the moment
+    // its live suffix yields no records — a sealed store's genesis is in the
+    // archive — and `open` responds to that by **writing a new genesis**. The
+    // base sitting beside it would be ignored, every machine and instance
+    // would vanish, and the new genesis would make the loss permanent.
+    let directory = TestDirectory::create("lost-suffix");
+    let (report, before) = sealed(&directory, "a");
+    assert!(!before.instances.is_empty());
+    let journal = directory.store().join("journal");
+
+    // Zero the live segment, as an interrupted write or an operator deleting
+    // an "empty-looking" newest segment would.
+    let live: Vec<PathBuf> = std::fs::read_dir(&journal)
+        .expect("listable")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("seg-"))
+        })
+        .collect();
+    assert_eq!(live.len(), 1, "the seal left more than the live segment");
+    std::fs::write(&live[0], b"").expect("writable");
+
+    let Err(error) = Store::open(&directory.store()) else {
+        panic!("a sealed store with no live records opened");
+    };
+    assert_eq!(
+        error.code, "store/base_mismatch",
+        "a sealed store with no live records was not refused: {error:?}"
+    );
+    assert!(
+        base_path(&directory).exists(),
+        "the base was removed by a refused open"
+    );
+    // And nothing wrote a genesis over it.
+    let contents = std::fs::read_to_string(&live[0]).expect("readable");
+    assert!(
+        contents.is_empty(),
+        "a fresh genesis was written over a sealed store: {contents}"
+    );
+    assert!(report.sealed_through_seq > 0);
+}
+
+#[test]
+fn a_second_seal_interrupted_before_its_commit_point_leaves_the_first_seal_intact() {
+    // Step 6 used to overwrite `BASE` — the base the *previous* seal
+    // committed — before the new seal record existed. A crash in that window
+    // left a directory whose base named a cut no record in the chain named,
+    // which no reader can resolve, and the store did not open at all. The new
+    // base is written under a pending name and promoted only after the commit.
+    let directory = TestDirectory::create("second-seal-crash");
+    let (first, _before) = sealed(&directory, "a");
+    let journal = directory.store().join("journal");
+    let committed = std::fs::read(journal.join(BASE_FILE)).expect("the first base is readable");
+
+    // Reconstruct the window: a pending base for a later cut, written but not
+    // committed.
+    std::fs::write(
+        journal.join("BASE.pending"),
+        b"{\"format\": \"fsm.base/1\"}",
+    )
+    .expect("writable");
+
+    let store = Store::open(&directory.store()).expect("the store still opens at the first seal");
+    assert!(store.state.instances.contains_key("a-live-0"));
+    drop(store);
+    assert_eq!(
+        std::fs::read(journal.join(BASE_FILE)).expect("readable"),
+        committed,
+        "opening promoted an uncommitted base"
+    );
+    assert!(first.sealed_through_seq > 0);
+}
+
+#[test]
+fn a_second_seal_across_a_reopen_promotes_its_base_and_removes_the_pending_file() {
+    let directory = TestDirectory::create("second-seal-promote");
+    let (first, _before) = sealed(&directory, "a");
+    let journal = directory.store().join("journal");
+
+    let mut store = Store::open(&directory.store()).expect("a sealed store reopens");
+    for round in 0..3 {
+        store
+            .annotate("a-live-0", &format!("note-{round}"), "a note")
+            .expect("a sealed store still writes");
+    }
+    let second = store
+        .seal_and_archive(&directory.second_archive(), None)
+        .expect("a second seal runs");
+    drop(store);
+
+    assert!(second.sealed_through_seq > first.sealed_through_seq);
+    assert!(
+        !journal.join("BASE.pending").exists(),
+        "the pending base was left behind"
+    );
+    let header = fsm_store::base::read_header(&directory.store())
+        .expect("the base header reads")
+        .expect("a twice-sealed store has a base");
+    assert_eq!(header.seq, second.sealed_through_seq);
+    let reopened = Store::open(&directory.store()).expect("a twice-sealed store reopens");
+    assert!(reopened.state.instances.contains_key("a-live-0"));
 }

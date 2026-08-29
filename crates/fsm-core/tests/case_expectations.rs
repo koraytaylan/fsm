@@ -262,7 +262,7 @@ fn three_divergences_are_all_reported_each_with_its_step_index() {
     for divergence in &found {
         assert_eq!(
             divergence.step,
-            observed.steps.len() - 1,
+            Some(observed.steps.len() - 1),
             "a final-state divergence does not name where the script ended"
         );
     }
@@ -313,7 +313,7 @@ fn a_step_that_could_not_run_is_reported_before_any_expectation() {
     };
     let found = diverge(&expect, &observed);
     assert_eq!(found[0].field, "script");
-    assert_eq!(found[0].step, 1, "the refusal does not name its step");
+    assert_eq!(found[0].step, Some(1), "the refusal does not name its step");
     assert_eq!(found[0].rule, Rule::Script);
     // `expected` is always "the step runs" and `found` is always the reason.
     // Two shapes here made every consumer pick a half, and the delta report
@@ -358,7 +358,7 @@ fn a_poll_the_engine_rejected_is_a_divergence_rather_than_a_silent_pass() {
     );
     assert_eq!(found[0].field, "script");
     assert_eq!(found[0].rule, Rule::Script);
-    assert_eq!(found[0].step, 0);
+    assert_eq!(found[0].step, Some(0));
     assert!(!passes(&expect, &observed));
 }
 
@@ -379,4 +379,18 @@ fn a_divergence_is_data_rather_than_prose() {
     // sentence the core already wrote.
     assert!(!divergence.expected.contains(' '));
     assert!(!divergence.found.contains(' '));
+}
+
+#[test]
+fn a_case_with_no_script_names_no_step() {
+    // `steps.len() - 1` saturated to zero, so a scriptless case reported a
+    // divergence "at step 0" — a step that does not exist.
+    let observed = run(CASE_REVIEW, vec![]);
+    let expect = Expect {
+        configuration: Some(strings(&["approved"])),
+        ..Expect::default()
+    };
+    let found = diverge(&expect, &observed);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].step, None, "a scriptless case pointed at a step");
 }

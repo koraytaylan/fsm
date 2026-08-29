@@ -81,6 +81,21 @@ use super::{ErrorObj, Store};
 /// The base state file a sealed store opens from.
 pub const BASE_FILE: &str = "BASE";
 
+/// Where a seal writes its base **before** the commit point.
+///
+/// The base cannot be written straight to [`BASE_FILE`]: on a second seal that
+/// file already holds the base the *previous* seal committed, and overwriting
+/// it before the new seal record exists destroys the only thing that made the
+/// store openable. A crash in that window left a directory whose base named a
+/// cut no seal record in the chain named, which no reader can resolve.
+///
+/// So it lands here — inert, because nothing in the chain names it — and is
+/// renamed into place after the seal record is durable. A run interrupted
+/// before that leaves a store that opens exactly as it did before the seal
+/// began, which is what "every prefix of these steps leaves a store that
+/// opens" requires.
+pub const PENDING_BASE_FILE: &str = "BASE.pending";
+
 /// Where a seal's prefix ends.
 ///
 /// Both variants are segment-final. The first is a boundary this operation
@@ -538,33 +553,47 @@ impl Store {
         }
         crate::sync_dir(archive_dir).map_err(|error| write_error("sync", archive_dir, error))?;
 
-        // 6. Write BASE durably. `write_durable` writes a temporary file,
-        //    fsyncs it, and renames; the directory fsync follows.
-        let base_path = journal_dir.join(BASE_FILE);
+        // 6. Write the new base under its **pending** name, durably.
+        //    `write_durable` writes a temporary file, fsyncs it, and renames;
+        //    the directory fsync follows. Not to `BASE`: on a second seal that
+        //    file is the previous seal's, and it stays valid and committed
+        //    until this one is.
+        let pending_path = journal_dir.join(PENDING_BASE_FILE);
         let mut base_bytes = fsm_core::canon::canon_bytes(&base::encode(
             &base_state,
             &base_index,
             definition_limits,
         ));
         base_bytes.push(b'\n');
-        crate::write_durable(&base_path, &base_bytes)
-            .map_err(|error| write_error("write", &base_path, error))?;
+        crate::write_durable(&pending_path, &base_bytes)
+            .map_err(|error| write_error("write", &pending_path, error))?;
         crate::sync_dir(&journal_dir).map_err(|error| write_error("sync", &journal_dir, error))?;
 
         // 7. **Append the seal record. This is the commit point.** Before this
-        //    line the store is unsealed and every file written above is inert;
-        //    after it the store is sealed.
+        //    line the store is unsealed — or sealed at the *previous* cut —
+        //    and every file written above is inert; after it the store is
+        //    sealed at this one.
         let seal_record =
             self.append_seal_record(clock, cut, &sealed_last_hash, &roots, &manifest)?;
 
-        // 8. Remove the now-copied segments from the live journal.
+        // 8. Promote the pending base. `rename` is atomic, so a reader sees
+        //    either the previous seal's base or this one's, never a mixture.
+        //    A crash between step 7 and here leaves the store open-able at the
+        //    previous seal with this run's bytes inert beside it, which is the
+        //    same shape as an interruption before the commit point.
+        let base_path = journal_dir.join(BASE_FILE);
+        std::fs::rename(&pending_path, &base_path)
+            .map_err(|error| write_error("promote", &pending_path, error))?;
+        crate::sync_dir(&journal_dir).map_err(|error| write_error("sync", &journal_dir, error))?;
+
+        // 9. Remove the now-copied segments from the live journal.
         for segment in &manifest.segments {
             let path = journal_dir.join(&segment.name);
             std::fs::remove_file(&path).map_err(|error| write_error("remove", &path, error))?;
         }
         crate::sync_dir(&journal_dir).map_err(|error| write_error("sync", &journal_dir, error))?;
 
-        // 9. Drop every snapshot cache at or below the seal: it can no longer
+        // 10. Drop every snapshot cache at or below the seal: it can no longer
         //    be validated against records that are present. Then bring this
         //    handle's record set down to what the directory now holds, so a
         //    store that has just sealed answers exactly as one reopened after
@@ -573,6 +602,9 @@ impl Store {
         //    it folding a prefix the base already contains.
         drop_snapshots_through(&self.data_dir, cut);
         self.records.retain(|record| record.seq > cut);
+        // This handle is now a sealed store's, and every surface that reports
+        // a horizon has to know without asking the disk again.
+        self.sealed_open = true;
 
         Ok(SealReport {
             sealed_through_seq: cut,

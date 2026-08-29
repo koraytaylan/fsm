@@ -79,6 +79,14 @@ pub struct Store {
     pub last_responses: BTreeMap<String, Value>,
     pub last_errors: BTreeMap<String, ErrorObj>,
     pub tags: BTreeMap<String, Vec<String>>,
+    /// Whether this store opened from a base, decided **once** at open.
+    ///
+    /// `seal_horizon` runs on every `instance_view`, which is every create,
+    /// send, cancel, and poll response and every executor pipeline tick.
+    /// Asking `chain_start` there re-read and re-parsed the whole `BASE` file
+    /// each time — a file bounded only by the persistence read cap — to
+    /// discover something that cannot change while the store is open.
+    pub sealed_open: bool,
     pub replayed_records: usize,
     pub opened_from_snapshot: bool,
     pub opened_snapshot_seq: Option<u64>,

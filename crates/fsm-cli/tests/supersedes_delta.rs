@@ -344,3 +344,46 @@ fn a_refused_case_names_the_reason_rather_than_the_pending_list() {
         "the refusal does not name the effect the script acked: {stdout}"
     );
 }
+
+#[test]
+fn an_uncovered_state_names_the_leaf_the_author_has_to_map() {
+    // The report used to name the *mapped target* — a state the author never
+    // wrote — instead of the source leaf they must fix in the `supersedes`
+    // block, and when several old leaves map onto one missing target the
+    // report could not be worked backwards at all.
+    let workspace = Workspace::create("uncovered-source");
+    // Map `approved` to a state the new definition does not declare.
+    let dangling = FULL_MAP.replace("\"approved\":\"accepted\"", "\"approved\":\"nowhere\"");
+    workspace.write("new.json", &renamed(&dangling));
+    let (code, stdout, stderr) = workspace.run(&[
+        "machine",
+        "test",
+        "new.json",
+        "--cases",
+        "cases.json",
+        "--against",
+        "old.json",
+        "--json",
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let value = parse(stdout.as_bytes(), &JsonLimits::DEFAULT).expect("the report is JSON");
+    let uncovered = value
+        .get("cases")
+        .and_then(Value::as_arr)
+        .expect("cases")
+        .iter()
+        .find(|case| case.get("outcome").and_then(Value::as_str) == Some("uncovered"))
+        .expect("an uncovered case");
+    assert_eq!(
+        uncovered.get("state").and_then(Value::as_str),
+        Some("approved"),
+        "the report names the mapping's target rather than the leaf to fix: {uncovered:?}"
+    );
+    assert!(
+        uncovered
+            .get("detail")
+            .and_then(Value::as_str)
+            .is_some_and(|detail| detail.contains("approved") && detail.contains("nowhere")),
+        "the detail does not name both ends of the mapping: {uncovered:?}"
+    );
+}

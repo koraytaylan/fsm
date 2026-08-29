@@ -46,7 +46,11 @@ pub enum Outcome {
     /// Not a failure: this is usually the point of the correction.
     Changed(Vec<Divergence>),
     /// The new definition rejects a script the old one accepted.
-    Refused { step: usize, detail: String },
+    Refused {
+        /// Absent when the case has no script to refuse.
+        step: Option<usize>,
+        detail: String,
+    },
     /// The expectation names a state the mapping does not cover.
     ///
     /// The same gap `migrate --dry-run` reports for instances, met here before
@@ -158,12 +162,17 @@ fn translate(
     // A mapping that names a state the new definition does not have would map
     // an expectation onto nothing, and that is a gap too.
     let tree_new = Tree::for_machine(&new.spec);
-    for leaf in mapped.iter() {
-        if tree_new.id(leaf).is_none() {
+    // Paired with the source leaf, because the source is what the author has
+    // to fix in the `supersedes` block. Naming the *target* told them a state
+    // they never wrote, and when several old leaves map onto one missing
+    // target the report could not be worked backwards at all.
+    for (source, target) in leaves.iter().zip(mapped.iter()) {
+        if tree_new.id(target).is_none() {
             return Err(Outcome::Uncovered {
-                state: leaf.clone(),
+                state: source.clone(),
                 detail: format!(
-                    "the mapping sends it to {leaf}, which the new definition does not declare"
+                    "the mapping sends {source} to {target}, which the new definition does not \
+                     declare"
                 ),
             });
         }
@@ -211,7 +220,7 @@ pub fn delta(
             name: case.name.clone(),
             translated,
             outcome: Outcome::Refused {
-                step: 0,
+                step: None,
                 detail: match error {
                     CaseError::Context { key, message } => format!("context {key}: {message}"),
                     CaseError::Create(rejection) => {

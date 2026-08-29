@@ -322,7 +322,10 @@ impl Store {
     /// every `explain` miss. The chain authenticated this record when the
     /// store opened; nothing here needs the base's contents.
     fn seal_horizon(&self) -> Option<Value> {
-        if crate::journal_io::chain_start(&self.data_dir).is_origin() {
+        // Decided at open, not per call: `chain_start` reads and parses the
+        // whole `BASE` file, and this runs on every instance view — every
+        // create, send, cancel and poll response, and every executor tick.
+        if !self.sealed_open {
             return None;
         }
         let seal = self

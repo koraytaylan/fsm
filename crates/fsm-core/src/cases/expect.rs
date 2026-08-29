@@ -69,7 +69,9 @@ pub struct Divergence {
     pub found: String,
     /// Where in the script this was observed. Final-state comparisons carry
     /// the last step's index, so a ten-step failure still says where.
-    pub step: usize,
+    /// Absent when the case has no script, so nothing is pointed at a step
+    /// that does not exist.
+    pub step: Option<usize>,
     pub rule: Rule,
 }
 
@@ -79,7 +81,7 @@ impl Divergence {
         rule: Rule,
         expected: impl Into<String>,
         found: impl Into<String>,
-        step: usize,
+        step: Option<usize>,
     ) -> Self {
         Self {
             field,
@@ -115,7 +117,10 @@ fn as_set(items: &[String]) -> Vec<String> {
 /// the other two in the same run, exactly as the runner runs the whole script.
 pub fn diverge(expect: &Expect, run: &CaseRun) -> Vec<Divergence> {
     let mut out = Vec::new();
-    let last = run.steps.len().saturating_sub(1);
+    // Where a final-state divergence is reported. A case with no script has no
+    // step to name, and saying "at step 0" would point at one that does not
+    // exist; `None` renders as the end of the run instead.
+    let last = run.steps.len().checked_sub(1);
 
     // A step that could not run is reported before any expectation. The case
     // failed for a reason that has nothing to do with what it expected, and
@@ -151,7 +156,7 @@ pub fn diverge(expect: &Expect, run: &CaseRun) -> Vec<Divergence> {
                 key: None,
                 expected: "the step runs".into(),
                 found,
-                step: observation.index,
+                step: Some(observation.index),
                 rule: Rule::Script,
             });
         }

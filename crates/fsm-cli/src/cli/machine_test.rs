@@ -33,15 +33,31 @@ use crate::args::{Args, Ctx, read_input_from};
 use crate::render::{emit_error, emit_success};
 use crate::store::ErrorObj;
 
-/// Exit status when the command ran and at least one case failed.
+/// This command's exit codes, which a CI job reads instead of the output.
 ///
-/// Distinct from the error codes, and it has to be *made* distinct: nothing
-/// went wrong with the command, and a CI job wants to tell "your machine
-/// changed" apart from "your file is unreadable". `render::exit_code` maps
-/// every code outside the named namespaces to 1, so the `case/*` codes are
-/// routed to the usage bucket — a malformed case file is an input to fix,
-/// not a result to read.
+/// | code | meaning |
+/// |---|---|
+/// | 0 | every case passed, or the delta ran |
+/// | 1 | the command ran and at least one case failed |
+/// | 2 | the case file is malformed, or the invocation is |
+/// | 3 | regeneration found nothing to write |
+/// | 4 | regeneration wrote some cases and left others alone |
+/// | 6 | the definition does not compile |
+///
+/// Each has to be *made* distinct. `render::exit_code` maps every code outside
+/// its named namespaces to 1, which is this command's "a case failed" — so the
+/// `case/*` codes are routed to the usage bucket, and a definition that does
+/// not compile names its own code below rather than sharing one with a result.
 pub const EXIT_CASES_FAILED: u8 = 1;
+
+/// Exit status when the definition itself does not compile.
+///
+/// `def/*` maps to 1 in the shared table — deliberately, as the general
+/// validation bucket every other command uses — which is exactly
+/// [`EXIT_CASES_FAILED`]. "Your machine does not compile" and "a case failed"
+/// are different problems for a CI job, so this command distinguishes them
+/// rather than widening a mapping the rest of the CLI depends on.
+pub const EXIT_DEFINITION_FAILED: u8 = 6;
 
 /// Compile the definition, or return the compiler's own findings.
 pub(super) fn definition(text: &str) -> Result<(CompiledMachine, Tree), ErrorObj> {
@@ -102,7 +118,6 @@ fn rule_name(rule: Rule) -> &'static str {
 fn divergence_value(divergence: &Divergence) -> Value {
     let mut fields = BTreeMap::from([
         ("field".to_string(), Value::Str(divergence.field.into())),
-        ("step".to_string(), Value::Num(divergence.step.to_string())),
         (
             "expected".to_string(),
             Value::Str(divergence.expected.clone()),
@@ -113,6 +128,11 @@ fn divergence_value(divergence: &Divergence) -> Value {
             Value::Str(rule_name(divergence.rule).into()),
         ),
     ]);
+    // Absent for a case with no script: there is no step to point at, and a
+    // reported `0` would name one that does not exist.
+    if let Some(step) = divergence.step {
+        fields.insert("step".into(), Value::Num(step.to_string()));
+    }
     if let Some(key) = &divergence.key {
         fields.insert("key".into(), Value::Str(key.clone()));
     }
@@ -215,6 +235,7 @@ pub(super) fn render(report: &Value) -> String {
             let step = divergence
                 .get("step")
                 .and_then(Value::as_num)
+                .map(|step| format!(" at step {step}"))
                 .unwrap_or_default();
             let key = divergence
                 .get("key")
@@ -226,14 +247,14 @@ pub(super) fn render(report: &Value) -> String {
             // would be noise where the author needs the reason.
             if field("field") == "script" {
                 out.push_str(&format!(
-                    "       step {step} did not run: {} — {}\n",
+                    "       the step{step} did not run: {} — {}\n",
                     field("expected"),
                     field("found"),
                 ));
                 continue;
             }
             out.push_str(&format!(
-                "       {}{key} (compared {}) at step {step}: expected {}, found {}\n",
+                "       {}{key} (compared {}){step}: expected {}, found {}\n",
                 field("field"),
                 field("compared"),
                 field("expected"),
@@ -283,7 +304,14 @@ pub(super) fn test(ctx: &mut Ctx, args: &Args) -> u8 {
     // failures that all say the same thing about it.
     let (machine, tree) = match definition(&machine_text) {
         Ok(compiled) => compiled,
-        Err(error) => return emit_error(ctx, &error),
+        Err(error) => {
+            let code = emit_error(ctx, &error);
+            return if code == EXIT_CASES_FAILED {
+                EXIT_DEFINITION_FAILED
+            } else {
+                code
+            };
+        }
     };
     let file = match case_file(&cases_text) {
         Ok(file) => file,
@@ -324,6 +352,13 @@ fn print_report(text: &str) {
 /// anything.
 pub const EXIT_NOTHING_REGENERATED: u8 = 3;
 
+/// Exit status when regeneration wrote some cases and left others alone.
+///
+/// Also non-zero, for the same reason and a sharper one: a case it *could not*
+/// rewrite is a case still diverging, and a CI wrapper that saw success here
+/// would carry on with a stale expectation nobody was told about.
+pub const EXIT_SOME_NOT_REGENERATED: u8 = 4;
+
 #[allow(clippy::too_many_arguments)]
 fn regenerate(
     ctx: &mut Ctx,
@@ -343,20 +378,76 @@ fn regenerate(
         Ok(regeneration) => regeneration,
         Err(error) => return emit_error(ctx, &error),
     };
-    if regeneration.changes.is_empty() {
-        print_report(&regen::render_changes(&regeneration));
-        print_report("  nothing diverged, so nothing was regenerated\n");
-        return EXIT_NOTHING_REGENERATED;
+    let wrote = !regeneration.changes.is_empty();
+    if wrote {
+        // Durably, through the same helper every other write in this workspace
+        // uses: a temporary file, an fsync, a rename. `fs::write` truncates in
+        // place, so a crash or a full disk part-way through would leave the
+        // author holding a truncated `cases.json` — the very evidence file the
+        // refusal above exists to keep reviewable.
+        if let Err(error) = fsm_store::write_durable(target, regeneration.text.as_bytes()) {
+            return emit_error(
+                ctx,
+                &ErrorObj::new("io/write", format!("{}: {error}", target.display())),
+            );
+        }
     }
-    if let Err(error) = std::fs::write(target, &regeneration.text) {
-        return emit_error(
-            ctx,
-            &ErrorObj::new("io/write", format!("{}: {error}", target.display())),
+    let mut report = BTreeMap::from([
+        ("path".to_string(), Value::Str(target.display().to_string())),
+        ("regenerated".to_string(), Value::Bool(wrote)),
+        (
+            "changes".to_string(),
+            Value::Arr(
+                regeneration
+                    .changes
+                    .iter()
+                    .map(|change| {
+                        Value::Obj(BTreeMap::from([
+                            ("case".to_string(), Value::Str(change.case.clone())),
+                            ("field".to_string(), Value::Str(change.field.into())),
+                            ("from".to_string(), Value::Str(change.from.clone())),
+                            ("to".to_string(), Value::Str(change.to.clone())),
+                        ]))
+                    })
+                    .collect(),
+            ),
+        ),
+        (
+            "not_regenerated".to_string(),
+            Value::Arr(
+                regeneration
+                    .errored
+                    .iter()
+                    .cloned()
+                    .map(Value::Str)
+                    .collect(),
+            ),
+        ),
+    ]);
+    if ctx.json {
+        report.insert(
+            "ok".into(),
+            Value::Bool(wrote && regeneration.errored.is_empty()),
         );
+        emit_success(ctx, &Value::Obj(report));
+    } else {
+        if wrote {
+            print_report(&format!("regenerated {}\n", target.display()));
+        }
+        print_report(&regen::render_changes(&regeneration));
+        if !wrote {
+            print_report("  nothing diverged, so nothing was regenerated\n");
+        }
     }
-    print_report(&format!("regenerated {}\n", target.display()));
-    print_report(&regen::render_changes(&regeneration));
-    0
+    // Three outcomes, three exit codes. A case left alone is still diverging,
+    // and a run that wrote nothing at all has stopped doing its job.
+    if !wrote {
+        EXIT_NOTHING_REGENERATED
+    } else if !regeneration.errored.is_empty() {
+        EXIT_SOME_NOT_REGENERATED
+    } else {
+        0
+    }
 }
 
 /// `--against <old.json>`: run the old machine's cases against the new
@@ -428,7 +519,9 @@ fn delta_value(file: &CaseFile, deltas: &[fsm_core::cases::delta::CaseDelta]) ->
                     );
                 }
                 Outcome::Refused { step, detail } => {
-                    row.insert("step".into(), Value::Num(step.to_string()));
+                    if let Some(step) = step {
+                        row.insert("step".into(), Value::Num(step.to_string()));
+                    }
                     row.insert("detail".into(), Value::Str(detail.clone()));
                 }
                 Outcome::Uncovered { state, detail } => {

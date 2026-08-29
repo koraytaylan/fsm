@@ -380,7 +380,12 @@ impl CappedLineReader {
 /// Keeping the write handle and syncing it also closes the file before the
 /// caller renames it into place, which Windows requires and Unix does not care
 /// about. Both hazards live here once instead of at every durable-write site.
-pub(crate) fn write_durable(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+///
+/// Public because a durable write is not only a store concern: `fsm machine
+/// test`'s regeneration rewrites a committed case file, and truncating that in
+/// place would risk the evidence file the whole feature exists to keep
+/// reviewable. One implementation, not two.
+pub fn write_durable(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     let mut f = open_regular_file_for_write(
         path,

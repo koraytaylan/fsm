@@ -431,6 +431,13 @@ pub fn replay_report(
             ])));
         }
     };
+    // The whole set is kept beside the window: the seal record authenticates
+    // the base, and on a store whose cut is an existing segment boundary that
+    // record sits far above the cut. Filtering it away made every `to_seq`
+    // below it report a healthy store as `matches: false` with "the live
+    // journal carries no seal record" — the one verdict this tool exists to be
+    // trusted about.
+    let all = records.clone();
     let records: Vec<fsm_core::record::Record> = match to_seq {
         Some(to) => records.into_iter().filter(|r| r.seq <= to).collect(),
         None => records,
@@ -455,7 +462,7 @@ pub fn replay_report(
     let folded = if fsm_store::journal_io::chain_start(data_dir).is_origin() {
         fsm_core::replay::fold_with(records, &mut watcher)
     } else {
-        match fsm_store::base::open_from_base(data_dir, &records) {
+        match fsm_store::base::open_from_base(data_dir, &all) {
             Ok(opened) => fsm_core::replay::fold_from(opened.state, records, &mut watcher),
             Err(error) => {
                 return Ok(Value::Obj(std::collections::BTreeMap::from([

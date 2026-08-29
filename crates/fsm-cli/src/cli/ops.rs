@@ -251,6 +251,13 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
             return 1;
         }
     }
+    // The window the caller asked for, and the whole set beside it. The base
+    // is authenticated by the seal record, and on a store whose cut is an
+    // existing segment boundary that record sits far above the cut — so a
+    // `--to-seq` below it must not be allowed to filter it away, or a
+    // perfectly healthy store reports "the live journal carries no seal
+    // record" and exits non-zero.
+    let all = recs.clone();
     let recs: Vec<_> = recs
         .into_iter()
         .filter(|r| to.map(|n| r.seq <= n).unwrap_or(true))
@@ -279,7 +286,7 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
             }
             let live_at = match crate::snapshot::reconstruct_snapshot_plus_tail(
                 &ctx.data_dir,
-                &recs,
+                &all,
                 folded.last_seq,
             ) {
                 Ok(s) => s,

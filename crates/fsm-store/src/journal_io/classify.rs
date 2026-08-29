@@ -78,8 +78,12 @@ pub fn diagnose(dir: &Path) -> Diagnosis {
         .unwrap_or(0);
     let (writer_lock_held, writer_lock_holder) = writer_lock(dir);
     // Answered from the path, never from an open store, so a degraded server
-    // can still say what a directory holds.
-    let seal = super::verify::verify(dir).seal;
+    // can still say what a directory holds — and read with `seal_at`, which
+    // loads the records and reads the seal record out of them. Asking `verify`
+    // would classify, load, **fold**, and walk every segment to recover two
+    // scalars, and this function then opens the store read-only and folds the
+    // whole journal a second time.
+    let seal = super::verify::seal_at(dir);
     let store = crate::store::Store::open_read_only(dir);
     let readable = store.is_ok();
     let orphans = store
@@ -147,6 +151,29 @@ fn writer_lock(dir: &Path) -> (bool, Option<u32>) {
     }
 }
 
+/// What "this directory holds no usable records" means.
+///
+/// **Never `MissingGenesis` when a base is present.** A sealed store's genesis
+/// is in the archive, so its absence from the live journal is expected — and
+/// `MissingGenesis` is the one classification `open` responds to by *writing a
+/// fresh genesis*, which on a sealed store abandons every machine and instance
+/// the base holds and makes the loss permanent. A sealed store must carry at
+/// least its own seal record; a directory with a base and no live records is a
+/// store whose base nothing commits.
+fn no_records_health(dir: &Path) -> JournalHealth {
+    match crate::base::read_header(dir) {
+        Ok(Some(_)) => JournalHealth::BaseMismatch {
+            detail: "a base is present and the live journal carries no records, so nothing \
+                     commits it"
+                .into(),
+        },
+        Ok(None) => JournalHealth::MissingGenesis,
+        Err(error) => JournalHealth::BaseMismatch {
+            detail: format!("it is present and unreadable: {}", error.message),
+        },
+    }
+}
+
 pub fn classify(dir: &Path) -> JournalHealth {
     let jdir = journal_dir(dir);
     let segs = match journal_segment_paths(&jdir) {
@@ -154,7 +181,7 @@ pub fn classify(dir: &Path) -> JournalHealth {
         Err(error) => return JournalHealth::StoreIo(error),
     };
     if segs.is_empty() {
-        return JournalHealth::MissingGenesis;
+        return no_records_health(dir);
     }
     let start = super::chain_start(dir);
     // A journal that starts above the origin with no base explaining why has
@@ -178,7 +205,7 @@ pub fn classify(dir: &Path) -> JournalHealth {
     // archive; the loader skips them by sequence and so does this.
     let segs = super::live_segments(segs, &start);
     if segs.is_empty() {
-        return JournalHealth::MissingGenesis;
+        return no_records_health(dir);
     }
     let mut expect_seq = start.expect_seq;
     let mut expect_prev = start.expect_prev;
@@ -277,7 +304,7 @@ pub fn classify(dir: &Path) -> JournalHealth {
         }
     }
     if !saw_record {
-        return JournalHealth::MissingGenesis;
+        return no_records_health(dir);
     }
     JournalHealth::Ok
 }
