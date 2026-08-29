@@ -53,7 +53,14 @@ pub fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
     true
 }
 
+/// Whether a cache is reproduced by folding the records at or below it.
+///
+/// `origin` is where the fold starts: the default state for an unsealed store,
+/// and the sealed base for a sealed one. Folding a sealed store's live suffix
+/// from empty would reproduce nothing, so a cache above a seal would be
+/// rejected for a reason that has nothing to do with the cache.
 pub(super) fn snapshot_matches_prefix(
+    origin: &StoreState,
     base: &StoreState,
     recs: &[fsm_core::record::Record],
 ) -> bool {
@@ -61,7 +68,13 @@ pub(super) fn snapshot_matches_prefix(
         .iter()
         .filter(|record| record.seq <= base.last_seq)
         .cloned();
-    let Ok(folded) = fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink) else {
+    let folded =
+        if origin.last_seq == 0 && origin.instances.is_empty() && origin.machines.is_empty() {
+            fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink)
+        } else {
+            fsm_core::replay::fold_from(origin.clone(), prefix, &mut fsm_core::replay::NopSink)
+        };
+    let Ok(folded) = folded else {
         return false;
     };
     store_states_eq(base, &folded)
@@ -88,7 +101,13 @@ pub fn reconstruct_snapshot_plus_tail(
 ) -> Result<StoreState, ErrorObj> {
     let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
     let want = to_seq.min(journal_last);
-    for (_seq, path) in listed_snaps(data_dir) {
+    // A cache at or below a seal cannot be validated: every check that binds
+    // one re-derives it from records, and those records are in the archive.
+    let sealed_floor = crate::journal_io::chain_start(data_dir).expect_seq;
+    for (cache_seq, path) in listed_snaps(data_dir) {
+        if cache_seq < sealed_floor {
+            continue;
+        }
         let Ok(bytes) = crate::read_regular_file_capped(&path, crate::PERSISTENCE_READ_CAP) else {
             continue;
         };
@@ -125,6 +144,7 @@ pub(super) fn open_state_impl(
     recs: Vec<fsm_core::record::Record>,
     sink: &mut impl fsm_core::replay::RecordSink,
     may_prune: bool,
+    origin: StoreState,
 ) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
     // Earlier builds emitted one mutable root file per commit. They are never
     // trust anchors and can be removed opportunistically.
@@ -132,9 +152,15 @@ pub(super) fn open_state_impl(
         let _ = prune_legacy_root_sidecars(data_dir);
     }
     let journal_last = recs.last().map(|r| r.seq).unwrap_or(0);
+    // A cache at or below a seal cannot be validated: every check that binds
+    // one re-derives it from records, and those records are in the archive.
+    let sealed_floor = crate::journal_io::chain_start(data_dir).expect_seq;
     // First pass: prefer a hash-chain-bound snapshot even when a newer
     // clean-shutdown cache exists without a committed root.
-    for (_seq, path) in listed_snaps(data_dir) {
+    for (cache_seq, path) in listed_snaps(data_dir) {
+        if cache_seq < sealed_floor {
+            continue;
+        }
         let Ok(bytes) = crate::read_regular_file_capped(&path, crate::PERSISTENCE_READ_CAP) else {
             continue;
         };
@@ -153,7 +179,7 @@ pub(super) fn open_state_impl(
         if rec.hash != base.last_hash {
             continue;
         }
-        let bound = snapshot_bound(&base, rec, &recs, definition_limits);
+        let bound = snapshot_bound(&base, rec, &recs, definition_limits, sealed_floor);
         if !bound {
             continue;
         }
@@ -193,7 +219,7 @@ pub(super) fn open_state_impl(
         let Some(rec) = recs.iter().find(|r| r.seq == base.last_seq) else {
             continue;
         };
-        if rec.hash != base.last_hash || !snapshot_matches_prefix(&base, &recs) {
+        if rec.hash != base.last_hash || !snapshot_matches_prefix(&origin, &base, &recs) {
             continue;
         }
         let snap_seq = base.last_seq;
@@ -213,7 +239,15 @@ pub(super) fn open_state_impl(
         ));
     }
     let n = recs.len();
-    let state = fsm_core::replay::fold_with(recs, sink)?;
+    // No usable cache: fold the live records onto the origin. For an unsealed
+    // store that is the default state and a complete fold; for a sealed one it
+    // is the base the seal authenticated.
+    let sealed = sealed_floor > 0;
+    let state = if sealed {
+        fold_from(origin, recs, sink)?
+    } else {
+        fsm_core::replay::fold_with(recs, sink)?
+    };
     Ok((
         state,
         OpenPath {
@@ -234,7 +268,27 @@ pub fn open_state(
     recs: Vec<fsm_core::record::Record>,
     sink: &mut impl fsm_core::replay::RecordSink,
 ) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
-    open_state_impl(data_dir, recs, sink, true)
+    open_state_impl(data_dir, recs, sink, true, StoreState::default())
+}
+
+/// The sealed counterpart: the same cache selection, folding onto the base the
+/// seal record authenticated instead of onto an empty state.
+pub fn open_state_from(
+    data_dir: &Path,
+    recs: Vec<fsm_core::record::Record>,
+    sink: &mut impl fsm_core::replay::RecordSink,
+    origin: StoreState,
+) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
+    open_state_impl(data_dir, recs, sink, true, origin)
+}
+
+pub(crate) fn open_state_read_only_from(
+    data_dir: &Path,
+    recs: Vec<fsm_core::record::Record>,
+    sink: &mut impl fsm_core::replay::RecordSink,
+    origin: StoreState,
+) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
+    open_state_impl(data_dir, recs, sink, false, origin)
 }
 
 pub(crate) fn open_state_read_only(
@@ -242,5 +296,5 @@ pub(crate) fn open_state_read_only(
     recs: Vec<fsm_core::record::Record>,
     sink: &mut impl fsm_core::replay::RecordSink,
 ) -> Result<(StoreState, OpenPath), fsm_core::replay::ReplayError> {
-    open_state_impl(data_dir, recs, sink, false)
+    open_state_impl(data_dir, recs, sink, false, StoreState::default())
 }

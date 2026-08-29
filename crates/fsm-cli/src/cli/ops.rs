@@ -21,6 +21,11 @@ pub fn health_exit(h: &JournalHealth) -> u8 {
         JournalHealth::LockIo(_) => 6,
         JournalHealth::ReplayMismatch { .. } => 4,
         JournalHealth::MissingGenesis => 3,
+        // A base fault is a chain fault by nature: the store cannot be
+        // assembled from what is here. Sharing the exit code with
+        // `ChainBroken` keeps one number for "this store does not open and no
+        // repair in this directory changes that".
+        JournalHealth::BaseMissing | JournalHealth::BaseMismatch { .. } => 3,
         JournalHealth::VersionMismatch { .. } => 6,
         JournalHealth::StoreIo(_) => 6,
     }

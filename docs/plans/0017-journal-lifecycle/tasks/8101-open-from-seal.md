@@ -8,12 +8,24 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-store/src/journal_io/load.rs
-  - crates/fsm-store/src/store/lifecycle.rs
+  - crates/fsm-store/src/journal_io/mod.rs
+  - crates/fsm-store/src/journal_io/open.rs
+  - crates/fsm-store/src/journal_io/classify.rs
+  - crates/fsm-store/src/journal_io/types.rs
+  - crates/fsm-store/src/store/reconstruct.rs
+  - crates/fsm-store/src/store/idempotency.rs
+  - crates/fsm-store/src/base.rs
   - crates/fsm-store/src/snapshot/open.rs
+  - crates/fsm-store/src/snapshot/decode.rs
+  - crates/fsm-cli/src/cli/ops.rs
+  - crates/fsm-cli/src/mcp/tools/handlers/audit.rs
+  - crates/fsm-cli/tests/audit_doc.rs
+  - crates/fsm-cli/tests/naive_caller
   - crates/fsm-core/src/error.rs
   - crates/fsm-store/tests/open_sealed.rs
+  - docs/EMBEDDING.md
   - docs/SPEC.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Open From Seal
@@ -23,11 +35,11 @@ The loader assumes every journal begins at sequence one with a zero predecessor,
 **Steps:**
 
 1. `crates/fsm-store/src/journal_io/load.rs::load_records_with_active_meta` begins `expect = 0` and `prev = zeros()`. Give it a starting pair instead of that hard-coded origin, defaulting to the current values so every unsealed path is unchanged.
-2. Establish the pair in `crates/fsm-store/src/store/lifecycle.rs` in **this order**, which is the reverse of the intuitive one and is what makes a swapped base detectable:
+2. Establish the pair in `journal_io` — not `lifecycle.rs` — as a `ChainStart` every reader resolves, so a sealed store loads, classifies, and verifies through the paths that already exist rather than through a second set of them. The order is **this**, which is the reverse of the intuitive one and is what makes a swapped base detectable:
    1. Read `BASE` if present.
    2. If `BASE` is absent **and** the first live record is not `seq = 1`, refuse with `store/base_missing`. A journal that starts above one with nothing explaining why has had records deleted out from under it, and that must never be mistaken for a seal.
    3. Load the live records using the starting pair from `BASE`.
-   4. Require the **first** live record to be the seal, and require its `sealed_through_seq`, `sealed_last_hash`, `base_state_root`, and `base_dedup_fp_root` to match the base. The chain authenticates the seal and the seal authenticates the base; a base swapped for another store's is caught here.
+   4. Require the **first `journal_sealed` record in the live suffix** to match the base on `sealed_through_seq`, `sealed_last_hash`, `base_state_root`, and `base_dedup_fp_root`. The chain authenticates the seal and the seal authenticates the base; a base swapped for another store's is caught here. (It is the *first live record* only when the cut was the head, which `8002` established is the common but not the only case; requiring the position would refuse every seal taken at an earlier segment boundary.)
    5. Fold the live suffix onto the base with the existing `fold_from`.
 3. Add `store/base_missing` and `store/base_mismatch` to `fsm_core::error::ALL_CODES` and to SPEC Appendix A in this commit, each with a `hint` that states the fix — and for `base_mismatch`, a hint that says plainly there is no repair, because the records the base replaced are not in this directory.
 4. **Never fall back to a complete fold when a base is present and wrong.** There is nothing to fall back to. This is the single most important line in the task: a fallback here silently serves a store assembled from a base nobody authenticated.
@@ -35,6 +47,8 @@ The loader assumes every journal begins at sequence one with a zero predecessor,
 6. Keep read-only opens read-only. A sealed store is inspected by monitoring sessions exactly as an unsealed one is: no lock, no file creation, no modification.
 7. The per-instance history index that `HistSink::on_record` builds and `lifecycle.rs` rebuilds on both open paths is fed from the records that were loaded, so on a sealed store it covers the live suffix and nothing more. That is correct and must stay correct — do not seed it from the base, whose instances have no records to index. Reporting the resulting shortfall to a caller is `readers-on-sealed-store`'s job; this task's obligation is that the index is built from the same records the fold saw, and a comment saying so.
 8. Leave `load_intact_prefix` working for diagnosis on a sealed store, so a damaged sealed journal can still be asked how much of it is intact.
+9. **Close the eighth record-scanning reader.** `store/idempotency.rs::replay_request` rebuilds a retry's original outcome by scanning records for the one that claimed the key. The carry rule keeps every key of every live instance whatever its sequence, so a carried key claimed below the cut has a ledger entry and no record — and `replay_request` returning `None` means "unclaimed, go ahead", which applies the request a second time. That is the guarantee §0079 promises never to weaken. It refuses with a new `store/sealed_replay_unavailable` instead: a thinner reconstructed response would be a smaller answer that looks like a complete one, which is the failure mode this whole plan exists to avoid.
+10. **Skip sealed segments an interrupted removal left behind.** Between appending the seal and removing the copied segments there is a window; a store interrupted inside it opens with archived segments still on disk. The loader drops any segment whose first sequence is below the start — segments are whole and a cut is always segment-final, so a leftover sealed segment lies entirely below it. This is the other half of why copy-then-seal-then-remove is safe.
 
 **Tests:**
 

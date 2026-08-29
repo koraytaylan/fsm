@@ -1,12 +1,13 @@
 use std::path::Path;
 
-use fsm_core::record::{Record, verify_line, zeros};
+use fsm_core::record::{Record, verify_line};
 
 use super::paths::seg_name;
-use super::{journal_dir, journal_segment_paths};
+use super::{ChainStart, chain_start, journal_dir, journal_segment_paths, live_segments};
 
 pub fn load_records(dir: &Path) -> Result<Vec<Record>, String> {
-    load_records_with_active_meta(dir, FinalTailPolicy::Reject).map(|(records, _)| records)
+    load_records_with_active_meta(dir, FinalTailPolicy::Reject, &chain_start(dir))
+        .map(|(records, _)| records)
 }
 
 /// Load the authoritative prefix, stopping at a torn final record instead of
@@ -17,7 +18,8 @@ pub fn load_records(dir: &Path) -> Result<Vec<Record>, String> {
 /// of this journal is intact" is exactly the question a damaged store is
 /// asked, and refusing to answer it is not an answer.
 pub fn load_intact_prefix(dir: &Path) -> Result<Vec<Record>, String> {
-    load_records_with_active_meta(dir, FinalTailPolicy::Ignore).map(|(records, _)| records)
+    load_records_with_active_meta(dir, FinalTailPolicy::Ignore, &chain_start(dir))
+        .map(|(records, _)| records)
 }
 
 type ActiveSegmentMeta = (String, u64, u64, u32);
@@ -35,13 +37,17 @@ pub(super) enum FinalTailPolicy {
 pub(super) fn load_records_with_active_meta(
     dir: &Path,
     final_tail_policy: FinalTailPolicy,
+    start: &ChainStart,
 ) -> Result<(Vec<Record>, ActiveSegmentMeta), String> {
     let jdir = journal_dir(dir);
-    let segs = journal_segment_paths(&jdir)?;
+    let segs = live_segments(journal_segment_paths(&jdir)?, start);
     let mut out = Vec::new();
-    let mut expect = 0u64;
-    let mut prev = zeros();
-    let mut active = (seg_name(0), 0, 0, 0);
+    // A sealed journal does not begin at the origin. The pair comes from the
+    // base state file and is checked against the seal record afterwards, so a
+    // base that lies about its position fails at the very first record.
+    let mut expect = start.expect_seq;
+    let mut prev = start.expect_prev.clone();
+    let mut active = (seg_name(start.expect_seq), start.expect_seq, 0, 0);
     for (index, path) in segs.iter().enumerate() {
         let name = path
             .file_name()
@@ -98,10 +104,11 @@ pub(super) fn load_records_before_offset(
     offset: u64,
 ) -> Result<Vec<Record>, String> {
     let jdir = journal_dir(dir);
-    let segs = journal_segment_paths(&jdir)?;
+    let start = chain_start(dir);
+    let segs = live_segments(journal_segment_paths(&jdir)?, &start);
     let mut out = Vec::new();
-    let mut expect = 0u64;
-    let mut prev = zeros();
+    let mut expect = start.expect_seq;
+    let mut prev = start.expect_prev.clone();
     for path in segs {
         let name = path
             .file_name()

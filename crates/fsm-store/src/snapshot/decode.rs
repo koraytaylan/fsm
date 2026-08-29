@@ -284,11 +284,24 @@ pub fn load_state_root(data_dir: &Path, seq: u64) -> Option<String> {
     (stored_seq.parse::<u64>().ok()? == seq).then(|| root.to_string())
 }
 
+/// Whether every dedup entry a cache carries agrees with the record that
+/// claimed it.
+///
+/// `sealed_floor` is the first sequence the live journal holds. An entry
+/// claimed below it has no record here to agree with — the record is in the
+/// archive — and it does not need one: the seal committed a root over exactly
+/// those fingerprints, and the base file was checked against it before this
+/// ran. Checking only what the live records can answer is what lets the
+/// snapshot fast path survive a seal.
 pub(super) fn snapshot_dedup_matches_journal(
     base: &StoreState,
     records: &[fsm_core::record::Record],
+    sealed_floor: u64,
 ) -> bool {
     base.dedup.iter().all(|(request_id, slot)| {
+        if slot.seq < sealed_floor {
+            return true;
+        }
         let Ok(index) = records.binary_search_by_key(&slot.seq, |record| record.seq) else {
             return false;
         };
@@ -309,6 +322,7 @@ pub(super) fn snapshot_bound(
     record: &fsm_core::record::Record,
     records: &[fsm_core::record::Record],
     definition_limits: SnapshotDefinitionLimits,
+    sealed_floor: u64,
 ) -> bool {
     let root = materialize_state_root(base);
     record.body.get("state_root").and_then(Value::as_str) == Some(root.as_str())
@@ -321,12 +335,16 @@ pub(super) fn snapshot_bound(
         // The hash-chained claiming record binds the fingerprint itself, so a
         // fast-path snapshot must agree with that record before its dedup
         // ledger is trusted.
-        && snapshot_dedup_matches_journal(base, records)
+        && snapshot_dedup_matches_journal(base, records, sealed_floor)
         // A snapshot can omit the MachineDefined prefix it materializes. The
         // historical compiler is therefore safe on the fast path only when
         // the authenticated seq0 record carries the exact old limits table.
+        // A sealed journal's genesis is in the archive, so the live records
+        // cannot answer this — the base carries the discriminator instead, and
+        // a cache that needs the historical compiler is refused on a sealed
+        // store rather than admitted on a guess.
         && (definition_limits == SnapshotDefinitionLimits::Current
-            || journal_uses_historical_definition_limits(records))
+            || (sealed_floor == 0 && journal_uses_historical_definition_limits(records)))
 }
 
 pub(super) fn prune_legacy_root_sidecars(data_dir: &Path) -> Result<(), ErrorObj> {

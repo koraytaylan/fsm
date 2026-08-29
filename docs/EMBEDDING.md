@@ -508,6 +508,8 @@ condition:
 | `NonCanonical` | refuse; no repair |
 | `LockIo` | refuse; a lock acquisition or contention fault |
 | `StoreIo` | refuse; repair the filesystem or input fault |
+| `BaseMissing` | refuse; the journal starts above sequence zero and nothing explains why. Restore the journal, or restore the `BASE` the seal that removed its segments wrote |
+| `BaseMismatch` | refuse; interior; **no repair** — the records the base replaced are in the archive, not in this directory |
 
 Where the table prescribes a command, the tool returns it **verbatim** in
 `remedy` — the exact string, never a paraphrase, because you may run it.

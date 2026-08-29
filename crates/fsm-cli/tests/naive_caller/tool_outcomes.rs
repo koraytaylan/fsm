@@ -908,6 +908,14 @@ fn all_codes_hygiene() {
         // with; nothing writes a base until task 8002, and no tool surfaces
         // the refusal until task 8103 teaches `store_doctor` to classify it.
         "store/base_mismatch",
+        // Plan 0017 task 8101 registers the code a journal missing its base
+        // returns. `store_doctor` classifies it from task 8103 onward; until
+        // then no tool outcome produces it.
+        "store/base_missing",
+        // Plan 0017 task 8101 registers the code a sealed store returns when
+        // a carried key's claiming record is in the archive. Reaching it needs
+        // a sealed store, which no tool creates: sealing is a CLI operation.
+        "store/sealed_replay_unavailable",
         // Plan 0017 task 7903 registers the code a refused seal carries.
         // Sealing is a CLI operation and this plan deliberately adds no tool,
         // so no tool outcome ever produces it.

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use fsm_core::record::{RecordError, RecordKind, verify_line, zeros};
+use fsm_core::record::{RecordError, RecordKind, verify_line};
 
 use super::types::JournalHealth;
 use super::{journal_dir, journal_segment_paths};
@@ -146,8 +146,22 @@ pub fn classify(dir: &Path) -> JournalHealth {
     if segs.is_empty() {
         return JournalHealth::MissingGenesis;
     }
-    let mut expect_seq = 0u64;
-    let mut expect_prev = zeros();
+    let start = super::chain_start(dir);
+    // A journal that starts above the origin with no base explaining why has
+    // had records deleted out from under it. Saying so here, rather than
+    // letting the chain walk report a sequence gap, is what stops that from
+    // ever reading as a seal.
+    if start.is_origin() && !first_segment_starts_at_origin(&segs) {
+        return JournalHealth::BaseMissing;
+    }
+    // Sealed segments an interrupted removal left behind are already in the
+    // archive; the loader skips them by sequence and so does this.
+    let segs = super::live_segments(segs, &start);
+    if segs.is_empty() {
+        return JournalHealth::MissingGenesis;
+    }
+    let mut expect_seq = start.expect_seq;
+    let mut expect_prev = start.expect_prev;
     let mut saw_record = false;
     for (si, path) in segs.iter().enumerate() {
         let last_seg = si + 1 == segs.len();
@@ -246,6 +260,18 @@ pub fn classify(dir: &Path) -> JournalHealth {
         return JournalHealth::MissingGenesis;
     }
     JournalHealth::Ok
+}
+
+/// Whether the lowest-numbered segment file begins at sequence zero.
+fn first_segment_starts_at_origin(segments: &[std::path::PathBuf]) -> bool {
+    segments.first().is_some_and(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix("seg-"))
+            .and_then(|rest| rest.strip_suffix(".jsonl"))
+            .and_then(|digits| digits.parse::<u64>().ok())
+            == Some(0)
+    })
 }
 
 pub(super) fn replay_health(e: fsm_core::replay::ReplayError) -> JournalHealth {

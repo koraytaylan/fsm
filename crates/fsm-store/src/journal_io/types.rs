@@ -118,6 +118,15 @@ pub enum JournalHealth {
         field: String,
     },
     MissingGenesis,
+    /// The journal starts above sequence zero and no base state file explains
+    /// why. That is a journal with records deleted out from under it, and it
+    /// must never be mistaken for a seal.
+    BaseMissing,
+    /// A base state file is present and does not match the seal that commits
+    /// it, or does not match its own declared roots.
+    BaseMismatch {
+        detail: String,
+    },
     VersionMismatch {
         found: String,
     },
@@ -163,6 +172,14 @@ impl JournalHealth {
             JournalHealth::MissingGenesis => {
                 "journal has no genesis record; restore the journal from backup or recreate the data directory"
                     .into()
+            }
+            JournalHealth::BaseMissing => {
+                "the journal starts above sequence zero and there is no BASE state file; \
+                 records were removed from this directory without a seal saying so"
+                    .into()
+            }
+            JournalHealth::BaseMismatch { detail } => {
+                format!("the BASE state file does not match this store: {detail}")
             }
             JournalHealth::VersionMismatch { found } => {
                 let shown = if found.is_empty() { "unknown" } else { found };

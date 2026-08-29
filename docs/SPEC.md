@@ -802,6 +802,8 @@ corruption. Mutating methods on a read-only Store refuse with `io/write`.
 | `NonCanonical` | refuse; no repair |
 | `LockIo` | refuse; actual lock acquisition or contention fault |
 | `StoreIo` | refuse as `io/read`; repair the filesystem or input fault |
+| `BaseMissing` | refuse as `store/base_missing`; the journal starts above sequence zero and nothing explains why. No repair reconstructs the missing records; restore the journal, or restore the `BASE` the seal that removed them wrote |
+| `BaseMismatch` | refuse as `store/base_mismatch`; interior; **no repair** — the records the base replaced are in the archive, not in this directory. Restore the `BASE` this store was sealed with |
 
 The MCP tools `journal_verify` and `store_doctor` report these names and, where
 this table prescribes one, its remedy command verbatim; `journal_replay` checks
@@ -1151,12 +1153,14 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `run/overflow` — checked arithmetic overflow
 - `run/unhandled` — no candidate on the chain
 - `store/archive_refused` — a proposed journal seal cannot be taken. It is a **size** limit, not a rule against sealing a store with work in flight: either the idempotency keys the cut must carry do not fit a base state file, or the cut is above the lowest sequence a live derivation still depends on. The hint names what clears it
+- `store/base_missing` — the journal starts above sequence zero and no base state file explains why. Records were removed from the data directory without a seal saying so; this is NEVER reported for a sealed store
 - `store/base_mismatch` — the base state a sealed store opens from does not match the seal record that commits it, or does not match its own declared roots. There is no repair: the records the base replaced are in the archive, not in this data directory
 - `store/chain_broken` — interior hash/seq break
 - `store/degraded` — a store-backed call on a server that could not open its store
 - `store/lock` — lock I/O
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed
+- `store/sealed_replay_unavailable` — a claimed `request_id` whose claiming record the store has sealed into its archive. The request was applied and is NOT applied again: the store refuses rather than reproduce a thinner outcome or, worse, treat the key as unclaimed
 - `store/torn_tail` — truncated final record
 - `store/version_mismatch` — data directory VERSION is not 9 and cannot be migrated
 

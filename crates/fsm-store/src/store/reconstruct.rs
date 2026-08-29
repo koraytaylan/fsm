@@ -704,6 +704,8 @@ pub(super) fn health_err(h: &JournalHealth) -> ErrorObj {
         JournalHealth::LockIo(_) => "store/lock",
         JournalHealth::ReplayMismatch { .. } => "store/state_hash_mismatch",
         JournalHealth::MissingGenesis => "store/chain_broken",
+        JournalHealth::BaseMissing => "store/base_missing",
+        JournalHealth::BaseMismatch { .. } => "store/base_mismatch",
         JournalHealth::VersionMismatch { .. } => "store/version_mismatch",
         JournalHealth::StoreIo(_) => "io/read",
         JournalHealth::Ok => "store/lock",
@@ -713,6 +715,18 @@ pub(super) fn health_err(h: &JournalHealth) -> ErrorObj {
         // Post-migration this fires for newer or unknown formats, where the
         // store may be the only good copy — never advise deleting it.
         err.hint("upgrade fsm to a build that supports this store format, or point --data-dir at a fresh directory")
+    } else if matches!(h, JournalHealth::BaseMissing) {
+        err.hint(
+            "restore the journal's segments from backup, or restore the BASE state file the seal \
+             that removed them wrote. A journal that starts above sequence zero with nothing \
+             explaining why is not a sealed store",
+        )
+    } else if matches!(h, JournalHealth::BaseMismatch { .. }) {
+        err.hint(
+            "no repair reconstructs a base: the records it replaced are in the archive, not in \
+             this data directory. Restore the BASE this store was sealed with, or read the sealed \
+             prefix from the archive with `fsm journal verify --with-archive <dir>`",
+        )
     } else if matches!(h, JournalHealth::StoreIo(_)) {
         err.hint("restore the named persistence path as a readable regular file or directory within the documented per-unit limit, then retry")
     } else {

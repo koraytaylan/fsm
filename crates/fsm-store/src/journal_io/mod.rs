@@ -181,6 +181,76 @@ pub fn detect_store_format(dir: &Path) -> DetectedStoreFormat {
     }
 }
 
+/// Where a journal's chain begins.
+///
+/// An unsealed journal begins at the origin: sequence 0 with a zero
+/// predecessor. A sealed one begins just past its cut, with the hash of the
+/// record at the cut as its predecessor — both read from the base state file,
+/// and both re-checked against the seal record the live suffix carries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainStart {
+    pub expect_seq: u64,
+    pub expect_prev: String,
+}
+
+impl Default for ChainStart {
+    fn default() -> Self {
+        Self {
+            expect_seq: 0,
+            expect_prev: fsm_core::record::zeros(),
+        }
+    }
+}
+
+impl ChainStart {
+    pub fn is_origin(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The chain start a data directory's base state file declares.
+///
+/// Every reader in this module resolves it rather than assuming the origin, so
+/// a sealed store loads, classifies, and verifies correctly through the paths
+/// that already exist instead of through a second set of them.
+pub fn chain_start(dir: &Path) -> ChainStart {
+    match crate::base::read_header(dir) {
+        Ok(Some(header)) => ChainStart {
+            expect_seq: header.seq.saturating_add(1),
+            expect_prev: header.last_hash,
+        },
+        // An unreadable base is not silently treated as absent: the open path
+        // refuses it with `store/base_mismatch` after the load, and a
+        // classification that guessed the origin here would report a chain
+        // break instead of the real fault.
+        Ok(None) | Err(_) => ChainStart::default(),
+    }
+}
+
+/// The first sequence a segment file's name declares.
+pub(crate) fn segment_first_seq(path: &Path) -> Option<u64> {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_prefix("seg-"))
+        .and_then(|rest| rest.strip_suffix(".jsonl"))
+        .and_then(|digits| digits.parse::<u64>().ok())
+}
+
+/// Drop the segments a seal already archived.
+///
+/// Between appending the seal record and removing the copied segments there is
+/// a window, and a store interrupted inside it opens with sealed segments still
+/// on disk. Their records are below the seal and already in the archive, so the
+/// loader skips them **by sequence** — which is the other half of why
+/// copy-then-seal-then-remove is safe. Segments are whole and a cut is always
+/// segment-final, so a leftover sealed segment lies entirely below the start.
+pub(crate) fn live_segments(segments: Vec<PathBuf>, start: &ChainStart) -> Vec<PathBuf> {
+    segments
+        .into_iter()
+        .filter(|path| segment_first_seq(path).is_none_or(|first| first >= start.expect_seq))
+        .collect()
+}
+
 pub fn should_rotate(seg_bytes: u64, seg_records: u32) -> bool {
     seg_records >= ROTATE_RECORDS || seg_bytes >= ROTATE_BYTES
 }

@@ -83,12 +83,17 @@ fn every_health_the_store_can_report_is_in_the_table() {
         H::MissingGenesis,
         H::VersionMismatch { found: "3".into() },
         H::StoreIo("read".into()),
+        H::BaseMissing,
+        H::BaseMismatch {
+            detail: "base_state_root".into(),
+        },
     ];
     let section = auditing();
     for health in &every {
-        // The names in the table are the seven SPEC defines; the three
-        // variants that map onto them are named by the mapping, not by a
-        // word of their own.
+        // The names in the table are the ones SPEC defines; the variants that
+        // map onto a shared name are named by the mapping, not by a word of
+        // their own. The two base conditions keep their own names, because
+        // their remedies are their own.
         let named = match health {
             H::Ok => "Ok",
             H::TornTail { .. } => "TornTail",
@@ -97,6 +102,8 @@ fn every_health_the_store_can_report_is_in_the_table() {
             H::NonCanonical { .. } => "NonCanonical",
             H::LockIo(_) => "LockIo",
             H::MissingGenesis | H::VersionMismatch { .. } | H::StoreIo(_) => "StoreIo",
+            H::BaseMissing => "BaseMissing",
+            H::BaseMismatch { .. } => "BaseMismatch",
         };
         assert!(
             section.contains(named),

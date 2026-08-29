@@ -54,6 +54,10 @@ fn health_name(health: &fsm_store::journal_io::JournalHealth) -> &'static str {
         // both "the store is not readable as it stands", which is `StoreIo`
         // in the table. Their messages say which.
         H::MissingGenesis | H::VersionMismatch { .. } | H::StoreIo(_) => "StoreIo",
+        // Their own names, because their remedies are their own: neither is a
+        // filesystem fault and neither is repairable in this directory.
+        H::BaseMissing => "BaseMissing",
+        H::BaseMismatch { .. } => "BaseMismatch",
     }
 }
 
@@ -67,6 +71,9 @@ fn remedy(health: &fsm_store::journal_io::JournalHealth) -> Option<&'static str>
         H::VersionMismatch { .. } => Some("upgrade fsm, or recreate the data directory"),
         H::MissingGenesis => Some("restore the journal from backup or recreate the data directory"),
         H::StoreIo(_) => Some("repair the filesystem or input fault"),
+        H::BaseMissing => Some(
+            "restore the journal from backup, or restore the BASE the seal that removed its              segments wrote",
+        ),
         // `ChainBroken`, `StateHashMismatch` and `NonCanonical` are interior
         // damage: the table says refuse, no repair.
         _ => None,

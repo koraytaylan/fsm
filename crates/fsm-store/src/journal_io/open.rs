@@ -9,7 +9,7 @@ use super::load::{FinalTailPolicy, load_records_with_active_meta};
 use super::paths::{acquire_lock, seg_name};
 use super::types::{Journal, JournalHealth, JournalIoError, OpenError, Seg};
 use super::verify::refuse_incompatible_store_format;
-use super::{DetectedStoreFormat, detect_store_format, journal_dir};
+use super::{DetectedStoreFormat, chain_start, detect_store_format, journal_dir};
 
 pub fn open(
     dir: &Path,
@@ -54,9 +54,13 @@ pub fn open(
     if !matches!(health, JournalHealth::Ok) {
         return Err(OpenError::Health(health));
     }
+    let start = chain_start(dir);
     let (recs, (name, first, bytes, count)) =
-        load_records_with_active_meta(dir, FinalTailPolicy::Reject).map_err(OpenError::ReadIo)?;
-    let (state, open_path) = if migrating {
+        load_records_with_active_meta(dir, FinalTailPolicy::Reject, &start)
+            .map_err(OpenError::ReadIo)?;
+    let (state, open_path) = if !start.is_origin() {
+        sealed_state(dir, &recs, sink, true)?
+    } else if migrating {
         // Migration ignores snapshot caches and folds the complete journal
         // under current semantics before certifying the store.
         let n = recs.len();
@@ -104,6 +108,35 @@ pub fn open(
     ))
 }
 
+/// Fold a sealed store's live suffix onto the base its seal authenticates.
+///
+/// A base that is present and wrong **refuses**. There is no fallback to a
+/// complete fold, because there is nothing to fall back to: the records the
+/// base replaced are in the archive, not in this directory. A fallback here
+/// would silently serve a store assembled from state nobody authenticated,
+/// which is the single worst thing this plan could introduce.
+fn sealed_state(
+    dir: &Path,
+    records: &[Record],
+    sink: &mut impl RecordSink,
+    writable: bool,
+) -> Result<(StoreState, crate::snapshot::OpenPath), OpenError> {
+    let (base, _seal) = crate::base::open_from_base(dir, records).map_err(|error| {
+        OpenError::Health(JournalHealth::BaseMismatch {
+            detail: error.message,
+        })
+    })?;
+    // The cache fast path survives sealing: a cache *above* the seal is still
+    // bound and used, because everything that binds one can be re-derived from
+    // the base plus the live records. A cache at or below it is skipped.
+    if writable {
+        crate::snapshot::open_state_from(dir, records.to_vec(), sink, base)
+    } else {
+        crate::snapshot::open_state_read_only_from(dir, records.to_vec(), sink, base)
+    }
+    .map_err(|error| OpenError::Health(replay_health(error)))
+}
+
 /// Open a store for inspection without creating anything, taking the writer
 /// lock, stamping a migrated VERSION, or opening a segment for append.
 pub(crate) fn open_read_only(
@@ -138,10 +171,14 @@ pub(crate) fn open_read_only(
     if !matches!(health, JournalHealth::Ok | JournalHealth::TornTail { .. }) {
         return Err(OpenError::Health(health));
     }
+    let start = chain_start(dir);
     let (records, (name, first, bytes, count)) =
-        load_records_with_active_meta(dir, FinalTailPolicy::Ignore).map_err(OpenError::ReadIo)?;
+        load_records_with_active_meta(dir, FinalTailPolicy::Ignore, &start)
+            .map_err(OpenError::ReadIo)?;
     let migrating = matches!(format, DetectedStoreFormat::Migratable { .. });
-    let (state, open_path) = if migrating {
+    let (state, open_path) = if !start.is_origin() {
+        sealed_state(dir, &records, sink, false)?
+    } else if migrating {
         let count = records.len();
         let state = fold_with(records.clone(), sink)
             .map_err(|error| OpenError::Health(replay_health(error)))?;

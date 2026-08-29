@@ -25,8 +25,16 @@ pub(crate) const INFRA: &[(&str, &str)] = &[
         "an operator seals at an earlier cut or lets instances settle; there is no one-step retry that makes a base file smaller",
     ),
     (
+        "store/base_missing",
+        "records were removed from the data directory; an operator restores them, and no retry brings them back",
+    ),
+    (
         "store/base_mismatch",
         "a base state file that does not match its seal is an operator's restore, not a caller's retry: nothing reconstructs it from this directory",
+    ),
+    (
+        "store/sealed_replay_unavailable",
+        "the original outcome is in the archive; an operator reads it from there, and there is no one-step retry that brings it back",
     ),
     (
         "store/chain_broken",

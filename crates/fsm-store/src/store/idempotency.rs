@@ -33,7 +33,58 @@ impl Store {
                 }
             }
         }
-        Ok(self.replay_request(request_id))
+        let replay = self.replay_request(request_id);
+        // A claimed key whose claiming record is not in the live journal.
+        //
+        // On an unsealed store this cannot happen: a key in the ledger has a
+        // record that claimed it. Sealing makes it reachable, because the carry
+        // rule keeps every key of every live instance whatever its sequence,
+        // and `replay_request` rebuilds the original outcome by **scanning
+        // records** — so a carried key claimed below the cut has an entry and no
+        // record.
+        //
+        // Returning `None` here would mean "unclaimed, go ahead", and the
+        // operation would be applied a second time. That is exactly the
+        // guarantee sealing promises never to weaken, so the answer is a
+        // refusal: a thinner response would be a smaller answer that looks like
+        // a complete one.
+        if replay.is_none() && self.state.dedup.contains_key(request_id) {
+            return Err(self.sealed_replay_unavailable(request_id));
+        }
+        Ok(replay)
+    }
+
+    /// The original outcome for this key is in the archive, not here.
+    fn sealed_replay_unavailable(&self, request_id: &str) -> ErrorObj {
+        let mut details = BTreeMap::new();
+        if let Some(slot) = self.state.dedup.get(request_id) {
+            details.insert("claimed_by_seq".into(), Value::Num(slot.seq.to_string()));
+        }
+        if let Some(seal) = self
+            .records
+            .iter()
+            .find(|record| record.kind == RecordKind::JournalSealed)
+        {
+            for field in ["sealed_through_seq", "archive_id"] {
+                if let Some(value) = seal.body.get(field) {
+                    details.insert(field.into(), value.clone());
+                }
+            }
+        }
+        ErrorObj::new(
+            "store/sealed_replay_unavailable",
+            format!(
+                "request_id {request_id} was claimed by a record this store has sealed into its \
+                 archive, so its original outcome cannot be reproduced from this directory"
+            ),
+        )
+        .hint(concat!(
+            "the request was applied and is not applied again — this is a refusal to guess, not a ",
+            "failure to act. Read the original outcome from the archive with `fsm journal explain`",
+            " against the sealed segment, or send genuinely new work under a new request_id",
+        ))
+        .details(Value::Obj(details))
+        .request_id(request_id)
     }
 
     /// Resolve a `request_id` against the idempotency ledger and stage its
