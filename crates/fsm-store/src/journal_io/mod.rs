@@ -46,12 +46,21 @@ const ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 // snapshots without rewriting prior journal records. VERSION 7 adds
 // `request_fp` to every record that claims a `request_id`. VERSION 8 adds
 // parallel active configurations and durable deadline schedules, with explicit
-// state-hash and state-root format discriminators. Formats 1–7 (and a journal
-// with no VERSION marker) are best-effort migrated on open by folding the
-// complete journal and stamping 8. Records are never rewritten, so legacy
-// records retain their historical hash material and request-id behavior.
+// state-hash and state-root format discriminators. VERSION 9 adds the
+// composition records and `fsm.state/3`. VERSION 10 adds the `journal_sealed`
+// record and the `fsm.base/1` state file a sealed store opens from.
+//
+// Every earlier version (and a journal with no VERSION marker) is best-effort
+// migrated on open by folding the complete journal with snapshot caches
+// ignored, then stamping the current one. Records are never rewritten, so
+// legacy records retain their historical hash material and request-id
+// behavior.
+//
+// The 9-to-10 step converts **nothing**. A pre-10 store has no seal record and
+// no base file, so migrating it is a stamp — which is exactly why it is said
+// here rather than left as an empty arm somebody later fills in.
 /// Current marker written to a store's `VERSION` file.
-pub const STORE_VERSION: &str = "9";
+pub const STORE_VERSION: &str = "10";
 
 /// On-disk store format as detected before opening. Public because store
 /// diagnostics (`fsm store status`, `fsm store repair`) report it.
@@ -120,8 +129,14 @@ fn has_journal_segments(dir: &Path) -> Result<bool, String> {
 /// `state_format` discriminator and stamps the current version on success; a
 /// failed fold refuses and leaves `VERSION` alone, and interior records are
 /// never rewritten.
+/// Whether a `VERSION` older than the current one is migrated forward.
+///
+/// The 9-to-10 step is a **stamp and nothing else**, and that is worth saying
+/// out loud: a pre-10 store has no seal record and no base state file, so
+/// there is nothing to convert. A migration arm that does no work is one a
+/// later reader assumes was left unfinished and helpfully completes.
 fn is_migratable_version(v: &str) -> bool {
-    matches!(v, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8")
+    matches!(v, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
 }
 
 /// Classify an on-disk store directory without opening or locking it.

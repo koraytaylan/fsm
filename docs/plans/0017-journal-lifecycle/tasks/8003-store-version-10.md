@@ -7,11 +7,13 @@ depends_on:
   - archive-operation
 gated: false
 touches:
-  - crates/fsm-store/src/journal_io/init.rs
   - crates/fsm-store/src/journal_io/mod.rs
   - crates/fsm-store/tests/version_10_migration.rs
+  - crates/fsm-cli/tests/fixtures/audit/session.expected
+  - crates/fsm-cli/tests/fixtures/sessions/case_review.txt
+  - docs/API-POLICY.md
   - docs/SPEC.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Store Version 10
@@ -21,7 +23,7 @@ A store that can hold a seal is a store an older build must not open, so the ver
 **Steps:**
 
 1. Raise `STORE_VERSION` from 9 to 10 in `crates/fsm-store/src/journal_io/mod.rs`.
-2. Extend the forward migration in `crates/fsm-store/src/journal_io/init.rs` so a `VERSION` 1 through 9 store migrates exactly as 1 through 8 do today: fold the complete journal with snapshot caches ignored, then stamp the new version. Records, machine ids, and snapshot caches are never rewritten or reinterpreted.
+2. Extend the forward migration so a `VERSION` 1 through 9 store migrates exactly as 1 through 8 do today: fold the complete journal with snapshot caches ignored, then stamp the new version. Records, machine ids, and snapshot caches are never rewritten or reinterpreted. (The change is one entry in `is_migratable_version` in `journal_io/mod.rs`; `init.rs` needs nothing, because the migration is driven by that predicate and by `stamp_store_version`, which already writes whatever `STORE_VERSION` says.)
 3. **Say in a comment that the 9-to-10 step is a stamp and nothing else**, because a pre-10 store has no seal and no `BASE` and there is nothing to convert. A migration arm that does no work is one a later reader will assume was left unfinished, and will helpfully complete.
 4. Keep the refusal for any other version unchanged: `store/version_mismatch`, refused and never reinterpreted.
 5. Register `VERSION` 10 in `docs/SPEC.md`'s store-version paragraph, and add the sealed-store semantics the spec must now state normatively: a seal record marks the boundary, the base file is required rather than cached, the cut point MUST be a `state_checkpoint`, and a verification that did not read the sealed bytes MUST NOT report what a complete walk reports.
@@ -37,5 +39,6 @@ A store that can hold a seal is a store an older build must not open, so the ver
 - A store migrated from 9 can then be sealed successfully, proving the two paths compose.
 - The existing `legacy_snapshot_migration` and `state_v3_migration` suites still pass unchanged.
 - `cargo test -p fsm-cli --test spec_appendix` passes with the version and the sealed-store semantics documented.
+- The two goldens that quote the store version — `fixtures/audit/session.expected` and `fixtures/sessions/case_review.txt` — are updated, and the diff against them is **only** the version number.
 
 - **Done when:** `cargo test -p fsm-store --test version_10_migration` passes with one named case per supported prior version, migrated records are byte-identical, the pre-existing migration suites are unchanged and green, SPEC states the sealed-store rules normatively and the 0.2.x incompatibility plainly, and `cargo test`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo fmt --check` succeed.

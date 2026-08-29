@@ -548,5 +548,5 @@ health:        Ok
 instances:     1
 machines:      1
 records:       8
-store_version: 9
+store_version: 10
 --- stderr ---

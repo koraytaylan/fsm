@@ -178,9 +178,23 @@ this file. From `v0.1.0`:
   `BATCH` callback interval, so a long verification can report progress and be
   cancelled. `fsm_store::store::views_rendered` counts the instance views this
   process has rendered.
-- **The persisted formats moved**: `journal_io::STORE_VERSION` is `9`, and
+- **The persisted formats moved**: `journal_io::STORE_VERSION` is `10`, and
   `snapshot::SNAPSHOT_FORMAT` and `SNAPSHOT_DOMAIN` are `fsm.snapshot/5`. See
   [RELEASE.md](RELEASE.md) for what happens to a `v0.1.0` store on first open.
+
+  **A `VERSION` 10 store is not readable by 0.2.x, sealed or not.** The stamp
+  moves on first write regardless of whether anything was ever archived, so an
+  unsealed 0.3.0 store is refused by an older build exactly as a sealed one is.
+
+  `VERSION` 10 adds the `journal_sealed` record and three formats and two hash
+  domains that go with it: `fsm.base/1` for the authoritative base state a
+  sealed store opens from, `fsm.base-dedup/1` and `fsm:base-dedup:1` for the
+  root a seal commits over the request fingerprints its base carries, and
+  `fsm.archive/1` with `fsm:archive:1` for a detached archive's manifest. The
+  fingerprint domain is **additive**: `fsm:state-root:3` deliberately excludes
+  fingerprints, and folding them in would move every historical root. Three new
+  error codes come with it — `store/archive_refused`, `store/base_missing`, and
+  `store/base_mismatch`.
 - **`fsm-execute` is a new crate**, provisional under the table above. It is
   the effect executor `fsm execute` runs: a handler table, journaled retries
   with deterministic backoff, bounded concurrency with per-instance fairness,
@@ -221,10 +235,12 @@ The versioned formats are independent of the crate version:
 | Format | Current | Where |
 |---|---|---|
 | machine definition | `fsm.machine/1` | spec JSON |
-| journal | `fsm.journal/1`, store `VERSION` 9 | `<data_dir>` |
+| journal | `fsm.journal/1`, store `VERSION` 10 | `<data_dir>` |
 | snapshot | `fsm.snapshot/5` | `<data_dir>/snapshots` |
 | state hash | `fsm.state/3` (records written before composition carry `fsm.state/2` and verify under it) | state-bearing records and views |
-| state root | `fsm.state-root/3` | checkpoints and snapshots |
+| state root | `fsm.state-root/3` | checkpoints, snapshots, and the sealed base |
+| base state | `fsm.base/1`, roots under `fsm.base-dedup/1` | `<data_dir>/journal/BASE` |
+| archive manifest | `fsm.archive/1` | the operator's archive directory |
 
 Adding a `supersedes` block to a definition produces a **new** machine and
 never changes an existing one: the block is inside the canonical bytes, so
@@ -239,8 +255,9 @@ Rules:
   supported format is folded and re-stamped on open. Records are never edited, so
   anything a record did not carry stays absent — a `request_id` claimed before
   fingerprints existed (format ≤ 6) can be replayed but not conflict-checked.
-  Store formats 1 through 8 and markerless journals are full-folded before the
-  `VERSION` marker is stamped 9.
+  Store formats 1 through 9 and markerless journals are full-folded before the
+  `VERSION` marker is stamped 10. The 9-to-10 step converts nothing: a pre-10
+  store has no seal record and no base state file.
 - **A store from a newer format is refused, not guessed at** (`store/version_mismatch`).
 - **Snapshots are a disposable cache.** An unreadable or stale-format snapshot is
   skipped and the journal is folded instead; bumping the snapshot format is never

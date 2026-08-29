@@ -1210,7 +1210,19 @@ These match `crates/fsm-core/src/limits.rs`.
 | `fsm.archive/1` | Manifest of a detached archive: per-segment plain SHA-256 digests and the sealed chain endpoints |
 | `expr/1` | Expression grammar |
 
-On-disk store `VERSION` is `9`. A `VERSION` `1` through `8` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `8`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted.
+On-disk store `VERSION` is `10`. A `VERSION` `1` through `9` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `10`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted. The `9`-to-`10` step converts nothing: a pre-`10` store has no seal record and no base state file.
+
+**A `VERSION` `10` store is not readable by 0.2.x, sealed or not.** The version stamp moves on first write regardless of whether anything was ever archived, so an unsealed 0.3.0 store is refused by an older build exactly as a sealed one is.
+
+### Sealed stores
+
+An operator MAY seal a prefix of the journal into a detached archive. Sealing NEVER rewrites, reorders, or removes a record from the live chain: it appends a `journal_sealed` record, relocates the sealed segments unchanged, and leaves a `fsm.base/1` state file behind.
+
+* The cut MUST be the last record of a segment. A segment the cut fell inside could only be archived by splitting it, which would rewrite published bytes.
+* The base state file is **required**, never a cache. A missing or stale snapshot degrades to a fold; a missing base refuses the open with `store/base_missing`, and one that disagrees with the seal that commits it refuses with `store/base_mismatch`. Neither is repairable from the data directory alone.
+* A verification that did not read the sealed bytes MUST NOT report what a complete walk reports. A sealed store whose archive was not presented reports its own verdict, distinct from both success and failure.
+* A cut MUST NOT archive a record a live derivation still needs. A pending effect's emitting record, its instance's creation record, and every one of its attempt records are all read back by the executor, so a cut at or above the lowest of them is refused with `store/archive_refused`.
+* A seal carries every idempotency key claimed above the cut, and every key whose claiming record names an instance that is live in the base state. It drops the rest, each of which is independently unreplayable: an operation against a settled instance is refused by its terminal status, a `create` naming an existing instance is refused with `req/instance_exists`, and a machine definition is idempotent by content hash.
 
 Because records are never rewritten, a migrated store keeps whatever its records already carried: a `request_id` claimed before `VERSION` `7` has no `request_fp`, so it can be replayed but not conflict-checked. Records written after the migration are fully checked.
 
