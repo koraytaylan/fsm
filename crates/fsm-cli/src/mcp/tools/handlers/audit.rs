@@ -439,9 +439,14 @@ pub fn replay_report(
     // folding it from empty would reconstruct a store missing everything the
     // archive holds and report that as a disagreement with the engine.
     let sealed = seal_of(data_dir);
-    let folded = match &sealed {
-        None => fsm_core::replay::fold_with(records, &mut watcher),
-        Some(_) => match fsm_store::base::open_from_base(data_dir, &records) {
+    // The fold origin follows what is on disk, not whether a seal record
+    // exists: between a seal's commit point and its removal step both the base
+    // and the copied segments are present, and folding onto the base would
+    // apply the archived prefix a second time.
+    let folded = if fsm_store::journal_io::chain_start(data_dir).is_origin() {
+        fsm_core::replay::fold_with(records, &mut watcher)
+    } else {
+        match fsm_store::base::open_from_base(data_dir, &records) {
             Ok((base, _)) => fsm_core::replay::fold_from(base, records, &mut watcher),
             Err(error) => {
                 return Ok(Value::Obj(std::collections::BTreeMap::from([
@@ -456,7 +461,7 @@ pub fn replay_report(
                     ),
                 ])));
             }
-        },
+        }
     };
     let seen = watcher.seen;
     if watcher.cancelled {

@@ -265,18 +265,22 @@ pub fn verify_with_archive(dir: &Path, archive_dir: Option<&Path>) -> VerifyRepo
         Ok(seal) => seal,
         Err(health) => return empty(health),
     };
-    // A sealed store's state is the base plus the live suffix; folding the
-    // suffix alone would report a store smaller than the one that is there.
-    let folded = match &seal {
-        None => fold_with(recs.clone(), &mut NopSink),
-        Some(_) => match crate::base::open_from_base(dir, &recs) {
+    // Two different questions, and only one of them is about the seal record.
+    // *Whether a prefix is sealed* is answered by that record. *Where the fold
+    // starts* is answered by what is on disk: between the commit point and the
+    // removal both the base and the copied segments are present, and folding
+    // the records onto the base would apply the prefix twice.
+    let folded = if super::chain_start(dir).is_origin() {
+        fold_with(recs.clone(), &mut NopSink)
+    } else {
+        match crate::base::open_from_base(dir, &recs) {
             Ok((base, _)) => fsm_core::replay::fold_from(base, recs.clone(), &mut NopSink),
             Err(error) => {
                 return empty(JournalHealth::BaseMismatch {
                     detail: error.message,
                 });
             }
-        },
+        }
     };
     match folded {
         Ok(st) => {
@@ -320,7 +324,15 @@ fn seal_of(
     records: &[fsm_core::record::Record],
     archive_dir: Option<&Path>,
 ) -> Result<Option<SealInfo>, JournalHealth> {
-    if super::chain_start(dir).is_origin() {
+    // A store carries a seal when its live journal holds a seal record —
+    // which is true from the commit point onward, including the window before
+    // the copied segments are removed, where the store is *also* still
+    // complete. "Is a prefix sealed" and "does the fold start from the base"
+    // are two questions, and only the second depends on what is on disk.
+    if !records
+        .iter()
+        .any(|record| record.kind == fsm_core::record::RecordKind::JournalSealed)
+    {
         return Ok(None);
     }
     let (_state, seal) =

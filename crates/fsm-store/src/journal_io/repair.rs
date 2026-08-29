@@ -61,7 +61,25 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
                     .map_err(|error| RepairError::ReadIo(error.to_string()))?;
             let chain =
                 load_records_before_offset(dir, &segment, offset).map_err(RepairError::ReadIo)?;
-            if let Err(e) = fold_with(chain.clone(), &mut NopSink) {
+            // A sealed store's intact prefix folds onto its base. Folding it
+            // from the origin would report a missing genesis for a journal
+            // whose genesis is in the archive, and refuse a repair the tail
+            // contract says is available whether or not a store is sealed.
+            let folded = if super::chain_start(dir).is_origin() {
+                fold_with(chain.clone(), &mut NopSink)
+            } else {
+                match crate::base::open_from_base(dir, &chain) {
+                    Ok((base, _seal)) => {
+                        fsm_core::replay::fold_from(base, chain.clone(), &mut NopSink)
+                    }
+                    Err(error) => {
+                        return Err(RepairError::Interior(JournalHealth::BaseMismatch {
+                            detail: error.message,
+                        }));
+                    }
+                }
+            };
+            if let Err(e) = folded {
                 return Err(RepairError::Interior(replay_health(e)));
             }
             let qdir = jdir.join("quarantine");

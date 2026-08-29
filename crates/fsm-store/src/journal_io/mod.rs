@@ -215,6 +215,16 @@ impl ChainStart {
 /// a sealed store loads, classifies, and verifies correctly through the paths
 /// that already exist instead of through a second set of them.
 pub fn chain_start(dir: &Path) -> ChainStart {
+    // A base is consulted only when the live journal actually starts above the
+    // origin. Before a seal's commit point an interrupted run can have written
+    // `BASE` already, and that file is **inert**: nothing in the chain
+    // references it, every record it describes is still on disk, and a loader
+    // that trusted it would skip segments it has — turning a survivable
+    // interruption into a store that does not open. That is the other half of
+    // "before step 7 the new files are inert".
+    if journal_starts_at_origin(dir) {
+        return ChainStart::default();
+    }
     match crate::base::read_header(dir) {
         Ok(Some(header)) => ChainStart {
             expect_seq: header.seq.saturating_add(1),
@@ -226,6 +236,17 @@ pub fn chain_start(dir: &Path) -> ChainStart {
         // break instead of the real fault.
         Ok(None) | Err(_) => ChainStart::default(),
     }
+}
+
+/// Whether the lowest-numbered segment on disk begins at sequence zero.
+fn journal_starts_at_origin(dir: &Path) -> bool {
+    let Ok(segments) = journal_segment_paths(&journal_dir(dir)) else {
+        return true;
+    };
+    segments
+        .first()
+        .and_then(|path| segment_first_seq(path))
+        .is_none_or(|first| first == 0)
 }
 
 /// The first sequence a segment file's name declares.
