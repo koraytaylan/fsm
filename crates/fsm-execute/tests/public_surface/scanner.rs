@@ -254,13 +254,35 @@ pub(super) fn scan_source(source: &str, module: &str, scan: &mut Scan) {
                     stack.pop();
                 }
             }
-            ';' | ',' if group_depth == 0 && use_braces == 0 => {
+            ';' if group_depth == 0 && use_braces == 0 => {
+                record_item(head.trim(), stack.last().unwrap(), scan);
+                head.clear();
+            }
+            ',' if group_depth == 0 && use_braces == 0 && !head_awaits_a_body(&head) => {
                 record_item(head.trim(), stack.last().unwrap(), scan);
                 head.clear();
             }
             _ => head.push(ch),
         }
     }
+}
+
+/// Whether the fragment so far declares an item that can only be terminated by
+/// `{` or `;`, never by a comma.
+///
+/// `pub struct Pair<A, B> { .. }` and `pub fn f<A, B>(..)` both carry a comma
+/// at no parenthesis depth, inside their generic list — and a `where` clause
+/// carries several. Splitting there would record the name and then open the
+/// body with a fragment of a type as its head, so the type's own fields would
+/// be walked as an opaque block and silently contribute nothing.
+fn head_awaits_a_body(head: &str) -> bool {
+    let (_, tokens) = declaration(head);
+    tokens.iter().any(|token| {
+        matches!(
+            token.as_str(),
+            "struct" | "enum" | "trait" | "impl" | "fn" | "mod"
+        )
+    })
 }
 
 /// Whether the fragment so far is the head of a `use` statement.
@@ -283,7 +305,10 @@ fn declaration(head: &str) -> (bool, Vec<String>) {
         let Some(open) = after.find('[') else { break };
         let mut depth = 0usize;
         let mut end = None;
-        for (offset, ch) in after.char_indices().skip(open) {
+        // Byte offsets, not character counts: `find` returns a byte index and
+        // `skip` would count characters, which drift apart on any non-ASCII
+        // byte the blanking pass left behind.
+        for (offset, ch) in after.char_indices().filter(|(offset, _)| *offset >= open) {
             match ch {
                 '[' => depth += 1,
                 ']' => {
@@ -338,12 +363,16 @@ fn leading_identifier(tokens: &[String]) -> Option<String> {
 }
 
 /// The type an inherent `impl` block is for. The keyword itself may carry
-/// generics (`impl<'a> Watcher<'a>`), so the token is matched by prefix.
+/// generics (`impl<'a> Watcher<'a>`), so the token is matched by prefix — but
+/// only in **first** position, because `impl Trait` in an argument or return
+/// type is not an impl block and mistaking one for the other hides the item
+/// that actually declared it.
 fn impl_target(tokens: &[String]) -> Option<String> {
-    let position = tokens
-        .iter()
-        .position(|token| token == "impl" || token.starts_with("impl<"))?;
-    leading_identifier(&tokens[position + 1..])
+    let first = tokens.first()?;
+    if first != "impl" && !first.starts_with("impl<") {
+        return None;
+    }
+    leading_identifier(&tokens[1..])
 }
 
 fn qualified(context: &Context, name: &str) -> String {
@@ -400,6 +429,16 @@ fn open_context(head: &str, parent: &Context, scan: &mut Scan) -> Context {
         scan.items.push(format!("mod {child}"));
         return Context::Module(child);
     }
+    // `fn` is tested before `impl` because `impl Trait` is legal in a free
+    // function's argument and return positions: `pub fn converse(stdin: impl
+    // Write, ...)` carries an `impl` token that names no impl block, and
+    // treating it as one made the function itself invisible to this scanner.
+    if let Some(name) = name_after(&tokens, "fn") {
+        if is_public {
+            scan.items.push(format!("fn {module}::{name}"));
+        }
+        return Context::Opaque;
+    }
     if let Some(name) = impl_target(&tokens) {
         // `impl Trait for Type` names the type after `for`; a bare `impl Type`
         // names it after the keyword. Trait implementations are out of scope,
@@ -422,12 +461,6 @@ fn open_context(head: &str, parent: &Context, scan: &mut Scan) -> Context {
                 _ => Context::Trait(path),
             };
         }
-    }
-    if let Some(name) = name_after(&tokens, "fn") {
-        if is_public {
-            scan.items.push(format!("fn {module}::{name}"));
-        }
-        return Context::Opaque;
     }
     Context::Opaque
 }
@@ -511,11 +544,108 @@ fn record_item(head: &str, context: &Context, scan: &mut Scan) {
                             .insert(name.clone());
                     }
                     scan.items.push(format!("{kind} {module}::{name}"));
+                    if keyword == "struct" {
+                        record_tuple_fields(head, &format!("{module}::{name}"), scan);
+                    }
                     return;
                 }
             }
         }
         Context::Opaque => {}
+    }
+}
+
+/// Record the public positional fields of a tuple struct.
+///
+/// `pub struct Wrapper(pub u8, u8);` opens no brace, so it never becomes a
+/// `Context::Struct` and its members would otherwise go unrecorded — and `.0`
+/// is exactly what a downstream names and breaks on.
+fn record_tuple_fields(head: &str, path: &str, scan: &mut Scan) {
+    let Some(open) = head.find('(') else { return };
+    let Some(close) = head.rfind(')') else { return };
+    if close <= open {
+        return;
+    }
+    for (index, element) in split_top_level(&head[open + 1..close]).iter().enumerate() {
+        let (is_public, _) = declaration(element);
+        if is_public {
+            scan.items.push(format!("field {path}::{index}"));
+        }
+    }
+}
+
+/// Split on commas that are not nested inside `(`, `[`, `<`, or `{`.
+fn split_top_level(text: &str) -> Vec<String> {
+    let mut parts = vec![String::new()];
+    let mut depth = 0i32;
+    for character in text.chars() {
+        match character {
+            '(' | '[' | '<' | '{' => {
+                depth += 1;
+                parts
+                    .last_mut()
+                    .expect("one part always exists")
+                    .push(character);
+            }
+            ')' | ']' | '>' | '}' => {
+                depth -= 1;
+                parts
+                    .last_mut()
+                    .expect("one part always exists")
+                    .push(character);
+            }
+            ',' if depth == 0 => parts.push(String::new()),
+            _ => parts
+                .last_mut()
+                .expect("one part always exists")
+                .push(character),
+        }
+    }
+    parts
+        .into_iter()
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// Expand a `use` tree into one `(prefix, name)` pair per leaf.
+///
+/// `use a::{b::{c, d}, e}` is three leaves, and splitting on the first `{` and
+/// then on every comma produces three corrupted lines instead — silent garbage
+/// in a file whose whole purpose is to be read as a diff. A glob is kept as the
+/// literal `*`, which the module doc records as unresolved.
+fn use_leaves(path: &str, prefix: &str, out: &mut Vec<(String, String)>) {
+    let path = path.trim();
+    let Some(open) = path.find('{') else {
+        // `use f::g as h` re-exports `g` under the name `h`. The line records
+        // the name a downstream writes; member resolution is skipped for a
+        // rename, which the module doc lists among the limits.
+        let (path, alias) = match path.split_once(" as ") {
+            Some((original, alias)) => (original.trim(), Some(alias.trim())),
+            None => (path, None),
+        };
+        match path.rsplit_once("::") {
+            Some((head, name)) => out.push((
+                join_paths(prefix, head),
+                alias.unwrap_or(name).trim().to_string(),
+            )),
+            None => out.push((prefix.to_string(), alias.unwrap_or(path).to_string())),
+        }
+        return;
+    };
+    let Some(close) = path.rfind('}') else { return };
+    let head = path[..open].trim().trim_end_matches("::");
+    let inner_prefix = join_paths(prefix, head);
+    for element in split_top_level(&path[open + 1..close]) {
+        use_leaves(&element, &inner_prefix, out);
+    }
+}
+
+fn join_paths(prefix: &str, tail: &str) -> String {
+    match (prefix.is_empty(), tail.is_empty()) {
+        (true, _) => tail.to_string(),
+        (_, true) => prefix.to_string(),
+        _ => format!("{prefix}::{tail}"),
     }
 }
 
@@ -525,25 +655,15 @@ fn record_reexport(head: &str, module: &str, scan: &mut Scan) {
     let Some(after) = head.split_once("use ") else {
         return;
     };
-    let path = after.1.trim();
-    let (prefix, names) = match path.split_once('{') {
-        Some((prefix, names)) => (
-            prefix.trim().trim_end_matches("::"),
-            names.trim_end_matches('}').to_string(),
-        ),
-        None => match path.rsplit_once("::") {
-            Some((prefix, name)) => (prefix, name.to_string()),
-            None => ("", path.to_string()),
-        },
-    };
-    for name in names.split(',') {
-        let name = name.trim();
+    let mut leaves = Vec::new();
+    use_leaves(after.1, "", &mut leaves);
+    for (prefix, name) in leaves {
         if name.is_empty() {
             continue;
         }
         scan.items
             .push(format!("reexport {module}::{name} from {prefix}"));
-        let target = if prefix.starts_with("crate::") {
+        let target = if prefix.starts_with("crate::") || prefix == "crate" {
             prefix.replacen("crate", crate_module(), 1)
         } else if prefix.is_empty() {
             continue;

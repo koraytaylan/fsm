@@ -1,11 +1,5 @@
 //! Bounded small-machine differential against the deliberately naive oracle.
 
-// The generated/executed/sequence counts are this suite's report to whoever is
-// reading a CI log: an enumeration that silently covered nothing looks exactly
-// like one that covered everything. `enumerate_reactive` prints for the same
-// reason and carries the same allow.
-#![allow(clippy::print_stderr)]
-
 use std::collections::BTreeMap;
 
 use fsm_core::expr::eval::Budget;
@@ -411,6 +405,10 @@ fn enumerate_parallel_global_winner_differential() {
     assert!(counts.runs.ignored > 0);
 }
 
+// The generated/executed/sequence counts are this suite's report to whoever
+// is reading a CI log: an enumeration that silently covered nothing looks
+// exactly like one that covered everything.
+#[allow(clippy::print_stderr)]
 #[test]
 fn enumerate_small_differential() {
     let guards = [

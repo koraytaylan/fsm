@@ -161,6 +161,7 @@ fn fsm_execute::dead::dead_letters
 fn fsm_execute::dead::report
 fn fsm_execute::dead::to_value
 fn fsm_execute::effect::resolve
+fn fsm_execute::mcp_client::converse
 fn fsm_execute::rid::ack_rid
 fn fsm_execute::rid::attempt_rid
 fn fsm_execute::rid::event_rid

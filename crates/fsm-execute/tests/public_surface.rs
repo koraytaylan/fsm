@@ -31,9 +31,11 @@
 //!   `pub use` is recorded as a `reexport` line naming what it re-exports, and
 //!   where it names an item of a private child module the scanner also emits
 //!   that item's own members under the re-exporting module. It does not follow
-//!   a re-export through more than that one hop, and it does not resolve a
-//!   glob (`pub use m::*`), which is recorded as a `reexport` of `*` and
-//!   nothing more.
+//!   a re-export through more than that one hop, it does not resolve a glob
+//!   (`pub use m::*`), which is recorded as a `reexport` of `*` and nothing
+//!   more, and it does not resolve the members of a **renamed** re-export
+//!   (`pub use m::A as B`) — the `reexport` line records the name a downstream
+//!   writes, and `B`'s fields and methods are not enumerated under it.
 //!
 //! Trait implementations are also out of scope: `impl Display for Foo` is
 //! public surface in the semantic sense, but it is not an item a downstream
@@ -155,6 +157,113 @@ fn the_inventory_covers_fields_and_variants_not_only_types() {
             .iter()
             .any(|line| line == "field fsm_execute::config::HandlerKind::Mcp::tool"),
         "a struct-like enum variant's fields are missing"
+    );
+}
+
+#[test]
+fn an_impl_trait_argument_does_not_swallow_the_function_that_carries_it() {
+    // `impl Trait` is legal in argument and return position, and treating that
+    // token as an impl block made the function itself invisible: `pub fn
+    // converse(stdin: impl Write, ..)` was missing from the inventory entirely,
+    // so renaming or deleting it — a break for anyone hosting the loop — left
+    // this gate green.
+    let source = "
+        pub fn takes(one: impl Write, two: &str) -> u8 { 0 }
+        pub fn returns() -> impl Iterator<Item = u8> { [].into_iter() }
+        pub struct Owner;
+        impl Owner { pub fn method(&self) {} }
+        impl Display for Owner { pub fn fmt(&self) {} }
+    ";
+    let mut scan = Scan::default();
+    scan_source(source, "probe", &mut scan);
+    assert_eq!(
+        scan.items,
+        vec![
+            "fn probe::takes".to_string(),
+            "fn probe::returns".to_string(),
+            "struct probe::Owner".to_string(),
+            "method probe::Owner::method".to_string(),
+        ],
+        "an `impl` in a signature was mistaken for an impl block"
+    );
+    // The real crate carries such a function; assert the inventory holds it.
+    assert!(
+        public_surface()
+            .iter()
+            .any(|line| line == "fn fsm_execute::mcp_client::converse"),
+        "the crate's own `impl Trait`-taking function is missing"
+    );
+}
+
+#[test]
+fn a_generic_parameter_list_does_not_split_the_type_that_carries_it() {
+    // The comma in `<A, B>` sits at no parenthesis depth. Splitting there
+    // recorded the name and then opened the body with a fragment of a type as
+    // its head, so every field was walked as an opaque block and contributed
+    // nothing — a type present in the inventory with none of its members.
+    let source = "
+        pub struct Pair<A, B> { pub left: A, pub right: B }
+        pub enum Either<A, B> { Left(A), Right(B) }
+        pub fn zip<A, B>(a: A, b: B) {}
+    ";
+    let mut scan = Scan::default();
+    scan_source(source, "probe", &mut scan);
+    assert_eq!(
+        scan.items,
+        vec![
+            "struct probe::Pair".to_string(),
+            "field probe::Pair::left".to_string(),
+            "field probe::Pair::right".to_string(),
+            "enum probe::Either".to_string(),
+            "variant probe::Either::Left".to_string(),
+            "variant probe::Either::Right".to_string(),
+            "fn probe::zip".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn a_tuple_structs_public_fields_are_positional_items() {
+    // `.0` is what a downstream names, so it is what a downstream breaks on.
+    let source = "
+        pub struct Wrapper(pub u8, u8, pub BTreeMap<String, u8>);
+        pub struct Unit;
+    ";
+    let mut scan = Scan::default();
+    scan_source(source, "probe", &mut scan);
+    assert_eq!(
+        scan.items,
+        vec![
+            "struct probe::Wrapper".to_string(),
+            "field probe::Wrapper::0".to_string(),
+            "field probe::Wrapper::2".to_string(),
+            "struct probe::Unit".to_string(),
+        ],
+        "a private tuple field was listed, or a public one was not"
+    );
+}
+
+#[test]
+fn a_nested_use_tree_expands_to_one_line_per_leaf() {
+    // Splitting on the first brace and then on every comma produced corrupted
+    // lines rather than a refusal — silent garbage in a file whose whole
+    // purpose is to be read as a diff.
+    let source = "
+        pub use a::{b::{c, d}, e};
+        pub use f::g as h;
+        pub use i::*;
+    ";
+    let mut scan = Scan::default();
+    scan_source(source, "probe", &mut scan);
+    assert_eq!(
+        scan.items,
+        vec![
+            "reexport probe::c from a::b".to_string(),
+            "reexport probe::d from a::b".to_string(),
+            "reexport probe::e from a".to_string(),
+            "reexport probe::h from f".to_string(),
+            "reexport probe::* from i".to_string(),
+        ]
     );
 }
 
