@@ -127,6 +127,57 @@ pub(in crate::mcp::tools) fn run_journal_verify_with(
     verify_report(&data_dir, args, clock, progress, cancel)
 }
 
+/// The seal a data directory carries, as the three audit tools report it.
+///
+/// One shape and one vocabulary: a model that learns what `seal` means from
+/// `store_doctor` reads the same object from `journal_verify`. The `verdict`
+/// is an enumerated value rather than a boolean beside an optional field,
+/// because a caller can overlook an optional field and cannot overlook a word
+/// it does not recognise.
+fn seal_value(seal: &fsm_store::journal_io::SealInfo) -> Value {
+    let mut fields = std::collections::BTreeMap::from([
+        (
+            "sealed_through_seq".to_string(),
+            Value::Num(seal.sealed_through_seq.to_string()),
+        ),
+        (
+            "sealed_last_hash".to_string(),
+            Value::Str(seal.sealed_last_hash.clone()),
+        ),
+        (
+            "archive_id".to_string(),
+            Value::Str(seal.archive_id.clone()),
+        ),
+        (
+            "records_sealed".to_string(),
+            Value::Num(seal.records_sealed.to_string()),
+        ),
+        (
+            "verdict".to_string(),
+            Value::Str(
+                match seal.verdict {
+                    fsm_store::journal_io::SealVerdict::Unsealed => "unsealed",
+                    fsm_store::journal_io::SealVerdict::PrefixNotPresented => {
+                        "prefix_not_presented"
+                    }
+                    fsm_store::journal_io::SealVerdict::PrefixWalked => "prefix_walked",
+                }
+                .to_string(),
+            ),
+        ),
+    ]);
+    if let Some(directory) = &seal.archive_dir {
+        fields.insert("archive_dir".to_string(), Value::Str(directory.clone()));
+    }
+    Value::Obj(fields)
+}
+
+/// The seal a store carries, read from a **path** so a degraded server can
+/// still answer.
+fn seal_of(data_dir: &std::path::Path) -> Option<fsm_store::journal_io::SealInfo> {
+    fsm_store::journal_io::verify(data_dir).seal
+}
+
 /// Verify one data directory, whether or not anybody could open it.
 ///
 /// Taking a path rather than a `Store` is the point: the store you most want
@@ -206,6 +257,7 @@ pub fn verify_report(
         true,
     );
 
+    let sealed = seal_of(data_dir);
     let mut out = std::collections::BTreeMap::from([
         (
             "health".to_string(),
@@ -215,7 +267,21 @@ pub fn verify_report(
             "verified_records".to_string(),
             Value::Num(counted.to_string()),
         ),
-        ("message".to_string(), Value::Str(health.message())),
+        (
+            "message".to_string(),
+            Value::Str(match &sealed {
+                // A verification that did not read the sealed bytes never
+                // reports what one that did reports — in prose as well as in
+                // the enumerated verdict beside it.
+                Some(seal) => format!(
+                    "{}; verified from seal {} at seq {}; prefix sealed, not presented",
+                    health.message(),
+                    seal.sealed_last_hash,
+                    seal.sealed_through_seq
+                ),
+                None => health.message(),
+            }),
+        ),
         (
             "segments".to_string(),
             Value::Arr(
@@ -245,6 +311,9 @@ pub fn verify_report(
     }
     if let Some(remedy) = remedy(&health) {
         out.insert("remedy".to_string(), Value::Str(remedy.to_string()));
+    }
+    if let Some(seal) = &sealed {
+        out.insert("seal".to_string(), seal_value(seal));
     }
     Ok(Value::Obj(out))
 }
@@ -366,7 +435,29 @@ pub fn replay_report(
         total,
         cancelled: false,
     };
-    let folded = fsm_core::replay::fold_with(records, &mut watcher);
+    // A sealed store's live suffix folds onto the base it was sealed with;
+    // folding it from empty would reconstruct a store missing everything the
+    // archive holds and report that as a disagreement with the engine.
+    let sealed = seal_of(data_dir);
+    let folded = match &sealed {
+        None => fsm_core::replay::fold_with(records, &mut watcher),
+        Some(_) => match fsm_store::base::open_from_base(data_dir, &records) {
+            Ok((base, _)) => fsm_core::replay::fold_from(base, records, &mut watcher),
+            Err(error) => {
+                return Ok(Value::Obj(std::collections::BTreeMap::from([
+                    ("replayed_records".to_string(), Value::Num("0".into())),
+                    ("matches".to_string(), Value::Bool(false)),
+                    (
+                        "message".to_string(),
+                        Value::Str(format!(
+                            "the sealed base could not be read: {}",
+                            error.message
+                        )),
+                    ),
+                ])));
+            }
+        },
+    };
     let seen = watcher.seen;
     if watcher.cancelled {
         return Err(crate::mcp::cancel::CancelFlag::refusal());
@@ -429,6 +520,9 @@ pub fn replay_report(
             }
             out.insert("message".to_string(), Value::Str(format!("{other:?}")));
         }
+    }
+    if let Some(seal) = &sealed {
+        out.insert("seal".to_string(), seal_value(seal));
     }
     Ok(Value::Obj(out))
 }
@@ -551,6 +645,9 @@ pub fn doctor_report(data_dir: &std::path::Path) -> Value {
     }
     if let Some(remedy) = remedy(&diagnosis.health) {
         out.insert("remedy".to_string(), Value::Str(remedy.to_string()));
+    }
+    if let Some(seal) = seal_of(data_dir) {
+        out.insert("seal".to_string(), seal_value(&seal));
     }
     Value::Obj(out)
 }

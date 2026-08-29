@@ -172,6 +172,7 @@ pub(super) fn schema_journal_verify_out() -> Value {
     p.insert("blast_radius".into(), ty("string"));
     p.insert("remedy".into(), ty("string"));
     p.insert("segments".into(), ty("array"));
+    p.insert("seal".into(), ty("object"));
     schema_obj(p, &["health", "verified_records", "message"], true)
 }
 
@@ -184,6 +185,7 @@ pub(super) fn schema_journal_replay_out() -> Value {
     p.insert("state_root".into(), ty("string"));
     p.insert("first_divergence_seq".into(), ty("number"));
     p.insert("message".into(), ty("string"));
+    p.insert("seal".into(), ty("object"));
     schema_obj(p, &["replayed_records", "matches", "message"], true)
 }
 
@@ -202,6 +204,7 @@ pub(super) fn schema_store_doctor_out() -> Value {
     p.insert("orphans".into(), ty("array"));
     p.insert("remedy".into(), ty("string"));
     p.insert("migration_required_from".into(), ty("string"));
+    p.insert("seal".into(), ty("object"));
     schema_obj(
         p,
         &[

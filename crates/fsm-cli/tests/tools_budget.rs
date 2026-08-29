@@ -28,6 +28,9 @@ fn tools_list_budget() {
     // `tools/list` is sent once per session and every byte of it is context
     // the model pays for before it has read a single fact about the store.
     let bytes = canon_bytes(&tools_list_result());
+    // Measured after plan 0017 added the additive `seal` object to the three
+    // audit tools' output schemas: no tool was added and no description was
+    // shortened, because an optional object costs a few dozen bytes.
     assert!(bytes.len() <= 38_000, "tools/list is {} bytes", bytes.len());
 }
 
@@ -70,4 +73,18 @@ fn guideline_header() {
     let src = include_str!("../src/mcp/descriptions.rs");
     assert!(src.contains("Writing guidelines"));
     assert!(src.contains("when-to-use") || src.contains("Open with when-to-use"));
+}
+
+/// The measured size, printed so a change is visible in a CI log rather than
+/// only when the ceiling is crossed.
+#[test]
+fn the_measured_tools_list_size_is_reported() {
+    let bytes = canon_bytes(&tools_list_result()).len();
+    assert!(
+        bytes <= 38_000,
+        "tools/list is {bytes} bytes against a ceiling of 38 000"
+    );
+    // A regression that halves the surface is as suspicious as one that
+    // doubles it: both mean the tool table is not what it was.
+    assert!(bytes > 30_000, "tools/list shrank to {bytes} bytes");
 }
