@@ -104,6 +104,24 @@ fn object_of(value: &Value) -> BTreeMap<String, Value> {
     value.as_obj().expect("base is an object").clone()
 }
 
+/// A directory name no other run of this binary can produce.
+///
+/// A process id alone is not unique enough: a full `--workspace` run spawns
+/// thousands of short-lived processes, ids get reused, and a reused id names a
+/// directory a previous run may still be finishing with — which surfaces as a
+/// `store/lock` naming *this* process. `crash_harness.rs` learned the same
+/// thing and pins it with a test; this is that idiom.
+fn invocation_tag() -> String {
+    format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0)
+    )
+}
+
 #[test]
 fn a_base_round_trips_to_an_equal_state() {
     let state = base_state();
@@ -369,7 +387,7 @@ fn a_base_naming_a_machine_it_does_not_carry_is_refused() {
 
 #[test]
 fn a_base_over_the_persistence_cap_is_refused_without_being_read_whole() {
-    let directory = std::env::temp_dir().join(format!("fsm-base-cap-{}", std::process::id()));
+    let directory = std::env::temp_dir().join(format!("fsm-base-cap-{}", invocation_tag()));
     std::fs::create_dir_all(&directory).expect("the temporary directory is creatable");
     let path = directory.join("BASE");
     // One byte past the cap every persistence unit obeys.
@@ -382,14 +400,14 @@ fn a_base_over_the_persistence_cap_is_refused_without_being_read_whole() {
 
 #[test]
 fn a_missing_base_is_an_io_read_refusal_rather_than_a_panic() {
-    let missing = std::env::temp_dir().join(format!("fsm-base-absent-{}/BASE", std::process::id()));
+    let missing = std::env::temp_dir().join(format!("fsm-base-absent-{}/BASE", invocation_tag()));
     let error = read(&missing, &base_roots(&base_state())).expect_err("an absent base is refused");
     assert_eq!(error.code, "io/read");
 }
 
 #[test]
 fn a_well_formed_base_reads_back_from_disk() {
-    let directory = std::env::temp_dir().join(format!("fsm-base-read-{}", std::process::id()));
+    let directory = std::env::temp_dir().join(format!("fsm-base-read-{}", invocation_tag()));
     std::fs::create_dir_all(&directory).expect("the temporary directory is creatable");
     let path = directory.join("BASE");
     std::fs::write(&path, canon_bytes(&encoded())).expect("the base is writable");

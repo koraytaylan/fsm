@@ -27,13 +27,30 @@ const LEGACY_JOURNAL: &[u8] = include_bytes!("fixtures/non_reactive_session.jour
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
+/// A directory name no other run of this binary can produce.
+///
+/// A process id alone is not unique enough: a full `--workspace` run spawns
+/// thousands of short-lived processes, ids get reused, and a reused id names a
+/// directory a previous run may still be finishing with — which surfaces as a
+/// `store/lock` naming *this* process. `crash_harness.rs` learned the same
+/// thing and pins it with a test; this is that idiom.
+fn invocation_tag() -> String {
+    format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0)
+    )
+}
+
 struct TestDirectory(PathBuf);
 
 impl TestDirectory {
     fn create(tag: &str) -> Self {
         let index = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("fsm-v10-{tag}-{}-{index}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("fsm-v10-{tag}-{}-{index}", invocation_tag()));
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).expect("the temporary directory is creatable");
         Self(path)
