@@ -75,6 +75,12 @@ means re-initialize — and the status codes each condition returns. A client
 depends on those exactly as it depends on a tool's input schema, and they move
 only when a tool schema could.
 
+`fsm_store::snapshot::journal_ids_at` is **removed**. It derived the machine
+and instance sets by scanning creation records, which on a sealed store
+returns a smaller answer than the store holds — with no error anywhere — and
+it had no caller in this workspace. The folded state answers the same question
+correctly: `state.machines.keys()` and `state.instances.keys()`.
+
 A **behaviour that used to succeed and now refuses is a breaking change**,
 and 0.3.0 carries one: `Store::create_instance` and its `_ctx`/`_ctx_on`
 siblings refuse an `instance_id` that already exists with the new

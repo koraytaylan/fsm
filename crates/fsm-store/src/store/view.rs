@@ -291,16 +291,70 @@ impl Store {
         if let Some(n) = next_from_seq {
             out.insert("next_from_seq".into(), Value::Num(n.to_string()));
         }
+        // A sealed store's history is the live suffix, so an auditor asking
+        // what happened to an instance gets a *partial* history. `next_from_seq`
+        // already says "there is more, forwards"; this is the same idea
+        // pointing backwards, and without it a short history reads as a
+        // complete one.
+        if let Some(seal) = self.seal_horizon() {
+            out.insert("sealed_before".into(), seal);
+        }
         let _ = include_trace;
         Ok(Value::Obj(out))
     }
 
+    /// What a sealed store's readers could not see, or `None` when unsealed.
+    fn seal_horizon(&self) -> Option<Value> {
+        if crate::journal_io::chain_start(&self.data_dir).is_origin() {
+            return None;
+        }
+        let (_state, seal) = crate::base::open_from_base(&self.data_dir, &self.records).ok()?;
+        Some(Value::Obj(BTreeMap::from([
+            (
+                "sealed_through_seq".into(),
+                Value::Num(seal.sealed_through_seq.to_string()),
+            ),
+            ("archive_id".into(), Value::Str(seal.archive_id)),
+            (
+                "note".into(),
+                Value::Str(
+                    "records at or below this sequence are in the archive and are not in this                      answer"
+                        .into(),
+                ),
+            ),
+        ])))
+    }
+
     pub fn explain_seq(&self, instance_id: &str, seq: u64) -> Result<Value, ErrorObj> {
-        let rec = self
-            .records
-            .iter()
-            .find(|r| r.seq == seq)
-            .ok_or_else(|| ErrorObj::new("req/field_missing", "seq"))?;
+        let Some(rec) = self.records.iter().find(|r| r.seq == seq) else {
+            // Below a seal, "no such sequence" is actively wrong: the record
+            // exists, in the archive. The refusal is the same sentence
+            // `journal replay --to-seq` uses for a cut below the seal, so two
+            // commands teach one vocabulary rather than two.
+            if let Some(seal) = self.seal_horizon()
+                && seal
+                    .get("sealed_through_seq")
+                    .and_then(Value::as_num)
+                    .and_then(|raw| raw.parse::<u64>().ok())
+                    .is_some_and(|cut| seq <= cut)
+            {
+                return Err(ErrorObj::new(
+                    "store/archive_refused",
+                    format!(
+                        "seq {seq} is at or below this store's seal; that record is in archive {}",
+                        seal.get("archive_id")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                    ),
+                )
+                .hint(concat!(
+                    "read the record from the archive instead: this data directory holds the ",
+                    "live suffix and the base state the seal committed, and nothing below the cut",
+                ))
+                .details(seal));
+            }
+            return Err(ErrorObj::new("req/field_missing", "seq"));
+        };
         if !fsm_core::record::instances_touched(rec).contains(&instance_id)
             && rec.kind != RecordKind::Genesis
             && rec.kind != RecordKind::MachineDefined

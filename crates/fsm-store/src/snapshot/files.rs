@@ -121,38 +121,6 @@ pub fn prune_old(data_dir: &Path) -> Result<(), ErrorObj> {
     Ok(())
 }
 
-#[allow(dead_code)]
-pub(super) fn journal_ids_at(
-    recs: &[fsm_core::record::Record],
-    seq: u64,
-) -> (
-    std::collections::BTreeSet<String>,
-    std::collections::BTreeSet<String>,
-) {
-    let mut machines = std::collections::BTreeSet::new();
-    let mut instances = std::collections::BTreeSet::new();
-    for rec in recs.iter().filter(|r| r.seq <= seq) {
-        match rec.kind {
-            fsm_core::record::RecordKind::MachineDefined => {
-                if let Some(id) = rec.body.get("machine_id").and_then(Value::as_str) {
-                    machines.insert(id.into());
-                }
-            }
-            // Every kind's own answer to "which instances is this about":
-            // a child exists because an `instance_invoked` record says so,
-            // and a snapshot that did not know it would lose it.
-            fsm_core::record::RecordKind::InstanceCreated
-            | fsm_core::record::RecordKind::InstanceInvoked => {
-                for id in fsm_core::record::instances_touched(rec) {
-                    instances.insert(id.into());
-                }
-            }
-            _ => {}
-        }
-    }
-    (machines, instances)
-}
-
 /// The invocation slots a snapshot carries, typed against the machine whose
 /// instance they belong to.
 pub(super) fn invocations_from(

@@ -88,8 +88,28 @@ fn run(store: &Path, argv: &[&str]) -> (i32, Value) {
     (output.status.code().unwrap_or(-1), parsed)
 }
 
+/// Seal a store and **keep** the writer that did it.
+fn seal_holding_the_writer(directory: &TestDirectory) -> (Store, u64) {
+    let mut store = build_store(directory);
+    let report = store
+        .seal_and_archive(&directory.archive(), None)
+        .expect("the store seals");
+    store
+        .annotate("live", "after-seal", "a note above the cut")
+        .expect("the annotation succeeds");
+    let cut = report.sealed_through_seq;
+    (store, cut)
+}
+
 /// A sealed store, returning the cut it sealed through.
 fn seal_a_store(directory: &TestDirectory) -> u64 {
+    let (store, cut) = seal_holding_the_writer(directory);
+    drop(store);
+    cut
+}
+
+/// A store with one live instance whose effects are acked, so nothing pins.
+fn build_store(directory: &TestDirectory) -> Store {
     let mut store = Store::open(&directory.store()).expect("a fresh store opens");
     store
         .define_machine(
@@ -116,15 +136,7 @@ fn seal_a_store(directory: &TestDirectory) -> u64 {
             .ack_effect("live", effect_id, &format!("ack-{index}"))
             .expect("ack succeeds");
     }
-    let report = store
-        .seal_and_archive(&directory.archive(), None)
-        .expect("the store seals");
-    // One more record above the cut, so replay has a live suffix to walk.
     store
-        .annotate("live", "after-seal", "a note above the cut")
-        .expect("the annotation succeeds");
-    drop(store);
-    report.sealed_through_seq
 }
 
 #[test]
@@ -296,8 +308,10 @@ fn both_diagnostics_answer_while_a_writer_holds_the_store() {
     // Plan 0014's property: a diagnosis is a function of a path, never of an
     // open store. This plan must not narrow it.
     let directory = TestDirectory::create("path-only");
-    seal_a_store(&directory);
-    let writer = Store::open(&directory.store()).expect("the writer opens");
+    // The writer this test needs is the one that sealed: holding it rather
+    // than dropping and reopening keeps the property exact and removes a
+    // reopen the test never needed.
+    let (writer, _cut) = seal_holding_the_writer(&directory);
     let (doctor_code, doctor) = run(&directory.store(), &["doctor"]);
     let (replay_code, replay) = run(&directory.store(), &["journal", "replay"]);
     let (verify_code, verify) = run(&directory.store(), &["journal", "verify"]);

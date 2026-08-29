@@ -480,6 +480,146 @@ fn a_snapshot_cache_above_the_seal_is_still_used() {
 }
 
 #[test]
+fn an_instance_history_on_a_sealed_store_says_what_it_could_not_see() {
+    // A short history that does not say it is short reads as a complete one.
+    // `next_from_seq` already points forwards; this is the same idea pointing
+    // backwards.
+    let directory = TestDirectory::create("history-horizon");
+    let (report, _before) = sealed(&directory, "a");
+    let store = Store::open(&directory.store()).expect("a sealed store opens");
+    let page = store
+        .history_page("a-live-0", 0, 100, false, true)
+        .expect("the history page renders");
+    let sealed_before = page
+        .get("sealed_before")
+        .expect("a sealed store's history names its horizon");
+    assert_eq!(
+        sealed_before
+            .get("sealed_through_seq")
+            .and_then(Value::as_num),
+        Some(report.sealed_through_seq.to_string().as_str())
+    );
+    assert!(
+        sealed_before
+            .get("archive_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.starts_with("sha256:"))
+    );
+    // Every entry it does return is above the cut, which is what makes the
+    // horizon the whole of what is missing.
+    for entry in page.get("entries").and_then(Value::as_arr).unwrap_or(&[]) {
+        let seq: u64 = entry
+            .get("seq")
+            .and_then(Value::as_num)
+            .and_then(|raw| raw.parse().ok())
+            .expect("an entry carries its seq");
+        assert!(seq > report.sealed_through_seq);
+    }
+}
+
+#[test]
+fn an_instance_history_on_an_unsealed_store_names_no_horizon() {
+    let directory = TestDirectory::create("history-unsealed");
+    let store = populated(&directory.store(), "a");
+    let page = store
+        .history_page("a-live-0", 0, 100, false, true)
+        .expect("the history page renders");
+    assert!(
+        page.get("sealed_before").is_none(),
+        "an unsealed history claimed a horizon"
+    );
+}
+
+#[test]
+fn explain_below_the_seal_says_where_the_record_is_rather_than_that_it_is_missing() {
+    // `req/field_missing` for a sequence below a seal is actively wrong: the
+    // record exists, in the archive.
+    let directory = TestDirectory::create("explain");
+    let (report, _before) = sealed(&directory, "a");
+    let store = Store::open(&directory.store()).expect("a sealed store opens");
+    let error = store
+        .explain_seq("a-live-0", report.sealed_through_seq - 1)
+        .expect_err("a sequence below the seal is refused");
+    assert_eq!(error.code, "store/archive_refused");
+    assert!(
+        error.message.contains("archive") && error.message.contains("sha256:"),
+        "the refusal does not say where the record is: {}",
+        error.message
+    );
+
+    // A sequence that never existed at all is still the other refusal, so the
+    // two absences stay distinguishable.
+    let never = store
+        .explain_seq("a-live-0", store.state.last_seq + 500)
+        .expect_err("a sequence above the head is refused");
+    assert_eq!(never.code, "req/field_missing");
+
+    // And a record of this instance above the cut still explains. The seal
+    // record itself sits at `cut + 1` and touches no instance, which is its
+    // own correct refusal.
+    let mut store = store;
+    store
+        .annotate("a-live-0", "above-the-cut", "a note above the cut")
+        .expect("the annotation succeeds");
+    let explained = store
+        .explain_seq("a-live-0", store.state.last_seq)
+        .expect("a record above the cut explains");
+    assert_eq!(
+        explained.get("kind").and_then(Value::as_str),
+        Some("Annotated")
+    );
+}
+
+#[test]
+fn a_snapshot_written_from_a_sealed_store_holds_every_machine_and_instance() {
+    // The reader that would have written a *wrong file*: a cache claiming a
+    // smaller store than exists, with no error anywhere. The snapshot writer
+    // materializes the folded state, which on a sealed store is the base plus
+    // the live suffix — so it is complete by construction, and this is the
+    // assertion that keeps it so.
+    let directory = TestDirectory::create("snapshot-complete");
+    sealed(&directory, "a");
+    let mut store = Store::open(&directory.store()).expect("a sealed store opens");
+    store
+        .annotate("a-live-0", "after-seal", "a note above the cut")
+        .expect("the annotation succeeds");
+    let expected_machines: Vec<String> = store.state.machines.keys().cloned().collect();
+    let expected_instances: Vec<String> = store.state.instances.keys().cloned().collect();
+    assert!(!expected_instances.is_empty());
+    store
+        .shutdown_snapshot()
+        .expect("a shutdown snapshot is writable");
+    drop(store);
+
+    let (_seq, path) = fsm_store::snapshot::listed_snaps(&directory.store())
+        .into_iter()
+        .next_back()
+        .expect("a cache was written");
+    let bytes = fs::read(&path).expect("the cache is readable");
+    let cache = parse(&bytes, &JsonLimits::DEFAULT).expect("the cache parses");
+    let machines: Vec<String> = cache
+        .get("machines")
+        .and_then(Value::as_obj)
+        .expect("the cache carries machines")
+        .keys()
+        .cloned()
+        .collect();
+    let instances: Vec<String> = cache
+        .get("instances")
+        .and_then(Value::as_obj)
+        .expect("the cache carries instances")
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(machines, expected_machines, "the cache lost a machine");
+    assert_eq!(instances, expected_instances, "the cache lost an instance");
+
+    // And it is accepted on the next open, so the cache and the base agree.
+    let reopened = Store::open(&directory.store()).expect("a sealed store with a cache opens");
+    assert!(reopened.opened_from_snapshot);
+}
+
+#[test]
 fn the_seal_record_is_the_first_live_record_after_a_head_cut() {
     let directory = TestDirectory::create("first-record");
     let (report, _before) = sealed(&directory, "a");
