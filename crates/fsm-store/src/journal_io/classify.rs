@@ -33,6 +33,12 @@ pub struct Diagnosis {
     /// says.
     pub writer_lock_held: bool,
     pub writer_lock_holder: Option<u32>,
+    /// The seal a sealed store carries, absent when it is not sealed.
+    ///
+    /// "How much of this store is live" is the first question a sealed store
+    /// is asked, so a healthy sealed store reports its cut and its archive
+    /// rather than making an operator infer them from a record count.
+    pub seal: Option<super::verify::SealInfo>,
     /// Running children nobody references. Reported, never settled: an open
     /// must not write.
     pub orphans: Vec<fsm_core::json::Value>,
@@ -71,6 +77,9 @@ pub fn diagnose(dir: &Path) -> Diagnosis {
         .map(|seq| last_seq.saturating_sub(seq))
         .unwrap_or(0);
     let (writer_lock_held, writer_lock_holder) = writer_lock(dir);
+    // Answered from the path, never from an open store, so a degraded server
+    // can still say what a directory holds.
+    let seal = super::verify::verify(dir).seal;
     let store = crate::store::Store::open_read_only(dir);
     let readable = store.is_ok();
     let orphans = store
@@ -88,6 +97,7 @@ pub fn diagnose(dir: &Path) -> Diagnosis {
         snapshot_behind,
         writer_lock_held,
         writer_lock_holder,
+        seal,
         orphans,
     }
 }

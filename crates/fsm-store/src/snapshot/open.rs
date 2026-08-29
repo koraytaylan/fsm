@@ -135,6 +135,15 @@ pub fn reconstruct_snapshot_plus_tail(
             .map_err(|e| ErrorObj::new("io/read", format!("{e:?}")));
     }
     let prefix: Vec<_> = recs.iter().filter(|r| r.seq <= want).cloned().collect();
+    // On a sealed store the live suffix folds onto the base, not onto nothing:
+    // folding it from empty would reconstruct a store missing everything the
+    // archive holds, and `journal replay` would report that as a disagreement
+    // between the engine and the journal rather than as its own arithmetic.
+    if sealed_floor > 0 {
+        let base = crate::base::open_from_base(data_dir, recs).map(|(state, _)| state)?;
+        return fold_from(base, prefix, &mut fsm_core::replay::NopSink)
+            .map_err(|e| ErrorObj::new("io/read", format!("{e:?}")));
+    }
     fsm_core::replay::fold_with(prefix, &mut fsm_core::replay::NopSink)
         .map_err(|e| ErrorObj::new("io/read", format!("{e:?}")))
 }

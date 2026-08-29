@@ -163,6 +163,20 @@ pub fn seal_verdict_name(verdict: SealVerdict) -> &'static str {
     }
 }
 
+/// The seal a store carries and the base to replay from, or `None` when it is
+/// not sealed.
+#[allow(clippy::type_complexity)]
+fn sealed_origin(
+    data_dir: &std::path::Path,
+    records: &[fsm_core::record::Record],
+) -> Result<Option<(fsm_store::base::SealInfo, fsm_core::replay::StoreState)>, ErrorObj> {
+    if crate::journal_io::chain_start(data_dir).is_origin() {
+        return Ok(None);
+    }
+    let (base, seal) = fsm_store::base::open_from_base(data_dir, records)?;
+    Ok(Some((seal, base)))
+}
+
 fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
     if let Err(h) = crate::journal_io::refuse_incompatible_store_format(&ctx.data_dir) {
         return emit_error(
@@ -186,7 +200,43 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
             }
         },
     };
+    // On a sealed store the replay starts from the base rather than from
+    // genesis, and says so: reporting a start of zero would claim to have
+    // replayed records that are in the archive.
+    let sealed = match sealed_origin(&ctx.data_dir, &recs) {
+        Ok(sealed) => sealed,
+        Err(error) => return emit_error(ctx, &error),
+    };
     let last = recs.last().map(|r| r.seq).unwrap_or(0);
+    if let Some(n) = to
+        && let Some((seal, _)) = &sealed
+        && n <= seal.sealed_through_seq
+    {
+        // The records are not absent, they are elsewhere. Telling an operator
+        // where is the difference between a refusal and a dead end.
+        return emit_error(
+            ctx,
+            &ErrorObj::new(
+                "store/archive_refused",
+                format!(
+                    "seq {n} is at or below this store's seal at seq {}; those records are in \
+                     archive {}",
+                    seal.sealed_through_seq, seal.archive_id
+                ),
+            )
+            .hint(concat!(
+                "replay the archived prefix from the archive instead: this data directory holds ",
+                "the live suffix and the base state the seal committed, and nothing below the cut",
+            ))
+            .details(Value::Obj(BTreeMap::from([
+                (
+                    "sealed_through_seq".into(),
+                    Value::Num(seal.sealed_through_seq.to_string()),
+                ),
+                ("archive_id".into(), Value::Str(seal.archive_id.clone())),
+            ]))),
+        );
+    }
     if let Some(n) = to {
         if n > last {
             emit_success(
@@ -206,7 +256,11 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
         .into_iter()
         .filter(|r| to.map(|n| r.seq <= n).unwrap_or(true))
         .collect();
-    match fold_with(recs.clone(), &mut NopSink) {
+    let folded = match &sealed {
+        None => fold_with(recs.clone(), &mut NopSink),
+        Some((_, base)) => fsm_core::replay::fold_from(base.clone(), recs.clone(), &mut NopSink),
+    };
+    match folded {
         Ok(folded) => {
             if matches!(
                 detect_store_format(&ctx.data_dir),
@@ -244,6 +298,18 @@ fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
             };
             let agreement = states_agree(&folded, &live_at);
             let mut out = BTreeMap::from([("agreement".into(), Value::Bool(agreement))]);
+            if let Some((seal, _)) = &sealed {
+                out.insert(
+                    "replayed_from_seal".into(),
+                    Value::Obj(BTreeMap::from([
+                        (
+                            "sealed_through_seq".into(),
+                            Value::Num(seal.sealed_through_seq.to_string()),
+                        ),
+                        ("archive_id".into(), Value::Str(seal.archive_id.clone())),
+                    ])),
+                );
+            }
             if !agreement {
                 let div = first_divergent_view(&recs, &ctx.data_dir)
                     .unwrap_or_else(|| folded.last_seq.min(live_at.last_seq).saturating_add(1));
@@ -439,6 +505,30 @@ fn doctor(ctx: &mut Ctx, _args: &Args) -> u8 {
         Value::Str(format!("{:?}", diagnosis.health)),
     );
     m.insert("orphans".into(), Value::Arr(diagnosis.orphans.clone()));
+    if let Some(seal) = &diagnosis.seal {
+        m.insert(
+            "seal".into(),
+            Value::Obj(BTreeMap::from([
+                (
+                    "sealed_through_seq".into(),
+                    Value::Num(seal.sealed_through_seq.to_string()),
+                ),
+                ("archive_id".into(), Value::Str(seal.archive_id.clone())),
+                (
+                    "records_sealed".into(),
+                    Value::Num(seal.records_sealed.to_string()),
+                ),
+                (
+                    "live_records".into(),
+                    Value::Num(diagnosis.records.to_string()),
+                ),
+                (
+                    "verdict".into(),
+                    Value::Str(seal_verdict_name(seal.verdict).into()),
+                ),
+            ])),
+        );
+    }
     m.insert(
         "FSM_DATA_DIR".into(),
         Value::Str(std::env::var("FSM_DATA_DIR").unwrap_or_default()),

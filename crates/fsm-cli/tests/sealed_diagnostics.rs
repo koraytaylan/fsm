@@ -1,0 +1,316 @@
+//! `journal replay` and `doctor` on a sealed store: both tell the truth about
+//! a prefix that is no longer here, and both answer from a **path**.
+//!
+//! Plan 0017 task 8103.
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use fsm_core::json::{JsonLimits, Value, parse};
+use fsm_store::store::Store;
+
+const CASE_REVIEW: &[u8] =
+    include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json");
+
+static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+struct TestDirectory(PathBuf);
+
+impl TestDirectory {
+    fn create(tag: &str) -> Self {
+        let index = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "fsm-sealed-diag-{tag}-{}-{index}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&path);
+        for sub in ["store", "archive"] {
+            fs::create_dir_all(path.join(sub)).expect("the directory is creatable");
+        }
+        Self(path)
+    }
+
+    fn store(&self) -> PathBuf {
+        self.0.join("store")
+    }
+
+    fn archive(&self) -> PathBuf {
+        self.0.join("archive")
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn run(store: &Path, argv: &[&str]) -> (i32, Value) {
+    let mut arguments: Vec<String> = argv.iter().map(|part| (*part).to_string()).collect();
+    arguments.push("--json".to_string());
+    arguments.push(format!("--data-dir={}", store.display()));
+    let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(&arguments)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("the binary runs");
+    // A refusal renders on stderr; both streams are the command's answer.
+    let text = String::from_utf8(output.stdout).expect("stdout is utf-8");
+    let errors = String::from_utf8(output.stderr).expect("stderr is utf-8");
+    let chosen = if text.trim().is_empty() {
+        &errors
+    } else {
+        &text
+    };
+    let parsed = parse(chosen.as_bytes(), &JsonLimits::DEFAULT)
+        .unwrap_or_else(|error| panic!("{error:?}: stdout={text} stderr={errors}"));
+    (output.status.code().unwrap_or(-1), parsed)
+}
+
+/// A sealed store, returning the cut it sealed through.
+fn seal_a_store(directory: &TestDirectory) -> u64 {
+    let mut store = Store::open(&directory.store()).expect("a fresh store opens");
+    store
+        .define_machine(
+            parse(CASE_REVIEW, &JsonLimits::DEFAULT).expect("the committed machine parses"),
+            false,
+            false,
+        )
+        .expect("the machine is definable");
+    store
+        .create_instance("case_review", "live", "create-live", None)
+        .expect("create succeeds");
+    store
+        .send_event(
+            "live",
+            "docs_ok",
+            Value::Obj(BTreeMap::new()),
+            "send-live",
+            None,
+        )
+        .expect("send succeeds");
+    let pending: Vec<String> = store.state.instances["live"].pending.clone();
+    for (index, effect_id) in pending.iter().enumerate() {
+        store
+            .ack_effect("live", effect_id, &format!("ack-{index}"))
+            .expect("ack succeeds");
+    }
+    let report = store
+        .seal_and_archive(&directory.archive(), None)
+        .expect("the store seals");
+    // One more record above the cut, so replay has a live suffix to walk.
+    store
+        .annotate("live", "after-seal", "a note above the cut")
+        .expect("the annotation succeeds");
+    drop(store);
+    report.sealed_through_seq
+}
+
+#[test]
+fn replay_of_a_sealed_store_agrees_and_reports_where_it_started() {
+    let directory = TestDirectory::create("replay-ok");
+    let cut = seal_a_store(&directory);
+    let (code, result) = run(&directory.store(), &["journal", "replay"]);
+    assert_eq!(code, 0, "replay of a sealed store disagreed: {result:?}");
+    assert_eq!(result.get("agreement").and_then(Value::as_bool), Some(true));
+    let from = result
+        .get("replayed_from_seal")
+        .expect("replay reports the seal it started from");
+    assert_eq!(
+        from.get("sealed_through_seq").and_then(Value::as_num),
+        Some(cut.to_string().as_str()),
+        "replay does not name the sequence it started after"
+    );
+    assert!(
+        from.get("archive_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.starts_with("sha256:")),
+        "replay does not name the archive its prefix went to"
+    );
+}
+
+#[test]
+fn replay_to_a_sequence_below_the_seal_is_refused_and_says_where_the_records_are() {
+    // The records are not absent, they are elsewhere. Telling an operator
+    // where is the difference between a refusal and a dead end.
+    let directory = TestDirectory::create("replay-below");
+    let cut = seal_a_store(&directory);
+    let (code, result) = run(
+        &directory.store(),
+        &["journal", "replay", &format!("--to-seq={}", cut - 1)],
+    );
+    assert_ne!(code, 0, "a to-seq below the seal was replayed");
+    let rendered = format!("{result:?}");
+    assert!(
+        rendered.contains("archive_refused"),
+        "the refusal is not the archive one: {rendered}"
+    );
+    assert!(
+        rendered.contains(&cut.to_string()) && rendered.contains("sha256:"),
+        "the refusal names neither the cut nor the archive: {rendered}"
+    );
+}
+
+#[test]
+fn replay_to_a_sequence_above_the_seal_still_works() {
+    let directory = TestDirectory::create("replay-above");
+    let cut = seal_a_store(&directory);
+    let (code, result) = run(
+        &directory.store(),
+        &["journal", "replay", &format!("--to-seq={}", cut + 1)],
+    );
+    assert_eq!(code, 0, "replay above the cut failed: {result:?}");
+    assert_eq!(result.get("agreement").and_then(Value::as_bool), Some(true));
+}
+
+#[test]
+fn doctor_reports_the_seal_on_a_healthy_sealed_store() {
+    // "How much of this store is live" is the first question a sealed store is
+    // asked, so it is answered rather than left to be inferred.
+    let directory = TestDirectory::create("doctor-ok");
+    let cut = seal_a_store(&directory);
+    let (code, result) = run(&directory.store(), &["doctor"]);
+    assert_eq!(code, 0);
+    let seal = result.get("seal").expect("doctor reports the seal");
+    assert_eq!(
+        seal.get("sealed_through_seq").and_then(Value::as_num),
+        Some(cut.to_string().as_str())
+    );
+    assert!(
+        seal.get("archive_id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.starts_with("sha256:"))
+    );
+    assert!(
+        seal.get("live_records").is_some(),
+        "doctor does not say how much is live"
+    );
+    assert_eq!(
+        seal.get("verdict").and_then(Value::as_str),
+        Some("prefix_not_presented"),
+        "doctor reads no archive, and must say so"
+    );
+}
+
+#[test]
+fn doctor_reports_no_seal_for_an_unsealed_store() {
+    let directory = TestDirectory::create("doctor-unsealed");
+    let mut store = Store::open(&directory.store()).expect("a fresh store opens");
+    store
+        .define_machine(
+            parse(CASE_REVIEW, &JsonLimits::DEFAULT).expect("the committed machine parses"),
+            false,
+            false,
+        )
+        .expect("the machine is definable");
+    drop(store);
+    let (code, result) = run(&directory.store(), &["doctor"]);
+    assert_eq!(code, 0);
+    assert!(
+        result.get("seal").is_none(),
+        "an unsealed store reported a seal"
+    );
+}
+
+#[test]
+fn a_sealed_store_with_no_base_is_classified_and_carries_a_remedy() {
+    let directory = TestDirectory::create("doctor-base-missing");
+    seal_a_store(&directory);
+    fs::remove_file(directory.store().join("journal").join("BASE")).expect("the base is removable");
+    let (code, result) = run(&directory.store(), &["doctor"]);
+    assert_ne!(code, 0, "a store with no base was reported healthy");
+    let rendered = format!("{result:?}");
+    assert!(
+        rendered.contains("base_missing"),
+        "the classification is not base_missing: {rendered}"
+    );
+}
+
+#[test]
+fn a_sealed_store_with_a_tampered_base_is_classified_and_offers_no_repair() {
+    let directory = TestDirectory::create("doctor-base-mismatch");
+    seal_a_store(&directory);
+    let base = directory.store().join("journal").join("BASE");
+    let value = parse(
+        &fs::read(&base).expect("the base is readable"),
+        &JsonLimits::DEFAULT,
+    )
+    .expect("the base parses");
+    let mut object = value.as_obj().expect("the base is an object").clone();
+    object.insert(
+        "base_state_root".into(),
+        Value::Str(format!("sha256:{}", "ab".repeat(32))),
+    );
+    let mut rewritten = fsm_core::canon::canon_bytes(&Value::Obj(object));
+    rewritten.push(b'\n');
+    fs::write(&base, rewritten).expect("the base is writable");
+
+    let (code, result) = run(&directory.store(), &["doctor"]);
+    assert_ne!(code, 0, "a tampered base was reported healthy");
+    let rendered = format!("{result:?}");
+    assert!(
+        rendered.contains("base_mismatch"),
+        "the classification is not base_mismatch: {rendered}"
+    );
+    assert!(
+        rendered.contains("no repair") || rendered.contains("archive"),
+        "the remedy does not say the base cannot be reconstructed here: {rendered}"
+    );
+}
+
+#[test]
+fn both_diagnostics_answer_while_a_writer_holds_the_store() {
+    // Plan 0014's property: a diagnosis is a function of a path, never of an
+    // open store. This plan must not narrow it.
+    let directory = TestDirectory::create("path-only");
+    seal_a_store(&directory);
+    let writer = Store::open(&directory.store()).expect("the writer opens");
+    let (doctor_code, doctor) = run(&directory.store(), &["doctor"]);
+    let (replay_code, replay) = run(&directory.store(), &["journal", "replay"]);
+    let (verify_code, verify) = run(&directory.store(), &["journal", "verify"]);
+    drop(writer);
+    assert_eq!(
+        doctor_code, 0,
+        "doctor refused while a writer held: {doctor:?}"
+    );
+    assert_eq!(
+        replay_code, 0,
+        "replay refused while a writer held: {replay:?}"
+    );
+    assert_eq!(
+        verify_code, 7,
+        "verify reported something other than the middle verdict: {verify:?}"
+    );
+    assert!(doctor.get("seal").is_some());
+    assert!(replay.get("replayed_from_seal").is_some());
+}
+
+#[test]
+fn an_unsealed_stores_diagnostics_are_unchanged() {
+    let directory = TestDirectory::create("unsealed");
+    let mut store = Store::open(&directory.store()).expect("a fresh store opens");
+    store
+        .define_machine(
+            parse(CASE_REVIEW, &JsonLimits::DEFAULT).expect("the committed machine parses"),
+            false,
+            false,
+        )
+        .expect("the machine is definable");
+    store
+        .create_instance("case_review", "live", "create-live", None)
+        .expect("create succeeds");
+    drop(store);
+    let (replay_code, replay) = run(&directory.store(), &["journal", "replay"]);
+    assert_eq!(replay_code, 0);
+    assert_eq!(replay.get("agreement").and_then(Value::as_bool), Some(true));
+    assert!(
+        replay.get("replayed_from_seal").is_none(),
+        "an unsealed replay reported a seal"
+    );
+    let (verify_code, verify) = run(&directory.store(), &["journal", "verify"]);
+    assert_eq!(verify_code, 0);
+    assert!(verify.get("seal").is_none());
+}
