@@ -5,8 +5,8 @@ use fsm_core::replay::{NopSink, fold_with};
 
 use crate::args::{Args, CmdSpec, Ctx};
 use crate::journal_io::{
-    DetectedStoreFormat, JournalHealth, RepairError, detect_store_format, load_records,
-    repair_truncate_torn_tail, verify,
+    DetectedStoreFormat, JournalHealth, RepairError, SealVerdict, detect_store_format,
+    load_records, repair_truncate_torn_tail,
 };
 use crate::render::{emit_error, emit_success};
 use crate::store::ErrorObj;
@@ -38,8 +38,16 @@ fn store_format_refusal_code(h: &JournalHealth) -> &'static str {
     }
 }
 
+/// The exit code a sealed store's verification reports.
+///
+/// A verification that did not read the sealed bytes never reports the same
+/// thing as one that did — in prose, in the structured result, **and** in the
+/// exit status, because a shell script reads only the last of those.
+const EXIT_SEAL_PREFIX_NOT_PRESENTED: u8 = 7;
+
 fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
-    let r = verify(&ctx.data_dir);
+    let archive = args.flags.get("with-archive").map(std::path::PathBuf::from);
+    let r = crate::journal_io::verify_with_archive(&ctx.data_dir, archive.as_deref());
     if matches!(
         r.health,
         JournalHealth::VersionMismatch { .. } | JournalHealth::StoreIo(_)
@@ -60,6 +68,44 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
     }
     if r.migratable {
         m.insert("migratable".into(), Value::Bool(true));
+    }
+    if let Some(seal) = &r.seal {
+        let mut sealed = BTreeMap::from([
+            (
+                "sealed_through_seq".into(),
+                Value::Num(seal.sealed_through_seq.to_string()),
+            ),
+            (
+                "sealed_last_hash".into(),
+                Value::Str(seal.sealed_last_hash.clone()),
+            ),
+            ("archive_id".into(), Value::Str(seal.archive_id.clone())),
+            (
+                "records_sealed".into(),
+                Value::Num(seal.records_sealed.to_string()),
+            ),
+            (
+                "verdict".into(),
+                Value::Str(seal_verdict_name(seal.verdict).into()),
+            ),
+        ]);
+        if let Some(directory) = &seal.archive_dir {
+            sealed.insert("archive_dir".into(), Value::Str(directory.clone()));
+        }
+        m.insert("seal".into(), Value::Obj(sealed));
+        m.insert(
+            "message".into(),
+            Value::Str(match seal.verdict {
+                SealVerdict::PrefixWalked => format!(
+                    "verified from seal {} at seq {}; prefix walked from the archive",
+                    seal.sealed_last_hash, seal.sealed_through_seq
+                ),
+                _ => format!(
+                    "verified from seal {} at seq {}; prefix sealed, not presented",
+                    seal.sealed_last_hash, seal.sealed_through_seq
+                ),
+            }),
+        );
     }
     if args.switches.contains("report") {
         m.insert("report".into(), Value::Bool(true));
@@ -95,7 +141,26 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
         m.insert("segments".into(), Value::Arr(segs));
     }
     emit_success(ctx, &Value::Obj(m));
-    health_exit(&r.health)
+    let health = health_exit(&r.health);
+    if health != 0 {
+        return health;
+    }
+    // The middle verdict is not a success and not a failure: the store is
+    // intact as far as anything here could tell, and a prefix nobody read is
+    // still a prefix nobody read.
+    match r.seal_verdict() {
+        SealVerdict::PrefixNotPresented => EXIT_SEAL_PREFIX_NOT_PRESENTED,
+        SealVerdict::Unsealed | SealVerdict::PrefixWalked => 0,
+    }
+}
+
+/// The verdict as the one word every surface uses for it.
+pub fn seal_verdict_name(verdict: SealVerdict) -> &'static str {
+    match verdict {
+        SealVerdict::Unsealed => "unsealed",
+        SealVerdict::PrefixNotPresented => "prefix_not_presented",
+        SealVerdict::PrefixWalked => "prefix_walked",
+    }
 }
 
 fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
@@ -550,7 +615,7 @@ pub static SPECS: &[CmdSpec] = &[
     CmdSpec {
         path: &["journal", "verify"],
         positionals: &[],
-        flags: &[],
+        flags: &["with-archive"],
         switches: &["report"],
         help: "Verify journal",
         run: journal_verify,

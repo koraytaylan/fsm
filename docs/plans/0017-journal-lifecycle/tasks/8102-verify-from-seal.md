@@ -8,10 +8,10 @@ depends_on:
 gated: false
 touches:
   - crates/fsm-store/src/journal_io/verify.rs
-  - crates/fsm-store/src/journal_io/classify.rs
-  - crates/fsm-cli/tests/audit_verify.rs
-  - crates/fsm-cli/tests/fixtures/verify_sealed.txt
-status: planned
+  - crates/fsm-store/src/journal_io/mod.rs
+  - crates/fsm-cli/src/cli/ops.rs
+  - crates/fsm-cli/tests/verify_sealed.rs
+status: done
 merged_as: ""
 ---
 # Verify From Seal
@@ -34,7 +34,7 @@ Verification is the strongest claim this project makes, so a verification that d
 **Tests:**
 
 - `crates/fsm-cli/tests/audit_verify.rs`: an unsealed store's verify output is byte-identical to the pre-task golden.
-- A sealed store with no archive presented emits the middle verdict, matching `crates/fsm-cli/tests/fixtures/verify_sealed.txt` byte for byte, with an exit code distinct from both success and failure.
+- A sealed store with no archive presented emits the middle verdict, with an exit code distinct from both success and failure. (Asserted against the structured `--json` result and the exit status rather than a rendered golden: the seal's hashes and archive id change with every run, so a byte-exact fixture would have to be regenerated on every test and would pin nothing.)
 - The same store with `--with-archive` emits the complete-walk verdict and the success exit code.
 - With `--with-archive` pointing at an archive with one byte flipped in a segment, verify fails and names the segment.
 - With `--with-archive` pointing at an archive belonging to a different store, verify fails on the `sealed_last_hash` check.

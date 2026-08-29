@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use fsm_core::record::{verify_line, zeros};
+use fsm_core::record::verify_line;
 use fsm_core::replay::{NopSink, fold_with};
 
 use super::classify::{classify, replay_health};
@@ -35,6 +35,39 @@ pub struct SegmentProgress {
     pub status: String,
 }
 
+/// What a verification of a sealed store actually walked.
+///
+/// The rule this project cannot compromise on: **a verification that did not
+/// read the sealed bytes never reports the same thing as one that did.** So
+/// this is three values and not a boolean beside an optional field, because a
+/// caller can overlook an optional field and cannot overlook an enum arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SealVerdict {
+    /// The store is not sealed. Exactly today's answer, and today's exit code.
+    Unsealed,
+    /// Sealed, and the archive was not presented. The live suffix was walked
+    /// in full and the seal was checked against the base; the prefix was not
+    /// read at all — not partially, not optimistically.
+    PrefixNotPresented,
+    /// Sealed, and the archive was presented and walked: the manifest, every
+    /// segment digest, and the record at the cut hashing to `sealed_last_hash`.
+    /// The only verdict that may report what a complete walk reports.
+    PrefixWalked,
+}
+
+/// Everything a sealed store's verification says about its seal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SealInfo {
+    pub sealed_through_seq: u64,
+    pub sealed_last_hash: String,
+    pub archive_id: String,
+    pub records_sealed: u64,
+    pub verdict: SealVerdict,
+    /// Where the archive was read from, when it was. A log line that does not
+    /// record which bytes were walked is a log line that proves nothing.
+    pub archive_dir: Option<String>,
+}
+
 pub struct VerifyReport {
     pub health: JournalHealth,
     pub records: u64,
@@ -44,6 +77,18 @@ pub struct VerifyReport {
     pub segments: Vec<SegmentProgress>,
     pub store_version: Option<String>,
     pub migratable: bool,
+    /// Absent for an unsealed store, which is byte-identical to before.
+    pub seal: Option<SealInfo>,
+}
+
+impl VerifyReport {
+    /// The verdict, as one word, for a caller that reports rather than branches.
+    pub fn seal_verdict(&self) -> SealVerdict {
+        self.seal
+            .as_ref()
+            .map(|seal| seal.verdict)
+            .unwrap_or(SealVerdict::Unsealed)
+    }
 }
 
 pub fn refuse_incompatible_store_format(dir: &Path) -> Result<(), JournalHealth> {
@@ -85,9 +130,11 @@ pub fn verify_segments_with(
             }];
         }
     };
+    let start = super::chain_start(dir);
+    let segs = super::live_segments(segs, &start);
     let mut out = Vec::new();
-    let mut expect_seq = 0u64;
-    let mut expect_prev = zeros();
+    let mut expect_seq = start.expect_seq;
+    let mut expect_prev = start.expect_prev;
     let mut walked = 0u64;
     let mut stopped = false;
     for (si, path) in segs.iter().enumerate() {
@@ -174,6 +221,15 @@ pub fn verify_segments_with(
 }
 
 pub fn verify(dir: &Path) -> VerifyReport {
+    verify_with_archive(dir, None)
+}
+
+/// The same verification, additionally walking a presented archive.
+///
+/// Absent an archive directory the sealed prefix is not read **at all**. That
+/// is the whole point of the middle verdict: an operator who wants the
+/// complete claim has to present the bytes it is a claim about.
+pub fn verify_with_archive(dir: &Path, archive_dir: Option<&Path>) -> VerifyReport {
     let fmt = detect_store_format(dir);
     let store_version = match &fmt {
         DetectedStoreFormat::Current => Some(STORE_VERSION.to_string()),
@@ -192,6 +248,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
         segments: verify_segments(dir),
         store_version: store_version.clone(),
         migratable,
+        seal: None,
     };
     if let Err(h) = refuse_incompatible_store_format(dir) {
         return empty(h);
@@ -204,7 +261,24 @@ pub fn verify(dir: &Path) -> VerifyReport {
         Ok(r) => r,
         Err(e) => return empty(JournalHealth::StoreIo(e)),
     };
-    match fold_with(recs.clone(), &mut NopSink) {
+    let seal = match seal_of(dir, &recs, archive_dir) {
+        Ok(seal) => seal,
+        Err(health) => return empty(health),
+    };
+    // A sealed store's state is the base plus the live suffix; folding the
+    // suffix alone would report a store smaller than the one that is there.
+    let folded = match &seal {
+        None => fold_with(recs.clone(), &mut NopSink),
+        Some(_) => match crate::base::open_from_base(dir, &recs) {
+            Ok((base, _)) => fsm_core::replay::fold_from(base, recs.clone(), &mut NopSink),
+            Err(error) => {
+                return empty(JournalHealth::BaseMismatch {
+                    detail: error.message,
+                });
+            }
+        },
+    };
+    match folded {
         Ok(st) => {
             let mut instance_hashes = std::collections::BTreeMap::new();
             for (id, inst) in &st.instances {
@@ -223,6 +297,7 @@ pub fn verify(dir: &Path) -> VerifyReport {
                 segments: verify_segments(dir),
                 store_version,
                 migratable,
+                seal,
             }
         }
         Err(e) => VerifyReport {
@@ -234,6 +309,59 @@ pub fn verify(dir: &Path) -> VerifyReport {
             segments: verify_segments(dir),
             store_version,
             migratable,
+            seal,
         },
     }
+}
+
+/// The seal a store carries, and what verifying it actually read.
+fn seal_of(
+    dir: &Path,
+    records: &[fsm_core::record::Record],
+    archive_dir: Option<&Path>,
+) -> Result<Option<SealInfo>, JournalHealth> {
+    if super::chain_start(dir).is_origin() {
+        return Ok(None);
+    }
+    let (_state, seal) =
+        crate::base::open_from_base(dir, records).map_err(|error| JournalHealth::BaseMismatch {
+            detail: error.message,
+        })?;
+    let mut info = SealInfo {
+        sealed_through_seq: seal.sealed_through_seq,
+        sealed_last_hash: seal.sealed_last_hash.clone(),
+        archive_id: seal.archive_id.clone(),
+        records_sealed: seal.records_sealed,
+        verdict: SealVerdict::PrefixNotPresented,
+        archive_dir: None,
+    };
+    let Some(archive) = archive_dir else {
+        return Ok(Some(info));
+    };
+    let manifest =
+        crate::archive::verify(archive).map_err(|error| JournalHealth::BaseMismatch {
+            detail: format!("the presented archive does not verify: {}", error.message),
+        })?;
+    if manifest.sealed_through_seq != seal.sealed_through_seq
+        || manifest.sealed_last_hash != seal.sealed_last_hash
+    {
+        return Err(JournalHealth::BaseMismatch {
+            detail: format!(
+                "the presented archive seals through seq {} at {}, and this store's seal names \
+                 seq {} at {}",
+                manifest.sealed_through_seq,
+                manifest.sealed_last_hash,
+                seal.sealed_through_seq,
+                seal.sealed_last_hash
+            ),
+        });
+    }
+    if manifest.archive_id() != seal.archive_id {
+        return Err(JournalHealth::BaseMismatch {
+            detail: "the presented archive is not the one this store's seal names".into(),
+        });
+    }
+    info.verdict = SealVerdict::PrefixWalked;
+    info.archive_dir = Some(archive.display().to_string());
+    Ok(Some(info))
 }

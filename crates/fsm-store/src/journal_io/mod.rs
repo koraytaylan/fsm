@@ -36,8 +36,9 @@ pub use paths::journal_dir;
 pub use repair::{RepairError, RepairReport, repair_truncate_torn_tail};
 pub use types::{Journal, JournalHealth, JournalIoError, OpenError};
 pub use verify::{
-    BATCH, SegmentProgress, VerifyReport, Walk, refuse_incompatible_store_format, verify,
-    verify_segments, verify_segments_with,
+    BATCH, SealInfo, SealVerdict, SegmentProgress, VerifyReport, Walk,
+    refuse_incompatible_store_format, verify, verify_segments, verify_segments_with,
+    verify_with_archive,
 };
 
 const ROTATE_RECORDS: u32 = 65_536;
