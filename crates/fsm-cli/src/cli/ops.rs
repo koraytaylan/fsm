@@ -9,7 +9,11 @@ use crate::journal_io::{
     load_records, repair_truncate_torn_tail,
 };
 use crate::render::{emit_error, emit_success};
+
+mod archive;
+
 use crate::store::ErrorObj;
+use archive::{journal_archive, seal_verdict_name, sealed_origin};
 
 pub fn health_exit(h: &JournalHealth) -> u8 {
     match h {
@@ -152,29 +156,6 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
         SealVerdict::PrefixNotPresented => EXIT_SEAL_PREFIX_NOT_PRESENTED,
         SealVerdict::Unsealed | SealVerdict::PrefixWalked => 0,
     }
-}
-
-/// The verdict as the one word every surface uses for it.
-pub fn seal_verdict_name(verdict: SealVerdict) -> &'static str {
-    match verdict {
-        SealVerdict::Unsealed => "unsealed",
-        SealVerdict::PrefixNotPresented => "prefix_not_presented",
-        SealVerdict::PrefixWalked => "prefix_walked",
-    }
-}
-
-/// The seal a store carries and the base to replay from, or `None` when it is
-/// not sealed.
-#[allow(clippy::type_complexity)]
-fn sealed_origin(
-    data_dir: &std::path::Path,
-    records: &[fsm_core::record::Record],
-) -> Result<Option<(fsm_store::base::SealInfo, fsm_core::replay::StoreState)>, ErrorObj> {
-    if crate::journal_io::chain_start(data_dir).is_origin() {
-        return Ok(None);
-    }
-    let (base, seal) = fsm_store::base::open_from_base(data_dir, records)?;
-    Ok(Some((seal, base)))
 }
 
 fn journal_replay(ctx: &mut Ctx, args: &Args) -> u8 {
@@ -717,6 +698,14 @@ pub static SPECS: &[CmdSpec] = &[
         switches: &[],
         help: "Replay journal",
         run: journal_replay,
+    },
+    CmdSpec {
+        path: &["journal", "archive"],
+        positionals: &[],
+        flags: &["to", "before-seq"],
+        switches: &["dry-run"],
+        help: "Seal a journal prefix into an archive directory",
+        run: journal_archive,
     },
     CmdSpec {
         path: &["migrate"],

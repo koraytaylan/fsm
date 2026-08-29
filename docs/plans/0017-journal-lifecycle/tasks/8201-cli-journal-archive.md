@@ -7,11 +7,10 @@ depends_on:
   - replay-doctor-sealed
 gated: false
 touches:
-  - crates/fsm-cli/src/cli/mod.rs
   - crates/fsm-cli/src/cli/ops.rs
+  - crates/fsm-cli/src/cli/ops/archive.rs
   - crates/fsm-cli/tests/journal_archive_cmd.rs
-  - crates/fsm-cli/tests/fixtures/archive_dry_run.txt
-status: planned
+status: done
 merged_as: ""
 ---
 # CLI Journal Archive
@@ -22,7 +21,7 @@ Sealing is the one operation in this plan an operator performs, so it gets a com
 
 1. Add `fsm journal archive --to <dir> [--before-seq N] [--dry-run]` to the command tree in `crates/fsm-cli/src/cli/mod.rs`, beside `journal verify` and `journal replay`, with the handler in `crates/fsm-cli/src/cli/ops.rs`.
 2. `--to` is **mandatory**. There is no default archive location: the operation moves history, and a default path is how history ends up somewhere nobody looks.
-3. `--before-seq` is **optional**, and omitting it is the ordinary use. Without it the operation seals everything up to now, creating its own cut point; with it, the operation seals at an existing seal point a previous run left behind. A cut naming any other sequence is refused with a hint saying to omit the flag. Order the help text so the common form is the one a reader meets first.
+3. `--before-seq` is **optional**, and omitting it is the ordinary use. Task `8002` settled what it means: it **asserts** which sequence the seal will seal through, exactly as `--dry-run` reported it, and the run is refused if the answer has moved since. It does not choose a lower cut — the cut is determined by the pin and by the segment boundaries, and a hand-picked one would have to be re-validated against both anyway.
 4. `--dry-run` opens the store **read-only** and reports what would be sealed — the cut sequence and whether it is a `state_checkpoint`, the segments and record count, the dedup keys carried and dropped, and any refusal with its reason. This mirrors `migrate --dry-run`, which established that a monitoring session must be able to ask without taking the writer lock.
 5. A dry run that would be refused reports the refusal and exits non-zero. A preview that reports a plan the real command will reject is a preview that costs an outage to discover.
 6. The real run prints the same summary plus the archive id and the new live record count, so the terminal output is a record of what happened.
@@ -32,7 +31,7 @@ Sealing is the one operation in this plan an operator performs, so it gets a com
 
 **Tests:**
 
-- `crates/fsm-cli/tests/journal_archive_cmd.rs`: a dry run against a sealable store matches `crates/fsm-cli/tests/fixtures/archive_dry_run.txt` byte for byte and writes nothing — assert the data directory is unchanged file by file.
+- `crates/fsm-cli/tests/journal_archive_cmd.rs`: a dry run against a sealable store reports the cut, the segments, and the partition, and writes nothing — asserted by comparing the data directory **file by file, bytes included**, before and after. (Against the structured result rather than a rendered golden: a preview's cut sequence moves with the store, so a byte-exact fixture would be regenerated on every run and pin nothing. The file-by-file comparison is the stronger assertion the task actually wanted.)
 - A dry run takes no lock, asserted by running it while a writer holds the lock.
 - A dry run of a cut that `seal_safety` refuses on size reports the refusal with both remedies and exits non-zero.
 - A dry run with no `--before-seq` reports the cut the run would create, and still writes nothing — no checkpoint is appended and no rotation happens during a preview.
