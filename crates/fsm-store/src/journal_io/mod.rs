@@ -37,7 +37,7 @@ pub use repair::{RepairError, RepairReport, repair_truncate_torn_tail};
 pub use types::{Journal, JournalHealth, JournalIoError, OpenError};
 pub use verify::{
     BATCH, SealInfo, SealVerdict, SegmentProgress, VerifyReport, Walk,
-    refuse_incompatible_store_format, verify, verify_segments, verify_segments_with,
+    refuse_incompatible_store_format, seal_at, verify, verify_segments, verify_segments_with,
     verify_with_archive,
 };
 

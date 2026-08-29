@@ -96,6 +96,9 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
         if let Some(directory) = &seal.archive_dir {
             sealed.insert("archive_dir".into(), Value::Str(directory.clone()));
         }
+        if let Some(detail) = &seal.archive_detail {
+            sealed.insert("archive_detail".into(), Value::Str(detail.clone()));
+        }
         m.insert("seal".into(), Value::Obj(sealed));
         m.insert(
             "message".into(),
@@ -103,6 +106,16 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
                 SealVerdict::PrefixWalked => format!(
                     "verified from seal {} at seq {}; prefix walked from the archive",
                     seal.sealed_last_hash, seal.sealed_through_seq
+                ),
+                // The store verified. What did not is the directory the
+                // operator pointed at, and saying so is the difference between
+                // a mistyped path and a lost store.
+                SealVerdict::PrefixNotMatched => format!(
+                    "verified from seal {} at seq {}; the presented archive is not this store's, \
+                     so the prefix was not walked: {}",
+                    seal.sealed_last_hash,
+                    seal.sealed_through_seq,
+                    seal.archive_detail.as_deref().unwrap_or_default()
                 ),
                 _ => format!(
                     "verified from seal {} at seq {}; prefix sealed, not presented",
@@ -153,7 +166,12 @@ fn journal_verify(ctx: &mut Ctx, args: &Args) -> u8 {
     // intact as far as anything here could tell, and a prefix nobody read is
     // still a prefix nobody read.
     match r.seal_verdict() {
-        SealVerdict::PrefixNotPresented => EXIT_SEAL_PREFIX_NOT_PRESENTED,
+        // A presented archive that is not this store's leaves the prefix
+        // exactly as unread as presenting none, and the store exactly as
+        // healthy — so it exits the same way and the detail says which.
+        SealVerdict::PrefixNotPresented | SealVerdict::PrefixNotMatched => {
+            EXIT_SEAL_PREFIX_NOT_PRESENTED
+        }
         SealVerdict::Unsealed | SealVerdict::PrefixWalked => 0,
     }
 }

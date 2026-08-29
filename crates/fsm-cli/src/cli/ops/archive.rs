@@ -143,6 +143,7 @@ pub(super) fn seal_verdict_name(verdict: SealVerdict) -> &'static str {
         SealVerdict::Unsealed => "unsealed",
         SealVerdict::PrefixNotPresented => "prefix_not_presented",
         SealVerdict::PrefixWalked => "prefix_walked",
+        SealVerdict::PrefixNotMatched => "prefix_not_matched",
     }
 }
 

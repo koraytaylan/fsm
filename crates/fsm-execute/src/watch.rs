@@ -446,7 +446,6 @@ pub struct AttemptState {
     pub last_ts: i64,
 }
 
-/// Every effect's attempt state, from the journal.
 /// The attempt count for every effect, derived from the records.
 ///
 /// This scans the live journal and nothing else, and on a sealed store that is

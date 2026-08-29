@@ -72,7 +72,7 @@ fn remedy(health: &fsm_store::journal_io::JournalHealth) -> Option<&'static str>
         H::MissingGenesis => Some("restore the journal from backup or recreate the data directory"),
         H::StoreIo(_) => Some("repair the filesystem or input fault"),
         H::BaseMissing => Some(
-            "restore the journal from backup, or restore the BASE the seal that removed its              segments wrote",
+            "restore the journal from backup, or restore the BASE the seal that removed its segments wrote",
         ),
         // `ChainBroken`, `StateHashMismatch` and `NonCanonical` are interior
         // damage: the table says refuse, no repair.
@@ -161,6 +161,7 @@ fn seal_value(seal: &fsm_store::journal_io::SealInfo) -> Value {
                         "prefix_not_presented"
                     }
                     fsm_store::journal_io::SealVerdict::PrefixWalked => "prefix_walked",
+                    fsm_store::journal_io::SealVerdict::PrefixNotMatched => "prefix_not_matched",
                 }
                 .to_string(),
             ),
@@ -169,13 +170,21 @@ fn seal_value(seal: &fsm_store::journal_io::SealInfo) -> Value {
     if let Some(directory) = &seal.archive_dir {
         fields.insert("archive_dir".to_string(), Value::Str(directory.clone()));
     }
+    if let Some(detail) = &seal.archive_detail {
+        fields.insert("archive_detail".to_string(), Value::Str(detail.clone()));
+    }
     Value::Obj(fields)
 }
 
 /// The seal a store carries, read from a **path** so a degraded server can
 /// still answer.
+/// The seal a store carries, read without a second full verification.
+///
+/// Every caller here has already walked or diagnosed the store; asking
+/// `verify` again to recover two scalars would re-classify, re-load, re-fold
+/// and re-walk it.
 fn seal_of(data_dir: &std::path::Path) -> Option<fsm_store::journal_io::SealInfo> {
-    fsm_store::journal_io::verify(data_dir).seal
+    fsm_store::journal_io::seal_at(data_dir)
 }
 
 /// Verify one data directory, whether or not anybody could open it.
@@ -651,8 +660,10 @@ pub fn doctor_report(data_dir: &std::path::Path) -> Value {
     if let Some(remedy) = remedy(&diagnosis.health) {
         out.insert("remedy".to_string(), Value::Str(remedy.to_string()));
     }
-    if let Some(seal) = seal_of(data_dir) {
-        out.insert("seal".to_string(), seal_value(&seal));
+    // The diagnosis already answered this on its way past. Asking again would
+    // run a third full verification of the same directory.
+    if let Some(seal) = &diagnosis.seal {
+        out.insert("seal".to_string(), seal_value(seal));
     }
     Value::Obj(out)
 }

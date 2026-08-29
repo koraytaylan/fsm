@@ -272,6 +272,36 @@ fn a_sealed_store_with_no_base_is_classified_and_carries_a_remedy() {
 }
 
 #[test]
+fn a_base_that_is_present_and_unreadable_is_not_reported_as_absent() {
+    // `base_missing` says "records were removed from this directory without a
+    // seal saying so" and tells the operator to restore the segments from
+    // backup. For a base file sitting right there with a truncated last line
+    // that is the wrong diagnosis *and* the wrong remedy: the archive is fine
+    // and the bytes to restore are one file, not a journal.
+    for (tag, bytes) in [
+        ("truncated", b"{\"format\": \"fsm.base/1\", \"se".to_vec()),
+        ("not-json", b"this is not a base file\n".to_vec()),
+        ("not-an-object", b"[1, 2, 3]\n".to_vec()),
+    ] {
+        let directory = TestDirectory::create(&format!("doctor-base-unreadable-{tag}"));
+        seal_a_store(&directory);
+        let base = directory.store().join("journal").join("BASE");
+        fs::write(&base, &bytes).expect("the base is writable");
+        let (code, result) = run(&directory.store(), &["doctor"]);
+        assert_ne!(code, 0, "an unreadable base was reported healthy");
+        let rendered = format!("{result:?}");
+        assert!(
+            rendered.contains("base_mismatch"),
+            "an unreadable base was classified as absent ({tag}): {rendered}"
+        );
+        assert!(
+            !rendered.contains("base_missing"),
+            "an unreadable base was classified as absent ({tag}): {rendered}"
+        );
+    }
+}
+
+#[test]
 fn a_sealed_store_with_a_tampered_base_is_classified_and_offers_no_repair() {
     let directory = TestDirectory::create("doctor-base-mismatch");
     seal_a_store(&directory);

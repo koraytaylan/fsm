@@ -156,7 +156,6 @@ fn emitting_record<'a>(store: &'a Store, id: &EffectId<'_>) -> Result<&'a Record
 }
 
 /// Fold the journal prefix the emitting record was applied against.
-/// Fold the journal prefix the emitting record was applied against.
 ///
 /// **On a sealed store this folds onto the base, not onto nothing.** Folding
 /// the live suffix from empty produces a state that is wrong rather than an

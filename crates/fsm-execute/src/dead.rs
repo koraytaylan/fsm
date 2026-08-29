@@ -179,7 +179,7 @@ impl ReportHorizon {
             (
                 "note".to_string(),
                 Value::Str(
-                    "entries at or below this sequence are in the archive and are not in this                      report"
+                    "entries at or below this sequence are in the archive and are not in this report"
                         .into(),
                 ),
             ),

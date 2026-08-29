@@ -304,21 +304,39 @@ impl Store {
     }
 
     /// What a sealed store's readers could not see, or `None` when unsealed.
+    ///
+    /// Read from the seal record in the live chain, not by decoding the base.
+    /// `open_from_base` parses the whole file, compiles every machine in it
+    /// and validates every instance — to recover two scalars this record
+    /// already carries, on a path that runs on every `instance_history` and
+    /// every `explain` miss. The chain authenticated this record when the
+    /// store opened; nothing here needs the base's contents.
     fn seal_horizon(&self) -> Option<Value> {
         if crate::journal_io::chain_start(&self.data_dir).is_origin() {
             return None;
         }
-        let (_state, seal) = crate::base::open_from_base(&self.data_dir, &self.records).ok()?;
+        let seal = self
+            .records
+            .iter()
+            .find(|record| record.kind == RecordKind::JournalSealed)?;
+        let sealed_through_seq = seal
+            .body
+            .get("sealed_through_seq")
+            .and_then(Value::as_num)?
+            .to_string();
+        let archive_id = seal
+            .body
+            .get("archive_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         Some(Value::Obj(BTreeMap::from([
-            (
-                "sealed_through_seq".into(),
-                Value::Num(seal.sealed_through_seq.to_string()),
-            ),
-            ("archive_id".into(), Value::Str(seal.archive_id)),
+            ("sealed_through_seq".into(), Value::Num(sealed_through_seq)),
+            ("archive_id".into(), Value::Str(archive_id)),
             (
                 "note".into(),
                 Value::Str(
-                    "records at or below this sequence are in the archive and are not in this                      answer"
+                    "records at or below this sequence are in the archive and are not in this answer"
                         .into(),
                 ),
             ),

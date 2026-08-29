@@ -162,7 +162,17 @@ pub fn classify(dir: &Path) -> JournalHealth {
     // letting the chain walk report a sequence gap, is what stops that from
     // ever reading as a seal.
     if start.is_origin() && !first_segment_starts_at_origin(&segs) {
-        return JournalHealth::BaseMissing;
+        // `chain_start` reports the origin for a base it could not read as
+        // well as for one that is not there, and those are different faults
+        // with different remedies. "Restore the segments from backup" is the
+        // wrong instruction for a base file that is sitting right there and
+        // merely truncated, so the file is asked directly.
+        return match crate::base::read_header(dir) {
+            Ok(_) => JournalHealth::BaseMissing,
+            Err(error) => JournalHealth::BaseMismatch {
+                detail: format!("it is present and unreadable: {}", error.message),
+            },
+        };
     }
     // Sealed segments an interrupted removal left behind are already in the
     // archive; the loader skips them by sequence and so does this.

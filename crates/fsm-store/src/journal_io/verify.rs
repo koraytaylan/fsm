@@ -53,6 +53,16 @@ pub enum SealVerdict {
     /// segment digest, and the record at the cut hashing to `sealed_last_hash`.
     /// The only verdict that may report what a complete walk reports.
     PrefixWalked,
+    /// Sealed, and the archive that was presented is not this store's — it
+    /// does not verify, or it seals a different prefix.
+    ///
+    /// **The store is healthy in this verdict.** A mistyped `--with-archive`
+    /// path is a fault in the argument, not in the data directory, and
+    /// reporting it as `base_mismatch` tells an operator their store is
+    /// unopenable and beyond repair when nothing is wrong with it. What was
+    /// not read is still not read, so this exits like
+    /// [`SealVerdict::PrefixNotPresented`] and says why in `archive_detail`.
+    PrefixNotMatched,
 }
 
 /// Everything a sealed store's verification says about its seal.
@@ -66,6 +76,9 @@ pub struct SealInfo {
     /// Where the archive was read from, when it was. A log line that does not
     /// record which bytes were walked is a log line that proves nothing.
     pub archive_dir: Option<String>,
+    /// Why a presented archive was not walked, when one was presented and the
+    /// verdict is [`SealVerdict::PrefixNotMatched`].
+    pub archive_detail: Option<String>,
 }
 
 pub struct VerifyReport {
@@ -318,8 +331,22 @@ pub fn verify_with_archive(dir: &Path, archive_dir: Option<&Path>) -> VerifyRepo
     }
 }
 
+/// The seal a store carries, without verifying or folding anything.
+///
+/// `verify` answers this on its way past, and callers that have already
+/// walked a store should take it from the report they already hold. This is
+/// for the ones that have not: it loads the live records and reads the seal
+/// record out of them, which is the whole cost. Asking `verify` for a seal
+/// runs a classify, a load, a full fold, and a segment walk to return two
+/// scalars — on a large journal that is the difference between a diagnostic an
+/// operator runs and one they learn not to.
+pub fn seal_at(dir: &Path) -> Option<SealInfo> {
+    let records = load_records(dir).ok()?;
+    seal_of(dir, &records, None).ok().flatten()
+}
+
 /// The seal a store carries, and what verifying it actually read.
-fn seal_of(
+pub(crate) fn seal_of(
     dir: &Path,
     records: &[fsm_core::record::Record],
     archive_dir: Option<&Path>,
@@ -346,32 +373,43 @@ fn seal_of(
         records_sealed: seal.records_sealed,
         verdict: SealVerdict::PrefixNotPresented,
         archive_dir: None,
+        archive_detail: None,
     };
     let Some(archive) = archive_dir else {
         return Ok(Some(info));
     };
-    let manifest =
-        crate::archive::verify(archive).map_err(|error| JournalHealth::BaseMismatch {
-            detail: format!("the presented archive does not verify: {}", error.message),
-        })?;
+    // From here on, every disagreement is about the *presented directory*.
+    // None of it says anything about this store, which has already been
+    // classified `Ok` and folded, so none of it may condemn it.
+    let mut refuse = |detail: String| {
+        info.verdict = SealVerdict::PrefixNotMatched;
+        info.archive_dir = Some(archive.display().to_string());
+        info.archive_detail = Some(detail);
+        Ok(Some(info.clone()))
+    };
+    let manifest = match crate::archive::verify(archive) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            return refuse(format!(
+                "the presented archive does not verify: {}",
+                error.message
+            ));
+        }
+    };
     if manifest.sealed_through_seq != seal.sealed_through_seq
         || manifest.sealed_last_hash != seal.sealed_last_hash
     {
-        return Err(JournalHealth::BaseMismatch {
-            detail: format!(
-                "the presented archive seals through seq {} at {}, and this store's seal names \
-                 seq {} at {}",
-                manifest.sealed_through_seq,
-                manifest.sealed_last_hash,
-                seal.sealed_through_seq,
-                seal.sealed_last_hash
-            ),
-        });
+        return refuse(format!(
+            "the presented archive seals through seq {} at {}, and this store's seal names seq \
+             {} at {}",
+            manifest.sealed_through_seq,
+            manifest.sealed_last_hash,
+            seal.sealed_through_seq,
+            seal.sealed_last_hash
+        ));
     }
     if manifest.archive_id() != seal.archive_id {
-        return Err(JournalHealth::BaseMismatch {
-            detail: "the presented archive is not the one this store's seal names".into(),
-        });
+        return refuse("the presented archive is not the one this store's seal names".into());
     }
     info.verdict = SealVerdict::PrefixWalked;
     info.archive_dir = Some(archive.display().to_string());

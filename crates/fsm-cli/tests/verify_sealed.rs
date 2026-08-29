@@ -314,6 +314,52 @@ fn a_directory_with_no_manifest_says_so_rather_than_calling_the_store_corrupt() 
 }
 
 #[test]
+fn a_wrong_archive_leaves_the_store_healthy_and_says_which_side_disagreed() {
+    // The fault is in the argument, not in the data directory. Reporting it as
+    // `base_mismatch` tells an operator their store will never open again and
+    // that no repair exists — for a mistyped `--with-archive` path.
+    let directory = TestDirectory::create("wrong-archive-health");
+    seal_a_store(&directory);
+    for elsewhere in ["empty", "elsewhere"] {
+        let (code, result) = verify(
+            &directory.store(),
+            &[format!(
+                "--with-archive={}",
+                directory.0.join(elsewhere).display()
+            )],
+        );
+        let rendered = format!("{result:?}");
+        assert_ne!(code, 0, "an unwalked prefix reported success: {rendered}");
+        assert_eq!(
+            result.get("health").and_then(Value::as_str),
+            Some("Ok"),
+            "a wrong --with-archive condemned the store: {rendered}"
+        );
+        let seal = result.get("seal").expect("the report carries the seal");
+        assert_eq!(
+            seal.get("verdict").and_then(Value::as_str),
+            Some("prefix_not_matched"),
+            "{rendered}"
+        );
+        assert!(
+            seal.get("archive_detail")
+                .and_then(Value::as_str)
+                .is_some_and(|detail| !detail.is_empty()),
+            "the verdict does not say what disagreed: {rendered}"
+        );
+        // The counts are the healthy store's, not an empty report's.
+        assert!(
+            result
+                .get("records")
+                .and_then(Value::as_num)
+                .and_then(|raw| raw.parse::<u64>().ok())
+                .is_some_and(|records| records > 0),
+            "a wrong --with-archive zeroed the store's own counts: {rendered}"
+        );
+    }
+}
+
+#[test]
 fn a_tampered_base_fails_before_any_archive_is_consulted() {
     let directory = TestDirectory::create("tampered-base");
     seal_a_store(&directory);
