@@ -157,6 +157,7 @@ pub(super) fn sealed_origin(
     if crate::journal_io::chain_start(data_dir).is_origin() {
         return Ok(None);
     }
-    let (base, seal) = fsm_store::base::open_from_base(data_dir, records)?;
+    let opened = fsm_store::base::open_from_base(data_dir, records)?;
+    let (base, seal) = (opened.state, opened.seal);
     Ok(Some((seal, base)))
 }

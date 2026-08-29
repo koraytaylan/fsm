@@ -12,7 +12,7 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::Status;
 use fsm_core::record::{Record, RecordKind, seal, zeros};
 use fsm_core::replay::{RequestSlot, StoreState};
-use fsm_store::base::DefinitionLimits;
+use fsm_store::base::{BaseIndex, DefinitionLimits};
 use fsm_store::seal_safety::carry_at_cut;
 use fsm_store::store::Store;
 
@@ -95,8 +95,13 @@ fn store_with_a_live_and_a_settled_instance(directory: &TestDirectory) -> Store 
 }
 
 fn decide(store: &Store) -> fsm_store::seal_safety::CarryDecision {
-    carry_at_cut(&store.state, &store.records, DefinitionLimits::Current)
-        .expect("a cut over a small store is admissible")
+    carry_at_cut(
+        &store.state,
+        &store.records,
+        &BaseIndex::default(),
+        DefinitionLimits::Current,
+    )
+    .expect("a cut over a small store is admissible")
 }
 
 #[test]
@@ -231,8 +236,13 @@ fn state_with(instances: &[(&str, Status)], dedup: &[(&str, u64)], last_seq: u64
 
 /// The partition alone, skipping the base-size check that needs real machines.
 fn partition_of(state: &StoreState, records: &[Record]) -> (Vec<String>, Vec<String>) {
-    let decision = carry_at_cut(state, records, DefinitionLimits::Current)
-        .expect("a state with no machines fits any base");
+    let decision = carry_at_cut(
+        state,
+        records,
+        &BaseIndex::default(),
+        DefinitionLimits::Current,
+    )
+    .expect("a state with no machines fits any base");
     (
         decision.carried.keys().cloned().collect(),
         decision.dropped.iter().cloned().collect(),
@@ -462,8 +472,13 @@ fn a_carried_set_too_large_for_a_base_file_is_refused_on_size() {
             ]),
         ));
     }
-    let error = carry_at_cut(&state, &records, DefinitionLimits::Current)
-        .expect_err("an oversized carried set is refused");
+    let error = carry_at_cut(
+        &state,
+        &records,
+        &BaseIndex::default(),
+        DefinitionLimits::Current,
+    )
+    .expect_err("an oversized carried set is refused");
     assert_eq!(error.code, "store/archive_refused");
     assert!(
         error.hint.contains("earlier") && error.hint.contains("settle"),

@@ -139,7 +139,7 @@ pub fn init(dir: &Path) -> Result<Journal, JournalIoError> {
     drop(lock);
     let mut sink = fsm_core::replay::NopSink;
     open(dir, &mut sink)
-        .map(|(j, _, _)| j)
+        .map(|(j, _, _, _)| j)
         .map_err(|e| match e {
             OpenError::ReadIo(s) | OpenError::WriteIo(s) => JournalIoError::Io(s),
             OpenError::Health(h) => JournalIoError::Io(h.message()),

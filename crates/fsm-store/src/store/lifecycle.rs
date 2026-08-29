@@ -41,10 +41,45 @@ impl Store {
     /// `machine_seqs` is when each definition arrived, so "newest first" is a
     /// map lookup rather than a scan of the journal per machine — which is
     /// what a listing and an interactive completion both need it to be.
-    fn index_records(records: &[fsm_core::record::Record]) -> Indexes {
+    /// The record-derived indexes, seeded with what a sealed store's base
+    /// carries and then built up from the live records.
+    ///
+    /// **The seed is not an optimization.** A seal removes the very records
+    /// these are derived from, so without it a live instance created before
+    /// the cut loses its tags, its parent slot, and its age — and every
+    /// surface goes on reporting those as facts. The base carries them under
+    /// its own committed root for exactly this reason.
+    fn index_records_from(
+        seed: Option<&crate::base::BaseIndex>,
+        records: &[fsm_core::record::Record],
+    ) -> (Indexes, BTreeMap<String, Vec<String>>) {
         let mut history: BTreeMap<String, Vec<u64>> = BTreeMap::new();
         let mut parents: BTreeMap<String, (String, String)> = BTreeMap::new();
         let mut machine_seqs: BTreeMap<String, u64> = BTreeMap::new();
+        let mut tags: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        if let Some(seed) = seed {
+            for (id, entry) in &seed.instances {
+                // Two sequences rather than the whole list: the surfaces that
+                // read this want the oldest and the newest, and carrying every
+                // sequence an archived instance ever touched would put the
+                // journal back in the base. `instance_history` reports the
+                // gap itself, through `sealed_before`.
+                let mut seqs = vec![entry.created_seq];
+                if entry.last_seq > entry.created_seq {
+                    seqs.push(entry.last_seq);
+                }
+                history.insert(id.clone(), seqs);
+                if let Some(parent) = &entry.parent {
+                    parents.insert(id.clone(), parent.clone());
+                }
+                if !entry.tags.is_empty() {
+                    tags.insert(id.clone(), entry.tags.clone());
+                }
+            }
+            for (id, seq) in &seed.machines {
+                machine_seqs.insert(id.clone(), *seq);
+            }
+        }
         for record in records {
             for instance_id in fsm_core::record::instances_touched(record) {
                 history
@@ -70,11 +105,17 @@ impl Store {
                 machine_seqs.entry(machine_id.into()).or_insert(record.seq);
             }
         }
-        Indexes {
-            history,
-            parents,
-            machine_seqs,
+        for (id, live) in load_tags_from_records(records) {
+            tags.insert(id, live);
         }
+        (
+            Indexes {
+                history,
+                parents,
+                machine_seqs,
+            },
+            tags,
+        )
     }
 
     pub fn open(data_dir: &Path) -> Result<Self, ErrorObj> {
@@ -86,7 +127,7 @@ impl Store {
             history: BTreeMap::new(),
             records: Vec::new(),
         };
-        let (journal, state, open_path) = match journal_io::open(data_dir, &mut sink) {
+        let (journal, state, open_path, base_index) = match journal_io::open(data_dir, &mut sink) {
             Ok(x) => x,
             Err(OpenError::Health(h)) => return Err(health_err(&h)),
             Err(OpenError::ReadIo(message)) => {
@@ -99,12 +140,14 @@ impl Store {
         crate::ensure_persistence_directory(&snapshot_directory)
             .map_err(|error| ErrorObj::new("io/write", error.to_string()))?;
         let records = journal_io::load_records(data_dir).unwrap_or(sink.records);
-        let Indexes {
-            history,
-            parents,
-            machine_seqs,
-        } = Self::index_records(&records);
-        let tags = load_tags_from_records(&records);
+        let (
+            Indexes {
+                history,
+                parents,
+                machine_seqs,
+            },
+            tags,
+        ) = Self::index_records_from(base_index.as_ref(), &records);
         Ok(Store {
             journal,
             state,
@@ -140,7 +183,7 @@ impl Store {
         // `open_read_only` returns the exact record vector it folded. Loading
         // again here would let a live writer append between reads and produce
         // state from one prefix with history/tags from another.
-        let (journal, state, open_path, records) =
+        let (journal, state, open_path, records, base_index) =
             match journal_io::open_read_only(data_dir, &mut sink) {
                 Ok(value) => value,
                 Err(OpenError::Health(health)) => return Err(health_err(&health)),
@@ -148,12 +191,14 @@ impl Store {
                     return Err(ErrorObj::new("io/read", message));
                 }
             };
-        let Indexes {
-            history,
-            parents,
-            machine_seqs,
-        } = Self::index_records(&records);
-        let tags = load_tags_from_records(&records);
+        let (
+            Indexes {
+                history,
+                parents,
+                machine_seqs,
+            },
+            tags,
+        ) = Self::index_records_from(base_index.as_ref(), &records);
         Ok(Store {
             journal,
             state,

@@ -78,6 +78,8 @@ fn every_format_and_domain_sealing_added_is_in_the_api_policy() {
         fsm_store::archive::ARCHIVE_FORMAT,
         fsm_core::hashes::BASE_DEDUP_FORMAT,
         fsm_core::hashes::BASE_DEDUP_DOMAIN,
+        fsm_core::hashes::BASE_INDEX_FORMAT,
+        fsm_core::hashes::BASE_INDEX_DOMAIN,
         fsm_core::hashes::ARCHIVE_DOMAIN,
     ] {
         assert!(
@@ -137,6 +139,30 @@ fn the_guide_explains_the_three_things_a_reader_would_otherwise_guess() {
     assert!(
         section.contains("no repair reconstructs a base"),
         "the guide does not state the no-repair position"
+    );
+}
+
+#[test]
+fn the_guide_says_what_the_base_carries_besides_state() {
+    let section = lifecycle();
+    // The four facts, named — a reader who does not know these are carried
+    // will assume a sealed store forgets them, and design around a gap that
+    // is not there.
+    for fact in ["tags", "parent slot", "created at", "first defined at"] {
+        assert!(
+            section.contains(fact),
+            "the guide does not say the base carries {fact}"
+        );
+    }
+    assert!(
+        section.contains(fsm_core::hashes::BASE_INDEX_FORMAT),
+        "the guide does not name the format that commits them"
+    );
+    // And the one thing it does *not* carry, said plainly rather than left to
+    // be discovered.
+    assert!(
+        section.contains("sealed_before"),
+        "the guide does not say how the missing history is reported"
     );
 }
 

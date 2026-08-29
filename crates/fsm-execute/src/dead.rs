@@ -194,7 +194,8 @@ pub fn horizon(store: &Store) -> Option<ReportHorizon> {
     }
     fsm_store::base::open_from_base(&store.data_dir, &store.records)
         .ok()
-        .map(|(_state, seal)| ReportHorizon {
+        .map(|opened| opened.seal)
+        .map(|seal| ReportHorizon {
             sealed_through_seq: seal.sealed_through_seq,
             archive_id: seal.archive_id,
         })

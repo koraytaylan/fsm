@@ -47,7 +47,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use fsm_core::hashes::{
-    BASE_DEDUP_DOMAIN, BASE_DEDUP_FORMAT, configuration_value, domain_hash, state_hash,
+    BASE_DEDUP_DOMAIN, BASE_DEDUP_FORMAT, BASE_INDEX_DOMAIN, BASE_INDEX_FORMAT,
+    configuration_value, domain_hash, state_hash,
 };
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{ActiveConfiguration, InstanceState, Invocation, InvokeStatus, Status};
@@ -92,11 +93,165 @@ impl DefinitionLimits {
     }
 }
 
-/// The two roots a `journal_sealed` record commits over a base.
+/// What a store knows about one instance from records rather than from state.
+///
+/// Every field here is read off a record the seal is about to remove, and
+/// every one of them is reported by a live surface: `instance_list --tag`
+/// filters on `tags`, `roots_only` and `--parent` filter on `parent`,
+/// `instance_get` renders both plus the age, and `instance_list` reports
+/// `seq`. A live instance created below the cut would answer all four wrongly
+/// — untagged, parentless, dated zero — and none of those reads as a gap.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InstanceIndex {
+    /// Tags from the instance's creation record. Empty is the common case.
+    pub tags: Vec<String>,
+    /// The parent instance and slot that invoked it, absent for a root.
+    pub parent: Option<(String, String)>,
+    /// The sequence of the record that created it.
+    pub created_seq: u64,
+    /// The highest sequence at or below the cut that touched it.
+    pub last_seq: u64,
+}
+
+/// The record-derived indexes a base carries forward.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BaseIndex {
+    pub instances: BTreeMap<String, InstanceIndex>,
+    /// Machine id to the sequence it was first defined at.
+    pub machines: BTreeMap<String, u64>,
+}
+
+impl BaseIndex {
+    /// The canonical value this index hashes and serializes as.
+    ///
+    /// Absent fields are **omitted** rather than encoded empty, exactly as
+    /// [`dedup_fingerprint_root`] omits a missing fingerprint: an instance
+    /// with no tags and no parent is the common case, and encoding those as
+    /// an empty array and a null would put a value where there is a fact.
+    pub fn to_value(&self) -> Value {
+        let instances = self
+            .instances
+            .iter()
+            .map(|(id, entry)| {
+                let mut fields = BTreeMap::from([
+                    (
+                        "created_seq".to_string(),
+                        Value::Num(entry.created_seq.to_string()),
+                    ),
+                    (
+                        "last_seq".to_string(),
+                        Value::Num(entry.last_seq.to_string()),
+                    ),
+                ]);
+                if !entry.tags.is_empty() {
+                    fields.insert(
+                        "tags".into(),
+                        Value::Arr(entry.tags.iter().cloned().map(Value::Str).collect()),
+                    );
+                }
+                if let Some((parent, slot)) = &entry.parent {
+                    fields.insert(
+                        "parent".into(),
+                        Value::Obj(BTreeMap::from([
+                            ("instance_id".to_string(), Value::Str(parent.clone())),
+                            ("slot".to_string(), Value::Str(slot.clone())),
+                        ])),
+                    );
+                }
+                (id.clone(), Value::Obj(fields))
+            })
+            .collect();
+        let machines = self
+            .machines
+            .iter()
+            .map(|(id, seq)| (id.clone(), Value::Num(seq.to_string())))
+            .collect();
+        Value::Obj(BTreeMap::from([
+            ("instances".to_string(), Value::Obj(instances)),
+            ("machines".to_string(), Value::Obj(machines)),
+        ]))
+    }
+
+    fn from_value(value: &Value) -> Result<Self, ErrorObj> {
+        let object = value
+            .as_obj()
+            .ok_or_else(|| unreadable("index is not an object"))?;
+        let number = |entry: &BTreeMap<String, Value>, key: &str| -> Result<u64, ErrorObj> {
+            entry
+                .get(key)
+                .and_then(Value::as_num)
+                .and_then(|raw| raw.parse().ok())
+                .ok_or_else(|| unreadable(format!("index {key}")))
+        };
+        let mut instances = BTreeMap::new();
+        for (id, entry) in required_object(object, "instances")? {
+            let entry = entry
+                .as_obj()
+                .ok_or_else(|| unreadable("index instance is not an object"))?;
+            let tags = match entry.get("tags") {
+                None => Vec::new(),
+                Some(Value::Arr(items)) => items
+                    .iter()
+                    .map(|item| {
+                        item.as_str()
+                            .map(str::to_string)
+                            .ok_or_else(|| unreadable("index tag is not a string"))
+                    })
+                    .collect::<Result<Vec<String>, ErrorObj>>()?,
+                Some(_) => return Err(unreadable("index tags is not an array")),
+            };
+            let parent = match entry.get("parent") {
+                None => None,
+                Some(value) => {
+                    let parent = value
+                        .as_obj()
+                        .ok_or_else(|| unreadable("index parent is not an object"))?;
+                    Some((
+                        required_string(parent, "instance_id")?,
+                        required_string(parent, "slot")?,
+                    ))
+                }
+            };
+            instances.insert(
+                id.clone(),
+                InstanceIndex {
+                    tags,
+                    parent,
+                    created_seq: number(entry, "created_seq")?,
+                    last_seq: number(entry, "last_seq")?,
+                },
+            );
+        }
+        let mut machines = BTreeMap::new();
+        for (id, seq) in required_object(object, "machines")? {
+            machines.insert(
+                id.clone(),
+                seq.as_num()
+                    .and_then(|raw| raw.parse().ok())
+                    .ok_or_else(|| unreadable("index machine seq"))?,
+            );
+        }
+        Ok(Self {
+            instances,
+            machines,
+        })
+    }
+}
+
+/// The root over the derived indexes a base carries.
+pub fn index_root(index: &BaseIndex) -> String {
+    format!(
+        "sha256:{}",
+        to_hex(&domain_hash(BASE_INDEX_DOMAIN, &index.to_value()))
+    )
+}
+
+/// The three roots a `journal_sealed` record commits over a base.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseRoots {
     pub state_root: String,
     pub dedup_fp_root: String,
+    pub index_root: String,
 }
 
 fn mismatch(what: &str) -> ErrorObj {
@@ -137,15 +292,16 @@ pub fn dedup_fingerprint_root(state: &StoreState) -> String {
     )
 }
 
-/// Both roots for a materialized base state.
+/// All three roots for a materialized base state and its index.
 ///
 /// The cut sequence is `state.last_seq`; taking it from the state rather than
 /// as a second argument is what stops a caller from passing a pair that
 /// disagrees.
-pub fn base_roots(state: &StoreState) -> BaseRoots {
+pub fn base_roots(state: &StoreState, index: &BaseIndex) -> BaseRoots {
     BaseRoots {
         state_root: state_root_at(state, state.last_seq),
         dedup_fp_root: dedup_fingerprint_root(state),
+        index_root: index_root(index),
     }
 }
 
@@ -195,7 +351,7 @@ fn instance_value(id: &str, instance: &InstanceState, machine_id: &str, seq: u64
 ///
 /// `state.dedup` must already hold exactly the entries the carry rule keeps;
 /// choosing them is not this module's job.
-pub fn encode(state: &StoreState, definition_limits: DefinitionLimits) -> Value {
+pub fn encode(state: &StoreState, index: &BaseIndex, definition_limits: DefinitionLimits) -> Value {
     let seq = state.last_seq;
     let machines = state
         .machines
@@ -223,7 +379,7 @@ pub fn encode(state: &StoreState, definition_limits: DefinitionLimits) -> Value 
             (request_id.clone(), Value::Obj(entry))
         })
         .collect();
-    let roots = base_roots(state);
+    let roots = base_roots(state, index);
     Value::Obj(BTreeMap::from([
         ("format".into(), Value::Str(BASE_FORMAT.into())),
         ("seq".into(), Value::Num(seq.to_string())),
@@ -244,6 +400,12 @@ pub fn encode(state: &StoreState, definition_limits: DefinitionLimits) -> Value 
         (
             "base_dedup_format".into(),
             Value::Str(BASE_DEDUP_FORMAT.into()),
+        ),
+        ("index".into(), index.to_value()),
+        ("base_index_root".into(), Value::Str(roots.index_root)),
+        (
+            "base_index_format".into(),
+            Value::Str(BASE_INDEX_FORMAT.into()),
         ),
     ]))
 }
@@ -392,7 +554,7 @@ fn signals_from(
 ///
 /// Every failure is a refusal. There is nothing to fall back to and nothing to
 /// repair: the records this file replaced are not in this directory.
-pub fn decode(value: &Value, expected: &BaseRoots) -> Result<StoreState, ErrorObj> {
+pub fn decode(value: &Value, expected: &BaseRoots) -> Result<(StoreState, BaseIndex), ErrorObj> {
     let object = value.as_obj().ok_or_else(|| unreadable("not an object"))?;
     if object.get("format").and_then(Value::as_str) != Some(BASE_FORMAT) {
         return Err(unreadable("format is not fsm.base/1"));
@@ -402,6 +564,9 @@ pub fn decode(value: &Value, expected: &BaseRoots) -> Result<StoreState, ErrorOb
     }
     if object.get("base_dedup_format").and_then(Value::as_str) != Some(BASE_DEDUP_FORMAT) {
         return Err(unreadable("base_dedup_format is not the current one"));
+    }
+    if object.get("base_index_format").and_then(Value::as_str) != Some(BASE_INDEX_FORMAT) {
+        return Err(unreadable("base_index_format is not the current one"));
     }
     let definition_limits = object
         .get("definition_limits")
@@ -557,7 +722,28 @@ pub fn decode(value: &Value, expected: &BaseRoots) -> Result<StoreState, ErrorOb
         state.instances.insert(id.clone(), instance);
     }
 
-    let recomputed = base_roots(&state);
+    let index = BaseIndex::from_value(
+        object
+            .get("index")
+            .ok_or_else(|| unreadable("missing object `index`"))?,
+    )?;
+    // An index entry naming an instance the base does not carry is not a
+    // harmless extra: it would seed a tag or a parent for an id that has no
+    // state here, and every surface would report it.
+    for id in index.instances.keys() {
+        if !state.instances.contains_key(id) {
+            return Err(unreadable(
+                "index names an instance the base does not carry",
+            ));
+        }
+    }
+    for id in index.machines.keys() {
+        if !state.machines.contains_key(id) {
+            return Err(unreadable("index names a machine the base does not carry"));
+        }
+    }
+
+    let recomputed = base_roots(&state, &index);
     if required_string(object, "base_state_root")? != recomputed.state_root {
         return Err(mismatch(
             "its own base_state_root disagrees with its contents",
@@ -568,13 +754,19 @@ pub fn decode(value: &Value, expected: &BaseRoots) -> Result<StoreState, ErrorOb
             "its own base_dedup_fp_root disagrees with its fingerprints",
         ));
     }
+    if required_string(object, "base_index_root")? != recomputed.index_root {
+        return Err(mismatch("its own base_index_root disagrees with its index"));
+    }
     if recomputed.state_root != expected.state_root {
         return Err(mismatch("base_state_root"));
     }
     if recomputed.dedup_fp_root != expected.dedup_fp_root {
         return Err(mismatch("base_dedup_fp_root"));
     }
-    Ok(state)
+    if recomputed.index_root != expected.index_root {
+        return Err(mismatch("base_index_root"));
+    }
+    Ok((state, index))
 }
 
 /// Where a base file says the live journal picks up, read without validating
@@ -594,6 +786,7 @@ pub struct BaseHeader {
     pub last_hash: String,
     pub base_state_root: String,
     pub base_dedup_fp_root: String,
+    pub base_index_root: String,
     /// Which ceiling the machines in this base were admitted under.
     ///
     /// In the header rather than only inside [`decode`] because the *writer*
@@ -625,6 +818,7 @@ pub fn read_header(data_dir: &Path) -> Result<Option<BaseHeader>, ErrorObj> {
         last_hash: required_string(object, "last_hash")?,
         base_state_root: required_string(object, "base_state_root")?,
         base_dedup_fp_root: required_string(object, "base_dedup_fp_root")?,
+        base_index_root: required_string(object, "base_index_root")?,
         definition_limits: object
             .get("definition_limits")
             .and_then(Value::as_str)
@@ -651,6 +845,15 @@ pub struct SealInfo {
     pub records_sealed: u64,
 }
 
+/// Everything reading a base yields: the state it materializes, the
+/// record-derived indexes it carries forward, and what its seal says.
+#[derive(Debug, Clone)]
+pub struct BaseOpen {
+    pub state: StoreState,
+    pub index: BaseIndex,
+    pub seal: SealInfo,
+}
+
 /// Authenticate a base against the seal in the live suffix and decode it.
 ///
 /// The order is the reverse of the intuitive one and it is what makes a
@@ -665,7 +868,7 @@ pub struct SealInfo {
 pub fn open_from_base(
     data_dir: &Path,
     live: &[fsm_core::record::Record],
-) -> Result<(StoreState, SealInfo), ErrorObj> {
+) -> Result<BaseOpen, ErrorObj> {
     let header = read_header(data_dir)?
         .ok_or_else(|| mismatch("it was removed between reading its header and reading it"))?;
     let seal = live
@@ -701,14 +904,19 @@ pub fn open_from_base(
     if field("base_dedup_fp_root") != header.base_dedup_fp_root {
         return Err(mismatch("base_dedup_fp_root"));
     }
+    if field("base_index_root") != header.base_index_root {
+        return Err(mismatch("base_index_root"));
+    }
     let expected = BaseRoots {
         state_root: header.base_state_root.clone(),
         dedup_fp_root: header.base_dedup_fp_root.clone(),
+        index_root: header.base_index_root.clone(),
     };
-    let state = decode(&read_value(data_dir)?, &expected)?;
-    Ok((
+    let (state, index) = decode(&read_value(data_dir)?, &expected)?;
+    Ok(BaseOpen {
         state,
-        SealInfo {
+        index,
+        seal: SealInfo {
             sealed_through_seq,
             sealed_last_hash: header.last_hash,
             archive_id: field("archive_id").to_string(),
@@ -719,13 +927,13 @@ pub fn open_from_base(
                 .and_then(|raw| raw.parse().ok())
                 .unwrap_or_default(),
         },
-    ))
+    })
 }
 
 /// Read and decode `<data_dir>/journal/BASE`.
 ///
 /// Bounded by the same persistence read cap every other unit obeys.
-pub fn read(path: &Path, expected: &BaseRoots) -> Result<StoreState, ErrorObj> {
+pub fn read(path: &Path, expected: &BaseRoots) -> Result<(StoreState, BaseIndex), ErrorObj> {
     let bytes = crate::read_regular_file_capped(path, crate::PERSISTENCE_READ_CAP)
         .map_err(|error| unreadable(error.to_string()))?;
     let value = parse(&bytes, &JsonLimits::DEFAULT).map_err(|error| unreadable(error.message))?;

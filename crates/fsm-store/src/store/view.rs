@@ -108,6 +108,16 @@ impl Store {
             "machine_history".into(),
             Value::Arr(self.machine_history(instance_id)),
         );
+        // `machine_history` is scanned from the live records, and a seal
+        // removes the ones below its cut — so on a sealed store the list can
+        // be short, and an empty one for an instance created below the cut
+        // would otherwise read as "this instance has never been migrated".
+        // The base carries the tags, the parent and the two sequences beside
+        // it; the definition sequence is the one thing it does not, so the
+        // horizon says so rather than letting the gap pass as a fact.
+        if let Some(seal) = self.seal_horizon() {
+            m.insert("sealed_before".into(), seal);
+        }
         m.insert("seq".into(), Value::Num(self.journal.last_seq.to_string()));
         m.insert(
             "state_hash".into(),

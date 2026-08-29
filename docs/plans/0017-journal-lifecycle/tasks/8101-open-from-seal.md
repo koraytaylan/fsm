@@ -59,10 +59,12 @@ The loader assumes every journal begins at sequence one with a zero predecessor,
 - A `BASE` from a different store gives `store/base_mismatch`, and nothing is served.
 - A `BASE` with one context byte altered gives `store/base_mismatch` via `base_state_root`.
 - A `BASE` with one `fp` altered gives `store/base_mismatch` via `base_dedup_fp_root` — the case the second root exists for.
+- A `BASE` with one tag or parent link altered gives `store/base_mismatch` via `base_index_root` — the case the third root exists for.
+- A `BASE` that is **present and unparseable** gives `store/base_mismatch`, not `store/base_missing`. The two have different remedies — restore one file, versus restore the journal's segments — and classification runs before the load, so it has to ask the file itself rather than infer absence from a chain start it could not read.
 - A sealed journal whose first live record is **not** the seal is refused.
 - A snapshot cache at or below the seal is skipped and the store still opens; a cache above the seal is still used, proving the fast path survives sealing.
 - A read-only open of a sealed store takes no lock and writes nothing, asserted by opening it while a writer holds the lock.
-- The per-instance history index after a sealed open covers exactly the live records, and both open paths agree — assert the two rebuild paths produce the same index, since they are two call sites of one rule.
+- The derived indexes after a sealed open are **seeded from the base and then built up from the live records**, and both open paths agree — assert the two rebuild paths produce the same index, since they are two call sites of one rule. The seeded half deliberately names sequences below the cut: an instance's age is its creation sequence, and reporting zero for a live instance is a wrong answer rather than a short one. What must hold is that no sequence between the two halves is invented.
 - Idempotency survives: a `request_id` claimed above the cut still replays with `duplicate: true` after a seal **and after a reopen**, so the answer comes from the base and the live suffix rather than an in-memory cache.
 - A `request_id` carried in the base is conflict-checked: re-issuing it with different content is refused rather than replayed, which is what the carried fingerprints are for.
 

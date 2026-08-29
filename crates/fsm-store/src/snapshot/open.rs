@@ -140,7 +140,7 @@ pub fn reconstruct_snapshot_plus_tail(
     // archive holds, and `journal replay` would report that as a disagreement
     // between the engine and the journal rather than as its own arithmetic.
     if sealed_floor > 0 {
-        let base = crate::base::open_from_base(data_dir, recs).map(|(state, _)| state)?;
+        let base = crate::base::open_from_base(data_dir, recs).map(|opened| opened.state)?;
         return fold_from(base, prefix, &mut fsm_core::replay::NopSink)
             .map_err(|e| ErrorObj::new("io/read", format!("{e:?}")));
     }

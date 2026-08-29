@@ -9,7 +9,9 @@
 
 use std::collections::BTreeMap;
 
-use fsm_core::hashes::{ARCHIVE_DOMAIN, BASE_DEDUP_DOMAIN, BASE_DEDUP_FORMAT};
+use fsm_core::hashes::{
+    ARCHIVE_DOMAIN, BASE_DEDUP_DOMAIN, BASE_DEDUP_FORMAT, BASE_INDEX_DOMAIN, BASE_INDEX_FORMAT,
+};
 use fsm_core::json::Value;
 use fsm_core::record::{Record, RecordKind, instances_touched, seal, verify_line, zeros};
 use fsm_core::replay::{NopSink, STATE_ROOT_FORMAT, StoreState, fold_with};
@@ -39,6 +41,11 @@ fn seal_body(previous: &str) -> BTreeMap<String, Value> {
         (
             "base_dedup_format".into(),
             Value::Str(BASE_DEDUP_FORMAT.to_string()),
+        ),
+        ("base_index_root".into(), Value::Str(hash(0x44))),
+        (
+            "base_index_format".into(),
+            Value::Str(BASE_INDEX_FORMAT.to_string()),
         ),
         ("archive_id".into(), Value::Str(hash(0x33))),
         ("records_sealed".into(), Value::Num("40000".to_string())),
@@ -89,6 +96,8 @@ fn every_field_is_typed() {
         ("state_root_format", Value::Str("fsm.state-root/4".into())),
         ("base_dedup_fp_root", Value::Str("sha256:short".into())),
         ("base_dedup_format", Value::Str("fsm.base-dedup/2".into())),
+        ("base_index_root", Value::Str("sha256:short".into())),
+        ("base_index_format", Value::Str("fsm.base-index/2".into())),
         ("archive_id", Value::Bool(true)),
         ("records_sealed", Value::Str("many".into())),
     ]);
@@ -244,6 +253,8 @@ fn the_new_domain_constants_have_their_exact_byte_values() {
     assert_eq!(BASE_DEDUP_DOMAIN, "fsm:base-dedup:1");
     assert_eq!(ARCHIVE_DOMAIN, "fsm:archive:1");
     assert_eq!(BASE_DEDUP_FORMAT, "fsm.base-dedup/1");
+    assert_eq!(BASE_INDEX_DOMAIN, "fsm:base-index:1");
+    assert_eq!(BASE_INDEX_FORMAT, "fsm.base-index/1");
 }
 
 #[test]

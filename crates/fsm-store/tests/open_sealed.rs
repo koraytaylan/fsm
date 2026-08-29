@@ -376,10 +376,13 @@ fn a_read_only_open_of_a_sealed_store_takes_no_lock_and_writes_nothing() {
 }
 
 #[test]
-fn the_history_index_covers_exactly_the_live_records() {
-    // The index is fed from the records that were loaded, so on a sealed store
-    // it covers the live suffix and nothing more. That is correct, and both
-    // open paths must agree about it.
+fn the_history_index_is_seeded_from_the_base_and_both_open_paths_agree() {
+    // The index is fed from the live records *and* from what the base carries.
+    // The seeded half deliberately names sequences below the cut: an
+    // instance's age is its creation sequence, and reporting zero for a live
+    // instance created before the cut is a wrong answer rather than a short
+    // one. What must hold is that nothing between the two is invented, and
+    // that both open paths build the same thing.
     let directory = TestDirectory::create("history");
     let (report, _before) = sealed(&directory, "a");
     let mut store = Store::open(&directory.store()).expect("a sealed store opens");
@@ -394,13 +397,30 @@ fn the_history_index_covers_exactly_the_live_records() {
         writer.history, reader.history,
         "the two open paths built different history indexes"
     );
-    for sequences in writer.history.values() {
+    let base = fsm_store::base::open_from_base(&directory.store(), &writer.records)
+        .expect("the base opens");
+    for (id, sequences) in &writer.history {
+        let seeded = base.index.instances.get(id);
         for seq in sequences {
+            if *seq > report.sealed_through_seq {
+                continue;
+            }
+            let seeded = seeded.unwrap_or_else(|| {
+                panic!("the history index names archived seq {seq} for {id}, which the base does not carry")
+            });
             assert!(
-                *seq > report.sealed_through_seq,
-                "the history index names an archived record at seq {seq}"
+                *seq == seeded.created_seq || *seq == seeded.last_seq,
+                "the history index invented archived seq {seq} for {id}"
             );
         }
+    }
+    // And the age of a live instance sealed below the cut is its real one.
+    for (id, entry) in &base.index.instances {
+        assert_eq!(
+            writer.created_seq(id),
+            entry.created_seq,
+            "a sealed instance's age was not restored from the base"
+        );
     }
 }
 

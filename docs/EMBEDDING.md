@@ -632,6 +632,28 @@ such a key returns `store/sealed_replay_unavailable`: the request **was**
 applied and is not applied again, and the store refuses rather than guess at a
 thinner answer. Read the original outcome from the archive.
 
+### What the base carries besides state
+
+Four things a store reports are read from *records* rather than from state: an
+instance's tags and the parent slot that invoked it, both written once into its
+creation and invocation records; the sequence it was created at; and the
+sequence a machine was first defined at. Sealing is the operation that removes
+exactly those records, so the base carries them forward under a root of its
+own, `fsm.base-index/1`, committed by the seal alongside the state and
+fingerprint roots.
+
+This is not a convenience. Without it a live instance created before the cut
+comes back untagged, parentless, and dated sequence zero — and every surface
+goes on reporting those as facts rather than as gaps. `instance_list --tag`
+would omit it, `--roots-only` would list a child as a root, and its age would
+read as the beginning of the journal. The rule is the same one the dropped-key
+argument rests on: a fact that cannot be told apart from its absence must not
+be dropped.
+
+The whole per-instance history is *not* carried — that would put the journal
+back in the base. `instance_history` reports the gap instead, through
+`sealed_before`.
+
 ### `store/archive_refused` is a size limit, not a veto
 
 Two things produce it, and the hint says which. Either the keys the cut must

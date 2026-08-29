@@ -125,6 +125,7 @@ fn claiming_record(records: &[Record], seq: u64) -> Option<&Record> {
 pub fn carry_at_cut(
     state_at_cut: &StoreState,
     records_through_cut: &[Record],
+    index: &base::BaseIndex,
     definition_limits: DefinitionLimits,
 ) -> Result<CarryDecision, ErrorObj> {
     let cut = state_at_cut.last_seq;
@@ -160,7 +161,9 @@ pub fn carry_at_cut(
     let decision = CarryDecision { carried, dropped };
     let mut trial = state_at_cut.clone();
     trial.dedup = decision.carried.clone();
-    let bytes = canon_bytes(&base::encode(&trial, definition_limits)).len();
+    // The index is part of the file whose size this bounds, and it grows with
+    // the instances the base carries — so it is measured, not assumed small.
+    let bytes = canon_bytes(&base::encode(&trial, index, definition_limits)).len();
     if bytes > crate::PERSISTENCE_READ_CAP {
         return Err(refused(&format!(
             "sealing at seq {cut} would carry {} idempotency keys into a base state file of \

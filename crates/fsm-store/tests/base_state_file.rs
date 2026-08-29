@@ -13,8 +13,8 @@ use fsm_core::replay::{RequestSlot, StoreState, StoredMachine, state_root_at};
 use fsm_core::spec::compile_accepted;
 use fsm_core::tree::Tree;
 use fsm_store::base::{
-    BASE_FORMAT, BaseRoots, DefinitionLimits, base_roots, decode, dedup_fingerprint_root, encode,
-    read,
+    BASE_FORMAT, BaseIndex, BaseRoots, DefinitionLimits, InstanceIndex, base_roots, decode,
+    dedup_fingerprint_root, encode, read,
 };
 use fsm_store::snapshot::store_states_eq;
 
@@ -86,8 +86,40 @@ fn base_state() -> StoreState {
     }
 }
 
+/// The record-derived index a base carries for a state.
+///
+/// Derived from the state so every caller here stays consistent with the
+/// instances and machines it is encoding — an index naming an instance the
+/// base does not carry is refused, and that refusal belongs to its own test.
+/// Every optional field is populated so the golden covers all of them.
+fn index_for(state: &StoreState) -> BaseIndex {
+    BaseIndex {
+        instances: state
+            .instances
+            .keys()
+            .enumerate()
+            .map(|(position, id)| {
+                (
+                    id.clone(),
+                    InstanceIndex {
+                        tags: vec!["carried".into(), "review".into()],
+                        parent: Some(("parent-instance".into(), "child".into())),
+                        created_seq: 12 + position as u64,
+                        last_seq: 39_000 + position as u64,
+                    },
+                )
+            })
+            .collect(),
+        machines: state.machines.keys().map(|id| (id.clone(), 3u64)).collect(),
+    }
+}
+
 fn encoded() -> Value {
-    encode(&base_state(), DefinitionLimits::Current)
+    encode(
+        &base_state(),
+        &index_for(&base_state()),
+        DefinitionLimits::Current,
+    )
 }
 
 fn fixture_path() -> std::path::PathBuf {
@@ -125,7 +157,8 @@ fn invocation_tag() -> String {
 #[test]
 fn a_base_round_trips_to_an_equal_state() {
     let state = base_state();
-    let restored = decode(&encoded(), &base_roots(&state)).expect("the base decodes");
+    let (restored, _restored_index) =
+        decode(&encoded(), &base_roots(&state, &index_for(&state))).expect("the base decodes");
     assert!(
         store_states_eq(&state, &restored),
         "a base did not round-trip to an equal state"
@@ -169,7 +202,7 @@ fn one_altered_context_byte_fails_on_the_state_root() {
     // thing left to catch it is the root the seal committed. That is the real
     // threat: a base from the same store at a different instant, which every
     // layer below the root would happily accept.
-    let expected = base_roots(&base_state());
+    let expected = base_roots(&base_state(), &index_for(&base_state()));
     let mut altered = base_state();
     altered
         .instances
@@ -177,8 +210,11 @@ fn one_altered_context_byte_fails_on_the_state_root() {
         .expect("the instance")
         .ctx
         .insert("attempts".into(), Val::Int(-3));
-    let error = decode(&encode(&altered, DefinitionLimits::Current), &expected)
-        .expect_err("a base one context byte away from the seal is refused");
+    let error = decode(
+        &encode(&altered, &index_for(&altered), DefinitionLimits::Current),
+        &expected,
+    )
+    .expect_err("a base one context byte away from the seal is refused");
     assert_eq!(error.code, "store/base_mismatch");
     assert!(
         error.message.contains("base_state_root"),
@@ -191,7 +227,7 @@ fn one_altered_context_byte_fails_on_the_state_root() {
 fn an_instance_whose_state_hash_disagrees_with_its_own_state_is_refused() {
     // The layer below the root: a base edited by hand, where the context moved
     // and the per-instance hash did not.
-    let expected = base_roots(&base_state());
+    let expected = base_roots(&base_state(), &index_for(&base_state()));
     let mut object = object_of(&encoded());
     let mut instances = object
         .get("instances")
@@ -228,7 +264,7 @@ fn one_altered_fingerprint_fails_on_the_dedup_root() {
     // the claiming sequence and not the fingerprint, so a suite that only
     // altered an instance would pass an implementation that omitted this root.
     let state = base_state();
-    let expected = base_roots(&state);
+    let expected = base_roots(&state, &index_for(&state));
     let mut object = object_of(&encoded());
     let mut dedup = object
         .get("dedup")
@@ -289,7 +325,7 @@ fn an_entry_without_a_fingerprint_is_omitted_rather_than_hashed_as_null() {
 fn the_state_root_is_the_core_function_and_not_a_reimplementation() {
     let state = base_state();
     assert_eq!(
-        base_roots(&state).state_root,
+        base_roots(&state, &index_for(&state)).state_root,
         state_root_at(&state, state.last_seq),
         "the base computed a state root a divergent private implementation produced"
     );
@@ -314,7 +350,7 @@ fn the_base_root_differs_from_the_checkpoint_root_when_a_key_was_dropped() {
 
 #[test]
 fn a_base_declaring_the_wrong_format_is_refused() {
-    let expected = base_roots(&base_state());
+    let expected = base_roots(&base_state(), &index_for(&base_state()));
     for (key, wrong) in [
         ("format", "fsm.base/2"),
         ("state_root_format", "fsm.state-root/2"),
@@ -336,6 +372,7 @@ fn a_base_whose_roots_disagree_with_the_seal_is_refused() {
     let another_store = BaseRoots {
         state_root: format!("sha256:{}", "d".repeat(64)),
         dedup_fp_root: format!("sha256:{}", "e".repeat(64)),
+        index_root: format!("sha256:{}", "f".repeat(64)),
     };
     let error = decode(&encoded(), &another_store).expect_err("a foreign base is refused");
     assert_eq!(error.code, "store/base_mismatch");
@@ -348,7 +385,7 @@ fn a_base_whose_roots_disagree_with_the_seal_is_refused() {
 
 #[test]
 fn a_base_whose_instance_is_invalid_for_its_machine_is_refused() {
-    let expected = base_roots(&base_state());
+    let expected = base_roots(&base_state(), &index_for(&base_state()));
     let mut object = object_of(&encoded());
     let mut instances = object
         .get("instances")
@@ -378,7 +415,7 @@ fn a_base_whose_instance_is_invalid_for_its_machine_is_refused() {
 
 #[test]
 fn a_base_naming_a_machine_it_does_not_carry_is_refused() {
-    let expected = base_roots(&base_state());
+    let expected = base_roots(&base_state(), &index_for(&base_state()));
     let mut object = object_of(&encoded());
     object.insert("machines".into(), Value::Obj(BTreeMap::new()));
     let error = decode(&Value::Obj(object), &expected).expect_err("a dangling instance is refused");
@@ -393,7 +430,8 @@ fn a_base_over_the_persistence_cap_is_refused_without_being_read_whole() {
     // One byte past the cap every persistence unit obeys.
     let oversized = vec![b'x'; JsonLimits::DEFAULT.max_bytes + 1];
     std::fs::write(&path, &oversized).expect("the oversized base is writable");
-    let error = read(&path, &base_roots(&base_state())).expect_err("an oversized base is refused");
+    let error = read(&path, &base_roots(&base_state(), &index_for(&base_state())))
+        .expect_err("an oversized base is refused");
     assert_eq!(error.code, "io/read");
     let _ = std::fs::remove_dir_all(&directory);
 }
@@ -401,7 +439,11 @@ fn a_base_over_the_persistence_cap_is_refused_without_being_read_whole() {
 #[test]
 fn a_missing_base_is_an_io_read_refusal_rather_than_a_panic() {
     let missing = std::env::temp_dir().join(format!("fsm-base-absent-{}/BASE", invocation_tag()));
-    let error = read(&missing, &base_roots(&base_state())).expect_err("an absent base is refused");
+    let error = read(
+        &missing,
+        &base_roots(&base_state(), &index_for(&base_state())),
+    )
+    .expect_err("an absent base is refused");
     assert_eq!(error.code, "io/read");
 }
 
@@ -412,7 +454,8 @@ fn a_well_formed_base_reads_back_from_disk() {
     let path = directory.join("BASE");
     std::fs::write(&path, canon_bytes(&encoded())).expect("the base is writable");
     let state = base_state();
-    let restored = read(&path, &base_roots(&state)).expect("a well-formed base reads back");
+    let (restored, _index) = read(&path, &base_roots(&state, &index_for(&state)))
+        .expect("a well-formed base reads back");
     assert!(store_states_eq(&state, &restored));
     let _ = std::fs::remove_dir_all(&directory);
 }

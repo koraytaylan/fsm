@@ -69,8 +69,8 @@ pub fn repair_truncate_torn_tail(dir: &Path) -> Result<RepairReport, RepairError
                 fold_with(chain.clone(), &mut NopSink)
             } else {
                 match crate::base::open_from_base(dir, &chain) {
-                    Ok((base, _seal)) => {
-                        fsm_core::replay::fold_from(base, chain.clone(), &mut NopSink)
+                    Ok(opened) => {
+                        fsm_core::replay::fold_from(opened.state, chain.clone(), &mut NopSink)
                     }
                     Err(error) => {
                         return Err(RepairError::Interior(JournalHealth::BaseMismatch {

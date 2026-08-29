@@ -21,10 +21,11 @@ Verification is the strongest claim this project makes, so a verification that d
 **Steps:**
 
 1. Extend `VerifyReport` in `crates/fsm-store/src/journal_io/verify.rs` with `seal: Option<SealInfo>` carrying the cut sequence, the sealed last hash, the archive id, and the sealed record count.
-2. Produce three outcomes, and keep them three:
+2. Produce four outcomes, and keep them apart. The plan expected three; a fourth is needed because a presented archive can disagree with a store that is perfectly healthy, and the three-verdict shape had no place to say so:
    - **Unsealed.** Exactly today's behaviour and today's output, byte-identical for every existing golden.
    - **Sealed, archive not presented.** Walk the live suffix in full, check the seal against `BASE`, and report `verified from seal <hash> at seq N; prefix sealed, not presented`, with its own verdict and its own exit code.
    - **Sealed, archive presented.** Additionally verify the manifest, every segment digest, and that the archived record at `sealed_through_seq` hashes to `sealed_last_hash`; only then report what a complete walk reports.
+   - **Sealed, and the presented archive is not this store's.** It does not verify, or it seals a different prefix. **The store stays `Ok`** with its real counts, and the disagreement is reported through the verdict and an `archive_detail`, exiting like the not-presented verdict because the prefix is equally unread. Routing this through `base_mismatch` — as the first implementation did — tells an operator who mistyped `--with-archive` that their store will never open again and that no repair exists, which is false in every particular.
 3. Add `--with-archive <dir>` to the verify path. Absent, the sealed prefix is not read at all — not partially, not optimistically.
 4. Classify the archive-presented failures in `crates/fsm-store/src/journal_io/classify.rs` alongside the existing journal-health conditions, so `doctor` can answer from a classification rather than from a second implementation.
 5. Keep the batched `Walk::Continue` / `Walk::Stop` callback contract exactly as it is, including over the archived segments, so a cancelled `journal_verify` still stops promptly on a large archive.
@@ -39,9 +40,10 @@ Verification is the strongest claim this project makes, so a verification that d
 - With `--with-archive` pointing at an archive with one byte flipped in a segment, verify fails and names the segment.
 - With `--with-archive` pointing at an archive belonging to a different store, verify fails on the `sealed_last_hash` check.
 - With `--with-archive` pointing at a directory with no manifest, verify fails with a message that says the manifest is missing rather than that the store is corrupt.
+- In **both** of those cases the reported health is `Ok` and the record, machine, and instance counts are the healthy store's — asserted on the fields, not on a substring, because a substring passes on the detail embedded in a `base_mismatch` and that is exactly how the wrong behaviour survived its first test.
 - A sealed store whose `BASE` was altered fails verify before any archive is consulted.
 - The structured `--json` output carries the seal object in all three cases — absent, present-unwalked, present-walked — and the three are distinguishable without parsing prose.
 - Cancellation through the walk callback stops promptly while walking an archive, asserted with a callback that returns `Walk::Stop` on the first batch.
 - Every existing verify golden in the repository is unchanged.
 
-- **Done when:** `cargo test -p fsm-cli --test audit_verify` passes every case above, the three verdicts have three distinct exit codes and three distinct rendered outputs, the middle verdict cannot be mistaken for success in either prose or structured output, unsealed goldens are byte-identical, and `cargo test`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo fmt --check` succeed.
+- **Done when:** `cargo test -p fsm-cli --test audit_verify` passes every case above, the verdicts have distinct rendered outputs and no verdict about a *presented directory* changes the store's reported health, the middle verdict cannot be mistaken for success in either prose or structured output, unsealed goldens are byte-identical, and `cargo test`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo fmt --check` succeed.

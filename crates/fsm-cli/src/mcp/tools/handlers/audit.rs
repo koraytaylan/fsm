@@ -456,7 +456,7 @@ pub fn replay_report(
         fsm_core::replay::fold_with(records, &mut watcher)
     } else {
         match fsm_store::base::open_from_base(data_dir, &records) {
-            Ok((base, _)) => fsm_core::replay::fold_from(base, records, &mut watcher),
+            Ok(opened) => fsm_core::replay::fold_from(opened.state, records, &mut watcher),
             Err(error) => {
                 return Ok(Value::Obj(std::collections::BTreeMap::from([
                     ("replayed_records".to_string(), Value::Num("0".into())),

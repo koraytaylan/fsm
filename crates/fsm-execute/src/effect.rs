@@ -176,13 +176,14 @@ fn fold_before(store: &Store, record: &Record, id: &EffectId<'_>) -> Result<Stor
             unresolved(id, format!("the journal prefix does not fold: {error:?}"))
         });
     }
-    let (base, _seal) =
-        fsm_store::base::open_from_base(&store.data_dir, &store.records).map_err(|error| {
+    let base = fsm_store::base::open_from_base(&store.data_dir, &store.records)
+        .map_err(|error| {
             unresolved(
                 id,
                 format!("the sealed base does not open: {}", error.message),
             )
-        })?;
+        })?
+        .state;
     fsm_core::replay::fold_from(base, prefix, &mut NopSink)
         .map_err(|error| unresolved(id, format!("the journal prefix does not fold: {error:?}")))
 }

@@ -172,6 +172,28 @@ pub const BASE_DEDUP_FORMAT: &str = "fsm.base-dedup/1";
 /// new domain rather than a fourth version of that one.
 pub const BASE_DEDUP_DOMAIN: &str = "fsm:base-dedup:1";
 
+/// Format discriminator for the derived-index root a journal seal commits.
+///
+/// Paired with [`BASE_INDEX_DOMAIN`], and named in the seal record's
+/// `base_index_format` for the same reason [`BASE_DEDUP_FORMAT`] is.
+pub const BASE_INDEX_FORMAT: &str = "fsm.base-index/1";
+
+/// Domain-separation tag for the derived indexes a sealed base carries.
+///
+/// A store answers four questions from the *records* rather than from state:
+/// an instance's tags and the parent slot that invoked it, both written once
+/// into its creation and invocation records; the sequence it was created at;
+/// and the sequence a machine was first defined at. Sealing removes exactly
+/// those records, and a live instance created before the cut would otherwise
+/// come back untagged, parentless, and dated zero — with every surface
+/// reporting those as facts rather than as gaps.
+///
+/// So the base carries them, and like [`BASE_DEDUP_DOMAIN`] they need a root
+/// of their own: [`crate::replay::state_root_at`] covers none of them, and
+/// folding them into `fsm:state-root:3` would move every historical root in
+/// the repository. **Additive, for the same reason and by the same rule.**
+pub const BASE_INDEX_DOMAIN: &str = "fsm:base-index:1";
+
 /// Domain-separation tag of an archive manifest's content hash.
 ///
 /// The seal record commits this value as `archive_id`, so the live chain names

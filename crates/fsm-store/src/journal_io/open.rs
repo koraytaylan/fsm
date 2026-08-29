@@ -11,10 +11,28 @@ use super::types::{Journal, JournalHealth, JournalIoError, OpenError, Seg};
 use super::verify::refuse_incompatible_store_format;
 use super::{DetectedStoreFormat, chain_start, detect_store_format, journal_dir};
 
-pub fn open(
-    dir: &Path,
-    sink: &mut impl RecordSink,
-) -> Result<(Journal, StoreState, crate::snapshot::OpenPath), OpenError> {
+/// What opening a journal yields.
+///
+/// The base index is `Some` exactly when the store is sealed: it is what the
+/// seal carried forward of the facts a reader derives from records rather than
+/// from state, and [`crate::store::Store`] seeds its own indexes with it.
+type Opened = (
+    Journal,
+    StoreState,
+    crate::snapshot::OpenPath,
+    Option<crate::base::BaseIndex>,
+);
+
+/// [`Opened`] plus the exact record vector the read-only path folded.
+type OpenedReadOnly = (
+    Journal,
+    StoreState,
+    crate::snapshot::OpenPath,
+    Vec<Record>,
+    Option<crate::base::BaseIndex>,
+);
+
+pub fn open(dir: &Path, sink: &mut impl RecordSink) -> Result<Opened, OpenError> {
     let jdir = journal_dir(dir);
     // Existing output directories are validated as writer destinations before
     // format probing. Missing directories are not created until an existing
@@ -58,8 +76,11 @@ pub fn open(
     let (recs, (name, first, bytes, count)) =
         load_records_with_active_meta(dir, FinalTailPolicy::Reject, &start)
             .map_err(OpenError::ReadIo)?;
+    let mut base_index = None;
     let (state, open_path) = if !start.is_origin() {
-        sealed_state(dir, &recs, sink, true)?
+        let (state, path, index) = sealed_state(dir, &recs, sink, true)?;
+        base_index = Some(index);
+        (state, path)
     } else if migrating {
         // Migration ignores snapshot caches and folds the complete journal
         // under current semantics before certifying the store.
@@ -105,6 +126,7 @@ pub fn open(
         },
         state,
         open_path,
+        base_index,
     ))
 }
 
@@ -120,8 +142,15 @@ fn sealed_state(
     records: &[Record],
     sink: &mut impl RecordSink,
     writable: bool,
-) -> Result<(StoreState, crate::snapshot::OpenPath), OpenError> {
-    let (base, _seal) = crate::base::open_from_base(dir, records).map_err(|error| {
+) -> Result<
+    (
+        StoreState,
+        crate::snapshot::OpenPath,
+        crate::base::BaseIndex,
+    ),
+    OpenError,
+> {
+    let opened = crate::base::open_from_base(dir, records).map_err(|error| {
         OpenError::Health(JournalHealth::BaseMismatch {
             detail: error.message,
         })
@@ -129,12 +158,17 @@ fn sealed_state(
     // The cache fast path survives sealing: a cache *above* the seal is still
     // bound and used, because everything that binds one can be re-derived from
     // the base plus the live records. A cache at or below it is skipped.
-    if writable {
+    let base = opened.state;
+    let (state, path) = if writable {
         crate::snapshot::open_state_from(dir, records.to_vec(), sink, base)
     } else {
         crate::snapshot::open_state_read_only_from(dir, records.to_vec(), sink, base)
     }
-    .map_err(|error| OpenError::Health(replay_health(error)))
+    .map_err(|error| OpenError::Health(replay_health(error)))?;
+    // The index travels with the state it belongs to. Reading it here rather
+    // than from a second decode is what keeps a sealed open at one parse of
+    // the base file.
+    Ok((state, path, opened.index))
 }
 
 /// Open a store for inspection without creating anything, taking the writer
@@ -142,7 +176,7 @@ fn sealed_state(
 pub(crate) fn open_read_only(
     dir: &Path,
     sink: &mut impl RecordSink,
-) -> Result<(Journal, StoreState, crate::snapshot::OpenPath, Vec<Record>), OpenError> {
+) -> Result<OpenedReadOnly, OpenError> {
     let format = detect_store_format(dir);
     if matches!(format, DetectedStoreFormat::Empty) {
         return Ok((
@@ -162,6 +196,7 @@ pub(crate) fn open_read_only(
             StoreState::default(),
             crate::snapshot::OpenPath::default(),
             Vec::new(),
+            None,
         ));
     }
     if let Err(health) = refuse_incompatible_store_format(dir) {
@@ -176,8 +211,11 @@ pub(crate) fn open_read_only(
         load_records_with_active_meta(dir, FinalTailPolicy::Ignore, &start)
             .map_err(OpenError::ReadIo)?;
     let migrating = matches!(format, DetectedStoreFormat::Migratable { .. });
+    let mut base_index = None;
     let (state, open_path) = if !start.is_origin() {
-        sealed_state(dir, &records, sink, false)?
+        let (state, path, index) = sealed_state(dir, &records, sink, false)?;
+        base_index = Some(index);
+        (state, path)
     } else if migrating {
         let count = records.len();
         let state = fold_with(records.clone(), sink)
@@ -212,5 +250,6 @@ pub(crate) fn open_read_only(
         state,
         open_path,
         records,
+        base_index,
     ))
 }

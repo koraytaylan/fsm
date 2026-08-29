@@ -18,6 +18,7 @@ silently.
 | `fsm.snapshot/5` | Disposable snapshot caches |
 | `fsm.base/1` | Authoritative base state a sealed store opens from |
 | `fsm.base-dedup/1` | Request-fingerprint root a seal commits over the keys its base carries |
+| `fsm.base-index/1` | Record-derived index root a seal commits over the tags, parent links, and sequences its base carries |
 | `fsm.archive/1` | Manifest of a detached archive's sealed segments |
 | `expr/1` | Expression grammar |
 
@@ -716,7 +717,7 @@ because a deadline poll visits no event guard.
 | `annotated` | `instance_id`, `request_id`, `note` |
 | `effect_attempted` | `instance_id`, `effect_id`, `attempt` (1-based, strictly `last + 1`), `outcome` (always `failed`), `request_id`, `state_hash`, `state_format`, optional `result`. Leaves the effect pending and changes no logical state: a retry counter kept in memory is lost by exactly the restart it exists to survive, so the attempt count is derived from these records. A *successful* attempt is an ordinary `effect_acked` and writes none of these |
 | `state_checkpoint` | `state_root`, `state_root_format` |
-| `journal_sealed` | `sealed_through_seq`, `sealed_last_hash`, `base_state_root`, `state_root_format`, `base_dedup_fp_root`, `base_dedup_format`, `archive_id`, `records_sealed`. Marks a sealed and detached prefix. It claims no `request_id` and changes **no** logical state: the loader reads it before folding, and the fold applies it as a marker exactly as it applies `state_checkpoint`. It is appended at `sealed_through_seq + 1`, so `sealed_last_hash` MUST equal `sha256:` followed by the record's own `prev` — the body asserts a join the chain already made, and a record where the two disagree is corrupt. `state_root_format` names the format of `base_state_root`, which is the root of the state the base file materializes at `sealed_through_seq`, **after** the dropped dedup entries were removed; it is NEVER equal to the `state_root` a record on the same sequence would carry, and a reader MUST NOT assert them equal |
+| `journal_sealed` | `sealed_through_seq`, `sealed_last_hash`, `base_state_root`, `state_root_format`, `base_dedup_fp_root`, `base_dedup_format`, `base_index_root`, `base_index_format`, `archive_id`, `records_sealed`. Marks a sealed and detached prefix. It claims no `request_id` and changes **no** logical state: the loader reads it before folding, and the fold applies it as a marker exactly as it applies `state_checkpoint`. It is appended at `sealed_through_seq + 1`, so `sealed_last_hash` MUST equal `sha256:` followed by the record's own `prev` — the body asserts a join the chain already made, and a record where the two disagree is corrupt. `state_root_format` names the format of `base_state_root`, which is the root of the state the base file materializes at `sealed_through_seq`, **after** the dropped dedup entries were removed; it is NEVER equal to the `state_root` a record on the same sequence would carry, and a reader MUST NOT assert them equal |
 
 `microsteps` is the macrostep's reaction list: `[{index, trigger, event?,
 source_state, transition_idx, exited, entered}]` with `index` starting at 1
@@ -1211,6 +1212,7 @@ These match `crates/fsm-core/src/limits.rs`.
 | `fsm.state-root/2` | Historical single-leaf logical store root payload |
 | `fsm.base/1` | Authoritative base state a sealed store opens from. Required, never a cache: a missing snapshot degrades to a fold, a missing base refuses the open |
 | `fsm.base-dedup/1` | Payload of the request-fingerprint root a seal commits over the dedup entries its base carries |
+| `fsm.base-index/1` | Payload of the root a seal commits over the record-derived indexes its base carries: per-instance tags, parent slot, creation sequence and last sequence, and each machine's first definition sequence |
 | `fsm.archive/1` | Manifest of a detached archive: per-segment plain SHA-256 digests and the sealed chain endpoints |
 | `expr/1` | Expression grammar |
 
@@ -1226,18 +1228,23 @@ An operator MAY seal a prefix of the journal into a detached archive. Sealing NE
 * The base state file is **required**, never a cache. A missing or stale snapshot degrades to a fold; a missing base refuses the open with `store/base_missing`, and one that disagrees with the seal that commits it refuses with `store/base_mismatch`. Neither is repairable from the data directory alone.
 * A verification that did not read the sealed bytes MUST NOT report what a complete walk reports. A sealed store whose archive was not presented reports its own verdict, distinct from both success and failure.
 * A cut MUST NOT archive a record a live derivation still needs. A pending effect's emitting record, its instance's creation record, and every one of its attempt records are all read back by the executor, so a cut at or above the lowest of them is refused with `store/archive_refused`.
+* A seal carries, for every instance and machine its base holds, the facts a reader derives from records rather than from state: an instance's tags, the parent instance and slot that invoked it, the sequence it was created at and the highest sequence at or below the cut that touched it, and each machine's first definition sequence. These are committed under `base_index_root`. Without them a live instance created below the cut reports untagged, parentless, and dated zero — and none of those reads as a gap.
 * A seal carries every idempotency key claimed above the cut, and every key whose claiming record names an instance that is live in the base state. It drops the rest, each of which is independently unreplayable: an operation against a settled instance is refused by its terminal status, a `create` naming an existing instance is refused with `req/instance_exists`, and a machine definition is idempotent by content hash.
 
 Because records are never rewritten, a migrated store keeps whatever its records already carried: a `request_id` claimed before `VERSION` `7` has no `request_fp`, so it can be replayed but not conflict-checked. Records written after the migration are fully checked.
 
 Hash domains are versioned independently of these tags: `fsm:machine:1`,
 `fsm:record:1`, `fsm:state:2`, `fsm:state-root:3`, `fsm:snapshot:4`,
-`fsm:request-fp:1`, `fsm:base-dedup:1`, and `fsm:archive:1`. The last two are
+`fsm:request-fp:1`, `fsm:base-dedup:1`, `fsm:base-index:1`, and `fsm:archive:1`.
+The base domains are
 **additive**: `fsm:state-root:3` deliberately excludes request fingerprints
 because the record body that claimed each key already authenticates its
 fingerprint through the chain, and sealing is exactly the operation that
 removes that record from the live chain — so a seal commits the carried
 fingerprints under a domain of their own rather than under a fourth version of
-the state root, and no historical root moves. Replay retains `fsm:state:1` and `fsm:state-root:2` only to
+the state root, and no historical root moves. `fsm:base-index:1` exists for the
+same reason and by the same rule: the tags, parent links, and sequences a seal
+carries are read off records rather than from state, `fsm:state-root:3` covers
+none of them, and folding them in would move every historical root. Replay retains `fsm:state:1` and `fsm:state-root:2` only to
 verify historical journal bytes; snapshot domains 1 through 3 are never
 reinterpreted.

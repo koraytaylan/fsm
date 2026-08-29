@@ -143,7 +143,7 @@ fn read_only_open_returns_the_exact_folded_record_prefix() {
     writer.define_machine(definition, false, false).unwrap();
 
     let mut sink = NopSink;
-    let (reader, state, open_path, records) = open_read_only(&dir, &mut sink).unwrap();
+    let (reader, state, open_path, records, _index) = open_read_only(&dir, &mut sink).unwrap();
     let returned_last_seq = records.last().map(|record| record.seq).unwrap_or(0);
     assert_eq!(returned_last_seq, reader.last_seq);
     assert_eq!(returned_last_seq, state.last_seq);
@@ -309,7 +309,7 @@ fn version_seven_migrates_with_the_exact_historical_genesis_limits() {
     fs::write(dir.join("VERSION"), "7\n").unwrap();
 
     let mut sink = NopSink;
-    let (reopened, state, path) = open(dir, &mut sink).unwrap();
+    let (reopened, state, path, _index) = open(dir, &mut sink).unwrap();
     assert!(state.instances.is_empty());
     assert_eq!(path.replayed_records, 1);
     assert!(!path.used_snapshot);

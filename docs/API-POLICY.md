@@ -192,13 +192,16 @@ this file. From `v0.1.0`:
   moves on first write regardless of whether anything was ever archived, so an
   unsealed 0.3.0 store is refused by an older build exactly as a sealed one is.
 
-  `VERSION` 10 adds the `journal_sealed` record and three formats and two hash
+  `VERSION` 10 adds the `journal_sealed` record and four formats and three hash
   domains that go with it: `fsm.base/1` for the authoritative base state a
   sealed store opens from, `fsm.base-dedup/1` and `fsm:base-dedup:1` for the
-  root a seal commits over the request fingerprints its base carries, and
-  `fsm.archive/1` with `fsm:archive:1` for a detached archive's manifest. The
-  fingerprint domain is **additive**: `fsm:state-root:3` deliberately excludes
-  fingerprints, and folding them in would move every historical root. Three new
+  root a seal commits over the request fingerprints its base carries,
+  `fsm.base-index/1` and `fsm:base-index:1` for the root it commits over the
+  record-derived indexes — per-instance tags, parent slot, creation and last
+  sequence, and each machine's first definition sequence — and `fsm.archive/1`
+  with `fsm:archive:1` for a detached archive's manifest. Both base domains are
+  **additive**: `fsm:state-root:3` deliberately excludes what they cover, and
+  folding it in would move every historical root. Three new
   error codes come with it — `store/archive_refused`, `store/base_missing`, and
   `store/base_mismatch`.
 - **`fsm-execute` is a new crate**, provisional under the table above. It is
@@ -245,7 +248,7 @@ The versioned formats are independent of the crate version:
 | snapshot | `fsm.snapshot/5` | `<data_dir>/snapshots` |
 | state hash | `fsm.state/3` (records written before composition carry `fsm.state/2` and verify under it) | state-bearing records and views |
 | state root | `fsm.state-root/3` | checkpoints, snapshots, and the sealed base |
-| base state | `fsm.base/1`, roots under `fsm.base-dedup/1` | `<data_dir>/journal/BASE` |
+| base state | `fsm.base/1`, roots under `fsm.base-dedup/1` and `fsm.base-index/1` | `<data_dir>/journal/BASE` |
 | archive manifest | `fsm.archive/1` | the operator's archive directory |
 
 Adding a `supersedes` block to a definition produces a **new** machine and

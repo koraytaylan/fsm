@@ -325,9 +325,63 @@ impl Store {
             )
             .hint("restore the BASE the seal that removed the earlier segments wrote")
         })?;
-        let (state, _seal) = base::open_from_base(&self.data_dir, &self.records)?;
+        let state = base::open_from_base(&self.data_dir, &self.records)?.state;
         let seq = header.seq;
         Ok((Some((state, seq)), header.definition_limits))
+    }
+
+    /// The record-derived indexes the base must carry for the state it holds.
+    ///
+    /// Everything here is read off a record the seal is about to remove, and
+    /// nothing in `StoreState` holds it: an instance's tags and the parent
+    /// slot that invoked it live in its creation and invocation records, and
+    /// the two sequences are positions in the journal rather than state. A
+    /// base without them leaves a live instance created below the cut
+    /// answering untagged, parentless and dated zero on every surface that
+    /// reports those — as facts, not as gaps, which is the failure this whole
+    /// plan is otherwise careful to avoid.
+    ///
+    /// The store's own indexes are the source, and they are already complete:
+    /// [`Store::open`] seeds them from the previous base before folding the
+    /// live records over them, so a second seal carries forward what the first
+    /// one saved.
+    fn prospective_index(&self, base_state: &StoreState, cut: u64) -> base::BaseIndex {
+        let instances = base_state
+            .instances
+            .keys()
+            .map(|id| {
+                let seqs = self.history.get(id);
+                (
+                    id.clone(),
+                    base::InstanceIndex {
+                        tags: self.tags.get(id).cloned().unwrap_or_default(),
+                        parent: self.parents.get(id).cloned(),
+                        created_seq: seqs.and_then(|seqs| seqs.first().copied()).unwrap_or(0),
+                        // The base speaks for the prefix, so its `last_seq` is
+                        // the newest sequence at or below the cut. Anything
+                        // above it is still in the live journal, where the
+                        // record index finds it.
+                        last_seq: seqs
+                            .and_then(|seqs| seqs.iter().rev().find(|seq| **seq <= cut).copied())
+                            .unwrap_or(0),
+                    },
+                )
+            })
+            .collect();
+        let machines = base_state
+            .machines
+            .keys()
+            .map(|id| {
+                (
+                    id.clone(),
+                    self.machine_seqs.get(id).copied().unwrap_or_default(),
+                )
+            })
+            .collect();
+        base::BaseIndex {
+            instances,
+            machines,
+        }
     }
 
     /// The state the base file would hold, the ledger partition it carries,
@@ -359,7 +413,8 @@ impl Store {
         }
         .map_err(|error| ErrorObj::new("store/chain_broken", format!("{error:?}")))?;
         base_state.last_seq = cut;
-        let carried = seal_safety::carry_at_cut(&base_state, &self.records, limits)?;
+        let index = self.prospective_index(&base_state, cut);
+        let carried = seal_safety::carry_at_cut(&base_state, &self.records, &index, limits)?;
         base_state.dedup = carried.carried.clone();
         Ok((base_state, carried, limits))
     }
@@ -417,7 +472,8 @@ impl Store {
         // 3. The carried ledger is already decided; the base is now complete.
         let journal_dir = crate::journal_io::journal_dir(&self.data_dir);
         let segments = sealed_segments(&journal_dir, cut)?;
-        let roots = base::base_roots(&base_state);
+        let base_index = self.prospective_index(&base_state, cut);
+        let roots = base::base_roots(&base_state, &base_index);
 
         // 4. Write MANIFEST, then fsync it and its directory.
         let mut described = Vec::new();
@@ -485,8 +541,11 @@ impl Store {
         // 6. Write BASE durably. `write_durable` writes a temporary file,
         //    fsyncs it, and renames; the directory fsync follows.
         let base_path = journal_dir.join(BASE_FILE);
-        let mut base_bytes =
-            fsm_core::canon::canon_bytes(&base::encode(&base_state, definition_limits));
+        let mut base_bytes = fsm_core::canon::canon_bytes(&base::encode(
+            &base_state,
+            &base_index,
+            definition_limits,
+        ));
         base_bytes.push(b'\n');
         crate::write_durable(&base_path, &base_bytes)
             .map_err(|error| write_error("write", &base_path, error))?;
@@ -587,6 +646,14 @@ impl Store {
             (
                 "base_dedup_format".into(),
                 Value::Str(fsm_core::hashes::BASE_DEDUP_FORMAT.into()),
+            ),
+            (
+                "base_index_root".into(),
+                Value::Str(roots.index_root.clone()),
+            ),
+            (
+                "base_index_format".into(),
+                Value::Str(fsm_core::hashes::BASE_INDEX_FORMAT.into()),
             ),
             ("archive_id".into(), Value::Str(manifest.archive_id())),
             (

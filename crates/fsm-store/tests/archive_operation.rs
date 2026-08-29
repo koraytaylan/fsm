@@ -326,6 +326,159 @@ fn two_seals_to_two_archives_leave_a_store_sealed_at_the_later_cut() {
 }
 
 #[test]
+fn a_live_instance_sealed_below_the_cut_keeps_its_tags_its_parent_and_its_age() {
+    // Tags, the parent slot, and an instance's age are read off the creation
+    // and invocation records — which a seal is exactly the operation that
+    // removes. Without the base carrying them, a live instance created before
+    // the cut comes back untagged, parentless and dated zero, and every
+    // surface reports those as facts: `instance_list --tag` omits it,
+    // `roots_only` lists it as a root, and its age reads as sequence zero.
+    let directory = TestDirectory::create("index-carry");
+    let store_path = directory.store();
+    let (created_seq, machine_id) = {
+        let mut store = Store::open(&store_path).expect("a fresh store opens");
+        store
+            .define_machine(definition(), false, false)
+            .expect("the machine is definable");
+        store
+            .create_instance_ctx(
+                "case_review",
+                "tagged",
+                "create-tagged",
+                None,
+                &BTreeMap::new(),
+                &["urgent".to_string(), "finance".to_string()],
+            )
+            .expect("create succeeds");
+        let created_seq = store.created_seq("tagged");
+        let machine_id = store.state.instance_machines["tagged"].clone();
+        // Push the instance's creation below a segment boundary, and settle
+        // every effect so nothing pins the cut.
+        for round in 0..3 {
+            store
+                .annotate("tagged", &format!("note-{round}"), "a note")
+                .expect("annotate succeeds");
+        }
+        store
+            .seal_and_archive(&directory.archive("one"), None)
+            .expect("the seal runs");
+        (created_seq, machine_id)
+    };
+
+    let reopened = Store::open(&store_path).expect("a sealed store reopens");
+    assert!(
+        reopened.state.instances.contains_key("tagged"),
+        "the instance is not live after the seal"
+    );
+    assert!(
+        !reopened
+            .records
+            .iter()
+            .any(|record| record.seq == created_seq),
+        "the creation record is still in the live journal, so this proves nothing"
+    );
+    assert_eq!(
+        reopened.tags.get("tagged").map(Vec::as_slice),
+        Some(["urgent".to_string(), "finance".to_string()].as_slice()),
+        "the seal dropped a live instance's tags"
+    );
+    assert_eq!(
+        reopened.created_seq("tagged"),
+        created_seq,
+        "the seal dated a live instance to sequence zero"
+    );
+    assert_eq!(
+        reopened.machine_seqs.get(&machine_id).copied(),
+        Some(1),
+        "the machine's first definition sequence did not survive the seal"
+    );
+    // And the tag filter every surface builds on still finds it.
+    assert!(
+        reopened
+            .tags
+            .get("tagged")
+            .is_some_and(|tags| tags.iter().any(|tag| tag == "urgent")),
+        "a tag filter would omit a live instance after a seal"
+    );
+}
+
+/// A reviewer a parent machine invokes, so a seal has a parent link to carry.
+const REVIEWER: &str = r#"{"format":"fsm.machine/1","name":"reviewer","states":[{"name":"working"},{"name":"done","terminal":true}],"initial":"working","context":[{"name":"amount","ty":"int","init":"0"},{"name":"outcome","ty":"str","init":"pending"}],"events":[{"name":"finish","fields":[]}],"transitions":[{"from":"working","on":"finish","to":"done"}]}"#;
+
+fn reviewer() -> Value {
+    parse(REVIEWER.as_bytes(), &JsonLimits::DEFAULT).expect("the reviewer parses")
+}
+
+fn caller() -> Value {
+    let digest = fsm_core::hashes::digest_of(&fsm_core::hashes::machine_id(&reviewer()))
+        .expect("the reviewer has a digest")
+        .to_string();
+    parse(
+        format!(
+            r#"{{"format":"fsm.machine/1","name":"caller","states":[{{"name":"idle"}},{{"name":"await_review","invoke":[{{"id":"review","machine":"{digest}","with":{{"amount":"ctx.total"}},"returns":{{"decision":"outcome"}}}}]}},{{"name":"settled"}}],"initial":"idle","context":[{{"name":"total","ty":"int","init":"7"}}],"events":[{{"name":"open","fields":[]}},{{"name":"close","fields":[]}}],"transitions":[{{"from":"idle","on":"open","to":"await_review"}},{{"from":"await_review","on":"close","to":"settled"}}]}}"#
+        )
+        .as_bytes(),
+        &JsonLimits::DEFAULT,
+    )
+    .expect("the caller parses")
+}
+
+#[test]
+fn a_child_whose_invocation_record_was_sealed_is_still_a_child() {
+    // `parent_of` is read from the index the journal built, never inferred
+    // from the id. A seal removes the record that built it, so without the
+    // base carrying the link a live child comes back a root: `roots_only`
+    // lists it, `--parent` omits it, and `orphaned_children` stops seeing it.
+    let directory = TestDirectory::create("index-parent");
+    let store_path = directory.store();
+    let child_id = fsm_core::hashes::child_instance_id("p1", "review");
+    {
+        let mut store = Store::open(&store_path).expect("a fresh store opens");
+        store
+            .define_machine(reviewer(), false, false)
+            .expect("the reviewer is definable");
+        store
+            .define_machine(caller(), false, false)
+            .expect("the caller is definable");
+        store
+            .create_instance("caller", "p1", "create-p1", None)
+            .expect("create succeeds");
+        store
+            .send_event("p1", "open", Value::Obj(BTreeMap::new()), "open-1", None)
+            .expect("send succeeds");
+        store
+            .invoke_child("p1", "review", "inv-1")
+            .expect("the invocation enacts");
+        assert_eq!(
+            store.parent_of(&child_id),
+            Some(("p1".to_string(), "review".to_string()))
+        );
+        for round in 0..3 {
+            store
+                .annotate("p1", &format!("note-{round}"), "a note")
+                .expect("annotate succeeds");
+        }
+        store
+            .seal_and_archive(&directory.archive("one"), None)
+            .expect("the seal runs");
+    }
+
+    let reopened = Store::open(&store_path).expect("a sealed store reopens");
+    assert!(
+        !reopened
+            .records
+            .iter()
+            .any(|record| record.kind == RecordKind::InstanceInvoked),
+        "the invocation record is still live, so this proves nothing"
+    );
+    assert_eq!(
+        reopened.parent_of(&child_id),
+        Some(("p1".to_string(), "review".to_string())),
+        "the seal turned a live child into a root"
+    );
+}
+
+#[test]
 fn a_second_seal_on_a_reopened_store_keeps_every_machine_and_instance() {
     // The bug this pins: after one seal the live journal is a *suffix*, so a
     // second seal that folded it from an empty state would write a base with

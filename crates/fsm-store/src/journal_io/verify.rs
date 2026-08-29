@@ -287,7 +287,7 @@ pub fn verify_with_archive(dir: &Path, archive_dir: Option<&Path>) -> VerifyRepo
         fold_with(recs.clone(), &mut NopSink)
     } else {
         match crate::base::open_from_base(dir, &recs) {
-            Ok((base, _)) => fsm_core::replay::fold_from(base, recs.clone(), &mut NopSink),
+            Ok(opened) => fsm_core::replay::fold_from(opened.state, recs.clone(), &mut NopSink),
             Err(error) => {
                 return empty(JournalHealth::BaseMismatch {
                     detail: error.message,
@@ -362,10 +362,11 @@ pub(crate) fn seal_of(
     {
         return Ok(None);
     }
-    let (_state, seal) =
-        crate::base::open_from_base(dir, records).map_err(|error| JournalHealth::BaseMismatch {
+    let seal = crate::base::open_from_base(dir, records)
+        .map_err(|error| JournalHealth::BaseMismatch {
             detail: error.message,
-        })?;
+        })?
+        .seal;
     let mut info = SealInfo {
         sealed_through_seq: seal.sealed_through_seq,
         sealed_last_hash: seal.sealed_last_hash.clone(),
