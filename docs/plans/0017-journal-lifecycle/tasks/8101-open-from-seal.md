@@ -55,6 +55,7 @@ The loader assumes every journal begins at sequence one with a zero predecessor,
 - `crates/fsm-store/tests/open_sealed.rs`: a sealed store opens and folds to the same state the unsealed store folded to before sealing — the plan's headline property, asserted with `store_states_eq`.
 - Every unsealed path is unchanged: an ordinary store opens with the default starting pair, and the existing store suites pass untouched.
 - A `BASE` deleted from a sealed store gives `store/base_missing`, not a fold from the seal's sequence.
+- **A sealed store whose live records are gone never gains a fresh genesis.** `classify` answers `MissingGenesis` for such a directory — a sealed store's genesis is in the archive — and `open` responds to that classification by writing a new one, which abandons every machine and instance the base holds and makes the loss permanent. `classify` must not answer `MissingGenesis` where a base is present, and `open` must refuse to write a genesis over one; assert it by zeroing the live segment of a sealed store.
 - A journal whose first record is above one with **no** `BASE` gives `store/base_missing` — the deleted-segments case, which must not look like a seal.
 - A `BASE` from a different store gives `store/base_mismatch`, and nothing is served.
 - A `BASE` with one context byte altered gives `store/base_mismatch` via `base_state_root`.

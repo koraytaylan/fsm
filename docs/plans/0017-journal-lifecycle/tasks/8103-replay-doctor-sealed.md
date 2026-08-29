@@ -30,6 +30,8 @@ The two diagnostics that answer "does the engine still agree with the journal" a
 
 **Tests:**
 
+- **A `--to-seq` between the cut and the seal record reports a healthy store.** The seal record authenticates the base, and on a store whose cut is an existing segment boundary — which is every store with an effect in flight — that record sits far above the cut. Filtering the replay window by `--to-seq` filtered it away, and every sequence in that gap reported `agreement: false` and exited non-zero on a perfectly healthy store. The window must be folded from the filtered records and authenticated against the whole set. A fixture that seals at the head cannot catch this: there the seal record is at `cut + 1` and the gap is empty.
+
 - `crates/fsm-cli/tests/audit_replay.rs`: replay of a sealed store reproduces every `state_hash` in the live suffix and reports the seal as its origin.
 - Replay to a `--to-seq` below the seal is refused, and the message names the seal sequence and the archive id.
 - Replay to a `--to-seq` above the seal succeeds and matches the pre-seal replay output for that range.
