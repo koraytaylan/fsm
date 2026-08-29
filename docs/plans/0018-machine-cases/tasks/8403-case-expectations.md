@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-core/src/cases/expect.rs
   - crates/fsm-core/tests/case_expectations.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Case Expectations
@@ -26,9 +26,10 @@ A failure that prints two states and leaves the reader to spot the difference ha
    - `enabled` compares as a **set**: it derives from a scan whose order the spec does not fix.
    - `context` compares key by key, reporting each key that differs rather than the whole map.
 4. Report divergences for the whole case, never only the first, matching the runner's decision to run the whole script.
-5. Name the step index in every divergence, so a ten-step script's failure says where.
+5. Name the step index in every divergence, so a ten-step script's failure says where. An `expect` block describes the *final* state, so a final-state divergence carries the last step's index; a step that could not run at all carries its own, and is reported **before** any expectation. A case that failed because its ack named nothing pending did not fail because its configuration differs, and leading with the configuration sends the author to the wrong half of the file.
 6. Compare context values through the engine's own value equality and rendering, so a `Dec` with a different scale reports as the difference it is rather than as equal or as a string mismatch. This is the comparison most likely to be written wrongly, and exact arithmetic is the reason it matters.
-7. Produce a structured result, not a formatted string. Rendering belongs to the CLI; the core returns data, which is what lets `--json` and the human output agree by construction.
+7. Carry the *rule* each field was compared under in the divergence itself. "Why did `effects` fail when `configuration` with the same-looking difference did not" is the first question the asymmetry produces, and a report that can answer it without the reader consulting the source is the whole reason the asymmetry is safe to have.
+8. Produce a structured result, not a formatted string. Rendering belongs to the CLI; the core returns data, which is what lets `--json` and the human output agree by construction.
 
 **Tests:**
 

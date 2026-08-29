@@ -8,6 +8,7 @@
 
 pub mod analyze;
 pub mod canon;
+pub mod cases;
 pub mod decimal;
 pub mod diagram;
 pub mod error;

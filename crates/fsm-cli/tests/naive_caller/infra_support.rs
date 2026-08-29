@@ -21,6 +21,26 @@ pub(crate) const INFRA: &[(&str, &str)] = &[
         "filesystem failure is not a caller-shaped retry",
     ),
     (
+        "case/shape",
+        "no tool parses a case file: plan 0018 deliberately adds none, so this is reachable only through the CLI and the library. An author fixes the document; there is no request to retry",
+    ),
+    (
+        "case/unknown_key",
+        "as case/shape: the refusal names the key and the author edits the file, and no tool surface reaches it",
+    ),
+    (
+        "case/limit_bytes",
+        "as case/shape: an author splits the file across more than one, which is not a one-step retry of anything",
+    ),
+    (
+        "case/limit_cases",
+        "as case/shape: an author splits the file across more than one",
+    ),
+    (
+        "case/limit_steps",
+        "as case/shape: an author splits the case, and no tool surface reaches it",
+    ),
+    (
         "store/archive_refused",
         "an operator seals at an earlier cut or lets instances settle; there is no one-step retry that makes a base file smaller",
     ),

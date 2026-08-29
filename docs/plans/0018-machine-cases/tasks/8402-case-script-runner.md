@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-core/src/cases/run.rs
   - crates/fsm-core/tests/case_runner.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Case Script Runner
@@ -28,7 +28,9 @@ merged_as: ""
 8. An `ack` naming an effect that is not pending fails the case with a message listing the effects that **were** pending. That is the mistake an author makes, and the list is the fix — a bare "unknown effect" costs a round trip to discover.
 9. **Run the whole script and report every divergence.** Do not stop at the first failure: an author correcting one expectation wants to see the other two in the same run.
 10. Inherit every engine bound without relaxing any. A case that exceeds the 64-microstep reaction bound, the evaluation budget, or a payload ceiling reports the engine's own error exactly as any caller does. A case runner that quietly raised a bound would be testing a machine the engine will not run.
-11. Take creation context overrides from the case's `context`, using the same coercion path the existing callers use, so a context value written in a case file means what it means everywhere else.
+11. Take creation context overrides from the case's `context`, using the same coercion path the existing callers use (`fsm_core::replay::parse_ctx_val` against the machine's declared slot), so a context value written in a case file means what it means everywhere else. An undeclared slot and a value of the wrong type are both refused before the run starts, and the refusal names the slot and lists what the machine declares.
+12. Track pending effects by **name**, not by id. A live store allocates effect ids; a pure run has no allocator and must not grow one, and the name is the vocabulary the case file already acks in. Creation can emit, so an effect emitted by the entry actions of the initial configuration is pending from the first instant — a case that acks one before its first send is correct.
+13. An ack's `result` reaches no machine. It is carried in the file because the reporting and regeneration surfaces show it, and dropping it in the runner would make a case's text and its run disagree; the runner names the field and ignores it deliberately rather than by omission.
 
 **Tests:**
 

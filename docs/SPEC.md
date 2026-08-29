@@ -1003,6 +1003,11 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 > is a statement about statechart semantics. It is listed in
 > [EMBEDDING.md](EMBEDDING.md#executor-error-codes).
 
+- `case/limit_bytes` — a case file exceeds the document ceiling
+- `case/limit_cases` — a case file declares more cases than the ceiling allows
+- `case/limit_steps` — one case's script exceeds the step ceiling
+- `case/shape` — wrong JSON type, missing required field, or a script step that is not exactly one of send, poll, ack
+- `case/unknown_key` — unknown key at a given JSON-Pointer path in a case file
 - `def/ancestor_shadowed` — ancestor handler globally dead
 - `def/assign_type` — set target type ≠ RHS
 - `def/create_always_fails` — creation fails on declared inits

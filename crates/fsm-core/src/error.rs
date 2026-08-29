@@ -5,6 +5,11 @@ use std::collections::BTreeMap;
 
 /// Every stable `code` the engine and shell may emit, sorted and unique.
 pub const ALL_CODES: &[&str] = &[
+    "case/limit_bytes",
+    "case/limit_cases",
+    "case/limit_steps",
+    "case/shape",
+    "case/unknown_key",
     "def/ancestor_shadowed",
     "def/assign_type",
     "def/create_always_fails",

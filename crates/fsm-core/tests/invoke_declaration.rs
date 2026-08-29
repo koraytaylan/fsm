@@ -238,7 +238,13 @@ fn the_registered_codes_are_well_formed() {
         assert!(!code.is_empty());
         let namespace = code.split('/').next().unwrap();
         assert!(
-            ["def", "req", "expr", "run", "store", "io", "internal"].contains(&namespace),
+            // `case` is plan 0018's: a case file is not a machine definition,
+            // and `def/*` codes are contractually rows in SPEC's
+            // structural-rules table, where a case-file ceiling has no place.
+            [
+                "case", "def", "req", "expr", "run", "store", "io", "internal"
+            ]
+            .contains(&namespace),
             "{code}"
         );
     }

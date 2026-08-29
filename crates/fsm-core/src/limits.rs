@@ -98,3 +98,25 @@ pub const MAX_INVOKE_DEPTH: usize = 4;
 /// Deliberately *not* part of the genesis `limits` block, for the reason
 /// `MAX_PAYLOAD_BYTES` gives: that block is hash-verified on fold.
 pub const MAX_SIGNALS_PER_BLOCK: usize = 4;
+
+/// Cases in one `fsm.cases/1` file.
+///
+/// A case file is a document an author reads and a model writes, and past a
+/// point neither can hold it. Splitting is free — the command takes one file
+/// at a time — so the ceiling is set where a file stops being reviewable
+/// rather than where it stops being parseable.
+pub const MAX_CASES_PER_FILE: usize = 64;
+
+/// Script steps in one case.
+///
+/// A case is one scripted run to one outcome. A script longer than this is
+/// describing more than one thing, and the divergence report it produces is no
+/// longer something an author can act on.
+pub const MAX_SCRIPT_STEPS: usize = 64;
+
+/// Bytes in one `fsm.cases/1` document.
+///
+/// A quarter of a machine definition's ceiling: a case file carries payloads
+/// and expected contexts rather than a state graph, and the two limits are
+/// independent because the documents are.
+pub const MAX_CASE_BYTES: usize = 64 * 1024;

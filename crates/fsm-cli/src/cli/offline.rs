@@ -51,13 +51,15 @@ fn invokes_something(v: &Value) -> bool {
 fn validate_text(text: &str, catalogue: &fsm_core::spec::Catalogue) -> Result<Value, ErrorObj> {
     let v = parse(text.as_bytes(), &JsonLimits::DEFAULT)
         .map_err(|e| ErrorObj::new("def/shape", e.message))?;
-    let compiled = fsm_core::spec::compile_accepted_with_catalogue(&v, catalogue)
-        .map_err(|findings| {
+    let compiled =
+        fsm_core::spec::compile_accepted_with_catalogue(&v, catalogue).map_err(|findings| {
             let error = ErrorObj::from_findings(findings);
             if invokes_something(&v) && catalogue.is_empty() {
-                return error.hint(
-                    "this definition invokes another machine, so its done-invoke payload types                      come from that machine's declarations: add the child with `fsm machine add`                      first, or point --data-dir at a store that holds it",
-                );
+                return error.hint(concat!(
+                    "this definition invokes another machine, so its done-invoke payload ",
+                    "types come from that machine's declarations: add the child with ",
+                    "`fsm machine add` first, or point --data-dir at a store that holds it",
+                ));
             }
             error
         })?;

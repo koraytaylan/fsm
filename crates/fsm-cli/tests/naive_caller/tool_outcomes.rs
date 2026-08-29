@@ -920,6 +920,16 @@ fn all_codes_hygiene() {
         // Sealing is a CLI operation and this plan deliberately adds no tool,
         // so no tool outcome ever produces it.
         "store/archive_refused",
+        // Plan 0018 task 8401 registers the `fsm.cases/1` parser's codes.
+        // Cases are a CLI and library capability and that plan deliberately
+        // adds **no tool** — `tools/list` has room for about one more and
+        // spending it is a decision to make once the format has met real
+        // machines — so no tool outcome can ever produce one of these.
+        "case/limit_bytes",
+        "case/limit_cases",
+        "case/limit_steps",
+        "case/shape",
+        "case/unknown_key",
     ];
     for c in ALLOW {
         assert!(ALL_CODES.contains(c), "allowlist rot {c}");

@@ -1,0 +1,51 @@
+{
+  "format": "fsm.cases/1",
+  "machine": "case_review",
+  "cases": [
+    {
+      "name": "a_scored_review_above_the_bar_is_approved",
+      "context": {"score": "0"},
+      "script": [
+        {"send": "docs_ok"},
+        {"ack": "notify", "outcome": "ok", "result": {"delivered": "true"}},
+        {"send": "docs_ok"},
+        {"send": "scored", "payload": {"score": "700"}}
+      ],
+      "expect": {
+        "configuration": ["approved"],
+        "context": {"visits": "1", "notes": "0", "score": "0"},
+        "enabled": [],
+        "effects": [],
+        "terminal": true
+      }
+    },
+    {
+      "name": "a_withdrawn_review_only_has_to_land_in_rejected",
+      "script": [
+        {"send": "docs_ok"},
+        {"send": "withdraw"}
+      ],
+      "expect": {
+        "configuration": ["rejected"]
+      }
+    },
+    {
+      "name": "a_poll_on_a_machine_with_no_deadline_changes_nothing",
+      "script": [
+        {"send": "docs_ok"},
+        {"poll": 60000},
+        {"ack": "notify", "outcome": "failed"}
+      ],
+      "expect": {
+        "effects": [],
+        "terminal": false
+      }
+    },
+    {
+      "name": "a_case_may_assert_nothing_and_still_have_to_run",
+      "script": [
+        {"send": "docs_ok"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+machine test — case_review
+  ok   a_scored_review_above_the_bar_is_approved
+  ok   a_withdrawn_review_only_has_to_land_in_rejected
+  ok   a_poll_on_a_machine_with_no_deadline_changes_nothing
+  ok   a_case_may_assert_nothing_and_still_have_to_run
+  4 passed, 0 failed

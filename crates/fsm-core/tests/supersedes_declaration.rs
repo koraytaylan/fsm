@@ -254,8 +254,11 @@ fn the_plans_codes_are_registered_once_and_namespaced() {
         assert!(seen.insert(*code), "{code} is listed twice");
         let namespace = code.split('/').next().unwrap();
         assert!(
+            // `case` is plan 0018's: a case file is not a machine
+            // definition, and `def/*` codes are contractually rows in SPEC's
+            // structural-rules table, where a case-file ceiling has no place.
             [
-                "def", "req", "run", "expr", "io", "store", "internal", "args"
+                "args", "case", "def", "expr", "internal", "io", "req", "run", "store"
             ]
             .contains(&namespace),
             "{code} has an unknown namespace"

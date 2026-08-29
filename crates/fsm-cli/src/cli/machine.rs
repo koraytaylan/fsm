@@ -239,6 +239,14 @@ pub static SPECS: &[CmdSpec] = &[
         run: show,
     },
     CmdSpec {
+        path: &["machine", "test"],
+        positionals: &["machine"],
+        flags: &["cases", "case"],
+        switches: &[],
+        help: "Run a case file against a machine, opening no store",
+        run: crate::cli::machine_test::test,
+    },
+    CmdSpec {
         path: &["machine", "analyze"],
         positionals: &["machine"],
         flags: &[],

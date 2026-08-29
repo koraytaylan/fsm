@@ -9,7 +9,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/cli/machine_test_regen.rs
   - crates/fsm-cli/tests/machine_test_regen.rs
-status: planned
+status: done
 merged_as: ""
 ---
 # Case Regeneration
@@ -19,11 +19,11 @@ Regeneration is how a case file agrees with the code by construction, which make
 **Steps:**
 
 1. Create `crates/fsm-cli/src/cli/machine_test_regen.rs` implementing regeneration for `fsm machine test`, driven by `FSM_REGEN_FIXTURES=1` — this repository's established idiom, which cases join rather than replacing with a new flag.
-2. Regeneration rewrites each case's `expect` block from observed behaviour, preserving the file's key order, its formatting, and every field the author wrote that the runner does not produce.
-3. **Refuse to regenerate unless the case file is tracked by version control and has no uncommitted modifications.** This is the safeguard the whole plan rests on: a regeneration that cannot be reviewed as a diff produces a file that agrees with the code by construction and proves nothing. Say that in the refusal message, not just in the code.
+2. Regeneration rewrites each case's `expect` block from observed behaviour, preserving the file's key order, its formatting, and every field the author wrote that the runner does not produce. Splice the **text**, do not re-serialize the parsed document: re-emitting would rewrite the whole file on every run and bury the one line that actually changed. Rewrite the blocks back to front so an earlier splice cannot move a later span, and emit the set-compared fields (`configuration`, `enabled`) sorted, since that is what makes a second regeneration a no-op.
+3. **Refuse to regenerate unless the case file is tracked by version control and has no uncommitted modifications.** Ask `git` — `ls-files --error-unmatch` and `status --porcelain` — and treat a `git` that cannot run at all as its **own** fault with its own remedy, never as a dirty file: the file may be perfectly clean and there is simply nothing there to ask, and blaming it would send the author to the wrong problem. This is the safeguard the whole plan rests on: a regeneration that cannot be reviewed as a diff produces a file that agrees with the code by construction and proves nothing. Say that in the refusal message, not just in the code.
 4. Regenerate only the fields the case already names. An `expect` block asserting only `configuration` keeps asserting only configuration — regeneration must not silently widen a case into asserting everything, because the author's choice of what to pin is information.
 5. Print what changed, per case and per field, so the terminal output and the version-control diff say the same thing.
-6. Refuse to regenerate a case that **errored** rather than diverged — a case whose script names a non-pending effect, or whose definition does not compile, has no observed behaviour to write down, and writing the error into the file would encode the bug.
+6. Refuse to regenerate a case that **errored** rather than diverged — including one whose *script* could not run a step, which the divergence list reports under the `script` field — a case whose script names a non-pending effect, or whose definition does not compile, has no observed behaviour to write down, and writing the error into the file would encode the bug.
 7. Exit non-zero if nothing was regenerated because nothing diverged, so a regeneration run in CI cannot pass silently.
 8. Leave the ordinary run path untouched: without the environment variable the command never writes.
 
