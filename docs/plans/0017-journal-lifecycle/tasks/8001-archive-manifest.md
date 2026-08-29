@@ -11,7 +11,7 @@ touches:
   - crates/fsm-store/src/lib.rs
   - crates/fsm-store/tests/archive_manifest.rs
   - crates/fsm-store/tests/fixtures/archive_manifest_v1.json
-status: planned
+status: done
 merged_as: ""
 ---
 # Archive Manifest
