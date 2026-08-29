@@ -102,6 +102,19 @@ impl Store {
             .iter()
             .rev()
             .find(|r| r.body.get("request_id").and_then(Value::as_str) == Some(request_id))?;
+        // A seal claims no `request_id`: it is an operator action against the
+        // journal, not a request against the store, so there is no original
+        // outcome to replay and the honest answer is "not a claimed request".
+        //
+        // The arm is explicit because everything below it is a chain of
+        // kind-specific `if`s rather than an exhaustive `match`. A kind nobody
+        // wrote an arm for does not fail to compile here; it falls through to
+        // the bare `{ok, duplicate}` answer at the end of this function, which
+        // is silently wrong — and only *after* a restart, since the in-memory
+        // `last_responses` cache serves every same-process retry above.
+        if rec.kind == RecordKind::JournalSealed {
+            return None;
+        }
         if matches!(
             rec.kind,
             RecordKind::EventRejected | RecordKind::DeadlineRejected | RecordKind::RequestRejected

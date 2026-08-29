@@ -35,6 +35,12 @@ fn req_i64(body: &Value, k: &str) -> bool {
         .is_some_and(|raw| raw.parse::<i64>().is_ok())
 }
 
+fn req_u64(body: &Value, k: &str) -> bool {
+    body.get(k)
+        .and_then(Value::as_num)
+        .is_some_and(|raw| raw.parse::<u64>().is_ok())
+}
+
 fn req_u32(body: &Value, k: &str) -> bool {
     body.get(k)
         .and_then(Value::as_num)
@@ -98,14 +104,25 @@ fn state_format_ok(body: &Value, required: bool) -> bool {
     }
 }
 
-fn root_format_ok(body: &Value) -> bool {
-    match body.get("state_root_format") {
-        Some(Value::Str(format)) => {
-            format == "fsm.state-root/3" && is_state_hash(body.get("state_root"))
-        }
-        None => true,
-        Some(_) => false,
+fn root_format_ok(kind: RecordKind, body: &Value) -> bool {
+    let Some(format) = body.get("state_root_format") else {
+        return true;
+    };
+    if format.as_str() != Some("fsm.state-root/3") {
+        return false;
     }
+    if kind == RecordKind::JournalSealed {
+        // A seal declares the format of `base_state_root` — the root of the
+        // state its base file materializes, at the sealed sequence, with the
+        // dropped dedup entries already removed. That is a different value
+        // from the `state_root` a record on a 10 000th sequence carries, which
+        // is over the state at *this* record's sequence with the full table,
+        // so a seal landing on such a sequence legitimately carries both and a
+        // later reader must never assert the two equal.
+        return is_state_hash(body.get("base_state_root"))
+            && (body.get("state_root").is_none() || is_state_hash(body.get("state_root")));
+    }
+    is_state_hash(body.get("state_root"))
 }
 
 fn deadline_identity_ok(body: &Value) -> bool {
@@ -135,7 +152,12 @@ fn rejection_ok(body: &Value) -> bool {
         && span_ok(body.get("span"))
 }
 
-pub(super) fn body_ok(kind: RecordKind, body: &Value) -> bool {
+/// Validate a record body against the required fields of its kind.
+///
+/// `prev` is the record's own predecessor hash, needed by exactly one kind: a
+/// seal commits `sealed_last_hash`, and the only honest check of that claim is
+/// against the chain link the record already carries.
+pub(super) fn body_ok(kind: RecordKind, body: &Value, prev: &str) -> bool {
     let shape_ok = match kind {
         RecordKind::Genesis => {
             body.get("format").and_then(Value::as_str) == Some("fsm.journal/1")
@@ -310,6 +332,24 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value) -> bool {
                 && is_state_hash(body.get("state_hash"))
         }
         RecordKind::StateCheckpoint => is_state_hash(body.get("state_root")),
+        RecordKind::JournalSealed => {
+            req_u64(body, "sealed_through_seq")
+                && req_u64(body, "records_sealed")
+                && is_state_hash(body.get("base_state_root"))
+                && is_state_hash(body.get("base_dedup_fp_root"))
+                && is_state_hash(body.get("archive_id"))
+                && body.get("base_dedup_format").and_then(Value::as_str)
+                    == Some(crate::hashes::BASE_DEDUP_FORMAT)
+                && body.get("state_root_format").and_then(Value::as_str)
+                    == Some(crate::replay::STATE_ROOT_FORMAT)
+                // The seal is appended at `sealed_through_seq + 1`, so the join
+                // it names already exists in the chain and this asserts it
+                // rather than creating it. The `sha256:` prefix is added here
+                // because every hash in a record *body* carries it while the
+                // envelope's own `prev` does not.
+                && body.get("sealed_last_hash").and_then(Value::as_str)
+                    == Some(format!("sha256:{prev}").as_str())
+        }
     };
 
     let current_only = matches!(
@@ -319,7 +359,7 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value) -> bool {
     let current_root_ok = body.get("state_root").is_none()
         || body.get("state_format").is_none()
         || body.get("state_root_format").and_then(Value::as_str) == Some("fsm.state-root/3");
-    shape_ok && state_format_ok(body, current_only) && root_format_ok(body) && current_root_ok
+    shape_ok && state_format_ok(body, current_only) && root_format_ok(kind, body) && current_root_ok
 }
 
 #[cfg(test)]

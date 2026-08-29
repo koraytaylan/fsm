@@ -57,6 +57,14 @@ pub enum RecordKind {
     /// count directly.
     EffectAttempted,
     StateCheckpoint,
+    /// A prefix of the journal was sealed into an archive and detached.
+    ///
+    /// The record is appended in the ordinary way at `sealed_through_seq + 1`,
+    /// so its `prev` **is** the last sealed record's hash by construction: the
+    /// body asserts that join rather than creating it, and a record where the
+    /// two disagree is corrupt. It changes no logical state — it is a marker
+    /// the loader reads before folding, never a mutation the fold performs.
+    JournalSealed,
 }
 
 /// Every instance a record is about, in the order a reader should see them.
@@ -71,9 +79,12 @@ pub enum RecordKind {
 pub fn instances_touched(record: &Record) -> Vec<&str> {
     let field = |name: &str| record.body.get(name).and_then(Value::as_str);
     match record.kind {
-        RecordKind::Genesis | RecordKind::MachineDefined | RecordKind::StateCheckpoint => {
-            Vec::new()
-        }
+        // A seal is about the journal, not about an instance, which is why it
+        // joins this arm rather than gaining one of its own.
+        RecordKind::Genesis
+        | RecordKind::MachineDefined
+        | RecordKind::StateCheckpoint
+        | RecordKind::JournalSealed => Vec::new(),
         RecordKind::InstanceCreated
         | RecordKind::EventApplied
         | RecordKind::EventRejected
@@ -120,6 +131,7 @@ impl RecordKind {
             RecordKind::Annotated => "annotated",
             RecordKind::EffectAttempted => "effect_attempted",
             RecordKind::StateCheckpoint => "state_checkpoint",
+            RecordKind::JournalSealed => "journal_sealed",
         }
     }
 
@@ -144,12 +156,13 @@ impl RecordKind {
             "annotated" => Self::Annotated,
             "effect_attempted" => Self::EffectAttempted,
             "state_checkpoint" => Self::StateCheckpoint,
+            "journal_sealed" => Self::JournalSealed,
             _ => return None,
         })
     }
 
     /// Every recognized record kind in stable protocol order.
-    pub fn all() -> [RecordKind; 19] {
+    pub fn all() -> [RecordKind; 20] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -170,6 +183,7 @@ impl RecordKind {
             Self::Annotated,
             Self::EffectAttempted,
             Self::StateCheckpoint,
+            Self::JournalSealed,
         ]
     }
 }
@@ -444,7 +458,7 @@ pub fn verify_line(line: &[u8], expect_seq: u64, expect_prev: &str) -> Result<Re
     if want != hash {
         return Err(RecordError::HashMismatch { seq });
     }
-    if !body_ok(kind, &rec.body) {
+    if !body_ok(kind, &rec.body, &rec.prev) {
         return Err(RecordError::BodyInvalid { seq });
     }
     Ok(rec)

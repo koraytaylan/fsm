@@ -16,6 +16,9 @@ silently.
 | `fsm.state/2` | Instance state identity before composition; still verified where a record declares it |
 | `fsm.state-root/3` | Complete logical store roots |
 | `fsm.snapshot/5` | Disposable snapshot caches |
+| `fsm.base/1` | Authoritative base state a sealed store opens from |
+| `fsm.base-dedup/1` | Request-fingerprint root a seal commits over the keys its base carries |
+| `fsm.archive/1` | Manifest of a detached archive's sealed segments |
 | `expr/1` | Expression grammar |
 
 ## Machine definitions
@@ -713,6 +716,7 @@ because a deadline poll visits no event guard.
 | `annotated` | `instance_id`, `request_id`, `note` |
 | `effect_attempted` | `instance_id`, `effect_id`, `attempt` (1-based, strictly `last + 1`), `outcome` (always `failed`), `request_id`, `state_hash`, `state_format`, optional `result`. Leaves the effect pending and changes no logical state: a retry counter kept in memory is lost by exactly the restart it exists to survive, so the attempt count is derived from these records. A *successful* attempt is an ordinary `effect_acked` and writes none of these |
 | `state_checkpoint` | `state_root`, `state_root_format` |
+| `journal_sealed` | `sealed_through_seq`, `sealed_last_hash`, `base_state_root`, `state_root_format`, `base_dedup_fp_root`, `base_dedup_format`, `archive_id`, `records_sealed`. Marks a sealed and detached prefix. It claims no `request_id` and changes **no** logical state: the loader reads it before folding, and the fold applies it as a marker exactly as it applies `state_checkpoint`. It is appended at `sealed_through_seq + 1`, so `sealed_last_hash` MUST equal `sha256:` followed by the record's own `prev` — the body asserts a join the chain already made, and a record where the two disagree is corrupt. `state_root_format` names the format of `base_state_root`, which is the root of the state the base file materializes at `sealed_through_seq`, **after** the dropped dedup entries were removed; it is NEVER equal to the `state_root` a record on the same sequence would carry, and a reader MUST NOT assert them equal |
 
 `microsteps` is the macrostep's reaction list: `[{index, trigger, event?,
 source_state, transition_idx, exited, entered}]` with `index` starting at 1
@@ -1198,6 +1202,9 @@ These match `crates/fsm-core/src/limits.rs`.
 | `fsm.state/1` | Historical single-leaf state identity hash payload |
 | `fsm.state-root/3` | Current complete logical store root payload |
 | `fsm.state-root/2` | Historical single-leaf logical store root payload |
+| `fsm.base/1` | Authoritative base state a sealed store opens from. Required, never a cache: a missing snapshot degrades to a fold, a missing base refuses the open |
+| `fsm.base-dedup/1` | Payload of the request-fingerprint root a seal commits over the dedup entries its base carries |
+| `fsm.archive/1` | Manifest of a detached archive: per-segment plain SHA-256 digests and the sealed chain endpoints |
 | `expr/1` | Expression grammar |
 
 On-disk store `VERSION` is `9`. A `VERSION` `1` through `8` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `8`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted.
@@ -1205,7 +1212,13 @@ On-disk store `VERSION` is `9`. A `VERSION` `1` through `8` directory, or a jour
 Because records are never rewritten, a migrated store keeps whatever its records already carried: a `request_id` claimed before `VERSION` `7` has no `request_fp`, so it can be replayed but not conflict-checked. Records written after the migration are fully checked.
 
 Hash domains are versioned independently of these tags: `fsm:machine:1`,
-`fsm:record:1`, `fsm:state:2`, `fsm:state-root:3`, `fsm:snapshot:4`, and
-`fsm:request-fp:1`. Replay retains `fsm:state:1` and `fsm:state-root:2` only to
+`fsm:record:1`, `fsm:state:2`, `fsm:state-root:3`, `fsm:snapshot:4`,
+`fsm:request-fp:1`, `fsm:base-dedup:1`, and `fsm:archive:1`. The last two are
+**additive**: `fsm:state-root:3` deliberately excludes request fingerprints
+because the record body that claimed each key already authenticates its
+fingerprint through the chain, and sealing is exactly the operation that
+removes that record from the live chain — so a seal commits the carried
+fingerprints under a domain of their own rather than under a fourth version of
+the state root, and no historical root moves. Replay retains `fsm:state:1` and `fsm:state-root:2` only to
 verify historical journal bytes; snapshot domains 1 through 3 are never
 reinterpreted.

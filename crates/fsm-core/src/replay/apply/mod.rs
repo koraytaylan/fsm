@@ -75,6 +75,11 @@ pub(super) fn apply(
         RecordKind::Annotated => apply_annotated(st, rec),
         RecordKind::EffectAttempted => apply_effect_attempted(st, rec),
         RecordKind::StateCheckpoint => Ok(()),
+        // A seal changes no logical state. It is a marker the loader reads
+        // *before* folding — to learn where the chain starts and which base to
+        // fold onto — never a mutation the fold performs, which is exactly how
+        // `StateCheckpoint` is treated one line above.
+        RecordKind::JournalSealed => Ok(()),
     };
     applied?;
     if let Some(root) = rec.body.get("state_root") {

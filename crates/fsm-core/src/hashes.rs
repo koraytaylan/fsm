@@ -152,6 +152,34 @@ pub fn digest_of(machine_id: &str) -> Option<&str> {
     machine_id.rsplit_once("sha256:").map(|(_, digest)| digest)
 }
 
+/// Format discriminator for the fingerprint root a journal seal commits.
+///
+/// Paired with [`BASE_DEDUP_DOMAIN`], and named in the seal record's
+/// `base_dedup_format` so the value it authenticates can never be read under a
+/// later payload.
+pub const BASE_DEDUP_FORMAT: &str = "fsm.base-dedup/1";
+
+/// Domain-separation tag for the request fingerprints a sealed base carries.
+///
+/// This domain exists because [`crate::replay::state_root_at`] deliberately
+/// excludes request fingerprints: "the fingerprint lives in the record body
+/// that claimed the key, so the hash chain already authenticates it". Sealing
+/// is exactly the operation that removes that record from the live chain, so
+/// the fingerprints of the keys a seal carries need a root of their own.
+///
+/// It is **additive**. Folding fingerprints into `fsm:state-root:3` instead
+/// would move every historical root in the repository, which is why this is a
+/// new domain rather than a fourth version of that one.
+pub const BASE_DEDUP_DOMAIN: &str = "fsm:base-dedup:1";
+
+/// Domain-separation tag of an archive manifest's content hash.
+///
+/// The seal record commits this value as `archive_id`, so the live chain names
+/// exactly one archive as the origin of its detached prefix. It covers the
+/// manifest with its own `archive_id` field absent, since a hash cannot commit
+/// to itself.
+pub const ARCHIVE_DOMAIN: &str = "fsm:archive:1";
+
 /// Domain tag of the derived child instance id.
 pub const CHILD_DOMAIN: &str = "fsm:child:1";
 

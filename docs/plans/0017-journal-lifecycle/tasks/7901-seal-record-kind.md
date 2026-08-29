@@ -7,12 +7,13 @@ depends_on: []
 gated: false
 touches:
   - crates/fsm-core/src/record.rs
+  - crates/fsm-core/src/record/body_shape.rs
   - crates/fsm-core/src/hashes.rs
   - crates/fsm-core/src/replay/apply/mod.rs
   - crates/fsm-store/src/store/idempotency.rs
   - crates/fsm-core/tests/seal_record.rs
   - docs/SPEC.md
-status: planned
+status: done
 merged_as: ""
 ---
 # Seal Record Kind
@@ -22,9 +23,9 @@ A prefix that is detached without a record saying so is a prefix that was delete
 **Steps:**
 
 1. Add `RecordKind::JournalSealed` to `crates/fsm-core/src/record.rs`, wire name `journal_sealed`, with body `{sealed_through_seq, sealed_last_hash, base_state_root, state_root_format, base_dedup_fp_root, base_dedup_format, archive_id, records_sealed}`.
-2. Extend the body-shape check (the `match kind` around line 700 that ends in the `StateCheckpoint` arm): `sealed_through_seq` and `records_sealed` parse as `u64`, the three roots satisfy the existing `is_state_hash` predicate, and `state_root_format` equals `fsm_core::replay::STATE_ROOT_FORMAT` exactly. **This plan introduces no new version of that format**, and pinning the constant here is what makes an accidental bump a red test.
-3. Assert in the same check that `sealed_last_hash` equals the record's own `prev_hash`. The seal is appended in the ordinary way at `sealed_through_seq + 1`, so the join already exists in the chain; the body **asserts** it rather than creating it, and a record where the two disagree is corrupt.
-4. Add the two new hash domains to `crates/fsm-core/src/hashes.rs` beside the existing ones: `BASE_DEDUP_DOMAIN = "fsm:base-dedup:1"` and `ARCHIVE_DOMAIN = "fsm:archive:1"`, each with a doc comment saying what it covers and — for the first — why it exists instead of a new version of `fsm:state-root:3`. Tasks `base-state-file` and `archive-manifest` consume these; introducing both here keeps one task owning the identifier namespace this plan adds.
+2. Extend the body-shape check (the `match kind` that ends in the `StateCheckpoint` arm — it lives in `crates/fsm-core/src/record/body_shape.rs` after the split that made room for this kind): `sealed_through_seq` and `records_sealed` parse as `u64`, the three roots satisfy the existing `is_state_hash` predicate, and `state_root_format` equals `fsm_core::replay::STATE_ROOT_FORMAT` exactly. **This plan introduces no new version of that format**, and pinning the constant here is what makes an accidental bump a red test.
+3. Assert in the same check that `sealed_last_hash` equals the record's own `prev_hash`. This needs `body_ok` to take the record's `prev`, which it did not; the envelope's `prev` is bare 64-hex while every hash in a *body* carries the `sha256:` prefix, so the comparison adds it. Note also that `root_format_ok` refuses any record declaring `state_root_format` without a `state_root` — a seal declares the format of `base_state_root` and carries a `state_root` only when it lands on a 10 000th sequence, so that predicate needs the kind too. The seal is appended in the ordinary way at `sealed_through_seq + 1`, so the join already exists in the chain; the body **asserts** it rather than creating it, and a record where the two disagree is corrupt.
+4. Add the two new hash domains to `crates/fsm-core/src/hashes.rs` beside the existing ones: `BASE_DEDUP_DOMAIN = "fsm:base-dedup:1"` and `ARCHIVE_DOMAIN = "fsm:archive:1"` — plus `BASE_DEDUP_FORMAT = "fsm.base-dedup/1"`, which is paired with the first exactly as `STATE_FORMAT` is paired with `STATE_DOMAIN` and which the seal's shape check needs in this same commit — each with a doc comment saying what it covers and — for the first — why it exists instead of a new version of `fsm:state-root:3`. Tasks `base-state-file` and `archive-manifest` consume these; introducing both here keeps one task owning the identifier namespace this plan adds.
 5. Add `Self::JournalSealed` to `RecordKind::all`.
 6. Extend `record::instances_touched` with the new kind, returning **empty** — a seal is about the journal, not an instance. It joins the `Genesis | MachineDefined | StateCheckpoint` arm. The match is exhaustive, so the build fails until this is done; that is the mechanism working.
 7. Handle the kind in `crates/fsm-core/src/replay/apply/mod.rs`, which matches exhaustively with no catch-all. The seal changes **no state**: apply it exactly as `StateCheckpoint` is applied. It is a marker the loader reads *before* folding, never a mutation the fold performs.
