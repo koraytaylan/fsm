@@ -134,6 +134,16 @@ implementation is complete.
   index loops where clearer; `BTreeMap` and `BTreeSet` replace `HashMap`
   and `HashSet` in `fsm-core` because platform-deterministic iteration is a
   guarantee, not a preference.
+* **Lints reach test code.** The gate runs `clippy --workspace
+  --all-targets`, so a test target is held to exactly the lints a production
+  target is. It was narrower until plan 0019, and the narrowing hid a target
+  that did not compile under the workspace's own `print_stderr` deny — along
+  with every finding behind it. Tests are the larger half of this repository
+  by line count and are read far more often than they are written; a lint
+  that stops at the crate boundary covers the smaller half and reports the
+  answer of the half it skipped. Do not narrow it back to buy a green build:
+  a lint that must not fire in one place is an `#[allow]` with a reason
+  comment at that place, which is a decision a reviewer can see.
 * Rust edition 2024, MSRV 1.89 declared in `rust-toolchain.toml` and in
   each manifest's `rust-version`. Workspace lints in the root `Cargo.toml`
   forbid `unsafe_code` and deny `print_stdout` / `print_stderr`.
@@ -394,7 +404,7 @@ $ cargo +stable fmt --all -- --check
 $ scripts/oversized-files.sh
 $ cargo +stable test --workspace --no-fail-fast
 $ cargo +stable test --workspace --release --no-fail-fast
-$ cargo +stable clippy --workspace -- -D warnings
+$ cargo +stable clippy --workspace --all-targets -- -D warnings
 $ RUSTDOCFLAGS="-D warnings" cargo +stable doc --workspace --no-deps
 $ cargo +stable test -p fsm-cli --test zero_deps
 $ cargo +stable test -p fsm-embed-acceptance

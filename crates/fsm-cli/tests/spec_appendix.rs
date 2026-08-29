@@ -237,20 +237,30 @@ fn git_dep_snippets_match_the_manifest_repository() {
 const CI_WORKFLOW: &str = include_str!("../../../.github/workflows/ci.yml");
 const RELEASE_WORKFLOW: &str = include_str!("../../../.github/workflows/release.yml");
 const RELEASING_DOC: &str = include_str!("../../../docs/RELEASE.md");
+const CONTRIBUTING_DOC: &str = include_str!("../../../CONTRIBUTING.md");
 
 /// The release workflow re-runs the branch gate against the tagged commit, and
-/// docs/RELEASE.md tells a human the same list. Three copies drift, and the way
-/// they drift is silent: a check quietly stops running at exactly the moment it
+/// docs/RELEASE.md tells a human the same list. Copies drift, and the way they
+/// drift is silent: a check quietly stops running at exactly the moment it
 /// matters most. Pin them to each other.
+///
+/// `CONTRIBUTING.md` joined the pin in plan 0019, when widening the clippy line
+/// to `--all-targets` had to be applied to it by hand — a fourth copy nothing
+/// was checking is the same hazard as the three that were.
 #[test]
 fn the_gate_is_the_same_in_ci_release_and_docs() {
     const GATE: &[&str] = &[
         "cargo fmt --all -- --check",
         "cargo test --workspace",
         "cargo test --workspace --release",
-        "cargo clippy --workspace -- -D warnings",
+        "cargo clippy --workspace --all-targets -- -D warnings",
         "cargo doc --workspace --no-deps",
     ];
+    // CONTRIBUTING.md writes the same commands with an explicit `+stable`,
+    // because a contributor's `rust-toolchain.toml` would otherwise silently
+    // pin them to the MSRV. Normalize that away rather than keeping a second
+    // list, which would be the drift this test exists to catch.
+    let contributing = CONTRIBUTING_DOC.replace("cargo +stable ", "cargo ");
     for cmd in GATE {
         assert!(CI_WORKFLOW.contains(cmd), "ci.yml is missing `{cmd}`");
         assert!(
@@ -260,6 +270,23 @@ fn the_gate_is_the_same_in_ci_release_and_docs() {
         assert!(
             RELEASING_DOC.contains(cmd),
             "docs/RELEASE.md does not list `{cmd}`"
+        );
+        assert!(
+            contributing.contains(cmd),
+            "CONTRIBUTING.md's stable host gate is missing `{cmd}`"
+        );
+    }
+    // The narrow form must be gone everywhere, not merely joined by the wide
+    // one: a job that still runs it wastes a leg proving less than the gate.
+    for (name, text) in [
+        ("ci.yml", CI_WORKFLOW),
+        ("release.yml", RELEASE_WORKFLOW),
+        ("docs/RELEASE.md", RELEASING_DOC),
+        ("CONTRIBUTING.md", contributing.as_str()),
+    ] {
+        assert!(
+            !text.contains("clippy --workspace -- -D warnings"),
+            "{name} still runs the pre-0019 clippy line, which does not reach test targets"
         );
     }
 }

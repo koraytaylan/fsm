@@ -100,7 +100,7 @@ jobs:
       # local recipe in CONTRIBUTING.md already runs it this way.
       - run: cargo test --workspace --no-fail-fast
       - run: cargo test --workspace --release --no-fail-fast
-      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo doc --workspace --no-deps
       # Mirror of ci.yml's gate: committed decimal vectors must regenerate
       # byte-identically at the tag, not just at branch time.

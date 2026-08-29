@@ -90,16 +90,17 @@ locally first if you want the answer sooner.
 - `cargo fmt --all -- --check`
 - `cargo test --workspace --no-fail-fast`
 - `cargo test --workspace --release --no-fail-fast`
-- `cargo clippy --workspace -- -D warnings`
+- `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo doc --workspace --no-deps`
 - `cargo build --manifest-path fuzz/Cargo.toml --bins` — the fuzz crate is a
   separate workspace, so nothing else compiles it. Linux legs only: the
   targets are `#![no_main]` and libFuzzer provides the entry point, which the
   MSVC linker will not (`LNK1561`)
 
-Not `clippy --all-targets`: the test targets carry pre-existing lint debt.
-rustc warnings in tests are denied through `RUSTFLAGS` regardless. Widen the
-gate once that debt is paid, and update `ci.yml` and `release.yml` together.
+`clippy --all-targets` since plan 0019: the test targets' lint debt is paid
+and test code is now held to the same lints as production code. The command
+appears in `CONTRIBUTING.md`, `ci.yml`, and `release.yml`; change all three
+together or the gate a contributor runs stops being the gate that ships.
 
 ### Supported consumers
 

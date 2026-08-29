@@ -57,11 +57,12 @@ jobs:
       # local recipe in CONTRIBUTING.md already runs it this way.
       - run: cargo test --workspace --no-fail-fast
       - run: cargo test --workspace --release --no-fail-fast
-      # Not `--all-targets`: the test targets carry pre-existing clippy lint
-      # debt. rustc warnings in tests are already denied through RUSTFLAGS
-      # above, so this is narrower than it looks. Widen it once that debt is
-      # paid, and keep docs/RELEASE.md in step.
-      - run: cargo clippy --workspace -- -D warnings
+      # `--all-targets` since plan 0019: test code is compiled code, and it is
+      # the larger half of this repository. While this ran without the flag, a
+      # test target that did not compile under the workspace's own
+      # `print_stderr` deny sat green for eight plans. CONTRIBUTING.md and
+      # docs/RELEASE.md carry the same command; keep all three in step.
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo doc --workspace --no-deps
       # The fuzz crate is its own workspace, so `--workspace` above never
       # touches it and its targets drift out of the API they call. Two had:
