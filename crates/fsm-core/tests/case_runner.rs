@@ -70,6 +70,30 @@ const NEVER_SETTLES: &str = r#"{
   ]
 }"#;
 
+/// `a --go--> b`, and `b` arms a thirty-second deadline to `c`. A case that
+/// polls, then sends, then polls again must not see the second poll fire a
+/// timer that was armed one millisecond earlier.
+const ARMS_ON_ENTRY: &str = r#"{
+  "format":"fsm.machine/1","name":"armed","initial":"a",
+  "context":[],
+  "events":[{"name":"go","fields":[]}],
+  "states":[{"name":"a"},{"name":"b"},{"name":"c"}],
+  "deadlines":[{"name":"late","from":"b","after":"dur(30, s)","to":"c"}],
+  "transitions":[{"from":"a","on":"go","to":"b"}]
+}"#;
+
+/// A deadline transition that breaks an `enforce` invariant, so polling it is
+/// rejected atomically by the engine.
+const POLL_IS_REJECTED: &str = r#"{
+  "format":"fsm.machine/1","name":"guarded","initial":"a",
+  "context":[{"name":"n","ty":"int","init":"0"}],
+  "events":[{"name":"noop","fields":[]}],
+  "states":[{"name":"a"},{"name":"b","entry":{"do":[{"target":"n","value":"-1"}]}}],
+  "deadlines":[{"name":"tick","from":"a","after":"dur(30, s)","to":"b"}],
+  "transitions":[],
+  "invariants":[{"name":"nonneg","expr":"ctx.n >= 0","mode":"enforce"}]
+}"#;
+
 fn compiled(source: &str) -> (CompiledMachine, Tree) {
     let value = parse(source.as_bytes(), &JsonLimits::DEFAULT).expect("the machine parses");
     let machine = compile_accepted(&value).expect("the machine compiles");
@@ -397,4 +421,89 @@ fn the_committed_golden_case_file_runs_against_the_committed_machine() {
             .unwrap_or_else(|error| panic!("{} did not run: {error:?}", scripted.name));
         assert_eq!(run.steps.len(), scripted.script.len());
     }
+}
+
+#[test]
+fn the_script_clock_never_runs_backwards() {
+    // A send after a poll used to be dated at its step index, so a deadline it
+    // armed was scheduled near zero and the next poll fired a thirty-second
+    // timer one millisecond after the state was entered. Any case mixing the
+    // two steps got a confident wrong answer about the machine.
+    let (machine, tree) = compiled(ARMS_ON_ENTRY);
+    let run = run_case(
+        &machine,
+        &tree,
+        &case(
+            "mixed",
+            vec![
+                Step::Poll { now_ms: 100_000 },
+                send("go"),
+                Step::Poll { now_ms: 100_001 },
+            ],
+        ),
+    )
+    .expect("the case runs");
+    assert_eq!(
+        leaves(&run.final_configuration),
+        ["b"],
+        "a 30s deadline fired 1ms after its state was entered"
+    );
+
+    // And it still fires once its own duration has actually passed.
+    let later = run_case(
+        &machine,
+        &tree,
+        &case(
+            "mixed",
+            vec![
+                Step::Poll { now_ms: 100_000 },
+                send("go"),
+                Step::Poll { now_ms: 130_001 },
+            ],
+        ),
+    )
+    .expect("the case runs");
+    assert_eq!(leaves(&later.final_configuration), ["c"]);
+}
+
+#[test]
+fn a_send_only_script_keeps_simulates_own_timestamps() {
+    // The monotonic rule must not change the send-only case: `simulate` dates
+    // event `i` at `i` milliseconds and a case has to agree with it.
+    let (machine, tree) = compiled(ARMS_ON_ENTRY);
+    let run = run_case(&machine, &tree, &case("plain", vec![send("go")])).expect("the case runs");
+    assert_eq!(leaves(&run.final_configuration), ["b"]);
+    let simulated = fsm_core::simulate::simulate(
+        &machine,
+        &tree,
+        &BTreeMap::new(),
+        &[("go".to_string(), Value::Obj(BTreeMap::new()))],
+        fsm_core::simulate::OnReject::Stop,
+    )
+    .expect("the simulation runs");
+    assert_eq!(
+        run.steps[0].ctx, simulated.steps[0].ctx_after,
+        "a send-only case diverged from simulate"
+    );
+    assert_eq!(run.final_configuration, simulated.final_configuration);
+}
+
+#[test]
+fn a_poll_the_engine_rejects_is_recorded_as_a_rejection() {
+    // Not silently dropped: a poll the engine refused atomically is a step
+    // that did not run, exactly as a rejected send is, and a case that
+    // reported `ok` for it would be asserting nothing while claiming success.
+    let (machine, tree) = compiled(POLL_IS_REJECTED);
+    let run = run_case(
+        &machine,
+        &tree,
+        &case("rejected", vec![Step::Poll { now_ms: 30_000 }]),
+    )
+    .expect("the case runs");
+    let StepOutcome::Polled(DeadlineOutcome::Rejected(rejected)) = &run.steps[0].outcome else {
+        panic!("the poll was not rejected: {:?}", run.steps[0].outcome);
+    };
+    assert!(!rejected.rejection.code.is_empty());
+    // The state is untouched: the whole macrostep was rejected.
+    assert_eq!(leaves(&run.final_configuration), ["a"]);
 }

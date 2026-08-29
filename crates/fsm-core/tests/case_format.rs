@@ -239,19 +239,38 @@ fn a_format_other_than_the_current_one_is_refused_and_names_what_was_found() {
     assert!(missing.contains("format"), "{missing}");
 }
 
+/// `n` cases, each with its own name, since duplicates are refused.
+fn many_cases(n: usize) -> String {
+    document(&format!(
+        "[{}]",
+        (0..n)
+            .map(|index| format!("{{\"name\":\"c{index}\",\"script\":[]}}"))
+            .collect::<Vec<_>>()
+            .join(",")
+    ))
+}
+
 #[test]
 fn the_cases_ceiling_admits_the_limit_and_refuses_one_more() {
-    let case = "{\"name\":\"c\",\"script\":[]}";
-    let exact = document(&format!("[{}]", vec![case; MAX_CASES_PER_FILE].join(",")));
     assert!(
-        parse_cases(exact.as_bytes()).is_ok(),
+        parse_cases(many_cases(MAX_CASES_PER_FILE).as_bytes()).is_ok(),
         "exactly {MAX_CASES_PER_FILE} cases was refused"
     );
-    let over = document(&format!(
-        "[{}]",
-        vec![case; MAX_CASES_PER_FILE + 1].join(",")
+    assert!(codes(&many_cases(MAX_CASES_PER_FILE + 1)).contains(&"case/limit_cases".to_string()));
+}
+
+#[test]
+fn two_cases_with_one_name_are_refused() {
+    // A name is how a reader, `--case`, and every report address a case. A
+    // duplicate makes all three ambiguous and each resolves it differently:
+    // regeneration wrote both expectations into the first case's block and
+    // left the second untouched.
+    let rendered = rendered(&document(
+        "[{\"name\":\"same\",\"script\":[]},{\"name\":\"same\",\"script\":[]}]",
     ));
-    assert!(codes(&over).contains(&"case/limit_cases".to_string()));
+    assert!(rendered.contains("case/shape"), "{rendered}");
+    assert!(rendered.contains("same"), "{rendered}");
+    assert!(rendered.contains("own name"), "{rendered}");
 }
 
 #[test]

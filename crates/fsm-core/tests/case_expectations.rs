@@ -153,6 +153,25 @@ fn effects_in_a_different_order_do_diverge() {
 }
 
 #[test]
+fn a_set_compared_field_ignores_a_repeated_entry() {
+    // "Compares as a set" has to mean it on **both** sides. Reporting
+    // `[x, x]` against an observed `[x]` compares a multiset while claiming to
+    // compare a set — and a `supersedes` mapping that merges two old leaves
+    // onto one new state produces exactly that shape.
+    let observed = run(TWO_OF_EACH, vec![send("a"), send("b")]);
+    let repeated = Expect {
+        configuration: Some(strings(&["l1", "r1", "l1"])),
+        enabled: Some(strings(&[])),
+        ..Expect::default()
+    };
+    assert_eq!(
+        diverge(&repeated, &observed),
+        Vec::new(),
+        "a repeated leaf in a set-compared field was reported as a difference"
+    );
+}
+
+#[test]
 fn an_enabled_set_is_order_insensitive() {
     let observed = run(TWO_OF_EACH, vec![]);
     for order in [["a", "b"], ["b", "a"]] {
@@ -296,12 +315,51 @@ fn a_step_that_could_not_run_is_reported_before_any_expectation() {
     assert_eq!(found[0].field, "script");
     assert_eq!(found[0].step, 1, "the refusal does not name its step");
     assert_eq!(found[0].rule, Rule::Script);
+    // `expected` is always "the step runs" and `found` is always the reason.
+    // Two shapes here made every consumer pick a half, and the delta report
+    // picked the one that dropped the effect's name.
+    assert_eq!(found[0].expected, "the step runs");
     assert!(
-        found[0].found.contains("notify"),
-        "the refusal does not list what was pending: {:?}",
+        found[0].found.contains("nosuch") && found[0].found.contains("notify"),
+        "the reason does not name the effect or list what was pending: {:?}",
         found[0]
     );
     assert_eq!(found[1].field, "configuration");
+}
+
+/// A deadline transition whose entry action breaks an `enforce` invariant, so
+/// the engine rejects the poll atomically.
+const POLL_IS_REJECTED: &str = r#"{
+  "format":"fsm.machine/1","name":"guarded","initial":"a",
+  "context":[{"name":"n","ty":"int","init":"0"}],
+  "events":[{"name":"noop","fields":[]}],
+  "states":[{"name":"a"},{"name":"b","entry":{"do":[{"target":"n","value":"-1"}]}}],
+  "deadlines":[{"name":"tick","from":"a","after":"dur(30, s)","to":"b"}],
+  "transitions":[],
+  "invariants":[{"name":"nonneg","expr":"ctx.n >= 0","mode":"enforce"}]
+}"#;
+
+#[test]
+fn a_poll_the_engine_rejected_is_a_divergence_rather_than_a_silent_pass() {
+    // The case this format exists to prevent, reached from the other side: the
+    // poll was refused, the configuration therefore matched what the author
+    // wrote, and the case reported `ok` while asserting nothing about a script
+    // the machine would not run.
+    let observed = run(POLL_IS_REJECTED, vec![Step::Poll { now_ms: 30_000 }]);
+    let expect = Expect {
+        configuration: Some(strings(&["a"])),
+        ..Expect::default()
+    };
+    let found = diverge(&expect, &observed);
+    assert_eq!(
+        found.len(),
+        1,
+        "a rejected poll was dropped and the case passed: {found:?}"
+    );
+    assert_eq!(found[0].field, "script");
+    assert_eq!(found[0].rule, Rule::Script);
+    assert_eq!(found[0].step, 0);
+    assert!(!passes(&expect, &observed));
 }
 
 #[test]

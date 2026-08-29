@@ -551,9 +551,20 @@ pub fn parse_cases(bytes: &[u8]) -> Result<CaseFile, Vec<Finding>> {
         ));
         return Err(errors);
     }
-    let mut cases = Vec::new();
+    let mut cases: Vec<Case> = Vec::new();
     for (index, entry) in entries.iter().enumerate() {
         if let Some(case) = parse_case(entry, &format!("/cases/{index}"), &mut errors) {
+            // Names are how a reader, `--case`, and a report all address a
+            // case. A duplicate makes every one of those ambiguous and each
+            // resolves it differently — silently.
+            if cases.iter().any(|earlier| earlier.name == case.name) {
+                errors.push(err(
+                    "case/shape",
+                    &format!("/cases/{index}/name"),
+                    format!("two cases are named {}", case.name),
+                    "give every case in a file its own name: `--case` and every report address a case by it",
+                ));
+            }
             cases.push(case);
         }
     }

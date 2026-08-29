@@ -37,7 +37,7 @@ use crate::analyze::EventStatus;
 use crate::cases::format::Expect;
 use crate::cases::run::{CaseRun, StepOutcome};
 use crate::replay::ctx_val_string;
-use crate::step::Outcome;
+use crate::step::{DeadlineOutcome, Outcome};
 
 /// The comparison rule a field was checked under.
 ///
@@ -96,9 +96,16 @@ fn render(items: &[String]) -> String {
     items.join(", ")
 }
 
-fn sorted(items: &[String]) -> Vec<String> {
+/// A set-compared field, as a set.
+///
+/// Deduplicated as well as sorted, because "compares as a set" has to mean it
+/// on **both** sides: a repeated leaf in an expectation is the same set as one
+/// leaf, and reporting `[x, x]` against `[x]` as a difference is comparing a
+/// multiset while claiming to compare a set.
+fn as_set(items: &[String]) -> Vec<String> {
     let mut out: Vec<String> = items.to_vec();
     out.sort();
+    out.dedup();
     out
 }
 
@@ -115,28 +122,38 @@ pub fn diverge(expect: &Expect, run: &CaseRun) -> Vec<Divergence> {
     // saying "configuration differs" first would send the author to the wrong
     // half of the file.
     for observation in &run.steps {
-        match &observation.outcome {
-            StepOutcome::Refused(refusal) => out.push(Divergence {
+        // `expected` is always "the step runs" and `found` is always the
+        // reason it did not. Two shapes here would make every consumer pick a
+        // half, and the delta report picked the wrong one.
+        let reason = match &observation.outcome {
+            StepOutcome::Refused(refusal) => Some(if refusal.pending.is_empty() {
+                format!("{}; nothing is pending", refusal.message)
+            } else {
+                format!("{}; pending: {}", refusal.message, render(&refusal.pending))
+            }),
+            StepOutcome::Sent(Outcome::Rejected(rejection)) => {
+                Some(format!("{}: {}", rejection.code, rejection.message))
+            }
+            // A poll the engine rejected atomically is a step that did not
+            // run, exactly as a rejected send is. Dropping it made the case
+            // report `ok` for a script the machine refused — the "asserts
+            // nothing and reports success" failure this format exists to
+            // prevent, arrived at from the other direction.
+            StepOutcome::Polled(DeadlineOutcome::Rejected(rejected)) => Some(format!(
+                "{}: {}",
+                rejected.rejection.code, rejected.rejection.message
+            )),
+            _ => None,
+        };
+        if let Some(found) = reason {
+            out.push(Divergence {
                 field: "script",
                 key: None,
-                expected: refusal.message.clone(),
-                found: if refusal.pending.is_empty() {
-                    "nothing is pending".into()
-                } else {
-                    format!("pending: {}", render(&refusal.pending))
-                },
+                expected: "the step runs".into(),
+                found,
                 step: observation.index,
                 rule: Rule::Script,
-            }),
-            StepOutcome::Sent(Outcome::Rejected(rejection)) => out.push(Divergence {
-                field: "script",
-                key: None,
-                expected: "the event applies".into(),
-                found: format!("{}: {}", rejection.code, rejection.message),
-                step: observation.index,
-                rule: Rule::Script,
-            }),
-            _ => {}
+            });
         }
     }
 
@@ -144,12 +161,12 @@ pub fn diverge(expect: &Expect, run: &CaseRun) -> Vec<Divergence> {
         // A set: a configuration *is* a set, and parallel regions make any
         // written order an artefact.
         let found = configuration_leaves(run);
-        if sorted(expected) != sorted(&found) {
+        if as_set(expected) != as_set(&found) {
             out.push(Divergence::new(
                 "configuration",
                 Rule::Set,
-                render(&sorted(expected)),
-                render(&sorted(&found)),
+                render(&as_set(expected)),
+                render(&as_set(&found)),
                 last,
             ));
         }
@@ -183,12 +200,12 @@ pub fn diverge(expect: &Expect, run: &CaseRun) -> Vec<Divergence> {
             .filter(|report| report.status == EventStatus::Enabled)
             .map(|report| report.event.clone())
             .collect();
-        if sorted(expected) != sorted(&found) {
+        if as_set(expected) != as_set(&found) {
             out.push(Divergence::new(
                 "enabled",
                 Rule::Set,
-                render(&sorted(expected)),
-                render(&sorted(&found)),
+                render(&as_set(expected)),
+                render(&as_set(&found)),
                 last,
             ));
         }

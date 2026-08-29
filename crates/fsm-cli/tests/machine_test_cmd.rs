@@ -352,6 +352,35 @@ fn omitting_cases_is_a_usage_error_that_names_the_flag() {
 }
 
 #[test]
+fn a_failed_case_and_an_unreadable_file_have_different_exit_codes() {
+    // The doc comment claims a CI job can tell "your machine changed" apart
+    // from "your file is unreadable". It could not: `render::exit_code` maps
+    // every unrecognized namespace to 1, which is the same code a failing case
+    // exits with.
+    let directory = TestDirectory::create("exit-codes");
+    let (machine, cases) = directory.with(MACHINE, FAILING);
+    let machine = machine.to_str().expect("utf-8 path").to_string();
+    let cases = cases.to_str().expect("utf-8 path").to_string();
+    let (failed, _stdout, _stderr) = run_in(&directory.0, &test_argv(&machine, &cases));
+
+    let malformed = TestDirectory::create("exit-codes-bad");
+    let (bad_machine, bad_cases) = malformed.with(MACHINE, "{\"format\":\"fsm.cases/9\"}");
+    let (unreadable, _stdout, _stderr) = run_in(
+        &malformed.0,
+        &test_argv(
+            bad_machine.to_str().expect("utf-8 path"),
+            bad_cases.to_str().expect("utf-8 path"),
+        ),
+    );
+    assert_ne!(failed, 0);
+    assert_ne!(unreadable, 0);
+    assert_ne!(
+        failed, unreadable,
+        "a failing case and an unreadable file exit the same way"
+    );
+}
+
+#[test]
 fn the_help_output_lists_the_command_and_its_flags() {
     let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
         .arg("--help")

@@ -169,6 +169,12 @@ fn translate(
         }
     }
     let _ = old;
+    // A mapping may merge two old leaves onto one new state. `configuration`
+    // compares as a set, so the translated expectation has to be one too —
+    // otherwise `[x, x]` against an observed `[x]` reports a delta the
+    // migration would not produce.
+    mapped.sort();
+    mapped.dedup();
     Ok(mapped)
 }
 

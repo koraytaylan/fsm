@@ -310,3 +310,37 @@ fn the_help_text_says_the_delta_is_a_report_and_never_a_gate() {
         "the help text does not say the delta never gates: {help}"
     );
 }
+
+#[test]
+fn a_refused_case_names_the_reason_rather_than_the_pending_list() {
+    // The common shape of this outcome is "the new definition no longer emits
+    // an effect the old case acks". The report used to take the wrong half of
+    // the divergence and read `refused ... nothing is pending`, dropping the
+    // effect's name — the one piece of information the author needs.
+    let workspace = Workspace::create("refused-detail");
+    let acking = r#"{
+  "format": "fsm.cases/1",
+  "machine": "case_review",
+  "cases": [
+    {
+      "name": "acks_an_effect_the_new_definition_no_longer_emits",
+      "script": [{"send": "docs_ok"}, {"ack": "notify", "outcome": "ok"}],
+      "expect": {"configuration": ["docs_review"]}
+    }
+  ]
+}"#;
+    workspace.write("cases.json", acking);
+    // The new definition drops the emit, so nothing is pending to ack.
+    let no_emit = renamed(FULL_MAP).replace(
+        "\"emit\": [{\"effect\": \"notify\", \"args\": {}}]",
+        "\"emit\": []",
+    );
+    workspace.write("new.json", &no_emit);
+    let (code, stdout, stderr) = workspace.delta("new.json");
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.contains("refused"), "{stdout}");
+    assert!(
+        stdout.contains("notify"),
+        "the refusal does not name the effect the script acked: {stdout}"
+    );
+}

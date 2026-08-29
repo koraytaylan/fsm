@@ -226,7 +226,14 @@ pub fn emit_error(ctx: &Ctx, err: &ErrorObj) -> u8 {
 }
 
 pub fn exit_code(code: &str) -> u8 {
-    if code == "args" || code.starts_with("args/") || code == "usage" {
+    if code == "args"
+        || code.starts_with("args/")
+        || code == "usage"
+        // A malformed case file is an input the caller must fix, like a usage
+        // error — and it must not share an exit code with "a case failed",
+        // which is a *result*. A CI job needs to tell those apart.
+        || code.starts_with("case/")
+    {
         2
     } else if code.ends_with("_not_found") || code.contains("not_found") {
         3

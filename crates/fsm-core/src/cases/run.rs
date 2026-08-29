@@ -27,10 +27,17 @@
 //!
 //! # Time is the script's, never the runner's
 //!
-//! A `send` uses its step index in milliseconds, exactly as
-//! [`crate::simulate::simulate`] does. A `poll` uses the time the script
-//! carries. Nothing here reads a clock — this crate has none, and acquiring
-//! one would make a case's result depend on when it ran.
+//! A `poll` uses the time the script carries. A `send` uses the step index in
+//! milliseconds, exactly as [`crate::simulate::simulate`] does — **except that
+//! the script's clock never runs backwards**. Without that, a send after a
+//! poll at 100 000 ms would be dated at its step index, arming any deadline it
+//! schedules near zero, and the next poll would fire a thirty-second timer one
+//! millisecond after the state was entered. A case mixing the two steps would
+//! then give a confident wrong verdict about the machine. For a script with no
+//! polls the rule is identical to `simulate`'s.
+//!
+//! Nothing here reads a clock — this crate has none, and acquiring one would
+//! make a case's result depend on when it ran.
 //!
 //! # Every engine bound is inherited, none is relaxed
 //!
@@ -215,25 +222,24 @@ pub fn run_case(machine: &CompiledMachine, tree: &Tree, case: &Case) -> Result<C
     };
 
     let mut steps = Vec::new();
+    // The script's clock. Monotonic by construction: a poll may name any time,
+    // and a send that follows one is never dated before it.
+    let mut now_ms: i64 = 0;
     for (index, scripted) in case.script.iter().enumerate() {
         let (outcome, emitted) = match scripted {
             Step::Send { event, payload } => {
+                now_ms = now_ms.max(index as i64);
                 let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
-                let out = step_event(
-                    machine,
-                    tree,
-                    &state,
-                    event,
-                    payload,
-                    index as i64,
-                    &mut budget,
-                );
+                let out = step_event(machine, tree, &state, event, payload, now_ms, &mut budget);
                 let emitted = apply_event(&mut state, &out);
                 (StepOutcome::Sent(out), emitted)
             }
-            Step::Poll { now_ms } => {
+            Step::Poll { now_ms: at } => {
+                // The poll happens at the time the script names, whatever the
+                // clock says; the clock only refuses to go backwards.
+                now_ms = now_ms.max(*at);
                 let mut budget = Budget::new(crate::limits::MACROSTEP_EVAL_TICKS);
-                let out = poll_deadline(machine, tree, &state, *now_ms, &mut budget);
+                let out = poll_deadline(machine, tree, &state, *at, &mut budget);
                 let emitted = apply_deadline(&mut state, &out);
                 (StepOutcome::Polled(out), emitted)
             }

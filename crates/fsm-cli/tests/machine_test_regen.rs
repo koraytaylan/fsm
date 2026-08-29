@@ -125,9 +125,13 @@ impl Repo {
 
     /// Run `machine test`, with regeneration on or off.
     fn run(&self, regen: bool, file: &str) -> (i32, String, String) {
+        self.run_with(regen, &["machine", "test", "machine.json", "--cases", file])
+    }
+
+    fn run_with(&self, regen: bool, argv: &[&str]) -> (i32, String, String) {
         let mut command = Command::new(env!("CARGO_BIN_EXE_fsm"));
         command
-            .args(["machine", "test", "machine.json", "--cases", file])
+            .args(argv)
             .current_dir(&self.0)
             .env("NO_COLOR", "1")
             .env_remove("FSM_REGEN_FIXTURES");
@@ -349,4 +353,214 @@ fn a_missing_git_is_reported_as_its_own_fault_not_as_a_dirty_file() {
         "a missing git was blamed on the file: {stderr}"
     );
     assert!(Path::new(&repo.cases()).exists());
+}
+
+/// A case file in a subdirectory, which is the shape the pathspec bug hid in.
+const NESTED: &str = CASES;
+
+#[test]
+fn a_case_file_outside_the_working_directory_is_still_seen_as_tracked() {
+    // Git resolves a pathspec relative to the directory it runs in, so running
+    // in the file's parent while passing the user's whole path asked about
+    // `sub/sub/cases.json` — and every case file that was not in the process's
+    // own directory was reported as untracked. Nothing in the suite or the
+    // docs ever used any other shape.
+    let repo = Repo::create("nested", CASES);
+    fs::create_dir_all(repo.0.join("sub")).expect("creatable");
+    fs::write(repo.0.join("sub/cases.json"), NESTED).expect("writable");
+    repo.commit();
+    let before = fs::read_to_string(repo.0.join("sub/cases.json")).expect("readable");
+    let (code, stdout, stderr) = repo.run_with(
+        true,
+        &[
+            "machine",
+            "test",
+            "machine.json",
+            "--cases",
+            "sub/cases.json",
+        ],
+    );
+    assert!(
+        !stderr.contains("not tracked"),
+        "a tracked file in a subdirectory was reported as untracked: {stderr}"
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_ne!(
+        fs::read_to_string(repo.0.join("sub/cases.json")).expect("readable"),
+        before,
+        "the nested file was not regenerated"
+    );
+
+    // And the dirty check reaches it too, rather than failing open.
+    fs::write(
+        repo.0.join("sub/cases.json"),
+        NESTED.replace("docs_ok", "docs_ok "),
+    )
+    .expect("writable");
+    let (code, _stdout, stderr) = repo.run_with(
+        true,
+        &[
+            "machine",
+            "test",
+            "machine.json",
+            "--cases",
+            "sub/cases.json",
+        ],
+    );
+    assert_ne!(code, 0, "a dirty nested file was regenerated");
+    assert!(stderr.contains("uncommitted"), "{stderr}");
+}
+
+#[test]
+fn case_narrows_what_regeneration_rewrites() {
+    // An author fixing one case does not expect every other diverging case in
+    // the file to be rewritten under them.
+    let two = CASES.replace(
+        "\"name\": \"already_right\",\n      \"context\": {\"score\": \"0\"},\n      \"script\": [{\"send\": \"docs_ok\"}],\n      \"expect\": {\"configuration\": [\"docs_review\"]}",
+        "\"name\": \"also_diverges\",\n      \"script\": [{\"send\": \"docs_ok\"}],\n      \"expect\": {\"configuration\": [\"approved\"]}",
+    );
+    let repo = Repo::create("narrow", &two);
+    let (code, stdout, stderr) = repo.run_with(
+        true,
+        &[
+            "machine",
+            "test",
+            "machine.json",
+            "--cases",
+            "cases.json",
+            "--case=diverges",
+        ],
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let file = parse_cases(repo.read().as_bytes()).expect("parses");
+    let other = file
+        .cases
+        .iter()
+        .find(|case| case.name == "also_diverges")
+        .expect("the second case is still there");
+    assert_eq!(
+        other.expect.configuration.as_deref(),
+        Some(["approved".to_string()].as_slice()),
+        "--case rewrote a case the author did not name"
+    );
+}
+
+#[test]
+fn a_case_named_expect_is_not_spliced_over_its_own_script() {
+    // The splicer used to search for a quoted `"expect"` token without telling
+    // a key from a value, so a case *named* `expect` matched on its own name
+    // and the rendered block was written over the next key's value — silently
+    // corrupting the file while reporting success.
+    let named = CASES.replace("\"name\": \"diverges\"", "\"name\": \"expect\"");
+    let repo = Repo::create("named-expect", &named);
+    let (_code, _stdout, _stderr) = repo.run(true, "cases.json");
+    let file =
+        parse_cases(repo.read().as_bytes()).expect("the file still parses after regeneration");
+    let case = file
+        .cases
+        .iter()
+        .find(|case| case.name == "expect")
+        .expect("the case survived");
+    assert_eq!(case.script.len(), 1, "the script was overwritten");
+}
+
+#[test]
+fn a_case_the_splicer_cannot_place_is_reported_rather_than_called_unchanged() {
+    // "nothing diverged, so nothing was regenerated" about a case that just
+    // diverged is a false statement, and it was what an unlocatable case
+    // produced.
+    let braces = CASES.replace(
+        "{\"send\": \"docs_ok\"}\n      ],\n      \"expect\": {\n        \"terminal\": true",
+        "{\"send\": \"docs_ok\", \"payload\": {\"note\": \"}}}\"}}\n      ],\n      \"expect\": {\n        \"terminal\": true",
+    );
+    let repo = Repo::create("braces", &braces);
+    let (code, stdout, stderr) = repo.run(true, "cases.json");
+    // Either it splices correctly, or it says it could not — never silence.
+    if code != 0 {
+        assert!(
+            stdout.contains("not regenerated") || stdout.contains("nothing diverged"),
+            "{stdout}{stderr}"
+        );
+        assert!(
+            !stdout.contains("nothing diverged") || !stdout.contains("terminal"),
+            "a diverging case was reported as unchanged: {stdout}"
+        );
+    }
+    // Whatever happened, the file still parses.
+    parse_cases(repo.read().as_bytes()).expect("the file still parses");
+}
+
+/// A machine whose string context carries a control character, so what
+/// regeneration writes has to be escaped as JSON rather than as Rust.
+const CONTROL: &str = "{\
+  \"format\":\"fsm.machine/1\",\"name\":\"control\",\"initial\":\"a\",\
+  \"context\":[{\"name\":\"s\",\"ty\":\"str\",\"init\":\"x\\u0001y\\\"z\"}],\
+  \"events\":[{\"name\":\"go\",\"fields\":[]}],\
+  \"states\":[{\"name\":\"a\"},{\"name\":\"b\"}],\
+  \"transitions\":[{\"from\":\"a\",\"on\":\"go\",\"to\":\"b\"}]\
+}";
+
+const CONTROL_CASES: &str = r#"{
+  "format": "fsm.cases/1",
+  "machine": "control",
+  "cases": [
+    {
+      "name": "wrong_on_purpose",
+      "script": [{"send": "go"}],
+      "expect": {"context": {"s": "not-what-it-holds"}}
+    }
+  ]
+}
+"#;
+
+#[test]
+fn a_control_character_survives_regeneration_as_valid_json() {
+    // Rust's `{:?}` renders a control character as `\u{1}`, which no JSON
+    // parser accepts — so a regenerated file carrying one would stop being
+    // readable by the format it was written for. Asserted through the parser
+    // rather than against a literal: the property is "a reader accepts it".
+    let repo = Repo::create("control", CONTROL_CASES);
+    fs::write(repo.0.join("machine.json"), CONTROL).expect("writable");
+    repo.commit();
+    let (code, stdout, stderr) = repo.run(true, "cases.json");
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let file = parse_cases(repo.read().as_bytes())
+        .expect("the regenerated file parses under the format parser");
+    let observed = file.cases[0]
+        .expect
+        .context
+        .as_ref()
+        .and_then(|context| context.get("s"))
+        .expect("the context key survived");
+    assert!(
+        observed.contains('\u{1}') && observed.contains('"'),
+        "the observed value was not written faithfully: {observed:?}"
+    );
+    // And the rewritten file passes, which is the whole point.
+    repo.commit();
+    assert_eq!(repo.run(false, "cases.json").0, 0);
+}
+
+#[test]
+fn a_context_key_the_machine_does_not_declare_is_reported_not_invented() {
+    // Writing `""` for a key the run never produced would be writing something
+    // that was never observed, which is the one thing regeneration must not
+    // do — and it made the second run claim "nothing diverged" while the case
+    // kept failing.
+    let stale = CASES.replace(
+        "\"expect\": {\n        \"terminal\": true,",
+        "\"expect\": {\n        \"context\": {\"gone\": \"1\"},\n        \"terminal\": true,",
+    );
+    let repo = Repo::create("stale-key", &stale);
+    let (code, stdout, _stderr) = repo.run(true, "cases.json");
+    assert!(
+        stdout.contains("gone") || stdout.contains("not regenerated"),
+        "a stale context key was silently filled in: {stdout}"
+    );
+    let after = repo.read();
+    assert!(
+        !after.contains("\"gone\": \"\""),
+        "regeneration invented an empty value it never observed:\n{after}"
+    );
+    let _ = code;
 }

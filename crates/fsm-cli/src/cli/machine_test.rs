@@ -35,9 +35,12 @@ use crate::store::ErrorObj;
 
 /// Exit status when the command ran and at least one case failed.
 ///
-/// Distinct from the error codes: nothing went wrong with the *command*, and a
-/// CI job wants to tell "your machine changed" apart from "your file is
-/// unreadable".
+/// Distinct from the error codes, and it has to be *made* distinct: nothing
+/// went wrong with the command, and a CI job wants to tell "your machine
+/// changed" apart from "your file is unreadable". `render::exit_code` maps
+/// every code outside the named namespaces to 1, so the `case/*` codes are
+/// routed to the usage bucket — a malformed case file is an input to fix,
+/// not a result to read.
 pub const EXIT_CASES_FAILED: u8 = 1;
 
 /// Compile the definition, or return the compiler's own findings.
@@ -298,7 +301,7 @@ pub(super) fn test(ctx: &mut Ctx, args: &Args) -> u8 {
     // Regeneration is a different operation with a different exit rule, and
     // the ordinary path below never writes.
     if crate::cli::machine_test_regen::requested() {
-        return regenerate(ctx, &machine, &tree, &file, cases_path, &cases_text);
+        return regenerate(ctx, &machine, &tree, &file, &cases, cases_path, &cases_text);
     }
     let (value, _passed, failed) = report(&machine, &tree, &file, &cases);
     if ctx.json {
@@ -321,11 +324,13 @@ fn print_report(text: &str) {
 /// anything.
 pub const EXIT_NOTHING_REGENERATED: u8 = 3;
 
+#[allow(clippy::too_many_arguments)]
 fn regenerate(
     ctx: &mut Ctx,
     machine: &CompiledMachine,
     tree: &Tree,
     file: &CaseFile,
+    cases: &[&Case],
     path: &str,
     source: &str,
 ) -> u8 {
@@ -334,7 +339,7 @@ fn regenerate(
     if let Err(error) = regen::require_reviewable(target) {
         return emit_error(ctx, &error);
     }
-    let regeneration = match regen::regenerate(machine, tree, file, source) {
+    let regeneration = match regen::regenerate(machine, tree, file, cases, source) {
         Ok(regeneration) => regeneration,
         Err(error) => return emit_error(ctx, &error),
     };
