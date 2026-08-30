@@ -1,0 +1,45 @@
+# The acceptance image: build the shipped binary the way a consumer would, then
+# drive it from a client that shares nothing with it.
+#
+# `cargo install --locked` rather than `cargo build` on purpose — that is the
+# command `docs/RELEASE.md` puts on the manual list, and it is what a consumer
+# runs. If the lockfile does not resolve, this image does not build.
+
+ARG RUST_VERSION=1.89.0
+FROM docker.io/library/rust:${RUST_VERSION}-bookworm AS build
+
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+# `fsm docs spec` serves the specification out of the binary, so the build
+# needs the two documents `fsm-cli` embeds. Missing them is a compile error,
+# not a runtime one.
+COPY docs ./docs
+
+# No `rust-toolchain.toml` is copied: the base image already carries the pinned
+# version, and the file would make cargo fetch a second copy of it.
+RUN cargo install --path crates/fsm-cli --locked --root /usr/local
+
+FROM docker.io/library/debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/local/bin/fsm /usr/local/bin/fsm
+
+# The repository's own data — example machines, fixture machines, the case
+# files, the decimal generator. Read-only inputs to the scenarios.
+WORKDIR /src
+COPY examples ./examples
+COPY tools ./tools
+COPY Cargo.toml ./Cargo.toml
+COPY crates/fsm-core/tests/fixtures ./crates/fsm-core/tests/fixtures
+COPY acceptance/suite ./acceptance/suite
+
+ENV FSM_BIN=/usr/local/bin/fsm \
+    FSM_REPO=/src \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python3", "-m", "acceptance.suite.run"]

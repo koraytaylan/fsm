@@ -132,15 +132,33 @@ fn the_wire_surface_is_named_as_a_compatibility_surface() {
 }
 
 #[test]
-fn a_second_transport_gets_its_own_manual_acceptance() {
-    let row = RELEASE
-        .lines()
-        .find(|line| line.contains("HTTP transport") && line.contains("manual:"))
-        .expect("RELEASE.md lists a manual pass for the HTTP transport");
-    let _ = row;
+fn a_second_transport_gets_its_own_acceptance_coverage() {
+    // This asserted a `manual:` row, on the premise that a stream is "the part
+    // a suite cannot judge". That premise was wrong: the acceptance suite
+    // holds a GET open on its own connection, advances the instance over a
+    // second connection, and waits for the push — which is the thing the
+    // manual pass was describing, run identically every time instead of
+    // whenever somebody remembered.
+    //
+    // What has to stay true is the requirement, not the way it is met: a
+    // second transport gets acceptance coverage of its own, and that coverage
+    // includes the stream.
     assert!(
-        RELEASE.contains("observe at\n  least one notification arrive on the SSE stream"),
-        "the pass must include the stream, which is the part a suite cannot judge"
+        RELEASE.contains("the_http_transport_serves_a_session_and_pushes_a_notification"),
+        "RELEASE.md names no acceptance scenario for the HTTP transport"
+    );
+    assert!(
+        RELEASE.contains("initialize through teardown"),
+        "the coverage must span a whole session, not one request"
+    );
+    assert!(
+        RELEASE.contains("one notification on the SSE stream"),
+        "the coverage must include the stream, which is the half a\
+         request-at-a-time test cannot reach"
+    );
+    assert!(
+        RELEASE.contains("the_http_transport_refuses_a_request_without_its_session"),
+        "teardown is only real if the session stops working afterwards"
     );
 }
 
