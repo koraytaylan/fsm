@@ -439,7 +439,20 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
         sink.writer(),
     )
     .unwrap();
-    assert!(!store.state.instances["order-1"].pending.is_empty());
+    // The send emitted an effect for the executor to find. **Not** that it is
+    // still pending: the same session runs a tick after the send, so a stub
+    // handler that finishes inside it settles the effect before this line
+    // — which is what a fast runner does, and what failed a release on
+    // macOS at the MSRV. The claim is that the effect exists, and it exists
+    // either way.
+    assert!(
+        !store.state.instances["order-1"].pending.is_empty()
+            || store
+                .records
+                .iter()
+                .any(|record| record.kind == RecordKind::EffectAcked),
+        "the send emitted no effect for the executor to see"
+    );
 
     // Further lines: each one drives another tick. Nothing happens between
     // them, which is exactly the limit embedded mode has and the reason the
