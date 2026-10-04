@@ -48,7 +48,15 @@ empty and permanently closed. Surviving ownership must be inspectable after
 the executor and any helper die. A backend must define what happens when its
 own service, kernel facility or required privileges disappear.
 
-Task 9301 compares four concrete decision paths:
+The user delegated this decision on 2026-10-04. The selected initial
+contained runtime is provisioned Linux/systemd, preserving safe Rust, zero
+third-party crates and MSRV 1.89. Other OS families must refuse the new
+capability until separately proved; existing six-leg portable Rust coverage
+stays mandatory. See `docs/EXECUTOR-LIFECYCLE.md` for authority, trust boundary
+and pending proof. This changes the planned platform matrix explicitly and
+does not release the native-proof gate.
+
+Task 9301 compared four concrete decision paths:
 
 | Path | Claim it could support | Required decision or proof |
 | --- | --- | --- |

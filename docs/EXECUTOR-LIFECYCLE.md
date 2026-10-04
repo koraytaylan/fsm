@@ -3,7 +3,31 @@
 ## Decision status
 
 Plan 0022 task `lifecycle-containment-feasibility` is **not complete**.
-No backend or charter exception has been accepted. The executor currently
+The user delegated the runtime/platform decision explicitly on 2026-10-04:
+“i explicitly allow you to act on my behalf on this”. Acting under that
+authority, the implementation decision is a provisioned Linux/systemd
+containment backend for the initial contained executor. Safe Rust, zero
+third-party crates and MSRV 1.89 remain binding. The new contained executor
+will initially require this Linux runtime; macOS and Windows must explicitly
+refuse that capability until separately proved backends exist. Existing
+portable core/store/CLI Rust coverage remains required. This is an explicit
+supported-runtime change, not evidence that existing macOS/Windows execution
+already satisfies containment.
+
+The selected trust boundary is the system systemd manager, protected cgroups
+and a separately authenticated, privileged local supervisor. Handler code
+runs under a different unprivileged identity without cgroup delegation,
+privilege acquisition or namespace escape. The supervisor must persist
+non-reusable domain identities and closure tombstones; unit names or PIDs
+alone are insufficient. Installation, resource-access policy, failure
+detection and unsupported-runtime refusal are implementation requirements.
+The administrator and kernel are trusted; loss of supervisor authority or
+identity evidence leaves claims unresolved. No arbitrary root command API
+may be exposed to protocol clients.
+
+Authorization is now recorded, but the native-proof gate remains unreleased.
+No downstream ownership, launch or journal implementation is justified until
+the applicable native matrix passes. The executor currently
 provides direct-child cleanup, not durable process-tree containment. Plans
 0020–0023 must not claim the stronger guarantee from the evidence below.
 
@@ -84,13 +108,76 @@ from the installed 1.89 documentation. Backend feasibility remains unproven.
 Every option still requires the full applicable native tests for atomic
 enrollment, descendants, spawn during closure, retained pipes, supervisor
 death, unrelated-process survival, identity reuse, signal notification and
-uncertain-state refusal. No production ownership, launch or journal changes
-are authorized by this feasibility note alone.
+uncertain-state refusal. The delegated decision above selects path 3 with
+a provisioned OS-managed
+backend, preserving the Rust charter. This note does not release the proof
+gate for production ownership, launch or journal changes.
 
 ## Review record
 
 Initial self-review: the probe intentionally demonstrates the existing gap;
 it neither detects a supported production backend nor tests all acceptance
-rows. Positive containment probes, native Windows/macOS evidence, backend
-selection and separate authorization remain outstanding. Task completion and
-landing OIDs must remain unset until those requirements are met.
+rows. Backend implementation and complete Linux positive proof remain
+outstanding; native unsupported-capability refusal must also be tested on
+Windows/macOS. The delegated
+authorization above resolves the decision requirement, not the proof
+requirement. Task completion and landing OIDs must remain unset until those requirements are met.
+
+## First protected host experiment
+
+The actual host, outside the command sandbox, has systemd 259.5 and a working
+noninteractive administrative provisioner. Its systemd user manager delegates
+cgroups to the caller; that same-user domain is not selected because handlers
+could otherwise have cgroup migration authority. The command sandbox's
+read-only cgroup mount does not establish the host manager's capability.
+
+A uniquely named transient system service with DynamicUser, no delegation,
+read-only cgroups, no new privileges and restricted namespaces ran a root
+and descendant under UID 61659 in the same system cgroup. The root exited,
+the descendant answered a fresh file challenge, and the unit remained active.
+Stopping only that unit killed the descendant and produced pipe EOF. All
+probe resources were temporary and cleaned up. This is partial positive
+Linux feasibility evidence, not atomic authorization, immutable identity,
+supervisor-death or full lifecycle acceptance. The first attempt failed
+before execution because task-private /tmp was invisible to the host manager;
+the successful probe used a separately provisioned, temporary /run directory.
+
+The installed manuals and upstream definitions document
+[service lifetime](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml)
+and [execution isolation](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml).
+The selected production supervisor and tombstone protocol still need native
+proof; systemd configuration resemblance does not complete task 9301.
+
+## Reproducible protected Rust probes
+
+The native fixture records its cgroup and UID at entry, before spawning or
+external fixture work. The systemd probe driver installs a root-owned copy
+of the compiled test binary into a uniquely named temporary /run directory;
+only that directory is writable by its isolated handler identity. The driver
+runs normal root exit, SIGKILL of the root, a descendant in a different
+process group, and uncatchable launcher death. Each checks a fresh descendant
+challenge, matching native cgroup membership, refused migration, survival of
+an unrelated process, cgroup removal and independently bounded pipe EOF.
+A killed service may be failed after closure; that status is neither success
+nor proof of a live tree. Closure checks the actual domain and pipe evidence.
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/systemd_probe.py --toolchain 1.89.0 --report /tmp/fsm-systemd-native-msrv.json
+python3 crates/fsm-execute/tests/lifecycle_platform/systemd_probe.py --toolchain stable --report /tmp/fsm-systemd-native-stable.json
+```
+
+Both toolchains passed these four cases on Linux 7.0.0-31-generic with systemd
+259.5. The reports bind the native executable digest, source commit/dirty
+flag, kernel, Rust and systemd versions, boot identity and observed unit
+invocation identity. They explicitly declare partial feasibility and
+`gate_released: false`; they are not consumer-installed candidate evidence.
+Atomic journal-bound authorization, spawn during closure, permanent identity
+and tombstones, privileged supervisor death/recovery, loss of authority,
+signal notification and uncertain-state replacement refusal remain unproved.
+
+The runtime restriction changes supported CLI execution behavior when the
+new runner ships. Per [API-POLICY.md](API-POLICY.md), it requires a breaking
+minor release from the current 0.3 line, an explicit runtime installation and
+upgrade guide, and release notes; no version/tag is changed by these probes.
+Historical hashes and journal bytes remain unchanged. The future claim-format
+migration still needs its own version bump and backward-reader refusal.

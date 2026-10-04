@@ -92,7 +92,7 @@ long run, using an explicit finite seed sequence and an independent event log.
 
 Two committed profiles are required: **smoke**, at least two minutes and 100
 completed fixture cycles, and **sustained**, at least eight hours and 10,000
-completed cycles per OS family on stable. Both duration and count floors apply;
+completed cycles per supported contained-executor OS family on stable. Both duration and count floors apply;
 an early success, a stalled loop or a run that merely sleeps cannot satisfy
 them. A maximum wall time and a no-progress watchdog produce incomplete/fail
 outcomes, never a silent pass. Expensive profiles are opt-in locally and run
@@ -112,11 +112,16 @@ state. No hardcoded universal throughput promise is introduced.
 
 ### Native evidence (task `9602`)
 
-Keep existing six-leg Rust coverage and add native installed-binary smoke runs
-on Linux, macOS and Windows at stable and MSRV; `FSM_BIN` must address the
-artifact built on that leg. Podman acceptance remains a separate Linux
-consumer-install proof. Sustained runs execute natively on all three OS
-families at stable through a separately bounded workflow, selected by an
+Keep existing six-leg Rust coverage and native installed-binary baseline smoke
+runs on Linux, macOS and Windows at stable and MSRV; `FSM_BIN` must address
+the artifact built on that leg. The explicitly authorized initial contained
+runtime is provisioned Linux/systemd (see `docs/EXECUTOR-LIFECYCLE.md`). Run
+the full new executor matrix on native Linux at both toolchains; macOS and
+Windows additionally prove unsupported-capability refusal before launch,
+rather than claiming containment or treating missing facilities as passes.
+Podman acceptance remains a separate Linux consumer-install proof. Sustained
+contained-executor runs initially execute natively on provisioned Linux at
+stable through a separately bounded workflow, selected by an
 immutable candidate SHA; no secrets or scheduled cost are enabled merely by
 writing this plan. Timeouts, cancellation and artifact-upload failures make
 the relevant evidence incomplete.

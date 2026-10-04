@@ -24,6 +24,26 @@ fn native_fixture() {
     };
     let directory = PathBuf::from(directory);
     let mode = std::env::var("FSM_LIFECYCLE_PROBE_MODE").expect("fixture mode");
+    if std::env::var_os("FSM_LIFECYCLE_PROBE_CONTAINED").is_some() {
+        // Record native membership before spawning or external fixture work.
+        let membership = fs::read_to_string("/proc/self/cgroup").expect("native Linux cgroup");
+        let status = fs::read_to_string("/proc/self/status").expect("native Linux identity");
+        fs::write(directory.join(format!("{mode}-cgroup")), membership).expect("membership");
+        fs::write(directory.join(format!("{mode}-status")), status).expect("identity");
+        assert!(
+            fs::write(
+                "/sys/fs/cgroup/cgroup.procs",
+                std::process::id().to_string()
+            )
+            .is_err(),
+            "handler must have no root-domain migration authority"
+        );
+        fs::write(
+            directory.join(format!("{mode}-migration-refused")),
+            b"refused",
+        )
+        .expect("migration observation");
+    }
     if mode == "descendant" {
         fs::write(directory.join("ready"), b"ready").expect("ready barrier");
         let watchdog = Instant::now();
@@ -35,9 +55,14 @@ fn native_fixture() {
         }
         return;
     }
-    let mut descendant = fixture(&directory, "descendant")
-        .spawn()
-        .expect("descendant");
+    let mut descendant_command = fixture(&directory, "descendant");
+    #[cfg(target_os = "linux")]
+    if mode == "escape" {
+        use std::os::unix::process::CommandExt;
+        // Leaving the process group must not leave the native domain.
+        descendant_command.process_group(0);
+    }
+    let mut descendant = descendant_command.spawn().expect("descendant");
     await_file(&directory.join("ready"));
     fs::write(directory.join("root-ready"), b"ready").expect("root barrier");
     if mode == "exit" {

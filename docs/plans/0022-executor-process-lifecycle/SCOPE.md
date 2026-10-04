@@ -73,3 +73,17 @@ exercise unknown native state without starting work; preserve prior journal
 history through migration and sealing; and show bounded shutdown, capture,
 worker and descriptor use. Documentation must retain the remote at-least-once
 boundary rather than turning local containment into an exactly-once claim.
+
+## Authorized initial runtime decision (2026-10-04)
+
+Under explicit user delegation, the implementation selects provisioned
+Linux/systemd for the initial contained executor. The safe-Rust,
+zero-dependency, Rust 1.89 charter remains intact. References above to every
+supported executor platform mean every platform shipping the new containment
+capability: initially Linux. macOS/Windows must reject that capability before
+handler execution until their own native backends are proved; their existing
+portable Rust and unsupported-capability tests remain required. This changes
+the planned runtime/platform matrix explicitly; it does not earn task
+completion or substitute a passing skip for native proof. The full Linux
+containment matrix and all original ownership/shutdown invariants still apply.
+See [the decision record](../../EXECUTOR-LIFECYCLE.md).

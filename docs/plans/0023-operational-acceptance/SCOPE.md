@@ -37,7 +37,11 @@ same intended scope without relying on the original score.
   plans, including process and MCP handlers over stdio and HTTP.
 - **0096 — Operational duration and portability.** A repeatable mixed workload
   with bounded fault injection, responsiveness and resource measurements,
-  short CI coverage, and sustained native Linux, macOS and Windows runs.
+  short CI coverage, and sustained native runs on each supported contained
+  runtime. The user-delegated 2026-10-04 decision selects provisioned
+  Linux/systemd initially; preserve the six-leg portable Rust and native
+  baseline smoke matrix, plus native unsupported-capability refusal on
+  macOS/Windows. The new contained executor is not claimed on those platforms.
 - **0097 — Real users and release decisions.** A reproducible but uncoached
   live-model protocol, retained host compatibility checks, and a candidate
   evidence gate which refuses missing, stale, skipped or contradictory proof.
