@@ -1264,6 +1264,19 @@ The guarantee, stated in the shape the design actually holds:
 
 ### Executor error codes
 
+The pure `fsm_execute::contract::analyze_contract` entry point checks both
+actual emits and configured success/failure events in each definition of the
+supplied static closure. It uses the core event validator and preserves typed
+causes. It fills absent stamps symbolically, preserves supplied literals, and
+accepts signed millisecond strings for integer, timestamp, duration, string,
+and all supported decimal scales. Boolean stamps are invalid; partially
+matching enum families remain unknown. For example, fix a number-token cause
+by writing `{"value":"1"}` rather than `{"value":1}`; fix a boolean stamp by
+supplying a boolean literal instead of requesting timestamp substitution.
+An absent outcome means no advance. A compatible outcome with no transition
+reports `no-transition` progress; a guard remains runtime-dependent. This API
+reads no clock, changes no payload, and does not authorize external execution.
+
 Structural contract reports use `exec/contract_invalid` for an incompatible
 contract, `exec/contract_unknown` for insufficient evidence and
 `exec/contract_limit` when a bounded analysis cannot finish. Specific findings

@@ -1,0 +1,7 @@
+{
+ "code":"exec/contract_outcome_payload","severity":"error",
+ "machine_id":"$MACHINE_ID","path":"/states/0/entry/emit/0","effect":"work","outcome":"on_ok",
+ "message":"configured outcome is not a valid externally sendable event",
+ "hint":"fix the outcome event, payload or stamped field type using the underlying cause",
+ "cause":{"code":"req/number_token","message":"req/number_token: value","hint":"send value as a JSON string"}
+}

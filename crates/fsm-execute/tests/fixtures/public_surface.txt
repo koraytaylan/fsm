@@ -193,6 +193,7 @@ field fsm_execute::watch::Slot::slot
 fn fsm_execute::config::classes_for
 fn fsm_execute::config::substitute
 fn fsm_execute::config::substitute_arguments
+fn fsm_execute::contract::analyze_contract
 fn fsm_execute::contract::analyze_effects
 fn fsm_execute::dead::dead_letters
 fn fsm_execute::dead::horizon
@@ -285,6 +286,7 @@ reexport fsm_execute::contract::FORMAT from report
 reexport fsm_execute::contract::Finding from report
 reexport fsm_execute::contract::Limits from report
 reexport fsm_execute::contract::Report from report
+reexport fsm_execute::contract::analyze_contract from outcomes
 reexport fsm_execute::contract::analyze_effects from effects
 reexport fsm_execute::run::Pipeline from pipeline
 reexport fsm_execute::run::SettleOutcome from pipeline

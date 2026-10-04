@@ -9,6 +9,7 @@ gated: false
 touches:
   - crates/fsm-execute/src/contract/mod.rs
   - crates/fsm-execute/src/contract/outcomes.rs
+  - crates/fsm-execute/src/contract/effects.rs
   - crates/fsm-execute/src/contract/report.rs
   - crates/fsm-execute/tests/contract_outcomes.rs
   - crates/fsm-execute/tests/fixtures/contract/

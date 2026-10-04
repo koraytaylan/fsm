@@ -92,6 +92,16 @@ pub fn analyze_effects(
     table: &HandlerTable,
     limits: Limits,
 ) -> Result<Report, ExecError> {
+    analyze(root, catalogue, table, limits, true)
+}
+
+pub(super) fn analyze(
+    root: &CompiledMachine,
+    catalogue: &BTreeMap<String, CompiledMachine>,
+    table: &HandlerTable,
+    limits: Limits,
+    defer_outcomes: bool,
+) -> Result<Report, ExecError> {
     let ceiling = Limits::default();
     if limits.definitions > ceiling.definitions
         || limits.sites > ceiling.sites
@@ -111,7 +121,7 @@ pub fn analyze_effects(
         contract_id: Some(identity(table, &required)),
         definitions: BTreeSet::new(),
         effects_checked: true,
-        outcomes_checked: false,
+        outcomes_checked: !defer_outcomes,
         dynamic_signals: false,
         findings: Vec::new(),
         effects: Vec::new(),
@@ -124,6 +134,7 @@ pub fn analyze_effects(
         required,
         site_bytes: 0,
         finding_bytes: 0,
+        defer_outcomes,
     };
     let mut queue = VecDeque::from([root]);
     let mut queued = BTreeSet::from([root.machine_id.clone()]);
@@ -207,6 +218,7 @@ struct Walker<'a> {
     required: BTreeMap<String, BTreeSet<String>>,
     site_bytes: usize,
     finding_bytes: usize,
+    defer_outcomes: bool,
 }
 
 impl Walker<'_> {
@@ -332,7 +344,8 @@ impl Walker<'_> {
                 ] {
                     if configured.is_some() {
                         outcomes.insert(name.into(), "unknown");
-                        self.finding(
+                        if self.defer_outcomes {
+                            self.finding(
                             machine,
                             &path,
                             Some(&emit.effect),
@@ -342,6 +355,7 @@ impl Walker<'_> {
                             "run complete outcome validation before authorizing external execution",
                             Some(name),
                         )?;
+                        }
                     } else {
                         outcomes.insert(name.into(), "no-outcome");
                         self.report.progress.insert("no-outcome".into());

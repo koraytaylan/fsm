@@ -1306,6 +1306,36 @@ limit. Exceeding any ceiling MUST return `exec/contract_limit`, never a
 truncated compatible result. Executor finding codes remain in the executor's
 registry and operator guide, not the engine registry.
 
+## Structural executor outcome checks
+
+The complete pure contract analyzer MUST validate each configured `on_ok`
+and `on_failed` of actually emitted automatic effects against that site's
+own compiled definition. It MUST reuse core `validate_event` for concrete
+payloads and externally sendable names, retaining its typed rejection as
+`cause` with exactly `code`, `message`, and `hint`. Event-name rejection uses
+`exec/contract_outcome_event`; payload rejection uses
+`exec/contract_outcome_payload`. Missing outcomes remain `no-outcome`.
+Unused shared handlers MUST NOT constrain the definition.
+
+Stamping MUST preserve supplied fields and fill only absent fields with the
+same symbolic canonical signed-i64 millisecond string. The complete family
+is compatible with `str`, `int`, `ts`, `dur`, and every accepted decimal
+scale: even i64 endpoints multiplied by 10^12 fit the decimal mantissa cap.
+It is incompatible with `bool`. An enum that contains no canonical i64
+string is incompatible; an enum containing some such strings is unknown,
+not compatible with the whole family. Unknown stamp evidence MUST NOT hide
+other known payload errors. Unknown stamp names become extra fields under
+ordinary event validation. Duplicate stamp names retain first-fill behavior.
+Static payload braces MUST remain literal. Analysis MUST read no clock.
+
+Complete outcome checking MUST set `outcomes_checked` true, replace only
+scope-related outcome unknowns from effect-only analysis, and aggregate
+known invalid before unknown before compatible. Declared outcome events with
+no matching transition add `no-transition` progress; guards and reachability
+remain runtime-dependent, never structural contradictions. Final findings,
+sites and bytes MUST satisfy the same inclusive limits and deterministic
+ordering as effect analysis. Compatibility MUST NOT authorize a spawn.
+
 ## Explicit manual executor effects
 
 The operator-owned `fsm.handlers/1` table MAY contain `manual_effects`, an
