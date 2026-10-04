@@ -25,16 +25,19 @@ One row per plan. Task status is authored in each plan's `tasks/*.md` frontmatte
 | 0019 | Consolidation | ✅ Complete | 4/4 | The committed gate widens to `--all-targets` and passes there, the workspace's one performance signal becomes a guard with a measured ceiling, and `fsm-execute`'s provisional surface is enumerated so an addition is a decision. Lands before 0017. | [status](0019-consolidation/STATUS.md) |
 | 0020 | Autonomous Embedded Execution | Unregistered | 0/7 | Planned: one bounded writer host advances effects, retries and deadlines without client polling, with responsive stdio and HTTP sessions. | [status](0020-autonomous-embedded-execution/STATUS.md) |
 | 0021 | Executor Contract Preflight | Unregistered | 0/6 | Bounded effect analysis and manual policy landed independently in `f0a489a` with reviewed Linux gates; outcome validation landed independently in `aa6fc90` with reviewed MSRV/Linux gates; CLI checks landed independently in `04dbb17` with seven reviewed MSRV/stable tests; shared execution admission and MCP checks remain incomplete. | [status](0021-executor-contract-preflight/STATUS.md) |
-| 0022 | Executor Process Lifecycle | Unregistered | 0/7 | Feasibility investigation: Linux MSRV/stable negative probes confirm surviving descendants and retained pipes; delegated authority selects initial provisioned Linux/systemd containment; six positive native cases pass at both toolchains and disabled final killing is detected; a protected identity/controller-death prototype passes ten additional cases at both toolchains; a private fixed privilege/entry prototype passes nine more native cases at both toolchains; eleven pending-job/closure-window cases also pass at both toolchains with load-bearing receipt refusal; socket-publication refusal and SIGTERM/SIGKILL notification pass with load-bearing negative controls; twelve endpoint-restart/directory/publication cases pass with load-bearing guards; the frozen 56-case aggregate passes at both compilers locally and on Ubuntu/systemd 255 CI; the six-leg portable matrix and unsupported-host refusal review are running; complete authority-loss/storage/crash/shutdown proof and gate release remain pending. | [status](0022-executor-process-lifecycle/STATUS.md) |
+| 0022 | Executor Process Lifecycle | Registered | 0/7 | By-hand Phase R binds validation base `8e3a8bb`; native prerequisite review remains gated. Both repaired-source native CI jobs pass all 61 cases with verified artifact hashes; full portable and host gates remain active. Production claims, containment integration, shutdown and recovery remain incomplete. | [status](0022-executor-process-lifecycle/STATUS.md) |
 | 0023 | Operational Acceptance | Unregistered | 0/7 | Evidence reporter verified on its exact commit; portable fixtures landed in `7c8c49c` and passed the full Linux consumer-install suite. Independent observer landed in `9903ef3` with 13 reviewed fault/ledger tests; traced external fixtures landed in `20c67d5` with nine subprocess tests; independent MCP fixture in `fb4291f` adds seven reviewed tests (45 harness tests total). Integrated executor, sustained native and live-model evidence remain incomplete. | [status](0023-operational-acceptance/STATUS.md) |
 
 ## Review follow-up: plans 0020–0023
 
 These four bundles address the remaining concerns from the review at
 `67ad5e3`; authoring and committing a plan does not implement its capability
-or earn a higher readiness score. Task statuses remain planned, with no
-landing OIDs, validation bases or execution evidence fabricated. A committed
-bundle is **Unregistered** until Phase R; before commit it is AwaitingCommit.
+or earn a higher readiness score. Task statuses remain planned until their individual acceptance criteria pass;
+independent preparation does not establish task completion. Plan 0022 now
+has a manual Phase R binding at `8e3a8bb`, following the prior by-hand mode;
+plans 0020, 0021 and 0023 remain Unregistered. Registration does not release
+a gated prerequisite or fabricate a task landing OID. Before registration a
+committed bundle is **Unregistered**; before commit it is AwaitingCommit.
 
 The integration order is **0022 → 0020 → 0021 → 0023**: establish the lifecycle
 boundary against the existing executor first, adopt it in the autonomous

@@ -1,10 +1,10 @@
-# Plan 0022 — Executor Process Lifecycle — Unregistered
+# Plan 0022 — Executor Process Lifecycle — Registered
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this
 file; task frontmatter is authoritative and the integration coordinator owns
 lifecycle updates.
 
-- **Status:** Unregistered; negative feasibility probes landed independently in `4206e8e`;
+- **Status:** Registered by hand; native prerequisite review is in progress;
   production lifecycle implementation has not started.
 - **Goal:** prevent a successor from overlapping a surviving local handler
   tree, with bounded shutdown and evidence-based restart for both process and
@@ -15,8 +15,15 @@ lifecycle updates.
   before launch, prove tree closure before reuse, and drive every execution
   host through the same shutdown and recovery protocol.
 - **Progress:** 0/7 tasks done; 0 blocked; 0 dropped; 1 planned gated task.
-- **Integration:** not started; no validation base, landing OIDs, native
-  feasibility result or implementation gate evidence is claimed.
+- **Integration:** Phase R bound by hand on `develop` to validation base
+  `8e3a8bbaed670ee9b3d7f354142090c9abc1d78d`; mode `by-hand`, following
+  plan 0019's recorded execution mode. Committed scope identity, closed task
+  frontmatter, task IDs/titles/filenames/workstreams, ordered steps, unique
+  mutation footprints and all six dependency edges validate as one acyclic
+  local DAG. No manifest owner requires footprint adoption. This is a manual
+  coordinator binding, not a claimed Makina invocation. No task landing OID
+  or completed integration is recorded; task 9301 remains gated pending its
+  complete source-bound review and portable validation.
 - **Exceptions:** task `lifecycle-containment-feasibility` requires a proved
   charter-compatible backend or an explicit project decision before dependent
   implementation; durable fail-closed behavior alone cannot complete this plan.
@@ -243,4 +250,4 @@ lifecycle updates.
   is counted as proof for the repair, and the prerequisite remains unreleased.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
-_A committed bundle remains Unregistered until Phase R binds its validation base._
+_Task frontmatter remains authoritative; registration does not release the native gate._
