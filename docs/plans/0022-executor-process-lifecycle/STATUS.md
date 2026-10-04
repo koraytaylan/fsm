@@ -136,6 +136,25 @@ lifecycle updates.
   state, and full signal/authority-loss/restart/window proof remains pending.
   Production journal/contract authorization belongs to downstream 9302/9303,
   rather than a circular prerequisite for the native feasibility task.
+- **Socket/signal review:** independent commit `ce3d163` is frozen and
+  reviewed in `776f02a..ce3d163`. A permissive creation mask is rejected before
+  privileged socket publication, and explicit UMask=0077 preserves operator-only
+  access. Two native signal cases prove SIGTERM and SIGKILL reach a surviving
+  broker as EOF and close the handler domain within two seconds while an
+  exec'd client descendant remains alive in a separate domain. This proves
+  notification and verified closure, not production graceful joining.
+  Exact clean reports `/tmp/fsm-native-signal-clean-msrv.json` and
+  `/tmp/fsm-native-signal-clean-stable.json` retain those two cases; their
+  `clean-broker-*`, `clean-window-*`, `clean-identity-*` and
+  `clean-containment-*` companions retain ten, eleven, ten and six per
+  toolchain. All identify `ce3d163`, dirty false and gate unreleased.
+  Separately neutralizing the mask and EOF guards makes the corresponding
+  native proof fail at both toolchains; `negative-mask-*` and `negative-eof-*`
+  reports retain expected negative failures. The isolated checkout is restored
+  and no task-owned units remain. Required stable Linux host gates, final
+  MSRV/stable lifecycle tests and 45 Python harness tests pass. Native
+  macOS/Windows remain unexecuted. Broker restart, authority loss, other crash
+  windows and production shutdown remain pending; no task is marked done.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._

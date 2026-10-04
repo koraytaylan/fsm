@@ -457,3 +457,19 @@ default termination behavior here: this proves a death notification primitive,
 not production graceful task joining or settlement. Broker death, stale-socket
 restart, lost authority, remaining crash windows and production shutdown still
 need evidence; task 9301 and integration remain unreleased.
+
+Frozen socket/signal review `776f02a..ce3d163` is complete. Exact clean
+reports `/tmp/fsm-native-signal-clean-{msrv,stable}.json` pass two signal
+cases per toolchain; their `clean-broker-*`, `clean-window-*`,
+`clean-identity-*` and `clean-containment-*` companions pass ten, eleven,
+ten and six. Every positive identifies source `ce3d163`, dirty false and
+gate unreleased. Separately removing the creation-mask guard and ignoring
+EOF makes the intended mask and signal cases fail at both toolchains.
+`/tmp/fsm-native-signal-negative-{mask,eof}-{msrv,stable}.json` retain those
+expected failures with dirty source, never a passing capability verdict.
+The isolated checkout is restored and no task-owned units remain. Required
+stable Linux debug/release workspace, formatting/file-size, all-targets
+Clippy, warning-free docs, zero-dependency and embedding gates pass; final
+MSRV/stable lifecycle and all 45 Python harness tests pass. Native
+macOS/Windows remain unexecuted. These private fixtures change no public
+journal/API/hash bytes; no migration evidence or task completion is claimed.
