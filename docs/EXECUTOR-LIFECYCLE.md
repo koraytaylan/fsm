@@ -352,3 +352,19 @@ A replay submitted after closure is narrower than a queued manager job
 surviving controller death. Production budgets, autonomous reconciliation,
 cross-boot authority and signal handling remain pending; task 9301 and the
 integration gate are unreleased.
+
+Frozen review range `f545be7..f95b4e3fd046fb3caeeea5a1c6540b69f03eea8e`
+is complete for this private prototype. Exact clean reports
+`/tmp/fsm-native-broker-clean-msrv.json` and
+`/tmp/fsm-native-broker-clean-stable.json` pass nine broker cases each;
+`clean-identity-*` and `clean-containment-*` companions pass ten identity and
+six containment cases per toolchain. The two
+`/tmp/fsm-native-broker-neutralized-{msrv,stable}.json` reports retain the
+expected native-enrollment failure after removing only the entry gate;
+they are negative controls with dirty source and do not claim backend success.
+The isolated checkout is restored, and no task-owned units remain. All required
+stable Linux host gates pass, as do final MSRV/stable lifecycle tests and 45
+Python harness self-tests. macOS/Windows native execution remains unperformed.
+The reviewed changes do not affect public APIs, journal formats or historical
+hashes; prior-version migration evidence is not claimed for these private
+probe records. The full task-9301 gate remains unreleased.

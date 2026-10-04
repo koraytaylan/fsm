@@ -89,6 +89,31 @@ lifecycle updates.
   idempotent close. All required Linux workspace gates, MSRV negative probes
   and 45 Python harness tests pass. No probe units remain; native
   macOS/Windows remain unexecuted.
+- **Private privilege/entry preparation:** independent commit `f95b4e3`
+  adds a fixed bounded Unix-socket protocol, operator-only access and
+  root-owned launch grants checked against actual kernel enrollment before
+  handler fixture work. Frozen review `f545be7..f95b4e3` checks closure
+  revocation ordering and bounded utility reap polling. Exact clean reports
+  `/tmp/fsm-native-broker-clean-msrv.json` and
+  `/tmp/fsm-native-broker-clean-stable.json` pass nine broker cases each;
+  companion `clean-identity-*` and `clean-containment-*` reports pass ten
+  identity and six containment cases per toolchain. All identify `f95b4e3`,
+  dirty false and gate unreleased. Copied armed grants in other domains and
+  submissions replayed after closure are refused with unchanged protected
+  authority. Removing only the entry gate in the isolated checkout makes
+  native enrollment proof fail at both toolchains; separately labelled
+  `/tmp/fsm-native-broker-neutralized-msrv.json` and
+  `/tmp/fsm-native-broker-neutralized-stable.json` retain that expected failure,
+  never a passing backend verdict. No task-owned units remain. Full queued-job cancellation,
+  every handoff/closure crash window, journal-bound authorization, restart,
+  backend-authority loss and signal notification remain pending. This is
+  private feasibility preparation, not a production broker or task landing.
+  Full stable Linux debug/release workspace tests, formatting/file-size,
+  all-targets Clippy, warning-free docs, zero-dependency and embedding gates
+  pass. Final frozen lifecycle tests pass at MSRV and stable; all 45 Python
+  harness tests pass. Native macOS/Windows remain unexecuted. No public
+  journal/API/hash bytes change, so prior-format migration is not exercised
+  by this private probe-only range.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
