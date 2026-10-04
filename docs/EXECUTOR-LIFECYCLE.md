@@ -735,3 +735,43 @@ of earlier run `37242284024` passed, while its Windows legs failed held-lock
 test snapshots; `fedfc47` repairs the snapshots without changing production
 locking. Current portable CI and the local stable host gate remain active,
 so task 9301 and its implementation gate remain unreleased at this checkpoint.
+
+### Provisioning boundary for the selected backend
+
+The proved primitive requires the system manager and a privileged supervisor,
+not a delegated user-manager service. The provisioner must establish protected
+cgroup-v2 authority with readable membership/populated state and writable
+`cgroup.freeze` and `cgroup.kill`, plus system-manager access for transient
+service enrollment. Capability detection must refuse missing or inaccessible
+facilities before business code runs; the facility suite proves those refusal
+paths and separates manager access from matched cgroup closure. Tested host
+versions above are evidence, not a blanket minimum-version compatibility claim.
+
+The supervisor's namespace and counters belong to root; its private records
+exclude group and other access. Public routes and grants must be complete,
+durably published root-owned records, with creation permissions applied before
+publication. The operator is a distinct non-root UID authorized by the local
+socket boundary; endpoint epochs and authority-directory device/inode identity
+prevent adopting a replacement directory or reusing an old socket. A new
+supervisor must inspect surviving namespace domains before burning an epoch;
+missing identity evidence refuses recovery rather than adopting or killing an
+unknown tree. The fixed prototype protocol accepts no client-supplied root
+command, shell fragment or arbitrary privileged path.
+
+Actual enrollment uses an unprivileged DynamicUser with
+`ProtectControlGroups=yes`, `Delegate=no`, `NoNewPrivileges=yes`, an empty
+capability bounding set and namespace restriction. These protect membership
+and the authority boundary; they do not establish that remote effects stop
+when local processes die. Production installation and handler resource-access
+policy remain task 9303 requirements: the operator must provision the required
+resources for the separate handler identity, and protocol clients must not
+broaden those permissions or choose privileged execution. The test-only
+provisioner and fixed fixture are not an installed production service.
+
+Production task 9303 must preserve the proved freeze/kill/empty verification,
+immutable identities, entry authorization and independently cancellable I/O,
+while replacing fixture authorization with task 9302's durable claim and
+immutable handler fingerprint. Installation cannot enable direct-child
+fallback, reset counters to repair lost authority, or reinterpret an unresolved
+claim under a changed handler. Its production capability refusal and resource
+policy require their own integration tests before that task can complete.
