@@ -114,6 +114,28 @@ lifecycle updates.
   harness tests pass. Native macOS/Windows remain unexecuted. No public
   journal/API/hash bytes change, so prior-format migration is not exercised
   by this private probe-only range.
+- **Pending-job/closure review:** independent proof commits `3f792fd`,
+  `eb06aeb` and `6889589` are frozen and reviewed in `81aab9a..6889589`.
+  Eleven native window cases pass at MSRV and stable, including a genuine
+  pending manager job retained after controller death, its cancellation
+  before handler work, interrupted revocation and live-tree finalization
+  recovered only from a matching protected closure receipt. Missing or
+  mismatched receipts and unrelated aliases refuse recovery. The stronger
+  live-tree case required fresh fixture output files for each DynamicUser;
+  the owned work directory is rebuilt only after verified domain closure.
+  Exact clean reports `/tmp/fsm-native-window-clean-msrv.json` and
+  `/tmp/fsm-native-window-clean-stable.json` retain eleven cases each; their
+  `clean-broker-*`, `clean-identity-*` and `clean-containment-*` companions
+  retain nine, ten and six respectively. All identify `6889589`, dirty false
+  and gate unreleased. Removing only the receipt inode check makes the
+  mismatch case fail at both toolchains; `neutralized-msrv` and
+  `neutralized-stable` reports retain expected negative failures. All required
+  stable Linux host gates, final MSRV/stable lifecycle tests and 45 Python
+  harness tests pass. No task-owned units remain; native macOS/Windows remain
+  unexecuted. The gap before receipt persistence still refuses missing native
+  state, and full signal/authority-loss/restart/window proof remains pending.
+  Production journal/contract authorization belongs to downstream 9302/9303,
+  rather than a circular prerequisite for the native feasibility task.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._

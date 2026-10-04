@@ -292,12 +292,15 @@ errors are test-harness failures, not a production error API. Records are
 synchronized within the current boot's /run environment; no cross-reboot
 registry persistence or reset-reconciliation claim is made.
 
-Still required before gate release: a bounded authenticated privilege
-protocol, authorization bound to actual durable journal claims and handler
-contracts, cancellation of queued/delayed launches, death at every handoff
-and closure window, lost backend authority, signal notification and usable
-reconciliation of every uncertain state. Existing positive containment,
-freeze/kill and pipe probes remain required alongside this prototype.
+Still required before the native gate releases: a bounded authenticated
+privilege protocol, cancellation of queued/delayed launches, death at every
+handoff and closure window, lost backend authority, signal notification and
+usable reconciliation or explicit refusal of uncertain states. Existing
+positive containment, freeze/kill and pipe probes remain required alongside
+this prototype. Binding native authorization to actual production journal
+claims and handler contracts belongs to gated downstream tasks 9302/9303;
+those tasks remain pending rather than becoming a circular prerequisite for
+native feasibility. No production authorization is claimed by this prototype.
 
 ### Frozen identity-prototype review
 
@@ -401,3 +404,23 @@ alias refusal, finalization recovery and strictly monotonic succession.
 Full journal/contract authorization, all other crash windows, signals,
 authority loss, restart and cross-boot proof remain pending. Task 9301 and
 integration remain unreleased; this work does not start downstream tasks.
+
+Frozen window review `81aab9a..68895897f576e821c698a2e54f96d9ce15d52102`
+is complete. The review added direct observation of the same manager job
+after controller death and changed finalization recovery to close a live
+handler tree. That stronger case exposed prior-DynamicUser file permissions;
+only the task-owned fixture work directory is rebuilt after verified closure.
+Exact clean reports `/tmp/fsm-native-window-clean-msrv.json` and
+`/tmp/fsm-native-window-clean-stable.json` pass eleven window cases each.
+The `clean-broker-*`, `clean-identity-*` and `clean-containment-*` companions
+pass nine, ten and six cases per toolchain, all from source `6889589` with
+dirty false and the gate unreleased. Removing only the receipt inode guard
+makes the receipt-mismatch case fail at both toolchains; separately labelled
+`/tmp/fsm-native-window-neutralized-{msrv,stable}.json` reports retain those
+expected failures with dirty source, never a passing backend verdict. The
+isolated checkout is restored and no task-owned units remain. Full stable
+Linux debug/release workspace, formatting/file-size, all-targets Clippy,
+warning-free docs, zero-dependency and embedding gates pass, as do final
+MSRV/stable lifecycle tests and all 45 Python harness tests. Native
+macOS/Windows remain unexecuted. No public journal/API/hash bytes change;
+prior-format migration is not claimed for these private probe records.
