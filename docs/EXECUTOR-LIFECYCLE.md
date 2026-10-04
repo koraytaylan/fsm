@@ -588,3 +588,29 @@ This tests loss of access to a running manager, not manager/kernel death or
 loss of all administrative authority. Whole-namespace loss, storage budgets,
 remaining crash windows and production integration remain pending; the
 native prerequisite is unreleased.
+
+### Reproducible complete native inventory
+
+`native_matrix.py` runs the seven native suites sequentially at a selected
+compiler, requires the exact named inventories, complete passing cases,
+unrelated-process survival, clean identical source and matching compiler,
+and then requires the disabled-final-kill control to fail with an observed
+populated domain. It bounds report reads and driver deadlines, retains each
+source-bound report and its digest, and produces a final matrix summary only
+if all requirements pass. Existing directories cannot be reused as evidence.
+It never releases the task gate automatically or counts unsupported facilities
+as successful skips.
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py --toolchain 1.89.0 --report-dir /path/to/new/msrv-evidence
+python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py --toolchain stable --report-dir /path/to/new/stable-evidence
+```
+
+The CI `native-containment` job runs this inventory on provisioned Ubuntu at
+both compilers and uploads reports even on failure. The existing six-leg
+portable Rust matrix remains intact. CI execution and exact frozen aggregate
+review are required before claiming these jobs pass. The separate frozen
+facility review at `809978f` already passes five cases per compiler in
+`/tmp/fsm-native-facility-clean-{msrv,stable}.json`, with dirty false and gate
+unreleased. This does not prove host manager/kernel death, production claim
+binding or integration completion.

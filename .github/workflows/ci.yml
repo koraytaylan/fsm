@@ -89,6 +89,36 @@ jobs:
           cmp "$work/dec-a.jsonl" "$work/dec-b.jsonl"
           cmp "$work/dec-a.jsonl" crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl
 
+  # The initial contained executor requires a provisioned Linux/systemd
+  # runtime. These are real administrative fault probes, separate from the
+  # portable six-leg Rust gate; missing facilities fail rather than skip.
+  native-containment:
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, "1.89.0"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CARGO_BUILD_JOBS: 1
+      CARGO_TARGET_DIR: ${{ runner.temp }}/fsm-native-target
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Provisioned native containment matrix
+        run: >-
+          python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
+          --toolchain '${{ matrix.rust }}'
+          --report-dir '${{ runner.temp }}/native-evidence'
+      - name: Retain exact native evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-containment-${{ matrix.rust }}
+          path: ${{ runner.temp }}/native-evidence
+          if-no-files-found: error
+
   # The zero-dependency guarantee and the core-only embed boundary are
   # properties of the resolved graph, so keep explicit cheap checks that do
   # not depend on the test matrix merely happening to compile the crates.
