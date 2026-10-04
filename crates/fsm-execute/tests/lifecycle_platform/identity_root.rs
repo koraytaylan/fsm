@@ -3,6 +3,7 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -200,15 +201,20 @@ pub(super) fn verify_namespace_domains(base: &Path) -> Result<(), String> {
         }
         let entry = entry.map_err(|_| "native namespace inventory unavailable")?;
         let name = entry.file_name();
-        let Some(suffix) = name.to_str().and_then(|name| name.strip_prefix(&prefix)) else {
+        if !name.as_bytes().starts_with(prefix.as_bytes()) {
             continue;
-        };
+        }
+        let suffix = std::str::from_utf8(&name.as_bytes()[prefix.len()..])
+            .map_err(|_| "unknown native namespace domain refuses authority")?;
         let verify = || -> Result<(), String> {
             let id: u64 = suffix
                 .strip_suffix(".service")
                 .ok_or("name")?
                 .parse()
                 .map_err(|_| "id")?;
+            if suffix != format!("{id}.service") {
+                return Err("noncanonical domain name".into());
+            }
             let record = decode(&read(&data.join(format!("run-{id}")))?)?;
             let active: u64 = read(&data.join("active"))?
                 .trim()

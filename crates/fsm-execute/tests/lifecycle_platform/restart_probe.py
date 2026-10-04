@@ -9,7 +9,7 @@ import uuid
 from endpoint_probe import socket_path
 from identity_probe import command, handle, main, wait_file
 
-INVENTORY = ('readable-publication', 'exclusive-authority', 'directory-replacement', 'replacement-startup', 'active-ledger-loss', 'namespace-reprovision-refusal', 'namespace-restored', 'broker-death', 'new-endpoint', 'active-refusal',
+INVENTORY = ('readable-publication', 'exclusive-authority', 'directory-replacement', 'replacement-startup', 'active-ledger-loss', 'namespace-reprovision-refusal', 'namespace-restored', 'broker-death', 'noncanonical-native-alias', 'new-endpoint', 'active-refusal',
              'old-endpoint-alias', 'matched-recovery', 'missing-authority', 'counter-rollback', 'successor')
 
 
@@ -175,6 +175,24 @@ def exercise(binary):
         assert 'populated 1' in command(['sudo', '-n', 'cat', str(domain / 'cgroup.events')])
         assert command(['sudo', '-n', 'cat', str(base / f'data/run-{record["id"]}')]) == private_before
         passed('broker-death')
+        # Parsing an alias's numeric suffix must not validate the different
+        # canonical group's record. Preserve the unrelated alias on refusal.
+        numeric_alias = f'fsm-containment-identity-{namespace}-0{record["id"]}.service'
+        units.append(numeric_alias)
+        command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + numeric_alias,
+                 '--property=RuntimeMaxSec=20s', '/usr/bin/sleep', '15'])
+        alias_domain = Path('/sys/fs/cgroup/system.slice') / numeric_alias
+        alias_native_inode = alias_domain.stat().st_ino
+        rejected_unit, rejected = start('noncanonical-native-alias', wait=True)
+        assert rejected.returncode != 0
+        journal = command(['sudo', '-n', 'journalctl', '--no-pager', '-u', rejected_unit, '-n', '40'])
+        assert 'unknown native namespace domain refuses authority' in journal, journal
+        assert command(['sudo', '-n', 'cat', str(base / 'data/broker-counter')]).strip() == '1'
+        assert alias_domain.stat().st_ino == alias_native_inode
+        assert 'populated 1' in command(['sudo', '-n', 'cat', str(alias_domain / 'cgroup.events')])
+        assert domain.stat().st_ino == record['inode'] and (base / 'endpoint').read_bytes() == route
+        command(['sudo', '-n', 'systemctl', 'stop', numeric_alias])
+        passed('noncanonical-native-alias', unrelated_domain_preserved=True)
         # Administrator fault injection replaces only the dead task endpoint
         # with an unrelated listener. Restart must preserve that live alias.
         command(['sudo', '-n', 'rm', '--', str(old)])
