@@ -229,6 +229,18 @@ lifecycle updates.
   legs on reading the held journal lock; `fedfc47` repairs those test
   snapshots, with actual Windows validation still pending in the current
   run. Task status and native gate remain unchanged.
+- **Portable review repair:** all required local stable host gates pass at
+  frozen source `46d0db2`, including debug/release workspace, all-target
+  Clippy, warning-free rustdoc, zero dependencies and external embedding.
+  Both Ubuntu CI gates pass. The macOS stable release job of run
+  `37244150329` fails the embedded tick test when reopening a freshly released
+  setup writer during a parallel fixture's fork window; its completed job
+  log is retained. Repair `399ed6e` uses the existing bounded reopen helper
+  and explicitly asserts refusal of a competing writer while the embedded
+  writer is held. All four targeted release tick tests pass locally.
+  Production locking is unchanged. Fresh exact-source CI run `37245431479`
+  and the serialized stable host gate are active; no old or unfinished job
+  is counted as proof for the repair, and the prerequisite remains unreleased.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
