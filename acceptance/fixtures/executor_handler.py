@@ -3,6 +3,12 @@
 Logs serialize only short state/trace updates, never handler lifetime. A dead
 fixture's lock is not reclaimed: uncertainty must fail rather than fabricate
 closure. These fixture locks are not production process-tree containment.
+
+The mcp mode serves newline-delimited JSON-RPC with a 64 KiB frame bound.
+Provision root/run/resource and optional barrier inputs on the command line;
+operation/failure/items belong to the closed operate tool arguments. Tool
+failures retain isError and independently logged outcomes. Discovery never
+starts an operation. This fixture is not a production MCP server.
 """
 from __future__ import annotations
 
@@ -14,6 +20,7 @@ import os
 from pathlib import Path
 import time
 import uuid
+import sys
 
 
 def atomic_json(path: Path, value) -> None:
@@ -132,9 +139,125 @@ def operation(args) -> int:
             append(root, "end", run, args.resource)
 
 
+
+MAX_FRAME = 65_536
+PROTOCOL = "2025-06-18"
+OPERATIONS = ("validate", "suspend", "process", "restore")
+FAILURES = ("none", "before", "partial", "restore")
+TOOL = {
+    "name": "operate", "description": "Run one bounded operation on the provisioned fixture resource.",
+    "inputSchema": {"type": "object", "properties": {
+        "operation": {"type": "string", "enum": list(OPERATIONS)},
+        "failure": {"type": "string", "enum": list(FAILURES)},
+        "items": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 16},
+                              {"type": "string", "pattern": "^([1-9]|1[0-6])$"}]},
+    }, "required": ["operation"], "additionalProperties": False},
+    "annotations": {"readOnlyHint": False, "destructiveHint": True,
+                    "idempotentHint": False, "openWorldHint": False},
+}
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON member")
+        result[key] = value
+    return result
+
+
+def reject_constant(value):
+    raise ValueError("non-JSON numeric constant")
+
+
+def reply(identifier, *, result=None, code=None, message=None):
+    value = {"jsonrpc": "2.0", "id": identifier}
+    if code is not None:
+        value["error"] = {"code": code, "message": message}
+    else:
+        value["result"] = result
+    sys.stdout.write(json.dumps(value, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
+
+
+def mcp(args) -> int:
+    initialized = False
+    ready = False
+    while True:
+        line = sys.stdin.buffer.readline(MAX_FRAME + 1)
+        if not line:
+            return 0
+        if len(line) > MAX_FRAME:
+            reply(None, code=-32700, message="fixture frame limit exceeded")
+            return 2
+        try:
+            request = json.loads(line.decode("utf-8"), object_pairs_hook=unique_object,
+                                 parse_constant=reject_constant)
+        except (ValueError, UnicodeError, RecursionError):
+            reply(None, code=-32700, message="invalid fixture JSON")
+            continue
+        if not isinstance(request, dict):
+            reply(None, code=-32600, message="invalid fixture request")
+            continue
+        identifier = request.get("id")
+        method = request.get("method")
+        params = request.get("params", {})
+        if (set(request) - {"jsonrpc", "id", "method", "params"}
+            or request.get("jsonrpc") != "2.0" or not isinstance(method, str)
+            or not isinstance(params, dict)
+            or ("id" in request and (type(identifier) not in (int, str) or
+                (isinstance(identifier, str) and len(identifier) > 256)))):
+            reply(None, code=-32600, message="invalid fixture request")
+            continue
+        if "id" not in request:
+            if method == "notifications/initialized" and initialized and not params:
+                ready = True
+            continue
+        if method == "initialize":
+            if initialized or params.get("protocolVersion") != PROTOCOL:
+                reply(identifier, code=-32602, message="unsupported or repeated fixture initialization")
+                continue
+            initialized = True
+            reply(identifier, result={"protocolVersion": PROTOCOL, "capabilities": {"tools": {}},
+                                      "serverInfo": {"name": "independent-operation-fixture", "version": "1"}})
+        elif method == "ping":
+            reply(identifier, result={})
+        elif not ready:
+            reply(identifier, code=-32000, message="fixture session is not initialized")
+        elif method == "tools/list":
+            reply(identifier, result={"tools": [TOOL]})
+        elif method == "tools/call":
+            fields = params.get("arguments", {})
+            if (set(params) - {"name", "arguments"} or params.get("name") != "operate"
+                or not isinstance(fields, dict) or set(fields) - {"operation", "failure", "items"}
+                or fields.get("operation") not in OPERATIONS or fields.get("failure", "none") not in FAILURES):
+                reply(identifier, code=-32602, message="invalid fixture tool arguments")
+                continue
+            items = fields.get("items", 2)
+            if isinstance(items, str) and items in {str(value) for value in range(1, 17)}:
+                items = int(items)
+            failure, action = fields.get("failure", "none"), fields["operation"]
+            if (type(items) is not int or not 1 <= items <= 16
+                or (failure == "partial" and action != "process")
+                or (failure == "restore" and action != "restore")):
+                reply(identifier, code=-32602, message="invalid fixture operation bounds")
+                continue
+            configured = argparse.Namespace(**{**vars(args), "operation": action, "failure": failure, "items": items})
+            try:
+                status = operation(configured)
+                value = {"exit_code": status, "operation": action}
+            except (OSError, ValueError, RuntimeError) as error:
+                status = 2
+                value = {"exit_code": status, "error": str(error)}
+            reply(identifier, result={"isError": status != 0, "structuredContent": value,
+                                      "content": [{"type": "text", "text": json.dumps(value)}]})
+        else:
+            reply(identifier, code=-32601, message="unknown fixture method")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("exit-ok", "exit-failed", "operation"))
+    parser.add_argument("mode", choices=("exit-ok", "exit-failed", "operation", "mcp"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--run")
     parser.add_argument("--resource")
@@ -144,14 +267,18 @@ def main() -> int:
     parser.add_argument("--release", type=Path)
     parser.add_argument("--wait-seconds", type=float, default=5)
     args = parser.parse_args()
-    if args.mode != "operation":
+    if args.mode in ("exit-ok", "exit-failed"):
         return 0 if args.mode == "exit-ok" else 3
-    if (args.root is None or args.operation is None or not args.run or not args.resource
+    if (args.root is None or (args.mode == "operation" and args.operation is None) or not args.run or not args.resource
         or len(args.run) > 223 or len(args.resource) > 256 or not 1 <= args.items <= 16
         or not 0 < args.wait_seconds <= 10
         or (args.failure == "partial" and args.operation != "process")
         or (args.failure == "restore" and args.operation != "restore")):
         parser.error("operation needs bounded root/run/resource/operation inputs")
+    if args.mode == "mcp":
+        if args.operation is not None or args.failure != "none" or args.items != 2:
+            parser.error("MCP operation/failure/items are supplied through tool arguments")
+        return mcp(args)
     try:
         return operation(args)
     except (OSError, ValueError, RuntimeError) as error:

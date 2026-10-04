@@ -14,6 +14,7 @@ from pathlib import Path
 
 from acceptance.suite.evidence import source_files
 from acceptance.suite.executor_scenarios import observe_trace
+from acceptance.suite.mcp import StdioClient, McpError
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "executor_handler.py"
 
@@ -163,7 +164,7 @@ class ObserverFaultTests(unittest.TestCase):
 
 
 
-class RealFixtureTraceTests(unittest.TestCase):
+class FixtureFiles(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
@@ -189,6 +190,8 @@ class RealFixtureTraceTests(unittest.TestCase):
     def state(self):
         return json.loads((self.root / (hashlib.sha256(b"supplier").hexdigest() + ".json")).read_text())
 
+
+class RealFixtureTraceTests(FixtureFiles):
     def test_real_operations_match_handwritten_ledger_and_external_state(self):
         for operation in ["validate", "suspend", "process", "restore"]:
             self.invoke(operation)
@@ -278,6 +281,98 @@ class RealFixtureTraceTests(unittest.TestCase):
         self.invoke("validate", "--release", str(self.root / "never"), "--wait-seconds", "0.05", expected=2)
         self.assertEqual([event["kind"] for event in self.trace()], ["start", "end"])
         self.assertEqual(self.results()[0]["exit_code"], 2)
+
+
+
+class McpFixtureTests(FixtureFiles):
+    # Test the same independent operation ledger through a separate MCP client.
+    # These are fixture tests, not installed fsm acceptance.
+    def client(self):
+        return StdioClient([sys.executable, str(FIXTURE), "mcp", "--root", str(self.root),
+                            "--run", "mcp-effect", "--resource", "supplier"])
+
+    def test_mcp_initialize_discover_and_complete_operation_ledger(self):
+        with self.client() as client:
+            info = client.initialize()
+            self.assertEqual(info["protocolVersion"], "2025-06-18")
+            tools = client.tools()
+            self.assertEqual([tool["name"] for tool in tools], ["operate"])
+            self.assertFalse(tools[0]["inputSchema"]["additionalProperties"])
+            self.assertFalse((self.root / "trace.jsonl").exists())
+            for action in ["validate", "suspend", "process", "restore"]:
+                value = client.structured("operate", {"operation": action, "items": "2"})
+                self.assertEqual(value["exit_code"], 0)
+        observe_trace(self.trace(), {"supplier": ["suspend", "process:0", "process:1", "restore"]}, complete=True).assert_passed()
+        self.assertEqual(self.state(), {"suspended": False, "items": [0, 1]})
+
+    def test_mcp_failures_remain_iserror_and_client_can_observe_restoration(self):
+        with self.client() as client:
+            client.initialize()
+            client.structured("operate", {"operation": "suspend"})
+            with self.assertRaises(McpError):
+                client.call("operate", {"operation": "process", "failure": "partial"})
+            value = client.try_call("operate", {"operation": "restore", "failure": "restore"})
+            self.assertTrue(value["isError"])
+            self.assertEqual(value["structuredContent"]["exit_code"], 3)
+            client.structured("operate", {"operation": "restore"})
+        self.assertEqual(self.state(), {"suspended": False, "items": [0]})
+        observe_trace(self.trace(), {"supplier": ["suspend", "process:0", "restore"]}, complete=True).assert_passed()
+
+    def test_mcp_invalid_arguments_never_start_an_operation(self):
+        with self.client() as client:
+            client.initialize()
+            for arguments in [{}, {"operation": "unknown"}, {"operation": []},
+                              {"operation": "validate", "root": "/override"},
+                              {"operation": "process", "items": True},
+                              {"operation": "process", "items": "17"},
+                              {"operation": "validate", "failure": "partial"}]:
+                with self.subTest(arguments=arguments), self.assertRaises(McpError):
+                    client.call("operate", arguments)
+            with self.assertRaises(McpError):
+                client.call("unknown", {"operation": "validate"})
+        self.assertFalse((self.root / "trace.jsonl").exists())
+
+    def wire(self, payload):
+        command = [sys.executable, str(FIXTURE), "mcp", "--root", str(self.root),
+                   "--run", "wire-effect", "--resource", "supplier"]
+        result = subprocess.run(command, input=payload, capture_output=True, timeout=10)
+        return result.returncode, [json.loads(line) for line in result.stdout.splitlines()]
+
+    def test_malformed_wire_frames_preserve_following_request(self):
+        ping = b'{"jsonrpc":"2.0","id":7,"method":"ping"}\n'
+        for malformed in [b'{\n', b'{"id":1,"id":2}\n', b'{"value":NaN}\n', b'\xff\n']:
+            with self.subTest(frame=malformed):
+                status, replies = self.wire(malformed + ping)
+                self.assertEqual(status, 0)
+                self.assertEqual(replies[0]["error"]["code"], -32700)
+                self.assertEqual(replies[1], {"jsonrpc": "2.0", "id": 7, "result": {}})
+        self.assertFalse((self.root / "trace.jsonl").exists())
+
+    def test_oversize_wire_frame_terminates_with_bounded_error(self):
+        status, replies = self.wire(b" " * 65537 + b"\n")
+        self.assertEqual(status, 2)
+        self.assertEqual(len(replies), 1)
+        self.assertEqual(replies[0]["error"]["code"], -32700)
+
+    def test_notifications_produce_no_response_and_boolean_ids_are_rejected(self):
+        status, replies = self.wire(
+            b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n'
+            b'{"jsonrpc":"2.0","id":true,"method":"ping"}\n')
+        self.assertEqual(status, 0)
+        self.assertEqual(len(replies), 1)
+        self.assertEqual(replies[0]["error"]["code"], -32600)
+
+    def test_mcp_lifecycle_and_unknown_method_errors_preserve_session(self):
+        with self.client() as client:
+            with self.assertRaises(McpError):
+                client.tools()
+            client.initialize()
+            with self.assertRaises(McpError):
+                client.request("initialize", {"protocolVersion": "2025-06-18"})
+            with self.assertRaises(McpError):
+                client.request("unknown")
+            self.assertEqual(client.request("ping"), {})
+            self.assertEqual(len(client.tools()), 1)
 
 
 if __name__ == "__main__":

@@ -112,8 +112,20 @@ owned by the integration coordinator.
   its source commit is exact, dirty is false, fixture digest matches and
   build provenance/artifact digests validate. This proves the existing-suite
   baseline, not the still-unimplemented integrated executor matrix.
-  MCP fixture support, full installed executor scenarios and native lifecycle
-  claims remain incomplete; fixture barriers/locks do not prove containment.
+  Full installed executor scenarios and native lifecycle claims remain
+  incomplete; fixture barriers/locks do not prove containment.
+- **MCP-fixture preparation:** task 9502 now also has a minimal independent
+  stdio MCP operation fixture. Its closed tool arguments cannot override the
+  provisioned resource or trace paths; subprocess and MCP modes share actual
+  external state and independent trace/result logs. Seven additional tests
+  cover discovery without side effects, operation ordering, partial-work and
+  restoration failures, invalid arguments, session recovery, malformed JSON,
+  duplicate members, non-JSON numbers, invalid UTF-8, boolean identifiers,
+  notifications and the 64 KiB frame ceiling. All 45 Python self-tests pass.
+  Review removed duplicate inherited tests and rejects ambiguous MCP CLI
+  operation defaults. These are harness tests against an independent client,
+  not installed-candidate executor evidence; production transport wiring and
+  the required lifecycle/outcome matrix remain pending.
 - **Outcome:** pending; readiness claims will name the evidence that supports
   them, and a missing proof will prevent closure.
 
