@@ -35,6 +35,19 @@ lifecycle updates.
   with protected UID/membership checks and unrelated-process survival. Full
   native proof and gate release remain pending; no task is marked done or
   given a landing OID.
+- **Protected native review:** decision/probes landed in `3f397f5`, with
+  failed-unit collection repair in `dd97260`. Frozen range
+  `69ad2aa3b12080407314c8be86bac741ac4cbc68..dd9726081b86e06b41d0c08295c06fac71b8d35f`
+  passes both toolchain probes from a clean checkout. Retained reports are
+  `/tmp/fsm-systemd-final-msrv.json` and `/tmp/fsm-systemd-final-stable.json`:
+  exact source, dirty false, four cases each, gate unreleased. Review separates
+  failed service outcomes from actual domain/pipe closure and collects stopped
+  probe records; no task-owned units remain. Formatting, all-targets Clippy,
+  warning-free docs, zero-dependency, embedding and full stable debug/release
+  workspace gates pass. MSRV negative probes and all 45 Python harness tests
+  also pass. Native macOS/Windows remain unexecuted. Permanent identity,
+  journal-bound launch authorization, spawn during stop, privileged supervisor
+  recovery, signals and uncertainty refusal still need positive native proof.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._

@@ -181,3 +181,23 @@ minor release from the current 0.3 line, an explicit runtime installation and
 upgrade guide, and release notes; no version/tag is changed by these probes.
 Historical hashes and journal bytes remain unchanged. The future claim-format
 migration still needs its own version bump and backward-reader refusal.
+
+## Frozen review and retained evidence
+
+Reviewed range:
+`69ad2aa3b12080407314c8be86bac741ac4cbc68..dd9726081b86e06b41d0c08295c06fac71b8d35f`.
+The decision/probes landed in `3f397f5`; review repair `dd97260` enables
+collection of failed transient probe units. Clean-checkout reports are
+`/tmp/fsm-systemd-final-msrv.json` and `/tmp/fsm-systemd-final-stable.json`.
+Both identify exact source `dd97260`, dirty false, four passing native cases
+and gate unreleased. No task-owned probe units remain after either run.
+Review separated failed service outcomes from empty-domain proof, checked
+real process-group separation, bounded inherited-pipe waits, and rejected
+optimized Python before any provisioning. These checks do not validate a
+future privileged supervisor or its authorization protocol.
+
+Formatting, all-targets Clippy, warning-free docs, zero-dependency, embedding
+and full stable workspace debug/release gates pass on Linux. The existing
+MSRV native negative probes and all 45 acceptance-harness self-tests pass.
+macOS/Windows native execution remains unperformed. No candidate acceptance,
+full lifecycle gate, task completion or integration is claimed.
