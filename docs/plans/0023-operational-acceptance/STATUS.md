@@ -4,7 +4,7 @@ The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file
 task-level truth lives in [tasks/](tasks/) frontmatter, with lifecycle changes
 owned by the integration coordinator.
 
-- **Status:** Unregistered; planned tasks have not been implemented or run.
+- **Status:** Unregistered; independent evidence reporter landed in `0e00d30`; integrated operational acceptance is not complete.
 - **Goal:** substantiate all five review concerns with installed-binary,
   sustained native and uncoached live-model evidence on an identified candidate.
 - **Root cause:** existing automated tests and manually required host checks
@@ -21,6 +21,47 @@ owned by the integration coordinator.
   plans 0020, 0021 and 0022 integrate, including 0022's platform decision.
 - **Exceptions:** none granted; missing credentials, native evidence or a
   resolved lifecycle prerequisite cannot be counted as a pass.
+- **Reporter progress:** `acceptance/suite/evidence.py` now retains atomic
+  `fsm.acceptance/1` reports, incomplete markers, scenario inventories,
+  assertions, candidate observations and diagnostic digests. The runner returns
+  nonzero for required skips and zero-check scenarios, and the Podman wrapper
+  mounts a separate evidence output directory. Thirteen synthetic reporter tests
+  pass. A locally installed stable binary passed the filtered golden-loop
+  scenario with 11 assertions; independent digest checks matched the binary
+  and retained diagnostic log. This filtered, dirty-source run is explicitly
+  ineligible for release. The consumer-install Podman golden-loop run also
+  passed with 11 assertions and retained its report and matching diagnostic
+  digest after container removal. A full consumer-install Podman run passed
+  all 15 existing scenarios and 100 assertions, retaining the controlled-build
+  receipt and diagnostics with verified digests. The source snapshot is dirty,
+  so the report remains ineligible for release despite verified provenance.
+  A frozen temporary verification repository at
+  `5f176ce2cfc164dd798c01dc95dbdf5dc5b51b39` also passed all 15 scenarios and
+  100 assertions through consumer installation, with clean source, matching
+  controlled-build provenance and a validated retained report. This is a
+  verification candidate, not a landing OID or integrated release candidate.
+  Reporter implementation landed at
+  `0e00d30313cbd419ceee36757b65d9073562a277`. Frozen review of
+  `1b3451a..0e00d30` and a clean isolated checkout passed all 13 reporter
+  tests and all 15 consumer-install scenarios / 100 assertions. The retained
+  report and both artifact digests validate against that exact commit.
+  This completes the reporter implementation evidence, while this plan's
+  registration and task lifecycle remain pending the 0020–0022 integration
+  prerequisites; no integrated operational-acceptance completion is claimed.
+- **Reporter self-review:** verified that matching operator-supplied bytes
+  cannot attest build origin, added an independent dirty-state rejection,
+  and checked report-write failure preserves a nonzero exit and incomplete
+  evidence. Further self-review added checks for ignored/assume-unchanged
+  build inputs, source mutation during compilation, unknown verdicts,
+  nonboolean assertions and tampered artifacts. Corrected provenance's
+  version invocation to the actual `fsm version` command. Receipts come from
+  the controlled build recipe, not a signed third-party attestation; release
+  closure must establish trust in their producer. Frozen reporter review is
+  complete on the range above. Stable workspace debug/release runs completed; their
+  five failed environment-sensitive targets passed on rerun with local
+  sockets enabled and isolated Git settings. Workspace clippy, formatting,
+  warning-free documentation and file-size checks passed. Native macOS and
+  Windows evidence has not been produced.
 - **Outcome:** pending; readiness claims will name the evidence that supports
   them, and a missing proof will prevent closure.
 
