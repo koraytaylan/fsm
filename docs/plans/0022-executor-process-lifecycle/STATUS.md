@@ -155,6 +155,28 @@ lifecycle updates.
   MSRV/stable lifecycle tests and 45 Python harness tests pass. Native
   macOS/Windows remain unexecuted. Broker restart, authority loss, other crash
   windows and production shutdown remain pending; no task is marked done.
+- **Supervisor restart review:** independent commits `5f5125a` and
+  `75dceda` are frozen and reviewed in `7824c4b..75dceda`. Ten native cases
+  prove lifetime exclusive broker authority, monotonic endpoint epochs,
+  preserved live claims after broker death, refusal of overlapping allocation,
+  survival of an unrelated old-endpoint listener, matched cleanup, missing
+  epoch-authority refusal, rollback refusal and succession. Clean review
+  exposed a readable-route publication race; public permissions now precede
+  fsync and rename, and an unprivileged reader acknowledges all 64 complete
+  publications. The initial failed report is retained rather than relabelled.
+  Exact final reports `/tmp/fsm-native-restart-final-msrv.json` and
+  `/tmp/fsm-native-restart-final-stable.json` pass ten restart/publication
+  cases each; `final-signal-*`, `final-broker-*`, `final-window-*`,
+  `final-identity-*` and `final-containment-*` companions pass two, ten,
+  eleven, ten and six. All identify `75dceda`, dirty false and gate unreleased.
+  Separately neutralizing lifetime authority, rollback and publication ordering
+  fails the intended native cases at both toolchains; `negative-lock-*`,
+  `negative-rollback-*` and `negative-publication-*` reports retain those
+  expected failures. Required stable Linux host gates, final MSRV/stable
+  lifecycle tests and 45 Python harness tests pass. The isolated checkout is
+  restored; no task-owned units remain; native macOS/Windows remain unexecuted.
+  Directory replacement, other authority loss, stale-socket storage budgets,
+  remaining windows and production integration still need completion.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._

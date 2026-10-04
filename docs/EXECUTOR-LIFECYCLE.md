@@ -502,3 +502,23 @@ production cleanup/storage budgets are still required. Directory replacement,
 other authority loss and remaining handoff/closure windows remain pending,
 as do production journal binding, hosting and shutdown. The full gate remains
 unreleased; these helpers do not initialize missing authority.
+
+Frozen restart review `7824c4b..75dceda` is complete. The initial clean MSRV
+report `/tmp/fsm-native-restart-clean-msrv.json` at `5f5125a` records a real
+permission failure between rename and chmod; it is not a passing result.
+Repair `75dceda` applies public permissions before fsync and atomic rename
+for both routes and grants. A reader acknowledges every one of 64 complete
+publications, giving ten named restart/publication cases per toolchain.
+Exact final reports `/tmp/fsm-native-restart-final-{msrv,stable}.json` pass
+those ten cases; their `final-signal-*`, `final-broker-*`, `final-window-*`,
+`final-identity-*` and `final-containment-*` companions pass two, ten, eleven,
+ten and six. All positives identify `75dceda`, dirty false and gate unreleased.
+Separately removing lifetime authority, rollback and readable publication
+ordering fails the intended native case at both toolchains; retained
+`/tmp/fsm-native-restart-negative-{lock,rollback,publication}-{msrv,stable}.json`
+reports are expected failures with dirty source, never passing capability
+verdicts. The isolated checkout is restored and no task-owned units remain.
+All required stable Linux host gates, final MSRV/stable lifecycle tests and
+45 Python harness tests pass. Native macOS/Windows remain unexecuted. These
+private formats change no public journal/API/hash bytes, and no prior-format
+migration or integration completion is claimed.
