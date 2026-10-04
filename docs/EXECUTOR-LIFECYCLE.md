@@ -545,3 +545,46 @@ The private probe format rejects old endpoint/1 routes; no production format
 migration is claimed. Other privilege/facility loss, whole-namespace loss,
 storage budgets and remaining windows still need evidence. The native gate
 remains unreleased.
+
+Frozen directory review `0fbff45..9c4abdd` passes twelve restart cases at
+MSRV and stable in `/tmp/fsm-native-directory-clean-{msrv,stable}.json`;
+both reports identify `9c4abdd`, dirty false and gate unreleased. Separately
+neutralizing the live and startup lineage checks fails the intended case on
+both toolchains; `directory-negative-{live,startup}-{msrv,stable}` reports
+retain expected failures, and the isolated checkout is restored. Required
+stable host gates and 45 Python harness tests pass. Existing canonical stable
+fixtures additionally pass two signal, ten broker, eleven window and ten
+identity cases, recorded as `directory-regression-*-stable` with explicit
+prebuilt provenance. These regressions do not claim a new MSRV rerun or a
+new containment-suite run. High host swap usage prevented additional builds
+under the repository memory rule.
+
+### Facility-loss preparation
+
+`facility_probe.py` masks `/run/systemd/private` and the system bus socket
+inside a uniquely owned broker service's mount namespace. The host manager
+continues running. Manager submission fails within the deadline before any
+handler entry, leaving the original armed, empty domain and durable claim.
+Successor allocation refuses without changing its counter. Native cgroup
+freeze/kill/removal and protected grant revocation still establish matched
+closure even with manager access unavailable; this is not absence-based
+recovery. A second owned broker mounts cgroups read-only. Allocation refuses
+before handler execution, retaining the previous active identity and burning
+successive counters rather than reusing a failed allocation identity.
+
+Five preparation cases pass using the already built canonical stable fixture
+at `9c4abdd`; `/tmp/fsm-native-facility-preparation.json` is an exploratory
+result, not frozen source-bound acceptance. No host manager or unrelated unit
+is stopped. The unrelated process survives cleanup. The probe's standard
+entry point builds and records exact source/toolchain evidence using the
+same native reporter as the identity suite:
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/facility_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-facility-msrv.json
+python3 crates/fsm-execute/tests/lifecycle_platform/facility_probe.py --toolchain stable --report /tmp/fsm-native-facility-stable.json
+```
+
+This tests loss of access to a running manager, not manager/kernel death or
+loss of all administrative authority. Whole-namespace loss, storage budgets,
+remaining crash windows and production integration remain pending; the
+native prerequisite is unreleased.

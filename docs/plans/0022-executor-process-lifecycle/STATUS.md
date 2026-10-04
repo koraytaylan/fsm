@@ -177,6 +177,19 @@ lifecycle updates.
   restored; no task-owned units remain; native macOS/Windows remain unexecuted.
   Directory replacement, other authority loss, stale-socket storage budgets,
   remaining windows and production integration still need completion.
+- **Directory and facility review:** frozen range `0fbff45..9c4abdd`
+  passes twelve restart cases on MSRV and stable with exact clean source
+  reports; neutralizing either directory identity check fails its intended
+  native case on both toolchains. Required stable host gates and 45 Python
+  tests pass; prebuilt canonical stable regression evidence passes 33 signal,
+  broker, window and identity cases. Further builds are deferred under the
+  repository high-swap rule. A new facility probe passes five exploratory
+  cases with the existing canonical stable fixture: blocked manager access
+  refuses launch and successor allocation, matched native closure succeeds,
+  and read-only cgroups refuse allocation while burning identities. Frozen
+  MSRV/stable facility evidence remains pending; host manager death,
+  whole-namespace loss, storage budgets, remaining windows and production
+  integration remain incomplete. Task status and native gate do not change.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
