@@ -12,6 +12,7 @@ touches:
   - acceptance/suite/mcp.py
   - acceptance/suite/fsm.py
   - acceptance/suite/run.py
+  - acceptance/suite/evidence.py
   - acceptance/tests/test_executor_observer.py
   - acceptance/fixtures/executor_handler.py
   - acceptance/fixtures/executor_workflow.json

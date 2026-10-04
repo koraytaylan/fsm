@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 
 from . import fsm
 from .mcp import HttpClient, McpError, StdioClient
@@ -480,7 +481,8 @@ def the_executor_settles_a_pending_effect_and_advances_the_instance(report) -> N
             "format": "fsm.handlers/1",
             "handlers": [{
                 "effect": "request_confirmation",
-                "argv": ["/bin/true"],
+                "argv": [sys.executable, os.path.join(fsm.REPO, "acceptance", "fixtures",
+                                                       "executor_handler.py"), "exit-ok"],
                 "timeout_ms": 30000,
                 "on_ok": {"event": "pick", "payload": {}},
                 "on_failed": {"event": "cancel", "payload": {}},
@@ -522,7 +524,8 @@ def the_executor_exhausts_retries_onto_the_failure_path(report) -> None:
             "format": "fsm.handlers/1",
             "handlers": [{
                 "effect": "request_confirmation",
-                "argv": ["/bin/false"],
+                "argv": [sys.executable, os.path.join(fsm.REPO, "acceptance", "fixtures",
+                                                       "executor_handler.py"), "exit-failed"],
                 "timeout_ms": 5000,
                 "retry": {"attempts": 2, "backoff_ms": 1,
                           "on": ["nonzero_exit"]},
@@ -730,7 +733,7 @@ def the_decimal_vectors_regenerate_byte_identically(report) -> None:
         first = os.path.join(scratch.path, "a.jsonl")
         second = os.path.join(scratch.path, "b.jsonl")
         for target in (first, second):
-            subprocess.run(["python3", generator, target], check=True, timeout=300)
+            subprocess.run([sys.executable, generator, target], check=True, timeout=300)
         with open(first, "rb") as a, open(second, "rb") as b:
             report.true(a.read() == b.read(), "two generations agree byte for byte")
         with open(first, "rb") as a, open(committed, "rb") as c:
