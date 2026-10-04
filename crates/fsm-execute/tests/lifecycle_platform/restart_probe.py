@@ -9,7 +9,7 @@ import uuid
 from endpoint_probe import socket_path
 from identity_probe import command, handle, main, wait_file
 
-INVENTORY = ('readable-publication', 'exclusive-authority', 'directory-replacement', 'replacement-startup', 'broker-death', 'new-endpoint', 'active-refusal',
+INVENTORY = ('readable-publication', 'exclusive-authority', 'directory-replacement', 'replacement-startup', 'active-ledger-loss', 'namespace-reprovision-refusal', 'namespace-restored', 'broker-death', 'new-endpoint', 'active-refusal',
              'old-endpoint-alias', 'matched-recovery', 'missing-authority', 'counter-rollback', 'successor')
 
 
@@ -128,6 +128,43 @@ def exercise(binary):
         command(['sudo', '-n', 'rm', '-rf', '--', str(base / 'data')])
         command(['sudo', '-n', 'mv', str(saved_data), str(base / 'data')])
         assert action('inspect:' + tuple_value).startswith('armed\n')
+        # An in-place lost active pointer does not change directory identity.
+        # Allocation must independently consult surviving native membership.
+        saved_active = base / 'saved-active'
+        command(['sudo', '-n', 'mv', str(base / 'data/active'), str(saved_active)])
+        before = command(['sudo', '-n', 'cat', str(base / 'data/counter')])
+        # Also retain the next possible empty allocation name for failure
+        # cleanup when the allocation guard is deliberately neutralized.
+        units.append(f'fsm-containment-identity-{namespace}-{record["id"] + 1}.service')
+        assert 'unknown native namespace domain refuses authority' in rpc('allocate')
+        assert command(['sudo', '-n', 'cat', str(base / 'data/counter')]) == before
+        assert domain.stat().st_ino == record['inode']
+        command(['sudo', '-n', 'mv', str(saved_active), str(base / 'data/active')])
+        passed('active-ledger-loss')
+        # Lose both private records and public lineage, then provision fresh
+        # counters. Surviving kernel membership still prevents fresh authority.
+        saved_data = base / 'saved-data'
+        saved_route = base / 'saved-route'
+        command(['sudo', '-n', 'mv', str(base / 'data'), str(saved_data)])
+        command(['sudo', '-n', 'mv', str(base / 'endpoint'), str(saved_route)])
+        command(['sudo', '-n', 'install', '-d', '-m', '700', str(base / 'data')])
+        for counter in ('counter', 'broker-counter'):
+            command(['sudo', '-n', 'tee', str(base / 'data' / counter)], input='0\n')
+        reprovisioned, rejected = start('reprovisioned-authority', wait=True)
+        assert rejected.returncode != 0
+        journal = command(['sudo', '-n', 'journalctl', '--no-pager', '-u', reprovisioned, '-n', '40'])
+        assert 'unknown native namespace domain refuses authority' in journal, journal
+        assert command(['sudo', '-n', 'cat', str(base / 'data/counter'), str(base / 'data/broker-counter')]) == '0\n0\n'
+        assert not (base / 'endpoint').exists()
+        assert old.stat().st_ino == old_inode and domain.stat().st_ino == record['inode']
+        assert 'populated 1' in command(['sudo', '-n', 'cat', str(domain / 'cgroup.events')])
+        passed('namespace-reprovision-refusal')
+        command(['sudo', '-n', 'rm', '-rf', '--', str(base / 'data')])
+        command(['sudo', '-n', 'mv', str(saved_data), str(base / 'data')])
+        command(['sudo', '-n', 'mv', str(saved_route), str(base / 'endpoint')])
+        assert action('inspect:' + tuple_value).startswith('armed\n')
+        assert command(['sudo', '-n', 'cat', str(base / f'data/run-{record["id"]}')]) == private_before
+        passed('namespace-restored')
         command(['sudo', '-n', 'systemctl', 'kill', '--kill-whom=main', '--signal=KILL', first_broker])
         # Retry new startup only after authoritative unit termination.
         deadline = time.monotonic() + 3

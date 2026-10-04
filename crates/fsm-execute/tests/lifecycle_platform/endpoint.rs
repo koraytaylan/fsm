@@ -89,6 +89,8 @@ pub(super) fn bind(base: &Path, uid: u32) -> Result<(Authority, UnixListener, Pa
         .map_err(|e| e.to_string())?;
     lock.try_lock()
         .map_err(|_| "broker authority already held")?;
+    // Even a freshly provisioned directory cannot erase a surviving domain.
+    super::super::identity_root::verify_namespace_domains(base)?;
     // Missing counter is lost authority, never permission to initialize it.
     let counter_path = data.join("broker-counter");
     let previous: u64 = read(&counter_path)

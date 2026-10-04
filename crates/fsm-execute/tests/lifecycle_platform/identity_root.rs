@@ -175,6 +175,66 @@ fn observe(namespace: &str, record: &Record, boot: &str) -> String {
     }
 }
 
+pub(super) fn verify_namespace_domains(base: &Path) -> Result<(), String> {
+    let namespace = base
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_prefix("fsm-containment-identity-"))
+        .ok_or("invalid native namespace")?;
+    if base.parent() != Some(Path::new("/run"))
+        || namespace.len() != 32
+        || !namespace
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("invalid native namespace".into());
+    }
+    let prefix = format!("fsm-containment-identity-{namespace}-");
+    let boot = read(Path::new("/proc/sys/kernel/random/boot_id"))?;
+    let data = base.join("data");
+    let entries = fs::read_dir("/sys/fs/cgroup/system.slice")
+        .map_err(|_| "native namespace inventory unavailable")?;
+    for (index, entry) in entries.enumerate() {
+        if index >= 4096 {
+            return Err("native namespace inventory exceeds bound".into());
+        }
+        let entry = entry.map_err(|_| "native namespace inventory unavailable")?;
+        let name = entry.file_name();
+        let Some(suffix) = name.to_str().and_then(|name| name.strip_prefix(&prefix)) else {
+            continue;
+        };
+        let verify = || -> Result<(), String> {
+            let id: u64 = suffix
+                .strip_suffix(".service")
+                .ok_or("name")?
+                .parse()
+                .map_err(|_| "id")?;
+            let record = decode(&read(&data.join(format!("run-{id}")))?)?;
+            let active: u64 = read(&data.join("active"))?
+                .trim()
+                .parse()
+                .map_err(|_| "active")?;
+            let counter: u64 = read(&data.join("counter"))?
+                .trim()
+                .parse()
+                .map_err(|_| "counter")?;
+            if id != record.id
+                || active != id
+                || counter < id
+                || !matches!(
+                    observe(namespace, &record, boot.trim()).as_str(),
+                    "prepared" | "armed" | "closing"
+                )
+            {
+                return Err("identity".into());
+            }
+            Ok(())
+        };
+        verify().map_err(|_| "unknown native namespace domain refuses authority")?;
+    }
+    Ok(())
+}
+
 fn status(command: &mut Command) -> Result<(), String> {
     let mut child = command
         .stdout(Stdio::null())
@@ -286,6 +346,7 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                     return Err("unresolved native identity refuses successor allocation".into());
                 }
             }
+            verify_namespace_domains(base)?;
             let previous: u64 = read(&counter_path)?
                 .trim()
                 .parse()

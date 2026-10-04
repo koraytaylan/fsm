@@ -652,3 +652,27 @@ The last two runs' portable six-leg jobs are still active at this checkpoint.
 Native successes do not establish their result or a final task landing.
 Production journal, hosting, shutdown and admission requirements remain owned
 by the downstream tasks rather than becoming a circular feasibility gate.
+
+### Surviving namespace membership after authority loss
+
+Review found that directory lineage alone does not cover losing both private
+records and the published route, or losing the active pointer in place.
+Before startup burns an endpoint epoch, and before allocation burns a run
+counter, the private prototype now inventories at most 4096 immediate native
+system-slice entries. Every matching task namespace domain must have its
+protected full record, active pointer, monotonic counter and current boot/inode
+identity. Unknown, aliased, unreadable or over-budget inventory refuses
+without creating a handler or adopting an unknown tree. This is native domain
+inspection, not a PID/process-tree scan, and it never kills an unknown group.
+
+The restart probe independently removes the active pointer while retaining
+its directory, then moves all private authority and the route aside and
+provisions fresh zero counters. Both paths must refuse despite the surviving
+original domain. Counters remain unchanged and the live domain retains its
+recorded inode. Restoring original authority restores matched inspection;
+subsequent broker-death recovery and closure remain part of the same suite.
+The probe records the next possible empty-domain name for negative-control
+failure cleanup, preventing a deliberately disabled guard from leaving an
+untracked fixture cgroup. Exact frozen review and both toolchain controls are
+required before claiming this repair passes; whole-environment reset and
+production recovery remain downstream work.

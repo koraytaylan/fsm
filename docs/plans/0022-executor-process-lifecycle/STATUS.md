@@ -206,6 +206,12 @@ lifecycle updates.
   writes; both its native jobs also pass in run `37242284024`. The complete
   six-leg portable gates are still running; source-bound artifact review and
   final host gates remain in progress. No task or gate is marked complete.
+- **Authority-loss review finding:** directory identity did not cover losing
+  the active pointer in place or reprovisioning private records plus the
+  public route while the old domain survives. A bounded native namespace
+  inventory now refuses unknown domains before startup epoch or allocation
+  counter mutation. New restart cases exercise both losses and restoration;
+  frozen review, guard neutralization and updated native CI remain pending.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
