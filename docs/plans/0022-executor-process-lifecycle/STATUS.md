@@ -78,7 +78,17 @@ lifecycle updates.
   This is a task-9301 feasibility prototype, not production broker/admission
   or journal implementation; queued launch cancellation, every crash window,
   cross-boot persistence, authenticated bounded IPC and signal notification
-  remain unproved. The full gate is unreleased.
+  remain unproved. The full gate is unreleased. Landed independently in
+  `8f57dc3`; frozen review `5f3b5ce..8f57dc3` is complete. Clean reports
+  `/tmp/fsm-native-identity-clean-msrv.json` and
+  `/tmp/fsm-native-identity-clean-stable.json` pass ten identity cases each;
+  their `clean-containment-msrv`/`clean-containment-stable` companions pass
+  the six existing containment cases. Exact source and clean status are
+  verified. Review requires intended refusal diagnostics and unchanged
+  protected state, rejects missing authority, and retains full identity on
+  idempotent close. All required Linux workspace gates, MSRV negative probes
+  and 45 Python harness tests pass. No probe units remain; native
+  macOS/Windows remain unexecuted.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._

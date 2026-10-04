@@ -298,3 +298,24 @@ contracts, cancellation of queued/delayed launches, death at every handoff
 and closure window, lost backend authority, signal notification and usable
 reconciliation of every uncertain state. Existing positive containment,
 freeze/kill and pipe probes remain required alongside this prototype.
+
+### Frozen identity-prototype review
+
+Range `5f3b5ce..8f57dc34f039c60ce4560558ea0f26266b0883ec` is reviewed.
+Repairs require full supplied handles, prevent counter rollback behind active
+or historical identities, refuse missing authority rather than initializing
+it, preserve the full identity on idempotent close, and verify intended
+refusal diagnostics with unchanged protected counter/active/run bytes.
+A misplaced idempotent-close assertion was corrected before frozen review.
+
+Exact clean reports are `/tmp/fsm-native-identity-clean-msrv.json` and
+`/tmp/fsm-native-identity-clean-stable.json` (ten identity cases each), plus
+`/tmp/fsm-native-identity-clean-containment-msrv.json` and
+`/tmp/fsm-native-identity-clean-containment-stable.json` (six existing native
+containment cases each). All identify source `8f57dc3`, dirty false and gate
+unreleased. No task-owned identity/controller/containment units remain.
+Formatting, all-targets Clippy, warning-free docs, zero-dependency, embedding
+and full stable Linux workspace debug/release gates pass. MSRV negative
+probes and all 45 Python harness self-tests pass. macOS/Windows native
+execution remains unperformed. No production broker, migration, journal
+claim, complete task-9301 proof or integration completion is claimed.
