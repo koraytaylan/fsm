@@ -78,7 +78,10 @@ def exercise(binary):
         kill_controller()
         assert invoke('inspect', first).startswith('armed\n')
         assert domain.stat().st_ino == first['inode'] and not (work / 'root-ready').exists()
-        passed('pending-controller-death')
+        assert 'populated 1' in (domain / 'cgroup.events').read_text()
+        after_death = command(['systemctl', 'show', units[-1], '--property=SubState', '--property=Job'])
+        assert 'SubState=start-pre' in after_death and f'Job={job}' in after_death, after_death
+        passed('pending-controller-death', manager_properties=after_death)
         assert handle(invoke('close', first))['phase'] == 'closed'
         assert not domain.exists()
         jobs = command(['systemctl', 'list-jobs', '--no-legend', '--no-pager'])
@@ -105,7 +108,11 @@ def exercise(binary):
         assert not domain.exists()
         assert handle((base / f'grants/{second["id"]}').read_text())['phase'] == 'closed'
         passed('revocation-recovery')
+        command(['sudo', '-n', 'rm', '--', str(work / 'root-ready'), str(work / 'ready')])
         third, domain = allocate()
+        invoke('launch', third)
+        wait_file(work / 'root-ready')
+        assert domain.stat().st_ino == third['inode'] and 'populated 1' in (domain / 'cgroup.events').read_text()
         start_controller('close-finalize-hold', third)
         wait_file(base / 'closure-ready')
         assert not domain.exists()
