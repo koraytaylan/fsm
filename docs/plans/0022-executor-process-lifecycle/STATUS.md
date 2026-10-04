@@ -60,6 +60,14 @@ lifecycle updates.
   descendant and the late descendants. These remain partial native proofs;
   permanent identity, privileged supervisor recovery, atomic authorization,
   signal notification and uncertain replacement refusal are pending.
+  Landed independently in `8b2dd03`; frozen review `3be7292..8b2dd03`
+  is complete. Clean reports `/tmp/fsm-systemd-race-clean-msrv.json` and
+  `/tmp/fsm-systemd-race-clean-stable.json` retain six positives per toolchain;
+  the corresponding `clean-negative-msrv`/`clean-negative-stable` reports
+  retain the expected live-domain failure. Exact source, dirty false and gate
+  unreleased are verified. All required stable Linux workspace gates,
+  existing MSRV negative probes and 45 Python harness tests pass. No probe
+  units remain; native macOS/Windows remain unexecuted.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._

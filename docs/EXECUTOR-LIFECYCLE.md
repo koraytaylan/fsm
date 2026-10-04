@@ -232,3 +232,22 @@ only that uniquely created fixture domain; it cannot change the failed
 observation into a pass. The report retains the failure-time unit state and
 kernel domain events, and verifies unrelated-process survival through cleanup.
 Neither this negative test nor the six positives releases the full gate.
+
+### Frozen shutdown-race review
+
+Range `3be7292..8b2dd037c0f43b2c4b983c44253bb09f75256649` is reviewed.
+Review required late-descendant privilege checks, retained failure-time kernel
+events before emergency cleanup, initialized freeze observations defensively,
+and kept graceful deactivation distinct from the final admission fence.
+Exact clean-checkout reports are `/tmp/fsm-systemd-race-clean-msrv.json`
+and `/tmp/fsm-systemd-race-clean-stable.json` (six positives each), plus
+`/tmp/fsm-systemd-race-clean-negative-msrv.json` and
+`/tmp/fsm-systemd-race-clean-negative-stable.json` (one expected failure each).
+All bind source `8b2dd03`, dirty false and gate unreleased. Disabled killing
+leaves an observed populated domain; bounded cleanup succeeds and no
+probe units remain. Formatting, all-targets Clippy, warning-free docs,
+zero-dependency, embedding and full stable workspace debug/release gates
+pass on Linux. Existing MSRV negative probes and all 45 Python harness tests
+pass. These results still do not prove a production supervisor, immutable
+identity, journal-bound authorization, graceful signal notification or
+uncertain-state replacement refusal.
