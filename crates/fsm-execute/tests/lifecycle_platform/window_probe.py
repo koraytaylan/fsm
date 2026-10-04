@@ -108,7 +108,11 @@ def exercise(binary):
         assert not domain.exists()
         assert handle((base / f'grants/{second["id"]}').read_text())['phase'] == 'closed'
         passed('revocation-recovery')
-        command(['sudo', '-n', 'rm', '--', str(work / 'root-ready'), str(work / 'ready')])
+        # The prior DynamicUser owns its private fixture metadata. Rebuild
+        # only this task-owned work directory after verified closure so the
+        # next distinct UID gets fresh markers and writable fixture outputs.
+        command(['sudo', '-n', 'rm', '-rf', '--', str(work)])
+        command(['sudo', '-n', 'install', '-d', '-m', '1777', str(work)])
         third, domain = allocate()
         invoke('launch', third)
         wait_file(work / 'root-ready')
