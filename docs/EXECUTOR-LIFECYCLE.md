@@ -614,3 +614,11 @@ facility review at `809978f` already passes five cases per compiler in
 `/tmp/fsm-native-facility-clean-{msrv,stable}.json`, with dirty false and gate
 unreleased. This does not prove host manager/kernel death, production claim
 binding or integration completion.
+
+The portable lifecycle test now exercises all six private native fixture
+entry modes on non-Linux hosts, requires a nonzero exit with the precise
+unsupported-platform diagnostic, and requires the work directory to remain
+empty. The pre-entry barrier also refuses outside Linux before writing a
+marker. These assertions cover fixture capability refusal, not a production
+CLI capability that has not yet been implemented. Real macOS/Windows CI
+execution remains required to establish their outcome.

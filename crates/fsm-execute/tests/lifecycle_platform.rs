@@ -66,11 +66,17 @@ fn native_fixture() {
         return;
     }
     if mode == "identity-pre-entry" {
-        // Trusted pre-start fixture work only; the actual handler has not
-        // reached its entry gate. Provisioning owns the release barrier.
-        fs::write(directory.join("entry-ready"), b"pending start job").expect("pre-entry barrier");
-        await_file(&directory.parent().expect("namespace").join("release-entry"));
-        return;
+        #[cfg(not(target_os = "linux"))]
+        panic!("native pre-entry requires Linux");
+        #[cfg(target_os = "linux")]
+        {
+            // Trusted pre-start fixture work only; the actual handler has not
+            // reached its entry gate. Provisioning owns the release barrier.
+            fs::write(directory.join("entry-ready"), b"pending start job")
+                .expect("pre-entry barrier");
+            await_file(&directory.parent().expect("namespace").join("release-entry"));
+            return;
+        }
     }
     if let Some(uid) = mode.strip_prefix("identity-broker:") {
         #[cfg(target_os = "linux")]
@@ -247,4 +253,45 @@ fn direct_child_kill_leaves_descendant_and_pipe_alive() {
 #[test]
 fn normal_root_exit_leaves_descendant_and_pipe_alive() {
     prove_direct_child_is_insufficient("exit");
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn provisioned_native_modes_refuse_before_fixture_work() {
+    let directory =
+        std::env::temp_dir().join(format!("fsm-lifecycle-unsupported-{}", std::process::id()));
+    fs::create_dir(&directory).expect("unique unsupported probe directory");
+    for (mode, reason) in [
+        ("identity-publication", "native publication requires Linux"),
+        (
+            "identity-lease-client:1:2:unavailable",
+            "native lease client requires Linux",
+        ),
+        ("identity-pre-entry", "native pre-entry requires Linux"),
+        ("identity-broker:1000", "native broker requires Linux"),
+        (
+            "identity:allocate",
+            "native identity prototype requires Linux",
+        ),
+        (
+            "identity-gate:1:2:unavailable",
+            "native entry gate requires Linux",
+        ),
+    ] {
+        let output = fixture(&directory, mode)
+            .output()
+            .expect("unsupported fixture");
+        assert!(
+            !output.status.success(),
+            "unsupported mode was accepted: {mode}"
+        );
+        let diagnostics = String::from_utf8_lossy(&output.stdout).to_string()
+            + &String::from_utf8_lossy(&output.stderr);
+        assert!(diagnostics.contains(reason), "wrong refusal: {diagnostics}");
+        assert_eq!(
+            fs::read_dir(&directory).expect("probe directory").count(),
+            0
+        );
+    }
+    fs::remove_dir(&directory).expect("unsupported probe cleanup");
 }
