@@ -1,0 +1,25 @@
+{
+  "format":"fsm.machine/1","name":"all_sites","context":[],
+  "events":[{"name":"go","fields":[]},{"name":"inside","fields":[],"internal":true}],
+  "effects":[{"name":"work","fields":[{"name":"unused","ty":"str"}]}],
+  "states":[
+    {"name":"outer","initial":"inner",
+     "entry":{"emit":[{"effect":"work","args":{"value":"1"}}]},
+     "exit":{"emit":[{"effect":"work","args":{"value":"2"}}]},
+     "states":[
+       {"name":"inner",
+        "entry":{"emit":[{"effect":"work","args":{"value":"3"}}]},
+        "exit":{"emit":[{"effect":"work","args":{"value":"4"}}]}},
+       {"name":"finished","final":true}
+     ]},
+    {"name":"done","terminal":true}
+  ],
+  "initial":"outer",
+  "transitions":[
+    {"from":"inner","on":"go","to":"finished","emit":[{"effect":"work","args":{"value":"5"}}]},
+    {"from":"inner","on":"inside","emit":[{"effect":"work","args":{"value":"6"}}]},
+    {"from":"outer","on":"$done.state.outer","to":"done","emit":[{"effect":"work","args":{"value":"7"}}]},
+    {"from":"inner","if":"false","to":"finished","emit":[{"effect":"work","args":{"value":"8"}}]}
+  ],
+  "deadlines":[{"name":"expire","from":"inner","after":"dur(1, s)","to":"finished","emit":[{"effect":"work","args":{"value":"9"}}]}]
+}

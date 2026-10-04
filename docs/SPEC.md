@@ -1254,6 +1254,71 @@ none of them, and folding them in would move every historical root. Replay retai
 verify historical journal bytes; snapshot domains 1 through 3 are never
 reinterpreted.
 
+## Structural executor effect reports
+
+The pure executor effect-analysis API accepts a compiled root, a catalogue
+keyed by child machine digest, a parsed operator table and explicit limits.
+It MUST perform no I/O, read no clock, and change no core or persisted data.
+Its closed `fsm.executor-check/1` envelope contains exactly `format`, `status`,
+`machine_id`, `contract_id`, `definitions`, `scope`, `findings`, `effects` and
+`progress`. Status is `invalid` for known contradictions, otherwise `unknown`
+for missing evidence, otherwise `compatible` within the reported scope.
+Machine identity is null when compilation failed; contract identity is null
+when no authoritative table is available.
+
+`scope` contains exactly `effects_checked`, `outcomes_checked`, and
+`dynamic_signals`. Effect analysis MUST inspect entry/exit blocks at every
+nested state and region, all transitions and all deadlines, without pruning
+guarded or apparently unreachable emits. It MUST use compiled expression
+slots for argument types, not effect declarations or expression text. Static
+invocations MUST be followed once per identity; unavailable or mismatched
+catalogue entries are unknown. Signals MUST be marked as runtime boundaries,
+not invented external handlers. Compatible MUST NOT imply termination or
+successful external work. Configured outcomes whose validation is not in the
+reported scope MUST remain unknown, not implicitly compatible.
+
+Each effect site contains exactly `machine_id`, `path`, `effect`, `arguments`,
+`disposition`, `required_args`, and `outcomes`. Arguments map names to inferred
+type strings or null. Disposition is `automatic`, `manual`, or `missing`;
+required arguments are sorted names. Outcomes map `on_ok` and `on_failed` to
+`no-outcome` or the respective compatibility observation. Manual sites have
+no automatic outcomes. Findings contain exactly `code`, `severity`,
+`machine_id`, `path`, `effect`, `outcome`, `message`, `hint`, and `cause`;
+absent effect, outcome and cause are null. Severity is `error`, `unknown`, or
+`info`. Definitions and progress observations are unique sorted strings;
+sites sort by definition, path and effect; findings sort by definition, path,
+effect, outcome and code. Source paths MUST retain document indices.
+
+Public `contract_id` is SHA-256 of the bytes
+`fsm:executor-contract:1` followed by one NUL byte and canonical sanitized
+table metadata. Metadata contains `handlers`, `manual_effects`, `max_inflight`
+and `max_inflight_per_instance`; each handler contains `effect`, `kind`,
+`required_args`, `timeout_ms`, `on_ok`, `on_failed` and `retry`, matching the
+already-public discovery fields. Private argv, executable paths and fixed
+MCP literals MUST NOT enter this identity or any report. This identity MUST
+NOT substitute for the private table identity required by execution admission.
+
+The default ceilings are 32 visited definitions, 4,096 emitted sites, 4,096
+findings and 1,048,576 canonical report bytes. Caller-supplied limits MAY be
+smaller. Each distinct definition, site and finding MUST be charged before
+retention; the exact final canonical envelope size counts toward the byte
+limit. Exceeding any ceiling MUST return `exec/contract_limit`, never a
+truncated compatible result. Executor finding codes remain in the executor's
+registry and operator guide, not the engine registry.
+
+## Explicit manual executor effects
+
+The operator-owned `fsm.handlers/1` table MAY contain `manual_effects`, an
+array of at most 256 nonempty effect names. Omission MUST mean an empty set.
+Duplicate names, nonstring names, and names also present in automatic
+`handlers` MUST be rejected with `exec/config`. A table with no automatic
+handlers MUST be accepted when it declares at least one manual effect; a table
+with neither disposition MUST be rejected. Manual classification MUST NOT
+create a process, acknowledge an effect, or send an outcome event. It does not
+alter core compilation, machine hashes or journal bytes. It supplies explicit
+operator policy for structural executor checking; runtime contract admission
+is a separately integrated capability, not a consequence of parsing this field.
+
 ## MCP executor discovery
 
 `resources/list` MUST include `fsm://docs/embedding` and `fsm://executor`.

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use fsm_core::decimal::Dec;
 use fsm_core::expr::eval::Val;
-use fsm_core::json::Value;
+use fsm_core::json::{Value, write_canonical};
 use fsm_execute::config::{HandlerTable, substitute};
 use fsm_execute::error::ExecError;
 
@@ -41,6 +41,7 @@ fn table_with_argv_element(element: &str) -> String {
 fn a_minimal_table_round_trips_its_command_and_timeout() {
     let table = HandlerTable::parse(include_str!("fixtures/handlers/valid_min.json")).unwrap();
     assert_eq!(table.handlers.len(), 1);
+    assert!(table.manual_effects.is_empty());
     let handler = &table.handlers["request_confirmation"];
     assert_eq!(handler.effect, "request_confirmation");
     assert_eq!(
@@ -57,6 +58,54 @@ fn a_minimal_table_round_trips_its_command_and_timeout() {
     assert_eq!(handler.timeout_ms, 120_000);
     assert_eq!(handler.on_ok, None);
     assert_eq!(handler.on_failed, None);
+}
+
+#[test]
+fn manual_only_policy_is_explicit_and_bounded() {
+    let table = HandlerTable::parse(
+        r#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator_review"]}"#,
+    )
+    .unwrap();
+    assert!(table.handlers.is_empty());
+    assert!(table.manual_effects.contains("operator_review"));
+    let names = (0..256)
+        .map(|index| Value::Str(format!("manual_{index}")))
+        .collect();
+    let source = Value::Obj(BTreeMap::from([
+        ("format".into(), Value::Str("fsm.handlers/1".into())),
+        ("handlers".into(), Value::Arr(vec![])),
+        ("manual_effects".into(), Value::Arr(names)),
+    ]));
+    let mut bytes = Vec::new();
+    write_canonical(&source, &mut bytes);
+    assert_eq!(
+        HandlerTable::parse(std::str::from_utf8(&bytes).unwrap())
+            .unwrap()
+            .manual_effects
+            .len(),
+        256
+    );
+    let mut overflow = source;
+    if let Value::Obj(fields) = &mut overflow
+        && let Some(Value::Arr(names)) = fields.get_mut("manual_effects")
+    {
+        names.push(Value::Str("one_too_many".into()));
+    }
+    bytes.clear();
+    write_canonical(&overflow, &mut bytes);
+    rejected(std::str::from_utf8(&bytes).unwrap());
+}
+
+#[test]
+fn malformed_or_ambiguous_manual_dispositions_are_refused() {
+    for policy in [r#"[""]"#, r#"[1]"#, r#"["review","review"]"#, "null", "{}"] {
+        rejected(&format!(
+            r#"{{"format":"fsm.handlers/1","handlers":[],"manual_effects":{policy}}}"#
+        ));
+    }
+    rejected(
+        r#"{"format":"fsm.handlers/1","handlers":[{"effect":"review","argv":["/bin/review"],"timeout_ms":1000}],"manual_effects":["review"]}"#,
+    );
 }
 
 #[test]

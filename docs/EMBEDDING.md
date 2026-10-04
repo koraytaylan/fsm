@@ -871,6 +871,16 @@ against the world's computers.
 
 ### The handler table: `fsm.handlers/1`
 
+Optional `manual_effects` explicitly lists effects that the operator intends
+to acknowledge manually. It defaults to `[]`, accepts at most 256 unique,
+nonempty names, and cannot overlap names in `handlers`. A manual-only table
+uses `"handlers": []` with a nonempty `manual_effects` list. A table with both
+lists empty is refused. The executor never substitutes a command for a manual
+effect or fabricates its acknowledgement. This field is policy input for
+structural checking; parsing it alone does not enforce machine/table
+compatibility at spawn. Existing tables and pending effects keep their current
+behavior until shared contract admission is integrated.
+
 One operator-owned JSON file, read once at startup, before any store is opened.
 It is the security boundary of the whole design: it closes the set of commands
 the executor can ever run.
@@ -1253,6 +1263,20 @@ The guarantee, stated in the shape the design actually holds:
   and the next executor starts fresh ones rather than adopting them.
 
 ### Executor error codes
+
+Structural contract reports use `exec/contract_invalid` for an incompatible
+contract, `exec/contract_unknown` for insufficient evidence and
+`exec/contract_limit` when a bounded analysis cannot finish. Specific findings
+are `exec/contract_handler_missing`, `exec/contract_argument_missing`,
+`exec/contract_argument_unknown`, `exec/contract_outcome_event`,
+`exec/contract_outcome_payload` and `exec/contract_definition_unknown`.
+They are executor policy diagnostics, not new machine-language restrictions.
+The effect-analysis API traverses static invocation closure and all emit
+sites, including guarded sites, and reports missing compiler types as unknown.
+Its public fingerprint excludes command paths and private MCP literals.
+Configured outcomes not yet checked are unknown; a report never proves
+workflow progress or replaces execution admission. A limit error means the
+whole check is unavailable, rather than a passing truncated prefix.
 
 These live under `exec/` and are the executor's own; they are not engine codes
 and do not appear in SPEC.md's appendix.

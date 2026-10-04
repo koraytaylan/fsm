@@ -5,9 +5,11 @@ const fsm_execute::config::DEFAULT_MAX_INFLIGHT_PER_INSTANCE
 const fsm_execute::config::FAILURE_CLASSES
 const fsm_execute::config::FORMAT
 const fsm_execute::config::MAX_ATTEMPTS
+const fsm_execute::config::MAX_MANUAL_EFFECTS
 const fsm_execute::config::MAX_MAX_INFLIGHT
 const fsm_execute::config::MAX_MAX_INFLIGHT_PER_INSTANCE
 const fsm_execute::config::MAX_TIMEOUT_MS
+const fsm_execute::contract::FORMAT
 const fsm_execute::error::ALL_CODES
 const fsm_execute::error::RETRIES_EXHAUSTED
 const fsm_execute::mcp_client::MAX_LINE_BYTES
@@ -16,6 +18,7 @@ const fsm_execute::run::ACK_OUTPUT_CAP
 const fsm_execute::run::MAX_CAPTURE_READ_BYTES
 const fsm_execute::service::BLOCKED_TICKS_BEFORE_FAIL
 enum fsm_execute::config::HandlerKind
+enum fsm_execute::contract::CheckStatus
 enum fsm_execute::mcp_client::McpOutcome
 enum fsm_execute::mcp_client::ProtocolFault
 enum fsm_execute::run::KillReason
@@ -36,12 +39,43 @@ field fsm_execute::config::HandlerSpec::on_ok
 field fsm_execute::config::HandlerSpec::retry
 field fsm_execute::config::HandlerSpec::timeout_ms
 field fsm_execute::config::HandlerTable::handlers
+field fsm_execute::config::HandlerTable::manual_effects
 field fsm_execute::config::HandlerTable::max_inflight
 field fsm_execute::config::HandlerTable::max_inflight_per_instance
 field fsm_execute::config::Retry::attempts
 field fsm_execute::config::Retry::backoff_ms
 field fsm_execute::config::Retry::max_backoff_ms
 field fsm_execute::config::Retry::on
+field fsm_execute::contract::EffectSite::arguments
+field fsm_execute::contract::EffectSite::disposition
+field fsm_execute::contract::EffectSite::effect
+field fsm_execute::contract::EffectSite::machine_id
+field fsm_execute::contract::EffectSite::outcomes
+field fsm_execute::contract::EffectSite::path
+field fsm_execute::contract::EffectSite::required_args
+field fsm_execute::contract::Finding::cause
+field fsm_execute::contract::Finding::code
+field fsm_execute::contract::Finding::effect
+field fsm_execute::contract::Finding::hint
+field fsm_execute::contract::Finding::machine_id
+field fsm_execute::contract::Finding::message
+field fsm_execute::contract::Finding::outcome
+field fsm_execute::contract::Finding::path
+field fsm_execute::contract::Finding::severity
+field fsm_execute::contract::Limits::definitions
+field fsm_execute::contract::Limits::findings
+field fsm_execute::contract::Limits::report_bytes
+field fsm_execute::contract::Limits::sites
+field fsm_execute::contract::Report::contract_id
+field fsm_execute::contract::Report::definitions
+field fsm_execute::contract::Report::dynamic_signals
+field fsm_execute::contract::Report::effects
+field fsm_execute::contract::Report::effects_checked
+field fsm_execute::contract::Report::findings
+field fsm_execute::contract::Report::machine_id
+field fsm_execute::contract::Report::outcomes_checked
+field fsm_execute::contract::Report::progress
+field fsm_execute::contract::Report::status
 field fsm_execute::dead::DeadLetter::attempts
 field fsm_execute::dead::DeadLetter::class
 field fsm_execute::dead::DeadLetter::effect_id
@@ -159,6 +193,7 @@ field fsm_execute::watch::Slot::slot
 fn fsm_execute::config::classes_for
 fn fsm_execute::config::substitute
 fn fsm_execute::config::substitute_arguments
+fn fsm_execute::contract::analyze_effects
 fn fsm_execute::dead::dead_letters
 fn fsm_execute::dead::horizon
 fn fsm_execute::dead::report
@@ -185,6 +220,8 @@ method fsm_execute::config::HandlerKind::is_mcp
 method fsm_execute::config::HandlerSpec::required_args
 method fsm_execute::config::HandlerTable::parse
 method fsm_execute::config::Retry::retries
+method fsm_execute::contract::CheckStatus::as_str
+method fsm_execute::contract::Report::to_value
 method fsm_execute::dead::DeadLetter::to_value
 method fsm_execute::dead::ReportHorizon::to_value
 method fsm_execute::error::ExecError::details
@@ -230,6 +267,7 @@ method fsm_execute::watch::Watcher::resolved_count
 method fsm_execute::watch::Watcher::scan
 method fsm_execute::watch::Watcher::with_handlers
 mod fsm_execute::config
+mod fsm_execute::contract
 mod fsm_execute::dead
 mod fsm_execute::effect
 mod fsm_execute::error
@@ -241,12 +279,23 @@ mod fsm_execute::service
 mod fsm_execute::watch
 reexport fsm_execute::config::substitute from template
 reexport fsm_execute::config::substitute_arguments from template
+reexport fsm_execute::contract::CheckStatus from report
+reexport fsm_execute::contract::EffectSite from report
+reexport fsm_execute::contract::FORMAT from report
+reexport fsm_execute::contract::Finding from report
+reexport fsm_execute::contract::Limits from report
+reexport fsm_execute::contract::Report from report
+reexport fsm_execute::contract::analyze_effects from effects
 reexport fsm_execute::run::Pipeline from pipeline
 reexport fsm_execute::run::SettleOutcome from pipeline
 struct fsm_execute::config::Advance
 struct fsm_execute::config::HandlerSpec
 struct fsm_execute::config::HandlerTable
 struct fsm_execute::config::Retry
+struct fsm_execute::contract::EffectSite
+struct fsm_execute::contract::Finding
+struct fsm_execute::contract::Limits
+struct fsm_execute::contract::Report
 struct fsm_execute::dead::DeadLetter
 struct fsm_execute::dead::ReportHorizon
 struct fsm_execute::effect::PendingEffect
@@ -272,6 +321,9 @@ struct fsm_execute::watch::Slot
 struct fsm_execute::watch::Watcher
 variant fsm_execute::config::HandlerKind::Mcp
 variant fsm_execute::config::HandlerKind::Process
+variant fsm_execute::contract::CheckStatus::Compatible
+variant fsm_execute::contract::CheckStatus::Invalid
+variant fsm_execute::contract::CheckStatus::Unknown
 variant fsm_execute::mcp_client::McpOutcome::Answered
 variant fsm_execute::mcp_client::McpOutcome::Protocol
 variant fsm_execute::mcp_client::McpOutcome::RpcError

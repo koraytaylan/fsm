@@ -43,6 +43,15 @@ pub const ALL_CODES: &[&str] = &[
     "exec/mcp_protocol",
     "exec/mcp_tool",
     "exec/inflight_deferred",
+    "exec/contract_invalid",
+    "exec/contract_unknown",
+    "exec/contract_limit",
+    "exec/contract_handler_missing",
+    "exec/contract_argument_missing",
+    "exec/contract_argument_unknown",
+    "exec/contract_outcome_event",
+    "exec/contract_outcome_payload",
+    "exec/contract_definition_unknown",
 ];
 
 /// One executor failure, carrying enough to report the fault without the
@@ -146,8 +155,8 @@ mod tests {
         }
         assert_eq!(
             seen.len(),
-            14,
-            "the closed set is fourteen codes since plan 0016"
+            23,
+            "the closed set includes nine contract codes from plan 0021"
         );
     }
 

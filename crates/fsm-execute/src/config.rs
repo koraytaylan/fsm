@@ -47,6 +47,9 @@ pub const FORMAT: &str = "fsm.handlers/1";
 /// is far past any sane subprocess and leaves that arithmetic exact.
 pub const MAX_TIMEOUT_MS: i64 = 24 * 60 * 60 * 1000;
 
+/// Maximum explicit manual dispositions in one operator table.
+pub const MAX_MANUAL_EFFECTS: usize = 256;
+
 const HANDLER_KEYS: &[&str] = &[
     "effect",
     "kind",
@@ -102,6 +105,7 @@ pub const MAX_MAX_INFLIGHT_PER_INSTANCE: u32 = 16;
 const TABLE_KEYS: &[&str] = &[
     "format",
     "handlers",
+    "manual_effects",
     "max_inflight",
     "max_inflight_per_instance",
 ];
@@ -252,6 +256,8 @@ impl Retry {
 pub struct HandlerTable {
     /// Effect name to its single handler.
     pub handlers: BTreeMap<String, HandlerSpec>,
+    /// Effects explicitly reserved for manual acknowledgement.
+    pub manual_effects: BTreeSet<String>,
     /// Handler processes this executor may run at once, across every instance.
     pub max_inflight: u32,
     /// Handler processes one instance may occupy at once.
@@ -262,6 +268,7 @@ impl Default for HandlerTable {
     fn default() -> Self {
         Self {
             handlers: BTreeMap::new(),
+            manual_effects: BTreeSet::new(),
             max_inflight: DEFAULT_MAX_INFLIGHT,
             max_inflight_per_instance: DEFAULT_MAX_INFLIGHT_PER_INSTANCE,
         }
@@ -301,15 +308,50 @@ impl HandlerTable {
                     vec![("field", Value::Str("handlers".into()))],
                 )
             })?;
-        if entries.is_empty() {
+        let mut manual_effects = BTreeSet::new();
+        if let Some(raw) = document.get("manual_effects") {
+            let names = raw
+                .as_arr()
+                .filter(|names| names.len() <= MAX_MANUAL_EFFECTS)
+                .ok_or_else(|| {
+                    config_error(
+                        "manual_effects must be an array of at most 256 names",
+                        vec![("field", Value::Str("manual_effects".into()))],
+                    )
+                })?;
+            for name in names {
+                let name = name
+                    .as_str()
+                    .filter(|name| !name.is_empty())
+                    .ok_or_else(|| {
+                        config_error(
+                            "each manual effect must be a non-empty string",
+                            vec![("field", Value::Str("manual_effects".into()))],
+                        )
+                    })?;
+                if !manual_effects.insert(name.to_owned()) {
+                    return Err(config_error(
+                        "manual_effects must not contain duplicate names",
+                        vec![("effect", Value::Str(name.into()))],
+                    ));
+                }
+            }
+        }
+        if entries.is_empty() && manual_effects.is_empty() {
             return Err(config_error(
-                "handlers must declare at least one handler",
+                "a table must declare at least one automatic or manual effect",
                 vec![("field", Value::Str("handlers".into()))],
             ));
         }
         let mut handlers: BTreeMap<String, HandlerSpec> = BTreeMap::new();
         for (index, entry) in entries.iter().enumerate() {
             let spec = parse_handler(index, entry)?;
+            if manual_effects.contains(&spec.effect) {
+                return Err(config_error(
+                    "an effect cannot have both automatic and manual dispositions",
+                    vec![("effect", Value::Str(spec.effect.clone()))],
+                ));
+            }
             if handlers.contains_key(&spec.effect) {
                 return Err(handler_error(
                     index,
@@ -322,6 +364,7 @@ impl HandlerTable {
         }
         Ok(HandlerTable {
             handlers,
+            manual_effects,
             max_inflight: bounded_cap(
                 document.get("max_inflight"),
                 "max_inflight",

@@ -292,6 +292,25 @@ Rules:
   included. Editing a description yields a different machine. This is deliberate:
   see the pinning guarantee in [EMBEDDING.md](EMBEDDING.md).
 
+## Explicit manual executor policy
+
+`HandlerTable::manual_effects` and `config::MAX_MANUAL_EFFECTS` extend the
+provisional executor surface. The new public struct field breaks exhaustive
+Rust struct literals and requires a minor release before publication. The
+optional JSON field is additive: previously valid tables retain their parsed
+handlers and limits, and omitted manual policy is empty. Parsing a manual
+disposition neither changes execution admission nor changes persisted formats
+or hash domains. The later stricter automatic-admission policy has its own
+integration and operator migration requirement.
+
+`fsm_execute::contract` adds the pure, provisional `analyze_effects` API,
+typed reports, explicit limits and the closed `fsm.executor-check/1` JSON
+shape specified in SPEC. Its sanitized public contract fingerprint introduces
+`fsm:executor-contract:1` solely for report identity; it changes no engine or
+journal hash domain. It does not grant execution authorization. Configured
+outcomes outside the effect phase remain unknown until outcome validation is
+integrated. This addition does not change the pure-core consumer boundary.
+
 ## Dependencies
 
 `fsm` has **zero third-party dependencies** and will not acquire any. JSON,
