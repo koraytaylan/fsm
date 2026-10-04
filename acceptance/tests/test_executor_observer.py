@@ -4,6 +4,9 @@ These synthetic traces test observer refusal independently of the candidate.
 Installed transport and native containment claims require separate real runs.
 """
 import subprocess
+import json
+import hashlib
+import time
 import sys
 import tempfile
 import unittest
@@ -157,6 +160,124 @@ class ObserverFaultTests(unittest.TestCase):
         for limit in [0, True, 100001]:
             with self.assertRaises(ValueError):
                 observe_trace([], {}, complete=True, max_events=limit)
+
+
+
+class RealFixtureTraceTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def command(self, operation, *extra):
+        return [sys.executable, str(FIXTURE), "operation", "--root", str(self.root),
+                "--run", "same-effect-label", "--resource", "supplier", "--operation", operation, *extra]
+
+    def invoke(self, operation, *extra, expected=0):
+        result = subprocess.run(self.command(operation, *extra), capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, expected, result.stderr)
+        return result
+
+    def trace(self):
+        return [json.loads(line) for line in (self.root / "trace.jsonl").read_text().splitlines()]
+
+    def results(self):
+        return [json.loads(line) for line in (self.root / "results.jsonl").read_text().splitlines()]
+
+    def state(self):
+        return json.loads((self.root / (hashlib.sha256(b"supplier").hexdigest() + ".json")).read_text())
+
+    def test_real_operations_match_handwritten_ledger_and_external_state(self):
+        for operation in ["validate", "suspend", "process", "restore"]:
+            self.invoke(operation)
+        result = observe_trace(self.trace(), {"supplier": ["suspend", "process:0", "process:1", "restore"]}, complete=True)
+        result.assert_passed()
+        self.assertEqual(self.state(), {"suspended": False, "items": [0, 1]})
+        self.assertEqual([result["exit_code"] for result in self.results()], [0, 0, 0, 0])
+        self.assertEqual(len({event["run"] for event in self.trace()}), 4)
+
+    def test_failure_before_mutation_and_partial_work_are_observed(self):
+        self.invoke("suspend", "--failure", "before", expected=3)
+        self.assertEqual([event["kind"] for event in self.trace()], ["start", "end"])
+        self.invoke("suspend")
+        self.invoke("process", "--failure", "partial", expected=3)
+        self.invoke("restore")
+        observe_trace(self.trace(), {"supplier": ["suspend", "process:0", "restore"]}, complete=True).assert_passed()
+        self.assertEqual(self.state(), {"suspended": False, "items": [0]})
+        self.assertEqual([result["exit_code"] for result in self.results()], [3, 0, 3, 0])
+
+    def test_failed_restoration_leaves_honest_external_state(self):
+        self.invoke("suspend")
+        self.invoke("restore", "--failure", "restore", expected=3)
+        self.assertTrue(self.state()["suspended"])
+        self.assertEqual([result["exit_code"] for result in self.results()], [0, 3])
+        result = observe_trace(self.trace(), {"supplier": ["suspend", "restore"]}, complete=True)
+        self.assertIn("executor/missing_progress", result.violations)
+
+    def test_retries_using_identical_argv_get_distinct_invocation_ids(self):
+        self.invoke("validate")
+        self.invoke("validate")
+        trace = self.trace()
+        self.assertEqual(len({event["run"] for event in trace}), 2)
+        observe_trace(trace, {"supplier": []}, complete=True).assert_passed()
+
+    def test_processing_retry_does_not_duplicate_completed_items(self):
+        self.invoke("suspend")
+        self.invoke("process", "--failure", "partial", expected=3)
+        self.invoke("process")
+        self.invoke("restore")
+        self.assertEqual(self.state(), {"suspended": False, "items": [0, 1]})
+        observe_trace(self.trace(), {"supplier": ["suspend", "process:0", "process:1", "restore"]}, complete=True).assert_passed()
+
+    def test_corrupt_sequence_does_not_create_a_nominal_start(self):
+        (self.root / "sequence.json").write_text('"bad"')
+        self.invoke("validate", expected=2)
+        self.assertFalse((self.root / "trace.jsonl").exists())
+        self.assertFalse(list(self.root.glob("*.ready")))
+
+    def test_corrupt_resource_state_is_a_fixture_error_without_mutation(self):
+        state_path = self.root / (hashlib.sha256(b"supplier").hexdigest() + ".json")
+        state_path.write_text('{"suspended":"bad","items":[]}')
+        self.invoke("suspend", expected=2)
+        self.assertEqual(state_path.read_text(), '{"suspended":"bad","items":[]}')
+        self.assertEqual(self.results()[0]["exit_code"], 2)
+        self.assertEqual([entry["kind"] for entry in self.trace()], ["start", "end"])
+
+    def wait_ready(self, count, processes):
+        deadline = time.monotonic() + 4
+        while len(list(self.root.glob("*.ready"))) < count:
+            self.assertTrue(all(process.poll() is None for process in processes))
+            if time.monotonic() >= deadline:
+                self.fail("fixture did not reach its file barrier")
+            time.sleep(0.005)
+        self.assertTrue(all(process.poll() is None for process in processes))
+
+    def test_real_overlap_fails_while_handlers_wait_at_file_barriers(self):
+        release = self.root / "release"
+        processes = []
+        try:
+            for count in [1, 2]:
+                processes.append(subprocess.Popen(self.command("validate", "--release", str(release)), stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+                self.wait_ready(count, processes)
+            release.write_text("release")
+            for process in processes:
+                _, stderr = process.communicate(timeout=10)
+                self.assertEqual(process.returncode, 0, stderr)
+            result = observe_trace(self.trace(), {"supplier": []}, complete=True)
+            self.assertIn("executor/overlap", result.violations)
+            self.assertEqual(result.peak_concurrency["supplier"], 2)
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate(timeout=10)
+
+    def test_barrier_timeout_is_a_fixture_error_not_success(self):
+        self.invoke("validate", "--release", str(self.root / "never"), "--wait-seconds", "0.05", expected=2)
+        self.assertEqual([event["kind"] for event in self.trace()], ["start", "end"])
+        self.assertEqual(self.results()[0]["exit_code"], 2)
 
 
 if __name__ == "__main__":
