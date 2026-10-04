@@ -5,7 +5,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Read;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
@@ -81,6 +81,63 @@ fn checked_root(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn publish_grant(base: &Path, record: &Record) -> Result<(), String> {
+    let path = base.join("grants").join(record.id.to_string());
+    checked_root(&base.join("grants"))?;
+    put(&path, &encode(record))?;
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o444)).map_err(|e| e.to_string())?;
+    File::open(&path)
+        .map_err(|e| e.to_string())?
+        .sync_all()
+        .map_err(|e| e.to_string())
+}
+
+/// Runs inside the unprivileged domain before any fixture handler code.
+/// Missing, revoked or mismatched grants fail before external markers.
+pub(super) fn gate(work: &Path, operation: &str) -> Result<(), String> {
+    if operation.len() > 128 {
+        return Err("gate handle exceeds bound".into());
+    }
+    let base = work.parent().ok_or("missing gate namespace")?;
+    checked_root(base)?;
+    checked_root(&base.join("grants"))?;
+    let fields: Vec<_> = operation.split(':').collect();
+    if fields.len() != 3 {
+        return Err("gate needs full identity".into());
+    }
+    let id: u64 = fields[0].parse().map_err(|_| "bad gate counter")?;
+    let inode: u64 = fields[1].parse().map_err(|_| "bad gate inode")?;
+    let path = base.join("grants").join(id.to_string());
+    let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if !meta.is_file() || meta.uid() != 0 || meta.mode() & 0o022 != 0 {
+        return Err("untrusted gate authorization".into());
+    }
+    let grant = decode(&read(&path)?)?;
+    if grant.id != id || grant.inode != inode || grant.boot != fields[2] || grant.phase != "armed" {
+        return Err("gate authorization revoked or mismatched".into());
+    }
+    let boot = read(Path::new("/proc/sys/kernel/random/boot_id"))?
+        .trim()
+        .to_owned();
+    let namespace = base
+        .file_name()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.strip_prefix("fsm-containment-identity-"))
+        .ok_or("invalid gate namespace")?;
+    let expected = format!("0::/system.slice/{}\n", unit(namespace, id));
+    if boot != grant.boot
+        || read(Path::new("/proc/self/cgroup"))? != expected
+        || fs::metadata(domain(namespace, id))
+            .map_err(|e| e.to_string())?
+            .ino()
+            != inode
+    {
+        return Err("gate native enrollment does not match authorization".into());
+    }
+    Ok(())
+}
+
 fn unit(namespace: &str, id: u64) -> String {
     format!("fsm-containment-identity-{namespace}-{id}.service")
 }
@@ -112,15 +169,39 @@ fn observe(namespace: &str, record: &Record, boot: &str) -> String {
 }
 
 fn status(command: &mut Command) -> Result<(), String> {
-    let status = command.status().map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("native command failed: {status}"))
+    let mut child = command
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let deadline = Instant::now();
+    loop {
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(status) if status.success() => return Ok(()),
+            Some(status) => return Err(format!("native command failed: {status}")),
+            None if deadline.elapsed() >= Duration::from_secs(3) => {
+                let _ = child.kill();
+                // A trusted utility can also remain uninterruptible. Do not
+                // turn its timeout into an unbounded blocking reap, or infer
+                // that manager jobs or handler ownership disappeared.
+                let reap = Instant::now();
+                while reap.elapsed() < Duration::from_millis(250) {
+                    if child.try_wait().map_err(|e| e.to_string())?.is_some() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                return Err("native utility deadline; ownership remains unresolved".into());
+            }
+            None => std::thread::sleep(Duration::from_millis(5)),
+        }
     }
 }
 
 pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
+    if operation.len() > 256 {
+        return Err("operation exceeds bound".into());
+    }
     if fs::metadata("/proc/self").map_err(|e| e.to_string())?.uid() != 0 {
         return Err("native identity helper requires provisioned root authority".into());
     }
@@ -152,7 +233,13 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
         .mode(0o600)
         .open(data.join("LOCK"))
         .map_err(|e| e.to_string())?;
-    lock.lock().map_err(|e| e.to_string())?;
+    let lock_deadline = Instant::now();
+    while lock.try_lock().is_err() {
+        if lock_deadline.elapsed() >= Duration::from_millis(250) {
+            return Err("native authority busy or unavailable".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let boot = read(Path::new("/proc/sys/kernel/random/boot_id"))?
         .trim()
         .to_owned();
@@ -230,7 +317,7 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                 encode(&record)
             )
         }
-        "launch-hold" => {
+        "launch" | "launch-hold" => {
             let mut record = record.ok_or("launch needs an identity")?;
             if observe(namespace, &record, &boot) != "prepared" {
                 return Err("stale launch refused".into());
@@ -244,6 +331,7 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
             }
             record.phase = "armed".into();
             put(&record_path(record.id), &encode(&record))?;
+            publish_grant(base, &record)?;
             let fixture = base.join("fixture");
             let meta = fs::symlink_metadata(&fixture).map_err(|e| e.to_string())?;
             if !meta.is_file() || meta.uid() != 0 || meta.mode() & 0o022 != 0 {
@@ -278,7 +366,10 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                     "--setenv=FSM_LIFECYCLE_PROBE_DIRECTORY={}",
                     work.display()
                 ))
-                .arg("--setenv=FSM_LIFECYCLE_PROBE_MODE=kill")
+                .arg(format!(
+                    "--setenv=FSM_LIFECYCLE_PROBE_MODE=identity-gate:{}:{}:{}",
+                    record.id, record.inode, record.boot
+                ))
                 .arg("--setenv=FSM_LIFECYCLE_PROBE_CONTAINED=1")
                 .arg(fixture)
                 .args(["native_fixture", "--exact", "--nocapture"]);
@@ -290,7 +381,8 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                 &format!("{}\n", std::process::id()),
             )?;
             let watchdog = Instant::now();
-            while !work.join("release-helper").exists()
+            while action == "launch-hold"
+                && !work.join("release-helper").exists()
                 && watchdog.elapsed() < Duration::from_secs(20)
             {
                 std::thread::sleep(Duration::from_millis(5));
@@ -307,6 +399,10 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                 return Err("unknown identity refuses native cleanup".into());
             }
             record.phase = "closing".into();
+            // Revoke entry first: a death after publishing closing but before
+            // persisting the private phase leaves an armed record that can be
+            // closed again, never a closing record with an armed public grant.
+            publish_grant(base, &record)?;
             put(&record_path(record.id), &encode(&record))?;
             let path = domain(namespace, record.id);
             fs::write(path.join("cgroup.freeze"), b"1\n").map_err(|e| e.to_string())?;
@@ -321,9 +417,9 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                 std::thread::sleep(Duration::from_millis(5));
             }
             fs::write(path.join("cgroup.kill"), b"1\n").map_err(|e| e.to_string())?;
-            let _ = Command::new("/usr/bin/systemctl")
-                .args(["stop", &unit(namespace, record.id)])
-                .status();
+            let _ = status(
+                Command::new("/usr/bin/systemctl").args(["stop", &unit(namespace, record.id)]),
+            );
             if path.exists() {
                 if !read(&path.join("cgroup.events"))?
                     .lines()
@@ -335,6 +431,7 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
             }
             record.phase = "closed".into();
             put(&record_path(record.id), &encode(&record))?;
+            publish_grant(base, &record)?;
             encode(&record)
         }
         _ => return Err("unknown native identity operation".into()),

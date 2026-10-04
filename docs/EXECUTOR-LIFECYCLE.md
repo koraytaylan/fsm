@@ -319,3 +319,36 @@ and full stable Linux workspace debug/release gates pass. MSRV negative
 probes and all 45 Python harness self-tests pass. macOS/Windows native
 execution remains unperformed. No production broker, migration, journal
 claim, complete task-9301 proof or integration completion is claimed.
+
+### Private privilege protocol and entry gate preparation
+
+The native fixture now includes a private Unix-socket broker with a fixed
+`privilege/1` protocol. Provisioning fixes its operator UID and task namespace;
+the root-owned parent and operator-owned mode-0600 socket enforce local
+access. Handler DynamicUsers cannot connect. Requests retain at most 256 bytes
+and only admit allocate, inspect, launch and close with complete identities.
+There is one active connection, a 300ms frame deadline plus at most one 250ms
+read timeout, and a 250ms write timeout. The kernel listen backlog is not a
+production admission budget. Lock acquisition is bounded; utility completion
+and reap polling have deadlines and preserve unresolved ownership on failure.
+The finite probe broker lifetime is not a production service lifecycle.
+
+Root-owned grants publish armed, closing and closed phases. Before handler
+fixture work, the unprivileged entry gate checks the grant's full counter,
+inode and boot tuple, armed phase, and actual kernel cgroup enrollment.
+Closure revokes the grant before freeze/kill. Native probes require refusal
+of a copied armed grant in another domain and of a captured submission
+replayed after durable closure, without protected-record mutation.
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/broker_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-broker-msrv.json
+python3 crates/fsm-execute/tests/lifecycle_platform/broker_probe.py --toolchain stable --report /tmp/fsm-native-broker-stable.json
+```
+
+This remains private feasibility preparation. It does not bind grants to
+journal claims or handler contracts, implement stale-socket restart, cancel
+all manager jobs, or prove every queued-job/crash/authority-loss window.
+A replay submitted after closure is narrower than a queued manager job
+surviving controller death. Production budgets, autonomous reconciliation,
+cross-boot authority and signal handling remain pending; task 9301 and the
+integration gate are unreleased.

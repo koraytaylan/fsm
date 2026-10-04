@@ -2,6 +2,9 @@
 //! The same executable supplies native fixtures without shell dependencies.
 
 #[cfg(target_os = "linux")]
+#[path = "lifecycle_platform/broker.rs"]
+mod broker;
+#[cfg(target_os = "linux")]
 #[path = "lifecycle_platform/identity_root.rs"]
 mod identity_root;
 
@@ -28,6 +31,14 @@ fn native_fixture() {
     };
     let directory = PathBuf::from(directory);
     let mode = std::env::var("FSM_LIFECYCLE_PROBE_MODE").expect("fixture mode");
+    if let Some(uid) = mode.strip_prefix("identity-broker:") {
+        #[cfg(target_os = "linux")]
+        broker::serve(&directory, uid.parse().expect("operator UID"))
+            .expect("native broker prototype");
+        #[cfg(not(target_os = "linux"))]
+        panic!("native broker requires Linux: {uid}");
+        return;
+    }
     if let Some(operation) = mode.strip_prefix("identity:") {
         #[cfg(target_os = "linux")]
         identity_root::run(&directory, operation).expect("native identity prototype");
@@ -35,6 +46,17 @@ fn native_fixture() {
         panic!("native identity prototype requires Linux: {operation}");
         return;
     }
+    let mode = if let Some(handle) = mode.strip_prefix("identity-gate:") {
+        #[cfg(target_os = "linux")]
+        {
+            identity_root::gate(&directory, handle).expect("trusted native entry gate");
+            "kill".to_owned()
+        }
+        #[cfg(not(target_os = "linux"))]
+        panic!("native entry gate requires Linux: {handle}");
+    } else {
+        mode
+    };
     if std::env::var_os("FSM_LIFECYCLE_PROBE_CONTAINED").is_some() {
         // Record native membership before spawning or external fixture work.
         let membership = fs::read_to_string("/proc/self/cgroup").expect("native Linux cgroup");

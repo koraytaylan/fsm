@@ -87,6 +87,7 @@ def exercise(binary):
         command(["sudo", "-n", "install", "-d", "-m", "755", str(base)])
         command(["sudo", "-n", "install", "-d", "-m", "1777", str(work)])
         command(["sudo", "-n", "install", "-d", "-m", "700", str(base / "data")])
+        command(["sudo", "-n", "install", "-d", "-m", "755", str(base / "grants")])
         command(["sudo", "-n", "tee", str(base / "data" / "counter")], input="0\n")
         command(["sudo", "-n", "install", "-m", "755", str(binary), str(base / "fixture")])
         first = handle(invoke("allocate"))
@@ -189,7 +190,7 @@ def exercise(binary):
             "passed": survived and len(cases) == len(INVENTORY) and all(row["passed"] for row in cases)}
 
 
-def main():
+def main(exercise_fn=exercise, scope="partial-native-identity-prototype"):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--toolchain", choices=("1.89.0", "stable"), required=True)
     parser.add_argument("--report", type=Path, required=True)
@@ -208,13 +209,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix="fsm-identity-fixture-") as directory:
         binary = Path(directory) / "fixture"
         shutil.copyfile(paths[0], binary)
-        report = {"schema": "fsm.lifecycle-probe/1", "scope": "partial-native-identity-prototype",
+        report = {"schema": "fsm.lifecycle-probe/1", "scope": scope,
                   "gate_released": False,
                   "source_commit": command(["git", "rev-parse", "HEAD"], cwd=repo).strip(),
                   "source_dirty": bool(command(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo).strip()),
                   "rustc": command(["rustc", f"+{args.toolchain}", "--version"]).strip(),
                   "kernel": platform.release(), "systemd": command(["systemctl", "--version"]).splitlines()[0],
-                  "fixture_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), **exercise(binary)}
+                  "fixture_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), **exercise_fn(binary)}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.report.with_suffix(".tmp")
     temporary.write_text(json.dumps(report, indent=2) + "\n")
