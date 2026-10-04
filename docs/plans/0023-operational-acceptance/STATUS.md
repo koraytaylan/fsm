@@ -94,6 +94,26 @@ owned by the integration coordinator.
   is complete with the malformed-kind, vacuous-ledger and text-limit repairs. Real fixture trace
   production, installed transport wiring and the native lifecycle matrix are
   still pending; synthetic observer results are not candidate acceptance.
+- **External-fixture preparation:** task 9502 generic operation tracing
+  landed independently in `20c67d56933aa090313551a7f152caf73a7c58f7`.
+  The portable helper now validates prerequisites, suspends a resource,
+  processes a bounded idempotent batch, and restores it, with before-mutation,
+  partial-work and restoration failures. Independent trace/result logs and
+  actual external state are checked by nine real-subprocess tests, including
+  file-barrier overlap, fresh retry invocation identities, barrier timeout
+  and corrupt metadata refusal. All 38 Python self-tests and stable Linux
+  host gates pass. Frozen review of
+  `8c32130239dc3b0d441d080cff8902f963fa653d..20c67d56933aa090313551a7f152caf73a7c58f7`
+  repaired retry identity reuse, bounded retained batch state, recorded
+  outcomes independently, and refused corrupt metadata without mutation.
+  The exact clean checkout passed all 38 self-tests and 15 consumer-install
+  scenarios / 100 assertions. Retained evidence is
+  `/tmp/fsm-traced-fixture-clean-evidence/7e88e2c420094d4486328b2cda4890c8/report.json`;
+  its source commit is exact, dirty is false, fixture digest matches and
+  build provenance/artifact digests validate. This proves the existing-suite
+  baseline, not the still-unimplemented integrated executor matrix.
+  MCP fixture support, full installed executor scenarios and native lifecycle
+  claims remain incomplete; fixture barriers/locks do not prove containment.
 - **Outcome:** pending; readiness claims will name the evidence that supports
   them, and a missing proof will prevent closure.
 
