@@ -368,3 +368,36 @@ Python harness self-tests. macOS/Windows native execution remains unperformed.
 The reviewed changes do not affect public APIs, journal formats or historical
 hashes; prior-version migration evidence is not claimed for these private
 probe records. The full task-9301 gate remains unreleased.
+
+### Pending launch and closure window preparation
+
+The private native fixture can hold a trusted `ExecStartPre` barrier inside
+its preallocated domain. The window probe observes the kernel inode and a
+real manager start job (`activating`, `start-pre`, nonzero job), then kills
+the launch controller. A fresh helper observes the armed identity, closes
+the domain, requires the job to disappear and releases the barrier; no
+handler or descendant ready marker may have appeared. This covers a manager
+job accepted before controller death, beyond the earlier post-closure replay.
+
+Two separate closure-death barriers cover revoked grants before private
+closing publication, and native removal plus a protected closure receipt
+before the final tombstone. Recovery from the latter requires a matching
+counter/inode/boot receipt and revoked grant; missing or corrupt evidence
+refuses cleanup without mutating the private record. An unrelated same-name
+replacement survives refusal even when the genuine closure receipt exists.
+The receipt is written only after actual native cleanup and domain removal.
+There is still an unproved interruption before receipt persistence: missing
+native state without a receipt remains unknown and cannot authorize reuse.
+These are private /run probe records, not a production journal format.
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/window_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-window-msrv.json
+python3 crates/fsm-execute/tests/lifecycle_platform/window_probe.py --toolchain stable --report /tmp/fsm-native-window-stable.json
+```
+
+Eleven named cases cover pending start, controller death, pending-job close,
+revocation death/recovery, finalization death, missing/mismatched receipt,
+alias refusal, finalization recovery and strictly monotonic succession.
+Full journal/contract authorization, all other crash windows, signals,
+authority loss, restart and cross-boot proof remain pending. Task 9301 and
+integration remain unreleased; this work does not start downstream tasks.

@@ -342,6 +342,12 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
             command
                 .args(["--quiet", "--collect", "--no-block"])
                 .arg(format!("--unit={}", unit(namespace, record.id)));
+            if base.join("hold-entry").exists() {
+                command.arg(format!(
+                    "--property=ExecStartPre=/usr/bin/env FSM_LIFECYCLE_PROBE_MODE=identity-pre-entry {} native_fixture --exact --nocapture",
+                    fixture.display()
+                ));
+            }
             for property in [
                 "DynamicUser=yes",
                 "ProtectControlGroups=yes",
@@ -389,10 +395,36 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
             }
             encode(&record)
         }
-        "close" => {
+        "close" | "close-hold" | "close-finalize-hold" => {
             let mut record = record.ok_or("close needs an identity")?;
             let observed = observe(namespace, &record, &boot);
             if observed == "closed" {
+                return put(&base.join("response"), &encode(&record));
+            }
+            if observed == "unknown-missing" && record.phase == "closing" {
+                // Absence alone is never closure evidence. Only a matching
+                // protected receipt written after actual native cleanup can
+                // recover the interrupted final tombstone publication.
+                let receipt = read(&data.join(format!("closure-{}", record.id)))
+                    .and_then(|value| decode(&value))
+                    .map_err(|_| "unknown identity refuses native cleanup")?;
+                let grant = decode(&read(&base.join("grants").join(record.id.to_string()))?)?;
+                for evidence in [&receipt, &grant] {
+                    if evidence.id != record.id
+                        || evidence.inode != record.inode
+                        || evidence.boot != record.boot
+                    {
+                        return Err("closure evidence identity mismatch".into());
+                    }
+                }
+                if receipt.phase != "closed"
+                    || !matches!(grant.phase.as_str(), "closing" | "closed")
+                {
+                    return Err("closure evidence phase mismatch".into());
+                }
+                record.phase = "closed".into();
+                put(&record_path(record.id), &encode(&record))?;
+                publish_grant(base, &record)?;
                 return put(&base.join("response"), &encode(&record));
             }
             if !matches!(observed.as_str(), "prepared" | "armed" | "closing") {
@@ -403,6 +435,15 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
             // persisting the private phase leaves an armed record that can be
             // closed again, never a closing record with an armed public grant.
             publish_grant(base, &record)?;
+            if action == "close-hold" {
+                put(&base.join("revocation-ready"), "revoked\n")?;
+                let watchdog = Instant::now();
+                while !base.join("release-close").exists()
+                    && watchdog.elapsed() < Duration::from_secs(20)
+                {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
             put(&record_path(record.id), &encode(&record))?;
             let path = domain(namespace, record.id);
             fs::write(path.join("cgroup.freeze"), b"1\n").map_err(|e| e.to_string())?;
@@ -430,6 +471,19 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                 fs::remove_dir(&path).map_err(|e| e.to_string())?;
             }
             record.phase = "closed".into();
+            put(
+                &data.join(format!("closure-{}", record.id)),
+                &encode(&record),
+            )?;
+            if action == "close-finalize-hold" {
+                put(&base.join("closure-ready"), "native closure recorded\n")?;
+                let watchdog = Instant::now();
+                while !base.join("release-finalize").exists()
+                    && watchdog.elapsed() < Duration::from_secs(20)
+                {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
             put(&record_path(record.id), &encode(&record))?;
             publish_grant(base, &record)?;
             encode(&record)

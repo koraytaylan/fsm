@@ -31,6 +31,13 @@ fn native_fixture() {
     };
     let directory = PathBuf::from(directory);
     let mode = std::env::var("FSM_LIFECYCLE_PROBE_MODE").expect("fixture mode");
+    if mode == "identity-pre-entry" {
+        // Trusted pre-start fixture work only; the actual handler has not
+        // reached its entry gate. Provisioning owns the release barrier.
+        fs::write(directory.join("entry-ready"), b"pending start job").expect("pre-entry barrier");
+        await_file(&directory.parent().expect("namespace").join("release-entry"));
+        return;
+    }
     if let Some(uid) = mode.strip_prefix("identity-broker:") {
         #[cfg(target_os = "linux")]
         broker::serve(&directory, uid.parse().expect("operator UID"))
