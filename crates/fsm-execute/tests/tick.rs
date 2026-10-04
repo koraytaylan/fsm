@@ -260,7 +260,13 @@ fn a_lent_writer_produces_the_identical_trace_without_opening_anything() {
     let mut clock = FixedClock::new(5_000, 1);
     // Embedded mode: the caller already holds the one writer, exactly as
     // `fsm serve` does, and a second `Store::open` would collide with it.
-    let mut store = Store::open(directory.path()).unwrap();
+    // A parallel fixture can briefly inherit the just-released setup lock
+    // between fork and exec, so use the same bounded reopen as standalone.
+    let mut store = open_writer(directory.path());
+    assert!(matches!(
+        Store::open(directory.path()),
+        Err(error) if error.code == "store/lock"
+    ));
 
     let mut lines = Vec::new();
     for _ in 0..40 {
