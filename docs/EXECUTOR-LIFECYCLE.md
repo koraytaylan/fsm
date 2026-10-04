@@ -622,3 +622,33 @@ empty. The pre-entry barrier also refuses outside Linux before writing a
 marker. These assertions cover fixture capability refusal, not a production
 CLI capability that has not yet been implemented. Real macOS/Windows CI
 execution remains required to establish their outcome.
+
+### Frozen aggregate review and actual CI
+
+Local frozen matrix source `3f9f0d1` passes 56 native cases and one required
+negative per compiler. Candidate CI initially rejected the job-level runner
+context before starting jobs (run `37241901509`); `bac926e` moves runner paths
+into the execution step. Run `37241946083` then exposed two real portability
+issues: unreachable fixture returns after non-Linux panics, and Python 3.12
+raising a permission error where Python 3.14 hid a protected-path stat failure.
+`f1ccee1` restricts returns to Linux and proves protected counter absence
+through the administrative provisioner. The failed artifacts are retained;
+permission failure is not evidence of absence.
+
+Actual native CI at `f1ccee1` and `6852cf3` passes the full 56-case inventory
+and disabled-kill control on Ubuntu kernel `6.17.0-1022-azure`, systemd
+`255.4-1ubuntu8.17`, Rust `1.89.0` and stable `1.99.0`. This is additional native
+host evidence beyond the local kernel 7.0/systemd 259 environment. Reports
+are uploaded with their exact source, fixture hashes, compiler and case
+observations. These runs are on the separate review branch; remote develop
+and releases are not updated.
+
+- [Initial rejected workflow](https://github.com/koraytaylan/fsm/actions/runs/37241901509)
+- [First executed candidate and retained failures](https://github.com/koraytaylan/fsm/actions/runs/37241946083)
+- [Repaired native candidate](https://github.com/koraytaylan/fsm/actions/runs/37242072483)
+- [Unsupported-host refusal candidate](https://github.com/koraytaylan/fsm/actions/runs/37242284024)
+
+The last two runs' portable six-leg jobs are still active at this checkpoint.
+Native successes do not establish their result or a final task landing.
+Production journal, hosting, shutdown and admission requirements remain owned
+by the downstream tasks rather than becoming a circular feasibility gate.

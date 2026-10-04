@@ -190,6 +190,22 @@ lifecycle updates.
   MSRV/stable facility evidence remains pending; host manager death,
   whole-namespace loss, storage budgets, remaining windows and production
   integration remain incomplete. Task status and native gate do not change.
+- **Aggregate native review:** `native_matrix.py` now binds all seven
+  exact native inventories to one clean source/compiler, validates unrelated
+  survival and requires the final-kill negative control to fail with a live
+  domain. Frozen local source `3f9f0d1` passes 56 cases and its expected
+  negative at each compiler; frozen facility source `809978f` passes five
+  cases each. Separate review branch `codex/plans-20-23-native-review`
+  executes the actual CI matrices. Run `37241901509` failed workflow
+  validation before jobs; `bac926e` run `37241946083` exposed unsupported-host
+  unreachable returns and a protected-path Python permission assertion.
+  Repairs `bac926e` and `f1ccee1` preserve those failed reports. The latter
+  source passes all 56 native cases and the expected negative on Ubuntu
+  kernel 6.17/systemd 255 at Rust 1.89 and stable 1.99, in run `37242072483`.
+  Candidate `6852cf3` adds six-mode unsupported-host refusal with no fixture
+  writes; both its native jobs also pass in run `37242284024`. The complete
+  six-leg portable gates are still running; source-bound artifact review and
+  final host gates remain in progress. No task or gate is marked complete.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
