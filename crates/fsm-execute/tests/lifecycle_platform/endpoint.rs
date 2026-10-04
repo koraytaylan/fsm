@@ -4,7 +4,7 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt, chown};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
-use super::super::identity_root::{put, read};
+use super::super::identity_root::{put, put_public, read};
 
 fn route(base: &Path) -> Result<(u64, String, u32), String> {
     let path = base.join("endpoint");
@@ -75,14 +75,9 @@ pub(super) fn bind(base: &Path, uid: u32) -> Result<(File, UnixListener, PathBuf
     chown(&socket, Some(uid), None).map_err(|e| e.to_string())?;
     let boot = read(Path::new("/proc/sys/kernel/random/boot_id"))?;
     let path = base.join("endpoint");
-    put(
+    put_public(
         &path,
         &format!("endpoint/1\n{epoch}\n{}\n{uid}\n", boot.trim()),
     )?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o444)).map_err(|e| e.to_string())?;
-    File::open(path)
-        .map_err(|e| e.to_string())?
-        .sync_all()
-        .map_err(|e| e.to_string())?;
     Ok((lock, listener, socket))
 }

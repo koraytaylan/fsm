@@ -9,7 +9,7 @@ import uuid
 from endpoint_probe import socket_path
 from identity_probe import command, handle, main, wait_file
 
-INVENTORY = ('exclusive-authority', 'broker-death', 'new-endpoint', 'active-refusal',
+INVENTORY = ('readable-publication', 'exclusive-authority', 'broker-death', 'new-endpoint', 'active-refusal',
              'old-endpoint-alias', 'matched-recovery', 'missing-authority', 'counter-rollback', 'successor')
 
 
@@ -62,6 +62,27 @@ def exercise(binary):
         for counter in ('counter', 'broker-counter'):
             command(['sudo', '-n', 'tee', str(base / 'data' / counter)], input='0\n')
         command(['sudo', '-n', 'install', '-m', '755', str(binary), str(base / 'fixture')])
+        publisher = f'fsm-containment-publication-{namespace}.service'
+        units.append(publisher)
+        command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + publisher,
+                 '--property=UMask=0077', '--property=RuntimeMaxSec=10s', '/usr/bin/env',
+                 f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}', 'FSM_LIFECYCLE_PROBE_MODE=identity-publication',
+                 str(base / 'fixture'), 'native_fixture', '--exact', '--nocapture'])
+        wait_file(base / 'publication-ready')
+        command(['sudo', '-n', 'touch', str(base / 'publication-release')])
+        deadline = time.monotonic() + 3
+        reads = 0
+        while not (base / 'publication-done').exists():
+            assert time.monotonic() < deadline, 'publication deadline'
+            try:
+                value = (base / 'publication').read_text()
+            except FileNotFoundError:
+                continue
+            assert 0 <= int(value) < 64
+            (base / 'work/publication-ack').write_text(value)
+            reads += 1
+        assert (base / 'publication').read_text() == '63\n' and reads > 0
+        passed('readable-publication', concurrent_reads=reads)
         first_broker, result = start('first')
         assert result.returncode == 0, result.stderr
         wait_file(base / 'broker-ready')

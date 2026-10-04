@@ -31,6 +31,31 @@ fn native_fixture() {
     };
     let directory = PathBuf::from(directory);
     let mode = std::env::var("FSM_LIFECYCLE_PROBE_MODE").expect("fixture mode");
+    if mode == "identity-publication" {
+        #[cfg(target_os = "linux")]
+        {
+            fs::write(directory.join("publication-ready"), b"ready").expect("publication barrier");
+            await_file(&directory.join("publication-release"));
+            for value in 0..64 {
+                identity_root::put_public(&directory.join("publication"), &format!("{value}\n"))
+                    .expect("readable atomic publication");
+                let deadline = Instant::now();
+                while !identity_root::read(&directory.join("work/publication-ack"))
+                    .is_ok_and(|ack| ack.trim() == value.to_string())
+                {
+                    assert!(
+                        deadline.elapsed() < Duration::from_secs(3),
+                        "publication reader missing"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+            fs::write(directory.join("publication-done"), b"done").expect("publication completion");
+        }
+        #[cfg(not(target_os = "linux"))]
+        panic!("native publication requires Linux");
+        return;
+    }
     if let Some(handle) = mode.strip_prefix("identity-lease-client:") {
         #[cfg(target_os = "linux")]
         broker::client(&directory, handle).expect("native lease client");

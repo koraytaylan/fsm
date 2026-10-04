@@ -30,6 +30,14 @@ pub(super) fn read(path: &Path) -> Result<String, String> {
 }
 
 pub(super) fn put(path: &Path, value: &str) -> Result<(), String> {
+    put_mode(path, value, false)
+}
+
+pub(super) fn put_public(path: &Path, value: &str) -> Result<(), String> {
+    put_mode(path, value, true)
+}
+
+fn put_mode(path: &Path, value: &str, public: bool) -> Result<(), String> {
     let temporary = path.with_extension("tmp");
     let mut options = OpenOptions::new();
     options.write(true).create_new(true).mode(0o600);
@@ -37,6 +45,11 @@ pub(super) fn put(path: &Path, value: &str) -> Result<(), String> {
     use std::io::Write;
     file.write_all(value.as_bytes())
         .map_err(|e| e.to_string())?;
+    if public {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o444))
+            .map_err(|e| e.to_string())?;
+    }
     file.sync_all().map_err(|e| e.to_string())?;
     fs::rename(temporary, path).map_err(|e| e.to_string())?;
     File::open(path.parent().ok_or("missing parent")?)
@@ -84,13 +97,7 @@ fn checked_root(path: &Path) -> Result<(), String> {
 fn publish_grant(base: &Path, record: &Record) -> Result<(), String> {
     let path = base.join("grants").join(record.id.to_string());
     checked_root(&base.join("grants"))?;
-    put(&path, &encode(record))?;
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o444)).map_err(|e| e.to_string())?;
-    File::open(&path)
-        .map_err(|e| e.to_string())?
-        .sync_all()
-        .map_err(|e| e.to_string())
+    put_public(&path, &encode(record))
 }
 
 /// Runs inside the unprivileged domain before any fixture handler code.
