@@ -45,15 +45,63 @@ fn run(directory: &Directory, data: &Path, arguments: &[&str]) -> Output {
         .output()
         .unwrap()
 }
-fn inventory(path: &Path) -> BTreeMap<PathBuf, (bool, Vec<u8>)> {
+#[derive(Debug, PartialEq, Eq)]
+enum InventoryEntry {
+    Directory,
+    Bytes(Vec<u8>),
+    #[cfg(windows)]
+    Locked {
+        len: u64,
+        created: u64,
+        modified: u64,
+        attributes: u32,
+    },
+}
+fn open_writer(data: &Path) -> Store {
+    // Pin the diagnostic record so its exact bytes can be independently
+    // checked after release even on Windows, which denies locked reads.
+    let _pin = fsm_store::clock::pin(4242);
+    Store::open(data).unwrap()
+}
+fn verify_released_lock(data: &Path) {
+    let expected = format!("{{\"pid\":{},\"started_ts\":4242}}\n", std::process::id());
+    assert_eq!(
+        fs::read(data.join("journal/LOCK")).unwrap(),
+        expected.as_bytes()
+    );
+}
+fn inventory(path: &Path) -> BTreeMap<PathBuf, InventoryEntry> {
     let mut files = BTreeMap::new();
     for entry in fs::read_dir(path).unwrap() {
         let path = entry.unwrap().path();
         if path.is_dir() {
-            files.insert(path.clone(), (true, Vec::new()));
+            files.insert(path.clone(), InventoryEntry::Directory);
             files.extend(inventory(&path));
         } else {
-            files.insert(path.clone(), (false, fs::read(path).unwrap()));
+            let entry = match fs::read(&path) {
+                Ok(bytes) => InventoryEntry::Bytes(bytes),
+                Err(error) => {
+                    #[cfg(windows)]
+                    if error.raw_os_error() == Some(33)
+                        && path.ends_with(Path::new("journal").join("LOCK"))
+                    {
+                        use std::os::windows::fs::MetadataExt;
+                        let meta = fs::metadata(&path).unwrap();
+                        files.insert(
+                            path,
+                            InventoryEntry::Locked {
+                                len: meta.len(),
+                                created: meta.creation_time(),
+                                modified: meta.last_write_time(),
+                                attributes: meta.file_attributes(),
+                            },
+                        );
+                        continue;
+                    }
+                    panic!("cannot inventory {path:?}: {error}");
+                }
+            };
+            files.insert(path, entry);
         }
     }
     files
@@ -163,7 +211,7 @@ fn invalid_unknown_and_input_failures_have_distinct_exit_codes() {
 fn stored_checks_resolve_name_and_hash_under_a_held_writer_without_changing_files() {
     let directory = Directory::new();
     let data = directory.0.join("store");
-    let mut store = Store::open(&data).unwrap();
+    let mut store = open_writer(&data);
     let mut clock = FixedClock::new(1000, 1);
     store
         .define_machine_on(&mut clock, json(DRAFT.as_bytes()), false, false)
@@ -176,6 +224,7 @@ fn stored_checks_resolve_name_and_hash_under_a_held_writer_without_changing_file
         assert_eq!(inventory(&data), before);
     }
     drop(store); // The writer itself writes its normal snapshot on drop.
+    verify_released_lock(&data);
     let before = inventory(&data);
     let output = run(&directory, &data, &["--check", "--machine", "simple"]);
     assert_eq!(output.status.code(), Some(0));
@@ -208,7 +257,7 @@ fn offline_missing_child_is_unknown_and_stored_closure_checks_the_child_sites() 
         );
         assert_eq!(offline.status.code(), Some(3));
         assert!(!data.exists());
-        let mut store = Store::open(&data).unwrap();
+        let mut store = open_writer(&data);
         let mut clock = FixedClock::new(1000, 1);
         store
             .define_machine_on(&mut clock, json(child.as_bytes()), false, false)
@@ -236,6 +285,8 @@ fn offline_missing_child_is_unknown_and_stored_closure_checks_the_child_sites() 
                 Some("/states/0/entry/emit/0/args/value")
             );
         }
+        drop(store);
+        verify_released_lock(&data);
     }
 }
 
