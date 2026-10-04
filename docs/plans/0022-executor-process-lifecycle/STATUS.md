@@ -212,6 +212,23 @@ lifecycle updates.
   inventory now refuses unknown domains before startup epoch or allocation
   counter mutation. New restart cases exercise both losses and restoration;
   frozen review, guard neutralization and updated native CI remain pending.
+- **Frozen native and I/O checkpoint:** source
+  `46d0db24df7c5f108cdf8631259a3b81c4023a01` passes the 61-case matrix
+  locally on MSRV and stable and in both native jobs of CI run
+  `37244150329`; downloaded artifacts bind that exact clean source and all
+  suite, I/O-log and final-kill-negative SHA-256 digests verify. The inventory
+  includes sixteen restart cases and a real blocked socket reader whose
+  cancellation joins within 250 ms while the descendant and outside writer
+  survive. Removing only the candidate read shutdown fails the intended
+  bounded-join assertion on both compilers; startup, allocation and canonical
+  namespace guard negative controls likewise fail their intended cases.
+  These are primitive feasibility proofs, not production lifecycle claims.
+  The MSRV CLI retry passes seven tests after a disk-quota build failure;
+  the required stable host gate and six portable CI legs remain running.
+  Earlier run `37242284024` passed both macOS legs but failed both Windows
+  legs on reading the held journal lock; `fedfc47` repairs those test
+  snapshots, with actual Windows validation still pending in the current
+  run. Task status and native gate remain unchanged.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
