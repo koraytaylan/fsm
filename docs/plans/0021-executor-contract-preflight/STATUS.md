@@ -56,6 +56,20 @@ The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file
   is complete. Review repairs eliminated temporary placeholder accounting
   and repeated static payload validation; exact limit and dense-site fixtures
   prove the repairs. Native macOS/Windows checks remain unexecuted.
+- **CLI-check progress:** task 9201 landed independently in
+  `04dbb17fe615edc05745998022af62f9c18a60f7`. Seven
+  real-binary tests pass on MSRV, including three handwritten report goldens and a usage-error golden,
+  held-writer byte invariance, offline inaccessible/nonexistent data paths,
+  unresolved and invalid children, distinct exits, private-table redaction, stdin mode refusals and manual policy.
+  Existing execute tests pass (15 cases). Final stable workspace debug/release,
+  Clippy and docs gates pass on Linux, with the final seven CLI checks also
+  passing on stable debug/release. Release validation required disposable
+  release-cache cleanup after temporary-storage quota exhaustion. Frozen
+  review of `1f97188e11d0311ab300e143991af5c4588acb5e..04dbb17fe615edc05745998022af62f9c18a60f7`
+  is complete. Review distinguishes writer-drop snapshot writes from check
+  writes, forces file selectors to be file reads, and verifies sanitized
+  errors and direct common-analyzer output. Native macOS/Windows remains
+  unexecuted; shared admission and MCP draft checking remain unfinished.
 - **Outcome:** effect and outcome analysis implemented and reviewed; complete contract admission remains unfinished; completion requires the task acceptance evidence and the stable host and relevant platform gates, with unexecuted environments recorded.
 
 _Task frontmatter is authoritative; this file is the roll-up._

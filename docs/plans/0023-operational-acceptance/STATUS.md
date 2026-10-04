@@ -62,6 +62,21 @@ owned by the integration coordinator.
   sockets enabled and isolated Git settings. Workspace clippy, formatting,
   warning-free documentation and file-size checks passed. Native macOS and
   Windows evidence has not been produced.
+- **Installed-acceptance preparation:** the portability portion of task
+  9502 landed independently in `7c8c49cd854c37b0772924515913835488c9df41`.
+  Existing success/failure handlers now use `sys.executable` and an independent
+  Python fixture; decimal generation uses the same explicit interpreter.
+  The controlled source inventory includes `acceptance/fixtures`, with a
+  separate inventory/digest test. All 16 Python self-tests pass (13 reporter
+  and three fixture tests). The full consumer-installed Linux suite passed
+  15 scenarios / 100 assertions using these fixtures, at Rust 1.89.0.
+  Retained evidence is
+  `/tmp/fsm-portable-fixtures-evidence/eaa9de43bb654600a1a35268ea47e80a/report.json`;
+  its receipt includes the fixture source and its bundle digests validate.
+  This is a dirty snapshot of `1f97188`, explicitly release-ineligible.
+  Review of the portable change preserves the original assertions and
+  confirms no engine imports in the fixture. The installed executor matrix,
+  observer fault tests and native macOS/Windows execution remain incomplete.
 - **Outcome:** pending; readiness claims will name the evidence that supports
   them, and a missing proof will prevent closure.
 
