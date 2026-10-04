@@ -1,0 +1,1 @@
+{"code":"args","details":{},"docs":"fsm://docs/spec#args","duplicate":false,"hint":"use execute --check --handlers ./handlers.json --machine-file ./machine.json, or --machine <name-or-id>","message":"machine checks require --check, one selector, and separate input streams","path":"","retryable":false}

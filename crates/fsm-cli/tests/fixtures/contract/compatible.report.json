@@ -1,0 +1,39 @@
+{
+  "format": "fsm.executor-check/1",
+  "status": "compatible",
+  "machine_id": "$MACHINE_ID",
+  "contract_id": "2ae04e1358db9d1164a6fa629138146705733503e959635c943514c34916f237",
+  "definitions": [
+    "$MACHINE_ID"
+  ],
+  "scope": {
+    "effects_checked": true,
+    "outcomes_checked": true,
+    "dynamic_signals": false
+  },
+  "findings": [],
+  "effects": [
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/entry/emit/0",
+      "effect": "work",
+      "arguments": {
+        "extra": "str",
+        "flag": "bool",
+        "value": "int"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "value"
+      ],
+      "outcomes": {
+        "on_ok": "no-outcome",
+        "on_failed": "no-outcome"
+      }
+    }
+  ],
+  "progress": [
+    "no-outcome",
+    "runtime-dependent"
+  ]
+}

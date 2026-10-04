@@ -1336,6 +1336,26 @@ remain runtime-dependent, never structural contradictions. Final findings,
 sites and bytes MUST satisfy the same inclusive limits and deterministic
 ordering as effect analysis. Compatibility MUST NOT authorize a spawn.
 
+## CLI executor machine checks
+
+`fsm execute --check --handlers <file>` MAY select exactly one of
+`--machine-file <file>` and `--machine <name-or-id>`. Selectors MUST require
+`--check` and MUST NOT combine with execution/dead-letter options. Both
+machine input and handler input MUST NOT consume the same stdin stream.
+The file selector MUST compile offline without inspecting the data directory;
+unresolved child definitions remain unknown. The stored selector MUST use
+an existing strictly read-only store, including while its writer is held.
+Neither check MAY create a directory, lock, snapshot, request, definition,
+instance or external process.
+
+Machine checks MUST emit the common `fsm.executor-check/1` report directly;
+exit codes are 0 compatible, 1 invalid, 2 input/usage/store/analysis failure,
+and 3 unknown. Handler parsing failures in machine-check mode MUST preserve
+the typed code with sanitized diagnostic text, without private table literals.
+Legacy table-only checks retain their content and exit semantics, adding
+`scope: "handler-table-only"`; their privileged argv inspection MUST NOT be
+included in machine reports. `--list-dead` retains its existing behavior.
+
 ## Explicit manual executor effects
 
 The operator-owned `fsm.handlers/1` table MAY contain `manual_effects`, an

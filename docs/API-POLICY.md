@@ -343,3 +343,9 @@ and distinguish embedded request-driven progress from external execution.
 provisional executor library APIs; the legacy watcher constructor remains available.
 Read-only fallback isolation and interrupted-advance recovery are correctness
 fixes to existing guarantees, not new execution permissions.
+
+Executor machine checks add optional `--machine-file` / `--machine` selectors
+under `execute --check`. Their versioned report and 0/1/2/3 exit contract are
+distinct from the unchanged table-only exit behavior; table-only inspection
+adds the scope string `handler-table-only`. This additive command extension
+changes no persisted machine, journal or hash representation.

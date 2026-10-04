@@ -869,6 +869,35 @@ handler is a deliberate stall: the executor logs `exec/unhandled_effect` once
 and takes no other action, because the alternative is guessing what to run
 against the world's computers.
 
+### Check an executor contract before execution
+
+Check a local draft without opening a store:
+
+```sh
+fsm --json execute --check --handlers ./handlers.json --machine-file ./draft.json
+```
+
+Check an existing definition using a read-only store view, even while its
+writer is active:
+
+```sh
+fsm --json --data-dir ./data execute --check --handlers ./handlers.json --machine order
+```
+
+Machine checks return `fsm.executor-check/1`: exit 0 means structurally
+compatible, 1 means invalid, 2 means input/usage/store failure, and 3 means
+unknown. An unresolved invoked child is unknown offline; check the stored
+root after supplying the content-addressed child definition to resolve it.
+For intentional manual effects, use a table such as
+`{"format":"fsm.handlers/1","handlers":[],"manual_effects":["work"]}`
+and check it with the same `--handlers` command; those effects stay pending
+for manual acknowledgement. The check itself creates no directory,
+lock, snapshot, request id, instance, effect or handler process. A compatible
+report does not guarantee runtime progress or bypass execution admission.
+Without either machine selector, the legacy table inspection labels itself
+`scope: "handler-table-only"` and retains its privileged command details;
+machine reports expose only sanitized public contract metadata.
+
 ### The handler table: `fsm.handlers/1`
 
 Optional `manual_effects` explicitly lists effects that the operator intends

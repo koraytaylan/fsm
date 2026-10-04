@@ -1,0 +1,50 @@
+{
+  "format": "fsm.executor-check/1",
+  "status": "invalid",
+  "machine_id": "$MACHINE_ID",
+  "contract_id": "2ae04e1358db9d1164a6fa629138146705733503e959635c943514c34916f237",
+  "definitions": [
+    "$MACHINE_ID"
+  ],
+  "scope": {
+    "effects_checked": true,
+    "outcomes_checked": true,
+    "dynamic_signals": false
+  },
+  "findings": [
+    {
+      "code": "exec/contract_argument_missing",
+      "severity": "error",
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/entry/emit/0/args/value",
+      "effect": "work",
+      "outcome": null,
+      "message": "an emit omits an argument required by its handler",
+      "hint": "supply the required argument at this emit site or correct the operator template",
+      "cause": null
+    }
+  ],
+  "effects": [
+    {
+      "machine_id": "$MACHINE_ID",
+      "path": "/states/0/entry/emit/0",
+      "effect": "work",
+      "arguments": {
+        "extra": "str",
+        "flag": "bool"
+      },
+      "disposition": "automatic",
+      "required_args": [
+        "value"
+      ],
+      "outcomes": {
+        "on_ok": "no-outcome",
+        "on_failed": "no-outcome"
+      }
+    }
+  ],
+  "progress": [
+    "no-outcome",
+    "runtime-dependent"
+  ]
+}

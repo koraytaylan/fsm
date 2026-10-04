@@ -1,0 +1,6 @@
+{
+ "format":"fsm.machine/1","name":"simple","context":[],"events":[],
+ "effects":[{"name":"work","fields":[{"name":"unused","ty":"str"}]}],
+ "states":[{"name":"idle","entry":{"emit":[{"effect":"work","args":{"value":"1","flag":"true","extra":"\"text\""}}]}}],
+ "initial":"idle","transitions":[]
+}

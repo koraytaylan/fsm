@@ -13,8 +13,10 @@
 
 use std::collections::BTreeMap;
 
-use fsm_core::json::Value;
+use fsm_core::json::{JsonLimits, Value, parse};
+use fsm_core::spec::compile_accepted;
 use fsm_execute::config::HandlerTable;
+use fsm_execute::contract::{CheckStatus, Limits, analyze_contract};
 use fsm_execute::dead::{self, DeadLetter};
 use fsm_execute::error::ExecError;
 use fsm_execute::service;
@@ -31,7 +33,13 @@ const DEFAULT_POLL_INTERVAL_MS: u64 = 250;
 pub static SPECS: &[CmdSpec] = &[CmdSpec {
     path: &["execute"],
     positionals: &[],
-    flags: &["handlers", "poll-interval-ms", "since"],
+    flags: &[
+        "handlers",
+        "poll-interval-ms",
+        "since",
+        "machine-file",
+        "machine",
+    ],
     switches: &["check", "exclusive", "list-dead"],
     help: "Run the effect executor against a data dir",
     run: execute,
@@ -88,6 +96,29 @@ pub fn serve_mode(ctx: &mut Ctx, args: &Args) -> Result<ServeMode, u8> {
 }
 
 fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
+    let machine_check =
+        args.flags.contains_key("machine-file") || args.flags.contains_key("machine");
+    if machine_check {
+        let incompatible = !args.switches.contains("check")
+            || (args.flags.contains_key("machine-file") && args.flags.contains_key("machine"))
+            || args.switches.contains("list-dead")
+            || args.switches.contains("exclusive")
+            || args.flags.contains_key("since")
+            || args.flags.contains_key("poll-interval-ms");
+        let shared_stdin = args
+            .flags
+            .get("machine-file")
+            .is_some_and(|source| source == "-")
+            && args
+                .flags
+                .get("handlers")
+                .is_some_and(|source| source == "-");
+        if incompatible || shared_stdin {
+            emit_error(ctx, &ErrorObj::new("args", "machine checks require --check, one selector, and separate input streams")
+                .hint("use execute --check --handlers ./handlers.json --machine-file ./machine.json, or --machine <name-or-id>"));
+            return 2;
+        }
+    }
     // Answered before the handler table is even looked for: an operator
     // asking what died does not need the table that ran it, and often does
     // not have it to hand.
@@ -109,9 +140,19 @@ fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
     // error rather than a half-executed workflow.
     let table = match HandlerTable::parse(&text) {
         Ok(table) => table,
-        Err(error) => return report(ctx, &error),
+        Err(error) => {
+            if machine_check {
+                emit_error(ctx, &ErrorObj::new(error.code, "handler table is invalid")
+                    .hint("validate the operator table with execute --check --handlers <file> before checking a machine"));
+                return 2;
+            }
+            return report(ctx, &error);
+        }
     };
     if args.switches.contains("check") {
+        if machine_check {
+            return check_machine(ctx, args, &table);
+        }
         let letters = match dead_letters_for(&ctx.data_dir) {
             Ok(letters) => letters,
             Err(error) => return report(ctx, &error),
@@ -153,6 +194,64 @@ fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
     match service::run(config, &mut clock, &mut emit) {
         Ok(()) => 0,
         Err(error) => report(ctx, &error),
+    }
+}
+
+/// File checks do not even inspect data_dir; stored checks never acquire a writer.
+fn check_machine(ctx: &Ctx, args: &Args, table: &HandlerTable) -> u8 {
+    let inputs = if let Some(source) = args.flags.get("machine-file") {
+        read_input_from(
+            &if source == "-" || source.starts_with('@') {
+                source.clone()
+            } else {
+                format!("@{source}")
+            },
+            ctx.stdin.as_deref(),
+        )
+        .and_then(|text| {
+            parse(text.as_bytes(), &JsonLimits::DEFAULT)
+                .map_err(|error| ErrorObj::new("def/shape", error.message))
+        })
+        .and_then(|document| compile_accepted(&document).map_err(ErrorObj::from_findings))
+        .map(|machine| (machine, BTreeMap::new()))
+    } else {
+        crate::store::Store::open_read_only(&ctx.data_dir).and_then(|store| {
+            let machine = store
+                .resolve_machine(&args.flags["machine"])?
+                .compiled
+                .clone();
+            let catalogue = store
+                .state
+                .machines
+                .iter()
+                .filter_map(|(id, stored)| {
+                    fsm_core::hashes::digest_of(id)
+                        .map(|digest| (digest.to_string(), stored.compiled.clone()))
+                })
+                .collect();
+            Ok((machine, catalogue))
+        })
+    };
+    let (machine, catalogue) = match inputs {
+        Ok(inputs) => inputs,
+        Err(error) => {
+            emit_error(ctx, &error);
+            return 2;
+        }
+    };
+    match analyze_contract(&machine, &catalogue, table, Limits::default()) {
+        Ok(result) => {
+            emit_success(ctx, &result.to_value());
+            match result.status {
+                CheckStatus::Compatible => 0,
+                CheckStatus::Invalid => 1,
+                CheckStatus::Unknown => 3,
+            }
+        }
+        Err(error) => {
+            report(ctx, &error);
+            2
+        }
     }
 }
 
@@ -204,6 +303,7 @@ fn resolved_handlers(table: &HandlerTable, letters: Vec<DeadLetter>) -> Value {
             Value::Str(fsm_execute::config::FORMAT.into()),
         ),
         ("handlers".into(), Value::Arr(handlers)),
+        ("scope".into(), Value::Str("handler-table-only".into())),
         ("dead_letters".into(), dead::to_value(&letters)),
     ]))
 }
