@@ -699,3 +699,39 @@ digest. No production MCP reader is changed by this proof. The production
 runner must use the demonstrated interruptible transport and keep ownership
 unresolved until native tree closure; plain anonymous-pipe EOF is insufficient.
 Frozen aggregate review and cancellation neutralization remain required.
+
+### Verified matrix and signal decision
+
+Frozen source `46d0db24df7c5f108cdf8631259a3b81c4023a01` passes all
+61 cases at MSRV and stable on the local Linux host and in both native jobs
+of [CI run 37244150329](https://github.com/koraytaylan/fsm/actions/runs/37244150329).
+Downloaded matrix artifacts have that exact clean source, and every suite,
+I/O log and disabled-final-kill report matches its recorded SHA-256 digest.
+Removing only the candidate read shutdown makes the bounded reader test fail
+on both compilers. Separately disabling startup namespace inspection,
+allocation namespace inspection or canonical domain-name validation fails
+the corresponding native restart case on both compilers. Negative controls
+retain dirty-source status and never release the gate.
+
+The initial Linux backend uses an explicit project decision under the
+delegated authority recorded above: ordinary signal termination does not
+promise graceful drain. SIGTERM and SIGKILL terminate the executor; the
+protected supervisor observes lease EOF and closes the native domain, while
+durable ownership must survive until closure and settlement are verified.
+Task 9402 must provide the separately requested, independently woken local
+drain/abort control and bounded report. It must not label native SIGTERM
+default termination as drain, invoke settlement from a signal handler, or
+clear ownership merely because the executor exited. This decision avoids
+assuming a safe standard-library signal callback that the API inventory did
+not establish; safe Rust, zero dependencies and MSRV remain unchanged.
+
+For the excluded macOS and Windows contained capability, neither Unix signal
+tests nor cross-compilation establish native lifecycle support. Windows
+console events and forced termination need separate safe notification and
+Job Object enrollment/closure proof before that capability can be enabled;
+macOS likewise requires a separately proved containment authority. Existing
+portable behavior remains covered by the six-leg CI gate. Both macOS legs
+of earlier run `37242284024` passed, while its Windows legs failed held-lock
+test snapshots; `fedfc47` repairs the snapshots without changing production
+locking. Current portable CI and the local stable host gate remain active,
+so task 9301 and its implementation gate remain unreleased at this checkpoint.
