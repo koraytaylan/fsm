@@ -37,6 +37,15 @@ def main():
     rustc = subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip()
     rows = []
     environment = dict(os.environ, CARGO_BUILD_JOBS='1')
+    io_test = 'pipe_cancel::socket_read_cancellation_joins_with_surviving_descendant'
+    result = subprocess.run(['cargo', '+' + args.toolchain, 'test', '-p', 'fsm-execute',
+                             '--test', 'lifecycle_platform', '--', '--exact', '--color', 'never', io_test],
+                            cwd=repo, env=environment, capture_output=True, timeout=180)
+    diagnostics = result.stdout + result.stderr
+    (args.report_dir / 'io-cancellation.log').write_bytes(diagnostics)
+    assert result.returncode == 0 and (f'test {io_test} ... ok').encode() in result.stdout
+    assert b'1 passed; 0 failed; 0 ignored;' in result.stdout, 'missing native I/O cancellation proof'
+    io_digest = hashlib.sha256(diagnostics).hexdigest()
     for name in SUITES:
         module = importlib.import_module(name + '_probe')
         inventory = module.CASES if name == 'systemd' else module.INVENTORY
@@ -73,7 +82,8 @@ def main():
     assert not git(repo, 'status', '--porcelain', '--untracked-files=no'), 'source changed during proof'
     summary = {'schema': 'fsm.native-matrix/1', 'source_commit': commit, 'source_dirty': False,
                'rustc': rustc, 'kernel': platform.release(), 'passed': True, 'gate_released': False,
-               'suites': rows, 'cases': sum(row['cases'] for row in rows),
+               'suites': rows, 'cases': 1 + sum(row['cases'] for row in rows),
+               'io_cancellation_test': io_test, 'io_cancellation_sha256': io_digest,
                'expected_negative_failure_sha256': digest}
     (args.report_dir / 'matrix.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(json.dumps(summary))

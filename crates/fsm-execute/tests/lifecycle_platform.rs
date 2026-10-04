@@ -8,6 +8,10 @@ mod broker;
 #[path = "lifecycle_platform/identity_root.rs"]
 mod identity_root;
 
+#[cfg(target_os = "linux")]
+#[path = "lifecycle_platform/pipe_cancel.rs"]
+mod pipe_cancel;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -157,6 +161,13 @@ fn native_fixture() {
                 fs::write(directory.join("response"), b"alive").expect("liveness response");
             }
             std::thread::sleep(Duration::from_millis(5));
+        }
+        if std::env::var_os("FSM_LIFECYCLE_SOCKET_CANCEL_FIXTURE").is_some() {
+            fs::write(
+                directory.join("descendant-stopped"),
+                b"fixture stop observed",
+            )
+            .expect("cleanup observation");
         }
         return;
     }

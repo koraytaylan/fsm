@@ -676,3 +676,26 @@ failure cleanup, preventing a deliberately disabled guard from leaving an
 untracked fixture cgroup. Exact frozen review and both toolchain controls are
 required before claiming this repair passes; whole-environment reset and
 production recovery remain downstream work.
+
+### Interruptible native stdio independently of tree death
+
+Safe Rust 1.89 supplies `UnixStream::pair`, safe `OwnedFd` conversion into
+`Stdio`, cloned cancellation handles and `shutdown(Read)`. The Linux native
+Rust test `pipe_cancel::socket_read_cancellation_joins_with_surviving_descendant`
+passes on MSRV and stable using real socket-backed child stdout. It kills
+only the direct root, observes the worker blocked on its own socket through
+its thread syscall diagnostic, and retains an additional peer outside the
+child tree. The independent cancellation call must return the reader result
+and join within 250 ms. A fresh filesystem challenge after cancellation
+requires the surviving descendant to answer; reader cancellation is therefore
+not tree-closure evidence. TID is diagnostic synchronization only.
+
+Cooperative fixture cleanup occurs after the candidate result is captured,
+waits for the descendant to observe its stop marker, and cannot turn a
+cancellation timeout into a pass. The child receives null protocol stdin.
+The native matrix now requires this exact one-test result at its selected
+compiler before running the seven native suites and retains its diagnostic
+digest. No production MCP reader is changed by this proof. The production
+runner must use the demonstrated interruptible transport and keep ownership
+unresolved until native tree closure; plain anonymous-pipe EOF is insufficient.
+Frozen aggregate review and cancellation neutralization remain required.
