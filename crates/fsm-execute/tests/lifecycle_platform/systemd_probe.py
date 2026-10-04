@@ -59,7 +59,7 @@ def run_case(binary, case):
         command(["sudo", "-n", "install", "-d", "-m", "1777", str(root)])
         command(["sudo", "-n", "install", "-m", "755", str(binary), str(root / "fixture")])
         mode = "kill" if case == "client-death" else case
-        argv = ["sudo", "-n", "systemd-run", "--quiet", "--pipe", f"--unit={unit}"]
+        argv = ["sudo", "-n", "systemd-run", "--quiet", "--collect", "--pipe", f"--unit={unit}"]
         argv += [f"--property={prop}" for prop in (*PROPERTIES, f"ReadWritePaths={root}")]
         argv += [f"--setenv=FSM_LIFECYCLE_PROBE_DIRECTORY={root}",
                  f"--setenv=FSM_LIFECYCLE_PROBE_MODE={mode}",
