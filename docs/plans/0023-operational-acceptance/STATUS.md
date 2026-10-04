@@ -77,6 +77,23 @@ owned by the integration coordinator.
   Review of the portable change preserves the original assertions and
   confirms no engine imports in the fixture. The installed executor matrix,
   observer fault tests and native macOS/Windows execution remain incomplete.
+- **Observer preparation:** task 9502 now has a pure independent trace
+  observer landed independently in
+  `9903ef39291ed26a9e0b220d304d1223f86e3dcd`. Thirteen fault/ledger tests cover missing work,
+  mutation ordering, side effects after refusal, overlapping attempts, stuck
+  runs, duplicate/unknown ownership, malformed input and inclusive limits.
+  Review added typed-kind rejection and requires an observed invocation even
+  for an expected zero-mutation operation. It requires independently proved
+  trace completion and never polls or repairs a candidate. All 29 Python
+  self-tests pass (13 reporter, three fixture, thirteen observer). Review also
+  refuses malformed/vacuous ledgers and accepts concurrency only across
+  distinct resources. Trace text has a 256-character hard ceiling, with
+  exact-limit and limit-plus-one tests. Formatting, Clippy, docs, zero-dependency and embedding
+  checks pass; full stable workspace debug/release gates pass on Linux.
+  Frozen review of `080be626e05f913f67ec59963f7631d25fe5a1ac..9903ef39291ed26a9e0b220d304d1223f86e3dcd`
+  is complete with the malformed-kind, vacuous-ledger and text-limit repairs. Real fixture trace
+  production, installed transport wiring and the native lifecycle matrix are
+  still pending; synthetic observer results are not candidate acceptance.
 - **Outcome:** pending; readiness claims will name the evidence that supports
   them, and a missing proof will prevent closure.
 
