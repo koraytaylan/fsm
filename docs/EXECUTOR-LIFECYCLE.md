@@ -251,3 +251,50 @@ pass on Linux. Existing MSRV negative probes and all 45 Python harness tests
 pass. These results still do not prove a production supervisor, immutable
 identity, journal-bound authorization, graceful signal notification or
 uncertain-state replacement refusal.
+
+## Protected identity and controller-death prototype
+
+`lifecycle_platform/identity_root.rs` supplies a private, root-only native
+fixture, invoked by `identity_probe.py`. It is not a shipped privilege broker,
+production execution path, journal claim or authenticated client protocol.
+Its scope is one separately provisioned, protected, unique /run namespace.
+Absent authority is refused rather than automatically initialized. Missing
+registry data and unprivileged invocation cause no handler launch.
+
+The prototype fsyncs a monotonic counter before creating an empty cgroup,
+then records its boot identity and inode before returning a handle. systemd
+adopts the existing empty domain without replacing that inode. Operations
+require the complete counter/inode/boot tuple in the caller's handle and
+compare it with protected authority; a counter or PID alone cannot select
+another tree. Unknown native state prevents cleanup and successor allocation.
+Closed records remain as tombstones, and a same-name new unit is classified
+as an alias rather than killed using the old handle. Counter rollback cannot
+overwrite a historical identity or move behind the active identity.
+
+A separate privileged controller unit launches the fixture, then publishes
+an explicit barrier after its systemd utility has returned. The test waits
+for real handler readiness before killing the controller with SIGKILL. The
+handler domain survives; a fresh helper acquires the released OS file lock,
+reads the preserved armed record and closes only the matching native domain.
+Unrelated-process survival is checked through cleanup. This proves recovery
+at the stated barrier, not death before utility handoff or queued launches.
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/identity_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-identity-msrv.json
+python3 crates/fsm-execute/tests/lifecycle_platform/identity_probe.py --toolchain stable --report /tmp/fsm-native-identity-stable.json
+```
+
+Ten cases currently pass at both toolchains: empty preallocation, unprivileged
+refusal, missing authority, controller death, active successor refusal,
+unknown inode, closed/stale and prior-boot handle refusal, same-name alias
+refusal, counter rollback and successor non-reuse. The root fixture's action
+errors are test-harness failures, not a production error API. Records are
+synchronized within the current boot's /run environment; no cross-reboot
+registry persistence or reset-reconciliation claim is made.
+
+Still required before gate release: a bounded authenticated privilege
+protocol, authorization bound to actual durable journal claims and handler
+contracts, cancellation of queued/delayed launches, death at every handoff
+and closure window, lost backend authority, signal notification and usable
+reconciliation of every uncertain state. Existing positive containment,
+freeze/kill and pipe probes remain required alongside this prototype.

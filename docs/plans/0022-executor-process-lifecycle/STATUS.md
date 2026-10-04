@@ -68,6 +68,17 @@ lifecycle updates.
   unreleased are verified. All required stable Linux workspace gates,
   existing MSRV negative probes and 45 Python harness tests pass. No probe
   units remain; native macOS/Windows remain unexecuted.
+- **Native identity preparation:** a private root-owned prototype records
+  empty-domain inode/boot identity and fsyncs monotonic counters, checks full
+  supplied handles, retains closed tombstones and refuses unknown/aliased
+  domains or lost authority before launch. Ten real native cases pass at
+  MSRV and stable, including a killed privileged controller after utility
+  handoff, preserved active ownership and subsequent matched-domain cleanup.
+  An unrelated same-name replacement unit survives stale-handle refusal.
+  This is a task-9301 feasibility prototype, not production broker/admission
+  or journal implementation; queued launch cancellation, every crash window,
+  cross-boot persistence, authenticated bounded IPC and signal notification
+  remain unproved. The full gate is unreleased.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
