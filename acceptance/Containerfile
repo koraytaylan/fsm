@@ -9,16 +9,17 @@ ARG RUST_VERSION=1.89.0
 FROM docker.io/library/rust:${RUST_VERSION}-bookworm AS build
 
 WORKDIR /src
-COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-# `fsm docs spec` serves the specification out of the binary, so the build
-# needs the two documents `fsm-cli` embeds. Missing them is a compile error,
-# not a runtime one.
-COPY docs ./docs
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
+# The wrapper creates this context from an explicit input inventory. Git
+# metadata, credentials and unrelated host files never enter the build.
+COPY . ./
+ENV CARGO_TARGET_DIR=/tmp/fsm-build-target PYTHONDONTWRITEBYTECODE=1
 
 # No `rust-toolchain.toml` is copied: the base image already carries the pinned
 # version, and the file would make cargo fetch a second copy of it.
-RUN cargo install --path crates/fsm-cli --locked --root /usr/local
+RUN python3 acceptance/suite/evidence.py build /src /usr/local
 
 FROM docker.io/library/debian:bookworm-slim
 
@@ -27,18 +28,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/bin/fsm /usr/local/bin/fsm
+COPY --from=build /usr/local/share/fsm-build.json /usr/local/share/fsm-build.json
 
 # The repository's own data — example machines, fixture machines, the case
 # files, the decimal generator. Read-only inputs to the scenarios.
 WORKDIR /src
-COPY examples ./examples
-COPY tools ./tools
-COPY Cargo.toml ./Cargo.toml
-COPY crates/fsm-core/tests/fixtures ./crates/fsm-core/tests/fixtures
-COPY acceptance/suite ./acceptance/suite
+COPY --from=build /src /src
 
 ENV FSM_BIN=/usr/local/bin/fsm \
     FSM_REPO=/src \
+    FSM_BUILD_RECEIPT=/usr/local/share/fsm-build.json \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 

@@ -7,12 +7,18 @@ to be usable by CI without anybody reading the output.
 from __future__ import annotations
 
 import inspect
+import argparse
 import os
+import shutil
+from pathlib import Path
 import sys
+import tempfile
 import time
 import traceback
 
 from . import scenarios
+from .evidence import Evidence, candidate, digest
+from .fsm import FSM, REPO
 
 
 class Report:
@@ -62,8 +68,7 @@ def discover(only: str | None) -> list[tuple[str, callable]]:
     return sorted(found)
 
 
-def main() -> int:
-    only = sys.argv[1] if len(sys.argv) > 1 else None
+def run_suite(only: str | None, evidence: Evidence) -> int:
     selected = discover(only)
     if not selected:
         print(f"no scenario matches {only!r}", file=sys.stderr)
@@ -77,8 +82,11 @@ def main() -> int:
     for name, function in selected:
         report = Report(name)
         began = time.monotonic()
+        detail = None
         try:
             function(report)
+            if not report.checks and not report.skipped:
+                raise AssertionError("scenario executed zero assertions")
             elapsed = time.monotonic() - began
             if report.skipped:
                 skipped += 1
@@ -102,6 +110,9 @@ def main() -> int:
             if not isinstance(error, AssertionError):
                 print(f"{DIM}{traceback.format_exc()}{RESET}")
             failures.append((name, detail))
+        finally:
+            evidence.record(name, report.checks, report.skipped, detail,
+                            time.monotonic() - began)
 
     total = time.monotonic() - started
     passed = len(selected) - len(failures) - skipped
@@ -110,7 +121,64 @@ def main() -> int:
         print("\nfailed:")
         for name, detail in failures:
             print(f"  {name}: {detail.splitlines()[0]}")
-    return 1 if failures else 0
+    return 1 if failures or skipped else 0
+
+
+class Tee:
+    def __init__(self, terminal, log):
+        self.terminal, self.log = terminal, log
+
+    def write(self, text):
+        self.terminal.write(text)
+        return self.log.write(text)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("only", nargs="?")
+    parser.add_argument("--evidence-dir", default=os.environ.get(
+        "FSM_EVIDENCE_DIR", str(Path(tempfile.gettempdir()) / "fsm-acceptance-evidence")))
+    parser.add_argument("--candidate-revision", default=os.environ.get("FSM_CANDIDATE_REVISION"))
+    parser.add_argument("--candidate-sha256", default=os.environ.get("FSM_CANDIDATE_SHA256"))
+    parser.add_argument("--build-receipt", default=os.environ.get("FSM_BUILD_RECEIPT"))
+    arguments = parser.parse_args()
+    try:
+        evidence = Evidence(Path(arguments.evidence_dir),
+                            candidate(FSM, REPO, arguments.candidate_revision,
+                                      arguments.candidate_sha256, arguments.build_receipt),
+                            [name for name, _ in discover(None)],
+                            [name for name, _ in discover(arguments.only)], arguments.only)
+        if arguments.build_receipt:
+            receipt_artifact = evidence.directory / "build-receipt.json"
+            shutil.copyfile(arguments.build_receipt, receipt_artifact)
+            evidence.report["artifacts"].append({"path": receipt_artifact.name,
+                                                 "sha256": digest(receipt_artifact)})
+            evidence.write()
+    except OSError as error:
+        print(f"cannot initialize evidence: {error}", file=sys.stderr)
+        return 2
+    stdout, stderr = sys.stdout, sys.stderr
+    log_path = evidence.directory / "diagnostics.txt"
+    try:
+        with log_path.open("w", encoding="utf-8") as log:
+            sys.stdout, sys.stderr = Tee(stdout, log), Tee(stderr, log)
+            try:
+                result = run_suite(arguments.only, evidence)
+            finally:
+                sys.stdout, sys.stderr = stdout, stderr
+        evidence.report["artifacts"].append({"path": log_path.name, "sha256": digest(log_path)})
+        evidence.finish()
+        print(f"evidence: {evidence.directory / 'report.json'}")
+        return result
+    except (OSError, KeyboardInterrupt) as error:
+        print(f"acceptance incomplete: {error}; evidence: {evidence.directory}", file=stderr)
+        return 2
+    finally:
+        sys.stdout, sys.stderr = stdout, stderr
 
 
 if __name__ == "__main__":
