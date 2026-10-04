@@ -54,6 +54,7 @@ fn native_fixture() {
         }
         #[cfg(not(target_os = "linux"))]
         panic!("native publication requires Linux");
+        #[cfg(target_os = "linux")]
         return;
     }
     if let Some(handle) = mode.strip_prefix("identity-lease-client:") {
@@ -61,6 +62,7 @@ fn native_fixture() {
         broker::client(&directory, handle).expect("native lease client");
         #[cfg(not(target_os = "linux"))]
         panic!("native lease client requires Linux: {handle}");
+        #[cfg(target_os = "linux")]
         return;
     }
     if mode == "identity-pre-entry" {
@@ -76,6 +78,7 @@ fn native_fixture() {
             .expect("native broker prototype");
         #[cfg(not(target_os = "linux"))]
         panic!("native broker requires Linux: {uid}");
+        #[cfg(target_os = "linux")]
         return;
     }
     if let Some(operation) = mode.strip_prefix("identity:") {
@@ -83,6 +86,7 @@ fn native_fixture() {
         identity_root::run(&directory, operation).expect("native identity prototype");
         #[cfg(not(target_os = "linux"))]
         panic!("native identity prototype requires Linux: {operation}");
+        #[cfg(target_os = "linux")]
         return;
     }
     let mode = if let Some(handle) = mode.strip_prefix("identity-gate:") {

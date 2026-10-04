@@ -179,7 +179,11 @@ def exercise(binary):
         assert rejected.returncode != 0
         journal = command(['sudo', '-n', 'journalctl', '--no-pager', '-u', missing_unit, '-n', '40'])
         assert 'missing or unreadable broker authority counter' in journal, journal
-        assert not (base / 'data/broker-counter').exists() and socket_path(base) == new
+        # Observe protected absence as the provisioner: an unprivileged
+        # exists() either raises or hides permission errors across Python
+        # versions and cannot prove the counter was not recreated.
+        command(['sudo', '-n', '/usr/bin/test', '!', '-e', str(base / 'data/broker-counter')])
+        assert socket_path(base) == new
         assert not (base / 'control-3.sock').exists()
         command(['sudo', '-n', 'mv', str(saved), str(base / 'data/broker-counter')])
         passed('missing-authority')
