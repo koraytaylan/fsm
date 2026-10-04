@@ -115,7 +115,8 @@ owned by the integration coordinator.
   Full installed executor scenarios and native lifecycle claims remain
   incomplete; fixture barriers/locks do not prove containment.
 - **MCP-fixture preparation:** task 9502 now also has a minimal independent
-  stdio MCP operation fixture. Its closed tool arguments cannot override the
+  stdio MCP operation fixture, landed independently in
+  `fb4291f8b5bd72ed05ea87fb84e7910b8babe1f7`. Its closed tool arguments cannot override the
   provisioned resource or trace paths; subprocess and MCP modes share actual
   external state and independent trace/result logs. Seven additional tests
   cover discovery without side effects, operation ordering, partial-work and
@@ -123,7 +124,13 @@ owned by the integration coordinator.
   duplicate members, non-JSON numbers, invalid UTF-8, boolean identifiers,
   notifications and the 64 KiB frame ceiling. All 45 Python self-tests pass.
   Review removed duplicate inherited tests and rejects ambiguous MCP CLI
-  operation defaults. These are harness tests against an independent client,
+  operation defaults. Frozen review of
+  `05fbe3edba7e604e423d434e800b946e1f0a71b9..fb4291f8b5bd72ed05ea87fb84e7910b8babe1f7`
+  is complete; the exact clean checkout also passes all 45 Python tests.
+  Formatting, all-targets Clippy, warning-free documentation, zero-dependency,
+  embedding and full stable workspace debug/release gates pass on Linux.
+  Native macOS/Windows remain unexecuted. No new installed-candidate report
+  is claimed for this fixture extension. These are harness tests against an independent client,
   not installed-candidate executor evidence; production transport wiring and
   the required lifecycle/outcome matrix remain pending.
 - **Outcome:** pending; readiness claims will name the evidence that supports
