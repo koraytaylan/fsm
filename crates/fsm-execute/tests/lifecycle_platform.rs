@@ -44,6 +44,29 @@ fn native_fixture() {
         )
         .expect("migration observation");
     }
+    if mode == "forker" {
+        fs::write(directory.join("ready"), b"ready").expect("ready barrier");
+        await_file(&directory.join("fork-during-stop"));
+        let mut leaves = Vec::new();
+        for index in 0..2 {
+            let role = format!("leaf-{index}");
+            leaves.push(fixture(&directory, &role).spawn().expect("late descendant"));
+            await_file(&directory.join(format!("{role}-ready")));
+        }
+        fs::write(directory.join("fork-complete"), b"two descendants").expect("fork barrier");
+        for mut leaf in leaves {
+            leaf.wait().expect("leaf wait");
+        }
+        return;
+    }
+    if mode.starts_with("leaf-") {
+        fs::write(directory.join(format!("{mode}-ready")), b"ready").expect("leaf barrier");
+        let watchdog = Instant::now();
+        while watchdog.elapsed() < Duration::from_secs(10) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        return;
+    }
     if mode == "descendant" {
         fs::write(directory.join("ready"), b"ready").expect("ready barrier");
         let watchdog = Instant::now();
@@ -55,7 +78,12 @@ fn native_fixture() {
         }
         return;
     }
-    let mut descendant_command = fixture(&directory, "descendant");
+    let descendant_mode = if mode == "spawn-stop" {
+        "forker"
+    } else {
+        "descendant"
+    };
+    let mut descendant_command = fixture(&directory, descendant_mode);
     #[cfg(target_os = "linux")]
     if mode == "escape" {
         use std::os::unix::process::CommandExt;

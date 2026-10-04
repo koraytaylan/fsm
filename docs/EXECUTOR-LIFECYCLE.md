@@ -201,3 +201,34 @@ and full stable workspace debug/release gates pass on Linux. The existing
 MSRV native negative probes and all 45 acceptance-harness self-tests pass.
 macOS/Windows native execution remains unperformed. No candidate acceptance,
 full lifecycle gate, task completion or integration is claimed.
+
+## Shutdown race and native freeze probes
+
+The probe inventory now has six positive cases. In `spawn-stop`, a real
+systemd stop job first reaches deactivating while its initial SIGCONT leaves
+the tree alive. Only then does an external barrier authorize two new native
+fixture descendants. Both record the original cgroup before final killing;
+closure still requires removal of that domain and bounded inherited-pipe EOF.
+This tests containment during the stop window, not a production admission
+fence or a claim that graceful deactivation immediately prevents forks.
+
+In `frozen-stop`, the privileged probe writes the owned domain's cgroup.freeze
+and waits for kernel events showing frozen=1 and populated=1. It then arms
+the fixture fork, verifies no new leaf marker exists, and writes cgroup.kill
+without thawing. Domain removal, absent leaf markers, pipe EOF and survival
+of an unrelated process are required. This demonstrates the native primitive
+needed for final closure; supervisor authorization and immutable identity
+remain separate unimplemented proof obligations.
+
+Every root and descendant also records all real/effective/saved/filesystem
+UIDs, requiring one non-root identity distinct from the operator, zero
+effective capabilities and NoNewPrivs=1. Configuration property names alone
+do not satisfy these assertions.
+
+`--neutralize-final-kill` runs a separately labelled negative native probe
+with SendSIGKILL=no. Its stop times out with the tree still present, so the
+observer returns nonzero and a failed report. Emergency test cleanup kills
+only that uniquely created fixture domain; it cannot change the failed
+observation into a pass. The report retains the failure-time unit state and
+kernel domain events, and verifies unrelated-process survival through cleanup.
+Neither this negative test nor the six positives releases the full gate.

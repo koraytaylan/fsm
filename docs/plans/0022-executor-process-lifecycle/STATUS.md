@@ -48,6 +48,18 @@ lifecycle updates.
   also pass. Native macOS/Windows remain unexecuted. Permanent identity,
   journal-bound launch authorization, spawn during stop, privileged supervisor
   recovery, signals and uncertainty refusal still need positive native proof.
+- **Shutdown-race preparation:** the native probe now additionally proves
+  two descendants can fork after a real stop job reaches deactivating and
+  remain contained until final killing. A separate kernel freeze/kill case
+  observes frozen=1 and populated=1 before arming a fork, then requires no
+  leaf marker, domain removal and bounded pipe EOF. All six positive cases
+  pass at MSRV and stable. A separately labelled SendSIGKILL=no mutation
+  fails with an observed populated domain; emergency fixture cleanup cannot
+  turn that failed result into a pass and leaves unrelated processes alive.
+  UID/effective-capability/no-new-privilege assertions cover root, initial
+  descendant and the late descendants. These remain partial native proofs;
+  permanent identity, privileged supervisor recovery, atomic authorization,
+  signal notification and uncertain replacement refusal are pending.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _A committed bundle remains Unregistered until Phase R binds its validation base._
