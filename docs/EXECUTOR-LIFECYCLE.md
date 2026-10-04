@@ -522,3 +522,26 @@ All required stable Linux host gates, final MSRV/stable lifecycle tests and
 45 Python harness tests pass. Native macOS/Windows remain unexecuted. These
 private formats change no public journal/API/hash bytes, and no prior-format
 migration or integration completion is claimed.
+
+### Authority-directory replacement refusal
+
+The private route format is now `endpoint/2`: it additionally records the
+protected authority directory's device and inode. Startup compares this
+published lineage before opening its lifetime lock, and the live broker
+checks the captured directory identity, owner and private permissions before
+operations and lease cleanup. A copied counter and lock file cannot substitute
+for the original directory. Read failures and changed identities refuse work.
+These checks cover observed replacement at operation boundaries; they do not
+claim protection against a malicious root administrator racing filesystem
+changes during an operation or replacing the entire namespace and registry.
+
+The restart probe adds two named cases. It moves the original data directory,
+copies every valid byte into a new protected directory, and requires both the
+live broker and a new startup to reject the copied authority. Counter, epoch
+and claim bytes remain unchanged; no new endpoint is published, and the
+original handler domain remains populated with its recorded inode. Restoring
+the original directory makes matched inspection and cleanup available again.
+The private probe format rejects old endpoint/1 routes; no production format
+migration is claimed. Other privilege/facility loss, whole-namespace loss,
+storage budgets and remaining windows still need evidence. The native gate
+remains unreleased.

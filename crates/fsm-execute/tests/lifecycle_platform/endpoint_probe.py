@@ -11,7 +11,7 @@ def socket_path(base):
         value = source.read(4097)
     assert len(value) <= 4096
     fields = value.splitlines()
-    assert len(fields) == 4 and fields[0] == 'endpoint/1'
+    assert len(fields) == 6 and fields[0] == 'endpoint/2'
     epoch = int(fields[1])
     assert 0 < epoch < 2**64 and len(fields[2]) == 36 and 0 < int(fields[3]) < 2**32
     assert fields[2] == Path('/proc/sys/kernel/random/boot_id').read_text().strip()

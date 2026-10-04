@@ -9,7 +9,7 @@ import uuid
 from endpoint_probe import socket_path
 from identity_probe import command, handle, main, wait_file
 
-INVENTORY = ('readable-publication', 'exclusive-authority', 'broker-death', 'new-endpoint', 'active-refusal',
+INVENTORY = ('readable-publication', 'exclusive-authority', 'directory-replacement', 'replacement-startup', 'broker-death', 'new-endpoint', 'active-refusal',
              'old-endpoint-alias', 'matched-recovery', 'missing-authority', 'counter-rollback', 'successor')
 
 
@@ -104,6 +104,30 @@ def exercise(binary):
         wait_file(base / 'work/root-ready')
         domain = Path('/sys/fs/cgroup/system.slice') / worker
         private_before = command(['sudo', '-n', 'cat', str(base / f'data/run-{record["id"]}')])
+        # Preserve valid bytes but replace the directory/lock identity.
+        # Neither the live broker nor a new one may adopt this copied authority.
+        saved_data = base / 'saved-data'
+        command(['sudo', '-n', 'mv', str(base / 'data'), str(saved_data)])
+        command(['sudo', '-n', 'cp', '-a', str(saved_data), str(base / 'data')])
+        copied_before = command(['sudo', '-n', 'cat', str(base / 'data/counter'), str(base / 'data/broker-counter'),
+                                 str(base / f'data/run-{record["id"]}')])
+        assert 'broker authority directory changed' in rpc('allocate')
+        assert command(['sudo', '-n', 'cat', str(base / 'data/counter'), str(base / 'data/broker-counter'),
+                        str(base / f'data/run-{record["id"]}')]) == copied_before
+        assert domain.stat().st_ino == record['inode']
+        assert 'populated 1' in command(['sudo', '-n', 'cat', str(domain / 'cgroup.events')])
+        passed('directory-replacement')
+        copied_unit, rejected = start('copied-authority', wait=True)
+        assert rejected.returncode != 0
+        journal = command(['sudo', '-n', 'journalctl', '--no-pager', '-u', copied_unit, '-n', '40'])
+        assert 'broker authority directory changed' in journal, journal
+        assert (base / 'endpoint').read_bytes() == route and not (base / 'control-2.sock').exists()
+        assert command(['sudo', '-n', 'cat', str(base / 'data/counter'), str(base / 'data/broker-counter'),
+                        str(base / f'data/run-{record["id"]}')]) == copied_before
+        passed('replacement-startup')
+        command(['sudo', '-n', 'rm', '-rf', '--', str(base / 'data')])
+        command(['sudo', '-n', 'mv', str(saved_data), str(base / 'data')])
+        assert action('inspect:' + tuple_value).startswith('armed\n')
         command(['sudo', '-n', 'systemctl', 'kill', '--kill-whom=main', '--signal=KILL', first_broker])
         # Retry new startup only after authoritative unit termination.
         deadline = time.monotonic() + 3

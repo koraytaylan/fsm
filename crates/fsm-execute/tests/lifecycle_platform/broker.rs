@@ -77,7 +77,7 @@ pub(super) fn serve(base: &Path, uid: u32) -> Result<(), String> {
     if status.len() > 4096 || mask.is_none_or(|value| value & 0o022 != 0o022) {
         return Err("broker requires a restrictive socket creation mask".into());
     }
-    let (_authority, listener, socket) = endpoint::bind(base, uid)?;
+    let (authority, listener, socket) = endpoint::bind(base, uid)?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     fs::write(base.join("broker-ready"), b"ready").map_err(|e| e.to_string())?;
     let lifetime = Instant::now();
@@ -100,6 +100,7 @@ pub(super) fn serve(base: &Path, uid: u32) -> Result<(), String> {
             .and_then(|value| value.strip_prefix("lease:"))
             .map(str::to_owned);
         let result = operation.and_then(|operation| {
+            authority.check(base)?;
             let operation = lease
                 .as_ref()
                 .map_or(operation, |handle| format!("launch:{handle}"));
@@ -154,6 +155,7 @@ pub(super) fn serve(base: &Path, uid: u32) -> Result<(), String> {
             fs::write(base.join("lease-notification"), notification).map_err(|e| e.to_string())?;
             // Failure retains protected ownership and fails this prototype;
             // disconnect never substitutes for actual domain closure.
+            authority.check(base)?;
             super::identity_root::run(base, &format!("close:{handle}"))?;
         }
     }

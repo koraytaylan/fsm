@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::super::identity_root::{put, put_public, read};
 
-fn route(base: &Path) -> Result<(u64, String, u32), String> {
+fn route(base: &Path) -> Result<(u64, String, u32, u64, u64), String> {
     let path = base.join("endpoint");
     let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
     if !meta.is_file() || meta.uid() != 0 || meta.mode() & 0o022 != 0 {
@@ -14,7 +14,7 @@ fn route(base: &Path) -> Result<(u64, String, u32), String> {
     }
     let value = read(&path)?;
     let lines: Vec<_> = value.lines().collect();
-    if lines.len() != 4 || lines[0] != "endpoint/1" || lines[2].len() != 36 {
+    if lines.len() != 6 || lines[0] != "endpoint/2" || lines[2].len() != 36 {
         return Err("invalid endpoint route".into());
     }
     let epoch = lines[1].parse().map_err(|_| "invalid endpoint epoch")?;
@@ -22,7 +22,9 @@ fn route(base: &Path) -> Result<(u64, String, u32), String> {
     if epoch == 0 || uid == 0 {
         return Err("invalid endpoint identity".into());
     }
-    Ok((epoch, lines[2].to_owned(), uid))
+    let device = lines[4].parse().map_err(|_| "invalid authority device")?;
+    let inode = lines[5].parse().map_err(|_| "invalid authority inode")?;
+    Ok((epoch, lines[2].to_owned(), uid, device, inode))
 }
 
 pub(super) fn connect_path(base: &Path) -> Result<PathBuf, String> {
@@ -30,15 +32,53 @@ pub(super) fn connect_path(base: &Path) -> Result<PathBuf, String> {
     if !meta.is_dir() || meta.uid() != 0 || meta.mode() & 0o022 != 0 {
         return Err("untrusted endpoint namespace".into());
     }
-    let (epoch, boot, _) = route(base)?;
+    let (epoch, boot, _, _, _) = route(base)?;
     if read(Path::new("/proc/sys/kernel/random/boot_id"))?.trim() != boot {
         return Err("endpoint belongs to another boot".into());
     }
     Ok(base.join(format!("control-{epoch}.sock")))
 }
 
-pub(super) fn bind(base: &Path, uid: u32) -> Result<(File, UnixListener, PathBuf), String> {
+pub(super) struct Authority {
+    _lock: File,
+    device: u64,
+    inode: u64,
+}
+
+impl Authority {
+    pub(super) fn check(&self, base: &Path) -> Result<(), String> {
+        let meta = fs::symlink_metadata(base.join("data"))
+            .map_err(|_| "broker authority directory unavailable")?;
+        if !meta.is_dir()
+            || meta.uid() != 0
+            || meta.mode() & 0o077 != 0
+            || meta.dev() != self.device
+            || meta.ino() != self.inode
+        {
+            return Err("broker authority directory changed".into());
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn bind(base: &Path, uid: u32) -> Result<(Authority, UnixListener, PathBuf), String> {
     let data = base.join("data");
+    let generation = fs::symlink_metadata(&data).map_err(|e| e.to_string())?;
+    if !generation.is_dir() || generation.uid() != 0 || generation.mode() & 0o077 != 0 {
+        return Err("broker authority directory changed".into());
+    }
+    // Check protected published lineage before opening a lock in a possibly
+    // replaced directory. A copied counter is not the original authority.
+    match fs::symlink_metadata(base.join("endpoint")) {
+        Ok(_) => {
+            let (_, _, _, device, inode) = route(base)?;
+            if generation.dev() != device || generation.ino() != inode {
+                return Err("broker authority directory changed".into());
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
     let lock = OpenOptions::new()
         .read(true)
         .write(true)
@@ -58,7 +98,7 @@ pub(super) fn bind(base: &Path, uid: u32) -> Result<(File, UnixListener, PathBuf
         .map_err(|_| "invalid broker authority counter")?;
     match fs::symlink_metadata(base.join("endpoint")) {
         Ok(_) => {
-            let (published, _, operator) = route(base)?;
+            let (published, _, operator, _, _) = route(base)?;
             if previous < published || operator != uid {
                 return Err("broker counter rollback or operator mismatch".into());
             }
@@ -77,7 +117,18 @@ pub(super) fn bind(base: &Path, uid: u32) -> Result<(File, UnixListener, PathBuf
     let path = base.join("endpoint");
     put_public(
         &path,
-        &format!("endpoint/1\n{epoch}\n{}\n{uid}\n", boot.trim()),
+        &format!(
+            "endpoint/2\n{epoch}\n{}\n{uid}\n{}\n{}\n",
+            boot.trim(),
+            generation.dev(),
+            generation.ino()
+        ),
     )?;
-    Ok((lock, listener, socket))
+    let authority = Authority {
+        _lock: lock,
+        device: generation.dev(),
+        inode: generation.ino(),
+    };
+    authority.check(base)?;
+    Ok((authority, listener, socket))
 }
