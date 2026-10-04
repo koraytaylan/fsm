@@ -131,6 +131,7 @@ pub enum ServeMode {
 /// lends it: `service::tick` would open a second `Store` on the same data
 /// directory and collide with the lock this process already holds.
 pub struct ExecutorLoop {
+    handlers: Value,
     watcher: fsm_execute::watch::Watcher,
     scheduler: fsm_execute::sched::Scheduler,
     runner: fsm_execute::run::Runner,
@@ -144,10 +145,8 @@ impl ExecutorLoop {
         table: fsm_execute::config::HandlerTable,
     ) -> Result<Self, fsm_execute::error::ExecError> {
         Ok(Self {
-            watcher: fsm_execute::watch::Watcher::new(
-                data_dir.to_path_buf(),
-                fsm_execute::service::advancing_effects(&table),
-            ),
+            handlers: super::executor::handlers(&table),
+            watcher: fsm_execute::watch::Watcher::with_handlers(data_dir.to_path_buf(), &table),
             scheduler: fsm_execute::sched::Scheduler::new(table),
             runner: fsm_execute::run::Runner::new()?,
             pipeline: fsm_execute::run::Pipeline,
@@ -257,14 +256,15 @@ pub fn serve_dir_with(
     // opened. For a monitoring session that is useless: the whole point of the
     // mode is to watch the executor's acks and transitions arrive, so the
     // session reopens before each request.
-    let refresh = match mode {
-        ServeMode::ReadOnly => Some(dir.to_path_buf()),
-        ServeMode::Writer | ServeMode::Embedded(_) => None,
-    };
+    let read_only = store
+        .as_ref()
+        .is_some_and(|store| store.journal.is_read_only());
+    let refresh = read_only.then(|| dir.to_path_buf());
     let mut executor = match mode {
-        // Nothing to write to, so nothing to run: an executor in a degraded
-        // session would tick against a store that will not open.
-        ServeMode::Embedded(_) if degraded.is_some() => None,
+        // A handler must never start without a writer that can journal its
+        // outcome. This includes a healthy store opened read-only after
+        // contention, as well as one that could not open at all.
+        ServeMode::Embedded(_) if degraded.is_some() || read_only => None,
         ServeMode::Embedded(loop_) => Some(loop_),
         ServeMode::Writer | ServeMode::ReadOnly => None,
     };
@@ -402,6 +402,8 @@ const FEED_INTERVAL_MS: u64 = watch::DEFAULT_INTERVAL_MS;
 /// server.
 #[derive(Default)]
 pub struct Live {
+    /// Sanitized contract of the executor actually running in this session.
+    pub executor_handlers: Option<Value>,
     pub subscriptions: subscribe::Subscriptions,
     pub level: Option<logging::Level>,
     pub cancellations: cancel::Cancellations,
@@ -526,6 +528,7 @@ pub fn serve_session_degraded(
     let mut initialized = false;
     let mut initialized_notified = false;
     let mut live = Live {
+        executor_handlers: executor.as_ref().map(|executor| executor.handlers.clone()),
         // Both reasons a store can be unavailable travel here, because a
         // client needs to hear either one; only the *words* differ, and they
         // differ because the remedies do.
@@ -741,6 +744,11 @@ fn drive_executor(
     let (Some(executor), Some(store)) = (executor, store) else {
         return;
     };
+    // Public session helpers can receive a read-only handle directly,
+    // without going through serve_dir_with's mode selection.
+    if store.journal.is_read_only() {
+        return;
+    }
     for line in executor.tick(store, clock) {
         // Both audiences, deliberately. An operator reading a terminal must
         // not lose output because a client attached, and a later reader who
@@ -782,9 +790,9 @@ fn mode_note(
     } else if degraded {
         "\n\nThis server could not open its store (mode=degraded): every tool that reads or writes instances is refused, and each refusal carries the health, the blast radius, and the remedy. Call store_doctor for the diagnosis; journal_verify and journal_replay also answer, a machine_create with dry_run still validates, and the documentation resources still read."
     } else if store.is_some_and(|store| store.journal.is_read_only()) {
-        "\n\nThis server is running read-only (mode=read-only): the effect executor owns the writer, so machine_create, instance_create, instance_send, deadline_poll, effect_ack, and instance_cancel are refused here. Read tools work normally, and a machine_create with dry_run still validates."
+        "\n\nThis server is running read-only (mode=read-only): this connection runs no effects and cannot confirm whether an external executor is running or which handlers it has, so machine_create, instance_create, instance_send, deadline_poll, effect_ack, and instance_cancel are refused here. Read tools work normally, and a machine_create with dry_run still validates. Read fsm://executor for the limits of this connection. If an external executor is running, subscribe to fsm://instance/{id} to watch it advance a workflow."
     } else if embedded {
-        "\n\nThis server runs the effect executor inline (mode=embedded): handlers run on this thread, one tick per request you send, so a workflow advances while you are talking to it and pauses when you stop."
+        "\n\nThis server runs the effect executor inline (mode=embedded): a handler table maps each effect name to a host command or MCP tool call, and one tick runs per request you send — so a workflow advances while you are talking to it and pauses when you stop. Effects with configured handlers are executed and acked automatically; do not call effect_ack for handled effects. Read fsm://executor for the actual handler contracts. Keep sending instance_get or ping through completion and failure recovery: subscribing alone does not advance the workflow. Read fsm://docs/embedding for setup."
     } else {
         ""
     }

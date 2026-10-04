@@ -182,6 +182,7 @@ fn fsm_execute::service::tick_reporting
 fn fsm_execute::service::tick_with
 method fsm_execute::config::HandlerKind::as_str
 method fsm_execute::config::HandlerKind::is_mcp
+method fsm_execute::config::HandlerSpec::required_args
 method fsm_execute::config::HandlerTable::parse
 method fsm_execute::config::Retry::retries
 method fsm_execute::dead::DeadLetter::to_value
@@ -227,6 +228,7 @@ method fsm_execute::sched::Scheduler::unstartable
 method fsm_execute::watch::Watcher::new
 method fsm_execute::watch::Watcher::resolved_count
 method fsm_execute::watch::Watcher::scan
+method fsm_execute::watch::Watcher::with_handlers
 mod fsm_execute::config
 mod fsm_execute::dead
 mod fsm_execute::effect

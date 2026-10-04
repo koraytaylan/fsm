@@ -311,3 +311,16 @@ your build, not a subtree.
 The MSRV is **1.89** (edition 2024), declared in `rust-toolchain.toml` and in
 each manifest's `rust-version`. Raising the MSRV is a compatibility break and
 requires a new release tag.
+
+## Executor discovery additions
+
+`fsm://docs/embedding` and `fsm://executor` are additive MCP resources.
+`fsm.executor/1` describes session execution mode and configured handler
+contracts without publishing command lines. Existing tool schemas, machine
+semantics, journal formats, and state hashes are unchanged. Initialize
+instructions and prompt text now route clients through this discovery contract
+and distinguish embedded request-driven progress from external execution.
+`HandlerSpec::required_args()` and `Watcher::with_handlers()` are additive
+provisional executor library APIs; the legacy watcher constructor remains available.
+Read-only fallback isolation and interrupted-advance recovery are correctness
+fixes to existing guarantees, not new execution permissions.

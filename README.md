@@ -50,6 +50,12 @@ when that instance advances, rather than polling to find out. See
 [docs/EMBEDDING.md](docs/EMBEDDING.md#executing-workflows) for the handler-table
 format and the three run modes.
 
+To author and execute through one MCP connection, start
+`fsm serve --execute --handlers <file>`. Read `fsm://executor` to discover
+its configured effects, required arguments, and outcome events. Embedded
+execution needs continued `instance_get` or `ping` requests until completion;
+subscriptions alone do not advance it.
+
 ## Install
 
 ```

@@ -194,7 +194,11 @@ pub fn handle_request<'a>(
                 .and_then(|p| p.get("uri"))
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            match super::resources::read(uri, store.as_deref()) {
+            match super::resources::read_with_executor(
+                uri,
+                store.as_deref(),
+                live.executor_handlers.as_ref(),
+            ) {
                 Ok(v) => send_line(output, &result_response(id, v)),
                 Err(_) => send_line(
                     output,

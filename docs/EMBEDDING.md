@@ -312,7 +312,8 @@ can correct the payload and resend under the same key.
 
 A model that wants to know when an instance advances has two options, and
 until this existed only one of them worked: call `instance_get` in a loop, or
-subscribe and be told. Subscribe.
+subscribe and be told. Subscribe when an external executor is driving work;
+in embedded mode keep sending requests as described below.
 
 Two resource URIs describe an instance:
 
@@ -1187,9 +1188,48 @@ loop on the serve thread. Two limits, stated rather than papered over: a
 long-running handler blocks the protocol, and because the server blocks waiting
 for the next client line, **a tick happens only when the client speaks**.
 Embedded mode advances a workflow during a conversation, never overnight.
+Keep sending `instance_get` or `ping` until the workflow and its failure
+recovery settle. Subscribing alone does not drive executor ticks. Each tick
+runs after the request reply, so the next read observes its results.
 
 Each process announces its mode once on stderr, and a non-default mode says so
 in the MCP `instructions` as well.
+
+### Discover execution capabilities before authoring effects
+
+Read the MCP resource `fsm://executor` before defining an automated workflow.
+It reports this connection's `mode`, whether it `executes_effects`, its
+`progress` mechanism, and the loaded `handlers` contract. Each embedded
+handler lists its effect name, process/MCP kind, `required_args`, timeout,
+retry policy, and `on_ok` / `on_failed` event, static payload, and clock stamps.
+Use those names and fields in the machine; an unhandled effect remains pending,
+and an acknowledgement without an outcome event advances no state.
+`HandlerSpec::required_args()` uses the same template scanner as execution.
+
+Command lines and MCP argument literals are omitted from discovery; outcome
+payload literals are visible because they form the machine's event contract.
+Do not place credentials in domain event payloads. Process stdout and MCP
+result bodies are **not** mapped into event payloads or context: outcome
+payloads are static. An operator-owned adapter can perform operations over
+dynamic data within a handler. Model failures and any compensating actions
+as explicit workflow transitions and effects.
+
+In writer mode, `handlers` is empty and the connection requires manual effects,
+acks, domain events, and deadline polls. To author and execute through one MCP
+connection, start `fsm serve --execute --handlers <file>`. In read-only mode,
+`handlers` is null and `external_executor` is `unknown`: a read-only store
+proves neither that an executor is running nor which handlers it has. Obtain
+that contract from the operator. A contended embedded server falls back to
+read-only observation and cannot launch handlers. Unavailable stores report
+`mode: "degraded"` and no verified handler inventory.
+
+The executor replays acknowledged effects whose outcome event was interrupted.
+Its bounded recovery window is applied after filtering out acknowledgements
+without an event for their actual outcome, so newer notification acknowledgements
+cannot hide a pending recovery step. Hosts should construct
+`Watcher::with_handlers` for this outcome-aware filtering; the legacy
+`Watcher::new` constructor receives only effect names and assumes both outcomes
+can advance.
 
 ### What this does not promise
 

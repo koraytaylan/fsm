@@ -9,7 +9,7 @@
 //!
 //! Plan 0016 task 7701.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use fsm_core::expr::eval::Val;
 use fsm_core::json::Value;
@@ -124,6 +124,34 @@ pub(super) fn scan_template(template: &str) -> Result<Vec<Segment<'_>>, Template
         segments.push(Segment::Literal(&template[literal_start..]));
     }
     Ok(segments)
+}
+
+/// Collect names using the execution scanner, after table validation.
+pub(super) fn collect_placeholders(template: &str, names: &mut BTreeSet<String>) {
+    if let Ok(segments) = scan_template(template) {
+        names.extend(segments.into_iter().filter_map(|segment| match segment {
+            Segment::Placeholder(name) => Some(name.to_string()),
+            Segment::Literal(_) => None,
+        }));
+    }
+}
+
+/// Mirror substitution's traversal: values, including array items, never keys.
+pub(super) fn collect_argument_placeholders(value: &Value, names: &mut BTreeSet<String>) {
+    match value {
+        Value::Str(text) => collect_placeholders(text, names),
+        Value::Obj(fields) => {
+            for nested in fields.values() {
+                collect_argument_placeholders(nested, names);
+            }
+        }
+        Value::Arr(items) => {
+            for nested in items {
+                collect_argument_placeholders(nested, names);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Locate a fault by *character* offset, which is what an operator counts when

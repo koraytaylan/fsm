@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::store::ErrorObj;
 
-pub const INSTRUCTIONS: &str = "fsm runs deterministic, auditable state machines with either one state tree or multiple orthogonal regions. Specs may include explicit deadlines. Workflow: read fsm://docs/spec → machine_create (dry_run first) → instance_create → instance_send. Consult tagged configuration, enabled_events, and deadlines_pending instead of guessing. Time never advances implicitly: call deadline_poll when due. Decimal values are JSON strings (\"125.50\"), never numbers. Execute pending effects, then acknowledge each with effect_ack. Retry the SAME request_id after a timeout and a NEW one after correcting content. Use simulate for event sequences without recording; it does not poll deadlines. Subscribe to fsm://instance/{id} to be told when an instance advances instead of polling instance_get.";
+pub const INSTRUCTIONS: &str = "Read fsm://docs/spec and fsm://executor before authoring: discover execution mode, handlers, arguments, and outcome events. Workflow: machine_create (dry_run first) → instance_create → instance_send. Consult enabled_events and deadlines_pending. In writer mode, run effects, effect_ack, send outcome events, and deadline_poll when due. Embedded mode handles configured effects and deadlines per request; keep sending instance_get or ping through completion and recovery. Subscribe to fsm://instance/{id} for updates; subscriptions alone do not drive embedded execution. Decimal values are JSON strings. Retry the SAME request_id after timeout; corrected content needs a NEW id. simulate runs events without effects or deadline polls.";
 
 pub const AUTHOR_MACHINE: &str =
     "Guided flow to author, validate, and prove a new machine from a goal.";
@@ -135,11 +135,13 @@ fn drive_instance(args: Option<&Value>) -> Result<Value, ErrorObj> {
     let instance_id = required(args, "instance_id")?;
     Ok(message(format!(
         "Instance: {instance_id}\n\
-         1. instance_get({instance_id}) — read `configuration`, `enabled_events`, `effects_pending`, and `deadlines_pending`.\n\
+         1. Read fsm://executor to learn the current execution mode and configured handlers. Then instance_get({instance_id}) — read `configuration`, `enabled_events`, `effects_pending`, and `deadlines_pending`.\n\
          2. Send only an event listed as enabled: instance_send with a NEW request_id, and the SAME id on a retry after a timeout.\n\
-         3. Run each pending effect and acknowledge it with effect_ack; an ack advances nothing by itself.\n\
-         4. A deadline applies only when you poll for it: call deadline_poll when one is due, once per due schedule.\n\
-         5. Subscribe to fsm://instance/{instance_id} to be told when it advances, instead of reading it again."
+         3. Effects in `effects_pending` are descriptors — the engine emits them but never runs them.\n\
+            - In embedded mode, keep sending instance_get or ping while work is pending; each request drives a tick after its reply. The executor acks handled effects and sends configured outcome events. A subscription alone does not drive ticks.\n\
+            - In writer mode, run each effect yourself, effect_ack with the outcome, then instance_send a domain outcome event; an ack never advances a state. In read-only mode, confirm the external executor with the operator and subscribe to observe it.\n\
+         4. In writer mode, call deadline_poll when due, once per due schedule. The executor polls deadlines automatically on its ticks.\n\
+         5. Subscribe to fsm://instance/{instance_id} for updates; in embedded mode continue requests until the workflow settles, including any failure recovery."
     )))
 }
 
@@ -170,10 +172,11 @@ fn author_machine(args: Option<&Value>) -> Result<Value, ErrorObj> {
         "Goal: {goal}\n\
          1. Read fsm://docs/spec for the spec format and expression grammar.\n\
          2. Draft the spec JSON (one state tree or orthogonal regions, typed context/events, transitions, optional deadlines, invariants).\n\
-         3. Call machine_create with dry_run until clean.\n\
-         4. Call machine_create to persist the definition.\n\
-         5. simulate a happy path and a rejection path, checking traces.\n\
-         6. instance_create and drive with instance_send; consult enabled_events and deadlines_pending, and call deadline_poll only when due."
+         3. Before declaring side effects, read fsm://executor. Match configured effect names and required_args, and declare the on_ok/on_failed events with fields matching their static payloads and clock stamps. Missing handlers remain pending; missing outcome events leave an acked workflow stalled. Handler stdout is not mapped into event payloads: operations over dynamic data need an operator-owned adapter. If no executor is configured, arrange manual execution or restart with serve --execute --handlers <file>. Read fsm://docs/embedding for setup.\n\
+         4. Call machine_create with dry_run until clean.\n\
+         5. Call machine_create to persist the definition.\n\
+         6. simulate a happy path and a rejection path, checking traces.\n\
+         7. instance_create and drive with instance_send; use the execution mode from fsm://executor. Embedded mode needs repeated instance_get or ping requests through completion and recovery; writer mode requires manual effects, outcome events, and due deadline polls."
     );
     Ok(message(text))
 }

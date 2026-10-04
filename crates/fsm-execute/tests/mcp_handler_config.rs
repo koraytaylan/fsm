@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 use fsm_core::decimal::Dec;
 use fsm_core::expr::eval::Val;
 use fsm_core::json::{JsonLimits, Value, parse};
-use fsm_execute::config::{HandlerKind, HandlerTable, classes_for, substitute_arguments};
+use fsm_execute::config::{
+    HandlerKind, HandlerTable, classes_for, substitute, substitute_arguments,
+};
 use fsm_execute::error::ExecError;
 
 /// A one-handler table with the given keys spliced in after `argv`.
@@ -294,6 +296,79 @@ fn only_string_values_are_templated() {
         .expect("an array");
     assert_eq!(tags[0].as_str(), Some("case-91"));
     assert_eq!(tags[1].as_str(), Some("literal"));
+}
+
+#[test]
+fn discovered_arguments_match_execution_for_nested_mcp_templates() {
+    let parsed = HandlerTable::parse(
+        r#"{
+            "format":"fsm.handlers/1",
+            "handlers":[{
+                "effect":"process_item",
+                "kind":"mcp",
+                "argv":["/operator/private/server", "--workspace={workspace}", "{workspace}"],
+                "tool":"process",
+                "timeout_ms":1000,
+                "arguments":{
+                    "{literal_key}":"literal",
+                    "nested":[{"item":"{item}","path":"items/{path_1}"},
+                              ["{workspace}","é{_suffix}"]],
+                    "count":2,"enabled":true,"missing":null
+                },
+                "on_ok":{"event":"done","payload":{"value":"{literal_success}"}},
+                "on_failed":{"event":"failed","payload":{"value":"{literal_failure}"}}
+            }]
+        }"#,
+    )
+    .unwrap();
+    let handler = only_handler(&parsed);
+    let names = handler.required_args();
+    assert_eq!(
+        names.iter().map(String::as_str).collect::<Vec<_>>(),
+        ["_suffix", "item", "path_1", "workspace"]
+    );
+    let HandlerKind::Mcp { arguments, .. } = &handler.kind else {
+        panic!("expected an MCP handler");
+    };
+    let values: BTreeMap<String, Val> = names
+        .iter()
+        .map(|name| (name.clone(), Val::Str(format!("value-for-{name}"))))
+        .collect();
+    assert!(substitute(&handler.argv, &values).is_ok());
+    assert!(substitute_arguments(arguments, &values).is_ok());
+    for name in &names {
+        let mut incomplete = values.clone();
+        incomplete.remove(name);
+        assert!(
+            substitute(&handler.argv, &incomplete).is_err()
+                || substitute_arguments(arguments, &incomplete).is_err(),
+            "the discovered argument {name} must be required by execution"
+        );
+    }
+}
+
+#[test]
+fn process_discovery_exposes_only_argv_placeholders() {
+    let parsed = HandlerTable::parse(
+        r#"{
+            "format":"fsm.handlers/1",
+            "handlers":[{
+                "effect":"finish_work",
+                "argv":["/private/handler", "{item}", "--workspace={workspace}/{workspace}"],
+                "timeout_ms":1000,
+                "on_ok":{"event":"finished","payload":{"note":"{literal}"}}
+            }]
+        }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        only_handler(&parsed)
+            .required_args()
+            .into_iter()
+            .collect::<Vec<_>>(),
+        ["item", "workspace"]
+    );
+    assert!(only_handler(&table("").unwrap()).required_args().is_empty());
 }
 
 #[test]

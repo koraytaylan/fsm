@@ -520,6 +520,77 @@ fn an_ack_whose_handler_declares_no_advance_is_not_outstanding() {
 }
 
 #[test]
+fn newer_non_advancing_acks_cannot_hide_an_interrupted_advance() {
+    let directory = TestDirectory::create("watch-no-advance-crowding");
+    let mut writer = Writer::open(&directory);
+    writer.define_and_create("case-1");
+    writer.send("case-1", "submit");
+    let assigned = writer.pending("case-1")[0].clone();
+    writer.ack("case-1", &assigned, "exec-ack-needs-recovery");
+    for index in 0..12 {
+        writer.send("case-1", "ping");
+        let notification = writer.pending("case-1")[0].clone();
+        writer.ack("case-1", &notification, &format!("exec-ack-notice-{index}"));
+    }
+    drop(writer);
+
+    // The reviewer's ack needs a recovery event; notification handlers have
+    // no declared advance and must not consume the recovery window.
+    let mut watcher = Watcher::new(
+        directory.path().to_path_buf(),
+        BTreeSet::from(["assign_reviewer".to_string()]),
+    );
+    for _ in 0..2 {
+        let observation = scan(&mut watcher);
+        assert_eq!(observation.settled.len(), 1);
+        assert_eq!(observation.settled[0].effect_id, assigned);
+    }
+}
+
+#[test]
+fn newer_acks_without_an_advance_for_their_outcome_cannot_hide_recovery() {
+    for (outcome, unused_advance) in [("ok", "on_failed"), ("failed", "on_ok")] {
+        let directory = TestDirectory::create("watch-outcome-crowding");
+        let mut writer = Writer::open(&directory);
+        writer.define_and_create("case-1");
+        writer.send("case-1", "submit");
+        let assigned = writer.pending("case-1")[0].clone();
+        writer.ack("case-1", &assigned, "exec-ack-needs-recovery");
+        for index in 0..12 {
+            writer.send("case-1", "ping");
+            let notification = writer.pending("case-1")[0].clone();
+            writer
+                .store
+                .ack_effect_outcome_on(
+                    &mut writer.clock,
+                    "case-1",
+                    &notification,
+                    &format!("exec-ack-notice-{index}"),
+                    outcome,
+                    None,
+                )
+                .unwrap();
+        }
+        drop(writer);
+        let table = fsm_execute::config::HandlerTable::parse(&format!(
+            r#"{{"format":"fsm.handlers/1","handlers":[
+                {{"effect":"assign_reviewer","argv":["/unused"],"timeout_ms":1000,
+                  "on_ok":{{"event":"escalate"}}}},
+                {{"effect":"notify_manager","argv":["/unused"],"timeout_ms":1000,
+                  "{unused_advance}":{{"event":"close"}}}}
+            ]}}"#,
+        ))
+        .unwrap();
+        let mut watcher = Watcher::with_handlers(directory.path().to_path_buf(), &table);
+        for _ in 0..2 {
+            let observation = scan(&mut watcher);
+            assert_eq!(observation.settled.len(), 1, "outcome={outcome}");
+            assert_eq!(observation.settled[0].effect_id, assigned);
+        }
+    }
+}
+
+#[test]
 fn one_instance_contributes_a_bounded_number_of_settled_acks() {
     // A handler with no declared advance never claims an advance key, so
     // nothing would ever retire these acks. The newest few are the only ones

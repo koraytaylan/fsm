@@ -20,6 +20,7 @@ use fsm_core::machine::{InvokeStatus, Status};
 use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
+use crate::config::HandlerTable;
 use crate::effect::{PendingEffect, resolve};
 use crate::error::ExecError;
 
@@ -139,6 +140,10 @@ pub struct Watcher {
     /// window with acks nobody will ever act on and push a genuinely
     /// interrupted advance out of it.
     advancing_effects: BTreeSet<String>,
+    /// Outcome-specific eligibility when the caller supplies a handler table.
+    /// A name alone cannot distinguish an on_failed-only handler's successful
+    /// ack, which has no advance and must not consume the recovery window.
+    advancing_outcomes: Option<BTreeMap<String, (bool, bool)>>,
     /// Effect ids already reported as unresolvable, so a broken id is one line
     /// rather than one line per tick forever.
     reported_unresolved: BTreeSet<String>,
@@ -148,8 +153,10 @@ impl Watcher {
     /// Watch the store in `data_dir` without opening it yet.
     ///
     /// `advancing_effects` names the effects whose handler declares an advance
-    /// event; the driver takes it from the handler table. An empty set is
-    /// honest for a watcher that only observes.
+    /// event. This constructor treats both outcomes as potentially advancing;
+    /// use [`Watcher::with_handlers`] when the table is available so an ack
+    /// without an advance for its outcome cannot crowd the recovery window.
+    /// An empty set is honest for a watcher that only observes.
     pub fn new(data_dir: PathBuf, advancing_effects: BTreeSet<String>) -> Self {
         Self {
             data_dir,
@@ -157,7 +164,43 @@ impl Watcher {
             resolved: BTreeMap::new(),
             previous_statuses: BTreeMap::new(),
             advancing_effects,
+            advancing_outcomes: None,
             reported_unresolved: BTreeSet::new(),
+        }
+    }
+
+    /// Watch using each handler's exact success and failure advance policies.
+    ///
+    /// Recovery applies its per-instance bound only to acknowledgements whose
+    /// actual outcome declares an advance. Successful notifications with only
+    /// `on_failed`, for example, cannot hide an older interrupted advance.
+    pub fn with_handlers(data_dir: PathBuf, table: &HandlerTable) -> Self {
+        let mut watcher = Self::new(data_dir, crate::service::advancing_effects(table));
+        watcher.advancing_outcomes = Some(
+            table
+                .handlers
+                .values()
+                .map(|handler| {
+                    (
+                        handler.effect.clone(),
+                        (handler.on_ok.is_some(), handler.on_failed.is_some()),
+                    )
+                })
+                .collect(),
+        );
+        watcher
+    }
+
+    fn has_advance(&self, effect: &str, outcome: &str) -> bool {
+        match &self.advancing_outcomes {
+            Some(outcomes) => {
+                outcomes.get(effect).is_some_and(
+                    |&(on_ok, on_failed)| {
+                        if outcome == "ok" { on_ok } else { on_failed }
+                    },
+                )
+            }
+            None => self.advancing_effects.contains(effect),
         }
     }
 
@@ -267,9 +310,17 @@ impl Watcher {
             }
         }
 
+        let mut recovered_per_instance = BTreeMap::<String, usize>::new();
         for ack in outstanding_acks(&store, &observation.claimed_request_ids) {
+            let recovered = recovered_per_instance
+                .entry(ack.instance_id.clone())
+                .or_default();
+            if *recovered >= MAX_SETTLED_PER_INSTANCE {
+                continue;
+            }
             match self.resolve_once(&store, &ack.effect_id, &mut memo) {
-                Ok(effect) if self.advancing_effects.contains(&effect.effect_name) => {
+                Ok(effect) if self.has_advance(&effect.effect_name, &ack.outcome) => {
+                    *recovered += 1;
                     observation.settled.push(SettledEffect {
                         instance_id: ack.instance_id,
                         effect_id: ack.effect_id,
@@ -284,6 +335,7 @@ impl Watcher {
                 Err(error) => unresolved.push((ack.effect_id.clone(), error)),
             }
         }
+        observation.settled.sort_by_key(|ack| ack.seq);
 
         // One line per broken id, not one per tick: an id that cannot be
         // resolved this scan cannot be resolved by the next one either.
@@ -367,21 +419,22 @@ const MAX_SETTLED_PER_INSTANCE: usize = 8;
 /// the ack and the restart, which is precisely the interruption this list
 /// exists to repair.
 ///
-/// Acks with no advance to send (a handler that declares none, so no key is
-/// ever claimed) would otherwise accumulate for the life of a running
-/// instance, so each instance contributes at most its newest
-/// [`MAX_SETTLED_PER_INSTANCE`].
-fn outstanding_acks(store: &Store, claimed: &BTreeSet<String>) -> Vec<AckedEffect> {
-    let mut per_instance: BTreeMap<&str, Vec<AckedEffect>> = BTreeMap::new();
-    for record in store.records.iter().rev() {
+/// Newest first, so the caller can keep its recovery window bounded *after*
+/// resolving handler names. Capping here would let newer acks whose handlers
+/// declare no advance hide an interrupted advance forever.
+fn outstanding_acks<'a>(
+    store: &'a Store,
+    claimed: &'a BTreeSet<String>,
+) -> impl Iterator<Item = AckedEffect> + 'a {
+    store.records.iter().rev().filter_map(|record| {
         if record.kind != RecordKind::EffectAcked {
-            continue;
+            return None;
         }
         let (Some(instance_id), Some(effect_id)) = (
             instance_of(record),
             record.body.get("effect_id").and_then(Value::as_str),
         ) else {
-            continue;
+            return None;
         };
         let running = store
             .state
@@ -389,16 +442,12 @@ fn outstanding_acks(store: &Store, claimed: &BTreeSet<String>) -> Vec<AckedEffec
             .get(instance_id)
             .is_some_and(|instance| instance.status == Status::Running);
         if !running {
-            continue;
-        }
-        let collected = per_instance.entry(instance_id).or_default();
-        if collected.len() >= MAX_SETTLED_PER_INSTANCE {
-            continue;
+            return None;
         }
         if advance_already_sent(claimed, effect_id) {
-            continue;
+            return None;
         }
-        collected.push(AckedEffect {
+        Some(AckedEffect {
             instance_id: instance_id.to_string(),
             effect_id: effect_id.to_string(),
             outcome: record
@@ -408,11 +457,8 @@ fn outstanding_acks(store: &Store, claimed: &BTreeSet<String>) -> Vec<AckedEffec
                 .unwrap_or("ok")
                 .to_string(),
             seq: record.seq,
-        });
-    }
-    let mut acks: Vec<AckedEffect> = per_instance.into_values().flatten().collect();
-    acks.sort_by_key(|ack| ack.seq);
-    acks
+        })
+    })
 }
 
 /// Whether any advance key for this effect is already claimed.

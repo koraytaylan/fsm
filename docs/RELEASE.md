@@ -11,6 +11,22 @@ moved or deleted, because library consumers pin it. There is no crates.io
 publish to undo — a git tag *is* the distribution artifact — so a mistake found
 late is superseded by a new patch version, never by rewriting the tag.
 
+## Pending executor and MCP fixes
+
+- MCP clients can read `fsm://executor` for execution mode and the loaded
+  handler contracts, and `fsm://docs/embedding` for setup. Prompts explain
+  how to drive embedded execution through completion and failure recovery.
+- Embedded startup that falls back to read-only no longer launches handlers;
+  fallback readers refresh their journal view on requests.
+- Acknowledgements without outcome events no longer consume the executor's
+  recovery window and hide interrupted advances.
+- Integration coverage exercises capability discovery, sequential command
+  execution, prerequisite failures, and compensating actions through the
+  actual MCP server and executor.
+
+These changes add no Rust dependencies and change no journal or state hash
+format.
+
 ## Upgrading from v0.1.0
 
 `v0.2.0` is a breaking release under the pre-`1.0` rule in

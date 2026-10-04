@@ -1253,3 +1253,32 @@ carries are read off records rather than from state, `fsm:state-root:3` covers
 none of them, and folding them in would move every historical root. Replay retains `fsm:state:1` and `fsm:state-root:2` only to
 verify historical journal bytes; snapshot domains 1 through 3 are never
 reinterpreted.
+
+## MCP executor discovery
+
+`resources/list` MUST include `fsm://docs/embedding` and `fsm://executor`.
+The latter reads an `application/json` document with format `fsm.executor/1`:
+`mode` (`writer`, `embedded`, `read-only`, or `degraded`), `executes_effects`
+(boolean), `external_executor` (`unknown`; other processes are not inspected), `progress` (`manual`,
+`client_requests`, `external`, or `unavailable`), and `handlers`.
+
+For a writable embedded session, `handlers` MUST describe the table loaded
+by that session: effect, kind, sorted unique required argument names,
+`timeout_ms`, retry policy, and nullable `on_ok` / `on_failed` contracts
+(event, static payload, and stamps). Command lines and MCP argument literal
+values MUST NOT be exposed by this resource. Required arguments MUST use
+the executor's substitution rules, including nested MCP string values.
+Outcome payload literals are part of the exposed domain event contract.
+Process output and MCP results MUST NOT be implicitly converted to events.
+
+A plain writer reports an empty handler list. A read-only or degraded session
+reports a null handler list and unknown external executor status; holding a
+read-only store MUST NOT be presented as proof of a running executor.
+A read-only session MUST NOT start effect handlers, including when an embedded
+startup loses writer contention. Such fallback sessions MUST refresh the
+read-only journal prefix before requests. Embedded execution requires client
+requests to drive ticks, including recovery; a subscription alone is insufficient.
+
+The executor's recovery window for acknowledged effects MUST be applied after
+excluding acknowledgements with no event for their actual outcome, so unrelated acknowledgements cannot
+hide an interrupted advance. This changes no record format or state hash.

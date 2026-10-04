@@ -333,8 +333,12 @@ fn the_documentation_and_machine_resources_did_not_move() {
         entries[1].get("uri").and_then(Value::as_str),
         Some("fsm://docs/examples")
     );
+    assert_eq!(
+        entries[2].get("uri").and_then(Value::as_str),
+        Some("fsm://docs/embedding")
+    );
     assert!(
-        entries[2]
+        entries[4]
             .get("uri")
             .and_then(Value::as_str)
             .is_some_and(|uri| uri.starts_with("fsm://machine/")),
@@ -367,7 +371,7 @@ fn a_store_with_no_instances_lists_only_docs_and_machines() {
         .iter()
         .filter_map(|entry| entry.get("uri").and_then(Value::as_str))
         .collect();
-    assert_eq!(uris.len(), 3, "{uris:?}");
+    assert_eq!(uris.len(), 5, "{uris:?}");
     assert!(!uris.iter().any(|uri| uri.starts_with("fsm://instance/")));
 }
 

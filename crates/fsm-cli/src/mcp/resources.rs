@@ -5,6 +5,7 @@ use crate::store::{ErrorObj, Store};
 
 pub const SPEC_MD: &str = include_str!("../../../../docs/SPEC.md");
 pub const EXAMPLES_MD: &str = include_str!("../../../../docs/EXAMPLES.md");
+pub const EMBEDDING_MD: &str = include_str!("../../../../docs/EMBEDDING.md");
 
 /// The history resource's page size, matching `instance_history`'s default.
 const HISTORY_PAGE: usize = 50;
@@ -58,6 +59,18 @@ pub fn list(store: Option<&Store>) -> Value {
             "Worked examples",
             "Worked examples",
             "text/markdown",
+        ),
+        resource(
+            "fsm://docs/embedding",
+            "Embedding, HTTP, and executing workflows",
+            "Embedding, HTTP, and executing workflows",
+            "text/markdown",
+        ),
+        resource(
+            "fsm://executor",
+            "Executor capabilities",
+            "Execution mode, configured effects, arguments, and outcome events",
+            "application/json",
         ),
     ];
     if let Some(st) = store {
@@ -157,9 +170,25 @@ fn template(uri: &str, name: &str, title: &str, description: &str) -> Value {
 }
 
 pub fn read(uri: &str, store: Option<&Store>) -> Result<Value, ErrorObj> {
+    read_with_executor(uri, store, None)
+}
+
+pub(crate) fn read_with_executor(
+    uri: &str,
+    store: Option<&Store>,
+    handlers: Option<&Value>,
+) -> Result<Value, ErrorObj> {
     let (text, mime) = match uri {
+        "fsm://executor" => (
+            String::from_utf8(fsm_core::canon::canon_bytes(&super::executor::describe(
+                store, handlers,
+            )))
+            .unwrap_or_default(),
+            "application/json",
+        ),
         "fsm://docs/spec" => (SPEC_MD.to_string(), "text/markdown"),
         "fsm://docs/examples" => (EXAMPLES_MD.to_string(), "text/markdown"),
+        "fsm://docs/embedding" => (EMBEDDING_MD.to_string(), "text/markdown"),
         // Every instance read goes through `instance_report`, which is the
         // same function the tool calls — so a resource and a tool cannot
         // disagree about what an instance looks like, however the view grows.

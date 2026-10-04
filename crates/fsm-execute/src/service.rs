@@ -171,10 +171,7 @@ pub fn run(
     clock: &mut dyn Clock,
     emit: &mut dyn FnMut(&str),
 ) -> Result<(), ExecError> {
-    let mut watcher = Watcher::new(
-        config.data_dir.to_path_buf(),
-        advancing_effects(&config.table),
-    );
+    let mut watcher = Watcher::with_handlers(config.data_dir.to_path_buf(), &config.table);
     let mut scheduler = Scheduler::new(config.table);
     let mut runner = Runner::new()?;
     let mut pipeline = Pipeline;

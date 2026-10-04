@@ -25,7 +25,7 @@
 //! copies them verbatim — so a command needing literal braces takes them from
 //! an effect argument.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use fsm_core::json::{JsonLimits, Value, parse};
 
@@ -187,6 +187,27 @@ pub struct HandlerSpec {
     pub on_failed: Option<Advance>,
     /// How many times to try, and how long to wait between.
     pub retry: Retry,
+}
+
+impl HandlerSpec {
+    /// Effect argument names this validated handler substitutes at run time.
+    ///
+    /// The same scanner used by validation and substitution discovers names
+    /// in argv and nested MCP argument string values. Object keys and advance
+    /// payloads are literal, so neither contributes a required argument. The
+    /// sorted, deduplicated set is safe for capability discovery: it exposes
+    /// no command paths, fixed arguments, or operator-owned payload values.
+    /// Call this on handlers obtained from [`HandlerTable::parse`].
+    pub fn required_args(&self) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        for argument in &self.argv {
+            template::collect_placeholders(argument, &mut names);
+        }
+        if let HandlerKind::Mcp { arguments, .. } = &self.kind {
+            template::collect_argument_placeholders(arguments, &mut names);
+        }
+        names
+    }
 }
 
 /// A handler's retry policy.

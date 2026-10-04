@@ -8,6 +8,7 @@ pub mod cancel;
 pub mod complete;
 pub mod descriptions;
 pub mod elicit;
+mod executor;
 pub mod jsonrpc;
 pub mod logging;
 pub mod methods;
