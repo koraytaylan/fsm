@@ -100,13 +100,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CARGO_BUILD_JOBS: 1
-      CARGO_TARGET_DIR: ${{ runner.temp }}/fsm-native-target
-      TMPDIR: ${{ runner.temp }}
+      CARGO_BUILD_JOBS: "1"
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
       - name: Provisioned native containment matrix
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/fsm-native-target
+          TMPDIR: ${{ runner.temp }}
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
           --toolchain '${{ matrix.rust }}'
