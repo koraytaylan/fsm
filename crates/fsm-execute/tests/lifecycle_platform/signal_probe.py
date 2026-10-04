@@ -7,6 +7,7 @@ import time
 import uuid
 
 from identity_probe import command, handle, main, wait_file
+from endpoint_probe import socket_path
 
 INVENTORY = ('term-notification', 'kill-notification')
 
@@ -23,7 +24,7 @@ def exercise(binary):
     def rpc(operation):
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(6)
-            client.connect(str(base / 'control.sock'))
+            client.connect(str(socket_path(base)))
             client.sendall(f'privilege/1 {operation}\n'.encode())
             client.shutdown(socket.SHUT_WR)
             reply = bytearray()
@@ -45,6 +46,7 @@ def exercise(binary):
                                 (base / 'grants', '755')):
             command(['sudo', '-n', 'install', '-d', '-m', mode, str(directory)])
         command(['sudo', '-n', 'tee', str(base / 'data/counter')], input='0\n')
+        command(['sudo', '-n', 'tee', str(base / 'data/broker-counter')], input='0\n')
         command(['sudo', '-n', 'install', '-m', '755', str(binary), str(base / 'fixture')])
         command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + broker,
                  '--property=RuntimeMaxSec=25s', '--property=UMask=0077', '/usr/bin/env',

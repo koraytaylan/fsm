@@ -1,10 +1,13 @@
 //! Private native privilege-protocol prototype, not a shipped broker.
 use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::fs::{MetadataExt, PermissionsExt, chown};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::{Duration, Instant};
+
+#[path = "endpoint.rs"]
+mod endpoint;
 
 const MAX_FRAME: usize = 256;
 
@@ -74,10 +77,7 @@ pub(super) fn serve(base: &Path, uid: u32) -> Result<(), String> {
     if status.len() > 4096 || mask.is_none_or(|value| value & 0o022 != 0o022) {
         return Err("broker requires a restrictive socket creation mask".into());
     }
-    let socket = base.join("control.sock");
-    let listener = UnixListener::bind(&socket).map_err(|e| e.to_string())?;
-    fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
-    chown(&socket, Some(uid), None).map_err(|e| e.to_string())?;
+    let (_authority, listener, socket) = endpoint::bind(base, uid)?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     fs::write(base.join("broker-ready"), b"ready").map_err(|e| e.to_string())?;
     let lifetime = Instant::now();
@@ -166,7 +166,8 @@ pub(super) fn client(base: &Path, handle: &str) -> Result<(), String> {
     if handle.len() > 128 {
         return Err("client handle limit".into());
     }
-    let mut stream = UnixStream::connect(base.join("control.sock")).map_err(|e| e.to_string())?;
+    let mut stream =
+        UnixStream::connect(endpoint::connect_path(base)?).map_err(|e| e.to_string())?;
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|e| e.to_string())?;

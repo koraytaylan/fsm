@@ -8,6 +8,7 @@ import time
 import uuid
 
 from identity_probe import command, handle, main, wait_file
+from endpoint_probe import socket_path
 
 INVENTORY = ("unsafe-mask-refusal", "operator-socket", "fixed-policy", "bounded-frame", "slow-client", "worker-refusal",
              "native-enrollment", "launch-close", "revoked-delayed-launch", "successor")
@@ -26,7 +27,7 @@ def exercise(binary):
     def rpc(frame):
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(6)
-            client.connect(str(base / 'control.sock'))
+            client.connect(str(socket_path(base)))
             client.sendall(frame)
             client.shutdown(socket.SHUT_WR)
             reply = bytearray()
@@ -62,6 +63,7 @@ def exercise(binary):
                                 (base / 'grants', '755')):
             command(['sudo', '-n', 'install', '-d', '-m', mode, str(directory)])
         command(['sudo', '-n', 'tee', str(base / 'data/counter')], input='0\n')
+        command(['sudo', '-n', 'tee', str(base / 'data/broker-counter')], input='0\n')
         command(['sudo', '-n', 'install', '-m', '755', str(binary), str(base / 'fixture')])
         rejected = subprocess.run(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--wait',
                                    '--unit=' + unsafe_controller, '--property=UMask=0000',
@@ -73,7 +75,7 @@ def exercise(binary):
         assert rejected.returncode != 0
         journal = command(['sudo', '-n', 'journalctl', '--no-pager', '-u', unsafe_controller, '-n', '40'])
         assert 'broker requires a restrictive socket creation mask' in journal, journal
-        assert not (base / 'control.sock').exists() and not (base / 'broker-ready').exists()
+        assert not (base / 'endpoint').exists() and not (base / 'broker-ready').exists()
         assert command(['sudo', '-n', 'cat', str(base / 'data/counter')]).strip() == '0'
         passed('unsafe-mask-refusal')
         command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + controller,
@@ -81,7 +83,7 @@ def exercise(binary):
                  f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}', f'FSM_LIFECYCLE_PROBE_MODE=identity-broker:{os.getuid()}',
                  str(base / 'fixture'), 'native_fixture', '--exact', '--nocapture'])
         wait_file(base / 'broker-ready')
-        metadata = (base / 'control.sock').stat()
+        metadata = (socket_path(base)).stat()
         assert metadata.st_uid == os.getuid() and stat.S_IMODE(metadata.st_mode) == 0o600
         first = handle(action('allocate'))
         name = f'fsm-containment-identity-{namespace}-{first["id"]}.service'
@@ -103,7 +105,7 @@ def exercise(binary):
         passed('bounded-frame')
         with socket.socket(socket.AF_UNIX) as slow:
             slow.settimeout(2)
-            slow.connect(str(base / 'control.sock'))
+            slow.connect(str(socket_path(base)))
             slow.sendall(b'privilege/1')
             start = time.monotonic()
             assert slow.recv(4096).startswith(b'error\n')
@@ -113,7 +115,7 @@ def exercise(binary):
         passed('slow-client')
         script = 'import socket,sys; s=socket.socket(socket.AF_UNIX);\ntry: s.connect(sys.argv[1])\nexcept PermissionError: sys.exit(0)\nsys.exit(1)'
         denied = subprocess.run(['sudo', '-n', '-u', 'nobody', '/usr/bin/python3', '-c', script,
-                                 str(base / 'control.sock')], capture_output=True, timeout=3)
+                                 str(socket_path(base))], capture_output=True, timeout=3)
         assert denied.returncode == 0, denied.stderr
         assert snapshot() == before
         passed('worker-refusal')

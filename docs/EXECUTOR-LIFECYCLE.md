@@ -473,3 +473,32 @@ Clippy, warning-free docs, zero-dependency and embedding gates pass; final
 MSRV/stable lifecycle and all 45 Python harness tests pass. Native
 macOS/Windows remain unexecuted. These private fixtures change no public
 journal/API/hash bytes; no migration evidence or task completion is claimed.
+
+### Private supervisor endpoint epochs and restart
+
+The broker now holds a lifetime exclusive authority lock and burns a
+provisioned monotonic broker epoch before binding `control-<epoch>.sock`.
+A root-owned, synchronized read-only route records the epoch, boot and
+operator UID. Native clients validate that route and current boot rather
+than accepting a caller-supplied socket path. A restarted broker never binds,
+connects to or reclaims an older endpoint. Missing epoch authority, rollback
+behind the published route, operator mismatch, malformed routes and route
+inspection errors refuse startup. The lock is held independently of the
+short-lived native run writer lock. These remain private probe formats.
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/restart_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-restart-msrv.json
+python3 crates/fsm-execute/tests/lifecycle_platform/restart_probe.py --toolchain stable --report /tmp/fsm-native-restart-stable.json
+```
+
+Nine cases prove exclusive supervisor ownership, uncatchable broker death
+with a live handler domain and unchanged claim, a new endpoint after restart,
+refusal of successor allocation while that claim remains armed, survival of
+an unrelated listener installed at the old endpoint, matched-domain cleanup,
+missing-authority refusal, counter rollback refusal and strictly monotonic
+succession. Administrator alias injection is separate from recovery and does
+not become cleanup permission. Stale sockets are intentionally preserved;
+production cleanup/storage budgets are still required. Directory replacement,
+other authority loss and remaining handoff/closure windows remain pending,
+as do production journal binding, hosting and shutdown. The full gate remains
+unreleased; these helpers do not initialize missing authority.
