@@ -1,0 +1,121 @@
+//! Negative feasibility evidence, not a containment backend acceptance suite.
+//! The same executable supplies native fixtures without shell dependencies.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+fn fixture(directory: &Path, mode: &str) -> Command {
+    let mut command = Command::new(std::env::current_exe().expect("test executable"));
+    command
+        .args(["native_fixture", "--exact", "--nocapture"])
+        .env("FSM_LIFECYCLE_PROBE_DIRECTORY", directory)
+        .env("FSM_LIFECYCLE_PROBE_MODE", mode);
+    command
+}
+
+#[test]
+#[allow(clippy::zombie_processes)] // Root exit before descendant exit is the negative case under test.
+fn native_fixture() {
+    let Some(directory) = std::env::var_os("FSM_LIFECYCLE_PROBE_DIRECTORY") else {
+        return;
+    };
+    let directory = PathBuf::from(directory);
+    let mode = std::env::var("FSM_LIFECYCLE_PROBE_MODE").expect("fixture mode");
+    if mode == "descendant" {
+        fs::write(directory.join("ready"), b"ready").expect("ready barrier");
+        let watchdog = Instant::now();
+        while !directory.join("stop").exists() && watchdog.elapsed() < Duration::from_secs(10) {
+            if directory.join("challenge").exists() {
+                fs::write(directory.join("response"), b"alive").expect("liveness response");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        return;
+    }
+    let mut descendant = fixture(&directory, "descendant")
+        .spawn()
+        .expect("descendant");
+    await_file(&directory.join("ready"));
+    fs::write(directory.join("root-ready"), b"ready").expect("root barrier");
+    if mode == "exit" {
+        // Deliberately leave the descendant alive; its watchdog bounds failure cleanup.
+        return;
+    }
+    descendant.wait().expect("descendant wait");
+}
+
+fn await_file(path: &Path) {
+    let watchdog = Instant::now();
+    while !path.exists() {
+        assert!(
+            watchdog.elapsed() < Duration::from_secs(5),
+            "missing barrier: {path:?}"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+struct Probe {
+    directory: PathBuf,
+    root: Child,
+}
+
+impl Drop for Probe {
+    fn drop(&mut self) {
+        let _ = fs::write(self.directory.join("stop"), b"stop");
+        let _ = self.root.kill();
+        let _ = self.root.wait();
+        // Do not remove the stop barrier before the orphan has observed it.
+        // The test removes the directory after EOF, which proves fixture exit.
+    }
+}
+
+fn prove_direct_child_is_insufficient(mode: &str) {
+    let directory = std::env::temp_dir().join(format!(
+        "fsm-lifecycle-negative-{}-{mode}",
+        std::process::id()
+    ));
+    fs::create_dir(&directory).expect("unique probe directory");
+    let root = fixture(&directory, mode)
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("root fixture");
+    let mut probe = Probe { directory, root };
+    let mut stdout = probe.root.stdout.take().expect("stdout pipe");
+    let (sender, receiver) = mpsc::sync_channel(1);
+    let reader = std::thread::spawn(move || {
+        let result = std::io::copy(&mut stdout, &mut std::io::sink());
+        let _ = sender.send(result);
+    });
+    await_file(&probe.directory.join("root-ready"));
+    if mode == "kill" {
+        probe.root.kill().expect("direct-child termination");
+    }
+    probe.root.wait().expect("root reaped");
+    fs::write(probe.directory.join("challenge"), b"challenge").expect("challenge");
+    await_file(&probe.directory.join("response"));
+    assert!(
+        matches!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty)),
+        "a surviving descendant must retain the pipe after root death"
+    );
+    fs::write(probe.directory.join("stop"), b"stop").expect("fixture cleanup");
+    receiver
+        .recv_timeout(Duration::from_secs(5))
+        .expect("bounded fixture EOF")
+        .expect("pipe read");
+    reader.join().expect("reader joined");
+    fs::remove_dir_all(&probe.directory).expect("probe cleanup");
+}
+
+#[test]
+fn direct_child_kill_leaves_descendant_and_pipe_alive() {
+    prove_direct_child_is_insufficient("kill");
+}
+
+#[test]
+fn normal_root_exit_leaves_descendant_and_pipe_alive() {
+    prove_direct_child_is_insufficient("exit");
+}
