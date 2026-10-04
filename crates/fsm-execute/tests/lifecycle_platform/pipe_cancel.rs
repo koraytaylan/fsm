@@ -34,7 +34,7 @@ fn socket_read_cancellation_joins_with_surviving_descendant() {
     let descriptor = reader.as_raw_fd();
     let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
     let (sender, receiver) = mpsc::sync_channel(1);
-    let worker = std::thread::spawn(move || {
+    let mut worker = Some(std::thread::spawn(move || {
         // TID is diagnostic synchronization for an actual blocked syscall,
         // never process-tree ownership or permission to clear a claim.
         let status = fs::read_to_string("/proc/thread-self/status").expect("thread diagnostic");
@@ -47,7 +47,7 @@ fn socket_read_cancellation_joins_with_surviving_descendant() {
         ready_sender.send(tid).expect("reader diagnostic");
         let result = std::io::copy(&mut reader, &mut std::io::sink());
         let _ = sender.send(result);
-    });
+    }));
     await_file(&probe.directory.join("root-ready"));
     probe.root.kill().expect("direct root kill");
     probe.root.wait().expect("direct root reap");
@@ -78,6 +78,13 @@ fn socket_read_cancellation_joins_with_surviving_descendant() {
         .shutdown(Shutdown::Read)
         .expect("native read cancellation");
     let cancelled = receiver.recv_timeout(Duration::from_millis(250));
+    if cancelled.is_ok() {
+        worker
+            .take()
+            .expect("reader handle")
+            .join()
+            .expect("cancelled reader joined");
+    }
     let cancellation_elapsed = started.elapsed();
     fs::write(
         probe.directory.join("challenge"),
@@ -99,7 +106,9 @@ fn socket_read_cancellation_joins_with_surviving_descendant() {
             .expect("bounded failure cleanup")
             .expect("cleanup reader result");
     }
-    worker.join().expect("reader worker joined");
+    if let Some(worker) = worker {
+        worker.join().expect("failure cleanup reader joined");
+    }
     fs::remove_dir_all(&probe.directory).expect("fixture directory cleanup");
     cancelled
         .expect("read cancellation exceeded bound")
