@@ -31,6 +31,13 @@ fn native_fixture() {
     };
     let directory = PathBuf::from(directory);
     let mode = std::env::var("FSM_LIFECYCLE_PROBE_MODE").expect("fixture mode");
+    if let Some(handle) = mode.strip_prefix("identity-lease-client:") {
+        #[cfg(target_os = "linux")]
+        broker::client(&directory, handle).expect("native lease client");
+        #[cfg(not(target_os = "linux"))]
+        panic!("native lease client requires Linux: {handle}");
+        return;
+    }
     if mode == "identity-pre-entry" {
         // Trusted pre-start fixture work only; the actual handler has not
         // reached its entry gate. Provisioning owns the release barrier.

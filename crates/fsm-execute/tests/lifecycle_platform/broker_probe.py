@@ -9,7 +9,7 @@ import uuid
 
 from identity_probe import command, handle, main, wait_file
 
-INVENTORY = ("operator-socket", "fixed-policy", "bounded-frame", "slow-client", "worker-refusal",
+INVENTORY = ("unsafe-mask-refusal", "operator-socket", "fixed-policy", "bounded-frame", "slow-client", "worker-refusal",
              "native-enrollment", "launch-close", "revoked-delayed-launch", "successor")
 
 
@@ -17,6 +17,7 @@ def exercise(binary):
     namespace = uuid.uuid4().hex
     base = Path('/run/fsm-containment-identity-' + namespace)
     controller = 'fsm-containment-broker-' + namespace + '.service'
+    unsafe_controller = 'fsm-containment-unsafe-mask-' + namespace + '.service'
     units = []
     cases = []
     trace = []
@@ -62,8 +63,21 @@ def exercise(binary):
             command(['sudo', '-n', 'install', '-d', '-m', mode, str(directory)])
         command(['sudo', '-n', 'tee', str(base / 'data/counter')], input='0\n')
         command(['sudo', '-n', 'install', '-m', '755', str(binary), str(base / 'fixture')])
+        rejected = subprocess.run(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--wait',
+                                   '--unit=' + unsafe_controller, '--property=UMask=0000',
+                                   '--property=RuntimeMaxSec=2s', '/usr/bin/env',
+                                   f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}',
+                                   f'FSM_LIFECYCLE_PROBE_MODE=identity-broker:{os.getuid()}',
+                                   str(base / 'fixture'), 'native_fixture', '--exact', '--nocapture'],
+                                  capture_output=True, text=True, timeout=6)
+        assert rejected.returncode != 0
+        journal = command(['sudo', '-n', 'journalctl', '--no-pager', '-u', unsafe_controller, '-n', '40'])
+        assert 'broker requires a restrictive socket creation mask' in journal, journal
+        assert not (base / 'control.sock').exists() and not (base / 'broker-ready').exists()
+        assert command(['sudo', '-n', 'cat', str(base / 'data/counter')]).strip() == '0'
+        passed('unsafe-mask-refusal')
         command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + controller,
-                 '--property=RuntimeMaxSec=25s', '/usr/bin/env',
+                 '--property=RuntimeMaxSec=25s', '--property=UMask=0077', '/usr/bin/env',
                  f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}', f'FSM_LIFECYCLE_PROBE_MODE=identity-broker:{os.getuid()}',
                  str(base / 'fixture'), 'native_fixture', '--exact', '--nocapture'])
         wait_file(base / 'broker-ready')
@@ -120,7 +134,7 @@ def exercise(binary):
         journal = command(['sudo', '-n', 'journalctl', '--no-pager', '-u', other, '-n', '40'])
         assert 'gate native enrollment does not match authorization' in journal, journal
         assert snapshot() == before
-        assert 'populated 1' in (Path('/sys/fs/cgroup/system.slice') / name / 'cgroup.events').read_text()
+        assert 'populated 1' in command(['sudo', '-n', 'cat', str(Path('/sys/fs/cgroup/system.slice') / name / 'cgroup.events')])
         passed('native-enrollment')
         assert handle(action('close', first))['phase'] == 'closed'
         domain = Path('/sys/fs/cgroup/system.slice') / name
@@ -152,7 +166,7 @@ def exercise(binary):
         done = {row['case'] for row in cases}
         cases.extend({'case': name, 'passed': False, 'error': str(error)} for name in INVENTORY if name not in done)
     finally:
-        for name in [controller, *units]:
+        for name in [controller, unsafe_controller, *units]:
             subprocess.run(['sudo', '-n', 'systemctl', 'stop', name], capture_output=True, timeout=6)
             domain = Path('/sys/fs/cgroup/system.slice') / name
             if domain.exists():

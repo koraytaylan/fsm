@@ -424,3 +424,36 @@ warning-free docs, zero-dependency and embedding gates pass, as do final
 MSRV/stable lifecycle tests and all 45 Python harness tests. Native
 macOS/Windows remain unexecuted. No public journal/API/hash bytes change;
 prior-format migration is not claimed for these private probe records.
+
+### Socket publication and signal notification preparation
+
+The private broker checks the Linux process creation mask before binding its
+socket: group and other write bits must be excluded. Applying mode 0600 after
+binding cannot retroactively reject a connection queued during a permissive
+creation window. A native UMask=0000 case must fail with the intended mask
+diagnostic before socket/ready publication or counter mutation. Probe broker
+units explicitly use UMask=0077; protected kernel state is inspected as root.
+
+A fixed `lease:<full-identity>` request launches through the existing admission
+path and keeps the Unix connection open. EOF, a client byte, connection error,
+failed reply delivery or the finite probe watchdog asks the surviving broker
+to close the domain through the ordinary full-identity closure path. The
+notification marker is diagnostic only; persisted closure and actual domain
+removal remain the authority. The probe is sequential with one held lease
+and a five-second safety watchdog, not a production multi-resource budget.
+
+```sh
+python3 crates/fsm-execute/tests/lifecycle_platform/signal_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-signal-msrv.json
+python3 crates/fsm-execute/tests/lifecycle_platform/signal_probe.py --toolchain stable --report /tmp/fsm-native-signal-stable.json
+```
+
+Separate real SIGTERM and SIGKILL cases kill only the operator client's main
+process. Its exec'd descendant remains alive in a separate native domain;
+EOF must still reach the surviving broker and verified handler-domain closure
+must finish within the probe's two-second bound. This tests exec-closed socket
+inheritance and prevents the five-second watchdog from masquerading as signal
+notification. An unrelated process also survives. SIGTERM uses its native
+default termination behavior here: this proves a death notification primitive,
+not production graceful task joining or settlement. Broker death, stale-socket
+restart, lost authority, remaining crash windows and production shutdown still
+need evidence; task 9301 and integration remain unreleased.
