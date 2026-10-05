@@ -2372,4 +2372,18 @@ lifecycle updates.
   `37311223444` is queued, compiled native/portable gates and complete host
   integration remain outstanding, and task 9303 remains In progress.
 
+- Re-polled `37298152815` at frozen
+  `47eafa460c1ddc585c95d0920782304c865ea305`: native stable/MSRV and zero-deps
+  succeeded, Ubuntu/Windows four jobs failed, macOS MSRV is in progress and
+  macOS stable queued. Retained both native artifacts in the task cache and
+  independently verified 78 cases against that source with exact stable
+  `rustc 1.99.0 (b940084d7 2026-09-28)` and MSRV
+  `rustc 1.89.0 (29483883e 2025-08-04)`; executable bytes remain unverified,
+  native gate unreleased. Ubuntu stable log confirms the known `module`/`mod`
+  inventory mismatch fixed by `c98c4fe`; other jobs are not inferred passing.
+  This predates later lifetime death controls, owned watcher and host/pipeline
+  changes, so it is primitive frozen evidence only; latest `79c5329` run
+  `37311368249` is queued, full current native/portable integration remains
+  required, and local swap is still nearly full with no Rust build started.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
