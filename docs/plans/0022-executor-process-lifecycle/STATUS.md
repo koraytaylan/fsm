@@ -527,4 +527,14 @@ lifecycle updates.
   rotation, failed fsync, power loss or native closure authentication. Task 9302
   remains In progress with those acceptance gaps explicit.
 
+- **Initial production persistence CI complete:** review run `37254257934`
+  completed successfully at exact source
+  `b482fe03d9bedc0626d8a4e8ef06f82a005840cc`: all six Linux/macOS/Windows
+  stable/MSRV legs, both provisioned native jobs and zero-dependencies passed.
+  This completes the portable matrix for that original persistence unit; it
+  does not validate the subsequent resource/crash tests or stale-completion
+  correction. A new frozen review must cover that later range before task
+  acceptance, and native authentication plus remaining fault boundaries still
+  keep task 9302 In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
