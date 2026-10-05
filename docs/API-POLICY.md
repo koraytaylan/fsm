@@ -265,7 +265,7 @@ The versioned formats are independent of the crate version:
 | journal | `fsm.journal/1`, store `VERSION` 11 | `<data_dir>` |
 | snapshot | `fsm.snapshot/6` | `<data_dir>/snapshots` |
 | state hash | `fsm.state/3` (records written before composition carry `fsm.state/2` and verify under it) | state-bearing records and views |
-| state root | `fsm.state-root/3` | checkpoints, snapshots, and the sealed base |
+| state root | `fsm.state-root/4` (historical root/3 remains verified under its original domain) | checkpoints, snapshots, and the sealed base |
 | base state | `fsm.base/2`, companion roots under `fsm.base-dedup/1`, `fsm.base-index/1` and `fsm.base-execution-claims/1` | `<data_dir>/journal/BASE` |
 | archive manifest | `fsm.archive/1` | the operator's archive directory |
 
@@ -282,9 +282,10 @@ Rules:
   supported format is folded and re-stamped on open. Records are never edited, so
   anything a record did not carry stays absent — a `request_id` claimed before
   fingerprints existed (format ≤ 6) can be replayed but not conflict-checked.
-  Store formats 1 through 9 and markerless journals are full-folded before the
-  `VERSION` marker is stamped 10. The 9-to-10 step converts nothing: a pre-10
-  store has no seal record and no base state file.
+  Store formats 1 through 10 and markerless journals are full-folded before the
+  `VERSION` marker is stamped 11. Historical genesis leaves execution
+  quarantined until verified native quiescence enables the exact journal
+  prefix; migration alone cannot enable execution.
 - **A store from a newer format is refused, not guessed at** (`store/version_mismatch`).
 - **Snapshots are a disposable cache.** An unreadable or stale-format snapshot is
   skipped and the journal is folded instead; bumping the snapshot format is never
@@ -301,10 +302,10 @@ Rules:
   mutation on write.
 - **Hash domains are versioned separately** (`fsm:machine:1`, `fsm:record:1`,
   `fsm:state:3` (and `fsm:state:2` for records that declare it),
-  `fsm:state-root:3`, `fsm:snapshot:5`, `fsm:child:1`,
+  `fsm:state-root:4`, `fsm:snapshot:6`, `fsm:child:1`,
   `fsm:request-fp:1`) so a change to one does not invalidate the others.
   Replay retains explicit legacy verifiers for markerless `fsm.state/1` and
-  `fsm.state-root/2` material. Changing a current domain is a compatibility
+  `fsm.state-root/2` and `fsm.state-root/3` material. Changing a current domain is a compatibility
   break and requires a new release tag.
 - `machine_id` is a hash of the whole canonical definition, `description`
   included. Editing a description yields a different machine. This is deliberate:

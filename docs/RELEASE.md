@@ -1,5 +1,10 @@
 # Releasing
 
+The current format documentation consistently identifies VERSION 11,
+state-root/4 and snapshot/6; VERSION 10 sealing rules are explicitly historical.
+This clarification changes no persisted bytes or public behavior and does not
+complete the pending claim-era acceptance or contained runtime integration.
+
 Unreleased writer-lock release now explicitly unlocks through one internal
 guard shared by open, initialization and repair, including error returns.
 A deterministic Unix duplicate-descriptor regression reproduces the previous

@@ -775,17 +775,21 @@ be corrected and retried under the same `request_id`. An oversized journal
 record encountered while opening is authoritative input and is therefore a
 fatal `io/read`, never a torn-tail repair candidate.
 
-On-disk store `VERSION` is `9`. Opening a `VERSION` `1` through `8` directory,
+On-disk store `VERSION` is `11`. Opening a `VERSION` `1` through `10` directory,
 or a journal with no `VERSION` marker, MUST attempt a best-effort migration:
 ignore snapshot caches entirely, fold the complete journal using each record's
-format discriminator, and on success stamp `VERSION` `9`. Interior journal
+format discriminator, and on success stamp `VERSION` `11`. Interior journal
 records MUST NOT be rewritten. If classify is not `Ok` (including a migratable
 marker whose journal is missing) or fold fails, refuse with that health and
 leave `VERSION` unchanged — a migratable directory is never re-created over. A
 successful `repair --truncate-torn-tail` on a migratable store folds the
-complete retained journal and likewise stamps `VERSION` `9`. Any other
+complete retained journal and likewise stamps `VERSION` `11`. Any unsupported
 `VERSION` value is `store/version_mismatch`, refused and never silently
 reinterpreted.
+
+Historical genesis without execution admission MUST remain quarantined after
+migration, as specified in the claim-era persistence contract below; stamping
+the current version does not establish legacy executor quiescence.
 
 `Store::open_read_only` and CLI inspection MUST NOT create directories, take
 the advisory writer lock, stamp or migrate `VERSION`, or write snapshots.
@@ -1189,7 +1193,7 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `store/state_hash_mismatch` — fold disagreed
 - `store/sealed_replay_unavailable` — a claimed `request_id` whose claiming record the store has sealed into its archive. The request was applied and is NOT applied again: the store refuses rather than reproduce a thinner outcome or, worse, treat the key as unclaimed
 - `store/torn_tail` — truncated final record
-- `store/version_mismatch` — data directory VERSION is not 9 and cannot be migrated
+- `store/version_mismatch` — data directory VERSION is unsupported and cannot be migrated
 
 ## Appendix B — Limits
 
@@ -1242,7 +1246,13 @@ These match `crates/fsm-core/src/limits.rs`.
 | `fsm.archive/1` | Manifest of a detached archive: per-segment plain SHA-256 digests and the sealed chain endpoints |
 | `expr/1` | Expression grammar |
 
-On-disk store `VERSION` is `10`. A `VERSION` `1` through `9` directory, or a journal with no `VERSION` marker, is best-effort migrated on open (or by a successful repair) by folding the complete journal with snapshot caches ignored, then stamping `VERSION` `10`; records, machine ids, and snapshot caches are never rewritten or reinterpreted. Any other `VERSION` is `store/version_mismatch`, refused and never reinterpreted. The `9`-to-`10` step converts nothing: a pre-`10` store has no seal record and no base state file.
+The following sealed-store rules describe the formats introduced with
+historical store `VERSION` `10`, including base/1 and state-root/3. Their
+historical bytes and hash domains remain authoritative when reading those
+formats. Current writers use VERSION 11 and the claim-era base/2 and
+state-root/4 contract below; current migration folds supported VERSION 1–10
+prefixes and stamps 11. The historical `9`-to-`10` step converted nothing:
+a pre-`10` store had no seal record and no base state file.
 
 **A `VERSION` `10` store is not readable by 0.2.x, sealed or not.** The version stamp moves on first write regardless of whether anything was ever archived, so an unsealed 0.3.0 store is refused by an older build exactly as a sealed one is.
 
@@ -1421,9 +1431,10 @@ hide an interrupted advance. This changes no record format or state hash.
 
 ## Claim-era persistence contract
 
-On-disk store `VERSION` is `11`. The pure fold and persistence codecs implement
-the claim-era representations specified here; production claim mutators and
-native execution integration remain under development in plan 0022 task 9302.
+On-disk store `VERSION` is `11`. The pure fold, persistence codecs and production
+store mutators implement the claim-era representations specified here; task
+9302 acceptance and native execution integration remain under review and
+development in plan 0022.
 Format support alone MUST NOT be advertised as contained execution support.
 
 The claim-era writer MUST use VERSION 11. It adds `execution_claimed`,

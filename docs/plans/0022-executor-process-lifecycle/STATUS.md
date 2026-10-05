@@ -831,4 +831,25 @@ lifecycle updates.
   no contained runner, authority publisher or legacy-quiescence issuer is
   advertised as shipped by these fixture and persistence proofs.
 
+- **Latest native artifacts independently verified:** both native jobs in
+  run `37262415626` pass all 70 cases on exact clean source `1f21fe4`.
+  Downloaded reports are retained under `ci-37262415626/{stable,msrv}` in the
+  task cache. Independent verification checks all eight report SHA digests,
+  their literal source case inventories and success rows, compiler/source
+  identity, executable digest fields, unrelated-process survival, native I/O
+  cancellation log digest and the deliberately failing live-domain final-kill
+  control. Stable used Rust 1.99.0; MSRV used Rust 1.89.0. Receipt publication
+  remains explicitly a fixture issuer, not a shipped production authority.
+  The host gate and six portable jobs remain running; no task completion is
+  inferred from native success alone.
+
+- **Format documentation review finding resolved:** current migration text
+  and the API format/domain inventory now consistently name VERSION 11,
+  root/4 and snapshot/6, while the VERSION 10 seal rules are explicitly
+  historical. The execution section distinguishes implemented store mutators
+  from pending acceptance and native runtime integration. Source constants
+  were inspected, and diff/file-size checks pass; this documentation-only
+  clarification changes no behavior, persisted bytes or source covered by
+  the frozen code gates, so the full build gates are not repeated for it.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
