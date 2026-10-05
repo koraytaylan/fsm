@@ -2398,4 +2398,16 @@ lifecycle updates.
   or portable acceptance is inferred. Latest `7d58210` run `37311594997` is
   queued, full plans 20–23 requirements and task 9303 acceptance remain pending.
 
+- Native CI review found owned-watcher run `37298657515` has both native jobs
+  successful (artifacts not yet independently retained), while public host-death
+  run `37299058913` has MSRV native success and stable native failure. Retained
+  stable failure evidence: the broker-disconnect case stops at the copied test
+  executable's 64 MiB size assertion before exercising supervisor death.
+  Raised only this debug-test copy bound to 128 MiB, retaining exclusive create,
+  source-length-plus-one copy validation, Root fixture ownership/permissions,
+  fsync and independent process identity observations; diagnostics now include
+  observed size and limit. Production limits and assertions are unchanged.
+  Formatting/size/diff checks pass; repaired stable/current native and full
+  portable gates remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

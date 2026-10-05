@@ -17,6 +17,9 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+// Stable debug test executables can exceed 64 MiB; copying stays bounded.
+const MAX_SUPERVISOR_BINARY: u64 = 128 * 1024 * 1024;
+
 const CLIENT: &str = r#"import json,os,socket,sys
 os.setgroups([])
 os.setgid(65534)
@@ -182,7 +185,10 @@ pub(super) fn complete(directory: &Path, binding: &Value) -> Value {
 fn install_supervisor(directory: &Path) {
     let source = fs::File::open(std::env::current_exe().unwrap()).unwrap();
     let length = source.metadata().unwrap().len();
-    assert!(length > 0 && length <= 64 * 1024 * 1024);
+    assert!(
+        length > 0 && length <= MAX_SUPERVISOR_BINARY,
+        "native supervisor executable size {length} exceeds fixture bound {MAX_SUPERVISOR_BINARY} or is empty"
+    );
     let mut destination = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
