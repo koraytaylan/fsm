@@ -537,3 +537,18 @@ These clauses agree with the previously reviewed stopping, closure, enrollment
 and transport implementation slices; no additional finding was identified.
 Uncertain submission reconciliation and production host cancellation/shutdown
 remain dependent tasks, rather than consequences of these primitive controls.
+
+Admission/profile fault-control review at corrected `9f1f175`: the native
+admission fixture checks memory/read-only stores, quarantined retained ownership,
+a stale run, an actually poisoned writer and removed/cancelled pending work.
+Refusals assert exact existing error classes, unchanged records/ownership,
+absent binding/launch material and cold read-only replay where applicable;
+the quarantined-state control is explicitly an in-memory predicate test rather
+than fabricated native migration proof. Profile refusal first verifies the
+installed fixture's original device/inode/digest, alters permissions through
+that original descriptor, then requires unchanged allocation counter/inventory
+before restoring permissions and proving normal preparation. Fixture cleanup
+does not clear durable ownership or stand in for a production closure receipt.
+These directly inspected assertions support early-refusal coverage without
+proving concurrent production host exclusion; no additional finding was
+identified, and broker-disconnect fixture review remains to be completed.
