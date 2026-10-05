@@ -1473,6 +1473,26 @@ output, failed execution or incomplete I/O MUST refuse preparation before
 counter/intent mutation. Cleanup of the query process MUST be bounded; this
 capability check is not handler termination or native closure evidence.
 
+The root-only `launch` operation MUST freshly validate the protected claim
+binding and approved catalogue under the authority lock before any manager
+submission. It MUST exclusively fsync a bounded cold-readable
+`launch-<allocation>.json`, containing exactly `format`
+(`fsm.native-launch-intent/1`) and `binding`, before starting the fixed
+root-protected systemd-run with the installed protected gate and only its
+canonical route. Any existing intent, including a partial one, MUST refuse
+another submission; failed or uncertain submissions MUST retain that intent
+and journal ownership. The manager command MUST clear inherited overrides,
+use a dynamic unprivileged identity, protected control groups, no delegation,
+no capabilities or privilege escalation, no restart, control-group lifetime
+and termination, and a runtime ceiling of approved timeout plus the five-second
+entry bound. Owned standard streams MUST pass through `--pipe` without spool
+files or journald capture. The authority lock MUST be released after spawning
+the owned transport so grant publication and closing can proceed.
+The command monitor MUST have a finite deadline and bounded best-effort cleanup;
+transport/root exit MUST NOT issue closure evidence or permit settlement.
+Broker authentication, manager admission fencing and permanent closure remain
+required before the contained runner is accepted.
+
 The protected entry operation MUST run as an unprivileged handler identity.
 It MUST accept only a canonical namespace/generation/allocation route and
 read an immutable root-owned entry grant from that authority; caller-supplied

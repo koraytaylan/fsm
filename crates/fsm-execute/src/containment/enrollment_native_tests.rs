@@ -1,13 +1,13 @@
-//! Positive production gate entry; launch transport remains administrative.
+//! Positive production gate startup and entry; never permanent closure.
 
-use super::super::super::{authorize, bind, enrollment, manager, number, object, text};
+use super::super::super::{authorize, bind, enrollment, launch, manager, object, read_value};
 use super::{Fixture, claim_binding};
 use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
 use std::os::unix::fs::MetadataExt;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 struct Gate<'a> {
@@ -35,53 +35,64 @@ pub(super) fn run() {
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let material = domain.to_value();
-    let namespace = text(&material, "namespace").unwrap();
-    let generation = number(&material, "generation").unwrap().to_string();
-    let allocation = number(&material, "allocation").unwrap().to_string();
+    let namespace = super::super::super::text(&material, "namespace").unwrap();
+    let generation = super::super::super::number(&material, "generation")
+        .unwrap()
+        .to_string();
+    let allocation = super::super::super::number(&material, "allocation")
+        .unwrap()
+        .to_string();
     let unit = format!("fsm-containment-{namespace}-{generation}-{allocation}.service");
     let (binding, effect) = claim_binding(&fixture, &domain);
     bind(&fixture.directory, &binding).unwrap();
-    let mut command = Command::new("/usr/bin/systemd-run");
-    command
-        .args(["--quiet", "--collect", "--pipe", "--service-type=exec"])
-        .arg(format!("--unit={unit}"));
-    for property in [
-        "DynamicUser=yes",
-        "ProtectControlGroups=yes",
-        "ProtectHome=yes",
-        "ProtectProc=invisible",
-        "RestrictNamespaces=yes",
-        "NoNewPrivileges=yes",
-        "CapabilityBoundingSet=",
-        "Delegate=no",
-        "ExitType=cgroup",
-        "KillMode=control-group",
-        "KillSignal=SIGKILL",
-        "Restart=no",
-        "TimeoutStopSec=2s",
-        "RuntimeMaxSec=8s",
-    ] {
-        command.arg(format!("--property={property}"));
-    }
+    let intent_path = fixture.directory.join("launch-1.json");
+    // Partial intent from a failed prior submission cannot arm another gate.
+    fs::write(&intent_path, b"partial native launch intent").unwrap();
+    assert!(
+        launch::begin(
+            &fixture.directory,
+            1,
+            [Stdio::null(), Stdio::null(), Stdio::null()]
+        )
+        .unwrap_err()
+        .contains("already submitted or uncertain")
+    );
+    assert_eq!(
+        fs::read(&intent_path).unwrap(),
+        b"partial native launch intent"
+    );
+    assert!(
+        fs::read_to_string(fixture.groups[0].0.join("cgroup.events"))
+            .unwrap()
+            .lines()
+            .any(|line| line == "populated 0")
+    );
+    // Explicit repair of this test-owned injected partial record, not cold
+    // production recovery or permission to recycle a failed launch.
+    fs::remove_file(&intent_path).unwrap();
+    let (child, bound) = launch::begin(
+        &fixture.directory,
+        1,
+        [Stdio::null(), Stdio::null(), Stdio::null()],
+    )
+    .unwrap();
+    assert_eq!(bound, Duration::from_millis(5100));
     let mut gate = Gate {
         fixture: &fixture,
-        child: command
-            .args([
-                "/usr/libexec/fsm-containment-authority",
-                "gate",
-                namespace,
-                &generation,
-                &allocation,
-            ])
-            .env_clear()
-            .env("LANG", "C")
-            .env("LC_ALL", "C")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap(),
+        child,
     };
+    let intent = read_value(&intent_path, true).unwrap();
+    assert_eq!(intent.get("binding"), Some(&binding));
+    assert!(
+        launch::begin(
+            &fixture.directory,
+            1,
+            [Stdio::null(), Stdio::null(), Stdio::null()]
+        )
+        .unwrap_err()
+        .contains("already submitted or uncertain")
+    );
+    assert_eq!(read_value(&intent_path, true).unwrap(), intent);
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
         if manager::properties(&unit, &["ActiveState", "SubState"]).is_ok_and(|fields| {

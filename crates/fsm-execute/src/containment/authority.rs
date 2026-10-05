@@ -45,6 +45,9 @@ mod catalogue;
 #[path = "enrollment.rs"]
 mod enrollment;
 
+#[path = "launch.rs"]
+mod launch;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -54,7 +57,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() < 3 {
         return Err(
-            "usage: register|catalogue|bind|prepare|authorize|authorize-enrolled|begin-close|request-kill|observe NAMESPACE GENERATION [REQUEST]"
+            "usage: register|catalogue|bind|prepare|launch|authorize|authorize-enrolled|begin-close|request-kill|observe NAMESPACE GENERATION [REQUEST]"
                 .into(),
         );
     }
@@ -64,6 +67,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         "register"
             | "bind"
             | "prepare"
+            | "launch"
             | "authorize"
             | "authorize-enrolled"
             | "begin-close"
@@ -93,11 +97,17 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         protected_directory(source.parent().ok_or("catalogue source has no parent")?)?;
         return catalogue::publish(&directory, &read_value(source, true)?);
     }
-    if matches!(operation, "begin-close" | "request-kill" | "observe") {
+    if matches!(
+        operation,
+        "begin-close" | "request-kill" | "observe" | "launch"
+    ) {
         let raw = arguments[3].to_str().ok_or("invalid allocation")?;
         let allocation = raw.parse::<u64>().map_err(|_| "invalid allocation")?;
         if allocation == 0 || raw != allocation.to_string() {
             return Err("noncanonical closing allocation".into());
+        }
+        if operation == "launch" {
+            return launch::run(&directory, allocation);
         }
         if operation == "observe" {
             let value = observation::read(&directory, allocation)?;

@@ -1397,4 +1397,19 @@ lifecycle updates.
   new frozen CI; no positive native pass, production launch transport or full
   runner acceptance is claimed, and task 9303 remains In progress.
 
+- **Production gate startup implemented:** private root `launch` freshly
+  validates binding/catalogue, exclusively fsyncs a bounded cold-readable
+  single-submission intent, and starts only the protected installed routed
+  gate through root-protected systemd-run with fixed DynamicUser isolation,
+  control-group lifetime/kill policy, no restart/capabilities/escalation,
+  cleared environment and directly owned pipe streams. Approved timeout plus
+  entry wait bounds manager runtime; lock release after spawn permits grant
+  and close operations. Command monitoring is finite and cleanup remains
+  best-effort without closure evidence or ownership release. The positive
+  native case now uses this production startup, refuses injected partial and
+  existing complete intents without replacement, and checks the approved
+  5100 ms ceiling. Formatting/file-length/source review precede frozen CI;
+  native execution, broker transport, capture/result integration, manager
+  fencing and permanent closure remain outstanding, and 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

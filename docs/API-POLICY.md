@@ -1,5 +1,10 @@
 # API and version policy
 
+Private `fsm.native-launch-intent/1` reserves exactly one manager submission
+per bound allocation; this root-only launch command adds no public Rust API,
+stable error code or journal version. Transport exit remains distinct from
+verified closure and cannot authorize settlement.
+
 Unreleased private `authorize-enrolled` derives grant access from a verified
 installed DynamicUser gate instead of accepting a group override; this
 root-only control interface adds no stable Rust API or journal version.

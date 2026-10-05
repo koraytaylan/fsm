@@ -1,5 +1,12 @@
 # Embedding fsm as a library
 
+Private root `launch` validates the live bound claim and approved handler,
+durably reserves one manager submission, and starts only the installed routed
+gate with isolated identity and direct owned streams. Its returned transport
+and command exit are candidate observations; neither supplies `VerifiedClosure`
+or an embedded contained-runner result. The single-submission marker persists
+after failures, and broker/settlement integration remains under development.
+
 The private root `authorize-enrolled` operation verifies the actual installed
 DynamicUser gate and derives its grant group under the authority lock; callers
 cannot select a group through this route. It is not an embedded launch API,

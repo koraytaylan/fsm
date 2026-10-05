@@ -8,7 +8,7 @@ use std::io::Read;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
-const EXECUTABLE: &str = "/usr/libexec/fsm-containment-authority";
+pub(super) const EXECUTABLE: &str = "/usr/libexec/fsm-containment-authority";
 const KEYS: &[&str] = &[
     "ActiveState",
     "SubState",
@@ -31,15 +31,7 @@ pub(super) fn group(domain: &Value) -> Result<u32, String> {
     let pid = main_pid(&properties, &unit)?;
     let process = PathBuf::from(format!("/proc/{pid}"));
     let executable = Path::new(EXECUTABLE);
-    protected_directory(executable.parent().ok_or("gate executable has no parent")?)?;
-    let installed = fs::symlink_metadata(executable).map_err(io)?;
-    if !installed.is_file()
-        || installed.uid() != 0
-        || installed.mode() & 0o022 != 0
-        || installed.mode() & 0o111 == 0
-    {
-        return Err("installed gate executable is not root protected".into());
-    }
+    let installed = installed()?;
     let before = fs::symlink_metadata(&process).map_err(io)?;
     let expected = [EXECUTABLE, "gate", namespace, &generation, &allocation].join("\0") + "\0";
     let observe = || -> Result<(u32, u32), String> {
@@ -75,6 +67,20 @@ pub(super) fn group(domain: &Value) -> Result<u32, String> {
         return Err("enrolled gate or native identity changed".into());
     }
     Ok(credentials.1)
+}
+
+pub(super) fn installed() -> Result<fs::Metadata, String> {
+    let executable = Path::new(EXECUTABLE);
+    protected_directory(executable.parent().ok_or("gate executable has no parent")?)?;
+    let metadata = fs::symlink_metadata(executable).map_err(io)?;
+    if !metadata.is_file()
+        || metadata.uid() != 0
+        || metadata.mode() & 0o022 != 0
+        || metadata.mode() & 0o111 == 0
+    {
+        return Err("installed gate executable is not root protected".into());
+    }
+    Ok(metadata)
 }
 
 fn bounded(path: &Path) -> Result<Vec<u8>, String> {

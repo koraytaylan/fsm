@@ -2,15 +2,28 @@
 
 ## Decision status
 
+The production root `launch` path now validates current binding/catalogue,
+publishes bounded cold-readable `fsm.native-launch-intent/1` exclusively before
+submission, and starts the fixed installed gate with the canonical route and
+fixed isolation through the protected manager launcher. It owns direct pipe
+streams, clears inherited manager overrides, bounds runtime by approved timeout
+plus entry wait, and releases the authority lock after spawning so grant/close
+operations can proceed. Duplicate/partial intent refuses replay; failures keep
+ownership. Its command monitor has a finite deadline and best-effort native
+revocation/kill plus bounded direct-child cleanup. Exit is not closure evidence.
+The positive gate case now calls this actual startup path and verifies intent
+preservation/refusal; native execution and full broker/runner closure integration
+remain pending.
+
 The native authority inventory now includes `enrolled_gate_authorization`:
 it runs the freshly built production gate at its fixed root-protected install
-path in an administrative transient DynamicUser service, confirms the exact
+path through production startup of a transient DynamicUser service, confirms the exact
 gate remains enrolled before grant publication, derives grant permissions
 from its real identity, and requires successful exec of the approved handler.
 Root exit leaves the durable claim unresolved and no closed receipt. The
 fixture installer uses exclusive publication and owned inode/digest cleanup;
 an existing installation refuses. Native execution of this new case is pending,
-and administrative launch is not the production broker/runner transport.
+and complete production broker/runner transport remains under development.
 
 The root-only `catalogue` operation now approves an immutable validated handler
 table before the first allocation, with current counter provenance and fresh

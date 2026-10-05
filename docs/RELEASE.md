@@ -1,5 +1,13 @@
 # Releasing
 
+Unreleased private root `launch` now fsyncs single-submission intent before
+starting the installed gate through a fixed protected manager launcher.
+Isolation, direct owned pipe streams, environment clearing, approved runtime
+ceiling and bounded command monitoring are enforced; duplicate/partial intent
+refuses another submission. Failures retain intent and durable ownership.
+The positive native gate case now calls this production startup path, while
+complete broker/runner I/O and permanent closure remain unaccepted.
+
 Unreleased root `authorize-enrolled` checks the installed gate's actual
 manager/proc identity and derives immutable grant access without a caller
 group override. A new native case requires the real production gate under
