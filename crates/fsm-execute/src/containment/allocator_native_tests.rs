@@ -288,13 +288,43 @@ fn genuine_claim_binding() {
     assert_eq!(read_value(&path, true).unwrap(), binding);
     assert!(super::super::bind(&fixture.directory, &binding).is_err());
     exercise_binding(&mut fixture, &domain, &binding, &path, &effect);
-    super::super::closure::complete(&fixture.directory, 1).unwrap();
-    super::super::closure::complete(&fixture.directory, 1).unwrap();
     let claim =
         fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
     let receipt = fixture
         .directory
         .join(format!("closure-1-{}.json", claim.run_id()));
+    for name in [
+        "launch-1.json",
+        "launch-1.json.pending",
+        "handoff-1.json.pending",
+        "manager-stopped-1.json.pending",
+        "manager-retired-1.json.pending",
+    ] {
+        let fault = fixture.directory.join(name);
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&fault)
+            .unwrap();
+        assert!(super::super::closure::complete(&fixture.directory, 1).is_err());
+        assert!(fsm_store::store::VerifiedClosure::read(&receipt).is_err());
+        assert!(fixture.groups[0].0.exists());
+        fs::remove_file(fault).unwrap();
+    }
+    let pending = receipt.with_extension("json.pending");
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&pending)
+        .unwrap();
+    assert!(super::super::closure::complete(&fixture.directory, 1).is_err());
+    assert!(fsm_store::store::VerifiedClosure::read(&receipt).is_err());
+    assert!(!fixture.groups[0].0.exists());
+    // Repair only the test-owned injected receipt obstacle; the failed close
+    // remains a refusal, and this independent retry must prove cold closure.
+    fs::remove_file(pending).unwrap();
+    super::super::closure::complete(&fixture.directory, 1).unwrap();
+    super::super::closure::complete(&fixture.directory, 1).unwrap();
     assert!(
         fsm_store::store::VerifiedClosure::read(&receipt)
             .unwrap()

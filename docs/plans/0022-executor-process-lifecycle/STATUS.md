@@ -1981,4 +1981,18 @@ lifecycle updates.
   size and diff checks pass; compiled/native acceptance and pre-binding/uncertain
   launch reconciliation remain required, and task 9303 stays In progress.
 
+- **Never-launched closure partial-record review repaired:** the separate
+  closure path now checks both final and pending launch/handoff/manager stop/
+  retirement records before revocation and again before publication. The
+  genuine-binding case injects a partial launch and pending submission markers;
+  each must refuse without removing the original cgroup or publishing proof.
+  A test-owned pending receipt obstacle then forces publication refusal after
+  actual revocation/removal, with no authenticated receipt. Removing only that
+  injected obstacle permits an independently verified cold retry and replay;
+  the initial failed operation remains uncertainty and the journal stays
+  claimed and unstopped. Formatting, size and diff checks pass; run
+  `37301549061` is authoritatively queued for `ef81dbf`, current-source compiled
+  native/portable acceptance and remaining integration stay required, and task
+  9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

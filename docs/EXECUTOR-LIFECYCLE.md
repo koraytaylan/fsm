@@ -78,6 +78,10 @@ closure through complete-close after durable revocation, empty manager
 inventories and removal of their original empty cgroup, with no fabricated
 handoff or stop record; partial/present launch intents retain the completed-
 handoff requirement, and compiled native acceptance remains pending.
+Pending submission records also refuse that branch; native controls retain the
+original cgroup and publish no proof for partial submission material, then
+inject a receipt publication obstacle to require uncertainty after removal and
+independently verify cold retry after repairing only that test-owned obstacle.
 
 Native broker access and client-death controls now exec the installed Rust
 `client` helper after dropping root UID/group privilege, replacing Python

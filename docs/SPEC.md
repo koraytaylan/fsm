@@ -1638,6 +1638,9 @@ removed or absent after durable revocation. A present or partial launch intent
 MUST retain the completed-handoff requirement. Cold retry after cgroup removal
 MUST recheck the durable revocation and all absence conditions before publishing
 the ordinary immutable receipt; it MUST NOT fabricate a handoff or manager stop.
+Pending submission records MUST also refuse this never-launched path; removal
+of the cgroup or a closed tombstone alone MUST NOT imply receipt publication
+succeeded when an incomplete receipt publication is retained.
 
 Public supervised client/service wiring remains required before acceptance.
 

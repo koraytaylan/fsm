@@ -10,12 +10,7 @@ pub(super) fn complete(
     claim: &Claim,
     journal_claim: &str,
 ) -> Result<(), String> {
-    let unexpected = ["launch", "handoff", "manager-stopped", "manager-retired"];
-    for prefix in unexpected {
-        if !absent(&directory.join(format!("{prefix}-{allocation}.json")))? {
-            return Err("unlaunched closure carries submission material".into());
-        }
-    }
+    no_submission(directory, allocation)?;
     let unit = format!(
         "fsm-containment-{}-{}-{allocation}.service",
         text(domain, "namespace")?,
@@ -65,11 +60,7 @@ pub(super) fn complete(
     if !manager::retired(&unit, deadline)? || !absent(&group)? {
         return Err("unlaunched native retirement differs".into());
     }
-    for prefix in unexpected {
-        if !absent(&directory.join(format!("{prefix}-{allocation}.json")))? {
-            return Err("unlaunched submission appeared during closure".into());
-        }
-    }
+    no_submission(directory, allocation)?;
     validate_records(
         directory,
         &[
@@ -91,4 +82,15 @@ pub(super) fn complete(
             ("journal_claim", Value::Str(journal_claim.into())),
         ]),
     )
+}
+
+fn no_submission(directory: &Path, allocation: u64) -> Result<(), String> {
+    for prefix in ["launch", "handoff", "manager-stopped", "manager-retired"] {
+        for suffix in ["json", "json.pending"] {
+            if !absent(&directory.join(format!("{prefix}-{allocation}.{suffix}")))? {
+                return Err("unlaunched closure carries submission material".into());
+            }
+        }
+    }
+    Ok(())
 }
