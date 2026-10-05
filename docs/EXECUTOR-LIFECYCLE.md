@@ -1,5 +1,16 @@
 # Executor lifecycle feasibility
 
+The provisioned authority binary now has a private unprivileged `client`
+transport helper: it validates its actual operator UID, current boot, protected
+read-only route, authority inode and exact socket identity/access before sending
+one bounded canonical request and after receiving one bounded canonical response.
+The execution host must own and supervise this helper process and its streams,
+imposing startup/request/shutdown deadlines; potentially blocking Unix connect
+stays in the killable helper process rather than a detached connection thread.
+Helper death closes its broker connection and requests verified cancellation,
+without releasing a journal claim. Public supervisor/client/service wiring and
+compiled native helper acceptance remain required.
+
 Native broker disconnect controls now kill an independent unprivileged client
 after checking actual process/MCP root, child and grandchild membership and
 identities while inherited streams remain held. The installed broker must stay

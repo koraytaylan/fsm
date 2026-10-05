@@ -1,5 +1,16 @@
 # API and version policy
 
+The provisioned authority binary now has a private unprivileged `client`
+transport helper: it validates its actual operator UID, current boot, protected
+read-only route, authority inode and exact socket identity/access before sending
+one bounded canonical request and after receiving one bounded canonical response.
+The execution host must own and supervise this helper process and its streams,
+imposing startup/request/shutdown deadlines; potentially blocking Unix connect
+stays in the killable helper process rather than a detached connection thread.
+Helper death closes its broker connection and requests verified cancellation,
+without releasing a journal claim. Public supervisor/client/service wiring and
+compiled native helper acceptance remain required.
+
 Broker provisioning now applies 0755 explicitly to its newly created directory
 and refuses existing ancestors without operator traversal; registration does
 the same for its own newly created namespace/authority directories, preserving

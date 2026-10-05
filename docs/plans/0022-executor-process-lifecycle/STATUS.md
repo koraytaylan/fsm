@@ -1738,4 +1738,22 @@ lifecycle updates.
   host stop/drain and uncertain-start recovery remain incomplete, and task 9303
   stays In progress.
 
+- **Supervised unprivileged transport helper implemented for review:** private
+  `client NAMESPACE GENERATION` runs before the binary's privileged-operation
+  check and authenticates its actual kernel UID against the configured operator.
+  It validates protected immutable route shape, current boot/authority identity,
+  epoch and exact socket type/owner/mode/inode before connecting, revalidates
+  before dispatch and after response, and forwards only one bounded canonical
+  closed-policy request/response through owned standard streams. Pure frame
+  controls refuse zero/excess lengths, partial bodies and noncanonical JSON.
+  Potentially blocking Unix connect/read stays in a host-owned killable process;
+  this avoids assuming a Unix connect timeout or detaching unbounded connection
+  threads, and helper death drives existing broker EOF cancellation. The host
+  supervisor must supply startup/request/shutdown bounds; the helper alone is
+  not a completed public client or service. Formatting, size and diff checks
+  pass; actual native Rust-helper access and parent supervisor integration remain
+  required. Cancellation run `37289550896` still has a live MSRV native job and
+  remaining queued/running jobs, so no verdict is inferred from waiting; task
+  9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

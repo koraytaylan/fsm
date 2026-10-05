@@ -1557,6 +1557,23 @@ required. Other actions may finish despite connection loss, but never launch
 handler code. Broker presence alone MUST NOT release the production acceptance
 gate.
 
+The provisioned binary's private unprivileged `client NAMESPACE GENERATION`
+helper MUST authenticate its current kernel UID against the configured operator
+in the protected read-only public route, validate current boot, authority inode,
+route shape/epoch and exact socket type, owner, mode and device/inode before
+connection, and revalidate that route/socket before sending and after receiving.
+It MUST read one bounded canonical request from its owned standard input and
+forward only that request to the verified broker; it MUST return one bounded
+canonical response frame on standard output, never a handler command or journal
+mutation. An unavailable, changed or untrusted route MUST refuse before dispatch.
+The helper MUST be supervised by its execution host, which owns its process and
+standard streams and imposes startup, request and shutdown deadlines. Potentially
+blocking Unix connect or standard I/O MUST remain in that killable helper process;
+the host MUST NOT use detached unbounded connection threads or assume a portable
+Unix connect timeout. Killing the helper closes its broker connection and requests
+existing verified cancellation, without proving closure or releasing a claim.
+Public supervised client/service wiring remains required before acceptance.
+
 The protected entry operation MUST run as an unprivileged handler identity.
 It MUST accept only a canonical namespace/generation/allocation route and
 read an immutable root-owned entry grant from that authority; caller-supplied

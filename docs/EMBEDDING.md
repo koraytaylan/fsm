@@ -1,5 +1,16 @@
 # Embedding fsm as a library
 
+The provisioned authority binary now has a private unprivileged `client`
+transport helper: it validates its actual operator UID, current boot, protected
+read-only route, authority inode and exact socket identity/access before sending
+one bounded canonical request and after receiving one bounded canonical response.
+The execution host must own and supervise this helper process and its streams,
+imposing startup/request/shutdown deadlines; potentially blocking Unix connect
+stays in the killable helper process rather than a detached connection thread.
+Helper death closes its broker connection and requests verified cancellation,
+without releasing a journal claim. Public supervisor/client/service wiring and
+compiled native helper acceptance remain required.
+
 The private Linux containment authority now includes provisioned local broker
 transport (`provision-broker NAMESPACE GENERATION UID`, then `serve NAMESPACE
 GENERATION` under UMask=0077). Its root-owned protected route and operator-only

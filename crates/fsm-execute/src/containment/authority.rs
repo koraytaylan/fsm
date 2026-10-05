@@ -59,12 +59,18 @@ mod runner;
 
 #[path = "broker.rs"]
 mod broker;
+
+#[path = "broker_client.rs"]
+mod broker_client;
 #[path = "broker_endpoint.rs"]
 mod broker_endpoint;
 #[path = "broker_frame.rs"]
 mod broker_frame;
 
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
+    if arguments.first().and_then(|operation| operation.to_str()) == Some("client") {
+        return broker_client::run(&arguments[1..]);
+    }
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
     }
