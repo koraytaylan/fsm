@@ -3150,4 +3150,16 @@ lifecycle updates.
   Task 9401 now contains a source-backed integration handoff review, while
   its production host routing and acceptance tests remain planned.
 
+- Current CI `37365652966` retains both verified native successes, and Ubuntu
+  stable finishes debug workspace tests before entering release tests;
+  Windows MSRV remains in debug tests.
+  Five queued jobs (zero-dependency, Ubuntu MSRV, macOS stable/MSRV and Windows
+  stable) terminate cancelled at 20:02 UTC with check annotations reporting
+  that a hosted runner was not acquired after multiple attempts.
+  These are unexecuted gates, not test passes or product failures; no newer
+  review-branch run exists and the remote source remains exact `31e0c63`.
+  Preserve the two active portable jobs, then retry the cancelled gates at
+  that same source when the run becomes terminal rather than duplicating the
+  running work or substituting historical platform evidence.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
