@@ -2,7 +2,9 @@
 
 ## Decision status
 
-Plan 0022 task `lifecycle-containment-feasibility` is **not complete**.
+Plan 0022 task `lifecycle-containment-feasibility` is **complete** at reviewed
+source `399ed6ed5636118151ffb7ad94140538f865d1a7`; this releases its native
+prerequisite, not a production containment capability.
 The user delegated the runtime/platform decision explicitly on 2026-10-04:
 “i explicitly allow you to act on my behalf on this”. Acting under that
 authority, the implementation decision is a provisioned Linux/systemd
@@ -25,9 +27,12 @@ The administrator and kernel are trusted; loss of supervisor authority or
 identity evidence leaves claims unresolved. No arbitrary root command API
 may be exposed to protocol clients.
 
-Authorization is now recorded, but the native-proof gate remains unreleased.
-No downstream ownership, launch or journal implementation is justified until
-the applicable native matrix passes. The executor currently
+Authorization and the passing native matrix are recorded; terminal CI run
+`37245431479` passes both native jobs, all six portable gates and zero
+dependencies on that exact source, with full local stable gates also passing.
+The coordinator releases the native-proof gate for downstream implementation.
+Historical checkpoints below retain their original unreleased verdicts rather
+than relabeling incomplete evidence. The executor currently
 provides direct-child cleanup, not durable process-tree containment. Plans
 0020–0023 must not claim the stronger guarantee from the evidence below.
 

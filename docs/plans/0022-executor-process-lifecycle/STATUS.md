@@ -1,10 +1,10 @@
-# Plan 0022 — Executor Process Lifecycle — Registered
+# Plan 0022 — Executor Process Lifecycle — In progress
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this
 file; task frontmatter is authoritative and the integration coordinator owns
 lifecycle updates.
 
-- **Status:** Registered by hand; native prerequisite review is in progress;
+- **Status:** Registered by hand; native prerequisite complete;
   production lifecycle implementation has not started.
 - **Goal:** prevent a successor from overlapping a surviving local handler
   tree, with bounded shutdown and evidence-based restart for both process and
@@ -14,16 +14,17 @@ lifecycle updates.
 - **Approach:** resolve the native containment prerequisite, journal claims
   before launch, prove tree closure before reuse, and drive every execution
   host through the same shutdown and recovery protocol.
-- **Progress:** 0/7 tasks done; 0 blocked; 0 dropped; 1 planned gated task.
+- **Progress:** 1/7 tasks done; 0 blocked; 0 dropped; durable claims Ready.
 - **Integration:** Phase R bound by hand on `develop` to validation base
   `8e3a8bbaed670ee9b3d7f354142090c9abc1d78d`; mode `by-hand`, following
   plan 0019's recorded execution mode. Committed scope identity, closed task
   frontmatter, task IDs/titles/filenames/workstreams, ordered steps, unique
   mutation footprints and all six dependency edges validate as one acyclic
   local DAG. No manifest owner requires footprint adoption. This is a manual
-  coordinator binding, not a claimed Makina invocation. No task landing OID
-  or completed integration is recorded; task 9301 remains gated pending its
-  complete source-bound review and portable validation.
+  coordinator binding, not a claimed Makina invocation. Task 9301 lands at
+  `399ed6ed5636118151ffb7ad94140538f865d1a7`; its native gate is released by
+  the terminal nine-job CI verdict and reviewed native evidence below.
+  Final production integration remains incomplete.
 - **Exceptions:** task `lifecycle-containment-feasibility` requires a proved
   charter-compatible backend or an explicit project decision before dependent
   implementation; durable fail-closed behavior alone cannot complete this plan.
@@ -256,6 +257,20 @@ lifecycle updates.
   downloaded source bindings and every retained report/log digest verify.
   All six portable jobs remain live at this checkpoint. No task completion
   or native prerequisite release is inferred from their unfinished state.
-- **Outcome:** pending implementation and native lifecycle evidence.
+- **Prerequisite closure:** run `37245431479` completes successfully at exact
+  clean source `399ed6ed5636118151ffb7ad94140538f865d1a7`: both 61-case
+  Linux native jobs, all six executed portable stable/MSRV gates and the
+  separate zero-dependency job pass. The frozen range passes diff checks;
+  local full stable gates and native negative controls are recorded above.
+  The accepted initial platform is provisioned Linux/systemd; macOS/Windows
+  contained capability remains excluded, with executed refusal tests and
+  existing portable functionality validated. The separately recorded signal
+  decision promises explicit drain/abort control and fail-closed signal-death
+  recovery, not graceful SIGTERM. Coordinator release completes task 9301
+  and makes task 9302 Ready. Private reports remain unchanged with
+  `gate_released: false`; they are evidence, not coordinator authorization.
+  Production claims, journal binding and supervisor installation remain the
+  downstream tasks' requirements; the plan and thread goal remain incomplete.
+- **Outcome:** native prerequisite complete; production lifecycle pending.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._

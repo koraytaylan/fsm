@@ -9,8 +9,8 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform.rs
   - crates/fsm-execute/tests/lifecycle_platform/
   - docs/EXECUTOR-LIFECYCLE.md
-status: planned
-merged_as: ""
+status: done
+merged_as: "399ed6ed5636118151ffb7ad94140538f865d1a7"
 ---
 # Lifecycle Containment Feasibility
 
