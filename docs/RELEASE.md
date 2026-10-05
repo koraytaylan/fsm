@@ -1,5 +1,11 @@
 # Releasing
 
+Native exec-status association checks its shared two-second deadline before
+every accept and hello-read retry, including interrupted I/O; expiry refuses
+association without granting entry or releasing the original claim.
+This corrects the provisional retry bound without changing formats, hash domains
+or public APIs; corrected-source native/portable/frozen acceptance is required.
+
 Native exec-status association now uses a 32-byte ready-kernel-random challenge
 sent only through the original manager stdin, and an exact PID/nonce hello;
 PID and group permissions alone never authenticate a result. The installed

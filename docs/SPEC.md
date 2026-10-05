@@ -1973,7 +1973,9 @@ random device and deliver a fixed 41-byte magic/input-kind/nonce challenge solel
 through the inherited manager stdin. An exec-status hello MUST be exactly 44
 bytes (magic, original PID and nonce); error frames MUST be exactly 12 bytes;
 error-frame inspection MUST read at most 13 bytes to detect excess and descriptor metadata at most 4097 bytes
-against a 4096-byte limit. Association MUST share a two-second deadline. Before opening traversal/socket
+against a 4096-byte limit. Association MUST share a two-second deadline and
+MUST check it before every accept and hello-read retry, including interrupted
+I/O; expiry MUST refuse without entry grant or ownership release. Before opening traversal/socket
 access to the actual enrolled dynamic group, Root MUST match the protected handoff and verify the installed
 gate, original manager invocation and sole original cgroup process. Only that
 reserved group may connect; provisioning MUST reserve this identity range from

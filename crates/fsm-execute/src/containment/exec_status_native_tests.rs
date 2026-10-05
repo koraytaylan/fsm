@@ -15,6 +15,7 @@ use std::process::Command;
 pub(super) fn run() {
     original_path_cleanup();
     same_identity_peer_cannot_authenticate();
+    interrupted_association_retains_claim();
     for mcp in [false, true] {
         for command in ["/fsm-native-exec-command-does-not-exist", "/etc/passwd"] {
             execution(vec![command.into()], mcp, "spawn", Some("exec/spawn"));
@@ -41,6 +42,109 @@ pub(super) fn run() {
         Some("exec/mcp_protocol"),
     );
     descriptor_retirement();
+}
+
+fn interrupted_association_retains_claim() {
+    use super::super::super::{launch, stop};
+    use std::io::{Error, ErrorKind, Read};
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    for interrupt_accept in [true, false] {
+        let mut fixture = Fixture::new();
+        let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+        let (binding, effect) = claim_binding(&fixture, &domain);
+        bind(&fixture.directory, &binding).unwrap();
+        let listener = exec_status::Listener::create(
+            &fixture.directory,
+            1,
+            &binding,
+            &fsm_execute::config::HandlerKind::Process,
+        )
+        .unwrap();
+        let (mut input, peer) = UnixStream::pair().unwrap();
+        listener.send_challenge(&mut input).unwrap();
+        let (mut child, _) = launch::begin(
+            &fixture.directory,
+            1,
+            [
+                Stdio::from(OwnedFd::from(peer)),
+                Stdio::null(),
+                Stdio::null(),
+            ],
+        )
+        .unwrap();
+        let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();
+        let mut injected = false;
+        let mut read_injected = false;
+        let mut accept_calls = 0;
+        let mut read_calls = 0;
+        let refusal = listener
+            .associate_with_io(
+                &domain.to_value(),
+                handoff.get("gate").unwrap(),
+                |socket| {
+                    accept_calls += 1;
+                    if interrupt_accept && !injected {
+                        injected = true;
+                        std::thread::sleep(Duration::from_millis(2100));
+                        return Err(Error::from(ErrorKind::Interrupted));
+                    }
+                    socket.accept()
+                },
+                |stream, bytes| {
+                    read_calls += 1;
+                    if !interrupt_accept && !read_injected {
+                        read_injected = true;
+                        std::thread::sleep(Duration::from_millis(2100));
+                        return Err(Error::from(ErrorKind::Interrupted));
+                    }
+                    stream.read(bytes)
+                },
+            )
+            .err()
+            .expect("interrupted retry bypassed association deadline");
+        assert_eq!(refusal, "exec status association deadline");
+        if interrupt_accept {
+            assert_eq!(accept_calls, 1, "accept retried after the deadline");
+            assert_eq!(read_calls, 0);
+        } else {
+            assert_eq!(read_calls, 1, "hello read retried after the deadline");
+        }
+        assert!(if interrupt_accept {
+            injected
+        } else {
+            read_injected
+        });
+        assert!(!fixture.directory.join("entry-1.json").exists());
+        let store = Store::open_read_only(&fixture.store).unwrap();
+        assert!(
+            store
+                .state
+                .execution
+                .claim_for("instance", &effect)
+                .is_some()
+        );
+        assert!(
+            store
+                .state
+                .execution
+                .stopped_for("instance", &effect)
+                .is_none()
+        );
+        drop(store);
+        drop(input);
+        let _ = stop::fence(&fixture.directory, 1);
+        closure::complete(&fixture.directory, 1).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while child.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        fixture.cleanup().unwrap();
+    }
 }
 
 fn same_identity_peer_cannot_authenticate() {

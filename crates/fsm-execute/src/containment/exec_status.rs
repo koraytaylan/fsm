@@ -83,6 +83,18 @@ impl Listener {
     }
 
     pub(super) fn associate(self, domain: &Value, gate: &Value) -> Result<Status, String> {
+        self.associate_with_io(domain, gate, UnixListener::accept, UnixStream::read)
+    }
+
+    pub(super) fn associate_with_io(
+        self,
+        domain: &Value,
+        gate: &Value,
+        mut accept: impl FnMut(
+            &UnixListener,
+        ) -> std::io::Result<(UnixStream, std::os::unix::net::SocketAddr)>,
+        mut read: impl FnMut(&mut UnixStream, &mut [u8]) -> std::io::Result<usize>,
+    ) -> Result<Status, String> {
         let deadline = Instant::now() + Duration::from_secs(2);
         let _lock = super::authority_lock(&self.directory)?;
         let handoff = read_value(
@@ -115,7 +127,8 @@ impl Listener {
         // Only traversal is opened, after the inaccessible socket is ready.
         fs::set_permissions(&base, fs::Permissions::from_mode(0o710)).map_err(io)?;
         let mut stream = loop {
-            match self.listener.accept() {
+            remaining(deadline)?;
+            match accept(&self.listener) {
                 Ok((stream, _)) => break stream,
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
@@ -129,7 +142,8 @@ impl Listener {
         let mut hello = [0; 44];
         let mut received = 0;
         while received < hello.len() {
-            match stream.read(&mut hello[received..]) {
+            remaining(deadline)?;
+            match read(&mut stream, &mut hello[received..]) {
                 Ok(0) => return Err("exec status hello ended early".into()),
                 Ok(count) => received += count,
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
