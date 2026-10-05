@@ -9,7 +9,7 @@ import platform
 import subprocess
 import sys
 
-SUITES = ('systemd', 'identity', 'broker', 'window', 'signal', 'restart', 'facility')
+SUITES = ('systemd', 'identity', 'broker', 'window', 'signal', 'restart', 'facility', 'evidence')
 
 
 def git(repo, *args):
@@ -66,6 +66,10 @@ def main():
             assert all(row['unrelated_survived_cleanup'] is True for row in cases)
         else:
             assert report['unrelated_survived_cleanup'] is True
+        if name == 'evidence':
+            assert report['scope'] == 'native-store-evidence-bridge'
+            assert report['production_backend'] is False
+            assert len(report['native_fixture_sha256']) == 64
         rows.append({'suite': name, 'cases': len(cases), 'report_sha256': digest})
     path = args.report_dir.resolve() / 'negative-final-kill.json'
     result = subprocess.run([sys.executable, str(Path(__file__).with_name('systemd_probe.py')),

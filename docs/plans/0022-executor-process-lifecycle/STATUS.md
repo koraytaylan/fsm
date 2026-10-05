@@ -692,4 +692,13 @@ lifecycle updates.
   host review and portable/native matrix remain required; task 9302 remains
   In progress.
 
+- **Receipt bridge integrated into native matrix:** task 9302 adopts the
+  matrix orchestrator alongside its proof driver. Both provisioned CI jobs
+  now require the nine-case native receipt/public-store inventory in addition
+  to the existing 61 cases, for 70 required cases total. The orchestrator
+  verifies the bridge's explicit fixture-issuer scope and both executable
+  digest fields while retaining exact source/compiler/inventory checks. This
+  wiring still needs a full clean-source matrix run and does not identify the
+  fixture issuer as a shipped production authority. Task 9302 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
