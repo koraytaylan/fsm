@@ -1436,9 +1436,9 @@ hide an interrupted advance. This changes no record format or state hash.
 ## Claim-era persistence contract
 
 On-disk store `VERSION` is `11`. The pure fold, persistence codecs and production
-store mutators implement the claim-era representations specified here; task
-9302 acceptance and native execution integration remain under review and
-development in plan 0022.
+store mutators implement the claim-era representations specified here, accepted
+under plan 0022 task 9302; native execution integration remains under
+development in the downstream tasks.
 Format support alone MUST NOT be advertised as contained execution support.
 
 The claim-era writer MUST use VERSION 11. It adds `execution_claimed`,

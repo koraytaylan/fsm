@@ -31,8 +31,8 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb"
 ---
 # Durable Execution Claims
 

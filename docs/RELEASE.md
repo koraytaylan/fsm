@@ -22,9 +22,10 @@ the production store now writes VERSION 11 with claim/stop/settle/enable
 records, root/4, snapshot/6 and base/2. Historical roots and authoritative
 base/1 decode under their original formats; legacy stores migrate unchanged
 and remain execution-quarantined. A separate claim-hash root authenticates
-original unresolved claim records after sealing. Native authority publication,
-runner integration and complete crash/migration/seal acceptance remain in
-progress, so this implementation does not complete lifecycle task 9302.
+original unresolved claim records after sealing. Task 9302 persistence
+acceptance passes its frozen host and complete portable/native CI gates;
+native authority publication and runner integration remain downstream work,
+so this does not complete the lifecycle plan or ship contained execution.
 
 Unreleased plan 0022 preparation adds pure, constructor-validated native
 identity and retry-policy values under `fsm_core::record::execution`, with

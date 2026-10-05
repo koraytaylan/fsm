@@ -5,7 +5,7 @@ file; task frontmatter is authoritative and the integration coordinator owns
 lifecycle updates.
 
 - **Status:** Registered by hand; native prerequisite complete;
-  durable-claim primitives are being implemented.
+  durable execution persistence complete; contained runner is next.
 - **Goal:** prevent a successor from overlapping a surviving local handler
   tree, with bounded shutdown and evidence-based restart for both process and
   MCP handlers.
@@ -14,7 +14,7 @@ lifecycle updates.
 - **Approach:** resolve the native containment prerequisite, journal claims
   before launch, prove tree closure before reuse, and drive every execution
   host through the same shutdown and recovery protocol.
-- **Progress:** 1/7 tasks done; 0 blocked; 0 dropped; durable claims In progress.
+- **Progress:** 2/7 tasks done; 0 blocked; 0 dropped; contained runner Ready.
 - **Integration:** Phase R bound by hand on `develop` to validation base
   `8e3a8bbaed670ee9b3d7f354142090c9abc1d78d`; mode `by-hand`, following
   plan 0019's recorded execution mode. Committed scope identity, closed task
@@ -950,5 +950,23 @@ lifecycle updates.
   both 70-case native jobs and zero dependencies passing. Both Windows legs
   remain live under the corrected bounded budget, so task 9302 remains
   In progress pending their terminal results and final acceptance closure.
+
+- **Task 9302 accepted:** final frozen source
+  `cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb` has terminal success in all nine
+  jobs of CI `37263404252`, including both Windows toolchains, all six native
+  portable legs, both independently verified 70-case Linux containment/store
+  evidence matrices and zero dependencies. The eight-command isolated host
+  gate also passed. The requirement audit above covers writer races and stale
+  observation, exclusion through verified stop and atomic settlement, retry
+  boundaries, abrupt/torn recovery and real descriptor/rotation faults,
+  historical migrations and byte preservation, repeated actual archives,
+  bounded producers/loaders, public embedding and legacy-prefix admission.
+  Runtime guard controls fail when the relevant checks are disabled and pass
+  after exact restoration. Documentation review findings are resolved.
+  Task 9302 is Done and lands at the frozen source; task 9303 is now Ready.
+  Native authority publication, the production contained runner, service
+  ownership, shutdown, reconciliation and complete runtime acceptance remain
+  downstream work. This closes persistence acceptance, not plan 0022 or the
+  plans 20–23 goal, and makes no claim that the fixture issuer is shipped.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._
