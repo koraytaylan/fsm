@@ -2018,3 +2018,9 @@ and repeated original-domain, closing and manager-retirement checks before
 nonrecursive removal of a present empty cgroup. An isolated `populated 0` line
 is insufficient. This preserves existing journal, receipt and response formats;
 the production native gate remains unreleased.
+
+Native empty-domain preparation checks the installed ordinary Root 0711 gate,
+the nondumpable profile and bounded kernel entropy readiness before creating
+its lock or burning an allocation. Failure leaves allocation history unchanged;
+launch repeats validation and generates a separate nonce. This early refusal
+preserves private/public record and journal formats and grants no handler entry.

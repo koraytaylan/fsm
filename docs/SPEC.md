@@ -2032,6 +2032,13 @@ observation as inconsistent. Failure retains uncertainty. The projection MUST
 NOT create locks/records, revoke grants, issue closure evidence, clear claims
 or authorize settlement/capacity reuse, even when `populated` is false.
 
+Before empty-domain preparation creates its lock or publishes allocation intent,
+the authority MUST validate the ordinary installed Root 0711 gate, the required
+fs.suid_dumpable profile and readiness of its bounded original kernel-random
+source. Refusal MUST leave the counter and allocation inventory unchanged.
+Launch MUST repeat these checks and obtain a fresh inherited-input nonce; a
+preparation readiness sample MUST NOT serve as launch authorization or a nonce.
+
 Before allocation, a root provisioner MUST publish an immutable catalogue
 containing exactly `format` (`fsm.native-catalogue/1`) and `table`, a fully
 validated `fsm.handlers/1` document. Publication is exclusive and fsynced

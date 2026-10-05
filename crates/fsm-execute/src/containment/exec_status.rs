@@ -164,6 +164,11 @@ impl Listener {
     }
 }
 
+/// Readiness is not a launch secret; each listener obtains a separate nonce.
+pub(super) fn ready() -> Result<(), String> {
+    challenge().map(|_| ())
+}
+
 fn challenge() -> Result<[u8; 32], String> {
     let mut file = OpenOptions::new()
         .read(true)

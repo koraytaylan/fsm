@@ -2936,4 +2936,20 @@ lifecycle updates.
   units pass 24 with 14 provisioned controls ignored, and warning-denied stable
   workspace all-target clippy, formatting and size/diff checks pass.
 
+- Frozen 496e55d full stable debug workspace gate passes with serial tests and
+  rustc/rustdoc warnings denied. CI 37354885917 native stable/MSRV artifacts are
+  independently verified at exact clean 496e55db4eac667db8dd59c464a56ab613268354:
+  each contains 79 passing cases, including private_exec_status and genuine
+  never-launched closure, with original source/compiler and suite/authority-log
+  hashes checked. Production backend and release remain false; portable matrix
+  completion, installed executable-byte proof and final high-risk review remain
+  pending. Preparation now repeats installed ordinary Root 0711/dumpability and
+  bounded kernel entropy readiness checks before lock creation or allocation
+  intent; launch obtains its own fresh nonce and repeats profile checks. This
+  closes a prerequisite ordering gap without accepting task 9303 or adding a
+  fallback; production host routing and remaining lifecycle tasks are required.
+  Stable authority unit subset passes 24 with 14 native controls ignored; stable
+  workspace all-target clippy with denied warnings and format/size/diff checks
+  pass. Fresh native prerequisite execution and full-source gates remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
