@@ -1240,4 +1240,19 @@ lifecycle updates.
   all four Linux/macOS portable legs; both Windows legs are still running,
   so six-leg acceptance remains incomplete. Task 9303 stays In progress.
 
+- **Production kill case extended to an inherited descendant:** the genuine
+  binding case now enrolls a re-executed administrative fixture before opening
+  its stdin barrier. Only then does it fork a sleep descendant; both fixture
+  and test parent verify actual inherited cgroup membership, and all two roots
+  plus the descendant must appear in the owned group before production kill
+  submission. Roots must fail/reap and native population reach zero within
+  three seconds. Readiness capture is bounded to 4 KiB/nonblocking/three
+  seconds, and failure cleanup verifies the owned cgroup identity before any
+  group kill and bounds direct-root reaping. The helper's ignored libtest entry
+  is a re-execution fixture, not an additional accepted inventory case. This
+  extends the same 75-case matrix without claiming actual handler enrollment,
+  DynamicUser isolation, manager admission fencing or permanent closure.
+  Formatting/diff/file-size checks pass; compiled/runtime evidence remains
+  pending CI and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

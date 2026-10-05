@@ -2,6 +2,14 @@
 
 ## Decision status
 
+The production termination native case now includes a gated administrative
+fixture that forks only after explicit cgroup enrollment. The parent checks
+the new descendant's exact inherited membership before calling `request-kill`,
+then observes both roots fail/reap and the actual group become empty. Readiness
+uses bounded nonblocking capture, and fixture failure cleanup touches only
+the still-matched owned group. These are kernel termination tests, not proof
+of production handler entry, DynamicUser isolation or permanent closure.
+
 Production preparation now queries the fixed root-protected systemctl with
 an empty inherited environment before allocating. The manager must report
 `system.slice` loaded/active at `/system.slice`; retained stdout and stderr
