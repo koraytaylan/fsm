@@ -25,6 +25,12 @@ fn provisioned_broker_access() {
     broker_cases::run();
 }
 
+#[test]
+#[ignore = "requires provisioned root broker and writable cgroups"]
+fn provisioned_broker_disconnect() {
+    broker_cases::disconnect();
+}
+
 struct Fixture {
     directory: PathBuf,
     store: PathBuf,

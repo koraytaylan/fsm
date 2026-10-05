@@ -12,6 +12,13 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[path = "broker_disconnect_native_tests.rs"]
+mod disconnect_cases;
+
+pub(super) fn disconnect() {
+    disconnect_cases::run();
+}
+
 const CLIENT: &str = r#"import errno,json,os,socket,sys
 uid=int(sys.argv[1])
 os.setgroups([])

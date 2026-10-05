@@ -12,7 +12,7 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const SERVER: &str = r#"import json,os,subprocess,sys,time
+pub(super) const SERVER: &str = r#"import json,os,subprocess,sys,time
 from pathlib import Path
 base=Path(sys.argv[1])
 mode=sys.argv[2]
@@ -63,13 +63,13 @@ for line in sys.stdin:
         time.sleep(300)
 "#;
 
-struct Barriers {
-    path: PathBuf,
+pub(super) struct Barriers {
+    pub(super) path: PathBuf,
     identity: Value,
 }
 
 impl Barriers {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let token = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

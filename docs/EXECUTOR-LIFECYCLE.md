@@ -1,5 +1,14 @@
 # Executor lifecycle feasibility
 
+Native broker disconnect controls now kill an independent unprivileged client
+after checking actual process/MCP root, child and grandchild membership and
+identities while inherited streams remain held. The installed broker must stay
+alive, revoke admission and publish matching closure plus manager-stop evidence,
+remove the native group and return to a single thread within eight seconds,
+before the ten-second handler timeout. Journal ownership remains unresolved and
+unstopped and duplicate execution refuses; these controls await compiled native
+acceptance and do not complete public client/service integration.
+
 Native broker review now includes the installed production authority binary
 and independent Python clients that drop supplementary groups and both root
 UIDs before reading the protected public route and connecting. Controls require

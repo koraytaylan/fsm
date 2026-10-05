@@ -1718,4 +1718,24 @@ lifecycle updates.
   acceptance. This is not full portable/service/backend acceptance, and task
   9303 stays In progress.
 
+- **Native client-death tree/worker controls authored:** the production native
+  authority inventory adds `provisioned_broker_disconnect` for process and MCP.
+  Independent clients drop root UID/group privilege, send one framed execution
+  request and retain the socket until killed by the observer. Before that kill,
+  the observer requires actual root/child/grandchild cgroup membership and
+  dynamic identities, the recorded gate PID, populated domain and no receipt;
+  the child has entered another session and descendants retain inherited pipes.
+  Kernel EOF must then drive the installed broker's existing cancellation path:
+  it stays alive, returns to one actual kernel thread, closes the native group
+  and publishes matching immutable receipt/manager-stop binding/gate evidence
+  within eight seconds, before the ten-second timeout. Grant removal, retained
+  unstopped journal ownership and duplicate-execution refusal are required.
+  Shared test barriers/server remain diagnostics, never authority evidence;
+  owned client/daemon fixture cleanup is bounded. Formatting, size, diff and
+  Python parsing checks pass; compiled stable/MSRV native acceptance is pending.
+  First broker implementation run `37291349077` remains queued with nine jobs
+  present; no restart is inferred from waiting. Public client/service wiring,
+  host stop/drain and uncertain-start recovery remain incomplete, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
