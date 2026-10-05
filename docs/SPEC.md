@@ -1611,7 +1611,10 @@ A response MUST be collected only after actual helper reap, successful exit,
 complete stdout/stderr EOF and one exact bounded canonical response frame with
 no extra bytes; a transport response itself MUST NOT prove matching run closure.
 Reap progress MUST remain explicit and retain unresolved handle ownership until
-actual reap/EOF observation. Drop is bounded best-effort only. No detached
+actual reap/EOF observation. Each reap poll MUST attempt both stream drains and
+process observation independently, even when another observation fails; a failed
+drain MUST NOT prevent observing process retirement or imply stream EOF.
+Drop is bounded best-effort only. No detached
 connection thread, caller-selected helper path, capture file or inherited
 manager/environment override is permitted. Public service claim/closure matching
 and lifecycle integration remain separately required.

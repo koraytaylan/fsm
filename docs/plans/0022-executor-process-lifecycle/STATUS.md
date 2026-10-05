@@ -1892,4 +1892,13 @@ lifecycle updates.
   public service integration and remaining plan tasks stay pending, and task
   9303 stays In progress.
 
+- **Independent supervisor retirement observations repaired:** review found
+  that an stdout drain error prevented stderr draining and child reap polling.
+  `NativeRequest::reap` now attempts all three observations before returning any
+  error, retains actual child status and closes its lifetime endpoint after
+  observed retirement, without turning failed stream reads into EOF or proving
+  handler closure. SPEC explicitly requires independent progress. Formatting,
+  size and diff checks pass; exact-source compiled/native acceptance remains
+  queued, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

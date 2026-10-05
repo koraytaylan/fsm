@@ -221,14 +221,22 @@ impl NativeRequest {
 
     /// Observe actual process reap and both stream EOFs without releasing claims.
     pub fn reap(&mut self) -> Result<bool, String> {
-        self.stdout.drain()?;
-        self.stderr.drain()?;
-        if self.status.is_none() {
-            self.status = self.child.try_wait().map_err(message)?;
-        }
+        let stdout = self.stdout.drain();
+        let stderr = self.stderr.drain();
+        let process = if self.status.is_none() {
+            self.child
+                .try_wait()
+                .map(|status| self.status = status)
+                .map_err(message)
+        } else {
+            Ok(())
+        };
         if self.status.is_some() {
             self.input.take();
         }
+        stdout?;
+        stderr?;
+        process?;
         Ok(self.status.is_some() && self.stdout.eof && self.stderr.eof)
     }
 
