@@ -117,6 +117,7 @@ pub(super) fn run() {
         "answer",
         "protocol",
         "timeout",
+        "retry-timeout",
         "process-exit",
         "cancel-mcp",
         "cancel-process",
@@ -182,12 +183,15 @@ pub(super) fn run() {
             handler.remove("tool");
             handler.remove("arguments");
         }
-        if mode == "timeout" {
+        if matches!(mode, "timeout" | "retry-timeout") {
             let mut fields = table.as_obj().unwrap().clone();
             let mut handlers = fields.get("handlers").unwrap().as_arr().unwrap().to_vec();
             let mut handler = handlers[0].as_obj().unwrap().clone();
             let mut retry = handler.get("retry").unwrap().as_obj().unwrap().clone();
             retry.insert("on".into(), Value::Arr(vec![Value::Str("timeout".into())]));
+            if mode == "retry-timeout" {
+                retry.insert("attempts".into(), Value::Num("2".into()));
+            }
             handler.insert("retry".into(), Value::Obj(retry));
             handlers[0] = Value::Obj(handler);
             fields.insert("handlers".into(), Value::Arr(handlers));
@@ -354,7 +358,7 @@ pub(super) fn run() {
                 candidate.get("error"),
                 Some(&Value::Str("exec/cancelled".into()))
             );
-        } else if mode == "timeout" {
+        } else if matches!(mode, "timeout" | "retry-timeout") {
             assert_eq!(
                 result.get("failure_class"),
                 Some(&Value::Str("timeout".into()))
@@ -388,7 +392,7 @@ pub(super) fn run() {
         let expected = match mode {
             "answer" => "mcp_error",
             "protocol" => "failed",
-            "timeout" => "timeout",
+            "timeout" | "retry-timeout" => "timeout",
             "cancel-process" | "cancel-mcp" => "interrupted",
             "process-exit" => "ok",
             _ => panic!("uncertain runner must not reach verified completion"),
@@ -420,9 +424,87 @@ pub(super) fn run() {
                 .exists()
         );
         assert_unresolved(&fixture, &effect);
+        if mode == "retry-timeout" {
+            settle_retry(&fixture, &effect, &original_claim, &completion);
+        }
         assert!(runner::execute(&fixture.directory, 1).is_err());
         fixture.cleanup().unwrap();
     }
+}
+
+fn settle_retry(
+    fixture: &Fixture,
+    effect: &str,
+    claim: &fsm_core::record::execution::Claim,
+    completion: &fsm_execute::run::native_client::NativeCompletion,
+) {
+    use fsm_core::record::execution::{PendingEffect, Settlement};
+    let mut store = Store::open(&fixture.store).unwrap();
+    let mut pipeline = fsm_execute::run::Pipeline;
+    let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+    let before = store.records.len();
+    pipeline
+        .stop_native(
+            &mut store,
+            &mut clock,
+            claim,
+            completion,
+            "native-retry-stop",
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .state
+            .execution
+            .settlement_for(claim, PendingEffect::Present)
+            .unwrap(),
+        Settlement::Attempted
+    );
+    let settled = pipeline
+        .settle_stopped(
+            &mut store,
+            &mut clock,
+            claim,
+            Settlement::Attempted,
+            "native-retry-settle",
+        )
+        .unwrap();
+    assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
+    let replay = pipeline
+        .settle_stopped(
+            &mut store,
+            &mut clock,
+            claim,
+            Settlement::Attempted,
+            "native-retry-settle",
+        )
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(store.records.len(), before + 2);
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", effect)
+            .is_none()
+    );
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", effect)
+            .is_none()
+    );
+    assert!(store.state.instances["instance"].pending.contains(effect));
+    let execution = store.state.execution.clone();
+    drop(store);
+    let reopened = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(reopened.state.execution, execution);
+    assert!(
+        reopened.state.instances["instance"]
+            .pending
+            .contains(effect)
+    );
 }
 
 fn assert_unresolved(fixture: &Fixture, effect: &str) {

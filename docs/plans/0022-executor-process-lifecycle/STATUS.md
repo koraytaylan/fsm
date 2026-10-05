@@ -2170,4 +2170,13 @@ lifecycle updates.
   native/portable verification and remaining full integration/races stay
   required, and task 9303 stays In progress.
 
+- Added a second actual MCP timeout tree with two admitted attempts: the verified
+  first-attempt result preserves `exec/timeout`, selects `Attempted` from the
+  original claim policy, and passes through production stop/settlement adapters;
+  duplicate settlement adds no record, ownership clears while the effect remains
+  pending, and read-only reopening retains identical execution state.
+  Formatting, size and diff checks pass; compiled CI is pending (latest prior
+  head `400ddbc`, run `37305436845`, queued), and successor/backoff admission,
+  automatic service integration and full gates remain required for task 9303.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
