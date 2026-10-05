@@ -3256,4 +3256,11 @@ lifecycle updates.
   Historical green `31e0c63` does not accept this correction; corrected-source
   native/portable/dependency gates and remaining aggregate review are required.
 
+- Corrected-source CI `37376949993` zero-dependency job `111988370112`
+  passes at exact `9f1f175`, including CLI zero-dependency execution and the
+  embed-acceptance dependency-tree check; its exact log is retained at
+  task-cache `ci-37376949993-zero-deps.log`.
+  Both native compiler jobs and all six portable gates remain live; the new
+  interrupted-association controls are not yet accepted from their job state.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
