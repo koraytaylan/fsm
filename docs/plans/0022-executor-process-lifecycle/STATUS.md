@@ -3232,4 +3232,16 @@ lifecycle updates.
   Zero-dependency execution, the separate frozen local host invocation and
   aggregate review remain outstanding; task 9303 is not accepted.
 
+- Attempt 4 zero-dependency job `111985628762` completes successfully at
+  exact `31e0c63`, passing both the CLI zero-dependency test and the
+  embed-acceptance dependency-tree check; its exact log is retained at
+  task-cache `ci-37365652966-zero-deps.log`.
+  CI `37365652966` is now terminal success with all six portable gates,
+  both independently verified 81-case native matrices and zero-dependency
+  checks passing at the same product source.
+  Local swap usage still exceeds the workspace's 80% threshold, so no new
+  intensive local gate is started; the separate frozen local host invocation
+  and aggregate high-risk review remain outstanding, and task 9303 remains
+  in progress without releasing the production native gate.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
