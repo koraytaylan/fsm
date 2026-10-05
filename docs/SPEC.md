@@ -1420,8 +1420,8 @@ strictly read-only inspection remain available in quarantine.
 
 New claim-era genesis bodies MUST include `execution_admission: "enabled"`.
 A historical genesis without that field MUST fold to quarantined execution;
-a VERSION marker alone MUST NOT enable it. The field is valid only on genesis,
-and an unknown admission value is corrupt. A migrated sealed base/1 likewise
+a VERSION marker alone MUST NOT enable it. Only genesis may determine initial admission;
+an unknown genesis admission value is corrupt. A migrated sealed base/1 likewise
 starts with an empty quarantined execution block, never inferred enabled from
 its lack of unresolved claims. Historical genesis, root/3, base/1 and archive
 bytes MUST remain unchanged.
