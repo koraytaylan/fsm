@@ -933,4 +933,22 @@ lifecycle updates.
   both Linux portable legs passing, with macOS and Windows still running.
   Task 9302 remains In progress, and the full plans 20–23 goal is unchanged.
 
+- **Final host review and admission control complete:** the isolated
+  `cf3f600` host process terminated with exit zero and all eight commands
+  passing, including debug/release workspace tests, all-target Clippy,
+  warning-free documentation, zero dependencies and downstream embedding.
+  Its eight exit records and completion marker were independently checked;
+  `cf3f600-host-gates.log` has SHA-256
+  `95d1b0cf0b533d4ed6d4c6a737d2a8001446195565860982e2f512c0c7c15422`.
+  An independent cache-only checkout then passes the named legacy admission
+  case, fails it with exit 101 when only the producer prefix check is disabled
+  (`store/execution_stale` replaces the required `store/execution_evidence`),
+  and passes after exact restoration. The source is clean, all three log
+  digests were checked, and no compilation failure earns the negative result;
+  `admission-prefix-negative-cf3f600.json` retains this 0/101/0 control.
+  Final CI `37263404252` now has both Linux and both macOS portable legs,
+  both 70-case native jobs and zero dependencies passing. Both Windows legs
+  remain live under the corrected bounded budget, so task 9302 remains
+  In progress pending their terminal results and final acceptance closure.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
