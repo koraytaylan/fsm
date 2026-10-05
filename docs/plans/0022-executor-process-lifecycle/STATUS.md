@@ -495,4 +495,25 @@ lifecycle updates.
   authentication evidence. Native receipt publication/authentication and the
   remaining durability fault inventory still prevent task 9302 completion.
 
+- **Abrupt writer death after durable operations:** a subprocess now pauses
+  with the writer held after claim, stop, failed settlement, acknowledgement
+  settlement or interruption settlement, and the parent kills and reaps that
+  exact child without clean Drop/snapshot publication. Cold read-only and
+  writer opens preserve the published head/hash and monotonic identity;
+  unresolved/stopped ownership excludes successors, original requests replay
+  without append, consumed results cannot be stopped or settled twice, failed
+  settlement retains the 109/110 eligibility boundary, and interruption keeps
+  pending work/count zero while the successor receives run 2. Full replay and
+  journal verification agree in all five stages. The new cold double-consumption
+  check exposed a real diagnostic bug: absent ownership was mapped to
+  `store/execution_owned`. Core matching now reports a claim-binding mismatch,
+  and stop checks current ownership before original-record evidence lookup,
+  producing the specified `store/execution_stale` even when that old record
+  could be archived. SPEC makes the absent-owner rule explicit. All nine
+  execution transition/crash cases pass on stable and MSRV, core ownership and
+  replay cases pass on both, and all-target Clippy passes. These tests use
+  preauthenticated fixture proofs and abrupt writer death after completed
+  APIs; they do not establish native closure authentication, power-loss safety
+  or every in-append/fsync/rotation fault boundary. Task 9302 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

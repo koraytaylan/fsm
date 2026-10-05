@@ -5,6 +5,9 @@ use crate::clock::FixedClock;
 use fsm_core::json::{JsonLimits, parse};
 use fsm_core::record::execution::{Closure, ExecutionState};
 
+#[path = "execution_crash_tests.rs"]
+mod durability;
+
 fn json(bytes: &[u8]) -> Value {
     parse(bytes, &JsonLimits::DEFAULT).unwrap()
 }
@@ -19,7 +22,10 @@ fn policy() -> RetryPolicy {
     .unwrap()
 }
 fn pending() -> (Store, String) {
-    let mut store = Store::open_memory().unwrap();
+    pending_store(Store::open_memory().unwrap())
+}
+
+fn pending_store(mut store: Store) -> (Store, String) {
     store
         .define_machine(
             json(include_bytes!(

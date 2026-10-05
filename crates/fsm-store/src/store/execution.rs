@@ -257,6 +257,12 @@ impl Store {
             return replay;
         }
         self.execution_precondition(request.expected_seq)?;
+        if self.state.execution.claim_for(instance_id, effect_id) != Some(request.claim) {
+            return Err(ErrorObj::new(
+                "store/execution_stale",
+                "run or immutable claim does not match current ownership",
+            ));
+        }
         let original = self.execution_claim_hash(request.claim)?;
         if original != request.proof.journal_claim {
             return Err(ErrorObj::new(

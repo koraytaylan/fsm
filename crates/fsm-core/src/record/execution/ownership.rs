@@ -290,7 +290,10 @@ impl ExecutionState {
     }
 
     fn match_owned(&self, claim: &Claim) -> Result<&Owned, ShapeError> {
-        let owned = self.claims.get(&claim.key()).ok_or(ShapeError("owned"))?;
+        let owned = self
+            .claims
+            .get(&claim.key())
+            .ok_or(ShapeError("claim_binding"))?;
         if owned.claim != *claim {
             return Err(ShapeError("claim_binding"));
         }

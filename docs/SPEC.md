@@ -1483,6 +1483,10 @@ reconstruction, snapshot, sealing and reopen, including after all claims
 settle. Exhaustion refuses allocation; counters MUST NOT wrap, reset or be
 reused. A refused stale observation MUST NOT burn a run ID or append a claim.
 
+A stop or settlement naming a run with no current ownership MUST refuse with
+`store/execution_stale` without appending or claiming its request ID; replay of
+the original completed request remains permitted under ordinary idempotency.
+
 A claim's attempt is the durable failed count plus one. Its retry object is a
 snapshot of the immutable handler contract. Historical `effect_attempted`
 records carry neither that contract nor a classified failure; production
