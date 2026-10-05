@@ -9,7 +9,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
-    let (domain, _lock) = closing::revoke(directory, allocation)?;
+    super::protected_directory(directory)?;
+    let _lock = super::authority_lock(directory)?;
+    let domain = closing::recorded_domain(directory, allocation)?;
     let completed = directory.join(format!("manager-stopped-{allocation}.json"));
     match fs::symlink_metadata(&completed) {
         Ok(_) => return Err("manager stop completion already exists or is uncertain".into()),
@@ -79,11 +81,12 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
         "KillSignal",
         "ExitType",
         "Restart",
+        "RemainAfterExit",
+        "CollectMode",
     ];
     let properties = manager::properties_before(&unit, &keys, deadline)?;
     for (key, expected) in [
         ("InvocationID", invocation),
-        ("ControlGroup", &format!("/system.slice/{unit}")),
         ("DynamicUser", "yes"),
         ("Delegate", "no"),
         ("ProtectControlGroups", "yes"),
@@ -91,14 +94,28 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
         ("KillSignal", "9"),
         ("ExitType", "cgroup"),
         ("Restart", "no"),
+        ("RemainAfterExit", "yes"),
+        ("CollectMode", "inactive"),
     ] {
         if properties.get(key).map(String::as_str) != Some(expected) {
             return Err("manager stop policy or invocation differs".into());
         }
     }
-    if closing::prepared_domain(directory, allocation)? != domain {
+    let group = format!("/system.slice/{unit}");
+    let observed = properties.get("ControlGroup").map(String::as_str);
+    if observed != Some(group.as_str()) && observed != Some("") {
+        return Err("manager stop control group differs".into());
+    }
+    if observed == Some("") {
+        match fs::symlink_metadata(format!("/sys/fs/cgroup{group}")) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            _ => return Err("manager stop empty control group is uncertain".into()),
+        }
+    }
+    if closing::revoke_after_handoff(directory, allocation)? != domain {
         return Err("manager stop native identity changed".into());
     }
     manager::stop(&unit, deadline)?;
+    manager::reset_original_failed(&unit, pid, invocation, deadline)?;
     publish_once(&completed, &material)
 }

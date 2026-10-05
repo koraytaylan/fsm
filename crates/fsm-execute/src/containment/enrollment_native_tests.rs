@@ -10,6 +10,7 @@ use std::io::Read;
 use std::os::fd::OwnedFd;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
+use std::path::Path;
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
@@ -200,6 +201,48 @@ pub(super) fn run() {
     );
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
+        let properties = manager::properties(
+            &unit,
+            &[
+                "InvocationID",
+                "ExecMainPID",
+                "ExecMainCode",
+                "ExecMainStatus",
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            properties["InvocationID"],
+            handoff
+                .get("gate")
+                .unwrap()
+                .get("invocation_id")
+                .unwrap()
+                .as_str()
+                .unwrap()
+        );
+        assert_eq!(
+            properties["ExecMainPID"],
+            super::super::super::number(handoff.get("gate").unwrap(), "pid")
+                .unwrap()
+                .to_string()
+        );
+        if properties["ExecMainCode"] == "1" {
+            assert_eq!(properties["ExecMainStatus"], "0");
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "approved handler root exit timed out"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!manager::retired(&unit, deadline).unwrap());
+    assert!(super::super::super::closure::complete(&fixture.directory, 1).is_err());
+    assert!(!fixture.directory.join("closed-1.json").exists());
+    super::super::super::stop::request(&fixture.directory, 1).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
         if let Some(status) = gate.child.try_wait().unwrap() {
             assert!(
                 status.success(),
@@ -241,18 +284,9 @@ pub(super) fn run() {
             .is_some()
     );
     drop(store);
-    assert!(!fixture.directory.join("manager-stopped-1.json").exists());
+    assert!(fixture.directory.join("manager-stopped-1.json").exists());
     super::super::super::closure::complete(&fixture.directory, 1).unwrap();
-    assert_eq!(
-        read_value(&fixture.directory.join("manager-retired-1.json"), true).unwrap(),
-        object([
-            ("format", Value::Str("fsm.native-manager-retired/1".into())),
-            ("domain", domain.to_value()),
-            ("binding", binding.clone()),
-            ("gate", handoff.get("gate").unwrap().clone()),
-        ])
-    );
-    assert!(!fixture.directory.join("manager-stopped-1.json").exists());
+    assert!(fixture.directory.join("manager-stopped-1.json").exists());
     let run_id = super::super::super::number(binding.get("claim").unwrap(), "run_id").unwrap();
     let receipt = fixture.directory.join(format!("closure-1-{run_id}.json"));
     fsm_store::store::VerifiedClosure::read(&receipt).unwrap();
@@ -276,8 +310,60 @@ pub(super) fn run() {
     drop(gate);
     fixture.cleanup().unwrap();
     stop_running_handler();
+    execute_fast_process_handlers();
     execute_process_handlers();
     super::runner_cases::run();
+}
+
+fn execute_fast_process_handlers() {
+    for (argv, status, failure) in [
+        (vec!["/bin/true"], "0", Value::Null),
+        (vec!["/bin/false"], "1", Value::Str("nonzero_exit".into())),
+        (
+            vec!["/bin/sh", "-c", "kill -KILL $$"],
+            "-1",
+            Value::Str("nonzero_exit".into()),
+        ),
+    ] {
+        let table = object([
+            ("format", Value::Str("fsm.handlers/1".into())),
+            (
+                "handlers",
+                Value::Arr(vec![object([
+                    ("effect", Value::Str("notify".into())),
+                    (
+                        "argv",
+                        Value::Arr(argv.into_iter().map(|arg| Value::Str(arg.into())).collect()),
+                    ),
+                    ("timeout_ms", Value::Num("1000".into())),
+                    (
+                        "retry",
+                        object([
+                            ("attempts", Value::Num("1".into())),
+                            ("backoff_ms", Value::Num("10".into())),
+                            ("max_backoff_ms", Value::Num("10".into())),
+                            ("on", Value::Arr(vec![])),
+                        ]),
+                    ),
+                ])]),
+            ),
+        ]);
+        let mut fixture = Fixture::new_for_table(table);
+        let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+        let (binding, _) = claim_binding(&fixture, &domain);
+        bind(&fixture.directory, &binding).unwrap();
+        let result = super::super::super::runner::execute(&fixture.directory, 1).unwrap();
+        assert_eq!(result.get("failure_class"), Some(&failure));
+        assert_eq!(
+            result.get("candidate").unwrap().get("status"),
+            Some(&Value::Num(status.into()))
+        );
+        fsm_store::store::VerifiedClosure::read(Path::new(
+            result.get("receipt").unwrap().as_str().unwrap(),
+        ))
+        .unwrap();
+        fixture.cleanup().unwrap();
+    }
 }
 
 fn execute_process_handlers() {

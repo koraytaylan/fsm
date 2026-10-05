@@ -2711,4 +2711,15 @@ lifecycle updates.
   Formatting/file-size/diff checks pass; compiled/native verification remains
   pending and task 9303 is not accepted.
 
+- CI run 37332358645 at 2a5af16 failed stable native authority execution:
+  a fast head handler lost its original manager status before Root observation.
+  Launch now retains successful/failed invocation status until matched Root stop,
+  without deriving candidates from launcher exit. Stop verifies protected handoff
+  and original manager policy before revocation even after natural cgroup removal;
+  clearing retained failure requires original invocation and ExecMainPID after stop.
+  Full independent closure requirements remain unchanged. Native controls add fast
+  success/nonzero/signal exits and retained-unit closure refusal; source checks and
+  current compiled/native/portable/frozen acceptance remain pending, with task
+  9303 still in progress and automatic production routing unfinished.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

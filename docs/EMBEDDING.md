@@ -1,5 +1,19 @@
 # Embedding fsm as a library
 
+Native launch retains invocation-matched root status with `RemainAfterExit=yes`
+and `CollectMode=inactive`, without `systemd-run --collect`, until Root performs
+matched stop after durable entry revocation; fast success, failure and signal
+exits cannot use launcher status as a substitute. Stop accepts an absent original
+cgroup only after verifying the protected completed handoff and unchanged manager
+invocation/security policy; any present replacement cgroup refuses. Root clears
+retained failed status only after stop and exact original invocation/ExecMainPID
+matching. Stop completion remains separate from closure, which still requires
+actual cgroup absence, unloaded manager unit, no queued job and helper retirement.
+Native fixtures exercise fast true/false/signal handlers and reject closure while
+a successful exited unit remains retained; current compiled, native, portable and
+frozen acceptance remain pending under the unreleased provisional boundary.
+
+
 NativeCompletion now additionally authenticates the full bounded successful
 response using separate immutable Root-issued result attestation; a matching
 closure receipt alone cannot authenticate candidate output or its failure class.

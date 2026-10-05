@@ -79,6 +79,37 @@ pub(super) fn stop(unit: &str, deadline: Instant) -> Result<(), String> {
     .map(|_| ())
 }
 
+/// Failed transient units retain their status until the original Root owner
+/// clears it after revocation and stop; a reused unit must never be reset.
+pub(super) fn reset_original_failed(
+    unit: &str,
+    pid: u64,
+    invocation: &str,
+    deadline: Instant,
+) -> Result<(), String> {
+    if retired(unit, deadline)? {
+        return Ok(());
+    }
+    let properties = properties_before(
+        unit,
+        &["ActiveState", "InvocationID", "ExecMainPID"],
+        deadline,
+    )?;
+    match properties.get("ActiveState").map(String::as_str) {
+        Some("inactive") => return Ok(()), // Closure still requires unload and no jobs.
+        Some("failed") => {}
+        _ => return Err("stopped manager unit has uncertain state".into()),
+    }
+    if properties.get("InvocationID").map(String::as_str) != Some(invocation)
+        || properties.get("ExecMainPID") != Some(&pid.to_string())
+    {
+        return Err("failed manager unit differs from original handoff".into());
+    }
+    let mut command = Command::new(binary()?);
+    command.args(["reset-failed", "--no-ask-password", unit]);
+    capture(command, deadline).map(|_| ())
+}
+
 fn binary() -> Result<&'static Path, String> {
     let binary = Path::new("/usr/bin/systemctl");
     protected_directory(binary.parent().ok_or("manager binary has no parent")?)?;

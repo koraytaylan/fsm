@@ -1931,7 +1931,15 @@ the manager's `InvocationID`, `ExecMainPID`, `ExecMainCode` and
 `ExecMainStatus` within the remaining handler deadline. Invocation and original
 PID MUST match the protected handoff; canonical normal exit status is 0..255,
 while killed/dumped roots project existing signal status `-1`. Unknown or
-mismatched inspection MUST retain uncertainty. The owned manager launcher is
+mismatched inspection MUST retain uncertainty. Launch MUST retain the original manager status with `RemainAfterExit=yes` and
+`CollectMode=inactive`, without `--collect`, until matched Root stop. Stop MUST
+verify the original completed handoff and manager invocation/security policy
+before durably revoking entry, including when the original cgroup is already
+absent; a present replacement identity MUST refuse. A failed unit MAY be reset
+only after stop and exact original invocation and ExecMainPID matching. Reset
+MUST NOT establish closure: actual cgroup absence, unit unloading, absence of
+queued jobs and owned helper retirement remain mandatory.
+The owned manager launcher is
 not the handler root: its exit status MUST NOT select a process candidate or
 resolve uncertain root inspection, even after actual launcher retirement.
 A manager-query deadline

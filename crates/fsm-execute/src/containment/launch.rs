@@ -87,7 +87,7 @@ pub(super) fn begin(
     let unit = format!("fsm-containment-{namespace}-{generation}-{allocation}.service");
     let mut command = Command::new(executable);
     command
-        .args(["--quiet", "--collect", "--pipe", "--service-type=exec"])
+        .args(["--quiet", "--pipe", "--service-type=exec"])
         .arg(format!("--unit={unit}"));
     for property in [
         "DynamicUser=yes",
@@ -102,6 +102,8 @@ pub(super) fn begin(
         "KillMode=control-group",
         "KillSignal=SIGKILL",
         "Restart=no",
+        "RemainAfterExit=yes",
+        "CollectMode=inactive",
         "TimeoutStopSec=2s",
     ] {
         command.arg(format!("--property={property}"));
