@@ -739,3 +739,56 @@ fn production_stop_charges_the_complete_eight_mib_execution_block() {
         "base state file: invalid execution field: bytes"
     );
 }
+
+#[test]
+fn opaque_receipt_matches_only_run_full_domain_and_original_claim_hash() {
+    let (mut store, effect) = pending();
+    allocate(
+        &mut store,
+        &effect,
+        "matching-proof-claim",
+        &mut FixedClock::new(100, 1),
+    )
+    .unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let receipt = proof(&store, &claim);
+    let original = store.execution_claim_hash(&claim).unwrap();
+    assert!(receipt.matches_claim(&claim, &original));
+    assert!(!receipt.matches_claim(&claim, &format!("sha256:{}", "f".repeat(64))));
+    let mut changed = claim.to_value().as_obj().unwrap().clone();
+    changed.insert(
+        "run_id".into(),
+        Value::Num((claim.run_id() + 1).to_string()),
+    );
+    assert!(!receipt.matches_claim(&Claim::from_value(&Value::Obj(changed)).unwrap(), &original));
+    let mut changed = claim.to_value().as_obj().unwrap().clone();
+    let mut native = claim.domain().to_value().as_obj().unwrap().clone();
+    native.insert("allocation".into(), Value::Num("8".into()));
+    changed.insert("domain".into(), Value::Obj(native));
+    assert!(!receipt.matches_claim(&Claim::from_value(&Value::Obj(changed)).unwrap(), &original));
+    for field in ["authority", "cgroup"] {
+        let mut changed = claim.to_value().as_obj().unwrap().clone();
+        let mut native = claim.domain().to_value().as_obj().unwrap().clone();
+        native.insert(field.into(), json(br#"{"device":0,"inode":99}"#));
+        changed.insert("domain".into(), Value::Obj(native));
+        assert!(
+            !receipt.matches_claim(&Claim::from_value(&Value::Obj(changed)).unwrap(), &original)
+        );
+    }
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_none()
+    );
+    assert_eq!(
+        store.state.execution.claim_for("instance", &effect),
+        Some(&claim)
+    );
+}

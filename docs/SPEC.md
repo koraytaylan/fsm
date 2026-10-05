@@ -1572,6 +1572,13 @@ blocking Unix connect or standard I/O MUST remain in that killable helper proces
 the host MUST NOT use detached unbounded connection threads or assume a portable
 Unix connect timeout. Killing the helper closes its broker connection and requests
 existing verified cancellation, without proving closure or releasing a claim.
+The opaque `VerifiedClosure::matches_claim` read-only predicate MUST compare
+receipt run ID, the complete native domain and original journal-claim hash
+against the supplied immutable claim/hash. It MUST NOT mutate the journal or
+assert that supplied ownership is current; the store's stopped transition still
+MUST recheck current ownership under its writer lease. A matching predicate
+alone MUST NOT authorize settlement, retry or capacity release.
+
 The provisional Linux `run::native_client::NativeRequest` host adapter MUST
 validate a closed bounded request and canonical namespace/generation, verify the
 fixed root-protected nonsymlink non-setuid helper executable, and own its process

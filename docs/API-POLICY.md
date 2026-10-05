@@ -1,5 +1,14 @@
 # API and version policy
 
+Opaque native closure evidence now offers read-only `matches_claim`, comparing
+run ID, complete native domain and original journal-claim hash before the
+executor accepts a candidate. This does not establish current ownership or
+change journal bytes; the store's stopped transition still verifies current
+ownership under its writer lease, and matching alone permits no settlement,
+retry or capacity release. Pure preauthenticated fixture controls cover matching,
+wrong hash/run/allocation and replaced authority/cgroup identity without journal
+mutation; compiled acceptance and executor result/service wiring remain pending.
+
 Process-root observation now distinguishes a manager-query deadline from
 identity and other inspection failures: if the approved handler deadline has
 actually elapsed, that specific query deadline selects the existing timeout

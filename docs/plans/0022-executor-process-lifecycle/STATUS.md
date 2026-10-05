@@ -1807,4 +1807,17 @@ lifecycle updates.
   portable gates remain pending/live, no executable-byte equivalence or gate
   release is claimed, and task 9303 stays In progress.
 
+- **Read-only opaque closure matching implemented for review:** task 9303
+  explicitly adopts the store evidence/test files for the additive
+  `VerifiedClosure::matches_claim` predicate. It compares receipt run ID, full
+  native domain and original claim hash without journal mutation or asserting
+  current ownership; the stopped mutator's writer-protected current-claim/hash/
+  domain checks remain mandatory. Pure preauthenticated controls reject wrong
+  hash/run/allocation and replaced authority/cgroup identities, preserving the
+  unresolved unstopped claim; they are not native authentication evidence.
+  Formatting, size and diff checks pass; compiled store/native result acceptance,
+  executor candidate wiring and service integration remain required, with no
+  journal format, hash domain or stable error change, and task 9303 stays
+  In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

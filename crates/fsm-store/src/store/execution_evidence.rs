@@ -4,7 +4,7 @@ use std::path::Path;
 
 use fsm_core::hashes::domain_hash;
 use fsm_core::json::Value;
-use fsm_core::record::execution::{Closure, NativeDomain};
+use fsm_core::record::execution::{Claim, Closure, NativeDomain};
 use fsm_core::sha256::to_hex;
 
 use super::ErrorObj;
@@ -17,6 +17,17 @@ pub struct VerifiedClosure {
 }
 
 impl VerifiedClosure {
+    /// Compare authenticated receipt identity without asserting current ownership.
+    ///
+    /// The stopped transition still rechecks ownership under the writer lease;
+    /// this predicate alone authorizes no settlement, retry or capacity release.
+    pub fn matches_claim(&self, claim: &Claim, journal_claim: &str) -> bool {
+        let closure = self.closure.to_value();
+        self.journal_claim == journal_claim
+            && closure.get("run_id") == Some(&Value::Num(claim.run_id().to_string()))
+            && closure.get("domain") == Some(&claim.domain().to_value())
+    }
+
     /// Read bounded protected native evidence; unsupported platforms refuse.
     pub fn read(path: &Path) -> Result<Self, ErrorObj> {
         let material = read_protected(path)?;
