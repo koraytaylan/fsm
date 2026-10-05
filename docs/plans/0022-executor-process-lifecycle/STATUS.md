@@ -3290,4 +3290,12 @@ lifecycle updates.
   Five portable jobs remain live; this pass does not substitute for the
   separate local frozen host invocation or finish aggregate review.
 
+- Corrected-source Ubuntu MSRV gate `111988370280` passes in CI
+  `37376949993` at exact `9f1f175ad91609359699e3a2d670119e8cbb506a`;
+  every step succeeds, including debug/release workspace tests, formatting,
+  size, all-target Clippy, documentation, fuzz compilation and decimal vectors.
+  Its exact log is retained at task-cache `ci-37376949993-ubuntu-msrv.log`.
+  Both Ubuntu compiler gates now pass; four macOS/Windows jobs remain live,
+  and full-range review plus the separate local frozen host gate remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
