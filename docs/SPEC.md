@@ -1233,16 +1233,20 @@ These match `crates/fsm-core/src/limits.rs`.
 |---|---|
 | `fsm.machine/1` | Machine definition documents |
 | `fsm.journal/1` | Journal record envelopes |
-| `fsm.snapshot/5` | Disposable snapshot caches optionally accelerated by a hash-chained `state_root` |
+| `fsm.snapshot/6` | Current disposable snapshot caches including bounded execution ownership |
+| `fsm.snapshot/5` | Historical disposable caches; skipped by the claim-era reader |
 | `fsm.snapshot/1` through `fsm.snapshot/3` | Skipped, never reinterpreted; the journal is folded instead |
 | `fsm.state/3` | Current instance state identity hash payload |
 | `fsm.state/2` | Instance state identity before composition; verified where a record declares it |
 | `fsm.state/1` | Historical single-leaf state identity hash payload |
-| `fsm.state-root/3` | Current complete logical store root payload |
+| `fsm.state-root/4` | Current complete logical store root payload including execution ownership |
+| `fsm.state-root/3` | Historical complete logical store root payload, verified under its original domain |
 | `fsm.state-root/2` | Historical single-leaf logical store root payload |
-| `fsm.base/1` | Authoritative base state a sealed store opens from. Required, never a cache: a missing snapshot degrades to a fold, a missing base refuses the open |
+| `fsm.base/2` | Current authoritative sealed base, including execution ownership and original unresolved claim hashes; required, never a cache |
+| `fsm.base/1` | Historical authoritative sealed base; retained under its original root format. A missing base refuses the open |
 | `fsm.base-dedup/1` | Payload of the request-fingerprint root a seal commits over the dedup entries its base carries |
 | `fsm.base-index/1` | Payload of the root a seal commits over the record-derived indexes its base carries: per-instance tags, parent slot, creation sequence and last sequence, and each machine's first definition sequence |
+| `fsm.base-execution-claims/1` | Payload of the original unresolved claim-record hash root committed by a claim-era seal |
 | `fsm.archive/1` | Manifest of a detached archive: per-segment plain SHA-256 digests and the sealed chain endpoints |
 | `expr/1` | Expression grammar |
 
