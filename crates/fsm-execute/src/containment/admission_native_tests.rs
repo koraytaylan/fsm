@@ -2,6 +2,7 @@
 
 use super::{Fixture, claim_binding};
 use fsm_core::json::Value;
+use fsm_core::machine::Status;
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
@@ -173,7 +174,18 @@ pub(super) fn removed_pending() {
                 .ack_effect("instance", &effect, "native-before-bind-ack")
                 .unwrap();
         }
-        assert!(!writer.state.instances["instance"].pending.contains(&effect));
+        assert_eq!(
+            writer.state.instances["instance"].pending.contains(&effect),
+            cancellation
+        );
+        assert_eq!(
+            writer.state.instances["instance"].status,
+            if cancellation {
+                Status::Cancelled
+            } else {
+                Status::Running
+            }
+        );
         assert_eq!(
             writer.state.execution.claim_for("instance", &effect),
             Some(&claim)
@@ -198,10 +210,19 @@ pub(super) fn removed_pending() {
         drop(writer);
         let reopened = Store::open_read_only(&fixture.store).unwrap();
         assert_eq!(reopened.state.execution, before);
-        assert!(
-            !reopened.state.instances["instance"]
+        assert_eq!(
+            reopened.state.instances["instance"]
                 .pending
-                .contains(&effect)
+                .contains(&effect),
+            cancellation
+        );
+        assert_eq!(
+            reopened.state.instances["instance"].status,
+            if cancellation {
+                Status::Cancelled
+            } else {
+                Status::Running
+            }
         );
         drop(reopened);
         // Exact test-owned empty domains may be removed by fixture teardown;

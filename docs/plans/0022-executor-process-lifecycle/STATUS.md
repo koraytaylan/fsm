@@ -2769,4 +2769,14 @@ lifecycle updates.
   ignored, and format/size/diff checks pass; native/portable/frozen acceptance
   and production host routing remain pending with task 9303 in progress.
 
+- CI run 37336883860 at 1755013 passed the native enrolled runner suite,
+  including fast exits, descendant/MCP cleanup and corrupted-handoff fencing,
+  then failed the separate before-binding admission control: cancellation
+  retains pending effects with Cancelled status, while acknowledgement removes
+  the effect. The fixture now asserts these distinct durable states before and
+  after reopen and still requires native startup refusal with no helper records
+  and unchanged original ownership. No production semantics or bytes changed;
+  workspace all-targets stable clippy passed before this fixture correction,
+  with current native/portable/frozen gates and task 9303 acceptance pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
