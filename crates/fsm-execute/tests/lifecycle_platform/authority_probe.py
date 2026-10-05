@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-INVENTORY = ('empty_domain_preparation', 'unknown_domain_refusal',
+INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_domain_refusal',
          'counter_rollback_refusal', 'incomplete_intent_refusal',
          'enrolled_gate_authorization', 'private_exec_status', 'native_capture_bounds', 'genuine_claim_binding',
          'provisioned_broker_access', 'provisioned_broker_disconnect')
@@ -60,6 +60,9 @@ def main():
         for case in INVENTORY:
             name = 'authority::allocator::native_tests::' + case
             result = subprocess.run(['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
+                                     'FSM_NATIVE_FIXTURE_DEVICE=' + str(installed['device']),
+                                     'FSM_NATIVE_FIXTURE_INODE=' + str(installed['inode']),
+                                     'FSM_NATIVE_FIXTURE_SHA256=' + authority_digest,
                                      str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never'],
                                     cwd=repo, capture_output=True,
                                     timeout=90 if case in ('provisioned_broker_disconnect', 'private_exec_status', 'native_capture_bounds') else 30)

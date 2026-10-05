@@ -21,6 +21,15 @@ mod exec_status_cases;
 #[path = "capture_native_tests.rs"]
 mod capture_cases;
 
+#[path = "profile_native_tests.rs"]
+mod profile_cases;
+
+#[test]
+#[ignore = "requires exclusive provisioner fixture and writable root cgroups"]
+fn native_profile_refusal() {
+    profile_cases::run();
+}
+
 #[test]
 #[ignore = "requires installed production gate and writable provisioned root cgroups"]
 fn native_capture_bounds() {

@@ -2994,4 +2994,18 @@ lifecycle updates.
   remain unverified, production backend/release remain false, and task 9303
   remains in progress pending its complete acceptance audit.
 
+- Native prerequisite refusal control now verifies the exclusive provisioner's
+  installed fixture device/inode and complete bounded artifact SHA-256 before
+  changing only that original open descriptor's mode from 0711 to 0755. It
+  requires early prepare refusal with unchanged counter/directory inventory
+  and no cgroup, restores 0711 through the same descriptor (including best-effort
+  unwind cleanup), then proves the first successful allocation is still 1.
+  No existing product installation is reused or modified: the provisioner
+  exclusively creates the fixture and passes its exact identity to the test.
+  Formatting, native script syntax and tracked diff/size checks pass; local
+  compilation was stopped before acquiring the shared artifact lock after
+  host swap exceeded 80%, so no compile/lint/runtime pass is claimed for this
+  unit. Fresh provisioned stable/MSRV and full portable proof remain required;
+  task 9303 remains active and all production integration is still pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
