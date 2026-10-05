@@ -2270,4 +2270,14 @@ lifecycle updates.
   compiled verification and full integration remain required, and task 9303
   remains In progress.
 
+- Review of the prewarmed contention barrier found remaining pre-poll frame
+  starvation and eager execute-helper creation after binding. NativeRun now
+  exposes a `Bound` phase retaining the retired binding helper and starts/sends
+  execution only on a later poll within the original deadline. The positive
+  fixture sends binding before its lease barrier, then verifies no launch/entry/
+  handoff exists after the independent writer is ready and before further polls;
+  cancellation-before-first-poll remains unchanged. Inventory/embedding docs
+  track the new phase; formatting/size/diff checks pass, `fda55c2` run
+  `37309000534` is queued, compiled/full integration acceptance stays required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

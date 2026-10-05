@@ -20,7 +20,9 @@ acquisition or journal mutation and grants no launch/closure permission.
 
 The provisional Linux native client exposes side-effect-free `progress` snapshots:
 `NativeHelperProgress` reports only last-observed reap and stdout/stderr EOF;
-`NativeRunProgress` adds binding, executing, uncertain or closed phase.
+`NativeRunProgress` adds binding, bound, executing, uncertain or closed phase.
+The bound phase retains the retired binding helper; execution helper startup
+waits for a later poll and shares the original deadline.
 Only delivery of an original-claim-matched `NativeCompletion` enters closed;
 helper retirement after cancellation, transport failure or binding refusal
 remains uncertain, even with both EOFs. Snapshots contain no handler arguments,

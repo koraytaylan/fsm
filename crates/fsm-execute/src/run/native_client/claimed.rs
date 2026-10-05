@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 enum Phase {
     Binding,
+    Bound,
     Executing,
     Finished,
 }
@@ -17,6 +18,8 @@ enum Phase {
 pub enum NativeRunPhase {
     /// Original-claim binding is pending; execution has not been requested.
     Binding,
+    /// Binding completed; execution helper startup waits for the next poll.
+    Bound,
     /// Execution has been requested; authenticated closure is still pending.
     Executing,
     /// A matching verified completion has been delivered to the host.
@@ -117,6 +120,20 @@ impl NativeRun {
         if Instant::now() >= self.deadline {
             return Err("native run deadline; claim remains uncertain".into());
         }
+        if matches!(self.phase, Phase::Bound) {
+            let remaining = self
+                .deadline
+                .checked_duration_since(Instant::now())
+                .filter(|remaining| !remaining.is_zero())
+                .ok_or("native run deadline; claim remains uncertain")?;
+            self.request = NativeRequest::start(
+                &self.namespace,
+                self.generation,
+                &request("execute", self.allocation.clone()),
+                remaining,
+            )?;
+            self.phase = Phase::Executing;
+        }
         let response = match self.request.poll()? {
             Some(response) => response,
             None => return Ok(None),
@@ -128,19 +145,7 @@ impl NativeRun {
                 {
                     return Err("native run binding refused; claim remains uncertain".into());
                 }
-                let remaining = self
-                    .deadline
-                    .checked_duration_since(Instant::now())
-                    .filter(|remaining| !remaining.is_zero())
-                    .ok_or("native run deadline; claim remains uncertain")?;
-                let next = NativeRequest::start(
-                    &self.namespace,
-                    self.generation,
-                    &request("execute", self.allocation.clone()),
-                    remaining,
-                )?;
-                self.request = next;
-                self.phase = Phase::Executing;
+                self.phase = Phase::Bound;
                 Ok(None)
             }
             Phase::Executing => {
@@ -152,6 +157,7 @@ impl NativeRun {
                 self.phase = Phase::Finished;
                 Ok(Some(completion))
             }
+            Phase::Bound => Err("native run bound transition invalid".into()),
             Phase::Finished => Err("native run completion already collected".into()),
         }
     }
@@ -169,6 +175,7 @@ impl NativeRun {
             Phase::Finished => NativeRunPhase::Closed,
             _ if self.error.is_some() => NativeRunPhase::Uncertain,
             Phase::Binding => NativeRunPhase::Binding,
+            Phase::Bound => NativeRunPhase::Bound,
             Phase::Executing => NativeRunPhase::Executing,
         };
         NativeRunProgress {

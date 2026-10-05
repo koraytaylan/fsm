@@ -393,6 +393,7 @@ variant fsm_execute::run::SettleOutcome::AckedNoAdvance
 variant fsm_execute::run::SettleOutcome::Advanced
 variant fsm_execute::run::SettleOutcome::AlreadySettled
 variant fsm_execute::run::native_client::NativeRunPhase::Binding
+variant fsm_execute::run::native_client::NativeRunPhase::Bound
 variant fsm_execute::run::native_client::NativeRunPhase::Closed
 variant fsm_execute::run::native_client::NativeRunPhase::Executing
 variant fsm_execute::run::native_client::NativeRunPhase::Uncertain

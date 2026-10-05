@@ -57,18 +57,41 @@ fn complete(binding: Value) {
         let state = store.state.clone();
         assert_eq!(store.current_execution_claim_hash(&claim).unwrap(), hash);
         let mut holder = WriterHolder::start(&path);
-        let owned = pipeline
+        let mut owned = pipeline
             .start_native(&mut store, &claim, Duration::from_secs(30))
             .unwrap();
         assert_eq!(store.records.len(), records);
         assert_eq!(store.state, state);
+        // Send binding before the lease barrier, but never dispatch execute
+        // on this first poll even if the binding response is already available.
+        assert!(owned.poll().unwrap().is_none());
+        assert!(matches!(
+            owned.progress().phase,
+            NativeRunPhase::Binding | NativeRunPhase::Bound
+        ));
         drop(store);
         holder.acquire();
+        let domain = claim.domain().to_value();
+        let authority = std::path::Path::new(&path).parent().unwrap().join(format!(
+            "authority-{}",
+            domain.get("generation").unwrap().as_num().unwrap()
+        ));
+        let allocation = domain.get("allocation").unwrap().as_num().unwrap();
+        for name in ["launch", "entry", "handoff"] {
+            assert_eq!(
+                std::fs::symlink_metadata(authority.join(format!("{name}-{allocation}.json")))
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::NotFound
+            );
+        }
         contention = Some(holder);
         owned
     };
-    assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
-    assert!(!owned.progress().helper.reaped);
+    if negative {
+        assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
+        assert!(!owned.progress().helper.reaped);
+    }
     if matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1")) {
         owned.cancel().unwrap();
         match owned.poll() {
