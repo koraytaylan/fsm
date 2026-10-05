@@ -1756,4 +1756,21 @@ lifecycle updates.
   remaining queued/running jobs, so no verdict is inferred from waiting; task
   9303 stays In progress.
 
+- **Native Rust-helper controls authored; frozen cancellation proof retained:**
+  valid broker access requests now drop root UID/groups then exec the installed
+  production Rust `client` helper with a bounded framed request. Test responses
+  require exact framed length; prohibited policy input must fail the helper
+  without counter mutation, and direct unrelated/handler-UID socket controls
+  still require kernel EACCES. Client-death process/MCP cases now kill that Rust
+  helper, independently checking its actual operator UID and installed executable
+  inode after tree enrollment. Formatting, size, diff and wrapper Python parsing
+  pass; compiled native helper/broker acceptance remains pending. Separately,
+  frozen `afe77d2` run `37289550896` passes both native jobs and zero dependencies;
+  retained stable/MSRV artifacts independently verify 76 cases against exact
+  source/compiler, including explicit process/MCP in-flight cancellation and
+  pre-cancelled launch refusal. All six portable jobs remain live/queued, and
+  executable-byte equivalence/gate release is not claimed. This predates later
+  uncertainty/broker/helper changes; public supervisor/service wiring and host
+  stop/drain/recovery remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

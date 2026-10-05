@@ -19,13 +19,21 @@ os.setgroups([])
 os.setgid(65534)
 os.setuid(65534)
 assert os.getuid()==65534 and os.geteuid()==65534 and os.getgroups()==[]
-route=json.load(open(sys.argv[1]+'/route.json'))
-s=socket.socket(socket.AF_UNIX)
-s.settimeout(5)
-s.connect(sys.argv[1]+'/s-'+str(route['epoch']))
+from pathlib import Path
+base=Path(sys.argv[1])
 encoded=sys.argv[2].encode()
-s.sendall(len(encoded).to_bytes(4,'big')+encoded)
-assert sys.stdin.buffer.read(1)==b'never'
+reader,writer=os.pipe()
+framed=len(encoded).to_bytes(4,'big')+encoded
+while framed:
+    count=os.write(writer,framed)
+    framed=framed[count:]
+os.close(writer)
+os.dup2(reader,0)
+os.close(reader)
+authority=base.parent
+namespace=authority.parent.name
+generation=authority.name.removeprefix('authority-')
+os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client',namespace,generation])
 "#;
 
 struct Client(Child);
@@ -146,6 +154,16 @@ pub(super) fn run() {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
+        assert_eq!(
+            fs::metadata(format!("/proc/{}", client.0.id()))
+                .unwrap()
+                .uid(),
+            65534
+        );
+        assert_eq!(
+            identity(&fs::metadata(format!("/proc/{}/exe", client.0.id())).unwrap()),
+            identity(&fs::metadata("/usr/libexec/fsm-containment-authority").unwrap())
+        );
         let root = read_value(&barriers.path.join("root-ready"), false).unwrap();
         let descendants = read_value(&barriers.path.join("descendant-ready"), false).unwrap();
         let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();

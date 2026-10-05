@@ -1,5 +1,15 @@
 # Releasing
 
+Native broker access and client-death controls now exec the installed Rust
+`client` helper after dropping root UID/group privilege, replacing Python
+transport for valid requests. Access checks decode its framed responses and
+require helper policy refusal without counter mutation; independent denied
+socket access remains a direct kernel EACCES control. Before killing a helper
+with enrolled process/MCP descendants, the observer additionally verifies its
+actual operator UID and installed executable inode. These Rust-helper controls
+await compiled native acceptance; the public parent supervisor/service remains
+incomplete.
+
 The provisioned authority binary now has a private unprivileged `client`
 transport helper: it validates its actual operator UID, current boot, protected
 read-only route, authority inode and exact socket identity/access before sending

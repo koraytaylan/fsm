@@ -36,24 +36,21 @@ if sys.argv[3]=='deny':
         assert error.errno==errno.EACCES
         sys.exit(0)
     raise AssertionError('unauthorized client connected')
-s.connect(path)
+from pathlib import Path
+base=Path(sys.argv[2])
 encoded=sys.argv[3].encode()
-s.sendall(len(encoded).to_bytes(4,'big')+encoded)
-def exact(size):
-    result=b''
-    while len(result)<size:
-        part=s.recv(size-len(result))
-        assert part
-        result+=part
-    return result
-size=int.from_bytes(exact(4),'big')
-assert 1<=size<=65536
-body=exact(size)
-value=json.loads(body)
-assert body==json.dumps(value,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()
-assert sorted(value)==['format','ok','result']
-assert value['format']=='fsm.native-response/1'
-sys.stdout.buffer.write(body)
+reader,writer=os.pipe()
+framed=len(encoded).to_bytes(4,'big')+encoded
+while framed:
+    count=os.write(writer,framed)
+    framed=framed[count:]
+os.close(writer)
+os.dup2(reader,0)
+os.close(reader)
+authority=base.parent
+namespace=authority.parent.name
+generation=authority.name.removeprefix('authority-')
+os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client',namespace,generation])
 "#;
 
 struct Daemon(Child);
@@ -130,21 +127,30 @@ impl Drop for Daemon {
     }
 }
 
-fn client(base: &Path, uid: u32, request: &str) -> Vec<u8> {
-    let result = Command::new("/usr/bin/python3")
+fn invoke_client(base: &Path, uid: u32, request: &str) -> std::process::Output {
+    Command::new("/usr/bin/python3")
         .args(["-c", CLIENT])
         .arg(uid.to_string())
         .arg(base)
         .arg(request)
         .output()
-        .unwrap();
+        .unwrap()
+}
+
+fn client(base: &Path, uid: u32, request: &str) -> Vec<u8> {
+    let result = invoke_client(base, uid, request);
     assert!(
         result.status.success(),
         "unprivileged broker client failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
-    assert!(result.stdout.len() <= 65536);
-    result.stdout
+    if request == "deny" {
+        return result.stdout;
+    }
+    assert!(result.stdout.len() >= 4 && result.stdout.len() <= 65540);
+    let length = u32::from_be_bytes(result.stdout[..4].try_into().unwrap()) as usize;
+    assert_eq!(length, result.stdout.len() - 4);
+    result.stdout[4..].to_vec()
 }
 
 fn request(base: &Path, action: &str, payload: Value) -> Value {
@@ -199,10 +205,18 @@ pub(super) fn run() {
     assert_eq!(fs::read(&counter_path).unwrap(), counter);
     assert!(client(&base, 65533, "deny").is_empty());
     assert!(client(&base, 61184, "deny").is_empty());
-    assert_eq!(
-        request(&base, "authorize", Value::Null).get("ok"),
-        Some(&Value::Bool(false))
+    let prohibited = object([
+        ("format", Value::Str("fsm.native-request/1".into())),
+        ("action", Value::Str("authorize".into())),
+        ("payload", Value::Null),
+    ]);
+    let refused = invoke_client(
+        &base,
+        65534,
+        std::str::from_utf8(&canon_bytes(&prohibited)).unwrap(),
     );
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("outside policy"));
     assert_eq!(fs::read(&counter_path).unwrap(), counter);
     let prepared = request(&base, "prepare", Value::Null);
     assert_eq!(prepared.get("ok"), Some(&Value::Bool(true)));
