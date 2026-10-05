@@ -637,3 +637,24 @@ fault removal allows replay. Kernel-submission controls follow while journal
 ownership remains. No additional finding was identified; all allocator fixture
 body portions have now been directly inspected, while broker access and final
 aggregate reconciliation remain outstanding.
+
+Broker access/settlement fixture review at corrected `9f1f175`: actual installed
+binary controls drop supplementary groups and Root identity, deny unrelated and
+reserved dynamic identities, refuse out-of-policy actions, verify operator-only
+socket/public route modes and exclusive leadership, and preserve epoch authority
+on missing history or counter rollback. Process success and timeout execute the
+public-adapter contention controls before checking original completion.
+Forged output fails independent attestation despite matching closure; missing,
+torn, symlinked or writable attestation and torn completed/physical-store metadata
+refuse recovery without repairing injected bytes. Missing/malformed catalogue
+permits original recovery but refuses preparation without allocation-counter
+movement, including broker restart without a catalogue.
+Positive stop persists once under the original proof while stale stop and
+premature settlement/advance refuse; stopped ownership excludes another claim
+and launch. Adopted completion settles once, releases retained capacity only
+after durability, and replays exact acknowledgement without append; read-only
+replay neither creates an unused key nor accepts a different disposition.
+Restarted original-contract outcome advancement checks stale identity, emits the
+original event once and preserves idempotent state, without current catalogue
+selection. These assertions directly cover primitive settlement/recovery, not
+standalone/embedded service crash routing; no additional finding was identified.
