@@ -57,8 +57,39 @@ assert os.getuid()==65534 and os.geteuid()==65534 and os.getgroups()==[]
 from pathlib import Path
 authority=Path(sys.argv[1]).parent
 os.environ['FSM_NATIVE_TEST_NAMESPACE']=authority.parent.name
+os.environ.pop('FSM_NATIVE_TEST_BINDING',None)
+if len(sys.argv)==3:
+    os.environ['FSM_NATIVE_TEST_BINDING']=sys.argv[2]
 os.execv(str(authority/'supervisor-test'),['supervisor-test','--exact','authority::allocator::native_tests::supervisor_probe::owned_request','--ignored','--nocapture','--color','never'])
 "#;
+
+pub(super) fn complete(directory: &Path, binding: &Value) -> Value {
+    install_supervisor(directory);
+    let output = Command::new("/usr/bin/python3")
+        .args(["-c", SUPERVISOR])
+        .arg(directory.join("broker"))
+        .arg(std::str::from_utf8(&canon_bytes(binding)).unwrap())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.stdout.len() <= 70 * 1024 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "public supervisor failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+    let responses: Vec<_> = stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("FSM_NATIVE_TEST_RESPONSE="))
+        .collect();
+    assert_eq!(responses.len(), 1);
+    fsm_core::json::parse(
+        responses[0].as_bytes(),
+        &fsm_core::json::JsonLimits::DEFAULT,
+    )
+    .unwrap()
+}
 
 fn install_supervisor(directory: &Path) {
     let source = fs::File::open(std::env::current_exe().unwrap()).unwrap();
@@ -242,7 +273,7 @@ pub(super) fn run() {
             owner.write_all(&bytes).unwrap();
             command.stdin(Stdio::from(OwnedFd::from(input)));
             lifetime = Some(owner);
-        } else {
+        } else if !supervisor {
             command
                 .arg(std::str::from_utf8(&canon_bytes(&execution)).unwrap())
                 .stdin(Stdio::piped());

@@ -230,7 +230,7 @@ pub(super) fn run() {
         request(&base, "bind", binding.clone()).get("ok"),
         Some(&Value::Bool(true))
     );
-    let execution = request(&base, "execute", Value::Num("1".into()));
+    let execution = disconnect_cases::complete(&fixture.directory, &binding);
     assert_eq!(
         execution.get("ok"),
         Some(&Value::Bool(true)),

@@ -46,7 +46,10 @@ actual child reap and both stream EOFs. Cancellation or transport/deadline failu
 requests helper death and retains explicit reap progress; none of these proves
 handler closure or releases a journal claim. Drop is bounded best-effort only.
 The public inventory includes its start/poll/cancel/reap methods; pure framing,
-policy and retained-writer controls are authored, while native supervisor and
+policy and retained-writer controls are authored; the native broker access case
+now executes through an unprivileged `NativeRequest` host and verifies matching
+`NativeCompletion` proof there before returning its unchanged response to the
+independent root observer, while compiled native supervisor acceptance and
 claim/closure-matched production service integration remain pending.
 
 Native broker access and client-death controls now exec the installed Rust

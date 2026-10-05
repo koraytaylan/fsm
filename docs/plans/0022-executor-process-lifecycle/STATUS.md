@@ -1901,4 +1901,18 @@ lifecycle updates.
   size and diff checks pass; exact-source compiled/native acceptance remains
   queued, and task 9303 stays In progress.
 
+- **Successful public supervisor completion control authored:** the native
+  broker access case now executes its genuine bound claim through the copied
+  unprivileged test host using production `NativeRequest`, rather than the
+  plain client helper. The host polls bounded transport through actual reap and
+  EOF, then validates `NativeCompletion` against its supplied original claim/
+  hash and protected closure evidence, requiring unchanged zero-status candidate
+  and no failure class. A unique bounded canonical response line lets the
+  independent root observer retain its existing receipt/domain/journal checks.
+  The death mode explicitly removes inherited completion material and receives
+  no request argument, preserving the killed-host controls. Formatting, size
+  and diff checks pass; compiled native stable/MSRV and all portable gates,
+  public service admission/stop/settle wiring and remaining plans stay pending,
+  and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
