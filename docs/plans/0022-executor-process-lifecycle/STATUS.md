@@ -3263,4 +3263,12 @@ lifecycle updates.
   Both native compiler jobs and all six portable gates remain live; the new
   interrupted-association controls are not yet accepted from their job state.
 
+- Corrected-source stable native job `111988369737` passes in CI
+  `37376949993`; its retained task-cache `ci-37376949993/stable` artifact
+  independently verifies all 81 frozen inventory cases at exact `9f1f175`
+  with `rustc 1.99.0 (b940084d7 2026-09-28)`, including the production
+  private exec-status case now containing both interrupted-retry controls.
+  Executable-byte verification and production gate release remain false;
+  native MSRV and all six portable gates remain live and unaccepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
