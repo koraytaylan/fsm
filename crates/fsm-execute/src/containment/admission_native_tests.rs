@@ -55,7 +55,7 @@ pub(super) fn bound_claim(fixture: &Fixture, binding: &Value, effect: &str) {
         assert_eq!(refusal.code, "exec/mode");
         assert_eq!(snapshot.records.len(), before_records);
         assert_eq!(
-            snapshot.state.execution.claim_for("instance", &effect),
+            snapshot.state.execution.claim_for("instance", effect),
             Some(&claim)
         );
         assert!(fs::symlink_metadata(fixture.directory.join("binding-1.json")).is_err());
@@ -73,7 +73,7 @@ pub(super) fn bound_claim(fixture: &Fixture, binding: &Value, effect: &str) {
             fsm_core::record::execution::ExecutionState::from_value(&Value::Obj(execution))
                 .unwrap();
         assert_eq!(
-            snapshot.state.execution.claim_for("instance", &effect),
+            snapshot.state.execution.claim_for("instance", effect),
             Some(&claim)
         );
         assert_eq!(
@@ -121,7 +121,7 @@ pub(super) fn bound_claim(fixture: &Fixture, binding: &Value, effect: &str) {
         writer.journal.seg_records = u32::MAX;
         assert_eq!(
             writer
-                .ack_effect("instance", &effect, "native-poison-control")
+                .ack_effect("instance", effect, "native-poison-control")
                 .unwrap_err()
                 .code,
             "io/write"

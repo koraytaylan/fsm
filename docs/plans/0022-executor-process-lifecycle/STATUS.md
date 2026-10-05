@@ -2329,4 +2329,12 @@ lifecycle updates.
   `37310306538` is queued, compiled gates and full service integration remain
   pending, and task 9303 stays In progress.
 
+- Source review of the admission-module split found redundant borrows of the
+  newly borrowed `&str` effect argument; removed them while preserving all
+  assertions and owned-string borrows in the separate external-removal fixture.
+  This addresses strict Clippy readiness without changing production behavior,
+  formats or acceptance status. Formatting/size/diff checks pass; `c861b4a`
+  run `37310521292` remains queued, compiled/native/portable gates and complete
+  plans 20–23 integration remain required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
