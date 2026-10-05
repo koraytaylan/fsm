@@ -18,8 +18,14 @@ use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+#[path = "completion_record.rs"]
+mod completion_record;
 #[path = "process_exit.rs"]
 mod process_exit;
+
+pub(super) fn recover(directory: &Path, allocation: u64) -> Result<Value, String> {
+    completion_record::recover(directory, allocation)
+}
 
 struct OwnedRun {
     directory: PathBuf,
@@ -276,5 +282,6 @@ pub(super) fn execute_cancellable(
     if canon_bytes(&result).len() > 65536 {
         return Err("runner result exceeds response bound".into());
     }
+    completion_record::publish(directory, &claim, &result)?;
     Ok(result)
 }

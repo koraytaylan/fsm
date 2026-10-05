@@ -597,3 +597,11 @@ tag pipeline are all complete and green.
 There are three supported consumers, and all three are in that list: the CLI,
 the MCP hosts, and a Rust program embedding `fsm-core` (optionally `fsm-store`).
 A release that satisfies only the first two is not done.
+
+Unreleased native completion retention adds a Root-owned mode-0600, create-once
+completed response record with a separate 64 KiB bound and read-only broker
+recovery by allocation; normal control-record, journal, hash and receipt formats
+are unchanged. Publication syncs the record and parent before success; missing
+or torn completion records retain ownership uncertainty. Recovery revalidates
+original contract/claim and native closure without current catalogue lookup,
+and does not release service integration or native acceptance gates.

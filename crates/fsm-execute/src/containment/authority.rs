@@ -234,6 +234,10 @@ fn identity(metadata: &fs::Metadata) -> Value {
 }
 
 fn read_value(path: &Path, protected: bool) -> Result<Value, String> {
+    read_value_bounded(path, protected, MAX_RECORD)
+}
+
+fn read_value_bounded(path: &Path, protected: bool, limit: u64) -> Result<Value, String> {
     let file = OpenOptions::new()
         .read(true)
         .custom_flags(NOFOLLOW_NONBLOCK)
@@ -241,18 +245,18 @@ fn read_value(path: &Path, protected: bool) -> Result<Value, String> {
         .map_err(io)?;
     let before = file.metadata().map_err(io)?;
     if !before.is_file()
-        || before.len() > MAX_RECORD
+        || before.len() > limit
         || (protected && (before.uid() != 0 || before.mode() & 0o022 != 0))
     {
         return Err("invalid bounded authority record".into());
     }
     let mut bytes = Vec::new();
     (&file)
-        .take(MAX_RECORD + 1)
+        .take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(io)?;
     let after = file.metadata().map_err(io)?;
-    if bytes.len() as u64 > MAX_RECORD
+    if bytes.len() as u64 > limit
         || before.len() != after.len()
         || before.mode() != after.mode()
         || before.uid() != after.uid()
@@ -270,8 +274,12 @@ fn read_value(path: &Path, protected: bool) -> Result<Value, String> {
 /// Create once, fsync the record then its parent; partial writes refuse cold
 /// replay instead of silently replacing an allocation's existing binding.
 fn publish_once(path: &Path, value: &Value) -> Result<(), String> {
+    publish_once_bounded(path, value, MAX_RECORD)
+}
+
+fn publish_once_bounded(path: &Path, value: &Value, limit: u64) -> Result<(), String> {
     let bytes = canon_bytes(value);
-    if bytes.len() as u64 > MAX_RECORD {
+    if bytes.len() as u64 > limit {
         return Err("authority record exceeds bound".into());
     }
     let mut file = OpenOptions::new()

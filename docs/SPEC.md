@@ -1857,8 +1857,23 @@ against the original claim fingerprint and require agreement with the original
 retry snapshot and envelope kind before reading any closure receipt. Its
 handler accessor MUST retain this checked original contract without consulting
 a current handler table; contract values may contain secrets and MUST NOT enter
-health output. This envelope does not durably store the original contract or
-complete restart outcome-event recovery. Previous private result envelope
+health output. Before returning a completed result, the authority MUST create the
+Root-owned mode-0600 completed-ALLOCATION-RUN.json record once, containing the
+complete canonical fsm.native-response/1 success envelope, then fsync the file
+and its parent directory. This record has an explicit 64 KiB bound and existing
+JSON limits; ordinary authority control records retain their 8 KiB bound.
+The original fingerprint/retry/kind and closure receipt MUST verify before
+publication. Any publication failure MUST retain unresolved journal ownership;
+a missing or torn record MUST NOT manufacture an outcome or permit relaunch.
+The provisioned broker's recover action accepts only a canonical positive
+allocation number, derives the run from its protected original binding, checks
+original authority path/inode and re-verifies completed identity, contract and
+closure. It MUST return only the recorded original result, without current
+catalogue lookup, launch, writer acquisition, journal mutation or record repair.
+Recovery MAY return that original result after stopped/settled journaling;
+current writer-held claim checks remain mandatory before applying it.
+This protected record durably retains the original contract for broker recovery
+but does not complete restarted service stop/settlement/outcome-event recovery. Previous private result envelope
 versions MUST refuse rather than infer absent kind or contract material.
 The provisional Linux-only `run::native_io::NativeCapture` and
 `NativeProtocol` adapters MUST reuse the runner's capture/worker implementation;

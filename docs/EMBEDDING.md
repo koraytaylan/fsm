@@ -1790,3 +1790,12 @@ it does not consult the embedder's current table. Candidate and stopped-result
 shapes remain unchanged, and closure still requires the exact original receipt.
 The accessor includes secret-bearing templates/payloads and is unsuitable for
 health output; durable original-contract recovery remains an integration gate.
+
+After verified closure, the provisioned native authority stores the complete
+original /3 result durably before reporting success. A native-request/1 recover
+request with a positive allocation payload returns that recorded result through
+the protected operator broker, even if the live catalogue is unavailable.
+Hosts must still check their original claim/hash with NativeCompletion and
+acquire a healthy writer for stop/settlement; missing or torn records remain
+uncertain, and recovery neither repairs evidence nor launches a replacement.
+Automatic service recovery and original outcome-event replay are not yet wired.

@@ -2497,4 +2497,19 @@ lifecycle updates.
   acceptance. Local source checks pass; frozen run 37315680969 remains queued
   and compiler/native/all portable gates are still pending.
 
+- Added durable original native-completion retention: after verifying the full
+  /3 envelope and closure, Root creates completed-ALLOCATION-RUN.json once with
+  mode 0600, fsyncs file and parent, and only then returns the result. Completed
+  records have an explicit 64 KiB bound; existing control records stay at 8 KiB.
+  The read-only allocation-only broker recover action validates protected
+  binding/authority identity and the original recorded completion without
+  catalogue lookup, writer acquisition, record repair, launch or settlement.
+  Actual native controls require identical result recovery with the catalogue
+  temporarily absent, preserve/refuse a torn fixture record, restore only that
+  fixture-owned file, and recover unchanged after broker restart and journal
+  settlement, for both success and timeout; process/MCP root fixtures also
+  require recorded recovery. SPEC/API/release/embedding/lifecycle are updated.
+  Local formatting/size/whitespace checks pass; native/compiler/platform gates
+  and service original-advance recovery remain required, so no task is accepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

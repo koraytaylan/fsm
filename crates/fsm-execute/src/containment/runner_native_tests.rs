@@ -306,6 +306,7 @@ pub(super) fn run() {
             assert!(VerifiedClosure::read(&receipt).is_err());
             assert_eq!(fs::read(&handoff_path).unwrap(), b"{}");
             assert_unresolved(&fixture, &effect);
+            assert_eq!(runner::recover(&fixture.directory, 1).unwrap(), result);
             assert!(runner::execute(&fixture.directory, 1).is_err());
             // Restore only the exact fixture-owned fault, then independently
             // close the domain; this cannot relabel the failed execution.

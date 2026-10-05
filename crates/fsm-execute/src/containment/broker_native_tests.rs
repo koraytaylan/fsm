@@ -252,6 +252,10 @@ fn run_case(timeout: bool) {
     let (binding, effect) = claim_binding(&fixture, &domain);
     let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
     permit_operator_store(&fixture.store);
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
     let execution = disconnect_cases::complete(&fixture.directory, &binding, timeout, &successor);
     assert_eq!(
         read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
@@ -287,6 +291,30 @@ fn run_case(timeout: bool) {
             .proof()
             .matches_claim(&original_claim, text(&binding, "journal_claim").unwrap())
     );
+    let completed = fixture
+        .directory
+        .join(format!("completed-1-{}.json", original_claim.run_id()));
+    let completed_metadata = fs::symlink_metadata(&completed).unwrap();
+    assert_eq!(completed_metadata.uid(), 0);
+    assert_eq!(completed_metadata.mode() & 0o777, 0o600);
+    let completed_bytes = fs::read(&completed).unwrap();
+    // Recovery must use durable original material, even without a live catalogue.
+    let catalogue = fixture.directory.join("catalogue.json");
+    let saved_catalogue = fixture.directory.join("fixture-catalogue.saved");
+    fs::rename(&catalogue, &saved_catalogue).unwrap();
+    assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
+    fs::rename(&saved_catalogue, &catalogue).unwrap();
+    let saved_completed = fixture.directory.join("fixture-completed.saved");
+    fs::rename(&completed, &saved_completed).unwrap();
+    fs::write(&completed, b"{").unwrap();
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(fs::read(&completed).unwrap(), b"{");
+    fs::remove_file(&completed).unwrap();
+    fs::rename(&saved_completed, &completed).unwrap();
+    assert_eq!(fs::read(&completed).unwrap(), completed_bytes);
     let result = execution.get("result").unwrap();
     assert_eq!(result.get("claim"), binding.get("claim"));
     assert_eq!(result.get("journal_claim"), binding.get("journal_claim"));
@@ -507,6 +535,8 @@ fn run_case(timeout: bool) {
     drop(reopened);
     drop(daemon);
     let daemon = Daemon::ready(&fixture.directory, 2);
+    assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
+    assert_eq!(fs::read(&completed).unwrap(), completed_bytes);
     assert_eq!(
         identity(&fs::symlink_metadata(&first_socket).unwrap()),
         first_identity

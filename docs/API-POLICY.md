@@ -594,3 +594,10 @@ original handler contract, and provisional NativeCompletion::handler returns
 that fingerprint/retry/kind-checked contract. Older private envelopes refuse;
 this changes no journal, closure receipt, acknowledgement or historical hash
 format, and does not release native or recovery acceptance gates.
+
+The private native authority adds a protected, create-once 64 KiB completed
+response record and the allocation-only read-only broker recover action;
+ordinary 8 KiB authority record bounds and published journal/receipt/hash bytes
+remain unchanged. Recorded original contracts and candidates remain sensitive,
+Root-owned mode 0600, and available only through the provisioned operator broker;
+recover grants neither launch nor journal settlement permission.

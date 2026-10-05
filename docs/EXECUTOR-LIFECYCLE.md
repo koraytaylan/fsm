@@ -1255,3 +1255,17 @@ closure receipt, and exposes the original handler separately from the unchanged
 candidate/stopped result. This survives later in-memory table replacement for
 that collected completion but does not yet durably recover original advances
 after a crash; journal storage and service recovery remain required.
+
+The native authority now durably retains the completed /3 response, including
+the original handler contract and candidate, in a Root-owned mode-0600
+completed-ALLOCATION-RUN.json record after matching closure verification and
+before returning success. Its file and parent directory are synced; the explicit
+64 KiB completed-record bound leaves normal 8 KiB control records unchanged.
+The provisioned broker's read-only recover action derives this record from a
+positive allocation and its protected binding, rechecks original authority
+identity and completion/proof, and returns the original result without a
+current catalogue or store writer. Missing/torn records preserve uncertainty;
+recovery cannot clear ownership, repair records, launch or authorize settlement.
+Native controls cover missing catalogue, torn-record refusal and unchanged
+recovery after broker restart and journal settlement for success and timeout.
+Service recovery and ack-before-event completion remain integration work.

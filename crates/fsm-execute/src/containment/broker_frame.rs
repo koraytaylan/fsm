@@ -53,7 +53,7 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
     match text(value, "action")? {
         "prepare" if payload == &Value::Null => Ok(()),
         "bind" => closed(payload, &["format", "claim", "journal_claim"]),
-        "execute" | "close" | "observe" => allocation(payload).map(|_| ()),
+        "execute" | "close" | "observe" | "recover" => allocation(payload).map(|_| ()),
         _ => Err("broker action or payload outside policy".into()),
     }
 }
