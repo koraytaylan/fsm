@@ -571,3 +571,6 @@ replay without launching handlers or reinterpreting a current handler table.
 The additive pure `ExecutionState::settlement_for` selector uses exact current
 stopped ownership and immutable claim retry policy, selecting a disposition
 without mutation or authorizing a launch before the recorded backoff deadline.
+The additive provisional Linux `Pipeline::claim_native` adapter refuses
+unsupported native architectures and delegates complete admission requests to
+the existing writer-protected store mutator without launching handler code.

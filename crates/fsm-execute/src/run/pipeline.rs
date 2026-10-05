@@ -37,6 +37,25 @@ pub enum SettleOutcome {
 pub struct Pipeline;
 
 impl Pipeline {
+    /// Durably claim a prepared native domain before binding or handler launch.
+    #[cfg(target_os = "linux")]
+    pub fn claim_native(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        request: fsm_store::store::ExecutionClaimRequest<'_>,
+    ) -> Result<Value, ExecError> {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native containment platform unsupported",
+            ));
+        }
+        store
+            .claim_execution_on(clock, request)
+            .map_err(|error| ExecError::store(&error))
+    }
+
     /// Atomically consume a durable stopped result under the store writer.
     pub fn settle_stopped(
         &mut self,

@@ -239,6 +239,7 @@ method fsm_execute::run::BoundedBytes::to_json_string
 method fsm_execute::run::KillReason::code
 method fsm_execute::run::Pipeline::advance_only
 method fsm_execute::run::Pipeline::attempt
+method fsm_execute::run::Pipeline::claim_native
 method fsm_execute::run::Pipeline::poll
 method fsm_execute::run::Pipeline::settle
 method fsm_execute::run::Pipeline::settle_stopped

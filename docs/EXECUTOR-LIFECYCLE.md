@@ -97,6 +97,11 @@ The native timeout tree now uses an admitted one-attempt timeout policy and
 checks checked completion's exhaustion error/class/attempt metadata after
 matching closure, while its raw candidate retains the original timeout result;
 fixture claims derive retry policy from the actual approved catalogue.
+Native fixture admission now runs through production `Pipeline::claim_native`,
+which refuses unsupported native architectures and persists the complete claim
+through existing writer-protected admission/ownership/retry checks before any
+binding or launch; automatic service domain preparation and scheduling remain
+pending.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.

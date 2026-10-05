@@ -1614,6 +1614,11 @@ The provisional Linux pipeline `stop_native` method MUST persist only the
 checked completion outcome and opaque proof through `Store::stop_execution_on`,
 retaining its writer-protected current-claim/hash/domain checks and request-id
 replay. It MUST NOT acknowledge, retry, settle ownership or release capacity.
+The provisional Linux pipeline `claim_native` adapter MUST refuse unsupported
+native architectures and otherwise delegate its complete claim request to the
+writer-protected store claim mutator before any binding or launch. It MUST
+retain admission, pending-effect, unresolved ownership, immutable contract and
+retry/backoff checks and request replay; claiming MUST NOT itself launch code.
 The provisional pipeline `settle_stopped` adapter MUST delegate the caller's
 explicit disposition and immutable claim to `Store::settle_execution_on`, with
 current stopped ownership and idempotent request replay checked under the

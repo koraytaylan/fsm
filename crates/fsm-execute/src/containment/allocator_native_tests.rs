@@ -431,8 +431,9 @@ fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
         ),
     ]))
     .unwrap();
-    store
-        .claim_execution_on(
+    fsm_execute::run::Pipeline
+        .claim_native(
+            &mut store,
             &mut FixedClock::new(100, 1),
             ExecutionClaimRequest {
                 instance_id: "instance",

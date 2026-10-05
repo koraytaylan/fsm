@@ -2145,4 +2145,17 @@ lifecycle updates.
   portable acceptance plus production service/event recovery remain required,
   and task 9303 stays In progress.
 
+- **Pipeline native claim admission connected for review:** provisional Linux
+  `Pipeline::claim_native` refuses unsupported native architectures and
+  delegates complete prepared-domain requests to the existing writer-protected
+  claim mutator, retaining admission, pending eligibility, unresolved ownership,
+  contract, retry/backoff and request replay checks before any binding/launch.
+  Native fixture admission now uses this production adapter with actual
+  catalogue-derived fingerprint/policy and prepared identity. The inventory
+  and contracts record the additive method; claiming launches no handler.
+  Formatting, size and diff checks pass; run `37304982080` is authoritatively
+  queued for `540e445`, compiled native/portable verification and automatic
+  production service preparation/scheduling remain required, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
