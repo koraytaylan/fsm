@@ -3,7 +3,7 @@
 use super::*;
 use crate::clock::FixedClock;
 use fsm_core::json::{JsonLimits, parse};
-use fsm_core::record::execution::Closure;
+use fsm_core::record::execution::{Closure, ExecutionState};
 
 fn json(bytes: &[u8]) -> Value {
     parse(bytes, &JsonLimits::DEFAULT).unwrap()
@@ -433,4 +433,127 @@ fn exact_outcome_budget_survives_stop_snapshot_and_base_without_releasing_owners
         &last.prev,
     ));
     assert!(fsm_core::replay::fold_with(records, &mut NopSink).is_err());
+}
+
+#[test]
+fn production_claim_entry_ceiling_preserves_the_counter_and_request_slot() {
+    // Bounded structural state fixture; no native domains were launched.
+    let (mut store, effect) = pending();
+    let mut metadata = BTreeMap::from([
+        ("run_id".into(), Value::Num("1".into())),
+        ("instance_id".into(), Value::Str("instance".into())),
+        ("effect_id".into(), Value::Str(String::new())),
+        ("attempt".into(), Value::Num("1".into())),
+        (
+            "handler_fingerprint".into(),
+            Value::Str(format!("sha256:{}", "a".repeat(64))),
+        ),
+        ("retry".into(), policy().to_value()),
+        ("domain".into(), domain().to_value()),
+    ]);
+    let claims: Vec<_> = (1..=4095)
+        .map(|run| {
+            metadata.insert("run_id".into(), Value::Num(run.to_string()));
+            metadata.insert("effect_id".into(), Value::Str(format!("fixture-{run:04}")));
+            Value::Obj(BTreeMap::from([
+                ("claim".into(), Value::Obj(metadata.clone())),
+                ("stopped".into(), Value::Null),
+            ]))
+        })
+        .collect();
+    let fixture = Value::Obj(BTreeMap::from([
+        ("admission".into(), Value::Str("enabled".into())),
+        ("run_high_water".into(), Value::Num("4095".into())),
+        ("claims".into(), Value::Arr(claims)),
+        ("retry".into(), Value::Arr(Vec::new())),
+    ]));
+    store.state.execution = ExecutionState::from_value(&fixture).unwrap();
+    allocate(
+        &mut store,
+        &effect,
+        "last-slot",
+        &mut FixedClock::new(100, 1),
+    )
+    .unwrap();
+    assert_eq!(store.state.execution.run_high_water(), 4096);
+    assert_eq!(store.state.execution.unresolved().count(), 4096);
+    let snapshot = crate::snapshot::state_to_snapshot(&store.state);
+    let restored = crate::snapshot::snapshot_to_state(&snapshot).unwrap();
+    assert!(crate::snapshot::store_states_eq(&store.state, &restored));
+
+    store
+        .state
+        .instances
+        .get_mut("instance")
+        .unwrap()
+        .pending
+        .push("extra".into());
+    let before = store.state.clone();
+    assert_eq!(
+        allocate(
+            &mut store,
+            "extra",
+            "overflow",
+            &mut FixedClock::new(101, 1)
+        )
+        .unwrap_err()
+        .code,
+        "store/execution_limit"
+    );
+    assert!(crate::snapshot::store_states_eq(&before, &store.state));
+    assert_eq!(store.journal.last_seq, before.last_seq);
+    assert!(!store.state.dedup.contains_key("overflow"));
+
+    let index = crate::base::BaseIndex {
+        execution_claims: store
+            .state
+            .execution
+            .unresolved()
+            .map(|(claim, _)| (claim.run_id(), format!("sha256:{}", "b".repeat(64))))
+            .collect(),
+        ..crate::base::BaseIndex::default()
+    };
+    let roots = crate::base::base_roots(&store.state, &index);
+    let base = crate::base::encode(&store.state, &index, crate::base::DefinitionLimits::Current);
+    let (restored, _) = crate::base::decode(&base, &roots).unwrap();
+    assert!(crate::snapshot::store_states_eq(&store.state, &restored));
+    let Value::Obj(mut execution) = store.state.execution.to_value() else {
+        panic!("execution object")
+    };
+    let Some(Value::Arr(claims)) = execution.get_mut("claims") else {
+        panic!("claims array")
+    };
+    metadata.insert("run_id".into(), Value::Num("4097".into()));
+    metadata.insert("effect_id".into(), Value::Str("extra".into()));
+    claims.push(Value::Obj(BTreeMap::from([
+        ("claim".into(), Value::Obj(metadata)),
+        ("stopped".into(), Value::Null),
+    ])));
+    execution.insert("run_high_water".into(), Value::Num("4097".into()));
+    let Value::Obj(mut snapshot) = snapshot else {
+        panic!("snapshot object")
+    };
+    snapshot.insert("execution".into(), Value::Obj(execution.clone()));
+    snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
+    let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+        "fsm:snapshot:6",
+        &Value::Obj(snapshot.clone()),
+    ));
+    snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));
+    assert_eq!(
+        crate::snapshot::snapshot_to_state(&Value::Obj(snapshot))
+            .unwrap_err()
+            .message,
+        "invalid execution field: entries"
+    );
+    let Value::Obj(mut base) = base else {
+        panic!("base object")
+    };
+    base.insert("execution".into(), Value::Obj(execution));
+    assert_eq!(
+        crate::base::decode(&Value::Obj(base), &roots)
+            .unwrap_err()
+            .message,
+        "base state file: invalid execution field: entries"
+    );
 }

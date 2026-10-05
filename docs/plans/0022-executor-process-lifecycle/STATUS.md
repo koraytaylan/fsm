@@ -451,4 +451,19 @@ lifecycle updates.
   Review CI `37254257934` has additionally completed macOS stable successfully;
   macOS MSRV and both Windows legs remain live.
 
+- **Production ownership entry ceiling:** a bounded structural fixture seeds
+  4,095 unresolved owners, then the production claim API admits the final
+  pending effect as run 4,096. Snapshot/6 and base/2 decode the exact 4,096-entry
+  state. Admission of an additional pending effect is refused with
+  `store/execution_limit` while preserving the complete state, high-water mark,
+  journal head and unclaimed request slot. Rechecksummed snapshot and base
+  values containing 4,097 ordered claims are rejected at `entries`. All six
+  transition cases pass on stable and MSRV, and all-target Clippy passes.
+  This fixture models state restoration and producer enforcement; it does not
+  assert that 4,096 native domains were launched or claims durably allocated
+  one by one. Aggregate-size admission, the complete fault inventory and
+  native receipt publication/authentication remain outstanding, and task 9302
+  stays In progress. Review CI `37254257934` now has both macOS and both Linux
+  toolchains successful; the two Windows legs remain live.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
