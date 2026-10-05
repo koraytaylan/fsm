@@ -1571,6 +1571,9 @@ keys, values, delimiters, native evidence and stopped results. Admission,
 stopping, replay and cache/base decoding MUST charge these same units and
 accept the exact limit while refusing limit-plus-one before mutation. The
 existing 16 MiB persistence read cap still applies to each complete artifact.
+The execution block MUST contain at most 63 nested JSON containers, counting
+its outer object as one; scalars do not add depth, so its enclosing snapshot,
+base or root object fits the existing 64-container parser ceiling.
 
 Legacy VERSION 1–10 migration MUST retain historical journal/hash bytes and
 quarantine execution until offline verified-quiescence evidence is bound to

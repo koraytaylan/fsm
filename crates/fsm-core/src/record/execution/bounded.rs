@@ -15,6 +15,13 @@ pub(super) fn size(value: &Value, limit: usize) -> Result<usize, ShapeError> {
     Ok(limit - remaining)
 }
 
+pub(super) fn block_size(value: &Value) -> Result<usize, ShapeError> {
+    let mut remaining = MAX_BLOCK;
+    // Reserve the enclosing snapshot, authoritative base, or state-root object.
+    charge_value(value, 1, &mut remaining)?;
+    Ok(MAX_BLOCK - remaining)
+}
+
 fn charge(bytes: usize, remaining: &mut usize) -> Result<(), ShapeError> {
     *remaining = remaining.checked_sub(bytes).ok_or(ShapeError("bytes"))?;
     Ok(())
@@ -34,7 +41,9 @@ fn charge_string(text: &str, remaining: &mut usize) -> Result<(), ShapeError> {
 }
 
 fn charge_value(value: &Value, depth: u32, remaining: &mut usize) -> Result<(), ShapeError> {
-    if depth > crate::json::JsonLimits::DEFAULT.max_depth {
+    if matches!(value, Value::Arr(_) | Value::Obj(_))
+        && depth >= crate::json::JsonLimits::DEFAULT.max_depth
+    {
         return Err(ShapeError("depth"));
     }
     match value {

@@ -1,5 +1,9 @@
 # Releasing
 
+Unreleased execution ownership preparation now rejects stopped results that
+would exceed the persistence parser's depth after adding its outer envelope;
+the exact 63-container block limit remains accepted without partial mutation.
+
 Unreleased preparation adds pure exclusive execution ownership, immutable
 stopped results and durable retry eligibility with bounded canonical codecs;
 the production store still uses VERSION 10 and does not yet persist claims.

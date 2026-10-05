@@ -1,5 +1,9 @@
 # Embedding fsm as a library
 
+Execution blocks reserve one enclosing JSON container: `stop` and block
+decoding reject nesting above 63 containers before changing ownership.
+This keeps accepted results readable under the 64-container persistence cap.
+
 `record::execution::ExecutionState` now exposes the pure claim/stop/settle
 transitions and a closed bounded value round-trip; `Claim::from_value`,
 `Closure::new` and `StoppedOutcome::from_value` construct their inputs from

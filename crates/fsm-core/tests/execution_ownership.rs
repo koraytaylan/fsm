@@ -65,6 +65,49 @@ fn recovered(state: &ExecutionState) -> ExecutionState {
 }
 
 #[test]
+fn stopped_result_depth_reserves_the_persistence_envelope_before_mutation() {
+    let owned = claim(1, "effect", 1);
+    let mut state = ExecutionState::new(Admission::Enabled);
+    state
+        .claim(owned.clone(), PendingEffect::Present, 0)
+        .unwrap();
+    let before = state.clone();
+    for (arrays, accepted) in [(58, true), (59, false)] {
+        let mut result = Value::Null;
+        for _ in 0..arrays {
+            result = Value::Arr(vec![result]);
+        }
+        let outcome = Value::Obj(BTreeMap::from([
+            ("status".into(), Value::Str("ok".into())),
+            ("result".into(), result),
+        ]));
+        let stopped = Stopped::new(
+            Closure::new(
+                1,
+                owned.domain().clone(),
+                format!("sha256:{}", "b".repeat(64)),
+            )
+            .unwrap(),
+            StoppedOutcome::from_value(&outcome).unwrap(),
+        );
+        state = before.clone();
+        let transition = state.stop(&owned, stopped);
+        if accepted {
+            transition.unwrap();
+            let envelope = Value::Obj(BTreeMap::from([("execution".into(), state.to_value())]));
+            let decoded = parse(&canon_bytes(&envelope), &JsonLimits::DEFAULT).unwrap();
+            assert_eq!(
+                ExecutionState::from_value(decoded.get("execution").unwrap()).unwrap(),
+                state
+            );
+        } else {
+            assert_eq!(transition, Err(ShapeError("depth")));
+            assert_eq!(state, before);
+        }
+    }
+}
+
+#[test]
 fn stopped_ownership_survives_recovery_and_retry_requires_single_settlement() {
     let mut state = ExecutionState::new(Admission::Enabled);
     let first = claim(1, "effect", 1);

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use crate::json::Value;
 
-use super::bounded::{MAX_BLOCK, MAX_ENTRIES, size};
+use super::bounded::{MAX_ENTRIES, block_size};
 use super::ownership_values::digest;
 use super::{
     Claim, FailureClass, RetryPolicy, ShapeError, Stopped, closed, number, object, signed, text,
@@ -288,7 +288,7 @@ impl ExecutionState {
     fn install(&mut self, next: Self) -> Result<(), ShapeError> {
         // Each input is individually bounded and the old state is bounded;
         // copying the candidate cannot allocate in proportion to untrusted input.
-        size(&next.to_value(), MAX_BLOCK)?;
+        block_size(&next.to_value())?;
         *self = next;
         Ok(())
     }
@@ -345,7 +345,7 @@ impl ExecutionState {
 
     /// Decode an authenticated block without normalizing contradictory evidence.
     pub fn from_value(value: &Value) -> Result<Self, ShapeError> {
-        size(value, MAX_BLOCK)?;
+        block_size(value)?;
         closed(value, &["admission", "run_high_water", "claims", "retry"])?;
         let admission = match text(value, "admission")? {
             "enabled" => Admission::Enabled,

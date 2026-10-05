@@ -1,5 +1,9 @@
 # API and version policy
 
+The unreleased execution block codec bounds nesting to 63 JSON containers,
+reserving one container for persistence; scalar values do not consume depth.
+This corrects the preparatory bounds without changing an existing disk format.
+
 The pure execution ownership types and transitions are additive APIs. Their
 closed value encoding is reserved claim-era material, not an assertion that
 the VERSION 10 store persists or authenticates it. Wiring execution state
