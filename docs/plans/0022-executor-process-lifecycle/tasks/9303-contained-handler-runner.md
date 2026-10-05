@@ -683,3 +683,18 @@ of older envelopes, matching SPEC and NativeCompletion; no code, persisted
 journal/closure bytes, hash or public signature changes. This documentation
 finding is repaired independently of the interrupted-I/O product correction;
 compiled evidence remains bound to product `9f1f175`.
+
+Named-target/native-bridge fixture delta review at corrected `9f1f175`:
+`lifecycle_runner` includes production authority source and its opt-in native
+cases only for supported Linux architectures; ordinary execution of the target
+does not unignore the provisioned cases. Portable controls assert unsupported
+or unprivileged refusal before request I/O, and the noisy-root test independently
+checks empty scratch directories, stream bounds/digest limits and no local
+running entries after collection; that test uses historical direct-child Runner
+and is not native descendant-closure evidence. The Root bridge fixture adds
+exclusive registered physical directory identity metadata before binding and
+retains its separate fixture scope. Provisioned artifact verification remains
+the evidence that the named target actually executed native controls.
+No additional finding was identified in these deltas. The current local memory
+check still exceeds the workspace swap threshold, so no intensive frozen host
+command was started; remote CI remains the only live gate execution.
