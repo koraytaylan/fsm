@@ -251,3 +251,22 @@ corrected-source compiled verdicts remain pending despite unchanged code.
 No acceptance-blocking finding was identified in this slice; integrated host
 race/crash recovery remains task 9401 rather than evidence supplied by these
 primitive-level controls.
+
+Private exec-status review at corrected `9f1f175`: Root obtains a bounded
+kernel-random challenge before launch, protects original socket metadata and
+revalidates the original sole enrolled gate before and after its exact PID/nonce
+hello; private paths are identity-matched and removed before grant publication.
+The status descriptor is checked close-on-exec; a positive OS error requires
+the exact 12-byte frame and EOF, while partial/excess/malformed frames retain
+uncertainty and empty EOF supplies only exec observation, never domain closure.
+Native controls independently reject the same-identity wrong-nonce actor,
+classify actual missing/non-executable commands through the private stream,
+and refuse original-path replacement during retirement.
+The deadline finding is corrected by checks before each production accept/read
+retry; both injected branches cross the actual shared deadline and assert no
+subsequent accept/read, entry grant or stopped record, retaining durable claim.
+Both independently verified 81-case native compiler matrices execute these
+controls at corrected source; SPEC and API/embedding/release text agree that
+formats, hash domains and public APIs are unchanged and fresh gates are required.
+No further acceptance-blocking finding was identified in this portion; the
+full spec/API review and frozen local verification remain outstanding.
