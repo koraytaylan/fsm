@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Barrier;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::{Admission, NativeDomain, RetryPolicy};
 use fsm_store::clock::FixedClock;
@@ -50,6 +51,10 @@ fn policy() -> RetryPolicy {
 }
 
 fn populated(directory: &Directory) -> (Store, String) {
+    populated_named(directory, "instance")
+}
+
+fn populated_named(directory: &Directory, instance_id: &str) -> (Store, String) {
     let mut store = Store::open(&directory.0).unwrap();
     let definition = parse(
         include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
@@ -58,11 +63,11 @@ fn populated(directory: &Directory) -> (Store, String) {
     .unwrap();
     store.define_machine(definition, false, false).unwrap();
     store
-        .create_instance("case_review", "instance", "create", None)
+        .create_instance("case_review", instance_id, "create", None)
         .unwrap();
     store
         .send_event(
-            "instance",
+            instance_id,
             "docs_ok",
             Value::Obj(BTreeMap::new()),
             "send",
@@ -70,7 +75,7 @@ fn populated(directory: &Directory) -> (Store, String) {
         )
         .unwrap();
     assert_eq!(store.state.execution.admission(), Admission::Enabled);
-    let effect = store.state.instances["instance"].pending[0].clone();
+    let effect = store.state.instances[instance_id].pending[0].clone();
     (store, effect)
 }
 
@@ -582,4 +587,107 @@ fn production_request_id_limit_counts_utf8_bytes_without_allocating_on_refusal()
         assert_eq!(store.state.execution.run_high_water(), 1);
         assert!(!store.state.dedup.contains_key(&oversized));
     }
+}
+
+#[test]
+fn production_claim_metadata_accepts_exact_canonical_limit_before_reopen() {
+    let baseline = Directory::new();
+    let (mut template_store, effect) = populated(&baseline);
+    allocate(&mut template_store, &effect, "template", None).unwrap();
+    let Value::Obj(mut template) = template_store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .to_value()
+    else {
+        panic!("claim metadata must be an object");
+    };
+    // Instance IDs appear twice: directly and within the emitted effect ID.
+    let suffix = effect.strip_prefix("instance").unwrap();
+    template.insert("instance_id".into(), Value::Str(String::new()));
+    template.insert("effect_id".into(), Value::Str(suffix.into()));
+    let Value::Obj(mut retry) = policy().to_value() else {
+        panic!("retry policy must be an object");
+    };
+    let base_length = canon_bytes(&Value::Obj(template.clone())).len();
+    let backoff = if (4096 - base_length).is_multiple_of(2) {
+        40
+    } else {
+        400
+    };
+    retry.insert("max_backoff_ms".into(), Value::Num(backoff.to_string()));
+    template.insert("retry".into(), Value::Obj(retry.clone()));
+    let overhead = canon_bytes(&Value::Obj(template)).len();
+    assert!((4096 - overhead).is_multiple_of(2));
+    let instance_id = "i".repeat((4096 - overhead) / 2);
+    let exact_policy = RetryPolicy::from_value(&Value::Obj(retry.clone())).unwrap();
+    retry.insert(
+        "max_backoff_ms".into(),
+        Value::Num((backoff * 10).to_string()),
+    );
+    let oversized_policy = RetryPolicy::from_value(&Value::Obj(retry)).unwrap();
+    drop(template_store);
+
+    let directory = Directory::new();
+    let (mut store, effect) = populated_named(&directory, &instance_id);
+    let before = store.state.clone();
+    let native = domain();
+    let fingerprint = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let mut clock = FixedClock::new(100, 1);
+    assert_eq!(
+        store
+            .claim_execution_on(
+                &mut clock,
+                ExecutionClaimRequest {
+                    instance_id: &instance_id,
+                    effect_id: &effect,
+                    handler_fingerprint: fingerprint,
+                    retry: &oversized_policy,
+                    domain: &native,
+                    request_id: "too-large",
+                    expected_seq: None,
+                }
+            )
+            .unwrap_err()
+            .code,
+        "store/execution_limit"
+    );
+    assert!(fsm_store::snapshot::store_states_eq(&before, &store.state));
+    assert_eq!(store.journal.last_seq, before.last_seq);
+    assert!(!store.state.dedup.contains_key("too-large"));
+    store
+        .claim_execution_on(
+            &mut clock,
+            ExecutionClaimRequest {
+                instance_id: &instance_id,
+                effect_id: &effect,
+                handler_fingerprint: fingerprint,
+                retry: &exact_policy,
+                domain: &native,
+                request_id: "exact",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for(&instance_id, &effect)
+        .unwrap()
+        .clone();
+    assert_eq!(canon_bytes(&claim.to_value()).len(), 4096);
+    let Value::Obj(mut oversized_metadata) = claim.to_value() else {
+        panic!("claim metadata must be an object");
+    };
+    oversized_metadata.insert("retry".into(), oversized_policy.to_value());
+    assert_eq!(canon_bytes(&Value::Obj(oversized_metadata)).len(), 4097);
+    assert_eq!(claim.run_id(), 1);
+    drop(store);
+    let store = Store::open(&directory.0).unwrap();
+    assert_eq!(
+        store.state.execution.claim_for(&instance_id, &effect),
+        Some(&claim)
+    );
+    assert_eq!(store.state.execution.run_high_water(), 1);
 }

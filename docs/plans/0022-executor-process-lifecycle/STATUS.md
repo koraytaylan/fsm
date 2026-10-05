@@ -394,4 +394,17 @@ lifecycle updates.
   aggregate limits, native receipt publication and remaining durability faults
   are still required before task 9302 can finish.
 
+- **Production claim metadata boundary:** a new integration case derives
+  canonical accounting from the seven claim fields, creates a real pending
+  effect with a correspondingly long instance identity, and admits exactly
+  4,096 metadata bytes through the production API. A policy differing by one
+  canonical byte is measured at 4,097 and refused before append, request-ID
+  allocation or run allocation; the exact claim survives snapshot selection
+  and cold reopen. All fourteen integration cases passed on stable and MSRV;
+  the final explicit exact/plus-one accounting assertion passed separately on
+  both toolchains, and all-target Clippy is green. This covers producer metadata
+  admission and exact-size restoration; hostile-loader plus-one controls,
+  production entry/outcome/aggregate bounds and native receipt authentication
+  remain outstanding, so task 9302 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
