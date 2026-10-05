@@ -2300,4 +2300,13 @@ lifecycle updates.
   pass; `e8e412a` run `37309692370` is queued, compiled full native/portable gates
   and automatic service integration remain pending, and task 9303 stays In progress.
 
+- Split native writer-held admission controls into `admission_native_tests.rs`
+  along the existing refusal-review boundary, preserving stale/read-only/
+  quarantined/poisoned and externally removed-work assertions and the same
+  genuine-claim case entrypoint; no production or journal bytes changed.
+  The allocator fixture is now 686 lines and the admission module 175 lines,
+  both below the project ceiling. Formatting/size/diff checks pass; `4350b4a`
+  CI run `37309923079` is queued, compiled gates remain pending, and no task
+  acceptance or native gate status changes.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
