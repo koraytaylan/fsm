@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+`Pipeline::claim_native` requires supported native architecture and a healthy
+on-disk writer, refusing memory, read-only and poisoned journals before claim
+mutation; in-memory store transitions remain available for deterministic engine
+use, but cannot substitute for the native durable admission barrier.
+
 The provisional Linux `Pipeline::start_native` starts the claim-bound transport
 only after writer-held checks for healthy durable storage, exact current ownership,
 enabled admission, running/pending effect and absence of a stopped result;

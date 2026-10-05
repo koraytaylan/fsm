@@ -12,6 +12,39 @@ pub(super) fn bound_claim(fixture: &Fixture, binding: &Value, effect: &str) {
             fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
         let mut snapshot = Store::open_read_only(&fixture.store).unwrap();
         let hash = binding.get("journal_claim").unwrap().as_str().unwrap();
+        let material = claim.to_value();
+        let retry =
+            fsm_core::record::execution::RetryPolicy::from_value(material.get("retry").unwrap())
+                .unwrap();
+        let mut memory = Store::open_memory().unwrap();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        for refused_store in [&mut memory, &mut snapshot] {
+            let records = refused_store.records.len();
+            let state = refused_store.state.clone();
+            let refusal = pipeline
+                .claim_native(
+                    refused_store,
+                    &mut fsm_store::clock::FixedClock::new(100, 1),
+                    fsm_store::store::ExecutionClaimRequest {
+                        instance_id: "instance",
+                        effect_id: effect,
+                        handler_fingerprint: material
+                            .get("handler_fingerprint")
+                            .unwrap()
+                            .as_str()
+                            .unwrap(),
+                        retry: &retry,
+                        domain: claim.domain(),
+                        request_id: "native-nondurable-claim",
+                        expected_seq: None,
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(refusal.code, "exec/mode");
+            assert!(refusal.message.contains("healthy durable writer"));
+            assert_eq!(refused_store.records.len(), records);
+            assert_eq!(refused_store.state, state);
+        }
         let before_records = snapshot.records.len();
         let mut pipeline = fsm_execute::run::Pipeline;
         let refusal =

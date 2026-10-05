@@ -47,10 +47,14 @@ impl Pipeline {
         clock: &mut dyn Clock,
         request: fsm_store::store::ExecutionClaimRequest<'_>,
     ) -> Result<Value, ExecError> {
-        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
             return Err(ExecError::new(
                 "exec/mode",
-                "native containment platform unsupported",
+                "native claim requires a supported healthy durable writer",
             ));
         }
         store

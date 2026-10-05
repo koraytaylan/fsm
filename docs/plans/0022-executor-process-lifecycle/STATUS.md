@@ -2319,4 +2319,14 @@ lifecycle updates.
   service settlement; formatting/size/diff checks pass, `0fcfbd0` run
   `37310123746` is queued, and compiled/full integration gates remain pending.
 
+- Admission review found `Pipeline::claim_native` allowed memory stores despite
+  promising a durable pre-launch barrier. Native claim admission now requires
+  the same supported healthy on-disk writer boundary as startup, refusing
+  memory/read-only/poisoned journals before mutation; the generic pure/store
+  memory APIs remain unchanged. Native controls submit original claim material
+  to memory and read-only handles and verify `exec/mode` with identical state
+  and record counts. Formatting/size/diff checks pass; `81a18fb` CI run
+  `37310306538` is queued, compiled gates and full service integration remain
+  pending, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
