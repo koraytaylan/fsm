@@ -1863,8 +1863,10 @@ the manager's `InvocationID`, `ExecMainPID`, `ExecMainCode` and
 `ExecMainStatus` within the remaining handler deadline. Invocation and original
 PID MUST match the protected handoff; canonical normal exit status is 0..255,
 while killed/dumped roots project existing signal status `-1`. Unknown or
-mismatched inspection MUST retain uncertainty, except that an already reaped
-owned transport may supply its actual exit status. A manager-query deadline
+mismatched inspection MUST retain uncertainty. The owned manager launcher is
+not the handler root: its exit status MUST NOT select a process candidate or
+resolve uncertain root inspection, even after actual launcher retirement.
+A manager-query deadline
 failure MAY select the existing timeout candidate only when the approved handler
 deadline has actually elapsed; an earlier manager-query deadline, identity
 mismatch or other inspection failure MUST remain uncertain. This timer observation

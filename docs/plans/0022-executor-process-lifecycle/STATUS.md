@@ -2436,4 +2436,14 @@ lifecycle updates.
   repaired stable/current native, all portable gates and full service integration
   remain required, and no task is marked accepted.
 
+- Corrected process candidate authentication: the owned child is the
+  systemd-run launcher, so its exit code no longer selects a handler outcome
+  or resolves failed root inspection; only invocation/PID-matched manager root
+  status can select a process candidate before full closure and handle retirement.
+  Added a real SIGKILL root control with surviving enrolled descendants, requiring
+  signal status -1 rather than a launcher-dependent status; SPEC and lifecycle
+  guidance now state this boundary explicitly. Latest run 37313133297 remains
+  queued; formatting, size and whitespace checks are local-only validation,
+  with compilation/native/portable gates still required and task 9303 open.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

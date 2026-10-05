@@ -222,7 +222,9 @@ remains alive: recorded invocation and original gate PID must match canonical
 exit fields before selecting a candidate, so root exit can promptly trigger
 cleanup of surviving descendants. Query work respects the remaining handler
 deadline; mismatched/unknown inspection preserves uncertainty, and a candidate
-still requires full closure and owned handle retirement. These fields follow
+still requires full closure and owned handle retirement. The owned systemd-run
+launcher is reaped independently; its exit code cannot select a handler result
+or replace missing authenticated root status, including after a signaled root. These fields follow
 [systemd's main-process observation contract](https://github.com/systemd/systemd/blob/main/man/org.freedesktop.systemd1.xml),
 which distinguishes current MainPID from retained ExecMainPID information.
 

@@ -42,10 +42,12 @@ def enrolled_tree():
     while not (base/'release').exists():
         assert time.monotonic()<deadline
         time.sleep(.005)
-if mode in ('process-exit','process-failure','cancel-process','uncertain-process'):
+if mode in ('process-exit','process-failure','process-signal','cancel-process','uncertain-process'):
     enrolled_tree()
-    if mode in ('process-exit','process-failure'):
+    if mode in ('process-exit','process-failure','process-signal'):
         print('root-exited',flush=True)
+        if mode=='process-signal':
+            os.kill(os.getpid(),9)
         sys.exit(17 if mode=='process-failure' else 0)
     time.sleep(300)
 for line in sys.stdin:
@@ -120,6 +122,7 @@ pub(super) fn run() {
         "retry-timeout",
         "process-exit",
         "process-failure",
+        "process-signal",
         "cancel-mcp",
         "cancel-process",
         "uncertain-mcp",
@@ -168,7 +171,11 @@ pub(super) fn run() {
         ]);
         if matches!(
             mode,
-            "process-exit" | "process-failure" | "cancel-process" | "uncertain-process"
+            "process-exit"
+                | "process-failure"
+                | "process-signal"
+                | "cancel-process"
+                | "uncertain-process"
         ) {
             let Value::Obj(fields) = &mut table else {
                 panic!("fixture table is not an object")
@@ -371,6 +378,8 @@ pub(super) fn run() {
         } else {
             let (class, status) = if mode == "process-failure" {
                 (Value::Str("nonzero_exit".into()), "17")
+            } else if mode == "process-signal" {
+                (Value::Str("nonzero_exit".into()), "-1")
             } else {
                 (Value::Null, "0")
             };
@@ -401,7 +410,7 @@ pub(super) fn run() {
             "timeout" | "retry-timeout" => "timeout",
             "cancel-process" | "cancel-mcp" => "interrupted",
             "process-exit" => "ok",
-            "process-failure" => "nonzero_exit",
+            "process-failure" | "process-signal" => "nonzero_exit",
             _ => panic!("uncertain runner must not reach verified completion"),
         };
         assert_eq!(completion.stopped_outcome().status(), expected);

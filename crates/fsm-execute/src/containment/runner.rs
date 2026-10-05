@@ -171,9 +171,10 @@ pub(super) fn execute_cancellable(
             if let Some(answer) = worker.collect() {
                 break Candidate::Mcp(answer);
             }
-        } else if let Some(status) = owned.child.try_wait().map_err(io)? {
-            break Candidate::Process(status.code().unwrap_or(-1));
         }
+        // The owned child is systemd-run, not the invocation-matched handler;
+        // its retirement cannot authenticate the handler's exit status.
+        owned.child.try_wait().map_err(io)?;
         if Instant::now() >= deadline {
             break Candidate::Timeout;
         }
@@ -182,9 +183,6 @@ pub(super) fn execute_cancellable(
                 Ok(Some(status)) => break Candidate::Process(status),
                 Ok(None) => {}
                 Err(error) => {
-                    if let Some(status) = owned.child.try_wait().map_err(io)? {
-                        break Candidate::Process(status.code().unwrap_or(-1));
-                    }
                     if process_exit::deadline_expired(&error, deadline, Instant::now()) {
                         break Candidate::Timeout;
                     }
