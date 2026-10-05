@@ -3271,4 +3271,14 @@ lifecycle updates.
   Executable-byte verification and production gate release remain false;
   native MSRV and all six portable gates remain live and unaccepted.
 
+- Corrected-source MSRV native job `111988370064` passes in CI
+  `37376949993`; retained task-cache `ci-37376949993/msrv` independently
+  verifies all 81 cases at exact `9f1f175` with
+  `rustc 1.89.0 (29483883e 2025-08-04)`.
+  Both native compilers now execute the interrupted accept/read controls in
+  the passing private exec-status case; all six portable gates remain live.
+  The deadline finding has a tested correction at the native boundary, but
+  corrected-source portable/local gates and remaining review still prevent
+  task acceptance or production gate release.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
