@@ -883,4 +883,20 @@ lifecycle updates.
   `1f21fe4` or its CI results. The older Windows/MSRV leg has now passed;
   Windows stable remains running in `37259980746`.
 
+- **Windows review timeout diagnosed and budget corrected:** older frozen run
+  `37259980746` is terminal with eight successes and Windows stable cancelled.
+  The check annotation explicitly reports the 45-minute job limit, and its
+  retained sanitized diagnostics show release tests passing through `io_bounds`
+  and advancing into `journal_record_bounds` immediately before cancellation;
+  this is not evidence of a test failure or an indefinitely hung case.
+  `ci-37259980746-windows-stable-cancelled.log` retains the completed job log.
+  Task 9302 adopts the CI workflow footprint to set a bounded 75-minute budget
+  for both Windows toolchains, retaining 45 minutes for other portable hosts,
+  every gate command and the 1,000-crash test floor. The currently live newer
+  run retains its original timeout; it is not restarted or cancelled, and the
+  changed budget awaits the next frozen-source review. This infrastructure
+  change does not count a cancelled Windows leg as passing or complete task
+  acceptance. Diff and file-size checks pass; no build runs concurrently with
+  the still-live isolated host gate.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

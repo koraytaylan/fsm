@@ -7,6 +7,7 @@ depends_on:
   - lifecycle-containment-feasibility
 gated: false
 touches:
+  - .github/workflows/ci.yml
   - crates/fsm-core/src/record.rs
   - crates/fsm-core/src/record/
   - crates/fsm-core/src/replay/

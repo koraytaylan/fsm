@@ -36,7 +36,9 @@ jobs:
     # The chaos harness spawns 1,000 processes per profile; that dominates the
     # run, and process creation on Windows is several times costlier than on
     # Unix. The rest of the suite is fast.
-    timeout-minutes: 45
+    # Full stable Windows debug/release coverage can exceed 45 minutes while
+    # still passing tests; retain the complete inventory with a bounded budget.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 75 || 45 }}
     env:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
     steps:
