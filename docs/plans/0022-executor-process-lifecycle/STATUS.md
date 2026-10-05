@@ -2688,4 +2688,13 @@ lifecycle updates.
   No published journal/receipt/hash bytes change; source checks pass, full
   current native/portable/frozen acceptance and production routing remain pending.
 
+- CI review of dac1a37, run 37330135992, found the new freshness fixture
+  compared its full counter Value to integer 0; the assertion now extracts the
+  checked last_allocation field with the existing native numeric reader.
+  Stable/MSRV native authority builds and Ubuntu gates failed on this single
+  type mismatch before runtime authority evidence; zero-deps passed, other
+  portable jobs remain active/queued, and no run was canceled or restarted.
+  Formatting/file-size/diff checks pass; compiled/native verification remains
+  pending and task 9303 is not accepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

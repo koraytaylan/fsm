@@ -134,7 +134,7 @@ impl Fixture {
         fs::write(&public, &encoded).unwrap();
         assert!(require_unused(&fixture.directory).is_ok());
         assert_eq!(fs::read(&public).unwrap(), encoded);
-        assert_eq!(fixture.counter(), 0);
+        assert_eq!(number(&fixture.counter(), "last_allocation").unwrap(), 0);
         assert!(!fixture.directory.join("catalogue.json").exists());
         assert!(!fixture.directory.join("allocation-1.json").exists());
         let before = fixture.counter();
