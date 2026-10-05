@@ -21,7 +21,13 @@ const NOFOLLOW_NONBLOCK: i32 = 0x20000 | 0x800;
 #[path = "allocator.rs"]
 mod allocator;
 
+#[path = "entry.rs"]
+mod entry;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
+    if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
+        return entry::run(&arguments[1..]);
+    }
     if fs::metadata("/proc/self").map_err(io)?.uid() != 0 {
         return Err("requires separately provisioned root authority".into());
     }

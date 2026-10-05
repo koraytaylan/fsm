@@ -1104,4 +1104,21 @@ lifecycle updates.
   or cancelled. A new source review is required for the portable fix; these
   failures cannot count as six-leg acceptance, and task 9303 remains In progress.
 
+- **Protected entry verifier implemented:** the private `gate` path accepts
+  only a canonical namespace/generation/allocation route under an unprivileged
+  identity. A bounded immutable root-owned grant supplies the claim, original
+  hash and absolute argv; authority/cgroup device/inode, boot and exact own
+  cgroup membership must match before exec, and the grant is re-read before
+  replacement. Caller-provided commands are rejected by the actual binary.
+  Shape tests cover valid absolute commands, missing/unknown fields, malformed
+  hashes, empty/excess argv, bare commands, nonstring arguments and NULs;
+  their pure metadata authenticates no real publisher or enrollment. Stable
+  and MSRV authority/refusal/capture tests pass and stable all-target execute
+  Clippy passes. Production grant publication, claim revalidation immediately
+  before launch, systemd integration, bounded native I/O and full closure
+  remain outstanding; fencing/killing the already enrolled gate is required
+  to cover the last validation-to-exec race. This entry unit is later than
+  frozen `bfcfd79` and is not attributed to its live CI review. Task 9303
+  remains In progress with full native entry and runner acceptance pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

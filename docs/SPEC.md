@@ -1465,6 +1465,18 @@ entries. Unit/cgroup names include namespace, generation and allocation:
 `fsm-containment-<namespace>-<generation>-<allocation>.service`.
 Preparation MUST NOT launch user code or enable execution admission.
 
+The protected entry operation MUST run as an unprivileged handler identity.
+It MUST accept only a canonical namespace/generation/allocation route and
+read an immutable root-owned entry grant from that authority; caller-supplied
+argv MUST NOT authorize entry. The grant contains exactly `format`
+(`fsm.native-entry/1`), `claim`, `journal_claim` and `argv`, within the 8 KiB
+private-record limit. The gate MUST verify claim/domain routing, actual
+authority and cgroup device/inode identities, current boot and its own exact
+cgroup membership before replacing itself with the granted absolute command.
+Root ownership protects the grant; the launcher MUST independently verify
+current durable ownership before publication and revoke entry on closing.
+An absent, malformed or mismatched grant MUST execute no handler code.
+
 A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
 `format`, `claim` and `journal_claim`. The authority MUST independently read
 the registered store, verify its path identity, the original durable claim

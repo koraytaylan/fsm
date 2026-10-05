@@ -1,6 +1,26 @@
 //! Production capture checks; these do not establish native domain closure.
 
 #[test]
+fn protected_entry_does_not_accept_a_caller_supplied_command() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_fsm-containment-authority"))
+        .args(["gate", &"a".repeat(32), "1", "1", "/bin/true"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    assert!(stderr.contains("gate requires namespace") || stderr.contains("isolated unprivileged"));
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    assert!(stderr.contains("native containment runtime unsupported"));
+}
+
+#[test]
 fn authority_refuses_unprivileged_or_unsupported_before_request_io() {
     #[cfg(all(
         target_os = "linux",

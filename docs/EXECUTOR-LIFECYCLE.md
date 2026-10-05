@@ -2,6 +2,16 @@
 
 ## Decision status
 
+The protected `gate` entry verifier now accepts only a canonical native route,
+requires an unprivileged identity, reads a root-owned immutable entry grant,
+and checks authority/cgroup device and inode, boot and its own exact cgroup
+membership before replacing itself with the granted absolute command.
+It rejects caller-supplied argv and malformed grants and rechecks the grant
+before exec. The launcher must still publish that grant only after independent
+current-claim verification, and closure must fence/kill the enrolled gate to
+cover the final check-to-exec race. Grant publication, systemd launch, bounded
+native I/O and closure integration are not yet implemented or accepted.
+
 The in-development `fsm-containment-authority` binary adds root-only store
 registration and immutable claim binding under the protected persistent
 authority namespace. Registration verifies the store read-only and creates

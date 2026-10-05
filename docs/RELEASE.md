@@ -1,5 +1,11 @@
 # Releasing
 
+Unreleased protected entry verification requires an unprivileged handler
+identity, immutable root-owned claim grant and actual boot/authority/cgroup
+enrollment before exec, with no caller-provided command authorization.
+Shape/refusal checks do not establish real launch or tree closure; privileged
+grant publication, native launch/I/O and closure integration remain required.
+
 Unreleased native authority work adds a separately provisioned root-only
 registration/binding binary with bounded canonical protected records and
 independent read-only verification of original durable claim identity and
