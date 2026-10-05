@@ -307,4 +307,17 @@ lifecycle updates.
   final frozen review uses the follow-up commit rather than the earlier code
   head alone, and production store wiring remains incomplete.
 
+- **Frozen ownership guard review:** range `e03ad45..39ec8c6` has a clean
+  MSRV baseline and 15 isolated negative controls, each failing its named
+  production-facing pure API fixture when only the selected guard is removed.
+  The controls cover quarantine, unresolved ownership, next-run allocation,
+  retry deadline, repeated stopping, native domain/run binding, full claim
+  binding, entry/metadata/outcome limits, decoder/transition block budgets,
+  an independent stopped-result budget call site, and disposition selection.
+  Every captured log digest is verified and the disposable clone is restored
+  clean. Full stable host gate `39ec8c6-host-gates.log` is running in an isolated
+  target directory; exact-source native/portable CI is queued on the authorized
+  review branch. These are core primitive proofs, not store crash/migration/seal
+  or native receipt authentication acceptance; task 9302 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
