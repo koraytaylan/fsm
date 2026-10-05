@@ -1,6 +1,8 @@
 //! Independent native process/MCP tree observer around production execution.
 
-use super::super::super::{bind, identity, number, object, read_value, runner, text};
+use super::super::super::{
+    bind, closure, identity, number, object, read_value, runner, stop, text,
+};
 use super::{Fixture, claim_binding};
 use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
@@ -40,7 +42,7 @@ def enrolled_tree():
     while not (base/'release').exists():
         assert time.monotonic()<deadline
         time.sleep(.005)
-if mode in ('process-exit','cancel-process'):
+if mode in ('process-exit','cancel-process','uncertain-process'):
     enrolled_tree()
     if mode=='process-exit':
         print('root-exited',flush=True)
@@ -115,6 +117,8 @@ pub(super) fn run() {
         "process-exit",
         "cancel-mcp",
         "cancel-process",
+        "uncertain-mcp",
+        "uncertain-process",
     ] {
         let barriers = Barriers::new();
         let mut table = object([
@@ -157,7 +161,10 @@ pub(super) fn run() {
                 ])]),
             ),
         ]);
-        if matches!(mode, "process-exit" | "cancel-process") {
+        if matches!(
+            mode,
+            "process-exit" | "cancel-process" | "uncertain-process"
+        ) {
             let Value::Obj(fields) = &mut table else {
                 panic!("fixture table is not an object")
             };
@@ -235,7 +242,15 @@ pub(super) fn run() {
             .lines()
             .any(|line| line == "populated 1")
         );
-        if mode.starts_with("cancel-") {
+        let handoff_path = fixture.directory.join("handoff-1.json");
+        let saved_handoff = fs::read(&handoff_path).unwrap();
+        if mode.starts_with("uncertain-") {
+            // Fixture-owned protected corruption is introduced only after
+            // independent enrollment; cleanup cannot authenticate this data.
+            fs::write(&handoff_path, b"{}").unwrap();
+            fs::File::open(&handoff_path).unwrap().sync_all().unwrap();
+        }
+        if mode.starts_with("cancel-") || mode.starts_with("uncertain-") {
             cancelled.store(true, std::sync::atomic::Ordering::Release);
         }
         fs::write(
@@ -251,7 +266,37 @@ pub(super) fn run() {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
-        let result = execution.join().unwrap().unwrap();
+        let execution_result = execution.join().unwrap();
+        if mode.starts_with("uncertain-") {
+            let error = execution_result.unwrap_err();
+            assert!(error.contains("runner cleanup uncertain"), "{error}");
+            assert!(fixture.directory.join("closing-1.json").is_file());
+            assert!(fs::symlink_metadata(fixture.directory.join("entry-1.json")).is_err());
+            assert!(fs::symlink_metadata(fixture.directory.join("closed-1.json")).is_err());
+            let receipt = fixture.directory.join(format!(
+                "closure-1-{}.json",
+                number(binding.get("claim").unwrap(), "run_id").unwrap()
+            ));
+            assert!(VerifiedClosure::read(&receipt).is_err());
+            assert_eq!(fs::read(&handoff_path).unwrap(), b"{}");
+            assert_unresolved(&fixture, &effect);
+            assert!(runner::execute(&fixture.directory, 1).is_err());
+            // Restore only the exact fixture-owned fault, then independently
+            // close the domain; this cannot relabel the failed execution.
+            fs::write(&handoff_path, saved_handoff).unwrap();
+            fs::File::open(&handoff_path).unwrap().sync_all().unwrap();
+            fs::File::open(&fixture.directory)
+                .unwrap()
+                .sync_all()
+                .unwrap();
+            let _ = stop::request(&fixture.directory, 1);
+            closure::complete(&fixture.directory, 1).unwrap();
+            VerifiedClosure::read(&receipt).unwrap();
+            assert_unresolved(&fixture, &effect);
+            fixture.cleanup().unwrap();
+            continue;
+        }
+        let result = execution_result.unwrap();
         assert_eq!(result.get("claim"), binding.get("claim"));
         assert_eq!(result.get("journal_claim"), binding.get("journal_claim"));
         let candidate = result.get("candidate").unwrap();
@@ -312,23 +357,27 @@ pub(super) fn run() {
                 .join(&unit)
                 .exists()
         );
-        let store = Store::open_read_only(&fixture.store).unwrap();
-        assert!(
-            store
-                .state
-                .execution
-                .claim_for("instance", &effect)
-                .is_some()
-        );
-        assert!(
-            store
-                .state
-                .execution
-                .stopped_for("instance", &effect)
-                .is_none()
-        );
-        drop(store);
+        assert_unresolved(&fixture, &effect);
         assert!(runner::execute(&fixture.directory, 1).is_err());
         fixture.cleanup().unwrap();
     }
+}
+
+fn assert_unresolved(fixture: &Fixture, effect: &str) {
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_none()
+    );
+    drop(store);
 }

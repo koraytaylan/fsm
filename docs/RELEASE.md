@@ -1,5 +1,14 @@
 # Releasing
 
+Native runner fault controls now corrupt only fixture-owned protected handoff
+material after independent process/MCP tree enrollment and request cancellation.
+The production runner must return cleanup uncertainty, preserve durable closing
+and unresolved journal ownership, and publish no closure receipt or domain
+closure record; duplicate execution remains refused. Restoring the exact fixture
+fault then completing independent native closure cleans the test domain without
+turning the failed execution into a successful result; compiled acceptance is
+still pending.
+
 Private claimed execution now accepts an explicit shared cancellation control:
 an observed pre-launch request refuses launch and retains the claim, while
 an in-flight request selects existing `exec/cancelled` semantics through the

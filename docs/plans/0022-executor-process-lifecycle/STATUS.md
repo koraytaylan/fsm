@@ -1625,4 +1625,21 @@ lifecycle updates.
   Broker/service integration, explicit host stop/drain and uncertain-start
   recovery remain outstanding, and task 9303 stays In progress.
 
+- **Runner cleanup uncertainty controls authored:** independent process and
+  MCP tree cases now replace only their fixture-owned protected handoff after
+  actual root/child/grandchild enrollment and request cancellation. They require
+  a cleanup-uncertain error, durable admission closing, removed grant, absent
+  closed-domain record and refused file-verified receipt while the journal claim
+  remains unresolved and unstopped; the corrupted record must remain unchanged,
+  and duplicate execution is refused. Post-launch handoff read/missing-gate
+  failures explicitly report cleanup uncertainty, including a fault racing the
+  runner's first handoff read. Exact fault restoration followed by
+  independent stop/complete-close is test cleanup only, never a passing runner
+  result, and journal ownership must remain retained after it. Formatting, size,
+  diff and fixture parsing checks pass; native stable/MSRV acceptance is pending.
+  Run `37289090885` for root-exit commit `7b104fe` remains authoritatively queued,
+  with all nine jobs present; it is not restarted or treated as completed.
+  Broker/service integration, host stop/drain and uncertain-start recovery remain
+  required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

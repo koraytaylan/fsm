@@ -151,8 +151,11 @@ pub(super) fn execute_cancellable(
     if !cancelled.load(Ordering::Acquire) {
         authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
     }
-    let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)?;
-    let gate = handoff.get("gate").ok_or("runner protected gate missing")?;
+    let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)
+        .map_err(|error| format!("runner cleanup uncertain: handoff read failed: {error}"))?;
+    let gate = handoff
+        .get("gate")
+        .ok_or("runner cleanup uncertain: protected gate missing")?;
     let deadline = Instant::now() + timeout;
     let observation_interval = (timeout / 4).min(Duration::from_millis(100));
     let mut root_observation = Instant::now() + observation_interval;
