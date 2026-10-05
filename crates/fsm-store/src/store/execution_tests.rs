@@ -180,6 +180,114 @@ fn durable_stop_excludes_successor_until_single_failed_settlement_and_retry_dead
 }
 
 #[test]
+fn terminal_protocol_failure_acks_once_without_retry_or_interruption() {
+    let (mut store, effect) = pending();
+    allocate(
+        &mut store,
+        &effect,
+        "terminal-claim",
+        &mut FixedClock::new(100, 1),
+    )
+    .unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let candidate = json(br#"{"error":"exec/mcp_protocol","detail":"invalid_json"}"#);
+    let outcome = StoppedOutcome::from_value(&Value::Obj(BTreeMap::from([
+        ("status".into(), Value::Str("failed".into())),
+        ("result".into(), candidate.clone()),
+    ])))
+    .unwrap();
+    store
+        .stop_execution_on(
+            &mut FixedClock::new(101, 1),
+            ExecutionStopRequest {
+                claim: &claim,
+                proof: &proof(&store, &claim),
+                outcome: &outcome,
+                request_id: "terminal-stop",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    assert_fold(&store);
+    let before = store.journal.last_seq;
+    for disposition in [Settlement::Attempted, Settlement::Interrupted] {
+        assert_eq!(
+            store
+                .settle_execution_on(
+                    &mut FixedClock::new(102, 1),
+                    ExecutionSettleRequest {
+                        claim: &claim,
+                        disposition,
+                        request_id: "terminal-invalid",
+                        expected_seq: None,
+                    }
+                )
+                .unwrap_err()
+                .code,
+            "store/execution_disposition"
+        );
+        assert_eq!(store.journal.last_seq, before);
+        assert_eq!(store.state.execution.failed_count("instance", &effect), 0);
+        assert_eq!(
+            store.state.execution.claim_for("instance", &effect),
+            Some(&claim)
+        );
+        assert!(store.state.instances["instance"].pending.contains(&effect));
+    }
+    let settled = store
+        .settle_execution_on(
+            &mut FixedClock::new(103, 1),
+            ExecutionSettleRequest {
+                claim: &claim,
+                disposition: Settlement::Acked,
+                request_id: "terminal-settle",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        settled.get("execution").unwrap().get("outcome"),
+        Some(&Value::Str("failed".into()))
+    );
+    assert_eq!(
+        settled.get("execution").unwrap().get("result"),
+        Some(&candidate)
+    );
+    assert!(!store.state.instances["instance"].pending.contains(&effect));
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_none()
+    );
+    assert_eq!(store.state.execution.failed_count("instance", &effect), 0);
+    assert_fold(&store);
+    let before = store.journal.last_seq;
+    store.last_responses.clear();
+    let replay = store
+        .settle_execution_on(
+            &mut FixedClock::new(104, 1),
+            ExecutionSettleRequest {
+                claim: &claim,
+                disposition: Settlement::Acked,
+                request_id: "terminal-settle",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(replay.get("execution"), settled.get("execution"));
+    assert_eq!(store.journal.last_seq, before);
+    assert_fold(&store);
+}
+
+#[test]
 fn settlement_ack_is_one_record_and_cold_replay_cannot_consume_again() {
     let (mut store, effect) = pending();
     allocate(&mut store, &effect, "claim", &mut FixedClock::new(100, 1)).unwrap();

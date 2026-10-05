@@ -2071,4 +2071,16 @@ lifecycle updates.
   scheduling, retry/exhaustion selection and outcome-event recovery remain
   required, and task 9303 stays In progress.
 
+- **Terminal failed store settlement controls authored:** the store fixture
+  suite now persists a terminal MCP protocol candidate with `failed`, requires
+  retry-attempt and pending-interruption refusals without journal/ownership/
+  pending-state changes, then requires one failed acknowledgement preserving
+  exact candidate bytes and no failed-attempt count. Full journal fold matches
+  after stop and settlement, and cache-cleared request replay returns the exact
+  original settlement without another append. These use preauthenticated fixture
+  proof and do not claim native termination authentication. Formatting, size
+  and diff checks pass; run `37303405014` is authoritatively queued for
+  `51bedad`, compiled core/store/native acceptance and remaining production
+  service integration remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
