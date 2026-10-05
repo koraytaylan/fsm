@@ -461,3 +461,21 @@ Task 9401 must replace production host routing through durable native ownership,
 and task 9402 must establish bounded host shutdown rather than inherit the
 historical blocking waits. No additional finding in these deltas changes those
 already explicit unfinished obligations; evidence/harness review remains.
+
+Evidence verifier and CLI harness review at corrected `9f1f175`: the verifier
+loads suite and case inventories from the exact frozen Git commit, bounds each
+retained artifact, checks report/log digests, compiler identity, exact passing
+case order and the expected failed final-kill control with a live original
+domain. Authority evidence requires the production allocator scope while
+explicitly denying production backend acceptance; store-bridge evidence requires
+physical identity and missing/torn/symlink/writable metadata refusal controls.
+Executable digest syntax is checked, but executable bytes are not retained or
+independently compared, so `executable_bytes_verified` and `gate_released` remain
+false. Fixture installation exclusively publishes a newly built authority and
+cleanup requires its original inode/device and digest rather than overwriting
+or removing an existing product installation.
+The CLI harness changes require successful subprocess exit, preserve the full
+1,000-ID uniqueness check despite serial libtest's unterminated label, and use
+a Conventional Commit in the disposable Git fixture with every Git exit checked.
+No additional finding was identified in these reviewed deltas; this evidence
+does not accept host integration or replace the remaining full-range review.
