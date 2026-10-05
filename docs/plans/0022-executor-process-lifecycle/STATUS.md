@@ -248,6 +248,14 @@ lifecycle updates.
   Production locking is unchanged. Fresh exact-source CI run `37245431479`
   and the serialized stable host gate are active; no old or unfinished job
   is counted as proof for the repair, and the prerequisite remains unreleased.
+- **Repaired-source host verdict:** the serialized stable gate at clean
+  `399ed6ed5636118151ffb7ad94140538f865d1a7` completes successfully:
+  formatting, file-size checks, complete debug/release workspace tests,
+  all-target Clippy, warning-free rustdoc, zero dependencies and external
+  embedding. Both native jobs of run `37245431479` also pass all 61 cases;
+  downloaded source bindings and every retained report/log digest verify.
+  All six portable jobs remain live at this checkpoint. No task completion
+  or native prerequisite release is inferred from their unfinished state.
 - **Outcome:** pending implementation and native lifecycle evidence.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._
