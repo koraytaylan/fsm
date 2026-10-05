@@ -753,3 +753,9 @@ At completion, swap remained approximately 2.1 GiB and available RAM 61 GiB.
 The all-targets clippy gate is now running serially; documentation and the
 explicit zero-dependency/downstream acceptance commands remain pending.
 Task status remains `in_progress` until the full frozen host gate completes.
+
+The frozen local `cargo +stable clippy --workspace --all-targets -- -D warnings`
+completed with exit code zero; retained log:
+`~/.cache/fsm-plan-native-matrix-20261005/local-9f1f175-stable-clippy.log`.
+The warnings-denied rustdoc gate is running next, with explicit zero-dependency
+and downstream acceptance commands still pending; status remains `in_progress`.
