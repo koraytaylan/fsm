@@ -658,3 +658,20 @@ Restarted original-contract outcome advancement checks stale identity, emits the
 original event once and preserves idempotent state, without current catalogue
 selection. These assertions directly cover primitive settlement/recovery, not
 standalone/embedded service crash routing; no additional finding was identified.
+
+Store test delta review at corrected `9f1f175`: terminal protocol failure must
+acknowledge once with its original candidate, reject attempted/pending interruption
+without changing ownership or retry count, and replay the same execution response
+after clearing cached responses. Opaque matching predicates independently reject
+changed run, allocation, authority/cgroup identity or original claim hash without
+mutating ownership. Current-claim hash lookup rejects changed full identity,
+survives stopping and repeated sealed cold opens, and becomes stale after atomic
+settlement. A byte-identical copied journal with another physical directory
+cannot consume the original proof, leaves its head/claim unchanged and reopens
+without a stopped result, while the original directory can stop successfully.
+Legacy admission also rejects foreign physical evidence before clock advancement
+or request-key mutation. These internal proof fixtures isolate store transition
+checks; actual Root publication/file verification is established separately by
+the native bridge and broker controls, not by constructing a test-only proof.
+No additional finding was identified in these changed tests; they do not replace
+production host crash and concurrent-executor acceptance.
