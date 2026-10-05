@@ -3045,4 +3045,17 @@ lifecycle updates.
   controls; standalone, embedded and public service tick ownership routing
   remains task 9401 work, and task 9303 remains in progress.
 
+- The full local stable debug workspace gate for source `893dd8b` completes
+  with exit zero, including the embedding, zero-dependency, lifecycle and
+  existing journal/crash suites; its task-cache log is
+  `local-893dd8b-stable-debug.log`.
+  Formatting, source-size and complete committed-range diff checks also pass.
+  The stable release workspace gate is running serially, and all six portable
+  CI jobs for `37361472892` are live without a terminal aggregate verdict.
+  Review of the core/store delta against accepted persistence base `cf3f600`
+  checks the original-policy settlement selector, exact settlement replay,
+  current-claim hash access and physical-store proof validation against their
+  SPEC contracts; this does not replace the remaining frozen aggregate review
+  or accept downstream service ownership integration.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
