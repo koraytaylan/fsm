@@ -2058,4 +2058,17 @@ lifecycle updates.
   portable acceptance and production service scheduling/settlement remain
   required, and task 9303 stays In progress.
 
+- **Atomic stopped settlement adapter implemented for review:** provisional
+  `Pipeline::settle_stopped` delegates an explicit disposition and original
+  immutable claim to the writer-protected store mutator, preserving current
+  stopped ownership checks and request replay without consulting a changed
+  handler table or launching code. The native access case reopens its stopped
+  result, requires one atomic acknowledgement append, duplicate replay without
+  another record, resolved claim/stopped ownership and removed pending effect,
+  then verifies those facts after reopening. The inventory and contracts record
+  the additive method. Formatting, size and diff checks pass; run `37303089625`
+  is authoritatively queued for `4a712a8`, compiled acceptance, automatic service
+  scheduling, retry/exhaustion selection and outcome-event recovery remain
+  required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

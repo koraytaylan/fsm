@@ -1608,6 +1608,12 @@ The provisional Linux pipeline `stop_native` method MUST persist only the
 checked completion outcome and opaque proof through `Store::stop_execution_on`,
 retaining its writer-protected current-claim/hash/domain checks and request-id
 replay. It MUST NOT acknowledge, retry, settle ownership or release capacity.
+The provisional pipeline `settle_stopped` adapter MUST delegate the caller's
+explicit disposition and immutable claim to `Store::settle_execution_on`, with
+current stopped ownership and idempotent request replay checked under the
+writer. It MUST consume the stopped result only through that atomic mutator,
+without launching a handler or consulting a changed handler table; declared
+outcome-event recovery remains a separate acknowledgement-following step.
 
 The provisional Linux `run::native_client::NativeRequest` host adapter MUST
 validate a closed bounded request and canonical namespace/generation, verify the

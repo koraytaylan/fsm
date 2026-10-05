@@ -37,6 +37,28 @@ pub enum SettleOutcome {
 pub struct Pipeline;
 
 impl Pipeline {
+    /// Atomically consume a durable stopped result under the store writer.
+    pub fn settle_stopped(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        claim: &fsm_core::record::execution::Claim,
+        disposition: fsm_core::record::execution::Settlement,
+        request_id: &str,
+    ) -> Result<Value, ExecError> {
+        store
+            .settle_execution_on(
+                clock,
+                fsm_store::store::ExecutionSettleRequest {
+                    claim,
+                    disposition,
+                    request_id,
+                    expected_seq: None,
+                },
+            )
+            .map_err(|error| ExecError::store(&error))
+    }
+
     /// Persist verified native completion while retaining claim ownership.
     #[cfg(target_os = "linux")]
     pub fn stop_native(

@@ -355,6 +355,62 @@ pub(super) fn run() {
         Some(&original_claim)
     );
     drop(reopened);
+    {
+        let mut store = Store::open(&fixture.store).unwrap();
+        let before = store.records.len();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
+        let settled = pipeline
+            .settle_stopped(
+                &mut store,
+                &mut clock,
+                &original_claim,
+                fsm_core::record::execution::Settlement::Acked,
+                "native-proof-settle",
+            )
+            .unwrap();
+        assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
+        let replay = pipeline
+            .settle_stopped(
+                &mut store,
+                &mut clock,
+                &original_claim,
+                fsm_core::record::execution::Settlement::Acked,
+                "native-proof-settle",
+            )
+            .unwrap();
+        assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+        assert_eq!(store.records.len(), before + 1);
+        assert!(
+            store
+                .state
+                .execution
+                .claim_for("instance", &effect)
+                .is_none()
+        );
+        assert!(
+            store
+                .state
+                .execution
+                .stopped_for("instance", &effect)
+                .is_none()
+        );
+        assert!(!store.state.instances["instance"].pending.contains(&effect));
+    }
+    let reopened = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        reopened
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_none()
+    );
+    assert!(
+        !reopened.state.instances["instance"]
+            .pending
+            .contains(&effect)
+    );
+    drop(reopened);
     drop(daemon);
     let daemon = Daemon::ready(&fixture.directory, 2);
     assert_eq!(

@@ -74,6 +74,11 @@ The provisional `Pipeline::stop_native` adapter now performs that persistence
 through the existing store mutator, with native controls for stale claim refusal,
 idempotent replay, reopened exact stopped result and retained claim/pending
 effect; production service scheduling and settlement remain unwired.
+The provisional `Pipeline::settle_stopped` adapter delegates an explicit
+disposition to the atomic store mutator. The native access case reopens its
+durable stopped result, acknowledges it once, verifies replay adds no record,
+and reopens resolved ownership and removed pending state; automatic scheduling,
+retry/exhaustion selection and declared outcome-event recovery remain unwired.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.

@@ -565,3 +565,6 @@ and this getter performs no journal mutation or ownership settlement.
 The additive provisional Linux `Pipeline::stop_native` method persists checked
 outcome/proof through the existing writer-protected stopped mutator, preserving
 request replay and claim exclusion without acknowledgement or settlement.
+`Pipeline::settle_stopped` additively delegates an explicit disposition to the
+atomic stopped-consumption mutator; it preserves current ownership checks and
+replay without launching handlers or reinterpreting a current handler table.
