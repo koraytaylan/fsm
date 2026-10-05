@@ -1,5 +1,18 @@
 # Releasing
 
+Broker lifetime leadership and startup now validate protected configuration,
+authority/boot and lock identity independently of the current handler catalogue;
+provisioning still requires approved catalogue validation. A missing or malformed
+catalogue therefore permits authenticated original-result recovery, including
+broker restart, while new allocation/binding/execution retain their existing
+current-catalogue checks and refuse unavailable approval. Native fixtures require
+original recovery through missing and malformed catalogue faults, unchanged
+allocation counters on refused preparation, live broker retention and restarted
+recovery without the catalogue. This repairs the broker access failure in CI run
+37339071702; current full native/portable/frozen acceptance remains pending.
+No journal, closure, broker configuration, epoch or attestation bytes change.
+
+
 A present verified original cgroup retains an unconditional admission-revocation
 path even when protected handoff corruption prevents matched manager stop;
 absent-domain revocation still requires the verified handoff and original manager

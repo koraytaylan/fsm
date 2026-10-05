@@ -20,7 +20,6 @@ fn configuration(directory: &Path, uid: u32) -> Result<Value, String> {
     if uid == 0 || uid == u32::MAX || (61184..=65519).contains(&uid) {
         return Err("broker operator overlaps privileged or handler identity".into());
     }
-    super::catalogue::read(directory)?;
     Ok(object([
         ("format", Value::Str("fsm.native-broker-config/1".into())),
         (
@@ -57,6 +56,7 @@ pub(super) fn provision(directory: &Path, uid: u32) -> Result<(), String> {
     }
     let _lock = super::authority_lock(directory)?;
     let configuration = configuration(directory, uid)?;
+    super::catalogue::read(directory)?;
     let base = directory.join("broker");
     fs::DirBuilder::new()
         .mode(0o755)

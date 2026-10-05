@@ -2802,4 +2802,21 @@ lifecycle updates.
   full debug/release rerun, native/portable gates, production routing and task
   acceptance remain pending; subset repairs are not full acceptance evidence.
 
+- Frozen 7d2c089 local stable workspace debug gate passes in full with serial
+  tests and compiler/rustdoc warnings denied; its cache log records every
+  workspace target and no failures. CI run 37339071702 passed all earlier
+  native authority controls, then broker access failed with connection refusal:
+  lifetime guard reread the live catalogue, retiring the broker when recovery
+  deliberately removed it. Protected configuration/authority/boot/lock checks
+  now remain independent of current catalogue availability; provisioning and
+  new allocation/binding/execution still validate approval. Native controls add
+  malformed-catalogue recovery, no allocation on missing/malformed approval and
+  restart without the catalogue. SPEC/API/embedding/release record the private
+  guard boundary without changing journal/configuration/receipt/hash bytes;
+  workspace all-targets stable clippy with warnings denied and format/size/diff
+  checks pass. Source review confirms provision, allocation, binding and entry
+  retain separate approval checks, while original recovery uses attested private
+  completion and full original proof. Current frozen debug/release/native/portable
+  gates and production routing remain pending with task 9303 active.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

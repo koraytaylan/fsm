@@ -1521,7 +1521,13 @@ MUST refuse without changing their permissions. Registration MUST explicitly
 apply mode 0755 to its own newly created namespace/authority directories so a
 restrictive mask cannot silently prevent dynamic gate or operator traversal;
 preexisting namespace permissions MUST NOT be broadened. Serving MUST NOT
-recreate missing authority. A root-owned lifetime broker lock MUST exclude a
+recreate missing authority. Provisioning MUST validate the approved catalogue.
+Lifetime guard and server startup MUST validate protected configuration,
+authority/boot and leadership identity independently of the current catalogue;
+a missing or malformed catalogue MUST NOT prevent original-result recovery,
+including after broker restart. New allocation, binding and execution MUST retain
+their separate current-catalogue validation and refuse unavailable approval
+before allocation or handler entry. A root-owned lifetime broker lock MUST exclude a
 second server. Every server startup MUST durably burn a monotonically increasing
 epoch before binding a fresh Unix socket, preserve old sockets, and refuse
 counter rollback, missing epoch history or partial pending counter material.
@@ -1536,7 +1542,7 @@ A broker connection MUST carry exactly one canonical JSON request, prefixed by
 a four-byte big-endian length within 1..8192, acquired within a shared 500 ms
 frame deadline. Its closed shape is `format` (`fsm.native-request/1`), `action`
 and `payload`. The only actions are `prepare` (null payload), `bind` (existing
-claim-binding payload), and `execute`, `close`, `observe` (positive canonical
+claim-binding payload), and `execute`, `close`, `observe`, `recover` (positive canonical
 allocation number). No request may supply a namespace, filesystem path, argv,
 manager command or grant. Dispatch MUST remain bound to the provisioned
 verified authority directory; claim/catalogue/native checks remain mandatory.

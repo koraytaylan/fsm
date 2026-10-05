@@ -208,7 +208,7 @@ fn run_case(timeout: bool) {
     Daemon::refused(&fixture.directory);
     assert!(!base.join("epoch-1.json").exists());
     fs::rename(&saved, &counter_path).unwrap();
-    let daemon = Daemon::ready(&fixture.directory, 1);
+    let mut daemon = Daemon::ready(&fixture.directory, 1);
     let first_socket = base.join("s-1");
     let first_identity = identity(&fs::symlink_metadata(&first_socket).unwrap());
     assert_eq!(fs::symlink_metadata(&first_socket).unwrap().uid(), 65534);
@@ -358,8 +358,31 @@ fn run_case(timeout: bool) {
     // Recovery must use durable original material, even without a live catalogue.
     let catalogue = fixture.directory.join("catalogue.json");
     let saved_catalogue = fixture.directory.join("fixture-catalogue.saved");
+    let allocation_counter = fs::read(fixture.directory.join("counter.json")).unwrap();
     fs::rename(&catalogue, &saved_catalogue).unwrap();
     assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
+    assert_eq!(
+        request(&base, "prepare", Value::Null).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        fs::read(fixture.directory.join("counter.json")).unwrap(),
+        allocation_counter
+    );
+    assert!(daemon.0.try_wait().unwrap().is_none());
+    assert_eq!(fs::read(&counter_path).unwrap(), counter);
+    fs::write(&catalogue, b"{").unwrap();
+    assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
+    assert_eq!(
+        request(&base, "prepare", Value::Null).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        fs::read(fixture.directory.join("counter.json")).unwrap(),
+        allocation_counter
+    );
+    assert!(daemon.0.try_wait().unwrap().is_none());
+    fs::remove_file(&catalogue).unwrap();
     fs::rename(&saved_catalogue, &catalogue).unwrap();
     let saved_completed = fixture.directory.join("fixture-completed.saved");
     fs::rename(&completed, &saved_completed).unwrap();
@@ -740,8 +763,9 @@ fn run_case(timeout: bool) {
     );
     drop(reopened);
     drop(daemon);
-    let daemon = Daemon::ready(&fixture.directory, 2);
+    // Restart with original completion but no current handler catalogue.
     fs::rename(&catalogue, &saved_catalogue).unwrap();
+    let daemon = Daemon::ready(&fixture.directory, 2);
     let recovered_response = request(&base, "recover", Value::Num("1".into()));
     assert_eq!(recovered_response, execution);
     let recovered = fsm_execute::run::native_client::NativeCompletion::verify(
