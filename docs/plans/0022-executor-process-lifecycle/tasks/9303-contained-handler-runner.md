@@ -321,3 +321,19 @@ These operations agree with the native registration/allocation contract and
 existing fault/inventory controls; no further finding was identified here.
 Production route discovery remains an explicit dependent task 9401 obligation,
 and none of these primitives implements it implicitly.
+
+Broker dispatch review at corrected `9f1f175`: bounded canonical closed frames
+allow only prepare/bind and allocation-only execute/close/observe/recover;
+there is no caller command/path or grant-publication action.
+Frame read/write loops charge every retry, including interruption, against a
+shared 500-ms deadline, and session admission retains at most eight owned
+threads, joining completed sessions before reuse.
+Execution observes connection loss, trailing bytes and endpoint guard failure
+through cancellation shared with the same claimed runner, then joins that
+runner before returning; a response failure leaves journal ownership untouched.
+The ordinary helper's lifetime watcher makes owner EOF close its transport,
+without treating helper death as native closure or settlement.
+Native disconnect/trailing-byte and frame-policy controls support these
+dispatch boundaries; no additional finding was identified in this portion.
+Endpoint provisioning/leadership checks and the full frozen range still need
+their remaining review; host shutdown/reconciliation remain dependent tasks.
