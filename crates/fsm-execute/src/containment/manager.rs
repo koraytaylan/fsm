@@ -284,7 +284,15 @@ mod tests {
             drop(writer);
             let mut retained = Vec::with_capacity(4096);
             let mut eof = false;
-            let result = drain(&mut reader, &mut retained, &mut eof);
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let result = loop {
+                let result = drain(&mut reader, &mut retained, &mut eof);
+                if result.is_err() || eof {
+                    break result;
+                }
+                assert!(Instant::now() < deadline, "manager capture EOF timed out");
+                std::thread::sleep(Duration::from_millis(1));
+            };
             assert_eq!(retained.len(), 4096);
             assert_eq!(retained.capacity(), 4096);
             assert_eq!(result.is_ok(), count == 4096);
@@ -306,8 +314,19 @@ mod tests {
         assert_eq!(retained.as_slice(), b"x");
         assert!(!eof);
         drop(writer);
-        drain(&mut reader, &mut retained, &mut eof).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !eof {
+            drain(&mut reader, &mut retained, &mut eof).unwrap();
+            assert!(
+                eof || Instant::now() < deadline,
+                "manager peer EOF timed out"
+            );
+            if !eof {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
         assert!(eof);
+        assert_eq!(retained.as_slice(), b"x");
     }
 
     #[test]

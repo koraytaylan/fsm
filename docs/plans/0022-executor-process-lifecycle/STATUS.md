@@ -1570,4 +1570,17 @@ lifecycle updates.
   queued, process early-root-exit observation, broker/service integration and
   uncertain-start reconciliation remain outstanding, and 9303 stays In progress.
 
+- **Frozen native success retained; portable failure repaired:** run
+  `37281659587` for `e95b4a2` passes both native jobs and zero dependencies;
+  retained stable 1.99.0/MSRV 1.89.0 artifacts independently verify all 76
+  cases against the frozen source/compiler, without claiming executable-byte
+  comparison or production backend acceptance. Its Linux stable portable gate
+  fails the retained-writer unit's assumption that a single nonblocking read
+  must see EOF immediately after dropping the peer. The test now requires
+  actual EOF within the same bounded two-second observation policy, preserving
+  its pre-drop non-EOF and byte checks; exact-limit capture uses that bounded
+  observation too. Other portable jobs remain live, so this is not full gate
+  acceptance; later closure/execution/MCP changes still need their own compiled
+  native review, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
