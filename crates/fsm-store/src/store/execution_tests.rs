@@ -74,6 +74,7 @@ fn proof(store: &Store, claim: &Claim) -> VerifiedClosure {
         )
         .unwrap(),
         journal_claim: store.execution_claim_hash(claim).unwrap(),
+        store_identity: None,
     }
 }
 fn stop(store: &mut Store, claim: &Claim, status: &str, request_id: &str) -> Value {

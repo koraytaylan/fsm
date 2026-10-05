@@ -257,6 +257,10 @@ impl Store {
             return replay;
         }
         self.execution_precondition(request.expected_seq)?;
+        super::execution_evidence::validate_store_identity(
+            request.proof.store_identity,
+            &self.data_dir,
+        )?;
         if self.state.execution.claim_for(instance_id, effect_id) != Some(request.claim) {
             return Err(ErrorObj::new(
                 "store/execution_stale",
@@ -512,6 +516,7 @@ impl Store {
         if let Some(replay) = self.execution_request(request_id, "execution_enabled", &material)? {
             return replay;
         }
+        super::execution_evidence::validate_store_identity(proof.store_identity, &self.data_dir)?;
         if proof.previous_head != format!("sha256:{}", self.journal.last_hash) {
             return Err(ErrorObj::new(
                 "store/execution_evidence",

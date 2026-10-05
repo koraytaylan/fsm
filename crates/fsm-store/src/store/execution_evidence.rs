@@ -14,6 +14,7 @@ use super::ErrorObj;
 pub struct VerifiedClosure {
     pub(super) closure: Closure,
     pub(super) journal_claim: String,
+    pub(super) store_identity: Option<(u64, u64)>,
 }
 
 impl VerifiedClosure {
@@ -58,6 +59,7 @@ impl VerifiedClosure {
             closure: Closure::new(run_id, domain, receipt)
                 .map_err(|error| invalid(error.to_string()))?,
             journal_claim: journal_claim.into(),
+            store_identity: Some(read_store_identity(path)?),
         })
     }
 }
@@ -67,6 +69,7 @@ impl VerifiedClosure {
 pub struct VerifiedQuiescence {
     pub(super) value: Value,
     pub(super) previous_head: String,
+    pub(super) store_identity: Option<(u64, u64)>,
 }
 
 impl VerifiedQuiescence {
@@ -99,6 +102,7 @@ impl VerifiedQuiescence {
         Ok(Self {
             value,
             previous_head: previous_head.into(),
+            store_identity: Some(read_store_identity(path)?),
         })
     }
 }
@@ -148,6 +152,16 @@ fn read_protected(_path: &Path) -> Result<Value, ErrorObj> {
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
 fn read_protected(path: &Path) -> Result<Value, ErrorObj> {
+    let value = read_protected_material(path)?;
+    validate_location(path, &value)?;
+    Ok(value)
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn read_protected_material(path: &Path) -> Result<Value, ErrorObj> {
     use std::fs::OpenOptions;
     use std::io::Read;
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -218,7 +232,6 @@ fn read_protected(path: &Path) -> Result<Value, ErrorObj> {
     if fsm_core::canon::canon_bytes(&value) != content {
         return Err(invalid("native receipt is not canonical"));
     }
-    validate_location(path, &value)?;
     Ok(value)
 }
 
@@ -298,4 +311,83 @@ fn string_number(value: &Value, field: &str) -> Result<u64, ErrorObj> {
         .and_then(Value::as_num)
         .and_then(|raw| raw.parse().ok())
         .ok_or_else(|| invalid(format!("invalid native {field}")))
+}
+
+// Registration metadata is separate from receipt material: historical closure
+// and quiescence bytes and their hash domains remain unchanged.
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn read_store_identity(receipt: &Path) -> Result<(u64, u64), ErrorObj> {
+    let path = receipt
+        .parent()
+        .ok_or_else(|| invalid("missing receipt parent"))?
+        .join("store-identity.json");
+    let value = read_protected_material(&path)?;
+    closed(&value, &["format", "identity"])?;
+    if string(&value, "format")? != "fsm.native-store-identity/1" {
+        return Err(invalid("unknown native store identity format"));
+    }
+    let identity = value
+        .get("identity")
+        .ok_or_else(|| invalid("missing store identity"))?;
+    closed(identity, &["device", "inode"])?;
+    let device = string_number(identity, "device")?;
+    let inode = string_number(identity, "inode")?;
+    if inode == 0 {
+        return Err(invalid("invalid store inode"));
+    }
+    Ok((device, inode))
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+fn read_store_identity(_receipt: &Path) -> Result<(u64, u64), ErrorObj> {
+    Err(invalid(
+        "native store identity requires the provisioned Linux/systemd backend",
+    ))
+}
+
+pub(super) fn validate_store_identity(
+    identity: Option<(u64, u64)>,
+    directory: &Path,
+) -> Result<(), ErrorObj> {
+    // Unit transition fixtures deliberately supply preauthenticated evidence;
+    // native file readers always populate identity and never take this branch.
+    #[cfg(test)]
+    if identity.is_none() {
+        return Ok(());
+    }
+    validate_physical_store(identity, directory)
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn validate_physical_store(identity: Option<(u64, u64)>, directory: &Path) -> Result<(), ErrorObj> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = std::fs::metadata(directory).map_err(|error| invalid(error.to_string()))?;
+    if !metadata.is_dir() || identity != Some((metadata.dev(), metadata.ino())) {
+        return Err(invalid(
+            "native evidence belongs to a different physical store",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+fn validate_physical_store(
+    _identity: Option<(u64, u64)>,
+    _directory: &Path,
+) -> Result<(), ErrorObj> {
+    Err(invalid(
+        "native store identity requires the provisioned Linux/systemd backend",
+    ))
 }

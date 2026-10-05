@@ -2593,4 +2593,17 @@ lifecycle updates.
   37320800330 remains queued and automatic host routing plus full gates remain
   incomplete, so no task acceptance changes.
 
+- Physical-store receipt review found that a copied unresolved journal could
+  otherwise authenticate an original namespace's closure using identical logical
+  claim/hash values; registration now publishes separate protected immutable
+  physical identity metadata, opaque closure/quiescence proofs retain it, and
+  stop/admission writes check the current directory before appending.
+  A disk-copy fixture requires unchanged records/head and retained ownership on
+  refusal, while the original directory accepts the same stopped proof.
+  Historical journal/receipt bytes and hash domains remain unchanged; missing
+  metadata refuses rather than being inferred or repaired, and old provisioned
+  namespaces need reviewed reprovisioning.
+  Source checks pass; compiled/native CI and frozen review remain pending,
+  so task 9303 stays in progress and plans 20–23 remain incomplete.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -1,5 +1,20 @@
 # API and version policy
 
+Native closure and legacy-quiescence file proofs now retain the physical store
+identity from the protected authority's immutable `store-identity.json`;
+new stop/admission writes reject a different directory device/inode with
+`store/execution_evidence`, including a byte-identical copied journal.
+Registration publishes this separate root-owned 0444 bounded canonical
+`fsm.native-store-identity/1` record containing only `format` and the registered
+`identity` (`device`, `inode`); the private registration path remains private.
+Missing, torn or mismatched identity metadata refuses without repairing it.
+Existing journal/receipt formats, hashes and historical bytes are unchanged;
+older provisioned authorities lacking this metadata require operator-reviewed
+reprovisioning and cannot silently infer it from the caller's store.
+This provisional native boundary fix retains the unreleased API/version scope,
+and full compiled/native acceptance and production host routing remain pending.
+
+
 The provisional `run::native_client::NativeCompletion` now checks a successful
 broker response against the original full claim/hash, closed result envelope,
 canonical derived receipt path and existing failure classes, preserving the

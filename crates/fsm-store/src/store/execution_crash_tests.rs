@@ -50,6 +50,7 @@ fn legacy_admission_requires_matching_prefix_and_replays_after_cold_reopen() {
             ("previous_head".into(), Value::Str(previous_head.clone())),
         ])),
         previous_head,
+        store_identity: None,
     };
     let proof = witness(original_head);
     let stale = witness(format!("sha256:{}", "e".repeat(64)));
@@ -66,6 +67,25 @@ fn legacy_admission_requires_matching_prefix_and_replays_after_cold_reopen() {
     assert_eq!(store.journal.last_seq, sequence);
     assert!(!store.state.dedup.contains_key("enable"));
     assert_eq!(store.state.execution.admission(), Admission::Quarantined);
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    {
+        let mut foreign = proof.clone();
+        foreign.store_identity = Some((0, 0));
+        assert_eq!(
+            store
+                .enable_execution_on(&mut clock, &foreign, "enable")
+                .unwrap_err()
+                .code,
+            "store/execution_evidence"
+        );
+        assert_eq!(clock.now, 100);
+        assert_eq!(store.journal.last_seq, sequence);
+        assert_eq!(store.state.execution.admission(), Admission::Quarantined);
+        assert!(!store.state.dedup.contains_key("enable"));
+    }
     let response = store
         .enable_execution_on(&mut clock, &proof, "enable")
         .unwrap();
@@ -765,4 +785,108 @@ fn abrupt_writer_death_preserves_durable_ownership_and_atomic_settlement() {
             ));
         }
     }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[test]
+fn copied_journal_cannot_consume_original_physical_store_closure() {
+    use std::os::unix::fs::MetadataExt;
+    fn copy_tree(source: &Path, target: &Path) {
+        std::fs::create_dir_all(target).unwrap();
+        for entry in std::fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            let destination = target.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_tree(&entry.path(), &destination);
+            } else {
+                std::fs::copy(entry.path(), destination).unwrap();
+            }
+        }
+    }
+    let directory = Directory(std::env::temp_dir().join(format!(
+        "fsm-physical-proof-{}-{}", std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    )));
+    let source = directory.0.join("source");
+    let target = directory.0.join("copy");
+    let (mut store, effect) = pending_store(Store::open(&source).unwrap());
+    allocate(
+        &mut store,
+        &effect,
+        "physical-claim",
+        &mut FixedClock::new(100, 1),
+    )
+    .unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let mut evidence = proof(&store, &claim);
+    let metadata = std::fs::metadata(&source).unwrap();
+    evidence.store_identity = Some((metadata.dev(), metadata.ino()));
+    copy_tree(&source, &target);
+    let mut copied = Store::open(&target).unwrap();
+    assert_eq!(
+        copied.execution_claim_hash(&claim).unwrap(),
+        evidence.journal_claim
+    );
+    let original_records = copied.records.clone();
+    let original_head = copied.journal.last_hash.clone();
+    let outcome =
+        StoppedOutcome::from_value(&json(br#"{"status":"interrupted","result":null}"#)).unwrap();
+    let request = || ExecutionStopRequest {
+        claim: &claim,
+        proof: &evidence,
+        outcome: &outcome,
+        request_id: "physical-stop",
+        expected_seq: None,
+    };
+    assert_eq!(
+        copied
+            .stop_execution_on(&mut FixedClock::new(100, 1), request())
+            .unwrap_err()
+            .code,
+        "store/execution_evidence"
+    );
+    assert_eq!(copied.records, original_records);
+    assert_eq!(copied.journal.last_hash, original_head);
+    assert_eq!(
+        copied.state.execution.claim_for("instance", &effect),
+        Some(&claim)
+    );
+    assert!(
+        copied
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_none()
+    );
+    store
+        .stop_execution_on(&mut FixedClock::new(100, 1), request())
+        .unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_some()
+    );
+    drop(copied);
+    let reopened = Store::open(&target).unwrap();
+    assert_eq!(
+        reopened.state.execution.claim_for("instance", &effect),
+        Some(&claim)
+    );
+    assert!(
+        reopened
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_none()
+    );
 }

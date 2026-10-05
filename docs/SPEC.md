@@ -2154,7 +2154,18 @@ canonical JSON object with `format: "fsm.native-closure/1"`, `domain`, positive
 `run_id`, and `journal_claim` (the canonical SHA-256 hash of the durable claim
 record). The receipt digest uses `fsm:native-closure:1`. A legacy receipt uses
 `format: "fsm.native-quiescence/1"`, `domain` and `previous_head`, with digest
-domain `fsm:native-quiescence:1`. Files are at most 8 KiB. Receipt reference
+domain `fsm:native-quiescence:1`. Files are at most 8 KiB. The authority MUST separately publish an immutable root-owned 0444 canonical
+`store-identity.json` object with exactly `format: "fsm.native-store-identity/1"`
+and `identity` containing exactly u64 `device` and positive u64 `inode` of the
+registered physical store directory, without exposing its private path.
+Native evidence readers MUST apply the same protected bounded regular-file
+checks to this metadata and retain its identity in the opaque proof.
+Before a new stop or legacy-admission write, the store MUST compare its current
+physical directory identity to the proof's registered identity and refuse
+`store/execution_evidence` on missing or mismatched evidence, including a
+byte-identical copied journal; no caller input may repair the metadata.
+These checks MUST NOT alter receipt material or historical hash domains.
+Receipt reference
 constructors remain distinct from opaque file-verified store proof types.
 Native authorities MUST publish these files only after their full closure
 protocol succeeds; root ownership alone does not implement that protocol.

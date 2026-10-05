@@ -336,6 +336,24 @@ fn register(directory: &Path, store_path: &Path) -> Result<(), String> {
             ("identity", identity(&metadata)),
         ]),
     )?;
+    // Public immutable physical identity lets the unprivileged store reject
+    // receipt reuse against a byte-identical copy without exposing its path.
+    let public = directory.join("store-identity.json");
+    let bytes = canon_bytes(&object([
+        ("format", Value::Str("fsm.native-store-identity/1".into())),
+        ("identity", identity(&metadata)),
+    ]));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&public)
+        .map_err(io)?;
+    file.write_all(&bytes).map_err(io)?;
+    file.set_permissions(fs::Permissions::from_mode(0o444))
+        .map_err(io)?;
+    file.sync_all().map_err(io)?;
+    File::open(directory).map_err(io)?.sync_all().map_err(io)?;
     allocator::initialize(directory)
 }
 

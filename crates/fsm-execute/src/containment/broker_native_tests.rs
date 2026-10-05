@@ -316,6 +316,28 @@ fn run_case(timeout: bool) {
     fs::remove_file(&completed).unwrap();
     fs::rename(&saved_completed, &completed).unwrap();
     assert_eq!(fs::read(&completed).unwrap(), completed_bytes);
+    let public_identity = fixture.directory.join("store-identity.json");
+    let identity_metadata = fs::symlink_metadata(&public_identity).unwrap();
+    assert_eq!(identity_metadata.uid(), 0);
+    assert_eq!(identity_metadata.mode() & 0o777, 0o444);
+    let identity_bytes = fs::read(&public_identity).unwrap();
+    let saved_identity = fixture.directory.join("fixture-store-identity.saved");
+    fs::rename(&public_identity, &saved_identity).unwrap();
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    fs::write(&public_identity, b"{").unwrap();
+    fs::set_permissions(&public_identity, fs::Permissions::from_mode(0o444)).unwrap();
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(fs::read(&public_identity).unwrap(), b"{");
+    fs::remove_file(&public_identity).unwrap();
+    fs::rename(&saved_identity, &public_identity).unwrap();
+    assert_eq!(fs::read(&public_identity).unwrap(), identity_bytes);
+    assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
     let result = execution.get("result").unwrap();
     assert_eq!(result.get("claim"), binding.get("claim"));
     assert_eq!(result.get("journal_claim"), binding.get("journal_claim"));
