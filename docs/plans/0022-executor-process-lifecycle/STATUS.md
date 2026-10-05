@@ -1270,4 +1270,19 @@ lifecycle updates.
   and shared runner/service integration remain outstanding, and task 9303
   stays In progress.
 
+- **Independent evidence checks made reproducible:** adopted
+  `verify_native_evidence.py` reads frozen AST inventories without executing
+  them and verifies exact source/compiler, suite/case counts, report hashes,
+  authority named runtime passes/counts/log hashes, I/O cancellation and the
+  expected surviving-domain kill negative control. Replayed stable/MSRV
+  artifacts for `2d487a3` each verify all 75 cases. Eight actual artifact-copy
+  controls reject altered source, aggregate count, case success, log bytes,
+  I/O test identity, negative-control population, production-backend scope
+  and expected compiler; coherent updated report hashes do not conceal
+  semantic failures. Copies are removed after each check. Executable digest
+  syntax is validated, but artifacts omit executable bytes; the verifier
+  explicitly reports `executable_bytes_verified: false` and never claims an
+  independent binary-byte comparison. Newer runtime CI remains queued and
+  full backend/runner acceptance remains incomplete; task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

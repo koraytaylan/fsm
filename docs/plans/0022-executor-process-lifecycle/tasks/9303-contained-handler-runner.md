@@ -9,6 +9,7 @@ gated: false
 touches:
   - crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
   - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py
   - crates/fsm-execute/Cargo.toml
   - crates/fsm-execute/src/containment/
   - crates/fsm-execute/src/run.rs

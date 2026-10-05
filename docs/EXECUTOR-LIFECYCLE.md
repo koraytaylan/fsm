@@ -2,6 +2,17 @@
 
 ## Decision status
 
+Retained native evidence can now be independently rechecked with
+`python3 crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py
+--source-commit <exact-sha> --rustc '<exact compiler identity>'
+--report-dir <downloaded-artifact-directory>`.
+The verifier reads literal inventories from the frozen commit, checks report
+and named-case log hashes, exact runtime pass/counts, compiler/source identity,
+I/O cancellation and the expected live-domain negative control, and retains
+the partial-backend boundary. Executable digest syntax is checked; these
+artifacts omit binary bytes, so independent byte comparison is explicitly
+reported as false. This does not release a native integration gate.
+
 Root-only `observe` reads matched prepared-domain closing/population/freeze
 progress with a bounded no-follow event sample and identity/phase revalidation.
 It creates no lock or record and issues no closure evidence; an empty sample
