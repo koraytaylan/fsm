@@ -69,7 +69,10 @@ mod broker_frame;
 
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("client") {
-        return broker_client::run(&arguments[1..]);
+        return broker_client::run(&arguments[1..], false);
+    }
+    if arguments.first().and_then(|operation| operation.to_str()) == Some("client-watch") {
+        return broker_client::run(&arguments[1..], true);
     }
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);

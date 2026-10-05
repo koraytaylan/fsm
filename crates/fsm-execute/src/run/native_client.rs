@@ -118,11 +118,12 @@ impl NativeRequest {
         protected_helper()?;
         let (input, input_peer) = UnixStream::pair().map_err(message)?;
         input.set_nonblocking(true).map_err(message)?;
+        input_peer.set_nonblocking(true).map_err(message)?;
         let (stdout, output) = Reader::open(RESPONSE_LIMIT + 1)?;
         let (stderr, diagnostics) = Reader::open(4096)?;
         let mut command = Command::new(HELPER);
         command
-            .args(["client", namespace, &generation.to_string()])
+            .args(["client-watch", namespace, &generation.to_string()])
             .env_clear()
             .env("LANG", "C")
             .env("LC_ALL", "C")
@@ -161,15 +162,13 @@ impl NativeRequest {
         if Instant::now() >= self.deadline {
             return self.fail("native client deadline; claim remains uncertain".into());
         }
-        if let Some(input) = &mut self.input {
+        if let Some(input) = &mut self.input
+            && self.written < self.pending.len()
+        {
             match input.write(&self.pending[self.written..]) {
                 Ok(0) => return self.fail("native client request write incomplete".into()),
                 Ok(count) => {
                     self.written += count;
-                    if self.written == self.pending.len() {
-                        self.input.take();
-                        self.pending.clear();
-                    }
                 }
                 Err(error)
                     if matches!(

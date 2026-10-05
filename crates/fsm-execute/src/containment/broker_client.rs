@@ -12,6 +12,78 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+struct Retrying<'a, R> {
+    input: &'a mut R,
+    lifetime: Option<&'a mut dyn Read>,
+    deadline: Option<Instant>,
+}
+
+impl<R: Read> Read for Retrying<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            if self
+                .deadline
+                .is_some_and(|deadline| Instant::now() >= deadline)
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "client frame deadline",
+                ));
+            }
+            if let Some(lifetime) = &mut self.lifetime {
+                let mut byte = [0];
+                match lifetime.read(&mut byte) {
+                    Ok(_) => {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::BrokenPipe,
+                            "client supervisor lost or trailing input",
+                        ));
+                    }
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                        ) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            match self.input.read(buffer) {
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                result => return result,
+            }
+        }
+    }
+}
+
+fn require_nonblocking_stdin() -> Result<(), String> {
+    let mut bytes = Vec::new();
+    fs::File::open("/proc/self/fdinfo/0")
+        .map_err(io)?
+        .take(4097)
+        .read_to_end(&mut bytes)
+        .map_err(io)?;
+    if bytes.len() > 4096 {
+        return Err("client stdin flags exceed bound".into());
+    }
+    let information = std::str::from_utf8(&bytes).map_err(|_| "client stdin flags invalid")?;
+    let flags = information
+        .lines()
+        .find_map(|line| line.strip_prefix("flags:\t"))
+        .ok_or("client stdin flags missing")?;
+    if u64::from_str_radix(flags, 8).map_err(|_| "client stdin flags invalid")? & 0o4000 == 0 {
+        return Err("client lifetime input must be nonblocking".into());
+    }
+    Ok(())
+}
 
 fn route(directory: &Path) -> Result<(Value, PathBuf), String> {
     protected_directory(directory)?;
@@ -75,7 +147,7 @@ fn read_frame(input: &mut impl Read, limit: usize) -> Result<Value, String> {
     Ok(value)
 }
 
-pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
+pub(super) fn run(arguments: &[OsString], supervised: bool) -> Result<(), String> {
     if arguments.len() != 2 {
         return Err("client requires exactly namespace and generation".into());
     }
@@ -83,17 +155,44 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
         arguments[0].to_str().ok_or("client namespace invalid")?,
         arguments[1].to_str().ok_or("client generation invalid")?,
     )?;
-    let request = read_frame(&mut std::io::stdin().lock(), 8192)?;
+    let stdin = std::io::stdin();
+    let mut input = stdin.lock();
+    if supervised {
+        require_nonblocking_stdin()?;
+    }
+    let request = if supervised {
+        read_frame(
+            &mut Retrying {
+                input: &mut input,
+                lifetime: None,
+                deadline: Some(Instant::now() + Duration::from_millis(500)),
+            },
+            8192,
+        )?
+    } else {
+        read_frame(&mut input, 8192)?
+    };
     broker_frame::validate(&request)?;
     let (original, socket) = route(&directory)?;
-    // Connect and blocking reads remain in this supervised, killable process;
-    // no background connection thread or late request survives host abort.
+    // Connect remains in the host-owned killable process.
     let mut stream = UnixStream::connect(&socket).map_err(io)?;
     if route(&directory)? != (original.clone(), socket.clone()) {
         return Err("client route changed before dispatch".into());
     }
     broker_frame::write(&mut stream, &request)?;
-    let response = read_frame(&mut stream, 65536)?;
+    let response = if supervised {
+        stream.set_nonblocking(true).map_err(io)?;
+        read_frame(
+            &mut Retrying {
+                input: &mut stream,
+                lifetime: Some(&mut input),
+                deadline: None,
+            },
+            65536,
+        )?
+    } else {
+        read_frame(&mut stream, 65536)?
+    };
     closed(&response, &["format", "ok", "result"])?;
     if text(&response, "format")? != "fsm.native-response/1"
         || !matches!(response.get("ok"), Some(Value::Bool(_)))
@@ -115,6 +214,45 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn watched_response_refuses_supervisor_eof_and_trailing_input() {
+        for trailing in [false, true] {
+            let (mut lifetime, mut owner) = UnixStream::pair().unwrap();
+            lifetime.set_nonblocking(true).unwrap();
+            if trailing {
+                owner.write_all(b"x").unwrap();
+            } else {
+                drop(owner);
+            }
+            let mut response = Cursor::new(b"response");
+            let mut watched = Retrying {
+                input: &mut response,
+                lifetime: Some(&mut lifetime),
+                deadline: Some(Instant::now() + Duration::from_secs(1)),
+            };
+            assert_eq!(
+                watched.read(&mut [0]).unwrap_err().kind(),
+                std::io::ErrorKind::BrokenPipe
+            );
+            assert_eq!(response.position(), 0);
+        }
+    }
+
+    #[test]
+    fn watched_response_progresses_with_live_supervisor() {
+        let (mut lifetime, _owner) = UnixStream::pair().unwrap();
+        lifetime.set_nonblocking(true).unwrap();
+        let mut response = Cursor::new(b"x");
+        let mut watched = Retrying {
+            input: &mut response,
+            lifetime: Some(&mut lifetime),
+            deadline: Some(Instant::now() + Duration::from_secs(1)),
+        };
+        let mut byte = [0];
+        assert_eq!(watched.read(&mut byte).unwrap(), 1);
+        assert_eq!(byte, *b"x");
+    }
 
     #[test]
     fn supervised_helper_refuses_bad_lengths_partial_and_noncanonical_frames() {
