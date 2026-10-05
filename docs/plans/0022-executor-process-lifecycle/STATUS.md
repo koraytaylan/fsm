@@ -2250,4 +2250,14 @@ lifecycle updates.
   queued, compiled native/full portable gates remain pending, and this is host
   adapter coverage rather than completed standalone/embedded/public-tick routing.
 
+- Extended the positive native host with an independent unprivileged process
+  holding the registered store's actual writer lease from before host polling
+  through original-claim-matched completion; bounded readiness/release barriers
+  check the writer remains alive, then release it before existing stopped and
+  settlement stages. The fixture owns helper streams and bounds cleanup without
+  treating writer/helper death as native closure. This checks observation under
+  genuine writer contention, not timeout/contention or automatic service recovery.
+  Formatting/size/diff checks pass; compiled CI (`b651c1f` run `37308300417`) is
+  queued, all native/portable acceptance and full host integration remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

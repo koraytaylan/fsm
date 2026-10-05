@@ -45,6 +45,7 @@ fn complete(binding: Value) {
         .unwrap();
     let negative = matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1"))
         || matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1"));
+    let mut contention = None;
     let mut owned = if negative {
         NativeRun::start(&claim, hash, Duration::from_secs(30)).unwrap()
     } else {
@@ -61,6 +62,7 @@ fn complete(binding: Value) {
         assert_eq!(store.records.len(), records);
         assert_eq!(store.state, state);
         drop(store);
+        contention = Some(WriterHolder::start(&path));
         owned
     };
     assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
@@ -114,7 +116,18 @@ fn complete(binding: Value) {
         return;
     }
     loop {
+        if let Some(holder) = &mut contention {
+            assert!(
+                holder.child.try_wait().unwrap().is_none(),
+                "independent writer exited early"
+            );
+        }
         if let Some(completion) = owned.poll().unwrap() {
+            let mut holder = contention
+                .take()
+                .expect("positive native run requires independent writer contention");
+            assert!(holder.child.try_wait().unwrap().is_none());
+            holder.release();
             assert_eq!(owned.progress().phase, NativeRunPhase::Closed);
             let helper = owned.progress().helper;
             assert!(helper.reaped && helper.stdout_eof && helper.stderr_eof);
@@ -171,4 +184,123 @@ fn assert_retired_uncertain(owned: &NativeRun) {
     assert_eq!(progress.phase, NativeRunPhase::Uncertain);
     assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);
     assert_eq!(owned.progress(), progress);
+}
+
+#[test]
+#[ignore = "invoked only by the unprivileged native supervisor"]
+fn writer_holder() {
+    use std::io::Read;
+    let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
+    let store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
+    println!("\nFSM_NATIVE_WRITER_READY");
+    use std::io::Write;
+    std::io::stdout().flush().unwrap();
+    let mut byte = [0];
+    let _ = std::io::stdin().read(&mut byte).unwrap();
+    drop(store);
+}
+
+struct WriterHolder {
+    child: std::process::Child,
+    input: Option<std::os::unix::net::UnixStream>,
+    output: std::os::unix::net::UnixStream,
+}
+
+impl WriterHolder {
+    fn start(path: &str) -> Self {
+        use std::io::Read;
+        use std::os::fd::OwnedFd;
+        use std::os::unix::net::UnixStream;
+        use std::process::{Command, Stdio};
+        let (input, child_input) = UnixStream::pair().unwrap();
+        let (output, child_output) = UnixStream::pair().unwrap();
+        output.set_nonblocking(true).unwrap();
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "authority::allocator::native_tests::supervisor_probe::writer_holder",
+                "--ignored",
+                "--nocapture",
+                "--color",
+                "never",
+            ])
+            .env("FSM_NATIVE_TEST_STORE", path)
+            .stdin(Stdio::from(OwnedFd::from(child_input)))
+            .stdout(Stdio::from(OwnedFd::from(child_output)))
+            .stderr(Stdio::null());
+        let child = command.spawn().unwrap();
+        drop(command);
+        let mut owned = Self {
+            child,
+            input: Some(input),
+            output,
+        };
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut bytes = Vec::new();
+        let mut buffer = [0; 1024];
+        loop {
+            match owned.output.read(&mut buffer) {
+                Ok(0) => panic!("independent writer output closed before readiness"),
+                Ok(read) => {
+                    bytes.extend_from_slice(&buffer[..read]);
+                    assert!(bytes.len() <= 8192);
+                    if bytes
+                        .split(|byte| *byte == b'\n')
+                        .any(|line| line == b"FSM_NATIVE_WRITER_READY")
+                    {
+                        break;
+                    }
+                }
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                    ) => {}
+                Err(error) => panic!("independent writer readiness read failed: {error}"),
+            }
+            assert!(
+                owned.child.try_wait().unwrap().is_none(),
+                "independent writer did not acquire lease"
+            );
+            assert!(
+                Instant::now() < deadline,
+                "independent writer readiness deadline"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        owned
+    }
+
+    fn release(&mut self) {
+        self.input.take();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                assert!(status.success(), "independent writer release failed");
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "independent writer release deadline"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+impl Drop for WriterHolder {
+    fn drop(&mut self) {
+        self.input.take();
+        if self.child.try_wait().is_ok_and(|status| status.is_none()) {
+            let _ = self.child.kill();
+        }
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline {
+            match self.child.try_wait() {
+                Ok(None) => std::thread::sleep(Duration::from_millis(5)),
+                Ok(Some(_)) | Err(_) => break,
+            }
+        }
+    }
 }
