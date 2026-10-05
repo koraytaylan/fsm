@@ -785,3 +785,55 @@ fn a_cancelled_instances_deadlines_are_never_due() {
     let observation = watcher.scan(i64::MAX).unwrap();
     assert!(observation.due_deadlines.is_empty());
 }
+
+#[test]
+fn cancelled_effect_ownership_survives_scan_without_handlers_or_writer_access() {
+    use fsm_core::record::execution::{NativeDomain, RetryPolicy};
+    use fsm_store::store::ExecutionClaimRequest;
+
+    let directory = TestDirectory::create("watch-owned-cancelled");
+    let mut writer = Writer::open(&directory);
+    writer.define_and_create("case-1");
+    writer.send("case-1", "submit");
+    let effect_id = writer.pending("case-1")[0].clone();
+    // Structural identity exercises persistence, not native closure authentication.
+    let domain = NativeDomain::from_value(&parse(br#"{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}"#, &JsonLimits::DEFAULT).unwrap()).unwrap();
+    let retry = RetryPolicy::from_value(
+        &parse(
+            br#"{"attempts":3,"backoff_ms":10,"max_backoff_ms":40,"on":["timeout"]}"#,
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    writer.store.claim_execution_on(&mut writer.clock, ExecutionClaimRequest {
+        instance_id: "case-1", effect_id: &effect_id,
+        handler_fingerprint: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        retry: &retry, domain: &domain, request_id: "owned-claim", expected_seq: None,
+    }).unwrap();
+    let original = writer
+        .store
+        .state
+        .execution
+        .unresolved()
+        .next()
+        .unwrap()
+        .0
+        .clone();
+    writer.cancel("case-1");
+    let prefix = writer.store.journal.last_seq;
+    let mut watcher = Watcher::new(directory.path().to_path_buf(), BTreeSet::new());
+    // Keep the writer held: this scan must still succeed without changing its prefix.
+    let observed = scan(&mut watcher);
+    assert_eq!(observed.to_seq, prefix);
+    assert!(observed.pending.is_empty());
+    assert_eq!(observed.execution_owners, vec![(original.clone(), None)]);
+    assert_eq!(writer.store.journal.last_seq, prefix);
+    drop(writer);
+    let cold = scan(&mut Watcher::new(
+        directory.path().to_path_buf(),
+        BTreeSet::new(),
+    ));
+    assert_eq!(cold.to_seq, prefix);
+    assert_eq!(cold.execution_owners, vec![(original, None)]);
+}
