@@ -386,3 +386,17 @@ and provisioned native stop controls support this portion; no additional
 finding was identified, and earlier unexplained manager deadline failure
 remains retained evidence rather than a reason to relax deadlines.
 Complete-range review reconciliation and frozen local gates remain outstanding.
+
+Changed-file reconciliation at corrected `9f1f175` identifies remaining direct
+review of core ownership deltas, authority publication/read helpers and dispatch,
+catalogue validation, process-root exit projection, NativePreparation and the
+historical Runner/MCP-client changes, plus evidence verifier/test harness deltas;
+the reviewed slices above do not silently cover those files.
+The additional observation/unlaunched-closure slice requires exact protected
+bounded populated/frozen events and repeated original domain/phase identity;
+population is never a receipt. Unlaunched closure refuses any visible or pending
+submission/handoff/manager record, durably revokes, independently proves manager
+retirement and original group absence, rechecks original records, then publishes
+the same immutable receipt; it cannot resolve an uncertain submitted launch.
+No additional finding was identified in this slice; acceptance still requires
+the explicitly remaining file review and corrected-source/local gates.
