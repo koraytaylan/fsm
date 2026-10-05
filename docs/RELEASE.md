@@ -776,3 +776,9 @@ are unchanged. Publication syncs the record and parent before success; missing
 or torn completion records retain ownership uncertainty. Recovery revalidates
 original contract/claim and native closure without current catalogue lookup,
 and does not release service integration or native acceptance gates.
+
+Never-launched native closure now uses the existing bounded exact observation
+and repeated original-domain, closing and manager-retirement checks before
+nonrecursive removal of a present empty cgroup. An isolated `populated 0` line
+is insufficient. This preserves existing journal, receipt and response formats;
+the production native gate remains unreleased.

@@ -809,3 +809,9 @@ allocation before writer-held claiming, returning one original-route domain
 only after successful helper retirement/EOF within the deadline. Metadata and
 helper progress grant neither ownership, native closure nor handler entry;
 uncertain preparation cannot authorize a fallback. Published bytes are unchanged.
+
+Never-launched native closure now uses the existing bounded exact observation
+and repeated original-domain, closing and manager-retirement checks before
+nonrecursive removal of a present empty cgroup. An isolated `populated 0` line
+is insufficient. This preserves existing journal, receipt and response formats;
+the production native gate remains unreleased.

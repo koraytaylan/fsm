@@ -2012,3 +2012,9 @@ Uncertain progress contains no paths, argv or secrets and does not prove closure
 or claim ownership; cancelled/refused allocation can remain uncertain. A host
 must still use a healthy writer to claim the returned domain before binding or
 launch, and automatic service backend selection remains integration work.
+
+Never-launched native closure now uses the existing bounded exact observation
+and repeated original-domain, closing and manager-retirement checks before
+nonrecursive removal of a present empty cgroup. An isolated `populated 0` line
+is insufficient. This preserves existing journal, receipt and response formats;
+the production native gate remains unreleased.

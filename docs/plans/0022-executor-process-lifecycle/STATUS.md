@@ -2925,4 +2925,15 @@ lifecycle updates.
   and fresh full portable gates remain pending; this failed run is not proof
   of nonce authentication, and task 9303 remains in progress.
 
+- Review repair routes never-launched residual cgroup removal through the same
+  remove_empty helper as completed submissions, eliminating an unbounded
+  read_to_string and permissive populated-line scan. Existing observation
+  parser fault tests cover duplicate/missing/unknown/noncanonical samples;
+  genuine_claim_binding retains native never-launched refusal, removal,
+  incomplete-receipt and cold-retry controls. This changes no published bytes
+  or hash domains and does not establish native runtime acceptance; full
+  current-source gates and task 9303 acceptance remain pending. Stable authority
+  units pass 24 with 14 provisioned controls ignored, and warning-denied stable
+  workspace all-target clippy, formatting and size/diff checks pass.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -1675,7 +1675,11 @@ Complete-close MAY publish matching closure for a protected bound allocation
 that never launched only while retaining the authority lock, with exact absence
 of launch intent, handoff and manager stop/retirement records, durable entry
 revocation, empty manager unit/job inventory, and the original empty cgroup
-removed or absent after durable revocation. A present or partial launch intent
+removed or absent after durable revocation. Before removing a present domain,
+this path MUST use the same bounded exact native observation and repeated
+prepared-domain/closing/manager-retirement checks as completed-submission
+closure; finding a `populated 0` line alone MUST NOT authorize removal.
+A present or partial launch intent
 MUST retain the completed-handoff requirement. Cold retry after cgroup removal
 MUST recheck the durable revocation and all absence conditions before publishing
 the ordinary immutable receipt; it MUST NOT fabricate a handoff or manager stop.

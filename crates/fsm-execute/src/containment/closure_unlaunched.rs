@@ -42,21 +42,7 @@ pub(super) fn complete(
     if !manager::retired(&unit, deadline)? {
         return Err("unlaunched manager still owns unit or job".into());
     }
-    if !absent(&group)? {
-        let observed = fs::symlink_metadata(&group).map_err(io)?;
-        if !observed.is_dir()
-            || observed.uid() != 0
-            || observed.mode() & 0o022 != 0
-            || domain.get("cgroup") != Some(&super::super::identity(&observed))
-            || !fs::read_to_string(group.join("cgroup.events"))
-                .map_err(io)?
-                .lines()
-                .any(|line| line == "populated 0")
-        {
-            return Err("unlaunched domain identity or emptiness differs".into());
-        }
-        fs::remove_dir(&group).map_err(io)?;
-    }
+    super::remove_empty(directory, allocation, domain, &unit, &group, deadline)?;
     if !manager::retired(&unit, deadline)? || !absent(&group)? {
         return Err("unlaunched native retirement differs".into());
     }
