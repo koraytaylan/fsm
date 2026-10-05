@@ -117,7 +117,11 @@ def exercise(native_binary, store_binary):
         passed("premature-closure-refusal")
         invoke("launch:" + native_handle, privileged=True)
         wait_file(work / "root-ready")
-        wait_file(work / "descendant-ready")
+        wait_file(work / "ready")
+        assert (work / "descendant-cgroup").read_text() == f"0::/system.slice/{unit}\n"
+        (work / "challenge").write_text("fresh evidence bridge liveness challenge")
+        wait_file(work / "response")
+        assert (work / "response").read_text() == "alive"
         assert "populated 1" in (cgroup / "cgroup.events").read_text()
         invoke("close:" + native_handle, privileged=True)
         assert not cgroup.exists()

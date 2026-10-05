@@ -641,4 +641,12 @@ lifecycle updates.
   response through the existing explicit privileged read path, preserving its
   permissions; native acceptance remains unproven until a complete rerun.
 
+- **Native bridge liveness barrier corrected:** the `fca4f6b` rerun reached
+  real durable binding, both pre-launch refusals, premature-publication refusal
+  and native launch, then failed because the driver requested a nonexistent
+  descendant-specific readiness filename. The reused fixture's documented
+  `ready` handshake now replaces it, with exact descendant cgroup membership
+  and a fresh liveness challenge/response before closing. Owned cleanup ran;
+  this failed run does not establish native receipt acceptance.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
