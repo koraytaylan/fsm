@@ -261,7 +261,11 @@ fn writer_holder() {
     let store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
     println!("\nFSM_NATIVE_WRITER_READY");
     std::io::stdout().flush().unwrap();
-    let _ = std::io::stdin().read(&mut byte).unwrap();
+    assert_eq!(
+        std::io::stdin().read(&mut byte).unwrap(),
+        0,
+        "independent writer release requires EOF"
+    );
     drop(store);
 }
 

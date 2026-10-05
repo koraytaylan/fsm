@@ -2364,4 +2364,12 @@ lifecycle updates.
   unverified. Current inventory-fix run `37311042697` at `c98c4fe` is queued;
   full six-axis/native acceptance and production integration remain required.
 
+- Tightened the independent writer probe's release barrier to require actual
+  stdin EOF instead of discarding the read byte count; stray release bytes now
+  fail the control and the strict I/O-amount lint has an explicit observation.
+  This changes only test barrier verification, not native closure authority or
+  journal semantics. Formatting/size/diff checks pass; `a68eddd` run
+  `37311223444` is queued, compiled native/portable gates and complete host
+  integration remain outstanding, and task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
