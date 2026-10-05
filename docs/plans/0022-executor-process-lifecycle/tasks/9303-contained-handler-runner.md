@@ -370,3 +370,19 @@ Native corrupted-handoff, refusal and original-identity termination controls
 support these boundaries; no additional finding was identified in this portion.
 Manager observation/retirement parsing and complete-range reconciliation remain
 to review before aggregate acceptance.
+
+Manager observation review at corrected `9f1f175`: fixed protected systemctl
+queries clear the environment and use nonblocking bounded output/diagnostics;
+each drain has a fixed iteration budget, including interrupted reads, and
+successful observation requires actual helper reap plus both EOFs.
+Property parsing rejects missing/extra/duplicate keys; retirement requires
+the original unit absent from loaded inventory and no matching queued job,
+rejecting malformed or noncanonical job rows rather than guessing retirement.
+Failed-unit reset requires original invocation and ExecMainPID after stop and
+does not supply closure; original cgroup absence and repeated retirement remain
+the complete-close protocol's responsibility.
+Exact capture limit/plus-one, retained-peer, expired-query, property/job parser
+and provisioned native stop controls support this portion; no additional
+finding was identified, and earlier unexplained manager deadline failure
+remains retained evidence rather than a reason to relax deadlines.
+Complete-range review reconciliation and frozen local gates remain outstanding.
