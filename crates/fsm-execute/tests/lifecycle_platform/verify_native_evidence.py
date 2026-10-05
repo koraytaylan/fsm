@@ -28,13 +28,15 @@ def bounded(path):
     return encoded
 
 
-def literal(repo, commit, file, name):
+def literal(repo, commit, file, name, optional=False):
     source = subprocess.check_output([
         'git', 'show', f'{commit}:crates/fsm-execute/tests/lifecycle_platform/{file}.py',
     ], cwd=repo, text=True)
     values = [ast.literal_eval(node.value) for node in ast.walk(ast.parse(source))
               if isinstance(node, ast.Assign)
               and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+    if optional and not values:
+        return None
     require(len(values) == 1, file + ': ambiguous frozen inventory')
     return values[0]
 
@@ -81,6 +83,17 @@ def verify(repo, directory, commit, rustc):
             require(report['scope'] == 'native-store-evidence-bridge'
                     and report['production_backend'] is False
                     and digest(report['native_fixture_sha256']), 'store bridge scope differs')
+            identity_required = literal(repo, commit, 'evidence_probe', 'STORE_IDENTITY_REQUIRED', optional=True)
+            require(identity_required is None or identity_required is True, 'invalid frozen store identity requirement')
+            if identity_required is True:
+                receipt_case = next(case for case in report['cases'] if case['case'] == 'native-closure-receipt')
+                identity = receipt_case['physical_store_identity']
+                require(isinstance(identity, dict) and set(identity) == {'device', 'inode'}
+                        and type(identity['device']) is int and 0 <= identity['device'] < 2**64
+                        and type(identity['inode']) is int and 0 < identity['inode'] < 2**64,
+                        'store bridge physical identity missing or invalid')
+                require(receipt_case['missing_torn_symlink_writable_identity_refused'] is True,
+                        'store bridge metadata refusal controls missing')
         if name == 'authority':
             require(report['scope'] == 'production-authority-allocation'
                     and report['production_allocator'] is True

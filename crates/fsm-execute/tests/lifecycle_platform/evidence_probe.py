@@ -18,6 +18,8 @@ import uuid
 from identity_probe import handle, wait_file
 from systemd_probe import command
 
+STORE_IDENTITY_REQUIRED = True
+
 INVENTORY = ("unprivileged-bind-refusal", "unbound-launch-refusal", "durable-claim-binding",
              "premature-closure-refusal", "native-closure-receipt",
              "writable-receipt-refusal", "symlink-receipt-refusal",
@@ -132,9 +134,38 @@ def exercise(native_binary, store_binary):
         material = json.loads(encoded)
         assert material["domain"] == domain and material["journal_claim"] == binding["journal_claim"]
         assert encoded == json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
+        public_identity = authority / "store-identity.json"
+        identity_bytes = public_identity.read_bytes()
+        identity_record = json.loads(identity_bytes)
+        store_identity = (work / "store").stat()
+        assert identity_record == {"format": "fsm.native-store-identity/1",
+                                   "identity": {"device": store_identity.st_dev,
+                                                "inode": store_identity.st_ino}}
+        assert identity_bytes == json.dumps(identity_record, sort_keys=True, separators=(",", ":")).encode()
+        identity_metadata = public_identity.lstat()
+        assert identity_metadata.st_uid == 0 and identity_metadata.st_mode & 0o777 == 0o444
+        invoke("read")
+        saved_identity = public_identity.with_suffix(".saved")
+        command(["sudo", "-n", "mv", str(public_identity), str(saved_identity)])
+        invoke("refuse")
+        command(["sudo", "-n", "tee", str(public_identity)], input="{")
+        command(["sudo", "-n", "chmod", "444", str(public_identity)])
+        invoke("refuse")
+        assert public_identity.read_bytes() == b"{"
+        command(["sudo", "-n", "rm", "--", str(public_identity)])
+        command(["sudo", "-n", "ln", "-s", str(saved_identity), str(public_identity)])
+        invoke("refuse")
+        command(["sudo", "-n", "rm", "--", str(public_identity)])
+        command(["sudo", "-n", "mv", str(saved_identity), str(public_identity)])
+        command(["sudo", "-n", "chmod", "644", str(public_identity)])
+        invoke("refuse")
+        command(["sudo", "-n", "chmod", "444", str(public_identity)])
+        assert public_identity.read_bytes() == identity_bytes
         invoke("read")
         passed("native-closure-receipt", receipt_sha256=hashlib.sha256(encoded).hexdigest(),
-               cgroup_removed=True, real_descendant_before_close=True)
+               cgroup_removed=True, real_descendant_before_close=True,
+               physical_store_identity=identity_record["identity"],
+               missing_torn_symlink_writable_identity_refused=True)
         command(["sudo", "-n", "chmod", "644", str(receipt)])
         invoke("refuse")
         command(["sudo", "-n", "chmod", "444", str(receipt)])

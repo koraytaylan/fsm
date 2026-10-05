@@ -1280,3 +1280,15 @@ contract, class and closure while the independent writer lease remains held,
 then retain ownership until writer-held stop/settlement; missing completion
 controls remain retired-but-Uncertain and never bind or launch as fallback.
 This remains a building block for automatic service recovery.
+
+The independent native store-evidence fixture now publishes the separate
+protected physical-store identity metadata at Root binding, before handler
+launch, matching the current native proof reader; the evidence driver checks its
+canonical bytes, Root ownership and 0444 mode and requires missing, torn,
+symlinked and writable metadata to refuse before restoring only fixture-owned
+files. Production proof reads never repair or infer this metadata. The systemd
+primitive probe allows at most three seconds after a completed manager stop to
+observe actual removal of the original cgroup and refuses identity replacement;
+manager inactivity or an empty but still-present cgroup never proves closure.
+These fixture refinements preserve published receipt/journal bytes and the full
+native acceptance gate, whose current CI/review status remains pending.

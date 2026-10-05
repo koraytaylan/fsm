@@ -153,6 +153,31 @@ fn bind(base: &Path) -> Result<(), String> {
     if path.exists() {
         return Err("native allocation is already journal-bound".into());
     }
+    let store = fs::symlink_metadata(base.join("work/store")).map_err(|error| error.to_string())?;
+    if !store.is_dir() {
+        return Err("native fixture store is not a physical directory".into());
+    }
+    let public = authority(&claim)?.join("store-identity.json");
+    if public.exists() {
+        return Err("native fixture store identity is already registered".into());
+    }
+    let registration = Value::Obj(BTreeMap::from([
+        (
+            "format".into(),
+            Value::Str("fsm.native-store-identity/1".into()),
+        ),
+        (
+            "identity".into(),
+            Value::Obj(BTreeMap::from([
+                ("device".into(), Value::Num(store.dev().to_string())),
+                ("inode".into(), Value::Num(store.ino().to_string())),
+            ])),
+        ),
+    ]));
+    identity_root::put_public(
+        &public,
+        std::str::from_utf8(&canon_bytes(&registration)).unwrap(),
+    )?;
     identity_root::put(&path, std::str::from_utf8(&canon_bytes(&binding)).unwrap())
 }
 

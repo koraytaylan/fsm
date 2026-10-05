@@ -938,7 +938,7 @@ fn current_claim_hash_requires_complete_identity_and_survives_stopping() {
             .code,
         "store/execution_stale"
     );
-    assert_eq!(store.state, before);
+    assert!(crate::snapshot::store_states_eq(&store.state, &before));
     assert_eq!(store.records.len(), count);
     stop(&mut store, &claim, "timeout", "hash-stop");
     assert_eq!(

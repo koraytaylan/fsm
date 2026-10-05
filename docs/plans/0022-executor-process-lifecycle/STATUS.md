@@ -2637,4 +2637,27 @@ lifecycle updates.
   macOS jobs remain queued; no failed/queued job was restarted or canceled.
   Source checks pass, compiled/native verification remains pending.
 
+- CI review of owned-host commit 03b82cf, run 37327572524, confirms stable
+  systemd/identity/broker/window/signal/restart/facility primitive suites passed,
+  then the independent older store-evidence fixture refused its first receipt
+  read because it lacked newly required physical-store registration metadata.
+  Its Root binding fixture now captures the physical store identity before
+  handler launch and publishes the same separate protected metadata; the driver
+  verifies canonical bytes/Root ownership/0444 mode plus missing, torn, symlink
+  and writable metadata refusal without repairing anything during proof reads.
+  The frozen-source verifier requires the new physical identity/refusal evidence
+  for sources declaring it, preserving historical sources without that requirement;
+  the completed portable gate exposed one remaining StoreState comparison in
+  the store unit fixture, now corrected with its existing complete comparison helper.
+  The systemd probe now waits at most three seconds for actual original cgroup
+  removal after manager stop, rejecting a replaced identity or still-present
+  domain; inactive/populated-0 observations alone still cannot pass closure.
+  Task 9303 adopts these fixture/probe changes without changing accepted 9302
+  journal formats; source formatting, file-size/diff checks, Python syntax and
+  bounded removal/refusal controls pass; the enhanced verifier still validates
+  frozen f4ba7482 stable/MSRV reports (78 cases each), without claiming those
+  historical reports verify the new source or executable bytes. Full current
+  compiled/native/portable verification and production routing remain incomplete,
+  with no task acceptance changes.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

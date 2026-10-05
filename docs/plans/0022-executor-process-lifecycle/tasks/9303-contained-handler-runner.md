@@ -10,6 +10,9 @@ touches:
   - crates/fsm-core/src/record/execution/ownership.rs
   - crates/fsm-core/src/record/execution/ownership_values.rs
   - crates/fsm-core/tests/execution_ownership.rs
+  - crates/fsm-store/tests/execution_native/fixture.rs
+  - crates/fsm-execute/tests/lifecycle_platform/evidence_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/systemd_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
   - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/authority_install.py

@@ -41,6 +41,19 @@ def await_file(path, process, timeout=4):
         time.sleep(.005)
 
 
+def await_removed(directory, original, timeout=3):
+    """Require actual original-domain absence; manager inactivity is insufficient."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            observed = directory.stat()
+        except FileNotFoundError:
+            return
+        assert (observed.st_dev, observed.st_ino) == original, "native domain identity replaced during stop"
+        assert time.monotonic() < deadline, "domain still exists after stop"
+        time.sleep(.005)
+
+
 def show(unit):
     output = command(["systemctl", "show", unit, "--property=ActiveState",
                       "--property=InvocationID", "--property=ControlGroup"])
@@ -119,6 +132,8 @@ def run_case(binary, case, neutralize=False):
         assert show(unit)["ActiveState"] == "active"
         cgroup = Path("/sys/fs/cgroup") / state["ControlGroup"].lstrip("/")
         assert cgroup.is_dir()
+        cgroup_metadata = cgroup.stat()
+        cgroup_identity = (cgroup_metadata.st_dev, cgroup_metadata.st_ino)
         started = time.monotonic()
         if case == "frozen-stop":
             command(["sudo", "-n", "tee", str(cgroup / "cgroup.freeze")], input="1\n")
@@ -161,6 +176,7 @@ def run_case(binary, case, neutralize=False):
         stopped = show(unit)
         assert stopped["ActiveState"] in ("inactive", "failed"), stopped
         assert not stopped["ControlGroup"], stopped
+        await_removed(cgroup, cgroup_identity)
         assert not cgroup.exists(), "domain still exists after stop"
         stdout, stderr = process.communicate(timeout=3)
         closed = True
