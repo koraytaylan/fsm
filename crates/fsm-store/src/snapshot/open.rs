@@ -12,6 +12,9 @@ pub fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
     if a.last_seq != b.last_seq || a.last_hash != b.last_hash {
         return false;
     }
+    if a.execution != b.execution {
+        return false;
+    }
     if a.dedup != b.dedup {
         return false;
     }

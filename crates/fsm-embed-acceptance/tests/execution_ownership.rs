@@ -48,6 +48,16 @@ fn external_caller_can_construct_stop_settle_and_restore_execution_ownership() {
     state.stop(&claim, Stopped::new(closure, outcome)).unwrap();
     let mut restored = ExecutionState::from_value(&state.to_value()).unwrap();
     assert!(restored.stopped_for("instance", "effect").is_some());
+    let mut projected = fsm_core::replay::StoreState {
+        execution: restored.clone(),
+        ..fsm_core::replay::StoreState::default()
+    };
+    assert_eq!(projected.execution.unresolved().count(), 1);
+    projected.retain_pending_execution();
+    assert_eq!(
+        projected.execution, restored,
+        "unresolved ownership survives removal of its effect"
+    );
     restored
         .settle(&claim, Settlement::Acked, PendingEffect::Present, 100)
         .unwrap();

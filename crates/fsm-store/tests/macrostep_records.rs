@@ -92,6 +92,10 @@ fn a_non_reactive_session_writes_the_bytes_the_pre_change_build_wrote() {
         .poll_instance_deadline_on(&mut late, "inst-1", "poll-2", None)
         .unwrap();
     let bytes = journal_lines(&store);
+    assert_eq!(
+        store.records[0].body.get("execution_admission"),
+        Some(&Value::Str("enabled".into()))
+    );
     if std::env::var_os("FSM_REGEN_FIXTURES").is_some() {
         std::fs::write(FIXTURE, &bytes).unwrap();
     }
@@ -386,6 +390,12 @@ fn without_state_hashes(line: &[u8]) -> Vec<u8> {
     let Ok(mut value) = parse(line, &JsonLimits::DEFAULT) else {
         return line.to_vec();
     };
+    if value.get("kind").and_then(Value::as_str) == Some("genesis")
+        && let Value::Obj(object) = &mut value
+        && let Some(Value::Obj(body)) = object.get_mut("body")
+    {
+        body.remove("execution_admission");
+    }
     fn scrub(value: &mut Value) {
         if let Value::Obj(fields) = value {
             for (name, inner) in fields.iter_mut() {

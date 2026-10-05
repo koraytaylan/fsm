@@ -879,6 +879,16 @@ fn all_codes_hygiene() {
         assert!(seen.insert(*c), "dup {c}");
     }
     const ALLOW: &[&str] = &[
+        // Execution ownership methods are Rust store APIs; no MCP tool exposes them.
+        "store/execution_contract",
+        "store/execution_disposition",
+        "store/execution_evidence",
+        "store/execution_exhausted",
+        "store/execution_limit",
+        "store/execution_owned",
+        "store/execution_quarantined",
+        "store/execution_retry",
+        "store/execution_stale",
         "io/read",
         "io/write",
         "store/chain_broken",

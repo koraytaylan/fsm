@@ -39,6 +39,7 @@ impl Store {
     }
 
     pub(super) fn note_record(&mut self, rec: &Record) {
+        self.state.retain_pending_execution();
         if rec.kind == fsm_core::record::RecordKind::MachineDefined
             && let Some(machine_id) = rec
                 .body

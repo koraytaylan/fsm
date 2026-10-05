@@ -34,6 +34,7 @@ pub(super) fn write_genesis_unlocked(jdir: &Path) -> Result<(), JournalIoError> 
         Value::Num(crate::clock::now_ms().to_string()),
     );
     body.insert("limits".into(), limits_value());
+    body.insert("execution_admission".into(), Value::Str("enabled".into()));
     let rec = seal(
         0,
         crate::clock::now_ms(),

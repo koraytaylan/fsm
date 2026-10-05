@@ -1,7 +1,8 @@
-//! Byte-exact golden for a parallel `fsm.snapshot/5` with an active deadline.
+//! Byte-exact golden for a parallel `fsm.snapshot/6` with an active deadline.
 //!
-//! Preserve this historical fixture; snapshot/6 skips the obsolete cache
-//! and reconstructs the authoritative journal rather than reinterpreting it.
+//! Regenerate with `REGEN_SNAPSHOT=1`. A snapshot is a disposable cache, so a
+//! version bump replaces this golden rather than migrating it — an older
+//! snapshot beside a current journal is skipped and the journal folded.
 
 use std::collections::BTreeMap;
 
@@ -12,7 +13,7 @@ use fsm_core::machine::{ActiveConfiguration, InstanceState, Status};
 use fsm_core::replay::{RequestSlot, StoreState, StoredMachine};
 use fsm_core::spec::compile_accepted;
 use fsm_core::tree::Tree;
-use fsm_store::snapshot::snapshot_to_state;
+use fsm_store::snapshot::{snapshot_to_state, state_to_snapshot};
 
 const MACHINE_ID: &str =
     "timed_parallel@sha256:d8921831c274663db25974be4c7bb4c9fcd6590a0357ed1bcd81d68384568811";
@@ -76,9 +77,14 @@ fn state_from_literal_machine() -> StoreState {
 }
 
 #[test]
-fn snapshot_v5_bytes_remain_historically_valid_but_are_obsolete_cache() {
+fn snapshot_v6_matches_literal_canonical_bytes_and_round_trips() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/snapshot_v5_parallel.json");
+        .join("tests/fixtures/snapshot_v6_parallel.json");
+    if std::env::var("REGEN_SNAPSHOT").ok().as_deref() == Some("1") {
+        let mut bytes = canon_bytes(&state_to_snapshot(&state_from_literal_machine()));
+        bytes.push(b'\n');
+        std::fs::write(&fixture, bytes).unwrap();
+    }
     let expected_with_lf = std::fs::read(&fixture).expect("the snapshot golden is committed");
     let expected_with_lf = expected_with_lf.as_slice();
     let expected = expected_with_lf
@@ -92,25 +98,17 @@ fn snapshot_v5_bytes_remain_historically_valid_but_are_obsolete_cache() {
     );
 
     let state = state_from_literal_machine();
+    let actual = state_to_snapshot(&state);
     assert_eq!(
-        expected_value.get("state_root").and_then(Value::as_str),
-        Some(fsm_core::replay::state_root_at_v3(&state, state.last_seq).as_str())
+        canon_bytes(&actual),
+        expected,
+        "snapshot bytes and embedded state/root/snapshot hashes are fixed"
     );
-    let mut material = expected_value.as_obj().unwrap().clone();
-    material.insert("snapshot_hash".into(), Value::Str(String::new()));
-    let hash = format!(
-        "sha256:{}",
-        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-            "fsm:snapshot:5",
-            &Value::Obj(material)
-        ))
-    );
-    assert_eq!(
-        expected_value.get("snapshot_hash").and_then(Value::as_str),
-        Some(hash.as_str())
-    );
-    assert!(
-        snapshot_to_state(&expected_value).is_err(),
-        "historical cache is disposable and never interpreted as snapshot/6"
-    );
+
+    let restored = snapshot_to_state(&expected_value).expect("golden snapshot verifies");
+    assert_eq!(restored.last_seq, state.last_seq);
+    assert_eq!(restored.last_hash, state.last_hash);
+    assert_eq!(restored.instances, state.instances);
+    assert_eq!(restored.instance_machines, state.instance_machines);
+    assert_eq!(restored.dedup, state.dedup);
 }

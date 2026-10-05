@@ -132,7 +132,20 @@ fn root_format_ok(kind: RecordKind, body: &Value) -> bool {
     let Some(format) = body.get("state_root_format") else {
         return true;
     };
-    if format.as_str() != Some("fsm.state-root/3") {
+    if matches!(
+        kind,
+        RecordKind::ExecutionClaimed
+            | RecordKind::ExecutionStopped
+            | RecordKind::ExecutionSettled
+            | RecordKind::ExecutionEnabled
+    ) && format.as_str() != Some("fsm.state-root/4")
+    {
+        return false;
+    }
+    if !matches!(
+        format.as_str(),
+        Some("fsm.state-root/3" | "fsm.state-root/4")
+    ) {
         return false;
     }
     if kind == RecordKind::JournalSealed {
@@ -192,6 +205,9 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
             body.get("format").and_then(Value::as_str) == Some("fsm.journal/1")
                 && genesis_limits_ok(body.get("limits"))
                 && body.get("created_ts").and_then(Value::as_num).is_some()
+                && body
+                    .get("execution_admission")
+                    .is_none_or(|admission| admission.as_str() == Some("enabled"))
         }
         RecordKind::MachineDefined => req_str(body, "machine_id") && body.get("def").is_some(),
         RecordKind::InstanceCreated => {
@@ -360,9 +376,62 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
                     .is_some_and(|attempt| attempt >= 1)
                 && is_state_hash(body.get("state_hash"))
         }
+        RecordKind::ExecutionClaimed => {
+            execution::Claim::from_body(body).is_ok() && execution_request_ok(body)
+        }
+        RecordKind::ExecutionStopped => {
+            execution_identity_ok(body)
+                && req_str(body, "handler_fingerprint")
+                && body
+                    .get("closure")
+                    .is_some_and(|value| execution::Closure::from_value(value).is_ok())
+                && body
+                    .get("outcome")
+                    .is_some_and(|value| execution::StoppedOutcome::from_value(value).is_ok())
+                && execution_request_ok(body)
+        }
+        RecordKind::ExecutionSettled => {
+            let disposition_ok = match body.get("disposition").and_then(Value::as_str) {
+                Some("acked") => matches!(
+                    body.get("outcome").and_then(Value::as_str),
+                    Some("ok" | "failed")
+                ),
+                Some("attempted") => {
+                    body.get("outcome").and_then(Value::as_str) == Some("failed")
+                        && req_u32(body, "attempt")
+                }
+                Some("interrupted") => ["outcome", "result", "attempt"]
+                    .iter()
+                    .all(|field| body.get(field).is_none()),
+                _ => false,
+            };
+            execution_identity_ok(body)
+                && execution_request_ok(body)
+                && disposition_ok
+                && is_state_hash(body.get("state_hash"))
+                && body.get("state_format").and_then(Value::as_str)
+                    == Some(crate::hashes::STATE_FORMAT)
+        }
+        RecordKind::ExecutionEnabled => {
+            execution_request_ok(body)
+                && is_state_hash(body.get("previous_head"))
+                && body.get("quiescence").is_some_and(execution_quiescence_ok)
+        }
         RecordKind::StateCheckpoint => is_state_hash(body.get("state_root")),
         RecordKind::JournalSealed => {
-            req_u64(body, "sealed_through_seq")
+            let execution_index_ok = if body.get("state_root_format").and_then(Value::as_str)
+                == Some("fsm.state-root/4")
+            {
+                body.get("base_execution_claim_format")
+                    .and_then(Value::as_str)
+                    == Some("fsm.base-execution-claims/1")
+                    && is_state_hash(body.get("base_execution_claim_root"))
+            } else {
+                body.get("base_execution_claim_format").is_none()
+                    && body.get("base_execution_claim_root").is_none()
+            };
+            execution_index_ok
+                && req_u64(body, "sealed_through_seq")
                 && req_u64(body, "records_sealed")
                 && is_state_hash(body.get("base_state_root"))
                 && is_state_hash(body.get("base_dedup_fp_root"))
@@ -372,8 +441,10 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
                     == Some(crate::hashes::BASE_DEDUP_FORMAT)
                 && body.get("base_index_format").and_then(Value::as_str)
                     == Some(crate::hashes::BASE_INDEX_FORMAT)
-                && body.get("state_root_format").and_then(Value::as_str)
-                    == Some(crate::replay::STATE_ROOT_FORMAT)
+                && matches!(
+                    body.get("state_root_format").and_then(Value::as_str),
+                    Some("fsm.state-root/3" | "fsm.state-root/4")
+                )
                 && sealed_join_ok(body, seq, prev)
         }
     };
@@ -384,8 +455,42 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
     );
     let current_root_ok = body.get("state_root").is_none()
         || body.get("state_format").is_none()
-        || body.get("state_root_format").and_then(Value::as_str) == Some("fsm.state-root/3");
+        || matches!(
+            body.get("state_root_format").and_then(Value::as_str),
+            Some("fsm.state-root/3" | "fsm.state-root/4")
+        );
     shape_ok && state_format_ok(body, current_only) && root_format_ok(kind, body) && current_root_ok
+}
+
+use super::execution;
+
+fn execution_identity_ok(body: &Value) -> bool {
+    req_str(body, "instance_id")
+        && req_str(body, "effect_id")
+        && body
+            .get("run_id")
+            .and_then(Value::as_num)
+            .and_then(|raw| raw.parse::<u64>().ok())
+            .is_some_and(|run| run > 0)
+}
+
+fn execution_request_ok(body: &Value) -> bool {
+    body.get("request_id")
+        .and_then(Value::as_str)
+        .is_some_and(|request_id| request_id.len() <= 4096)
+        && is_state_hash(body.get("request_fp"))
+}
+
+fn execution_quiescence_ok(value: &Value) -> bool {
+    let Some(fields) = value.as_obj() else {
+        return false;
+    };
+    fields.len() == 3
+        && fields
+            .get("domain")
+            .is_some_and(|domain| execution::NativeDomain::from_value(domain).is_ok())
+        && is_state_hash(fields.get("receipt"))
+        && is_state_hash(fields.get("previous_head"))
 }
 
 #[cfg(test)]

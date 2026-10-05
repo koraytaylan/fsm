@@ -14,7 +14,7 @@ use fsm_core::hashes::{
 };
 use fsm_core::json::Value;
 use fsm_core::record::{Record, RecordKind, instances_touched, seal, verify_line, zeros};
-use fsm_core::replay::{NopSink, STATE_ROOT_FORMAT, StoreState, fold_with};
+use fsm_core::replay::{NopSink, STATE_ROOT_FORMAT_V3 as STATE_ROOT_FORMAT, StoreState, fold_with};
 
 fn hash(byte: u8) -> String {
     format!("sha256:{}", format!("{byte:02x}").repeat(32))
@@ -69,6 +69,38 @@ fn verify_seal(seq: u64, previous: &str, body: BTreeMap<String, Value>) -> Resul
 fn a_well_formed_seal_body_passes_the_shape_check() {
     let previous = previous_hash();
     assert!(verify_seal(40_001, &previous, seal_body(&previous)).is_ok());
+}
+
+#[test]
+fn current_seal_requires_the_separate_claim_hash_root_and_format() {
+    let previous = previous_hash();
+    let mut body = seal_body(&previous);
+    body.insert(
+        "state_root_format".into(),
+        Value::Str("fsm.state-root/4".into()),
+    );
+    body.insert(
+        "base_execution_claim_format".into(),
+        Value::Str("fsm.base-execution-claims/1".into()),
+    );
+    body.insert("base_execution_claim_root".into(), Value::Str(hash(0x55)));
+    assert!(verify_seal(40_001, &previous, body.clone()).is_ok());
+    for field in ["base_execution_claim_format", "base_execution_claim_root"] {
+        let mut missing = body.clone();
+        missing.remove(field);
+        assert!(
+            verify_seal(40_001, &previous, missing).is_err(),
+            "missing {field}"
+        );
+    }
+    body.insert(
+        "state_root_format".into(),
+        Value::Str("fsm.state-root/3".into()),
+    );
+    assert!(
+        verify_seal(40_001, &previous, body).is_err(),
+        "historical roots cannot silently carry current claim evidence"
+    );
 }
 
 #[test]
@@ -206,7 +238,10 @@ fn journal_with_and_without_a_seal() -> (Vec<Record>, Vec<Record>) {
         Value::Obj(BTreeMap::from([
             (
                 "state_root".into(),
-                Value::Str(fsm_core::replay::state_root_at(&StoreState::default(), 1)),
+                Value::Str(fsm_core::replay::state_root_at_v3(
+                    &StoreState::default(),
+                    1,
+                )),
             ),
             (
                 "state_root_format".into(),
@@ -283,7 +318,7 @@ fn a_boundary_seals_injected_root_is_not_its_base_root() {
     // record's covers the table as it stood. They are two different values and
     // a later reader must not "fix" them into agreement.
     let state = StoreState::default();
-    let root_over_full_state = fsm_core::replay::state_root_at(&state, 10_000);
+    let root_over_full_state = fsm_core::replay::state_root_at_v3(&state, 10_000);
     let base_root_in_body = hash(0x11);
     assert_ne!(root_over_full_state, base_root_in_body);
 }

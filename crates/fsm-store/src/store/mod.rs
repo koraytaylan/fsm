@@ -29,6 +29,8 @@ use crate::journal_io::{self, Journal, JournalHealth, JournalIoError, OpenError}
 
 mod commit;
 mod error;
+mod execution;
+mod execution_evidence;
 mod idempotency;
 mod instance;
 mod json_helpers;
@@ -41,6 +43,8 @@ mod tests;
 mod view;
 
 pub use error::ErrorObj;
+pub use execution::{ExecutionClaimRequest, ExecutionSettleRequest, ExecutionStopRequest};
+pub use execution_evidence::{VerifiedClosure, VerifiedQuiescence};
 pub use json_helpers::{
     apply_context_overrides, coerce_ctx_override, context_not_object, enabled_json,
     number_token_error,

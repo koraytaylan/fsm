@@ -4,11 +4,13 @@ The unreleased execution block codec bounds nesting to 63 JSON containers,
 reserving one container for persistence; scalar values do not consume depth.
 This corrects the preparatory bounds without changing an existing disk format.
 
-The pure execution ownership types and transitions are additive APIs. Their
-closed value encoding is reserved claim-era material, not an assertion that
-the VERSION 10 store persists or authenticates it. Wiring execution state
-into journal folding, roots, snapshots and bases still requires the specified
-breaking-minor format migration and its full recovery proof.
+Unreleased claim-era persistence uses VERSION 11, state-root/4, snapshot/6 and
+base/2, with explicit historical root/3 and authoritative base/1 decoding.
+The public store execution request structs, opaque proof readers and mutators
+are usable Rust APIs; native authority publication and runner integration
+remain unfinished. This format change requires a breaking pre-1.0 minor
+release and full recovery/native acceptance before shipping; no release
+version or tag is changed by this implementation.
 
 What a downstream crate can rely on, and what it must expect to change.
 
@@ -254,11 +256,11 @@ The versioned formats are independent of the crate version:
 | Format | Current | Where |
 |---|---|---|
 | machine definition | `fsm.machine/1` | spec JSON |
-| journal | `fsm.journal/1`, store `VERSION` 10 | `<data_dir>` |
-| snapshot | `fsm.snapshot/5` | `<data_dir>/snapshots` |
+| journal | `fsm.journal/1`, store `VERSION` 11 | `<data_dir>` |
+| snapshot | `fsm.snapshot/6` | `<data_dir>/snapshots` |
 | state hash | `fsm.state/3` (records written before composition carry `fsm.state/2` and verify under it) | state-bearing records and views |
 | state root | `fsm.state-root/3` | checkpoints, snapshots, and the sealed base |
-| base state | `fsm.base/1`, roots under `fsm.base-dedup/1` and `fsm.base-index/1` | `<data_dir>/journal/BASE` |
+| base state | `fsm.base/2`, companion roots under `fsm.base-dedup/1`, `fsm.base-index/1` and `fsm.base-execution-claims/1` | `<data_dir>/journal/BASE` |
 | archive manifest | `fsm.archive/1` | the operator's archive directory |
 
 Adding a `supersedes` block to a definition produces a **new** machine and
@@ -360,17 +362,21 @@ distinct from the unchanged table-only exit behavior; table-only inspection
 adds the scope string `handler-table-only`. This additive command extension
 changes no persisted machine, journal or hash representation.
 
-Plan 0022's reserved claim-era persistence contract in SPEC is not implemented
-yet: current VERSION 10, snapshot/5, base/1 and state-root/3 remain authoritative
-for shipped behavior. Implementing VERSION 11, snapshot/6, base/2 and
-state-root/4 will be a breaking pre-1.0 minor change, with explicit historical
-decoders and legacy execution quarantine; it must not reinterpret any prior
-journal bytes, instance hash or request-ID derivation. Native prerequisite
-completion does not itself change these persisted formats or the package
-version. New stable errors and usable public constructors must land with the
-production APIs, external embedding tests and release notes before shipping.
+Plan 0022 adds `execution_claimed`, `execution_stopped`, `execution_settled`
+and `execution_enabled`. VERSION 11 is stamped before new records; historical
+VERSION 1–10 journal bytes stay unchanged and admission remains quarantined.
+New genesis records enable fresh stores. Logical roots include execution state
+under `fsm:state-root:4`; snapshots use `fsm:snapshot:6`. Authoritative base/2
+also preserves each unresolved claim's original record hash in a separate
+`fsm:base-execution-claims:1` companion root committed by the seal, avoiding a
+self-reference at 10,000-record root boundaries. Historical hash functions and
+base/1 bytes remain unchanged. The new `StoreState::execution` field and record
+variants affect downstream exhaustive construction and matching, reinforcing
+the breaking-minor release requirement. New stable `store/execution_*` codes
+are enumerated in SPEC Appendix A and `ALL_CODES`. Complete native-proof,
+crash/recovery and lifecycle acceptance remains required before release.
 
 The additive pure types in `fsm_core::record::execution` model the reserved
 native identity and retry policy, with usable constructors and closed-value
-decoders. They introduce no journal records, hash changes or execution
-permissions; their typed shape errors have no new stable error-code strings.
+decoders. These values themselves do not authenticate native closure or grant execution
+permissions; production store failures use the documented stable error codes.

@@ -10,17 +10,17 @@ use std::path::{Path, PathBuf};
 
 use super::decode::*;
 
-/// On-disk snapshot format tag. Version 5 adds the composition fields
-/// (`invocations`, `signals`) to version 4's configurations and schedules.
+/// On-disk snapshot format tag. Version 6 authenticates execution ownership
+/// alongside version 5's composition, configurations and schedules.
 ///
-/// Snapshots are disposable caches: a version-4 snapshot found beside a
+/// Snapshots are disposable caches: a version-5 or earlier snapshot beside a
 /// current journal is skipped and the journal folded instead, never migrated
 /// — which is what the store's migration rule already says to do with them,
 /// and why a snapshot bump needs no reader for the older shape.
-pub const SNAPSHOT_FORMAT: &str = "fsm.snapshot/5";
+pub const SNAPSHOT_FORMAT: &str = "fsm.snapshot/6";
 
 /// Hash domain for [`SNAPSHOT_FORMAT`]. Kept in lockstep with it.
-pub const SNAPSHOT_DOMAIN: &str = "fsm:snapshot:5";
+pub const SNAPSHOT_DOMAIN: &str = "fsm:snapshot:6";
 
 pub fn snap_dir(data_dir: &Path) -> PathBuf {
     data_dir.join("snapshots")
@@ -113,6 +113,7 @@ pub(super) fn snapshot_material(state: &StoreState) -> BTreeMap<String, Value> {
     body.insert("machines".into(), Value::Obj(machines));
     body.insert("instances".into(), Value::Obj(instances));
     body.insert("dedup".into(), Value::Obj(dedup));
+    body.insert("execution".into(), state.execution.to_value());
     body
 }
 

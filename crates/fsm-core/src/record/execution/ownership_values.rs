@@ -21,6 +21,23 @@ pub struct Claim {
 }
 
 impl Claim {
+    pub(crate) fn from_body(body: &Value) -> Result<Self, ShapeError> {
+        let mut fields = std::collections::BTreeMap::new();
+        for field in [
+            "run_id",
+            "instance_id",
+            "effect_id",
+            "attempt",
+            "handler_fingerprint",
+            "retry",
+            "domain",
+        ] {
+            let value = body.get(field).ok_or(ShapeError("claim"))?;
+            size(value, MAX_METADATA)?;
+            fields.insert(field.into(), value.clone());
+        }
+        Self::from_value(&Value::Obj(fields))
+    }
     /// Decode the seven closed metadata fields, charging their canonical bytes.
     pub fn from_value(value: &Value) -> Result<Self, ShapeError> {
         size(value, MAX_METADATA)?;

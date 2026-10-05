@@ -75,9 +75,11 @@ fn claims_budget_exhaustion(body: &Value) -> bool {
         == Some("internal/budget")
 }
 
-pub const STATE_ROOT_FORMAT: &str = "fsm.state-root/3";
+pub const STATE_ROOT_FORMAT: &str = "fsm.state-root/4";
+/// Historical root format, verified without execution state.
+pub const STATE_ROOT_FORMAT_V3: &str = "fsm.state-root/3";
 /// Hash domain paired with [`STATE_ROOT_FORMAT`].
-pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:3";
+pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:4";
 
 /// Hash the complete logical store state at `seq` without the journal hash.
 ///
@@ -86,6 +88,26 @@ pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:3";
 /// separately binds a snapshot's `last_hash`. The current root commits each
 /// instance's tagged active configuration and absolute deadline schedules.
 pub fn state_root_at(st: &StoreState, seq: u64) -> String {
+    let mut material = state_root_material(st, seq);
+    if let Value::Obj(fields) = &mut material {
+        fields.insert("execution".into(), st.execution.to_value());
+    }
+    root_digest(STATE_ROOT_DOMAIN, &material)
+}
+
+/// Verify historical root/3 bytes without reinterpreting execution ownership.
+pub fn state_root_at_v3(st: &StoreState, seq: u64) -> String {
+    root_digest("fsm:state-root:3", &state_root_material(st, seq))
+}
+
+fn root_digest(domain: &str, material: &Value) -> String {
+    format!(
+        "sha256:{}",
+        crate::sha256::to_hex(&domain_hash(domain, material))
+    )
+}
+
+fn state_root_material(st: &StoreState, seq: u64) -> Value {
     let mut machines = BTreeMap::new();
     for (id, machine) in &st.machines {
         machines.insert(id.clone(), machine.def.clone());
@@ -145,16 +167,12 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
         .iter()
         .map(|(request_id, slot)| (request_id.clone(), Value::Num(slot.seq.to_string())))
         .collect();
-    let material = Value::Obj(BTreeMap::from([
+    Value::Obj(BTreeMap::from([
         ("seq".into(), Value::Num(seq.to_string())),
         ("machines".into(), Value::Obj(machines)),
         ("instances".into(), Value::Obj(instances)),
         ("dedup".into(), Value::Obj(dedup)),
-    ]));
-    format!(
-        "sha256:{}",
-        crate::sha256::to_hex(&domain_hash(STATE_ROOT_DOMAIN, &material))
-    )
+    ]))
 }
 
 fn legacy_state_root_at(state: &StoreState, seq: u64) -> String {
@@ -273,6 +291,21 @@ pub struct StoreState {
     pub dedup: BTreeMap<String, RequestSlot>,
     pub last_seq: u64,
     pub last_hash: String,
+    /// Authenticated execution admission, ownership and durable retry ledgers.
+    pub execution: crate::record::execution::ExecutionState,
+}
+
+impl StoreState {
+    /// Drop settled retry ledgers for removed or non-running effects, preserving claims.
+    pub fn retain_pending_execution(&mut self) {
+        let instances = &self.instances;
+        self.execution.retain_pending(|instance_id, effect_id| {
+            instances.get(instance_id).is_some_and(|instance| {
+                instance.status == crate::machine::Status::Running
+                    && instance.pending.iter().any(|pending| pending == effect_id)
+            })
+        });
+    }
 }
 
 impl Default for StoreState {
@@ -284,6 +317,9 @@ impl Default for StoreState {
             dedup: BTreeMap::new(),
             last_seq: 0,
             last_hash: crate::record::zeros(),
+            execution: crate::record::execution::ExecutionState::new(
+                crate::record::execution::Admission::Quarantined,
+            ),
         }
     }
 }

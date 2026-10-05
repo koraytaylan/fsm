@@ -1,5 +1,8 @@
 //! CLI `--json` fixtures byte-match MCP `structuredContent`.
 
+#[path = "support/journal_golden.rs"]
+mod journal_golden;
+
 use fsm_cli::clock::{self, FixedClock};
 use fsm_cli::mcp::serve::tool_error;
 use fsm_cli::mcp::tools::dispatch;
@@ -225,6 +228,7 @@ fn every_structured_fixture_matches_tool() {
         &obj(&[("instance_id", Value::Str("inst-new-1".into()))]),
     )
     .unwrap();
+    journal_golden::capture("structured", &store.records);
     assert_bytes("history.json", &v);
     seen.insert("history.json", ());
 

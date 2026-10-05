@@ -8,6 +8,42 @@ use crate::tool_outcomes::spec;
 
 pub(crate) const INFRA: &[(&str, &str)] = &[
     (
+        "store/execution_contract",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_disposition",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_evidence",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_exhausted",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_limit",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_owned",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_quarantined",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_retry",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
+        "store/execution_stale",
+        "execution ownership is a Rust store/executor API, not a caller-accessible MCP tool; native reconciliation and typed store requests supply its recovery",
+    ),
+    (
         "def/supersedes_self",
         "unreachable by construction: a definition would have to contain its own hash; the rule stands as defence in depth, like def/invoke_cycle",
     ),

@@ -10,15 +10,30 @@ transitions and a closed bounded value round-trip; `Claim::from_value`,
 outside the crate. The caller supplies journal-derived `PendingEffect` and
 logical timestamps. These methods change only the caller-owned pure state;
 they neither persist records nor authenticate native receipts or start work.
-Production store integration and claim-era migration remain unimplemented.
+The production store now exposes `ExecutionClaimRequest`, `ExecutionStopRequest`
+and `ExecutionSettleRequest` with `Store::{claim,stop,settle}_execution_on`;
+`enable_execution_on` requires an opaque `VerifiedQuiescence`. `VerifiedClosure::read`
+and `VerifiedQuiescence::read` accept protected native receipt files only on
+the initial Linux x86-64/AArch64 profile; constructing a core closure cannot
+produce a store proof. Native authority publication and runner integration
+remain under development, and these APIs do not start handlers.
 
 Plan 0022's claim-era value types are available under
 `fsm_core::record::execution`: `FileIdentity`, `NativeDomain`, `FailureClass`
 and `RetryPolicy` provide validated constructors and pure JSON conversion.
 Retry eligibility uses caller-supplied logical time and saturating arithmetic.
 Constructing a native identity does not authenticate a supervisor or prove
-closure, and these types do not yet expose a production store claim API;
-VERSION 10 persistence remains unchanged while task 9302 is implemented.
+closure. The store uses VERSION 11, root/4, snapshot/6 and base/2; historical
+VERSION 1–10 stores migrate without rewriting records and remain quarantined
+for execution until native verified quiescence is provided. Snapshot/5 caches
+are discarded; authoritative base/1 files remain readable under root/3.
+Sealed base/2 carries original unresolved claim hashes under a separate
+`fsm.base-execution-claims/1` root, preserving closure binding after sealing.
+Pending effects with historical unclassified attempts refuse a new claim
+instead of resetting their failed counts; resolve those legacy effects with
+the existing acknowledgement or cancellation APIs before admitting new work.
+The complete crash, migration, native-proof and lifecycle acceptance for
+task 9302 remains in progress.
 
 The CLI and the MCP server are two front ends over the same engine. This page is
 for the third consumer: a Rust program that drives the engine in process.

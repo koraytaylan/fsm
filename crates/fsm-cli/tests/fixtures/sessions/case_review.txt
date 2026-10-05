@@ -357,7 +357,7 @@ entries:
       kind: sequential
       leaf: intake
     from_leaf:           intake
-    hash:                d71e549bce597be333204399a2162717b5bb51d838f05ac5e91584528530da65
+    hash:                12289205003ab5ffb216787d31448e524d1155c9cff8c8eaf3f2b7077cff7435
     kind:                InstanceCreated
     request_id:          new-1
     seq:                 2
@@ -391,7 +391,7 @@ entries:
       kind: sequential
       leaf: intake
     from_leaf:            intake
-    hash:                 14b86907fcaab4402d529348ff4fcf4e8984e1111ea03a4f1c1f9f79d710baea
+    hash:                 99af647265b37524fa63a75b4115ceaa5732348810fb95001eef77770f929eae
     kind:                 EventApplied
     payload:
     request_id:           send-1
@@ -426,7 +426,7 @@ entries:
       kind: sequential
       leaf: docs_review
     from_leaf:            docs_review
-    hash:                 ac81194a0d6f3f29d2c7b959e5ee2b3d40b59c5df1d1d1838bacaaf5c17a3b45
+    hash:                 805e6df0f03b950eac10eceae0e9381472fd48ec6529652b36807cf83b9a13fe
     kind:                 EventRejected
     payload:
     request_id:           send-bad
@@ -461,7 +461,7 @@ entries:
       kind: sequential
       leaf: docs_review
     from_leaf:            docs_review
-    hash:                 ef51e3e1ad4b6ab720139a82fcab0070b289df87f5554795032c9f85f3dfbb24
+    hash:                 5685dce03ea9a873fd8e0c98a710abb7befed299a67e2c71160581fba58dfe44
     kind:                 EventApplied
     payload:
     request_id:           send-2
@@ -495,7 +495,7 @@ entries:
       kind: sequential
       leaf: risk_review
     from_leaf:            risk_review
-    hash:                 bf93027bf16e3666b9310c4ac6625bf777705ccc64cd71d59058574a5064a25f
+    hash:                 de2cc9aa191964f6c5eeceb4223b7098ed98356323d40fe0c8e1114733330711
     kind:                 EffectAcked
     request_id:           ack-1
     seq:                  6
@@ -528,7 +528,7 @@ entries:
       kind: sequential
       leaf: risk_review
     from_leaf:            risk_review
-    hash:                 4a8810d2f2332155bb091bd62683833f680f1cb05fa54679a39739b649885f6a
+    hash:                 ee67fba39959bc8a2d2bb26ad6ba20424938699a0eaa1ee88440cdfcb9d51807
     kind:                 Annotated
     note:                 hello-note
     request_id:           ann-1
@@ -548,5 +548,5 @@ health:        Ok
 instances:     1
 machines:      1
 records:       8
-store_version: 10
+store_version: 11
 --- stderr ---

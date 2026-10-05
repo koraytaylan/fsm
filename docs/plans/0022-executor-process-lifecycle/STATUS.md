@@ -315,17 +315,47 @@ lifecycle updates.
   binding, entry/metadata/outcome limits, decoder/transition block budgets,
   an independent stopped-result budget call site, and disposition selection.
   Every captured log digest is verified and the disposable clone is restored
-  clean. Full stable host gate `39ec8c6-host-gates.log` is running in an isolated
-  target directory; exact-source native/portable CI is queued on the authorized
-  review branch. These are core primitive proofs, not store crash/migration/seal
+  clean. Full stable host gate `39ec8c6-host-gates.log` completed successfully in
+  an isolated target directory; exact-source review CI `37249663619` at
+  `39ec8c67d4b7c5777192c36cee7d9c3138a169d0` is terminal success across
+  all nine jobs, including Linux/macOS/Windows at stable/MSRV, zero dependencies
+  and both provisioned native jobs on the authorized review branch. These are core primitive proofs, not store crash/migration/seal
   or native receipt authentication acceptance; task 9302 remains In progress.
 
 - **Production persistence design:** the reserved contract now makes genesis
   admission, legacy base/1 quarantine, migration ordering, crash-stable
   quarantine reconstruction, recorded root discriminators and request replay
   explicit before VERSION 11 implementation. The exact frozen ownership CI
-  handle is `37249663619` at `39ec8c6`; production record folding, store APIs,
-  protected native receipt authentication and crash/migration/seal tests remain
-  the next implementation work, rather than completed acceptance.
+  handle is `37249663619` at `39ec8c6`; it validates ownership primitives,
+  not the subsequent production persistence draft.
+
+- **Production persistence implementation in progress:** the implementation unit adds
+  all four claim-era record kinds and pure fold, VERSION 11 with unchanged
+  historical journal bytes, root/4, snapshot/6 and authoritative base/2 with
+  explicit root/3/base/1 readers. Independent base/2 and snapshot/6 fixtures
+  pass alongside unchanged historical root/base/snapshot/archive goldens.
+  Production allocation, stop, settlement and verified legacy-enable APIs are
+  written with projection-before-append and cold request replay; protected
+  receipt readers are opaque, bounded and confined to the recorded root
+  authority directory. A separately sealed claim-hash root avoids a root
+  self-reference and retains original unresolved claim hashes through two
+  seals. MSRV tests prove the two-writer allocation race, stale/removed effect
+  refusal, cold claim replay, read-only refusal, repeated seals, every VERSION
+  1–10 migration, failed settlement and exact retry eligibility. Transition
+  tests using preauthenticated fixture proofs do not establish native receipt
+  authentication. The preliminary complete stable workspace gate completed
+  with ten failing targets; affected format/fixture checks were repaired and
+  focused reruns pass, including isolated-Git regeneration tests, nine
+  production claim tests, thirteen historical/current seal tests and all-target
+  Clippy. The raw golden input capture supports independent historical-chain
+  validation before hash updates; the new audit root was independently derived
+  from unchanged SPEC state material. Native authority publication, all durable
+  fault boundaries, legacy replay guard proof, full limits/negative controls
+  and the final frozen full host/portable review remain outstanding.
+  The coordinator adopts the specific CLI audit/transcript/hygiene/snapshot
+  tests and raw input-capture helper into task 9302's mutation footprint; these
+  are format integration checks and no active manifest owner requires adoption.
+  Task count and dependency edges are unchanged. No task status or landing OID
+  is advanced by these partial checks.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._

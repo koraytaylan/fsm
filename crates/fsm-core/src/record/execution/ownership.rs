@@ -84,6 +84,27 @@ impl ExecutionState {
         self.admission
     }
 
+    pub(crate) fn enable(&mut self) -> Result<(), ShapeError> {
+        if self.admission != Admission::Quarantined {
+            return Err(ShapeError("already_enabled"));
+        }
+        self.admission = Admission::Enabled;
+        Ok(())
+    }
+
+    pub(crate) fn retain_pending(&mut self, is_pending: impl Fn(&str, &str) -> bool) {
+        let claims = &self.claims;
+        self.retry
+            .retain(|key, _| claims.contains_key(key) || is_pending(&key.0, &key.1));
+    }
+
+    /// Observe every unresolved run and its optional stopped result without consumption.
+    pub fn unresolved(&self) -> impl Iterator<Item = (&Claim, Option<&Stopped>)> {
+        self.claims
+            .values()
+            .map(|owned| (&owned.claim, owned.stopped.as_ref()))
+    }
+
     /// Return the allocation high-water mark, including already settled runs.
     pub fn run_high_water(&self) -> u64 {
         self.run_high_water

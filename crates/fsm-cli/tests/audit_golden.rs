@@ -8,6 +8,9 @@
 
 #![allow(clippy::result_large_err)]
 
+#[path = "support/journal_golden.rs"]
+mod journal_golden;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Cursor;
@@ -103,6 +106,7 @@ fn healthy(dir: &Scratch) {
             )
             .unwrap();
     }
+    journal_golden::capture("audit", &store.records);
     drop(store);
     fsm_cli::clock::reset_injected();
 }

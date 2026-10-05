@@ -168,6 +168,15 @@ impl Store {
         }
         if matches!(
             rec.kind,
+            RecordKind::ExecutionClaimed
+                | RecordKind::ExecutionStopped
+                | RecordKind::ExecutionSettled
+                | RecordKind::ExecutionEnabled
+        ) {
+            return Some(Ok(super::execution::response(rec, true)));
+        }
+        if matches!(
+            rec.kind,
             RecordKind::EventRejected | RecordKind::DeadlineRejected | RecordKind::RequestRejected
         ) {
             let code = rec

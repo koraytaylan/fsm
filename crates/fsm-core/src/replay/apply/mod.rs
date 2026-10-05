@@ -29,11 +29,12 @@ use super::verify::{
 };
 use super::{
     DefinitionCompileMode, ReplayError, STATE_ROOT_FORMAT, StoreState, StoredMachine,
-    legacy_state_root_at, state_hash_for_record, state_root_at,
+    legacy_state_root_at, state_hash_for_record, state_root_at, state_root_at_v3,
 };
 
 mod deadline_records;
 mod event;
+mod execution;
 mod instance;
 mod invoke;
 mod migrate;
@@ -55,7 +56,7 @@ pub(super) fn apply(
     compile_mode: DefinitionCompileMode,
 ) -> Result<(), ReplayError> {
     let applied = match rec.kind {
-        RecordKind::Genesis => Ok(()),
+        RecordKind::Genesis => execution::apply_genesis(st, rec),
         RecordKind::MachineDefined => apply_machine_defined(st, rec, compile_mode),
         RecordKind::InstanceCreated => apply_instance_created(st, rec),
         RecordKind::EventApplied => apply_event_applied(st, rec),
@@ -80,8 +81,13 @@ pub(super) fn apply(
         // fold onto — never a mutation the fold performs, which is exactly how
         // `StateCheckpoint` is treated one line above.
         RecordKind::JournalSealed => Ok(()),
+        RecordKind::ExecutionClaimed => execution::apply_claimed(st, rec),
+        RecordKind::ExecutionStopped => execution::apply_stopped(st, rec),
+        RecordKind::ExecutionSettled => execution::apply_settled(st, rec),
+        RecordKind::ExecutionEnabled => execution::apply_enabled(st, rec),
     };
     applied?;
+    st.retain_pending_execution();
     if let Some(root) = rec.body.get("state_root") {
         let want = root.as_str().ok_or(ReplayError::FieldMismatch {
             seq: rec.seq,
@@ -89,6 +95,7 @@ pub(super) fn apply(
         })?;
         let found = match rec.body.get("state_root_format").and_then(Value::as_str) {
             Some(STATE_ROOT_FORMAT) => state_root_at(st, rec.seq),
+            Some(super::STATE_ROOT_FORMAT_V3) => state_root_at_v3(st, rec.seq),
             None => legacy_state_root_at(st, rec.seq),
             Some(_) => {
                 return Err(ReplayError::FieldMismatch {

@@ -6,16 +6,20 @@ the exact 63-container block limit remains accepted without partial mutation.
 
 Unreleased preparation adds pure exclusive execution ownership, immutable
 stopped results and durable retry eligibility with bounded canonical codecs;
-the production store still uses VERSION 10 and does not yet persist claims.
-Crash, migration and seal acceptance remain required for that later format
-change, and this pure preparation cannot complete lifecycle task 9302.
+the production store now writes VERSION 11 with claim/stop/settle/enable
+records, root/4, snapshot/6 and base/2. Historical roots and authoritative
+base/1 decode under their original formats; legacy stores migrate unchanged
+and remain execution-quarantined. A separate claim-hash root authenticates
+original unresolved claim records after sealing. Native authority publication,
+runner integration and complete crash/migration/seal acceptance remain in
+progress, so this implementation does not complete lifecycle task 9302.
 
 Unreleased plan 0022 preparation adds pure, constructor-validated native
 identity and retry-policy values under `fsm_core::record::execution`, with
-external embedding coverage. It does not yet implement durable claims or
-change VERSION 10 persistence. The reserved claim-era format changes require
-their own migration/crash/seal evidence and a breaking minor release before
-they ship; completing native feasibility does not waive those requirements.
+external embedding coverage. The claim-era format and stable execution errors
+require their own migration/crash/seal and native-proof evidence and a breaking
+minor release before shipping; native feasibility does not waive these
+requirements, and this work does not change the package version or create a tag.
 
 Releases are cut from `develop` and driven entirely by pushing a tag.
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) is

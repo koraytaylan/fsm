@@ -1,5 +1,8 @@
 //! Byte-exact full-session MCP transcripts per negotiated revision.
 
+#[path = "support/journal_golden.rs"]
+mod journal_golden;
+
 use std::io::Cursor;
 
 use fsm_cli::clock::{self, FixedClock};
@@ -76,6 +79,7 @@ fn drive(input: &str) -> String {
         sink.writer(),
     )
     .unwrap();
+    journal_golden::capture("mcp-full", &store.records);
     sink.text()
 }
 

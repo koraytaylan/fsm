@@ -83,6 +83,7 @@ fn base_state() -> StoreState {
         ]),
         last_seq: 40_000,
         last_hash: "a".repeat(64),
+        execution: StoreState::default().execution,
     }
 }
 
@@ -94,6 +95,7 @@ fn base_state() -> StoreState {
 /// Every optional field is populated so the golden covers all of them.
 fn index_for(state: &StoreState) -> BaseIndex {
     BaseIndex {
+        execution_claims: BTreeMap::new(),
         instances: state
             .instances
             .keys()
@@ -123,7 +125,7 @@ fn encoded() -> Value {
 }
 
 fn fixture_path() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/base_v1.json")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/base_v2.json")
 }
 
 /// Replace one value inside the encoded base, leaving everything else alone.
@@ -352,7 +354,7 @@ fn the_base_root_differs_from_the_checkpoint_root_when_a_key_was_dropped() {
 fn a_base_declaring_the_wrong_format_is_refused() {
     let expected = base_roots(&base_state(), &index_for(&base_state()));
     for (key, wrong) in [
-        ("format", "fsm.base/2"),
+        ("format", "fsm.base/99"),
         ("state_root_format", "fsm.state-root/2"),
         ("base_dedup_format", "fsm.base-dedup/2"),
         ("definition_limits", "whatever"),
@@ -370,6 +372,7 @@ fn a_base_whose_roots_disagree_with_the_seal_is_refused() {
     // The base's own roots are consistent; it is the seal that names different
     // ones. That is a base from another store, and it must never be served.
     let another_store = BaseRoots {
+        execution_claim_root: Some(format!("sha256:{}", "a".repeat(64))),
         state_root: format!("sha256:{}", "d".repeat(64)),
         dedup_fp_root: format!("sha256:{}", "e".repeat(64)),
         index_root: format!("sha256:{}", "f".repeat(64)),
@@ -458,4 +461,44 @@ fn a_well_formed_base_reads_back_from_disk() {
         .expect("a well-formed base reads back");
     assert!(store_states_eq(&state, &restored));
     let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn historical_base_v1_keeps_its_roots_and_opens_quarantined() {
+    let bytes = include_bytes!("fixtures/base_v1.json");
+    let value = parse(bytes, &JsonLimits::DEFAULT).unwrap();
+    let roots = BaseRoots {
+        execution_claim_root: None,
+        state_root: value
+            .get("base_state_root")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .into(),
+        dedup_fp_root: value
+            .get("base_dedup_fp_root")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .into(),
+        index_root: value
+            .get("base_index_root")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .into(),
+    };
+    let (state, _) = decode(&value, &roots).unwrap();
+    assert_eq!(
+        fsm_core::replay::state_root_at_v3(&state, state.last_seq),
+        roots.state_root
+    );
+    assert_eq!(
+        state.execution.admission(),
+        fsm_core::record::execution::Admission::Quarantined
+    );
+    assert_eq!(state.execution.run_high_water(), 0);
+    let mut mixed = value.as_obj().unwrap().clone();
+    mixed.insert("execution".into(), state.execution.to_value());
+    assert!(decode(&Value::Obj(mixed), &roots).is_err());
 }

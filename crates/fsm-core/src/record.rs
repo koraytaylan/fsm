@@ -66,6 +66,14 @@ pub enum RecordKind {
     /// two disagree is corrupt. It changes no logical state — it is a marker
     /// the loader reads before folding, never a mutation the fold performs.
     JournalSealed,
+    /// Exclusive durable ownership allocated before native launch.
+    ExecutionClaimed,
+    /// Verified domain closure with an immutable result, still exclusively owned.
+    ExecutionStopped,
+    /// One record consumes stopped ownership with its ack/attempt/interruption.
+    ExecutionSettled,
+    /// Trusted legacy closure admits execution for the exact journal prefix.
+    ExecutionEnabled,
 }
 
 /// Every instance a record is about, in the order a reader should see them.
@@ -85,7 +93,8 @@ pub fn instances_touched(record: &Record) -> Vec<&str> {
         RecordKind::Genesis
         | RecordKind::MachineDefined
         | RecordKind::StateCheckpoint
-        | RecordKind::JournalSealed => Vec::new(),
+        | RecordKind::JournalSealed
+        | RecordKind::ExecutionEnabled => Vec::new(),
         RecordKind::InstanceCreated
         | RecordKind::EventApplied
         | RecordKind::EventRejected
@@ -97,7 +106,10 @@ pub fn instances_touched(record: &Record) -> Vec<&str> {
         | RecordKind::RequestRejected
         | RecordKind::InstanceCancelled
         | RecordKind::Annotated
-        | RecordKind::EffectAttempted => field("instance_id").into_iter().collect(),
+        | RecordKind::EffectAttempted
+        | RecordKind::ExecutionClaimed
+        | RecordKind::ExecutionStopped
+        | RecordKind::ExecutionSettled => field("instance_id").into_iter().collect(),
         RecordKind::InstanceInvoked | RecordKind::InvocationReturned => field("parent_instance_id")
             .into_iter()
             .chain(field("child_instance_id"))
@@ -133,6 +145,10 @@ impl RecordKind {
             RecordKind::EffectAttempted => "effect_attempted",
             RecordKind::StateCheckpoint => "state_checkpoint",
             RecordKind::JournalSealed => "journal_sealed",
+            RecordKind::ExecutionClaimed => "execution_claimed",
+            RecordKind::ExecutionStopped => "execution_stopped",
+            RecordKind::ExecutionSettled => "execution_settled",
+            RecordKind::ExecutionEnabled => "execution_enabled",
         }
     }
 
@@ -158,12 +174,16 @@ impl RecordKind {
             "effect_attempted" => Self::EffectAttempted,
             "state_checkpoint" => Self::StateCheckpoint,
             "journal_sealed" => Self::JournalSealed,
+            "execution_claimed" => Self::ExecutionClaimed,
+            "execution_stopped" => Self::ExecutionStopped,
+            "execution_settled" => Self::ExecutionSettled,
+            "execution_enabled" => Self::ExecutionEnabled,
             _ => return None,
         })
     }
 
     /// Every recognized record kind in stable protocol order.
-    pub fn all() -> [RecordKind; 20] {
+    pub fn all() -> [RecordKind; 24] {
         [
             Self::Genesis,
             Self::MachineDefined,
@@ -185,6 +205,10 @@ impl RecordKind {
             Self::EffectAttempted,
             Self::StateCheckpoint,
             Self::JournalSealed,
+            Self::ExecutionClaimed,
+            Self::ExecutionStopped,
+            Self::ExecutionSettled,
+            Self::ExecutionEnabled,
         ]
     }
 }

@@ -17,6 +17,13 @@ touches:
   - crates/fsm-embed-acceptance/src/
   - crates/fsm-embed-acceptance/tests/
   - crates/fsm-cli/tests/fixtures/
+  - crates/fsm-cli/tests/audit_golden.rs
+  - crates/fsm-cli/tests/mcp_full.rs
+  - crates/fsm-cli/tests/mcp_structured_parity.rs
+  - crates/fsm-cli/tests/naive_caller/infra_support.rs
+  - crates/fsm-cli/tests/naive_caller/tool_outcomes.rs
+  - crates/fsm-cli/tests/review_regressions/snapshot_divergence.rs
+  - crates/fsm-cli/tests/support/journal_golden.rs
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md

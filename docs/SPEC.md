@@ -698,7 +698,7 @@ because a deadline poll visits no event guard.
 
 | Kind | Body fields |
 |---|---|
-| `genesis` | `format`, `created_ts`, `limits` |
+| `genesis` | `format`, `created_ts`, `limits`, and `execution_admission: "enabled"` for new VERSION 11 stores |
 | `machine_defined` | `machine_id`, `def` |
 | `instance_created` | `instance_id`, `machine_id`, `request_id`, `state_hash`, `state_format`, `configuration`, `overrides`, optional `microsteps` |
 | `event_applied` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `state_format`, `exited`, `entered`, `source_state`, optional `microsteps` |
@@ -716,6 +716,10 @@ because a deadline poll visits no event guard.
 | `instance_migrated` | `instance_id`, `from_machine_id`, `to_machine_id`, `configuration_before`, `configuration_after`, `dropped_history`, `rescheduled_deadlines`, `request_id`, `state_hash`, `state_format`, optional `microsteps` |
 | `annotated` | `instance_id`, `request_id`, `note` |
 | `effect_attempted` | `instance_id`, `effect_id`, `attempt` (1-based, strictly `last + 1`), `outcome` (always `failed`), `request_id`, `state_hash`, `state_format`, optional `result`. Leaves the effect pending and changes no logical state: a retry counter kept in memory is lost by exactly the restart it exists to survive, so the attempt count is derived from these records. A *successful* attempt is an ordinary `effect_acked` and writes none of these |
+| `execution_claimed` | `run_id`, `instance_id`, `effect_id`, `attempt`, `handler_fingerprint`, `retry`, `domain`, `request_id`, `request_fp`; exclusive pending-effect ownership |
+| `execution_stopped` | `run_id`, `instance_id`, `effect_id`, `handler_fingerprint`, `closure`, `outcome`, `request_id`, `request_fp`; verified closure retains ownership |
+| `execution_settled` | `run_id`, `instance_id`, `effect_id`, `disposition`, `request_id`, `request_fp`, `state_hash`, `state_format`, plus matching ack/attempt outcome fields; atomic single consumption |
+| `execution_enabled` | `previous_head`, `quiescence`, `request_id`, `request_fp`; verified legacy admission |
 | `state_checkpoint` | `state_root`, `state_root_format` |
 | `journal_sealed` | `sealed_through_seq`, `sealed_last_hash`, `base_state_root`, `state_root_format`, `base_dedup_fp_root`, `base_dedup_format`, `base_index_root`, `base_index_format`, `archive_id`, `records_sealed`. Marks a sealed and detached prefix. It claims no `request_id` and changes **no** logical state: the loader reads it before folding, and the fold applies it as a marker exactly as it applies `state_checkpoint`. It is appended at `sealed_through_seq + 1`, so `sealed_last_hash` MUST equal `sha256:` followed by the record's own `prev` — the body asserts a join the chain already made, and a record where the two disagree is corrupt. `state_root_format` names the format of `base_state_root`, which is the root of the state the base file materializes at `sealed_through_seq`, **after** the dropped dedup entries were removed; it is NEVER equal to the `state_root` a record on the same sequence would carry, and a reader MUST NOT assert them equal |
 
@@ -1163,6 +1167,15 @@ Every stable code in `fsm_core::error::ALL_CODES`:
 - `store/base_mismatch` — the base state a sealed store opens from does not match the seal record that commits it, or does not match its own declared roots. There is no repair: the records the base replaced are in the archive, not in this data directory
 - `store/chain_broken` — interior hash/seq break
 - `store/degraded` — a store-backed call on a server that could not open its store
+- `store/execution_contract` — the immutable handler contract or policy differs
+- `store/execution_disposition` — the proved-stopped result cannot take the requested disposition
+- `store/execution_evidence` — native evidence is untrusted, mismatched, malformed or unsupported
+- `store/execution_exhausted` — the store-local run counter cannot allocate another identity
+- `store/execution_limit` — execution metadata, result, entry or aggregate byte bounds are exceeded
+- `store/execution_owned` — an unresolved or stopped run still owns the effect
+- `store/execution_quarantined` — execution admission needs trusted legacy environment closure
+- `store/execution_retry` — the durable retry class, count or deadline refuses another launch
+- `store/execution_stale` — the run or immutable identity does not match current ownership
 - `store/lock` — lock I/O
 - `store/non_canonical` — non-canonical journal line
 - `store/state_hash_mismatch` — fold disagreed
@@ -1398,11 +1411,12 @@ The executor's recovery window for acknowledged effects MUST be applied after
 excluding acknowledgements with no event for their actual outcome, so unrelated acknowledgements cannot
 hide an interrupted advance. This changes no record format or state hash.
 
-## Reserved claim-era persistence contract
+## Claim-era persistence contract
 
-This section specifies plan 0022 task 9302 before implementation. The shipped
-store remains VERSION 10 until the implementation and migration tests land;
-these record kinds and formats MUST NOT be advertised as available meanwhile.
+On-disk store `VERSION` is `11`. The pure fold and persistence codecs implement
+the claim-era representations specified here; production claim mutators and
+native execution integration remain under development in plan 0022 task 9302.
+Format support alone MUST NOT be advertised as contained execution support.
 
 The claim-era writer MUST use VERSION 11. It adds `execution_claimed`,
 `execution_stopped` and `execution_settled` records, and an
@@ -1437,6 +1451,9 @@ checkpoints and seals select root/4. The base/1 decoder must explicitly require
 its historical root/3 discriminator, while base/2 requires root/4 and its
 execution block. A version or discriminator mismatch is refused, never guessed.
 
+Each claim-era request ID is at most 4 KiB of UTF-8 bytes; this independent
+field ceiling is checked before copying it into a new record or request slot.
+
 A claim, stop or settlement request MUST be conflict-checked and replayed under
 the existing request-id rules before mutating ownership. The record's request
 fingerprint binds its immutable input identity, contract, evidence or
@@ -1447,13 +1464,35 @@ an acknowledgement again. An execution-enabled record binds `previous_head`
 to the immediately preceding journal hash and requires quarantined admission;
 it MUST NOT enable a different journal prefix or discard existing ownership.
 
+The Rust store execution methods accept `expected_seq` as an optional store
+journal-head precondition, checked after request replay and before allocation.
+They validate a complete projected fold before appending, then publish that
+state only after the record is durable. A refused execution request MUST NOT
+allocate a run, append a rejection record or claim its request ID. Responses
+carry `seq`, `duplicate` and the operation's immutable record body, reproduced
+from that original record on cold request replay. A request whose original
+record is archived retains the existing sealed-replay refusal.
+
 Run IDs are positive u64 counters local to the store, separate from failed
-attempt counts and journal sequences. The durable high-water mark MUST survive
+attempt counts and journal sequences. Execution admission regards an effect as
+pending only while its instance is running and its effect ID remains in the
+instance's pending list; cancellation preserves historical instance encoding
+but makes that effect absent for execution admission and settlement.
+The durable high-water mark MUST survive
 reconstruction, snapshot, sealing and reopen, including after all claims
 settle. Exhaustion refuses allocation; counters MUST NOT wrap, reset or be
 reused. A refused stale observation MUST NOT burn a run ID or append a claim.
 
 A claim's attempt is the durable failed count plus one. Its retry object is a
+snapshot of the immutable handler contract. Historical `effect_attempted`
+records carry neither that contract nor a classified failure; production
+claim admission MUST refuse a pending effect with such unbound attempts using
+`store/execution_contract`, rather than silently restart its count at one.
+The existing pending-effect seal pin keeps those records live until the
+legacy effect is resolved; ordinary acknowledgement or cancellation remains
+available. This refusal MUST survive reopening and cache selection.
+
+The claim's retry object is a
 closed snapshot of `attempts`, `backoff_ms`, `max_backoff_ms` and sorted unique
 `on` failure classes, with the existing handler-table bounds and semantics.
 The fingerprint is the immutable canonical handler-contract digest. A retry
@@ -1493,6 +1532,34 @@ contract fields of `execution_claimed` above (the request fields belong to the
 request ledger). Instance/effect identifiers are nonempty strings, attempt is
 positive and no greater than the policy's attempt limit, and handler
 fingerprints are `sha256:` followed by 64 lowercase hex digits.
+
+The initial native evidence reader accepts a bounded regular receipt file
+owned by root with all write permission bits clear, opened without following
+symlinks or waiting on a special file. Receipts MUST reside under the dedicated
+root-owned, non-group/world-writable authority directory
+`/var/lib/fsm-containment/<namespace>/authority-<generation>`; every ancestor
+MUST be a root-owned non-symlink directory without group/world write access,
+and that directory's device/inode MUST match the recorded domain authority.
+Closure filenames are `closure-<allocation>-<run_id>.json`; legacy receipt
+filenames are `quiescence-<allocation>-<previous_head_hex>.json`. A matching
+root-owned file elsewhere is insufficient. A closure receipt material is a closed
+canonical JSON object with `format: "fsm.native-closure/1"`, `domain`, positive
+`run_id`, and `journal_claim` (the canonical SHA-256 hash of the durable claim
+record). The receipt digest uses `fsm:native-closure:1`. A legacy receipt uses
+`format: "fsm.native-quiescence/1"`, `domain` and `previous_head`, with digest
+domain `fsm:native-quiescence:1`. Files are at most 8 KiB. Receipt reference
+constructors remain distinct from opaque file-verified store proof types.
+Native authorities MUST publish these files only after their full closure
+protocol succeeds; root ownership alone does not implement that protocol.
+Unsupported native evidence platforms refuse without opening or mutating a
+store. The root/kernel administration trust boundary is unchanged.
+
+Every settlement carries the current `state_hash` and `state_format`, including
+interruption over the unchanged instance. Failed disposition timestamps are
+those of their single settlement records. A failed settlement's `attempt`
+MUST equal its claim's attempt; ack/attempt `outcome` and optional `result`
+MUST exactly match the stopped result's projected existing ack/attempt shape.
+Interruption MUST NOT carry `outcome`, `result` or `attempt` fields.
 
 A legacy `quiescence` value is a closed object containing the complete
 `domain`, canonical SHA-256 `receipt`, and canonical SHA-256 `previous_head`.
@@ -1562,6 +1629,20 @@ the existing root/3 and base/1 functions and bytes MUST NOT be reinterpreted.
 Old snapshots are disposable caches; old bases are authoritative and require
 explicit validated decoding. Archives, archive verification and repeated seals
 MUST retain ownership, policies and the high-water mark.
+
+A base/2 additionally carries `execution_claims`, a closed JSON object mapping
+canonical positive decimal run IDs to the canonical `sha256:` hash of each
+original claim record unresolved at the cut. Its keys MUST match exactly the
+base execution block's unresolved claims, including stopped claims; it has at
+most 4096 entries. `base_execution_claim_format` is
+`fsm.base-execution-claims/1`; `base_execution_claim_root` hashes this map with
+domain `fsm:base-execution-claims:1`. The seal MUST commit both fields, and
+base decoding MUST check its recomputed root against both the base and seal.
+Historical base/1 and root/3 seals carry no such fields and MUST remain valid.
+This derived index MUST NOT enter logical state-root/4 material: a claim
+record's hash includes its boundary root, so including that hash in the same
+logical root would create a self-reference. Repeated seals MUST retain the
+original hash, never replace it with a checkpoint, receipt or later run hash.
 
 There are at most 4096 distinct effect entries in the union of unresolved
 ownership and retry ledgers. A stopped outcome's canonical value is at most

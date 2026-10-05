@@ -11,7 +11,7 @@ use fsm_core::hashes::{STATE_DOMAIN_V2, domain_hash, state_hash_v2};
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::machine::{ActiveConfiguration, InstanceState, Status};
 use fsm_core::record::{RecordKind, limits_value, seal, verify_line, zeros};
-use fsm_core::replay::{RequestSlot, STATE_ROOT_DOMAIN, StoreState, StoredMachine, state_root_at};
+use fsm_core::replay::{RequestSlot, StoreState, StoredMachine, state_root_at_v3 as state_root_at};
 use fsm_core::sha256::to_hex;
 use fsm_core::spec::compile_accepted;
 use fsm_core::tree::Tree;
@@ -85,6 +85,7 @@ fn store_state(root_material: &Value) -> StoreState {
         )]),
         last_seq: 7,
         last_hash: "a".repeat(64),
+        execution: StoreState::default().execution,
     }
 }
 
@@ -137,7 +138,7 @@ fn state_v2_and_state_root_v3_match_literal_canonical_material() {
     assert_eq!(
         format!(
             "sha256:{}",
-            to_hex(&domain_hash(STATE_ROOT_DOMAIN, &root_material))
+            to_hex(&domain_hash("fsm:state-root:3", &root_material))
         ),
         STATE_ROOT,
         "the checked-in root material has the independently fixed digest"

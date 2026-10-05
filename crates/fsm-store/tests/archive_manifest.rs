@@ -82,14 +82,14 @@ fn chained_records(count: u64) -> Vec<Record> {
             Value::Obj(BTreeMap::from([
                 (
                     "state_root".into(),
-                    Value::Str(fsm_core::replay::state_root_at(
+                    Value::Str(fsm_core::replay::state_root_at_v3(
                         &fsm_core::replay::StoreState::default(),
                         seq,
                     )),
                 ),
                 (
                     "state_root_format".into(),
-                    Value::Str(fsm_core::replay::STATE_ROOT_FORMAT.into()),
+                    Value::Str(fsm_core::replay::STATE_ROOT_FORMAT_V3.into()),
                 ),
             ])),
             &previous,

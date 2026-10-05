@@ -13,6 +13,7 @@ impl Journal {
         body.insert("format".into(), Value::Str("fsm.journal/1".into()));
         body.insert("created_ts".into(), Value::Num("0".into()));
         body.insert("limits".into(), limits_value());
+        body.insert("execution_admission".into(), Value::Str("enabled".into()));
         let rec = seal(0, 0, RecordKind::Genesis, Value::Obj(body), &zeros());
         let line = rec.to_line();
         Journal {

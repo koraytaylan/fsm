@@ -1,5 +1,5 @@
-//! Store `VERSION` 10: one named case per prior version still supported, and
-//! the plain statement that the 9-to-10 step converts nothing.
+//! VERSION 11 migration preserves the original VERSION 10 migration fixtures.
+//! Each supported prior marker retains its historical bytes and quarantine.
 //!
 //! Plan 0017 task 8003. A store that can hold a seal is a store an older build
 //! must not open, so the version moves once. It moves on **first write**,
@@ -117,6 +117,11 @@ fn migrates(version: &str) {
         "VERSION {version} folded to a different state after migration"
     );
     assert_eq!(
+        store.state.execution.admission(),
+        fsm_core::record::execution::Admission::Quarantined
+    );
+    assert_eq!(store.state.execution.run_high_water(), 0);
+    assert_eq!(
         stamped_version(&directory),
         STORE_VERSION,
         "VERSION {version} did not stamp the current version"
@@ -185,7 +190,12 @@ fn a_version_9_store_migrates_by_stamping_and_nothing_else() {
 }
 
 #[test]
-fn a_version_10_store_with_no_seal_and_no_base_opens_normally() {
+fn a_version_10_store_migrates_without_enabling_execution() {
+    migrates("10");
+}
+
+#[test]
+fn a_current_store_with_no_seal_and_no_base_opens_normally() {
     // The common case after this plan, and the one a reader will assume needs
     // a base file: the version moved on first write, and nothing was archived.
     let directory = TestDirectory::create("current");
@@ -194,7 +204,7 @@ fn a_version_10_store_with_no_seal_and_no_base_opens_normally() {
         detect_store_format(directory.path()),
         DetectedStoreFormat::Current
     );
-    let store = Store::open(directory.path()).expect("an unsealed VERSION 10 store opens");
+    let store = Store::open(directory.path()).expect("an unsealed current store opens");
     assert!(!store.state.instances.is_empty());
     assert!(
         !directory.path().join("journal/BASE").exists(),
@@ -203,13 +213,13 @@ fn a_version_10_store_with_no_seal_and_no_base_opens_normally() {
 }
 
 #[test]
-fn a_version_11_store_is_refused_and_nothing_is_written() {
+fn a_version_12_store_is_refused_and_nothing_is_written() {
     let directory = TestDirectory::create("future");
-    lay_out(&directory, "11");
+    lay_out(&directory, "12");
     assert_eq!(
         detect_store_format(directory.path()),
         DetectedStoreFormat::Incompatible {
-            found: "11".to_string()
+            found: "12".to_string()
         }
     );
     let before: Vec<_> = fs::read_dir(directory.path().join("journal"))
@@ -222,7 +232,7 @@ fn a_version_11_store_is_refused_and_nothing_is_written() {
         Err(error) => error,
     };
     assert_eq!(error.code, "store/version_mismatch");
-    assert_eq!(stamped_version(&directory), "11", "a refusal restamped");
+    assert_eq!(stamped_version(&directory), "12", "a refusal restamped");
     let after: Vec<_> = fs::read_dir(directory.path().join("journal"))
         .expect("the journal directory is listable")
         .filter_map(Result::ok)

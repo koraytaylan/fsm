@@ -56,6 +56,11 @@ pub(super) fn snapshot_to_state_with_definition_limits(
         last_hash,
         ..StoreState::default()
     };
+    st.execution = fsm_core::record::execution::ExecutionState::from_value(
+        obj.get("execution")
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot missing execution"))?,
+    )
+    .map_err(|error| ErrorObj::new("io/read", error.to_string()))?;
     for (id, def) in req_obj(obj, "machines")? {
         let compiled = match definition_limits {
             SnapshotDefinitionLimits::Current => compile_accepted(def),

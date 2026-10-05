@@ -360,7 +360,11 @@ impl Store {
     /// [`Store::open`] seeds them from the previous base before folding the
     /// live records over them, so a second seal carries forward what the first
     /// one saved.
-    fn prospective_index(&self, base_state: &StoreState, cut: u64) -> base::BaseIndex {
+    fn prospective_index(
+        &self,
+        base_state: &StoreState,
+        cut: u64,
+    ) -> Result<base::BaseIndex, ErrorObj> {
         let instances = base_state
             .instances
             .keys()
@@ -393,10 +397,19 @@ impl Store {
                 )
             })
             .collect();
-        base::BaseIndex {
+        let seed = if self.sealed_open {
+            base::open_from_base(&self.data_dir, &self.records)?
+                .index
+                .execution_claims
+        } else {
+            BTreeMap::new()
+        };
+        let execution_claims = base::execution_claims::at_cut(base_state, &seed, &self.records)?;
+        Ok(base::BaseIndex {
+            execution_claims,
             instances,
             machines,
-        }
+        })
     }
 
     /// The state the base file would hold, the ledger partition it carries,
@@ -428,7 +441,7 @@ impl Store {
         }
         .map_err(|error| ErrorObj::new("store/chain_broken", format!("{error:?}")))?;
         base_state.last_seq = cut;
-        let index = self.prospective_index(&base_state, cut);
+        let index = self.prospective_index(&base_state, cut)?;
         let carried = seal_safety::carry_at_cut(&base_state, &self.records, &index, limits)?;
         base_state.dedup = carried.carried.clone();
         Ok((base_state, carried, limits))
@@ -487,7 +500,7 @@ impl Store {
         // 3. The carried ledger is already decided; the base is now complete.
         let journal_dir = crate::journal_io::journal_dir(&self.data_dir);
         let segments = sealed_segments(&journal_dir, cut)?;
-        let base_index = self.prospective_index(&base_state, cut);
+        let base_index = self.prospective_index(&base_state, cut)?;
         let roots = base::base_roots(&base_state, &base_index);
 
         // 4. Write MANIFEST, then fsync it and its directory.
@@ -657,7 +670,21 @@ impl Store {
         roots: &base::BaseRoots,
         manifest: &Manifest,
     ) -> Result<Record, ErrorObj> {
+        let claim_root = roots.execution_claim_root.as_ref().ok_or_else(|| {
+            ErrorObj::new(
+                "store/base_mismatch",
+                "new seals require an execution claim root",
+            )
+        })?;
         let body = Value::Obj(BTreeMap::from([
+            (
+                "base_execution_claim_format".into(),
+                Value::Str(base::execution_claims::FORMAT.into()),
+            ),
+            (
+                "base_execution_claim_root".into(),
+                Value::Str(claim_root.clone()),
+            ),
             ("sealed_through_seq".into(), Value::Num(cut.to_string())),
             (
                 "sealed_last_hash".into(),
