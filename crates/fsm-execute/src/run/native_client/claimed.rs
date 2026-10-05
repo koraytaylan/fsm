@@ -1,6 +1,6 @@
 //! One claim-bound bind/execute sequence; journal ownership stays with the host.
 
-use super::{NativeCompletion, NativeRequest};
+use super::{NativeCompletion, NativeHelperProgress, NativeRequest};
 use fsm_core::json::Value;
 use fsm_core::record::execution::Claim;
 use std::collections::BTreeMap;
@@ -10,6 +10,28 @@ enum Phase {
     Binding,
     Executing,
     Finished,
+}
+
+/// Claim-bound execution progress, separate from transport-helper retirement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeRunPhase {
+    /// Original-claim binding is pending; execution has not been requested.
+    Binding,
+    /// Execution has been requested; authenticated closure is still pending.
+    Executing,
+    /// A matching verified completion has been delivered to the host.
+    Closed,
+    /// Execution failed or was cancelled without delivering verified closure.
+    Uncertain,
+}
+
+/// Bounded diagnostic snapshot with no argv, output, authority path or secrets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeRunProgress {
+    /// Whether original-claim-matched closure has been delivered.
+    pub phase: NativeRunPhase,
+    /// Retirement observations for the currently owned transport helper.
+    pub helper: NativeHelperProgress,
 }
 
 /// Owned contained execution for an already durable immutable claim.
@@ -139,6 +161,20 @@ impl NativeRun {
         self.error
             .get_or_insert_with(|| "native run cancelled; claim remains uncertain".into());
         self.request.cancel()
+    }
+
+    /// Read progress without polling or releasing durable execution ownership.
+    pub fn progress(&self) -> NativeRunProgress {
+        let phase = match self.phase {
+            Phase::Finished => NativeRunPhase::Closed,
+            _ if self.error.is_some() => NativeRunPhase::Uncertain,
+            Phase::Binding => NativeRunPhase::Binding,
+            Phase::Executing => NativeRunPhase::Executing,
+        };
+        NativeRunProgress {
+            phase,
+            helper: self.request.progress(),
+        }
     }
 
     /// Observe helper retirement; this does not prove native handler closure.

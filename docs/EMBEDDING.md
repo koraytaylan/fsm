@@ -1,5 +1,16 @@
 # Embedding fsm as a library
 
+The provisional Linux native client exposes side-effect-free `progress` snapshots:
+`NativeHelperProgress` reports only last-observed reap and stdout/stderr EOF;
+`NativeRunProgress` adds binding, executing, uncertain or closed phase.
+Only delivery of an original-claim-matched `NativeCompletion` enters closed;
+helper retirement after cancellation, transport failure or binding refusal
+remains uncertain, even with both EOFs. Snapshots contain no handler arguments,
+output or authority paths and perform no I/O or journal writes; durable ownership
+and capacity still require store stop/settlement. Native subprocess controls
+check cancelled/refused helper retirement against genuine verified completion,
+with compiled acceptance and automatic service integration pending.
+
 The provisional `run::native_client::NativeCompletion` now checks a successful
 broker response against the original full claim/hash, closed result envelope,
 canonical derived receipt path and existing failure classes, preserving the

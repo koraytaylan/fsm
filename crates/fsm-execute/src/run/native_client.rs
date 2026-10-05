@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 mod claimed;
 mod completion;
 
-pub use claimed::NativeRun;
+pub use claimed::{NativeRun, NativeRunPhase, NativeRunProgress};
 pub use completion::NativeCompletion;
 
 const HELPER: &str = "/usr/libexec/fsm-containment-authority";
@@ -71,6 +71,17 @@ impl Reader {
         }
         Ok(())
     }
+}
+
+/// Observed transport retirement facts; none authenticate handler-tree closure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeHelperProgress {
+    /// The owned helper returned an actual exit status to `try_wait`.
+    pub reaped: bool,
+    /// The helper output socket returned EOF.
+    pub stdout_eof: bool,
+    /// The helper diagnostic socket returned EOF.
+    pub stderr_eof: bool,
 }
 
 /// One owned helper request; claim and closure verification belong to its host.
@@ -219,6 +230,15 @@ impl NativeRequest {
             self.child.kill().map_err(message)?;
         }
         Ok(())
+    }
+
+    /// Read the last observed cleanup facts without polling, I/O or claim release.
+    pub fn progress(&self) -> NativeHelperProgress {
+        NativeHelperProgress {
+            reaped: self.status.is_some(),
+            stdout_eof: self.stdout.eof,
+            stderr_eof: self.stderr.eof,
+        }
     }
 
     /// Observe actual process reap and both stream EOFs without releasing claims.

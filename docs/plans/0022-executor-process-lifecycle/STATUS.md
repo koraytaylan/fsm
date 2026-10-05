@@ -2198,4 +2198,14 @@ lifecycle updates.
   queued as run `37306340523`, local formatting/size/diff checks pass, and
   production service integration plus full acceptance remain incomplete.
 
+- Added provisional native helper/run progress snapshots for the service-facing
+  cleanup seam: side-effect-free bounded facts distinguish actual helper reap
+  and stream EOFs from verified original-claim closure; cancellation/refusal
+  remain `Uncertain` after transport retirement, and only checked completion
+  reports `Closed`, without exposing argv, captures or authority paths.
+  The unprivileged native supervisor controls assert these distinctions and
+  inventory/embedding docs describe them; formatting/size/diff checks pass,
+  compiled acceptance remains pending (`fa86377` run `37306593261` queued),
+  automatic service wiring remains incomplete, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

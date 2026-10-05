@@ -2,7 +2,7 @@
 
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::Claim;
-use fsm_execute::run::native_client::{NativeRequest, NativeRun};
+use fsm_execute::run::native_client::{NativeRequest, NativeRun, NativeRunPhase};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -44,6 +44,8 @@ fn complete(binding: Value) {
         .and_then(Value::as_str)
         .unwrap();
     let mut owned = NativeRun::start(&claim, hash, Duration::from_secs(30)).unwrap();
+    assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
+    assert!(!owned.progress().helper.reaped);
     if matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1")) {
         owned.cancel().unwrap();
         match owned.poll() {
@@ -58,6 +60,7 @@ fn complete(binding: Value) {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
+        assert_retired_uncertain(&owned);
         println!("\nFSM_NATIVE_TEST_CANCELLED");
         return;
     }
@@ -87,11 +90,15 @@ fn complete(binding: Value) {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
+        assert_retired_uncertain(&owned);
         println!("\nFSM_NATIVE_TEST_REFUSED");
         return;
     }
     loop {
         if let Some(completion) = owned.poll().unwrap() {
+            assert_eq!(owned.progress().phase, NativeRunPhase::Closed);
+            let helper = owned.progress().helper;
+            assert!(helper.reaped && helper.stdout_eof && helper.stderr_eof);
             assert_eq!(
                 completion.candidate().get("status"),
                 Some(&Value::Num("0".into()))
@@ -138,4 +145,11 @@ fn complete(binding: Value) {
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+}
+
+fn assert_retired_uncertain(owned: &NativeRun) {
+    let progress = owned.progress();
+    assert_eq!(progress.phase, NativeRunPhase::Uncertain);
+    assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);
+    assert_eq!(owned.progress(), progress);
 }
