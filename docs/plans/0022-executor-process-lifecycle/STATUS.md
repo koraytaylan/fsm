@@ -3031,4 +3031,18 @@ lifecycle updates.
   host/portable gates remain required and 9303 stays
   active rather than being accepted from the previous 81-case source.
 
+- Frozen allocation-observation source `893dd8b3c6d6db0e6ea87482690c19d9a271ceda`
+  passes both provisioned native jobs in CI `37361472892`; independently
+  verified artifacts retain 81 cases at stable Rust 1.99.0 and MSRV 1.89.0,
+  exact clean source, frozen suite inventories and report/diagnostic hashes,
+  including the expected final-kill refusal control.
+  Evidence is retained under the dedicated task cache in
+  `ci-37361472892/stable` and `ci-37361472892/msrv`.
+  Executable-byte comparison remains unproved and the native gate remains
+  unreleased; the local stable workspace debug gate is still running, and
+  the six portable axes have no terminal aggregate verdict yet.
+  Review confirms production native process/MCP descendant and corrupted-proof
+  controls; standalone, embedded and public service tick ownership routing
+  remains task 9401 work, and task 9303 remains in progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
