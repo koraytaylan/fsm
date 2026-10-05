@@ -40,10 +40,8 @@ impl Drop for OwnedRun {
         if let Some(worker) = &self.worker {
             worker.cancel();
         }
-        if !self.native_closed && stop::request(&self.directory, self.allocation).is_err() {
-            // Refused handoff/manager inspection cannot authorize closure,
-            // but the original live kernel identity still permits fencing.
-            let _ = super::termination::request(&self.directory, self.allocation);
+        if !self.native_closed {
+            let _ = stop::fence(&self.directory, self.allocation);
         }
         let _ = self.child.kill();
         let deadline = Instant::now() + Duration::from_secs(1);
@@ -206,9 +204,7 @@ pub(super) fn execute_cancellable(
     }
     // A naturally retired unit may no longer support the live stop operation;
     // only independent complete-close proof can resolve that uncertainty.
-    if stop::request(directory, allocation).is_err() {
-        let _ = super::termination::request(directory, allocation);
-    }
+    let _ = stop::fence(directory, allocation);
     closure::complete(directory, allocation)
         .map_err(|error| format!("runner cleanup uncertain: {error}"))?;
     owned.native_closed = true;

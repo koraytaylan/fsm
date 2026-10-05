@@ -2819,4 +2819,16 @@ lifecycle updates.
   completion and full original proof. Current frozen debug/release/native/portable
   gates and production routing remain pending with task 9303 active.
 
+- Frozen 181cbad local stable workspace release tests pass in full with serial
+  tests and compiler/rustdoc warnings denied; CI run 37340474722 independently
+  passes both provisioned native toolchains, each verified against its exact
+  source/compiler with 78 cases, executable bytes unverified and gate unreleased.
+  Ubuntu stable and zero-dependency jobs pass; other portable axes remain pending.
+  Review found authenticated broker close lacked the runner's fallback fencing
+  on matched-stop refusal; both now share the same original-domain helper while
+  retaining independent full closure and the original stop error. Native fault
+  controls require revocation and depopulation/actual absence without fabricated
+  manager completion, changed damaged handoff or ownership release. This source
+  change requires fresh gates; task 9303 and production routing remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

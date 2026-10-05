@@ -522,6 +522,31 @@ fn stop_running_handler() {
     let handoff_path = fixture.directory.join("handoff-1.json");
     let handoff_bytes = fs::read(&handoff_path).unwrap();
     fs::write(&handoff_path, b"{}").unwrap();
+    assert!(super::super::super::stop::fence(&fixture.directory, 1).is_err());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match super::super::super::observation::read(&fixture.directory, 1) {
+            Ok(sample) => {
+                assert_eq!(sample.get("domain"), Some(&domain.to_value()));
+                assert_eq!(sample.get("closing"), Some(&Value::Bool(true)));
+                if sample.get("populated") == Some(&Value::Bool(false)) {
+                    break;
+                }
+            }
+            Err(error) => match fs::symlink_metadata(&fixture.groups[0].0) {
+                Err(absence) if absence.kind() == std::io::ErrorKind::NotFound => break,
+                _ => panic!("original domain inspection failed: {error}"),
+            },
+        }
+        assert!(
+            Instant::now() < deadline,
+            "refused stop left original tree populated"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(fs::read(&handoff_path).unwrap(), b"{}");
+    assert!(!completion_path.exists());
+    assert!(!fixture.directory.join("entry-1.json").exists());
     assert!(super::super::super::closure::complete(&fixture.directory, 1).is_err());
     assert!(!fixture.directory.join("closed-1.json").exists());
     fs::write(&handoff_path, handoff_bytes).unwrap();

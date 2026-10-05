@@ -1,5 +1,16 @@
 # API and version policy
 
+Authenticated broker close now shares the runner's original-domain fencing:
+when matched manager stop refuses, it attempts verified original kernel
+freeze/kill while preserving that refusal and requiring independent complete
+closure before returning success. Kernel submission never proves manager
+retirement, closure or reusable capacity, and damaged protected handoff remains
+unresolved until exact original proof is available. The native fault control
+requires durable revocation, original-domain depopulation or actual absence,
+unchanged damaged handoff and no fabricated manager completion or closure.
+No journal, receipt, attestation, hash or request-format bytes change.
+
+
 Broker lifetime leadership and startup now validate protected configuration,
 authority/boot and lock identity independently of the current handler catalogue;
 provisioning still requires approved catalogue validation. A missing or malformed

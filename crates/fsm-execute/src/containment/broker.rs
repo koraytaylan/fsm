@@ -107,7 +107,7 @@ fn session(
             "observe" => observation::read(&directory, broker_frame::allocation(payload)?),
             "close" => {
                 let allocation = broker_frame::allocation(payload)?;
-                let _ = stop::request(&directory, allocation);
+                let _ = stop::fence(&directory, allocation);
                 closure::complete(&directory, allocation).map(|_| Value::Null)
             }
             "execute" => execute(

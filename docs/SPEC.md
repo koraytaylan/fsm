@@ -1948,7 +1948,8 @@ mismatched inspection MUST retain uncertainty. Launch MUST retain the original m
 `CollectMode=inactive`, without `--collect`, until matched Root stop. Stop MUST
 durably revoke entry for a present verified original cgroup even when damaged
 handoff material prevents manager stop or closure. If matched manager stop
-refuses, the runner MUST attempt original-identity kernel freeze/kill independently
+refuses, both runner cleanup and authenticated broker close MUST attempt
+original-identity kernel freeze/kill independently
 of writer access; that attempt MUST NOT establish closure or release ownership.
 An already absent cgroup MUST require the verified original completed handoff and
 unchanged manager invocation/security policy before revocation; a present

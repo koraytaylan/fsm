@@ -8,6 +8,16 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+/// Attempt original-domain fencing while preserving any manager stop refusal;
+/// neither a kernel kill submission nor this return value establishes closure.
+pub(super) fn fence(directory: &Path, allocation: u64) -> Result<(), String> {
+    let result = request(directory, allocation);
+    if result.is_err() {
+        let _ = super::termination::request(directory, allocation);
+    }
+    result
+}
+
 pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
     super::protected_directory(directory)?;
     let _lock = super::authority_lock(directory)?;
