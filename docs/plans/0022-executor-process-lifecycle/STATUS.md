@@ -3315,4 +3315,13 @@ lifecycle updates.
   pass; the two Windows jobs remain live, including stable now in release tests.
   The local frozen host gate and task acceptance remain pending.
 
+- Corrected-source Windows MSRV gate `111988370258` passes in CI
+  `37376949993` at exact `9f1f175ad91609359699e3a2d670119e8cbb506a`;
+  its exact log is retained at task-cache `ci-37376949993-windows-msrv.log`.
+  This is actual Windows debug/release workspace test execution, with required
+  formatting, size, all-target Clippy, documentation and decimal checks passing;
+  the Linux-only fuzz step is skipped as configured.
+  Only Windows stable remains live in release tests; the separate local frozen
+  host gate remains unexecuted under the workspace swap rule.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
