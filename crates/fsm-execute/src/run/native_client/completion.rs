@@ -93,6 +93,7 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
         result,
         &[
             "format",
+            "handler_kind",
             "claim",
             "journal_claim",
             "receipt",
@@ -100,7 +101,7 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
             "failure_class",
         ],
     )?;
-    if result.get("format").and_then(Value::as_str) != Some("fsm.native-run-result/1")
+    if result.get("format").and_then(Value::as_str) != Some("fsm.native-run-result/2")
         || result.get("claim") != Some(&claim.to_value())
         || result.get("journal_claim").and_then(Value::as_str) != Some(journal_claim)
     {
@@ -142,6 +143,21 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
         .ok_or("native completion candidate missing")?;
     if candidate.as_obj().is_none() {
         return Err("native completion candidate is not an acknowledgement object".into());
+    }
+    let kind = result
+        .get("handler_kind")
+        .and_then(Value::as_str)
+        .ok_or("native completion handler kind missing")?;
+    let generic_error = candidate
+        .get("error")
+        .and_then(Value::as_str)
+        .is_some_and(|error| matches!(error, "exec/cancelled" | "exec/timeout" | "exec/spawn"));
+    match kind {
+        "process"
+            if generic_error
+                || (candidate.get("error").is_none() && candidate.get("status").is_some()) => {}
+        "mcp" if generic_error || candidate.get("status").is_none() => {}
+        _ => return Err("native completion candidate and handler kind differ".into()),
     }
     Ok(Material {
         stopped: stopped(candidate, failure_class)?,
@@ -264,7 +280,8 @@ mod tests {
             ("format".into(), Value::Str("fsm.native-response/1".into())),
             ("ok".into(), Value::Bool(true)),
             ("result".into(), Value::Obj(BTreeMap::from([
-                ("format".into(), Value::Str("fsm.native-run-result/1".into())),
+                ("format".into(), Value::Str("fsm.native-run-result/2".into())),
+                ("handler_kind".into(), Value::Str("process".into())),
                 ("claim".into(), claim.to_value()),
                 ("journal_claim".into(), Value::Str(hash.into())),
                 ("receipt".into(), Value::Str("/var/lib/fsm-containment/0123456789abcdef0123456789abcdef/authority-9/closure-7-1.json".into())),
@@ -296,6 +313,8 @@ mod tests {
                 Value::Str("/var/lib/fsm-containment/other.json".into()),
             ),
             ("failure_class", Value::Str("unknown".into())),
+            ("handler_kind", Value::Str("mcp".into())),
+            ("handler_kind", Value::Str("unknown".into())),
             ("candidate", Value::Null),
         ] {
             let mut result = original.clone();

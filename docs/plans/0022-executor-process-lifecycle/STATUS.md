@@ -2096,4 +2096,18 @@ lifecycle updates.
   gates plus remaining production integration stay required, and task 9303
   stays In progress.
 
+- **Handler-kind completion ambiguity repaired:** an empty candidate with null
+  retry class could previously be treated as valid MCP success even for a
+  process missing its exit status. The private transient result envelope is now
+  `fsm.native-run-result/2` with approved catalogue-derived handler kind;
+  completion refuses missing process status, process/MCP-only error mismatch,
+  MCP process-exit candidates and unknown kind, preserving shared generic error
+  forms. Material controls reject wrong/unknown kind, existing native tree modes
+  verify the actual envelope, and the test-host reconstructed positive envelope
+  explicitly records its process kind. No journal format, candidate bytes,
+  stable error code or hash changes. Formatting, size and diff checks pass;
+  run `37303803265` is authoritatively queued for `df17e8f`, compiled native/
+  portable verification and remaining integration stay required, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

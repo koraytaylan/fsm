@@ -1824,11 +1824,16 @@ Its bounded response MUST bind the original claim/hash, receipt path,
 candidate result and failure class. It MUST NOT write stopped results or
 settle the journal itself; the production service/broker integration remains
 required, and root-only operation MUST NOT imply an unprivileged client path.
-The response format is `fsm.native-run-result/1`, with exactly `format`,
+The private response format is `fsm.native-run-result/2`, with exactly `format`, `handler_kind`,
 `claim`, `journal_claim`, `receipt` (the exact protected receipt path),
 `candidate` (existing runner acknowledgement-result shape), and nullable
 `failure_class` (existing runner retry classification); canonical output is
 at most 64 KiB. It is not an authenticated remote broker response by itself.
+`handler_kind` MUST be `process` or `mcp` derived from the freshly verified
+approved catalogue. Checked completion MUST reject a missing process status,
+process use of MCP-only errors, MCP use of a process exit candidate, and unknown
+kinds; generic timeout/cancellation/spawn errors retain their shared shapes.
+The previous private result envelope version MUST refuse rather than infer kind.
 The provisional Linux-only `run::native_io::NativeCapture` and
 `NativeProtocol` adapters MUST reuse the runner's capture/worker implementation;
 their constructors MUST NOT authorize launch, validate a claim or prove

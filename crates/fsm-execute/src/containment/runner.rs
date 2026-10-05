@@ -238,7 +238,17 @@ pub(super) fn execute_cancellable(
         },
     };
     let result = object([
-        ("format", Value::Str("fsm.native-run-result/1".into())),
+        ("format", Value::Str("fsm.native-run-result/2".into())),
+        (
+            "handler_kind",
+            Value::Str(
+                match &handler.kind {
+                    HandlerKind::Process => "process",
+                    HandlerKind::Mcp { .. } => "mcp",
+                }
+                .into(),
+            ),
+        ),
         ("claim", claim.to_value()),
         (
             "journal_claim",

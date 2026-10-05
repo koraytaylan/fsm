@@ -84,6 +84,10 @@ after independently observed descendant enrollment, requiring full closure and
 terminal `failed` stopped mapping with no retry class; all determinate native
 tree outcomes also verify their checked completion status and exact candidate
 while retaining unresolved journal ownership.
+The private native result envelope is now version 2 and includes the approved
+catalogue's handler kind, allowing completion validation to refuse missing
+process exit status, MCP/process candidate mismatches and unknown kinds; this
+transient protocol change alters no journal format, candidate bytes or hash.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.
