@@ -1604,6 +1604,10 @@ failures to their existing class, cancellation to `interrupted`, and terminal
 MCP protocol failure to `failed`. Candidate/class contradictions or unknown
 error/status forms MUST refuse before receipt verification; a null retry class
 MUST NOT by itself imply success. This conversion MUST NOT mutate the journal.
+The provisional Linux pipeline `stop_native` method MUST persist only the
+checked completion outcome and opaque proof through `Store::stop_execution_on`,
+retaining its writer-protected current-claim/hash/domain checks and request-id
+replay. It MUST NOT acknowledge, retry, settle ownership or release capacity.
 
 The provisional Linux `run::native_client::NativeRequest` host adapter MUST
 validate a closed bounded request and canonical namespace/generation, verify the

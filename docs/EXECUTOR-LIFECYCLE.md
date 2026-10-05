@@ -70,6 +70,10 @@ candidate result and mapping clean success, existing failure classes,
 cancellation and terminal protocol error distinctly; candidate/class or
 error/status contradictions refuse before receipt verification. The store
 must still recheck ownership and persist this outcome under its writer lease.
+The provisional `Pipeline::stop_native` adapter now performs that persistence
+through the existing store mutator, with native controls for stale claim refusal,
+idempotent replay, reopened exact stopped result and retained claim/pending
+effect; production service scheduling and settlement remain unwired.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.

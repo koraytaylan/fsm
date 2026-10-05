@@ -2045,4 +2045,17 @@ lifecycle updates.
   protected service stopped/settlement integration remain required, and task
   9303 stays In progress.
 
+- **Verified native stopped persistence adapter implemented for review:**
+  provisional Linux `Pipeline::stop_native` delegates the checked completion's
+  exact outcome and opaque proof to the existing store stopped mutator, which
+  retains writer-protected original/current claim/hash/domain checks. It performs
+  no acknowledgement, retry, settlement or capacity release. The native access
+  case requires stale-claim refusal with unchanged records/ownership, one valid
+  stopped append, duplicate replay without another append, retained full claim/
+  pending effect and reopened exact stopped outcome. The API inventory and
+  contracts record the additive method. Formatting, size and diff checks pass;
+  run `37302776458` is authoritatively queued for `19d3725`, compiled native/
+  portable acceptance and production service scheduling/settlement remain
+  required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -37,6 +37,30 @@ pub enum SettleOutcome {
 pub struct Pipeline;
 
 impl Pipeline {
+    /// Persist verified native completion while retaining claim ownership.
+    #[cfg(target_os = "linux")]
+    pub fn stop_native(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        claim: &fsm_core::record::execution::Claim,
+        completion: &super::native_client::NativeCompletion,
+        request_id: &str,
+    ) -> Result<Value, ExecError> {
+        store
+            .stop_execution_on(
+                clock,
+                fsm_store::store::ExecutionStopRequest {
+                    claim,
+                    proof: completion.proof(),
+                    outcome: completion.stopped_outcome(),
+                    request_id,
+                    expected_seq: None,
+                },
+            )
+            .map_err(|error| ExecError::store(&error))
+    }
+
     /// Ack one outcome, then send the declared advance event when the engine
     /// says that event is enabled.
     ///

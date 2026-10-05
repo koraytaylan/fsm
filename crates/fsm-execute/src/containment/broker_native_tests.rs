@@ -282,6 +282,79 @@ pub(super) fn run() {
             .is_none()
     );
     drop(store);
+    {
+        let mut store = Store::open(&fixture.store).unwrap();
+        let before = store.records.len();
+        let before_ownership = store.state.execution.clone();
+        let mut stale = original_claim.to_value().as_obj().unwrap().clone();
+        stale.insert(
+            "run_id".into(),
+            Value::Num((original_claim.run_id() + 1).to_string()),
+        );
+        let stale = fsm_core::record::execution::Claim::from_value(&Value::Obj(stale)).unwrap();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+        assert!(
+            pipeline
+                .stop_native(
+                    &mut store,
+                    &mut clock,
+                    &stale,
+                    &completion,
+                    "native-stale-stop"
+                )
+                .is_err()
+        );
+        assert_eq!(store.records.len(), before);
+        assert_eq!(store.state.execution, before_ownership);
+        let stopped = pipeline
+            .stop_native(
+                &mut store,
+                &mut clock,
+                &original_claim,
+                &completion,
+                "native-proof-stop",
+            )
+            .unwrap();
+        assert_eq!(stopped.get("duplicate"), Some(&Value::Bool(false)));
+        let replay = pipeline
+            .stop_native(
+                &mut store,
+                &mut clock,
+                &original_claim,
+                &completion,
+                "native-proof-stop",
+            )
+            .unwrap();
+        assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+        assert_eq!(store.records.len(), before + 1);
+        assert_eq!(
+            store.state.execution.claim_for("instance", &effect),
+            Some(&original_claim)
+        );
+        let retained = store
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .unwrap();
+        assert_eq!(retained.outcome(), completion.stopped_outcome());
+        assert!(store.state.instances["instance"].pending.contains(&effect));
+    }
+    let reopened = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(
+        reopened
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .unwrap()
+            .outcome(),
+        completion.stopped_outcome()
+    );
+    assert_eq!(
+        reopened.state.execution.claim_for("instance", &effect),
+        Some(&original_claim)
+    );
+    drop(reopened);
     drop(daemon);
     let daemon = Daemon::ready(&fixture.directory, 2);
     assert_eq!(

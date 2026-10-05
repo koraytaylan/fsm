@@ -562,3 +562,6 @@ service integration and native acceptance remain required.
 `NativeCompletion::stopped_outcome` additively exposes the preserved candidate
 with checked stopped semantics; null retry class alone never implies success,
 and this getter performs no journal mutation or ownership settlement.
+The additive provisional Linux `Pipeline::stop_native` method persists checked
+outcome/proof through the existing writer-protected stopped mutator, preserving
+request replay and claim exclusion without acknowledgement or settlement.
