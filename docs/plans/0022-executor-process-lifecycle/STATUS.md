@@ -2446,4 +2446,16 @@ lifecycle updates.
   queued; formatting, size and whitespace checks are local-only validation,
   with compilation/native/portable gates still required and task 9303 open.
 
+- Expanded the actual UID-65534 Pipeline/NativeRun host control to both
+  successful /bin/true and timed-out /bin/sleep handlers, retaining an independent
+  writer lease throughout bind/execute/closure observation in both cases.
+  The timeout case requires exec/timeout, signal status -1, Timeout class and
+  authenticated original-claim closure while store/lock remains observable,
+  the durable claim/effect stay pending and no stopped result is written;
+  after lease release it runs the existing stop/replay/successor-exclusion and
+  atomic terminal settlement/reopen controls. No retry class is admitted in
+  this fixture, so timeout is terminal without fabricated exhaustion metadata.
+  Source formatting/size/whitespace checks pass; new native CI remains required,
+  latest frozen fix run 37314402122 is queued and task 9303 remains in progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

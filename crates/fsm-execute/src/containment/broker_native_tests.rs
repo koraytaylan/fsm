@@ -168,7 +168,31 @@ fn request(base: &Path, action: &str, payload: Value) -> Value {
 }
 
 pub(super) fn run() {
-    let table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#, &JsonLimits::DEFAULT).unwrap();
+    for timeout in [false, true] {
+        run_case(timeout);
+    }
+}
+
+fn run_case(timeout: bool) {
+    let mut table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#, &JsonLimits::DEFAULT).unwrap();
+    if timeout {
+        let Value::Obj(document) = &mut table else {
+            unreachable!()
+        };
+        let Value::Arr(handlers) = document.get_mut("handlers").unwrap() else {
+            unreachable!()
+        };
+        let Value::Obj(handler) = &mut handlers[0] else {
+            unreachable!()
+        };
+        handler.insert(
+            "argv".into(),
+            Value::Arr(vec![
+                Value::Str("/bin/sleep".into()),
+                Value::Str("300".into()),
+            ]),
+        );
+    }
     let mut fixture = Fixture::new_for_operator(table);
     for uid in [0, 61184, 65519, u32::MAX] {
         assert!(broker_endpoint::provision(&fixture.directory, uid).is_err());
@@ -227,7 +251,7 @@ pub(super) fn run() {
         .push((group, domain.to_value().get("cgroup").unwrap().clone()));
     let (binding, effect) = claim_binding(&fixture, &domain);
     permit_operator_store(&fixture.store);
-    let execution = disconnect_cases::complete(&fixture.directory, &binding);
+    let execution = disconnect_cases::complete(&fixture.directory, &binding, timeout);
     assert_eq!(
         read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
         binding
@@ -247,9 +271,16 @@ pub(super) fn run() {
     .unwrap();
     assert_eq!(
         completion.candidate().get("status"),
-        Some(&Value::Num("0".into()))
+        Some(&Value::Num(if timeout { "-1" } else { "0" }.into()))
     );
-    assert_eq!(completion.failure_class(), None);
+    assert_eq!(
+        completion.failure_class(),
+        timeout.then_some(fsm_core::record::execution::FailureClass::Timeout)
+    );
+    assert_eq!(
+        completion.stopped_outcome().status(),
+        if timeout { "timeout" } else { "ok" }
+    );
     assert!(
         completion
             .proof()
@@ -260,7 +291,7 @@ pub(super) fn run() {
     assert_eq!(result.get("journal_claim"), binding.get("journal_claim"));
     assert_eq!(
         result.get("candidate").unwrap().get("status"),
-        Some(&Value::Num("0".into()))
+        Some(&Value::Num(if timeout { "-1" } else { "0" }.into()))
     );
     VerifiedClosure::read(Path::new(text(result, "receipt").unwrap())).unwrap();
     assert_eq!(
@@ -412,6 +443,17 @@ pub(super) fn run() {
         let before = store.records.len();
         let mut pipeline = fsm_execute::run::Pipeline;
         let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
+        assert_eq!(
+            store
+                .state
+                .execution
+                .settlement_for(
+                    &original_claim,
+                    fsm_core::record::execution::PendingEffect::Present,
+                )
+                .unwrap(),
+            fsm_core::record::execution::Settlement::Acked,
+        );
         let settled = pipeline
             .settle_stopped(
                 &mut store,

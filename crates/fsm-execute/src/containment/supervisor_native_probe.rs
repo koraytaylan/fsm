@@ -38,6 +38,7 @@ fn owned_request() {
 }
 
 fn complete(binding: Value) {
+    let timeout = matches!(std::env::var("FSM_NATIVE_TEST_TIMEOUT").as_deref(), Ok("1"));
     let claim = Claim::from_value(binding.get("claim").unwrap()).unwrap();
     let hash = binding
         .get("journal_claim")
@@ -194,10 +195,22 @@ fn complete(binding: Value) {
             assert!(helper.reaped && helper.stdout_eof && helper.stderr_eof);
             assert_eq!(
                 completion.candidate().get("status"),
-                Some(&Value::Num("0".into()))
+                Some(&Value::Num(if timeout { "-1" } else { "0" }.into()))
             );
-            assert_eq!(completion.failure_class(), None);
-            assert_eq!(completion.stopped_outcome().status(), "ok");
+            assert_eq!(
+                completion.failure_class(),
+                timeout.then_some(fsm_core::record::execution::FailureClass::Timeout)
+            );
+            assert_eq!(
+                completion.stopped_outcome().status(),
+                if timeout { "timeout" } else { "ok" }
+            );
+            if timeout {
+                assert_eq!(
+                    completion.candidate().get("error").and_then(Value::as_str),
+                    Some("exec/timeout")
+                );
+            }
             assert_eq!(
                 completion.stopped_outcome().result(),
                 Some(completion.candidate())
@@ -223,7 +236,14 @@ fn complete(binding: Value) {
                 ("journal_claim".into(), Value::Str(hash.into())),
                 ("receipt".into(), Value::Str(receipt)),
                 ("candidate".into(), completion.candidate().clone()),
-                ("failure_class".into(), Value::Null),
+                (
+                    "failure_class".into(),
+                    if timeout {
+                        Value::Str("timeout".into())
+                    } else {
+                        Value::Null
+                    },
+                ),
             ]));
             let response = Value::Obj(BTreeMap::from([
                 ("format".into(), Value::Str("fsm.native-response/1".into())),

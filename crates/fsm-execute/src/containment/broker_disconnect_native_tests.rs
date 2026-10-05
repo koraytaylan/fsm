@@ -74,7 +74,7 @@ if len(sys.argv)==4:
 os.execv(str(authority/'supervisor-test'),['supervisor-test','--exact','authority::allocator::native_tests::supervisor_probe::owned_request','--ignored','--nocapture','--color','never'])
 "#;
 
-pub(super) fn complete(directory: &Path, binding: &Value) -> Value {
+pub(super) fn complete(directory: &Path, binding: &Value, timeout: bool) -> Value {
     install_supervisor(directory);
     let cancelled = Command::new("/usr/bin/python3")
         .args(["-c", SUPERVISOR])
@@ -157,6 +157,7 @@ pub(super) fn complete(directory: &Path, binding: &Value) -> Value {
         );
     }
     let output = Command::new("/usr/bin/python3")
+        .env("FSM_NATIVE_TEST_TIMEOUT", if timeout { "1" } else { "0" })
         .args(["-c", SUPERVISOR])
         .arg(directory.join("broker"))
         .arg(std::str::from_utf8(&canon_bytes(binding)).unwrap())
