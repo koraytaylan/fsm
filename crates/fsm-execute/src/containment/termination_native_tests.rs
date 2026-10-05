@@ -55,7 +55,7 @@ pub(super) fn members(fixture: &Fixture) {
     let diagnostics: OwnedFd = writer.try_clone().unwrap().into();
     let writer: OwnedFd = writer.into();
     let membership = format!(
-        "0::{}\n",
+        "0::/{}\n",
         group.strip_prefix("/sys/fs/cgroup").unwrap().display()
     );
     children.roots.push(

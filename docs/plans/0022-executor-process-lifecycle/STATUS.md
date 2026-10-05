@@ -1482,4 +1482,13 @@ lifecycle updates.
   fencing, permanent receipts and runner integration remain outstanding, and
   task 9303 stays In progress.
 
+- **Retained native failure diagnosed:** stable evidence from `9e50756`
+  passes preparation, three refusal controls and installed-gate authorization;
+  the descendant helper then rejects its expected membership because Rust's
+  `strip_prefix` yields a relative path and the fixture omitted the leading
+  slash required by `/proc/PID/cgroup`. The expectation now restores that
+  slash while preserving exact membership checks before descendant creation.
+  This is a fixture repair, not relaxed containment; compiled/native reruns
+  remain required and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
