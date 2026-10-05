@@ -1522,4 +1522,18 @@ lifecycle updates.
   natural completion, full Runner/MCP I/O and service integration remain
   outstanding, so 9303 remains In progress and production_backend remains false.
 
+- **Natural exit retirement implemented for review:** source review found
+  that live-domain `request-stop` cannot handle a handler whose unit/cgroup
+  already disappeared. `complete-close` now verifies accepted one-shot handoff,
+  durably revokes admission even after native exit, checks any present cgroup
+  identity, and still requires absent unit/jobs/cgroup before distinct protected
+  manager-retired evidence and closure publication. A present stop record must
+  still match; no natural exit is relabeled a successful manager stop. Handoff
+  admission now checks control-group lifetime/kill and no-restart policy.
+  The production quiet-handler control requires receipt reading and replay
+  with no stop record, unchanged unresolved/un-stopped journal ownership, and
+  exact retired material; explicit-stop controls remain. Source checks precede
+  stable/MSRV native review, with Runner/MCP integration and uncertain-start
+  reconciliation still outstanding; task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -22,6 +22,9 @@ const KEYS: &[&str] = &[
     "ProtectControlGroups",
     "Restart",
     "InvocationID",
+    "ExitType",
+    "KillMode",
+    "KillSignal",
 ];
 
 #[cfg(test)]
@@ -137,6 +140,9 @@ fn main_pid(properties: &BTreeMap<String, String>, unit: &str) -> Result<u32, St
         ("Delegate", "no"),
         ("ProtectControlGroups", "yes"),
         ("Restart", "no"),
+        ("ExitType", "cgroup"),
+        ("KillMode", "control-group"),
+        ("KillSignal", "9"),
         ("ControlGroup", &format!("/system.slice/{unit}")),
     ] {
         if properties.get(key).map(String::as_str) != Some(expected) {
@@ -255,6 +261,9 @@ mod tests {
             ("Delegate".into(), "no".into()),
             ("ProtectControlGroups".into(), "yes".into()),
             ("Restart".into(), "no".into()),
+            ("ExitType".into(), "cgroup".into()),
+            ("KillMode".into(), "control-group".into()),
+            ("KillSignal".into(), "9".into()),
             ("ControlGroup".into(), format!("/system.slice/{unit}")),
             ("MainPID".into(), "123".into()),
             ("InvocationID".into(), "a".repeat(32)),
@@ -267,6 +276,9 @@ mod tests {
             ("Delegate", "yes"),
             ("ProtectControlGroups", "no"),
             ("Restart", "always"),
+            ("ExitType", "main"),
+            ("KillMode", "process"),
+            ("KillSignal", "15"),
             ("ControlGroup", "/other"),
             ("MainPID", "0"),
             ("MainPID", "0123"),

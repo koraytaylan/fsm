@@ -241,6 +241,38 @@ pub(super) fn run() {
             .is_some()
     );
     drop(store);
+    assert!(!fixture.directory.join("manager-stopped-1.json").exists());
+    super::super::super::closure::complete(&fixture.directory, 1).unwrap();
+    assert_eq!(
+        read_value(&fixture.directory.join("manager-retired-1.json"), true).unwrap(),
+        object([
+            ("format", Value::Str("fsm.native-manager-retired/1".into())),
+            ("domain", domain.to_value()),
+            ("binding", binding.clone()),
+            ("gate", handoff.get("gate").unwrap().clone()),
+        ])
+    );
+    assert!(!fixture.directory.join("manager-stopped-1.json").exists());
+    let run_id = super::super::super::number(binding.get("claim").unwrap(), "run_id").unwrap();
+    let receipt = fixture.directory.join(format!("closure-1-{run_id}.json"));
+    fsm_store::store::VerifiedClosure::read(&receipt).unwrap();
+    super::super::super::closure::complete(&fixture.directory, 1).unwrap();
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_none()
+    );
+    drop(store);
     drop(gate);
     fixture.cleanup().unwrap();
     stop_running_handler();
@@ -309,8 +341,12 @@ fn stop_running_handler() {
     );
     assert!(gate.child.try_wait().unwrap().is_none());
     fs::remove_file(&completion_path).unwrap();
+    let handoff_path = fixture.directory.join("handoff-1.json");
+    let handoff_bytes = fs::read(&handoff_path).unwrap();
+    fs::write(&handoff_path, b"{}").unwrap();
     assert!(super::super::super::closure::complete(&fixture.directory, 1).is_err());
     assert!(!fixture.directory.join("closed-1.json").exists());
+    fs::write(&handoff_path, handoff_bytes).unwrap();
     super::super::super::stop::request(&fixture.directory, 1).unwrap();
     let completed = read_value(&fixture.directory.join("manager-stopped-1.json"), true).unwrap();
     assert_eq!(

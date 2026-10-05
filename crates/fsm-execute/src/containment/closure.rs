@@ -60,14 +60,34 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
         ("format", Value::Str("fsm.native-closing/1".into())),
         ("domain", domain.clone()),
     ]);
-    let records = [
-        (format!("manager-stopped-{allocation}.json"), stopped),
+    let mut records = vec![
         (format!("launch-{allocation}.json"), intent),
-        (format!("closing-{allocation}.json"), closing),
         (format!("handoff-{allocation}.json"), handoff),
         (format!("binding-{allocation}.json"), binding.clone()),
     ];
-    validate_records(directory, allocation, &records)?;
+    validate_records(directory, &records)?;
+    let stopped_name = format!("manager-stopped-{allocation}.json");
+    let matched_stop = !absent(&directory.join(&stopped_name))?;
+    if matched_stop {
+        records.push((stopped_name, stopped.clone()));
+        validate_records(directory, &records)?;
+    }
+    let tombstone = object([
+        ("format", Value::Str("fsm.native-domain-closed/1".into())),
+        ("domain", domain.clone()),
+    ]);
+    let tombstone_path = directory.join(format!("closed-{allocation}.json"));
+    if absent(&tombstone_path)? {
+        if closing::revoke_after_handoff(directory, allocation)? != domain {
+            return Err("closure revocation domain differs".into());
+        }
+    } else if read_value(&tombstone_path, true)? != tombstone {
+        return Err("closure tombstone differs".into());
+    }
+    records.push((format!("closing-{allocation}.json"), closing));
+    validate_records(directory, &records)?;
+    sync(&directory.join(format!("closing-{allocation}.json")))?;
+    revoked(directory, allocation)?;
     let unit = format!(
         "fsm-containment-{}-{}-{allocation}.service",
         text(&domain, "namespace")?,
@@ -86,18 +106,26 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    validate_records(directory, allocation, &records)?;
+    validate_records(directory, &records)?;
+    revoked(directory, allocation)?;
     if closing::recorded_domain(directory, allocation)? != domain || !absent(&group)? {
         return Err("closure native identity changed".into());
     }
-    let tombstone = object([
-        ("format", Value::Str("fsm.native-domain-closed/1".into())),
-        ("domain", domain.clone()),
-    ]);
-    publish_or_sync(
-        &directory.join(format!("closed-{allocation}.json")),
-        &tombstone,
-    )?;
+    if !matched_stop {
+        let mut retired = stopped;
+        let Value::Obj(fields) = &mut retired else {
+            return Err("retirement material invalid".into());
+        };
+        fields.insert(
+            "format".into(),
+            Value::Str("fsm.native-manager-retired/1".into()),
+        );
+        publish_or_sync(
+            &directory.join(format!("manager-retired-{allocation}.json")),
+            &retired,
+        )?;
+    }
+    publish_or_sync(&tombstone_path, &tombstone)?;
     let receipt = object([
         ("format", Value::Str("fsm.native-closure/1".into())),
         ("domain", domain),
@@ -110,16 +138,16 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
     )
 }
 
-fn validate_records(
-    directory: &Path,
-    allocation: u64,
-    records: &[(String, Value)],
-) -> Result<(), String> {
+fn validate_records(directory: &Path, records: &[(String, Value)]) -> Result<(), String> {
     for (name, expected) in records {
         if read_value(&directory.join(name), true)? != *expected {
             return Err("closure protected material differs".into());
         }
     }
+    Ok(())
+}
+
+fn revoked(directory: &Path, allocation: u64) -> Result<(), String> {
     for suffix in ["json", "json.pending"] {
         if !absent(&directory.join(format!("entry-{allocation}.{suffix}")))? {
             return Err("closure entry admission remains".into());

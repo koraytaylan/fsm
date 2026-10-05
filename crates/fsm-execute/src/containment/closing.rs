@@ -24,6 +24,36 @@ pub(super) fn revoke(directory: &Path, allocation: u64) -> Result<(Value, File),
 /// Caller retains the authority lock through this entire revocation.
 pub(super) fn revoke_locked(directory: &Path, allocation: u64) -> Result<Value, String> {
     let domain = prepared_domain(directory, allocation)?;
+    revoke_domain(directory, allocation, domain)
+}
+
+/// A verified completed handoff permits revocation after natural native exit;
+/// caller holds the authority lock and still must prove manager retirement.
+pub(super) fn revoke_after_handoff(directory: &Path, allocation: u64) -> Result<Value, String> {
+    let domain = recorded_domain(directory, allocation)?;
+    let group = Path::new("/sys/fs/cgroup/system.slice").join(format!(
+        "fsm-containment-{}-{}-{allocation}.service",
+        text(&domain, "namespace")?,
+        number(&domain, "generation")?
+    ));
+    protected_directory(group.parent().ok_or("closing native parent missing")?)?;
+    match fs::symlink_metadata(&group) {
+        Ok(observed) => {
+            if !observed.is_dir()
+                || observed.uid() != 0
+                || observed.mode() & 0o022 != 0
+                || domain.get("cgroup") != Some(&identity(&observed))
+            {
+                return Err("closing native domain identity changed".into());
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io(error)),
+    }
+    revoke_domain(directory, allocation, domain)
+}
+
+fn revoke_domain(directory: &Path, allocation: u64, domain: Value) -> Result<Value, String> {
     match fs::symlink_metadata(directory.join(format!("closed-{allocation}.json"))) {
         Ok(_) => return Err("allocation already carries closed evidence".into()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}

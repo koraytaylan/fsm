@@ -3,6 +3,8 @@
 Private root `complete-close` validates the complete protected submission/stop
 chain, absence of the manager unit, queued jobs and native cgroup, and retained
 closing admission before publishing an immutable receipt for the exact claim.
+Natural exit follows the same retirement checks and records manager-retired
+evidence after durable grant revocation, without inventing a manager stop.
 The existing `VerifiedClosure` reader can authenticate that receipt; callers
 still must durably stop and settle the claim through the store APIs, and this
 primitive is not yet the integrated contained runner or reconciliation path.

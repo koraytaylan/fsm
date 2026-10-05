@@ -1,10 +1,13 @@
 # API and version policy
 
 Private `complete-close` publishes the existing native closure receipt format
-after matched completed-submission retirement and protected admission fencing;
+after matched accepted-submission retirement and protected admission fencing;
 it adds no stable API or journal version, and does not settle journal ownership.
 Production runner/reconciliation integration and compiled/native acceptance
 remain pending.
+Natural exit records private `fsm.native-manager-retired/1` evidence after
+full retirement checks, distinct from successful manager-stop acknowledgement;
+startup now verifies control-group lifetime and kill policy before handoff.
 
 Private root `request-stop` adds matched manager stop after entry revocation;
 it changes no stable Rust API/journal format and produces no closure proof.

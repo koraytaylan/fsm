@@ -5,6 +5,9 @@ domain tombstone and immutable closure receipt publication with exclusive
 fsynced pending/hard-link ordering and identity-preserving replay; missing,
 mismatched or partial material retains ownership rather than fabricating
 closure, and full contained runner/native acceptance remains pending.
+Natural handler exit can now complete this retirement protocol without a
+live cgroup stop request, with distinct retirement acknowledgement, preserved
+claim ownership and startup verification of lifetime/kill/no-restart policy.
 
 Unreleased `request-stop` verifies protected handoff, actual prepared domain
 and current manager invocation/isolation policy under the authority lock,

@@ -1603,13 +1603,22 @@ This record acknowledges the matched manager operation and MUST NOT stand in
 for permanent closure or a native closure receipt.
 
 The root-only `complete-close` operation MUST retain the authority lock and
-require exact protected prepared/closing, one-shot launch intent, handoff,
-binding and manager-stopped records for the same domain and original claim.
+require exact protected prepared, one-shot launch intent, handoff and binding
+records for the same domain and original claim. Verified handoff MUST include
+the fixed control-group lifetime/kill/no-restart policy in its admission checks.
+It MUST durably revoke entry before observing retirement, checking any present
+cgroup against the recorded native identity; a missing cgroup does not itself
+authorize closure. A present manager-stopped record MUST match exactly; when
+that record is absent, natural retirement MUST be acknowledged separately as
+`fsm.native-manager-retired/1` with the exact domain, binding and gate, only
+after the same full retirement observations succeed. Natural retirement MUST
+NOT be represented as successful manager stop. Both routes retain and recheck
+the protected closing marker through publication.
 It MUST refuse either grant path of any type, a different boot/authority,
 present or unreadable native cgroup, a listed manager unit or a queued job
 for that unit. Manager inventory capture MUST be bounded and use a shared
 two-second deadline. The irreversible closing marker and one-shot launch
-intent fence future authority admission; the completed matched stop and
+intent fence future authority admission; the matched accepted handoff and
 manager inventories retire the accepted submission. Root/kernel administrators
 remain outside this exclusion guarantee. An absent cgroup alone is insufficient.
 After revalidating protected material and native absence, it MUST publish and
@@ -1621,7 +1630,7 @@ removing the pending link and syncing the parent again. Existing pending
 material MUST NOT be replaced. Matching durable final records may be replayed;
 different or partial records MUST NOT be replaced. Publication failures retain
 journal ownership; this operation MUST NOT itself settle or clear a claim.
-Uncertain submissions without matched completed handoff/stop remain unresolved
+Uncertain submissions without matched completed handoff remain unresolved
 and require the separate native reconciliation protocol.
 Successful stop MUST NOT publish closure evidence, clear claims or authorize
 settlement/capacity reuse; permanent closure requires independent completion.
