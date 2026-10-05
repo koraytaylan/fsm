@@ -9,8 +9,13 @@ membership before replacing itself with the granted absolute command.
 It rejects caller-supplied argv and malformed grants and rechecks the grant
 before exec. The launcher must still publish that grant only after independent
 current-claim verification, and closure must fence/kill the enrolled gate to
-cover the final check-to-exec race. Grant publication, systemd launch, bounded
-native I/O and closure integration are not yet implemented or accepted.
+cover the final check-to-exec race. The root-only `authorize` operation now
+publishes grants after matching the protected binding and revalidating current
+ownership under the authority lock. It rejects closing/closed allocations and
+group zero, and exclusively publishes a synced root-owned, group-readable
+0440 file. The future broker must derive the trusted isolated group itself;
+this privileged command does not establish broker authorization. Systemd
+launch, bounded native I/O and closure integration remain unimplemented.
 
 The in-development `fsm-containment-authority` binary adds root-only store
 registration and immutable claim binding under the protected persistent

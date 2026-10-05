@@ -1477,6 +1477,18 @@ Root ownership protects the grant; the launcher MUST independently verify
 current durable ownership before publication and revoke entry on closing.
 An absent, malformed or mismatched grant MUST execute no handler code.
 
+Entry authorization MUST require the already protected binding and re-read
+current durable ownership under the authority lock before grant publication.
+Any closing/closed marker MUST refuse authorization, including malformed
+markers. The root-only authorization request contains exactly `grant` and
+`group_id`; the grant's claim and original hash MUST match the immutable
+binding. Group zero MUST be refused. Publication MUST create a fresh private
+temporary file, assign the selected isolated group while retaining root
+ownership, remove all write permissions, fsync, publish exclusively without
+replacing an existing grant, and fsync its parent. This is a privileged
+publisher interface; the future broker MUST derive the group from the trusted
+enrolled gate and MUST NOT delegate arbitrary group selection to handlers.
+
 A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
 `format`, `claim` and `journal_claim`. The authority MUST independently read
 the registered store, verify its path identity, the original durable claim

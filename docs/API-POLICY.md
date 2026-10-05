@@ -1,5 +1,10 @@
 # API and version policy
 
+Unreleased private native entry grants use `fsm.native-entry/1`; root-only
+publication adds no public Rust API or journal format change. The provisioned
+broker must derive the isolated reader group before this path can support
+contained execution; no release version or tag changes.
+
 Unreleased writer-lock guards explicitly unlock before closing their owned
 descriptor, including initialization/repair error paths, so transient duplicate
 descriptors do not extend a successfully released writer lease. This is an

@@ -262,9 +262,53 @@ fn genuine_claim_binding() {
     let path = fixture.directory.join("binding-1.json");
     assert_eq!(read_value(&path, true).unwrap(), binding);
     assert!(super::super::bind(&fixture.directory, &binding).is_err());
+    let grant = object([
+        ("format", Value::Str("fsm.native-entry/1".into())),
+        ("claim", binding.get("claim").unwrap().clone()),
+        (
+            "journal_claim",
+            binding.get("journal_claim").unwrap().clone(),
+        ),
+        ("argv", Value::Arr(vec![Value::Str("/bin/true".into())])),
+    ]);
+    let request = object([
+        ("grant", grant.clone()),
+        ("group_id", Value::Num("1".into())),
+    ]);
+    let root_group = object([
+        ("grant", grant.clone()),
+        ("group_id", Value::Num("0".into())),
+    ]);
+    assert!(super::super::authorize::publish(&fixture.directory, &root_group).is_err());
+    for phase in ["closing", "closed"] {
+        let marker = fixture.directory.join(format!("{phase}-1.json"));
+        fs::write(&marker, b"malformed marker").unwrap();
+        assert!(
+            super::super::authorize::publish(&fixture.directory, &request)
+                .unwrap_err()
+                .contains("closing or closed")
+        );
+        assert!(!fixture.directory.join("entry-1.json").exists());
+        fs::remove_file(marker).unwrap();
+    }
+    super::super::authorize::publish(&fixture.directory, &request).unwrap();
+    let entry_path = fixture.directory.join("entry-1.json");
+    let metadata = fs::metadata(&entry_path).unwrap();
+    assert_eq!(
+        (metadata.uid(), metadata.gid(), metadata.mode() & 0o777),
+        (0, 1, 0o440)
+    );
+    assert_eq!(read_value(&entry_path, true).unwrap(), grant);
+    assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
     let mut store = Store::open(&fixture.store).unwrap();
     store.cancel_instance("instance", "cancel").unwrap();
     drop(store);
+    assert!(
+        super::super::authorize::publish(&fixture.directory, &request)
+            .unwrap_err()
+            .contains("runnable ownership")
+    );
+    assert_eq!(read_value(&entry_path, true).unwrap(), grant);
     assert!(
         super::super::bind(&fixture.directory, &binding)
             .unwrap_err()

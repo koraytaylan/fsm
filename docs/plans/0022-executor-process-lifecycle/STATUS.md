@@ -1121,4 +1121,23 @@ lifecycle updates.
   frozen `bfcfd79` and is not attributed to its live CI review. Task 9303
   remains In progress with full native entry and runner acceptance pending.
 
+- **Entry-grant publisher implemented; validation pending:** root-only
+  `authorize` matches the immutable protected claim binding and revalidates
+  runnable journal ownership under the authority lock before exclusively
+  publishing a synced root-owned 0440 grant for a nonzero group. Any
+  closing/closed marker refuses, including malformed markers. The genuine
+  native binding case now checks these refusals, publication ownership/mode,
+  duplicate refusal and refusal after durable cancellation; these new
+  assertions have not yet executed on a provisioned native host. Formatting
+  and diff checks pass. The initial compile attempt found an incorrect
+  `fs::chown` reference, corrected to the Unix API; the subsequent serialized
+  validation build was rejected by automatic approval review because swap
+  is full and the workspace memory rule prohibits it. A specific user
+  exception is pending; compilation, Clippy and native acceptance for this
+  unit remain unverified. Earlier frozen `bfcfd79` CI `37271018161` reports
+  native stable, native MSRV and zero-dependency success, while all six
+  portable jobs remain in progress; those results do not cover this unit.
+  Trusted broker group derivation, real gate launch, I/O and closure remain
+  outstanding, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

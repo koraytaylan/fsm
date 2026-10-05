@@ -24,6 +24,9 @@ mod allocator;
 #[path = "entry.rs"]
 mod entry;
 
+#[path = "authorize.rs"]
+mod authorize;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -32,10 +35,10 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         return Err("requires separately provisioned root authority".into());
     }
     if arguments.len() < 3 {
-        return Err("usage: register|bind|prepare NAMESPACE GENERATION [STORE|BINDING]".into());
+        return Err("usage: register|bind|prepare|authorize NAMESPACE GENERATION [REQUEST]".into());
     }
     let operation = arguments[0].to_str().ok_or("invalid operation")?;
-    if !matches!(operation, "register" | "bind" | "prepare") {
+    if !matches!(operation, "register" | "bind" | "prepare" | "authorize") {
         return Err("operation outside authority policy".into());
     }
     let namespace = arguments[1].to_str().ok_or("invalid namespace")?;
@@ -51,10 +54,12 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         return output.write_all(b"\n").map_err(io);
     }
     if arguments.len() != 4 {
-        return Err("register/bind requires one path".into());
+        return Err("register/bind/authorize requires one path".into());
     }
     if operation == "register" {
         register(&directory, Path::new(&arguments[3]))
+    } else if operation == "authorize" {
+        authorize::publish(&directory, &read_value(Path::new(&arguments[3]), false)?)
     } else {
         bind(&directory, &read_value(Path::new(&arguments[3]), false)?)
     }
@@ -245,6 +250,15 @@ fn verify_claim(store: &Store, claim: &Claim, original: &str) -> Result<(), Stri
 }
 
 fn bind(directory: &Path, binding: &Value) -> Result<(), String> {
+    let (claim, _lock) = validate_binding(directory, binding)?;
+    let allocation = number(&claim.domain().to_value(), "allocation")?;
+    publish_once(
+        &directory.join(format!("binding-{allocation}.json")),
+        binding,
+    )
+}
+
+fn validate_binding(directory: &Path, binding: &Value) -> Result<(Claim, File), String> {
     protected_directory(directory)?;
     closed(binding, &["format", "claim", "journal_claim"])?;
     if text(binding, "format")? != "fsm.native-claim-binding/1" {
@@ -280,6 +294,13 @@ fn bind(directory: &Path, binding: &Value) -> Result<(), String> {
     }
     lock.try_lock().map_err(|_| "authority busy")?;
     let allocation = number(&domain, "allocation")?;
+    for phase in ["closing", "closed"] {
+        match fs::symlink_metadata(directory.join(format!("{phase}-{allocation}.json"))) {
+            Ok(_) => return Err("native allocation is closing or closed".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io(error)),
+        }
+    }
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
     closed(&prepared, &["format", "phase", "domain"])?;
     if text(&prepared, "format")? != "fsm.native-prepared/1"
@@ -323,10 +344,7 @@ fn bind(directory: &Path, binding: &Value) -> Result<(), String> {
     if identity(&fs::symlink_metadata(store_path).map_err(io)?) != identity(&before) {
         return Err("registered store changed during verification".into());
     }
-    publish_once(
-        &directory.join(format!("binding-{allocation}.json")),
-        binding,
-    )
+    Ok((claim, lock))
 }
 
 fn object<const N: usize>(fields: [(&str, Value); N]) -> Value {

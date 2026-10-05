@@ -64,7 +64,7 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
     Err(format!("authorized handler exec failed: {error}"))
 }
 
-fn decode(grant: &Value) -> Result<(Claim, Vec<String>), String> {
+pub(super) fn decode(grant: &Value) -> Result<(Claim, Vec<String>), String> {
     closed(grant, &["format", "claim", "journal_claim", "argv"])?;
     if text(grant, "format")? != "fsm.native-entry/1" {
         return Err("unknown entry format".into());
