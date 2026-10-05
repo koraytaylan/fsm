@@ -446,3 +446,18 @@ The manifest adds only the separately provisioned authority binary, and library
 limits remain private; MCP-client changes document socket cancellation without
 changing protocol behavior. No additional finding was identified in these deltas;
 historical Runner and evidence/test harness range review remain outstanding.
+
+Historical Runner delta review at corrected `9f1f175`: Linux process and MCP
+stderr capture now share bounded nonblocking socket accounting, drained from
+poll/finished scans; other platforms retain existing file transport with shared
+prefix/hash accounting and capture removal on owned drop.
+MCP workers retain independent cancellation and observed join, and unjoined
+retiring workers exclude another local spawn; candidate collection waits for
+worker join. Existing child kill/wait and direct-child result semantics remain
+outside the native proof boundary and are not claim-safe host integration.
+This is consistent with the provisional documentation and the separately
+reviewed shared adapters; native authority does not invoke this spawn path.
+Task 9401 must replace production host routing through durable native ownership,
+and task 9402 must establish bounded host shutdown rather than inherit the
+historical blocking waits. No additional finding in these deltas changes those
+already explicit unfinished obligations; evidence/harness review remains.
