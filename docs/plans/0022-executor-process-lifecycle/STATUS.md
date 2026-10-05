@@ -3194,4 +3194,13 @@ lifecycle updates.
   Those two gates remain unexecuted and require another exact-source retry
   after the active work finishes; neither cancellation accepts task 9303.
 
+- Attempt 2 Windows stable job `111966694566` completes successfully at exact
+  `31e0c63`; every applicable gate step passes, including debug/release workspace
+  tests, all-target Clippy, documentation and decimal regeneration; the existing
+  platform condition skips fuzz compilation.
+  Its retained exact log is task-cache `ci-37365652966-windows-stable.log`.
+  All three stable OS gates and Windows MSRV now pass at this product source,
+  beside both independently verified native matrices; macOS MSRV remains live
+  in release tests and the two cancelled Linux jobs still require retry.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
