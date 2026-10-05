@@ -3135,4 +3135,19 @@ lifecycle updates.
   Current native stable and portable verdicts remain required, alongside the
   unfinished aggregate review and production host ownership integration.
 
+- Diagnostic-source native stable CI `37365652966` at exact `31e0c63`
+  completes successfully; independent verification confirms all 81 cases,
+  compiler `rustc 1.99.0 (b940084d7 2026-09-28)`, frozen named target,
+  exact source identity and report/log hashes, with retained evidence in
+  task-cache `ci-37365652966/stable`.
+  Both native toolchains now pass at this product source, including
+  `private_exec_status` and all production handler admission branches; this
+  pass does not establish the cause of the prior stable manager-query timeout
+  or discard its failed evidence.
+  Executable bytes remain independently unverified and the production gate
+  remains unreleased; six portable gates and aggregate frozen review are
+  still required before accepting task 9303.
+  Task 9401 now contains a source-backed integration handoff review, while
+  its production host routing and acceptance tests remain planned.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
