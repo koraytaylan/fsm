@@ -479,3 +479,18 @@ The CLI harness changes require successful subprocess exit, preserve the full
 a Conventional Commit in the disposable Git fixture with every Git exit checked.
 No additional finding was identified in these reviewed deltas; this evidence
 does not accept host integration or replace the remaining full-range review.
+
+Public surface and contract-fixture delta review at corrected `9f1f175`:
+`lib.rs` adds only the private value-limit module, while the public inventory
+records the provisional contract, native I/O, preparation, execution, completion
+and pipeline entries and their progress variants. The inventory is an API
+declaration check, not evidence that public ticks use native ownership.
+Handler-identity fixtures include an independently computed process digest,
+explicit/default equivalence, each process contract dimension, MCP tool and
+arguments, outcome payload and ordered stamps, and host concurrency exclusion.
+Recovery controls require original structural material, reject changed or
+missing fields, wrong fingerprint and equivalent noncanonical retry material,
+and reject excessive nesting before serialization. These tests preserve the
+distinction between an immutable contract identity and launch permission.
+No additional finding was identified in these deltas; complete documentation
+contract reconciliation and integrated-host acceptance remain outstanding.
