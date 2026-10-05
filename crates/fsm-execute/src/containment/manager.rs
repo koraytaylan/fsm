@@ -160,7 +160,7 @@ mod tests {
         drain(&mut reader, &mut retained, &mut eof).unwrap();
         assert!(retained.is_empty());
         assert!(!eof);
-        writer.write_all(b'x').unwrap();
+        writer.write_all(b"x").unwrap();
         drain(&mut reader, &mut retained, &mut eof).unwrap();
         assert_eq!(retained.as_slice(), b"x");
         assert!(!eof);

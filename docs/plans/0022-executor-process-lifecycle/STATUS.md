@@ -1348,4 +1348,14 @@ lifecycle updates.
   review. Broker access policy, real enrollment/group derivation, native I/O
   and full closure remain outstanding; task 9303 stays In progress.
 
+- **Manager test compilation repair:** frozen source `ae738f9` failed both
+  native jobs in CI run `37273504946` while compiling the authority test
+  binary, before producing allocator evidence. Review found its retained-writer
+  test passed a byte to `Write::write_all` rather than a byte slice; corrected
+  that call and made the native producer include rendered JSON compiler
+  diagnostics on build failure. Formatting, Python syntax and diff checks
+  pass; the repaired source still requires independent compiled/native and
+  portable CI evidence, and no runtime manager acceptance is claimed from
+  the failed run. Task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

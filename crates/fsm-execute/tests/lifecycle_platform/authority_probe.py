@@ -24,7 +24,12 @@ def main():
                             '--bin', 'fsm-containment-authority', '--no-run', '--message-format=json'],
                            cwd=repo, env=dict(os.environ, CARGO_BUILD_JOBS='1'),
                            capture_output=True, timeout=180)
-    assert build.returncode == 0, build.stderr.decode(errors='replace')
+    if build.returncode != 0:
+        diagnostics = [row['message'].get('rendered', '')
+                       for row in map(json.loads, build.stdout.splitlines())
+                       if row.get('reason') == 'compiler-message']
+        raise RuntimeError('authority build failed:\n' + ''.join(diagnostics)
+                           + build.stderr.decode(errors='replace'))
     artifacts = [row['executable'] for row in map(json.loads, build.stdout.splitlines())
                  if row.get('reason') == 'compiler-artifact' and row['target']['name'] == 'fsm-containment-authority'
                  and row['profile']['test'] and row.get('executable')]
