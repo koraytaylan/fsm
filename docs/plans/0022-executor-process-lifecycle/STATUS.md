@@ -1915,4 +1915,19 @@ lifecycle updates.
   public service admission/stop/settle wiring and remaining plans stay pending,
   and task 9303 stays In progress.
 
+- **Claim-bound contained runner adapter implemented for review:** provisional
+  Linux `NativeRun` owns the original durable claim/hash and one shared checked
+  deadline, requires successful broker binding before execute, derives route/
+  allocation from the claim and returns only matched `NativeCompletion`.
+  Errors and explicit cancellation retain uncertainty and helper cleanup
+  progress; no direct handler fallback or journal mutation is introduced.
+  The native access host now exercises this adapter, and the independent root
+  observer checks the actual protected binding and re-authenticates the receipt
+  using a test-only reconstructed envelope, without claiming raw envelope
+  round-trip identity. The public inventory and API/lifecycle contracts record
+  the type and four methods. Formatting, size and diff checks pass; exact-source
+  compiled/native stable/MSRV and all six portable gates, public service
+  claim/admission/stopped/settlement integration and remaining tasks stay
+  required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

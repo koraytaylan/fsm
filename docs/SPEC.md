@@ -1619,6 +1619,15 @@ connection thread, caller-selected helper path, capture file or inherited
 manager/environment override is permitted. Public service claim/closure matching
 and lifecycle integration remain separately required.
 
+The provisional Linux `NativeRun` adapter MUST own the original immutable
+claim/hash and one shared checked deadline across binding and execution. It
+MUST require successful binding before issuing execute, derive the route and
+allocation solely from that claim, and return only a `NativeCompletion` verified
+against the same claim/hash. Cancellation, bind refusal, helper failure and
+missing closure MUST retain uncertainty; helper reap alone MUST NOT authorize
+journal settlement or capacity release. It MUST retain explicit helper cleanup
+progress and never fall back to direct handler execution.
+
 Public supervised client/service wiring remains required before acceptance.
 
 The protected entry operation MUST run as an unprivileged handler identity.

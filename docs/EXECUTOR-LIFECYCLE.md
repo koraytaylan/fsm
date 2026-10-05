@@ -47,10 +47,19 @@ requests helper death and retains explicit reap progress; none of these proves
 handler closure or releases a journal claim. Drop is bounded best-effort only.
 The public inventory includes its start/poll/cancel/reap methods; pure framing,
 policy and retained-writer controls are authored; the native broker access case
-now executes through an unprivileged `NativeRequest` host and verifies matching
-`NativeCompletion` proof there before returning its unchanged response to the
-independent root observer, while compiled native supervisor acceptance and
+now executes through an unprivileged host using the claim-bound `NativeRun`
+adapter and verifies matching `NativeCompletion` proof there before independent
+root observation, while compiled native supervisor acceptance and
 claim/closure-matched production service integration remain pending.
+
+The provisional Linux `NativeRun` adapter now owns one original claim/hash and
+one deadline across binding and execution, derives only its native route and
+allocation, and returns only claim-matched `NativeCompletion`. Cancellation and
+failed binding/transport/proof retain uncertainty with explicit helper reap
+progress. The native access case exercises this bind/execute adapter from an
+unprivileged host and independently re-authenticates a test-only reconstructed
+envelope and protected receipt; it does not claim raw envelope round-trip
+identity, journal settlement or production service integration.
 
 Native broker access and client-death controls now exec the installed Rust
 `client` helper after dropping root UID/group privilege, replacing Python

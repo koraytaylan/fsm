@@ -547,3 +547,10 @@ The additive pure types in `fsm_core::record::execution` model the reserved
 native identity and retry policy, with usable constructors and closed-value
 decoders. These values themselves do not authenticate native closure or grant execution
 permissions; production store failures use the documented stable error codes.
+
+The provisional Linux `run::native_client::NativeRun` type adds start, poll,
+cancel and reap methods for one claim-bound binding/execution sequence; only a
+matching verified completion may be returned, and helper retirement alone does
+not authorize settlement or capacity release. This additive provisional API
+changes no stable error code, journal format or hash representation, and full
+service integration and native acceptance remain required.

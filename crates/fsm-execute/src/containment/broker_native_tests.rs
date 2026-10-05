@@ -226,11 +226,11 @@ pub(super) fn run() {
         .groups
         .push((group, domain.to_value().get("cgroup").unwrap().clone()));
     let (binding, effect) = claim_binding(&fixture, &domain);
-    assert_eq!(
-        request(&base, "bind", binding.clone()).get("ok"),
-        Some(&Value::Bool(true))
-    );
     let execution = disconnect_cases::complete(&fixture.directory, &binding);
+    assert_eq!(
+        read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
+        binding
+    );
     assert_eq!(
         execution.get("ok"),
         Some(&Value::Bool(true)),

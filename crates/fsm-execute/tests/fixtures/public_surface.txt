@@ -260,6 +260,10 @@ method fsm_execute::run::native_client::NativeRequest::cancel
 method fsm_execute::run::native_client::NativeRequest::poll
 method fsm_execute::run::native_client::NativeRequest::reap
 method fsm_execute::run::native_client::NativeRequest::start
+method fsm_execute::run::native_client::NativeRun::cancel
+method fsm_execute::run::native_client::NativeRun::poll
+method fsm_execute::run::native_client::NativeRun::reap
+method fsm_execute::run::native_client::NativeRun::start
 method fsm_execute::run::native_io::NativeCapture::finish
 method fsm_execute::run::native_io::NativeCapture::open
 method fsm_execute::run::native_io::NativeCapture::poll
@@ -309,6 +313,7 @@ reexport fsm_execute::contract::analyze_effects from effects
 reexport fsm_execute::run::Pipeline from pipeline
 reexport fsm_execute::run::SettleOutcome from pipeline
 reexport fsm_execute::run::native_client::NativeCompletion from completion
+reexport fsm_execute::run::native_client::NativeRun from claimed
 struct fsm_execute::config::Advance
 struct fsm_execute::config::HandlerSpec
 struct fsm_execute::config::HandlerTable
@@ -328,6 +333,7 @@ struct fsm_execute::run::Pipeline
 struct fsm_execute::run::Runner
 struct fsm_execute::run::native_client::NativeCompletion
 struct fsm_execute::run::native_client::NativeRequest
+struct fsm_execute::run::native_client::NativeRun
 struct fsm_execute::run::native_io::NativeCapture
 struct fsm_execute::run::native_io::NativeProtocol
 struct fsm_execute::sched::Capped

@@ -11,8 +11,10 @@ use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+mod claimed;
 mod completion;
 
+pub use claimed::NativeRun;
 pub use completion::NativeCompletion;
 
 const HELPER: &str = "/usr/libexec/fsm-containment-authority";
