@@ -167,6 +167,16 @@ fn request(base: &Path, action: &str, payload: Value) -> Value {
     parse(&bytes, &JsonLimits::DEFAULT).unwrap()
 }
 
+pub(super) fn refused_close(directory: &Path) -> Value {
+    broker_endpoint::provision(directory, 65534).unwrap();
+    let _daemon = Daemon::ready(directory, 1);
+    request(
+        &directory.join("broker"),
+        "close",
+        object([("allocation", Value::Num("1".into()))]),
+    )
+}
+
 pub(super) fn run() {
     for timeout in [false, true] {
         run_case(timeout);

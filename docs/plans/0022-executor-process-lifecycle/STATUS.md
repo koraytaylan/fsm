@@ -2831,4 +2831,18 @@ lifecycle updates.
   manager completion, changed damaged handoff or ownership release. This source
   change requires fresh gates; task 9303 and production routing remain pending.
 
+- Frozen 4afca71 local stable workspace debug tests pass in full with serial
+  tests and compiler/rustdoc warnings denied. Review strengthens the stop fault
+  control to reach authenticated broker close through the installed client after
+  dropping to operator UID/GID 65534, rather than invoking only the shared helper;
+  a five-minute handler deadline prevents manager runtime expiry from masking
+  absent fallback fencing during the two-second refusal/depopulation control;
+  removing broker fallback fencing must now leave the original tree populated
+  and fail the control. The broker response must refuse closure, preserve damaged
+  handoff and omit manager/closure completion while revoking entry and fencing.
+  Execute all-target stable clippy, authority unit tests (20 passed; 13
+  provisioned controls ignored) and formatting/size/diff checks pass.
+  Native execution of this caller control remains pending, as does the full
+  portable/frozen acceptance and production routing; task 9303 remains active.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

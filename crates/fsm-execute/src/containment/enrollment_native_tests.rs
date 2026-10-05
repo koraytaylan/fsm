@@ -458,7 +458,7 @@ fn execute_process_handlers() {
 
 fn stop_running_handler() {
     let table = fsm_core::json::parse(
-        br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/usr/bin/sleep","300"],"timeout_ms":100,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#,
+        br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/usr/bin/sleep","300"],"timeout_ms":300000,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#,
         &fsm_core::json::JsonLimits::DEFAULT).unwrap();
     let mut fixture = Fixture::new_for_table(table);
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
@@ -522,7 +522,8 @@ fn stop_running_handler() {
     let handoff_path = fixture.directory.join("handoff-1.json");
     let handoff_bytes = fs::read(&handoff_path).unwrap();
     fs::write(&handoff_path, b"{}").unwrap();
-    assert!(super::super::super::stop::fence(&fixture.directory, 1).is_err());
+    let refused = super::broker_cases::refused_close(&fixture.directory);
+    assert_eq!(refused.get("ok"), Some(&Value::Bool(false)));
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         match super::super::super::observation::read(&fixture.directory, 1) {
