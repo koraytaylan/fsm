@@ -746,4 +746,13 @@ lifecycle updates.
   host gate. These later tests are outside frozen source `bcf6632`, and task
   9302 stays In progress.
 
+- **Frozen host gate complete; append fixture type corrected:** the isolated
+  `bcf6632` host command group exits successfully with all eight commands and
+  its exact-source completion marker. The first build of the later `5eb09cb`
+  append harness stops before execution because its expected attempt count
+  used `u32` while the public store accessor returns `u64`; the expectation
+  now uses that public type. This is a test compile correction, not a runtime
+  defect or passed crash proof. The original log is retained and the corrected
+  stable/MSRV run remains pending; portable CI is still running.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
