@@ -1418,6 +1418,35 @@ strictly read-only inspection remain available in quarantine.
 | `execution_settled` | `run_id`, `instance_id`, `effect_id`, `disposition`, `request_id`, `request_fp`, and the existing ack/attempt state-hash fields where applicable. Applies one disposition and consumes stopped ownership in the same record |
 | `execution_enabled` | `previous_head`, `quiescence`, `request_id`, `request_fp`. Enables a quarantined migrated store only after trusted native evidence proves the identified legacy execution environment closed |
 
+New claim-era genesis bodies MUST include `execution_admission: "enabled"`.
+A historical genesis without that field MUST fold to quarantined execution;
+a VERSION marker alone MUST NOT enable it. The field is valid only on genesis,
+and an unknown admission value is corrupt. A migrated sealed base/1 likewise
+starts with an empty quarantined execution block, never inferred enabled from
+its lack of unresolved claims. Historical genesis, root/3, base/1 and archive
+bytes MUST remain unchanged.
+
+VERSION 11 MUST be durable before any claim-era record is appended. Migration
+folds and verifies the authoritative legacy journal/base before stamping that
+marker; it MUST NOT rewrite a historical genesis to add admission. A crash
+before or after the marker replacement still reconstructs quarantine from the
+historical genesis/base. Read-only opens infer the same quarantined state but
+MUST NOT stamp VERSION or publish a cache. Historical checkpoint and seal
+records select root/3 verification from their recorded discriminator; new
+checkpoints and seals select root/4. The base/1 decoder must explicitly require
+its historical root/3 discriminator, while base/2 requires root/4 and its
+execution block. A version or discriminator mismatch is refused, never guessed.
+
+A claim, stop or settlement request MUST be conflict-checked and replayed under
+the existing request-id rules before mutating ownership. The record's request
+fingerprint binds its immutable input identity, contract, evidence or
+settlement disposition as applicable; logical clock readings and allocated
+journal sequence are not caller content. Idempotent request replay MUST NOT
+allocate another run, change a stopped result, increment failed count or apply
+an acknowledgement again. An execution-enabled record binds `previous_head`
+to the immediately preceding journal hash and requires quarantined admission;
+it MUST NOT enable a different journal prefix or discard existing ownership.
+
 Run IDs are positive u64 counters local to the store, separate from failed
 attempt counts and journal sequences. The durable high-water mark MUST survive
 reconstruction, snapshot, sealing and reopen, including after all claims

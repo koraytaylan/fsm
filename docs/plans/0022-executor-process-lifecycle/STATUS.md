@@ -320,4 +320,12 @@ lifecycle updates.
   review branch. These are core primitive proofs, not store crash/migration/seal
   or native receipt authentication acceptance; task 9302 remains In progress.
 
+- **Production persistence design:** the reserved contract now makes genesis
+  admission, legacy base/1 quarantine, migration ordering, crash-stable
+  quarantine reconstruction, recorded root discriminators and request replay
+  explicit before VERSION 11 implementation. The exact frozen ownership CI
+  handle is `37249663619` at `39ec8c6`; production record folding, store APIs,
+  protected native receipt authentication and crash/migration/seal tests remain
+  the next implementation work, rather than completed acceptance.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
