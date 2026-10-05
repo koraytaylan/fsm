@@ -339,6 +339,10 @@ pub(super) fn run() {
             .unwrap();
         assert_eq!(retained.outcome(), completion.stopped_outcome());
         assert!(store.state.instances["instance"].pending.contains(&effect));
+        match pipeline.start_native(&mut store, &original_claim, Duration::from_secs(1)) {
+            Err(error) => assert_eq!(error.code, "exec/inflight_deferred"),
+            Ok(_) => panic!("stopped owner started another native helper"),
+        }
         let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
         let claim_material = original_claim.to_value();
         let retry = fsm_core::record::execution::RetryPolicy::from_value(

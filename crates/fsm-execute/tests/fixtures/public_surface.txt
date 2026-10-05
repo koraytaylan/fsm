@@ -249,6 +249,7 @@ method fsm_execute::run::Pipeline::claim_native
 method fsm_execute::run::Pipeline::poll
 method fsm_execute::run::Pipeline::settle
 method fsm_execute::run::Pipeline::settle_stopped
+method fsm_execute::run::Pipeline::start_native
 method fsm_execute::run::Pipeline::stop_native
 method fsm_execute::run::RunOutcome::ack_result
 method fsm_execute::run::RunOutcome::exhausted_ack_result

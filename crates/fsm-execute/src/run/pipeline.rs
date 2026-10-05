@@ -4,6 +4,8 @@
 //! ceiling, along the seam its own module doc already named: the runner owns
 //! no policy and spawns processes, and this owns no processes and maps an
 //! outcome onto journaled reality through the store's own idempotent mutators.
+//! Native startup also checks the writer-held claim before handing an owned
+//! transport run to the execution host; the pipeline retains no process.
 //!
 //! Plan 0016 task 7702.
 
@@ -54,6 +56,57 @@ impl Pipeline {
         store
             .claim_execution_on(clock, request)
             .map_err(|error| ExecError::store(&error))
+    }
+
+    /// Recheck current durable ownership under a writer before starting binding.
+    ///
+    /// The returned run owns helper I/O independently of the writer; the host
+    /// must retain uncertain ownership and persist authenticated completion.
+    /// Root authority repeats admission checks before actual handler entry.
+    #[cfg(target_os = "linux")]
+    pub fn start_native(
+        &mut self,
+        store: &mut Store,
+        claim: &fsm_core::record::execution::Claim,
+        timeout: std::time::Duration,
+    ) -> Result<super::native_client::NativeRun, ExecError> {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native launch requires a supported durable writer",
+            ));
+        }
+        let hash = store
+            .current_execution_claim_hash(claim)
+            .map_err(|error| ExecError::store(&error))?;
+        let (instance_id, effect_id) = claim.effect();
+        if store.state.execution.admission() != fsm_core::record::execution::Admission::Enabled
+            || store
+                .state
+                .execution
+                .stopped_for(instance_id, effect_id)
+                .is_some()
+            || !store
+                .state
+                .instances
+                .get(instance_id)
+                .is_some_and(|instance| {
+                    instance.status == fsm_core::machine::Status::Running
+                        && instance.pending.iter().any(|pending| pending == effect_id)
+                })
+        {
+            return Err(ExecError::new(
+                "exec/inflight_deferred",
+                "native claim is not eligible for launch",
+            ));
+        }
+        super::native_client::NativeRun::start(claim, &hash, timeout).map_err(|error| {
+            ExecError::new("exec/spawn", error)
+                .hint("retain the durable claim and reconcile native closure before retrying")
+        })
     }
 
     /// Atomically consume a durable stopped result under the store writer.

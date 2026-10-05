@@ -2228,4 +2228,14 @@ lifecycle updates.
   accepted historical formats; local formatting/size/diff checks pass, compiled
   CI (`d1908af` run `37307245166`) is queued, full integration remains incomplete.
 
+- Added provisional `Pipeline::start_native` as the shared writer-held startup
+  seam: durable writable storage, exact current full claim/hash, enabled
+  admission, running/pending effect and no stopped result precede helper binding;
+  the returned owned transport can be observed independently of writer access.
+  Native controls refuse read-only and already-stopped ownership without a new
+  launch; inventory/embedding docs describe retained uncertainty and remaining
+  Root rechecks. Formatting/size/diff checks pass, compiled CI (`3c71852` run
+  `37307522637`) is queued, automatic standalone/embedded/public-tick routing
+  remains incomplete, and task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

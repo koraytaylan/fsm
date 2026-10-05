@@ -1,5 +1,15 @@
 # Embedding fsm as a library
 
+The provisional Linux `Pipeline::start_native` starts the claim-bound transport
+only after writer-held checks for durable storage, exact current ownership,
+enabled admission, running/pending effect and absence of a stopped result;
+it obtains the original hash through sealed-aware recovery. The returned
+`NativeRun` owns bounded helper I/O independently of the writer, and the Root
+authority repeats current claim/catalogue checks before handler entry.
+Refusal or startup failure leaves ownership unresolved; callers must reconcile
+rather than fabricate a spawn result or free capacity. Existing standalone,
+embedded and public tick paths still require integration and native acceptance.
+
 `Store::current_execution_claim_hash` reads the original journal claim hash for
 an exactly matching current owner, including a stopped or externally cancelled
 owner retained through sealing; read-only handles use the authenticated base

@@ -260,6 +260,21 @@ fn genuine_claim_binding() {
             fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
         let mut snapshot = Store::open_read_only(&fixture.store).unwrap();
         let hash = binding.get("journal_claim").unwrap().as_str().unwrap();
+        let before_records = snapshot.records.len();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        let refusal =
+            match pipeline.start_native(&mut snapshot, &claim, std::time::Duration::from_secs(1)) {
+                Err(error) => error,
+                Ok(_) => panic!("read-only native launch started a helper"),
+            };
+        assert_eq!(refusal.code, "exec/mode");
+        assert_eq!(snapshot.records.len(), before_records);
+        assert_eq!(
+            snapshot.state.execution.claim_for("instance", &effect),
+            Some(&claim)
+        );
+        assert!(fs::symlink_metadata(fixture.directory.join("binding-1.json")).is_err());
+        assert!(fs::symlink_metadata(fixture.directory.join("launch-1.json")).is_err());
         super::super::verify_claim(&snapshot, &claim, hash).unwrap();
         let mut execution = snapshot
             .state
