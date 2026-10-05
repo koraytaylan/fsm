@@ -16,29 +16,13 @@ pub(super) fn read(directory: &Path, allocation: u64) -> Result<Value, String> {
         text(&domain, "namespace")?,
         number(&domain, "generation")?
     ));
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(NOFOLLOW_NONBLOCK)
-        .open(group.join("cgroup.events"))
-        .map_err(io)?;
-    let metadata = file.metadata().map_err(io)?;
-    if !metadata.is_file()
-        || metadata.uid() != 0
-        || metadata.mode() & 0o022 != 0
-        || metadata.dev()
-            != number(
-                domain.get("cgroup").ok_or("cgroup identity missing")?,
-                "device",
-            )?
-    {
-        return Err("native observation control is not protected".into());
-    }
-    let mut bytes = Vec::with_capacity(4097);
-    file.take(4097).read_to_end(&mut bytes).map_err(io)?;
-    if bytes.len() > 4096 {
-        return Err("native observation exceeds bound".into());
-    }
-    let (populated, frozen) = events(&bytes)?;
+    let (populated, frozen) = sample(
+        &group,
+        number(
+            domain.get("cgroup").ok_or("cgroup identity missing")?,
+            "device",
+        )?,
+    )?;
     if closing::prepared_domain(directory, allocation)? != domain
         || phase(directory, allocation, &domain)? != before
     {
@@ -51,6 +35,29 @@ pub(super) fn read(directory: &Path, allocation: u64) -> Result<Value, String> {
         ("populated", Value::Bool(populated)),
         ("frozen", Value::Bool(frozen)),
     ]))
+}
+
+/// Caller validates the original directory before and after this bounded sample.
+pub(super) fn sample(group: &Path, device: u64) -> Result<(bool, bool), String> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(NOFOLLOW_NONBLOCK)
+        .open(group.join("cgroup.events"))
+        .map_err(io)?;
+    let metadata = file.metadata().map_err(io)?;
+    if !metadata.is_file()
+        || metadata.uid() != 0
+        || metadata.mode() & 0o022 != 0
+        || metadata.dev() != device
+    {
+        return Err("native observation control is not protected".into());
+    }
+    let mut bytes = Vec::with_capacity(4097);
+    file.take(4097).read_to_end(&mut bytes).map_err(io)?;
+    if bytes.len() > 4096 {
+        return Err("native observation exceeds bound".into());
+    }
+    events(&bytes)
 }
 
 fn phase(directory: &Path, allocation: u64, domain: &Value) -> Result<bool, String> {

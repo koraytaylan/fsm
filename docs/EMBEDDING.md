@@ -2024,3 +2024,9 @@ the nondumpable profile and bounded kernel entropy readiness before creating
 its lock or burning an allocation. Failure leaves allocation history unchanged;
 launch repeats validation and generates a separate nonce. This early refusal
 preserves private/public record and journal formats and grants no handler entry.
+
+Native allocation now uses the same protected bounded exact cgroup-events
+reader as observation, requires an empty unfrozen domain and repeats original
+directory checks before prepared publication. Failure retains the burned
+allocation without authorizing claims, launch or reuse; record formats stay
+unchanged and the production native gate remains unreleased.

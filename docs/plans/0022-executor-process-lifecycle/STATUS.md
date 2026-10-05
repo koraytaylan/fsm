@@ -3019,4 +3019,16 @@ lifecycle updates.
   false; production routing, full host gates and complete 9303 acceptance remain
   required, with every later task and plans 20/21/23 still unfinished.
 
+- Acceptance review repairs allocation's remaining unbounded cgroup-events
+  read and permissive populated-line scan through the existing exact bounded
+  observation reader, requiring empty/unfrozen initial state and repeated
+  original directory identity/protection checks before prepared publication.
+  Burned intent/counter survive refusal; no prepared evidence or reuse follows.
+  Existing exact event parser faults and provisioned allocation cases remain
+  the required checks; stable executor library tests pass (18), and authority
+  tests pass (24, with 16 provisioned-native cases ignored locally), together
+  with formatting, source-size and diff checks; fresh native and full
+  host/portable gates remain required and 9303 stays
+  active rather than being accepted from the previous 81-case source.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

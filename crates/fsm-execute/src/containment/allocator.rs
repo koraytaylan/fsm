@@ -308,12 +308,17 @@ pub(super) fn prepare(directory: &Path) -> Result<Value, String> {
     if !metadata.is_dir()
         || metadata.uid() != 0
         || metadata.mode() & 0o022 != 0
-        || !fs::read_to_string(path.join("cgroup.events"))
-            .map_err(io)?
-            .lines()
-            .any(|line| line == "populated 0")
+        || super::observation::sample(&path, metadata.dev())? != (false, false)
     {
         return Err("new native domain is not protected and empty".into());
+    }
+    let after = fs::symlink_metadata(&path).map_err(io)?;
+    if !after.is_dir()
+        || after.uid() != 0
+        || after.mode() & 0o022 != 0
+        || identity(&after) != identity(&metadata)
+    {
+        return Err("new native domain changed during observation".into());
     }
     let authority = fs::symlink_metadata(directory).map_err(io)?;
     let domain = NativeDomain::new(

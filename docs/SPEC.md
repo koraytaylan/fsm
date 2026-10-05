@@ -2039,6 +2039,12 @@ source. Refusal MUST leave the counter and allocation inventory unchanged.
 Launch MUST repeat these checks and obtain a fresh inherited-input nonce; a
 preparation readiness sample MUST NOT serve as launch authorization or a nonce.
 
+Before publishing prepared-domain evidence, allocation MUST read the same
+no-follow protected 4 KiB exact cgroup-events sample as observation, require
+canonical populated=false and frozen=false, and revalidate its original
+directory identity and protections. Failure MUST retain the burned intent
+and counter; it MUST NOT publish prepared evidence or reuse that allocation.
+
 Before allocation, a root provisioner MUST publish an immutable catalogue
 containing exactly `format` (`fsm.native-catalogue/1`) and `table`, a fully
 validated `fsm.handlers/1` document. Publication is exclusive and fsynced
