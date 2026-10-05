@@ -2,7 +2,7 @@
 
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
-use fsm_core::record::execution::{Claim, FailureClass};
+use fsm_core::record::execution::{Claim, FailureClass, StoppedOutcome};
 use fsm_store::store::VerifiedClosure;
 use std::path::PathBuf;
 
@@ -11,6 +11,7 @@ pub struct NativeCompletion {
     candidate: Value,
     failure_class: Option<FailureClass>,
     proof: VerifiedClosure,
+    stopped: StoppedOutcome,
 }
 
 impl NativeCompletion {
@@ -25,6 +26,7 @@ impl NativeCompletion {
             candidate: material.candidate,
             failure_class: material.failure_class,
             proof,
+            stopped: material.stopped,
         })
     }
 
@@ -42,12 +44,18 @@ impl NativeCompletion {
     pub fn proof(&self) -> &VerifiedClosure {
         &self.proof
     }
+
+    /// Borrow the unchanged candidate mapped to its immutable stopped semantics.
+    pub fn stopped_outcome(&self) -> &StoppedOutcome {
+        &self.stopped
+    }
 }
 
 struct Material {
     candidate: Value,
     failure_class: Option<FailureClass>,
     receipt: PathBuf,
+    stopped: StoppedOutcome,
 }
 
 fn closed(value: &Value, fields: &[&str]) -> Result<(), String> {
@@ -136,16 +144,116 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
         return Err("native completion candidate is not an acknowledgement object".into());
     }
     Ok(Material {
+        stopped: stopped(candidate, failure_class)?,
         candidate: candidate.clone(),
         failure_class,
         receipt: PathBuf::from(receipt),
     })
 }
 
+fn stopped(candidate: &Value, class: Option<FailureClass>) -> Result<StoppedOutcome, String> {
+    use std::collections::BTreeMap;
+    let (status, expected) = match candidate.get("error") {
+        Some(Value::Str(error)) => match error.as_str() {
+            "exec/cancelled" => ("interrupted", None),
+            "exec/mcp_protocol" => ("failed", None),
+            "exec/timeout" => ("timeout", Some(FailureClass::Timeout)),
+            "exec/spawn" => ("spawn", Some(FailureClass::Spawn)),
+            "mcp/tool_error" | "mcp/rpc_error" => ("mcp_error", Some(FailureClass::McpError)),
+            _ => return Err("native completion candidate error unknown".into()),
+        },
+        Some(_) => return Err("native completion candidate error invalid".into()),
+        None => match candidate.get("status") {
+            None => ("ok", None),
+            Some(Value::Num(raw)) => {
+                let code = raw
+                    .parse::<i32>()
+                    .map_err(|_| "native completion process status invalid")?;
+                if !(-1..=255).contains(&code) || raw != &code.to_string() {
+                    return Err("native completion process status invalid".into());
+                }
+                if code == 0 {
+                    ("ok", None)
+                } else {
+                    ("nonzero_exit", Some(FailureClass::NonzeroExit))
+                }
+            }
+            Some(_) => return Err("native completion process status invalid".into()),
+        },
+    };
+    if expected != class {
+        return Err("native completion candidate and failure class differ".into());
+    }
+    if let Some(Value::Str(error)) = candidate.get("error") {
+        let process_error = matches!(
+            error.as_str(),
+            "exec/cancelled" | "exec/timeout" | "exec/spawn"
+        );
+        if (process_error && candidate.get("status") != Some(&Value::Num("-1".into())))
+            || (!process_error && candidate.get("status").is_some())
+        {
+            return Err("native completion candidate error/status differ".into());
+        }
+    }
+    StoppedOutcome::from_value(&Value::Obj(BTreeMap::from([
+        ("status".into(), Value::Str(status.into())),
+        ("result".into(), candidate.clone()),
+    ])))
+    .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn stopped_mapping_preserves_candidates_and_refuses_class_contradictions() {
+        for (encoded, class, status) in [
+            ("{}", None, "ok"),
+            (r#"{"status":0}"#, None, "ok"),
+            (
+                r#"{"status":7}"#,
+                Some(FailureClass::NonzeroExit),
+                "nonzero_exit",
+            ),
+            (r#"{"error":"exec/mcp_protocol"}"#, None, "failed"),
+            (
+                r#"{"error":"exec/cancelled","status":-1}"#,
+                None,
+                "interrupted",
+            ),
+            (
+                r#"{"error":"exec/timeout","status":-1}"#,
+                Some(FailureClass::Timeout),
+                "timeout",
+            ),
+            (
+                r#"{"error":"mcp/tool_error"}"#,
+                Some(FailureClass::McpError),
+                "mcp_error",
+            ),
+        ] {
+            let candidate = parse(encoded.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+            let outcome = stopped(&candidate, class).unwrap();
+            assert_eq!(outcome.status(), status);
+            assert_eq!(outcome.result(), Some(&candidate));
+        }
+        for (encoded, class) in [
+            (r#"{"status":7}"#, None),
+            (r#"{"status":0}"#, Some(FailureClass::NonzeroExit)),
+            (r#"{"status":-0}"#, None),
+            (r#"{"error":"unknown"}"#, None),
+            (
+                r#"{"error":"exec/timeout","status":0}"#,
+                Some(FailureClass::Timeout),
+            ),
+            (r#"{"error":"exec/mcp_protocol","status":-1}"#, None),
+        ] {
+            let candidate = parse(encoded.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+            assert!(stopped(&candidate, class).is_err());
+        }
+    }
 
     fn claim() -> Claim {
         Claim::from_value(&parse(format!(r#"{{"run_id":1,"instance_id":"instance","effect_id":"effect","attempt":1,"handler_fingerprint":"sha256:{}","retry":{{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}},"domain":{{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{{"device":0,"inode":42}},"authority":{{"device":8,"inode":43}},"generation":9}}}}"#, "a".repeat(64)).as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap()

@@ -65,6 +65,11 @@ original claim hash: the adapter must report binding refusal, retain that error
 on repeated poll and observe real helper reap/EOF; an independent root observer
 requires binding, launch intent, entry grant and handoff to be absent before
 allowing the genuine claim run, with no direct handler fallback.
+Checked completion now exposes `stopped_outcome`, preserving the exact
+candidate result and mapping clean success, existing failure classes,
+cancellation and terminal protocol error distinctly; candidate/class or
+error/status contradictions refuse before receipt verification. The store
+must still recheck ownership and persist this outcome under its writer lease.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.

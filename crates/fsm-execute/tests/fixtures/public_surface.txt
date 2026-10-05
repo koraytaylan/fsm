@@ -255,6 +255,7 @@ method fsm_execute::run::Runner::spawn
 method fsm_execute::run::native_client::NativeCompletion::candidate
 method fsm_execute::run::native_client::NativeCompletion::failure_class
 method fsm_execute::run::native_client::NativeCompletion::proof
+method fsm_execute::run::native_client::NativeCompletion::stopped_outcome
 method fsm_execute::run::native_client::NativeCompletion::verify
 method fsm_execute::run::native_client::NativeRequest::cancel
 method fsm_execute::run::native_client::NativeRequest::poll

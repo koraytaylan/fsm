@@ -1598,6 +1598,13 @@ closure or release a claim.
 Its lifetime watcher MUST be owned and joined on ordinary return, use bounded
 nonblocking reads, and MUST NOT create a detached connection worker.
 
+Checked native completion MUST expose a stopped outcome preserving the exact
+candidate as its result: clean process/MCP success maps to `ok`, classified
+failures to their existing class, cancellation to `interrupted`, and terminal
+MCP protocol failure to `failed`. Candidate/class contradictions or unknown
+error/status forms MUST refuse before receipt verification; a null retry class
+MUST NOT by itself imply success. This conversion MUST NOT mutate the journal.
+
 The provisional Linux `run::native_client::NativeRequest` host adapter MUST
 validate a closed bounded request and canonical namespace/generation, verify the
 fixed root-protected nonsymlink non-setuid helper executable, and own its process

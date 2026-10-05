@@ -2031,4 +2031,18 @@ lifecycle updates.
   native completion mapping, compiled core/store/replay acceptance and remaining
   production integration stay required, and task 9303 stays In progress.
 
+- **Native completion stopped semantics implemented for review:** checked
+  completion now exposes `stopped_outcome`, preserving its exact candidate
+  result while distinguishing `ok`, existing failure classes, cancellation
+  interruption and terminal protocol `failed`. Candidate/class contradictions,
+  unknown error/status forms and mismatched error/status combinations refuse
+  before receipt verification; null retry class alone never implies success.
+  Pure mapping/refusal controls cover process and MCP forms, and the native
+  successful host requires `ok` with its unchanged candidate. The provisional
+  inventory and API/lifecycle/SPEC contracts record the additive getter.
+  Formatting, size and diff checks pass; run `37302421599` is authoritatively
+  queued for `0aae3cb`, compiled native/core/store acceptance and writer-
+  protected service stopped/settlement integration remain required, and task
+  9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

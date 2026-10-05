@@ -559,3 +559,6 @@ matching verified completion may be returned, and helper retirement alone does
 not authorize settlement or capacity release. This additive provisional API
 changes no stable error code, journal format or hash representation, and full
 service integration and native acceptance remain required.
+`NativeCompletion::stopped_outcome` additively exposes the preserved candidate
+with checked stopped semantics; null retry class alone never implies success,
+and this getter performs no journal mutation or ownership settlement.

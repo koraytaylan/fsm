@@ -97,6 +97,11 @@ fn complete(binding: Value) {
                 Some(&Value::Num("0".into()))
             );
             assert_eq!(completion.failure_class(), None);
+            assert_eq!(completion.stopped_outcome().status(), "ok");
+            assert_eq!(
+                completion.stopped_outcome().result(),
+                Some(completion.candidate())
+            );
             assert!(completion.proof().matches_claim(&claim, hash));
             // Reconstruct a test-only envelope from the checked completion;
             // the independent observer re-authenticates its protected receipt.
