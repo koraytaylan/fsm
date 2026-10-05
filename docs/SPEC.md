@@ -1454,6 +1454,48 @@ decoding MUST reject unknown fields/classes, duplicate classes and unsorted
 arrays instead of repairing authenticated data. In-memory constructors may
 normalize an input of at most four known classes.
 
+The canonical execution block is a closed object with `admission` (`enabled`
+or `quarantined`), u64 `run_high_water`, `claims` and `retry` arrays. Claims
+are ordered strictly by run ID; retry entries are ordered strictly by
+`(instance_id, effect_id)`. Each claim entry contains exactly `claim` and
+`stopped`; `stopped` is null until closure, then contains exactly `closure`
+and `outcome`. Claim metadata contains exactly the first seven identity and
+contract fields of `execution_claimed` above (the request fields belong to the
+request ledger). Instance/effect identifiers are nonempty strings, attempt is
+positive and no greater than the policy's attempt limit, and handler
+fingerprints are `sha256:` followed by 64 lowercase hex digits.
+
+A closure value contains exactly positive `run_id`, the complete `domain`,
+and a canonical SHA-256 `receipt` digest naming protected native evidence.
+Decoding that value MUST NOT authenticate the receipt; native publication
+must independently verify the protected evidence and its exact domain/run
+binding. An outcome is a closed object containing `status` (`ok`,
+`interrupted`, or one of the four existing failure classes) and an optional
+`result` value. An omitted result and an explicit null result remain distinct.
+Unknown outcome fields and statuses are refused. A stopped value's closure
+run/domain MUST match its claim. A second stopped record is refused; a
+request-id replay returns its original response without appending another.
+
+Each retry entry contains exactly `instance_id`, `effect_id`,
+`handler_fingerprint`, `retry`, positive `failed_count`, signed
+`last_timestamp`, `failure_class`, and signed `eligible_at`. The latter MUST
+equal the policy's saturating deadline, and the count MUST NOT exceed the
+policy's attempt limit. A claim sharing a ledger MUST match its contract and
+have attempt `failed_count + 1`. Decoders reject duplicate effect ownership,
+duplicate run IDs, noncanonical array order, claims above the high-water mark,
+contradictory ledger/claim contracts or counts, and any stopped binding
+mismatch; they MUST NOT normalize such authenticated state.
+
+An `acked` disposition requires a still-pending effect and a stopped `ok` or
+failure result; an `attempted` disposition requires a still-pending effect
+and a stopped failure result. An `interrupted` disposition requires a stopped
+interruption while the effect remains pending; when the effect was externally
+removed it may instead consume any proved-stopped outcome without applying
+that result. Ack or removal discards the effect's retry ledger, but cannot
+discard unresolved ownership. All refusals MUST leave the ownership state and
+high-water mark unchanged. Pure state constructors do not authorize native
+launch or replace the store's pending-effect check.
+
 Stopped outcomes distinguish `ok`, an existing executor failure class, and
 `interrupted`; they retain the bounded result needed by settlement. An unknown
 termination state is unresolved ownership, not a stopped interruption. A
