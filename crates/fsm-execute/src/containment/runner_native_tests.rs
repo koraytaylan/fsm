@@ -182,6 +182,17 @@ pub(super) fn run() {
             handler.remove("tool");
             handler.remove("arguments");
         }
+        if mode == "timeout" {
+            let mut fields = table.as_obj().unwrap().clone();
+            let mut handlers = fields.get("handlers").unwrap().as_arr().unwrap().to_vec();
+            let mut handler = handlers[0].as_obj().unwrap().clone();
+            let mut retry = handler.get("retry").unwrap().as_obj().unwrap().clone();
+            retry.insert("on".into(), Value::Arr(vec![Value::Str("timeout".into())]));
+            handler.insert("retry".into(), Value::Obj(retry));
+            handlers[0] = Value::Obj(handler);
+            fields.insert("handlers".into(), Value::Arr(handlers));
+            table = Value::Obj(fields);
+        }
         let mut fixture = Fixture::new_for_table(table);
         let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
         let (binding, effect) = claim_binding(&fixture, &domain);
@@ -383,7 +394,26 @@ pub(super) fn run() {
             _ => panic!("uncertain runner must not reach verified completion"),
         };
         assert_eq!(completion.stopped_outcome().status(), expected);
-        assert_eq!(completion.stopped_outcome().result(), Some(candidate));
+        if mode == "timeout" {
+            let stopped = completion.stopped_outcome().result().unwrap();
+            assert_eq!(
+                stopped.get("error").and_then(Value::as_str),
+                Some(fsm_execute::error::RETRIES_EXHAUSTED)
+            );
+            assert_eq!(
+                stopped.get("class").and_then(Value::as_str),
+                Some("timeout")
+            );
+            assert_eq!(stopped.get("attempts"), Some(&Value::Num("1".into())));
+            assert_eq!(stopped.get("status"), candidate.get("status"));
+            assert_eq!(completion.candidate(), candidate);
+            assert_eq!(
+                candidate.get("error").and_then(Value::as_str),
+                Some("exec/timeout")
+            );
+        } else {
+            assert_eq!(completion.stopped_outcome().result(), Some(candidate));
+        }
         assert!(
             !Path::new("/sys/fs/cgroup/system.slice")
                 .join(&unit)

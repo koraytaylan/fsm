@@ -93,6 +93,10 @@ preserves the existing exhaustion result fields using only the immutable claim
 policy, retaining capture fields and raw candidate while adding the original
 class/attempt count and exhaustion error; disallowed or unclassified terminal
 failures retain their ordinary result, with native exhaustion coverage pending.
+The native timeout tree now uses an admitted one-attempt timeout policy and
+checks checked completion's exhaustion error/class/attempt metadata after
+matching closure, while its raw candidate retains the original timeout result;
+fixture claims derive retry policy from the actual approved catalogue.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.

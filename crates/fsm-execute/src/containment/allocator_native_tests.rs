@@ -410,11 +410,27 @@ fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
         )
         .unwrap();
     let effect = store.state.instances["instance"].pending[0].clone();
-    let fingerprint = super::super::catalogue::read(&fixture.directory)
-        .unwrap()
-        .handlers["notify"]
-        .fingerprint();
-    let retry = RetryPolicy::new(1, 10, 10, Vec::new()).unwrap();
+    let approved = super::super::catalogue::read(&fixture.directory).unwrap();
+    let handler = &approved.handlers["notify"];
+    let fingerprint = handler.fingerprint();
+    let mut classes = handler.retry.on.clone();
+    classes.sort();
+    let retry = RetryPolicy::from_value(&object([
+        ("attempts", Value::Num(handler.retry.attempts.to_string())),
+        (
+            "backoff_ms",
+            Value::Num(handler.retry.backoff_ms.to_string()),
+        ),
+        (
+            "max_backoff_ms",
+            Value::Num(handler.retry.max_backoff_ms.to_string()),
+        ),
+        (
+            "on",
+            Value::Arr(classes.into_iter().map(Value::Str).collect()),
+        ),
+    ]))
+    .unwrap();
     store
         .claim_execution_on(
             &mut FixedClock::new(100, 1),

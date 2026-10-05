@@ -2133,4 +2133,16 @@ lifecycle updates.
   `bfe1893`, compiled/native exhaustion acceptance and automatic service/event
   recovery remain required, and task 9303 stays In progress.
 
+- **Native immutable exhaustion control authored:** native fixture claims now
+  derive retry policy from the actual approved catalogue instead of a hardcoded
+  empty-class policy. The timeout MCP tree admits timeout with one total
+  attempt; after independently observed descendants and full matching closure,
+  checked stopped completion must preserve timeout status while adding existing
+  exhaustion error/class/attempt metadata, and the raw candidate must retain
+  its original timeout error unchanged. Other tree modes retain their ordinary
+  candidate checks. Formatting, size and diff checks pass; run `37304747545`
+  is authoritatively queued for `36afd94`, compiled native stable/MSRV and
+  portable acceptance plus production service/event recovery remain required,
+  and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
