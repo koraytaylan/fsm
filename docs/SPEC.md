@@ -1479,11 +1479,11 @@ submission. It MUST exclusively fsync a bounded cold-readable
 launch intent only after refusing any preexisting entry grant or pending grant,
 regardless of file type. Such refusal MUST leave intent absent and the
 prepared domain empty; prearmed entry MUST NOT bypass verified startup.
-The bounded cold-readable intent is
-`launch-<allocation>.json`, containing exactly `format`
-(`fsm.native-launch-intent/1`) and `binding`, before starting the fixed
-root-protected systemd-run with the installed protected gate and only its
-canonical route. Any existing intent, including a partial one, MUST refuse
+The bounded cold-readable intent is `launch-<allocation>.json`, containing
+exactly `format` (`fsm.native-launch-intent/1`) and `binding`; it MUST be
+durable before starting the fixed root-protected systemd-run with the
+installed protected gate and only its canonical route. Any existing intent,
+including a partial one, MUST refuse
 another submission; failed or uncertain submissions MUST retain that intent
 and journal ownership. The manager command MUST clear inherited overrides,
 use a dynamic unprivileged identity, protected control groups, no delegation,

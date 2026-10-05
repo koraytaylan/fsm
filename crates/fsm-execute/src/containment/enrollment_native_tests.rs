@@ -6,7 +6,10 @@ use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
+use std::io::Read;
+use std::os::fd::OwnedFd;
 use std::os::unix::fs::MetadataExt;
+use std::os::unix::net::UnixStream;
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
@@ -97,10 +100,16 @@ pub(super) fn run() {
             fs::remove_file(&prearmed).unwrap();
         }
     }
+    let (mut stdout, output) = UnixStream::pair().unwrap();
+    let (mut stderr, diagnostics) = UnixStream::pair().unwrap();
+    stdout.set_nonblocking(true).unwrap();
+    stderr.set_nonblocking(true).unwrap();
+    let output: OwnedFd = output.into();
+    let diagnostics: OwnedFd = diagnostics.into();
     let (child, bound) = launch::begin(
         &fixture.directory,
         1,
-        [Stdio::null(), Stdio::null(), Stdio::null()],
+        [Stdio::null(), Stdio::from(output), Stdio::from(diagnostics)],
     )
     .unwrap();
     assert_eq!(bound, Duration::from_millis(5100));
@@ -205,6 +214,24 @@ pub(super) fn run() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(!fixture.directory.join("closed-1.json").exists());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    for stream in [&mut stdout, &mut stderr] {
+        let mut byte = [0; 1];
+        loop {
+            match stream.read(&mut byte) {
+                Ok(0) => break,
+                Ok(_) => panic!("quiet true handler unexpectedly produced output"),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => panic!("production stream observation failed: {error}"),
+            }
+            assert!(
+                Instant::now() < deadline,
+                "production transport retained a stream writer"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert!(
         store

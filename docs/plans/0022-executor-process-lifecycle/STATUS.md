@@ -1446,4 +1446,13 @@ lifecycle updates.
   symlink paths, absent intent and unchanged empty population. Formatting and
   file-length checks precede frozen compiled/native CI; 9303 stays In progress.
 
+- **Production stream ownership control authored:** the installed-gate case
+  now passes real owned stdout/stderr socket descriptors through production
+  startup, requires the approved quiet handler to exit successfully and both
+  streams to reach truthful EOF within one shared two-second observation bound.
+  It still requires unresolved journal ownership and no closed receipt. This
+  exercises descriptor handoff/retirement rather than null output endpoints;
+  formatting/file-length checks precede compiled native CI, with retained-pipe,
+  noisy process/MCP capture and full runner closure still outstanding.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
