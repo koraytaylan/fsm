@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use fsm_core::json::Value;
 use fsm_core::machine::{InvokeStatus, Status};
 use fsm_core::record::RecordKind;
+use fsm_core::record::execution::{Claim, Stopped};
 use fsm_store::store::Store;
 
 use crate::config::HandlerTable;
@@ -70,6 +71,9 @@ pub struct Observation {
     pub to_seq: u64,
     /// Every effect currently in an instance's outbox, resolved.
     pub pending: Vec<PendingEffect>,
+    /// Original unresolved claims and optional stopped results from this prefix.
+    /// Removed effects and cancelled instances retain ownership until settlement.
+    pub execution_owners: Vec<(Claim, Option<Stopped>)>,
     /// Acks whose advance event may still be outstanding.
     pub settled: Vec<SettledEffect>,
     /// Deadlines at or past the observed time, on running instances.
@@ -222,6 +226,12 @@ impl Watcher {
             to_seq: store.journal.last_seq,
             claimed_request_ids: claimed_executor_keys(&store),
             attempts: attempt_state(&store),
+            execution_owners: store
+                .state
+                .execution
+                .unresolved()
+                .map(|(claim, stopped)| (claim.clone(), stopped.cloned()))
+                .collect(),
             ..Observation::default()
         };
         let mut memo = BTreeMap::new();

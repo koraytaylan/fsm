@@ -806,3 +806,5 @@ argument/outcome values before cloning or hashing the full contract, refusing
 excess with the existing `exec/config` error before claim mutation or helpers.
 This preserves public signatures and journal/hash formats; fresh native,
 portable and frozen host acceptance remains required before production routing.
+
+Plan 0022 ownership integration: watcher observations expose unresolved original claims and stopped results from the current read-only prefix, including cancelled or removed effects; production tick routing and capacity integration remain pending.

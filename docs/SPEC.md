@@ -2433,3 +2433,5 @@ After closure, Root MUST create once and sync this attestation, publish and sync
 mode 0444, then verify completion before durably publishing its private response.
 Missing, partial, writable, relocated or mismatched attestations MUST refuse;
 recovery MUST NOT repair them or substitute caller-selected candidate material.
+
+A watcher observation MUST project every unresolved original execution claim and optional stopped result from the same read-only journal prefix as pending effects, before filtering cancelled instances, removed effects or current handlers; observation MUST NOT consume ownership.

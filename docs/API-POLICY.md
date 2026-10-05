@@ -842,3 +842,5 @@ argument/outcome values before cloning or hashing the full contract, refusing
 excess with the existing `exec/config` error before claim mutation or helpers.
 This preserves public signatures and journal/hash formats; fresh native,
 portable and frozen host acceptance remains required before production routing.
+
+The provisional `fsm-execute::watch::Observation` adds `execution_owners`, retaining original `Claim` and optional `Stopped` values; this source-level provisional API addition changes no journal bytes or hash domains and does not accept automatic production routing.

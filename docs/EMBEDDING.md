@@ -2042,3 +2042,5 @@ argument/outcome values before cloning or hashing the full contract, refusing
 excess with the existing `exec/config` error before claim mutation or helpers.
 This preserves public signatures and journal/hash formats; fresh native,
 portable and frozen host acceptance remains required before production routing.
+
+Executor watcher observations now include `execution_owners` from the same read-only prefix as pending effects, including owners whose effect or handler has disappeared; embedders must preserve these owners until durable settlement, and integrated native tick routing remains under implementation.

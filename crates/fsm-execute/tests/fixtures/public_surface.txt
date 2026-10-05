@@ -181,6 +181,7 @@ field fsm_execute::watch::Observation::attempts
 field fsm_execute::watch::Observation::cancellations
 field fsm_execute::watch::Observation::claimed_request_ids
 field fsm_execute::watch::Observation::due_deadlines
+field fsm_execute::watch::Observation::execution_owners
 field fsm_execute::watch::Observation::from_seq
 field fsm_execute::watch::Observation::instance_states
 field fsm_execute::watch::Observation::pending
