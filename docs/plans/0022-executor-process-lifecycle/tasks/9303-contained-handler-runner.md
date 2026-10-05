@@ -744,3 +744,12 @@ cache as `TMPDIR`; repeated observations showed approximately 2.1 GiB swap,
 The separate release gate has started serially; clippy, documentation and
 remaining explicit host gates are still pending, so this task remains
 `in_progress` and production ownership integration remains unaccepted.
+
+The frozen local `cargo +stable test --workspace --release --no-fail-fast`
+also completed with exit code zero using the same serial environment and
+disk-backed `TMPDIR`; retained evidence is
+`~/.cache/fsm-plan-native-matrix-20261005/local-9f1f175-stable-release.log`.
+At completion, swap remained approximately 2.1 GiB and available RAM 61 GiB.
+The all-targets clippy gate is now running serially; documentation and the
+explicit zero-dependency/downstream acceptance commands remain pending.
+Task status remains `in_progress` until the full frozen host gate completes.
