@@ -1303,4 +1303,16 @@ lifecycle updates.
   manager fencing, closure issuance and shared runner/service integration
   remain outstanding; task 9303 stays In progress.
 
+- **Portable capture import repair accepted on all six axes:** CI
+  `37271018161` for frozen source
+  `bfcfd79126df579f131f283238dfe781c2438458` is terminal success with all
+  nine jobs passing: Linux/macOS/Windows at stable and MSRV, both native
+  toolchains and zero dependencies. This resolves the earlier `dffc208`
+  macOS/Windows unused-import compilation failures without dropping an axis
+  or weakening the warning gate. The full portable verdict applies only to
+  this source, which predates protected entry/publication, closing,
+  termination, manager detection and native observation. Their later frozen
+  source reviews remain separate; this regression acceptance does not
+  complete task 9303 or enable contained execution.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
