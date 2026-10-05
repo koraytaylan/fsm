@@ -755,4 +755,13 @@ lifecycle updates.
   defect or passed crash proof. The original log is retained and the corrected
   stable/MSRV run remains pending; portable CI is still running.
 
+- **Append fixture now checks the execution ledger:** corrected source
+  `e543549` compiled and reached actual writer-death recovery, then failed
+  because it expected a claim-era failed settlement to change the separate
+  legacy `effect_attempted` accessor. The test now checks the public execution
+  state's durable failed count and separately asserts that legacy count stays
+  zero. This fixture expectation is grounded in the existing settlement
+  contract; no production behavior changes. The failed runtime log is retained
+  and complete stable/MSRV execution still requires a corrected rerun.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

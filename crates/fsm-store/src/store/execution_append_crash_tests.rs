@@ -135,7 +135,11 @@ fn death_inside_execution_append_recovers_the_complete_observable_prefix() {
             };
             assert_eq!(store.state.dedup.contains_key(request), complete);
             let settled = kind == "execution_settled" && complete;
-            assert_eq!(store.attempts_for("instance", &effect), u64::from(settled));
+            assert_eq!(store.attempts_for("instance", &effect), 0);
+            assert_eq!(
+                store.state.execution.failed_count("instance", &effect),
+                u32::from(settled)
+            );
             assert_eq!(
                 store.state.execution.unresolved().count(),
                 usize::from(high_water == 1 && !settled)
