@@ -2980,4 +2980,18 @@ lifecycle updates.
   do not count as 80-case acceptance; fresh runtime proof remains pending and
   task 9303 stays active.
 
+- Frozen e1d358f full stable release workspace gate and warning-denied workspace
+  documentation pass. CI 37358669917 native stable and MSRV each pass all 80
+  cases; the independent frozen-source evidence verifier checks both exact
+  e1d358f25149f03edf92142d3f7abb19371e8b57 artifacts, source inventories,
+  compiler, suite/log digests and expected negative-failure proof. The actual
+  native_capture_bounds control passes all ten process/MCP runs at both
+  toolchains, including exact/plus-one prefix/hash boundaries and 8 MiB output,
+  original-claim closure and repeated descriptor/thread retirement. This closes
+  that runner evidence gap; it does not substitute for production host routing,
+  prerequisite refusal faults, full portable acceptance or frozen high-risk
+  review. Current six portable CI axes remain queued/running, executable bytes
+  remain unverified, production backend/release remain false, and task 9303
+  remains in progress pending its complete acceptance audit.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
