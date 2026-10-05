@@ -3281,4 +3281,13 @@ lifecycle updates.
   corrected-source portable/local gates and remaining review still prevent
   task acceptance or production gate release.
 
+- Corrected-source Ubuntu stable gate `111988370337` passes in CI
+  `37376949993` at exact `9f1f175ad91609359699e3a2d670119e8cbb506a`;
+  job metadata confirms every step succeeds, including debug/release workspace
+  tests, formatting, file size, all-target Clippy, documentation, fuzz target
+  compilation and byte-identical decimal regeneration.
+  The exact log is retained at task-cache `ci-37376949993-ubuntu-stable.log`.
+  Five portable jobs remain live; this pass does not substitute for the
+  separate local frozen host invocation or finish aggregate review.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

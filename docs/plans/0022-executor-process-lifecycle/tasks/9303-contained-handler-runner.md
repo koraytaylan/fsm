@@ -92,7 +92,16 @@ closed; a root exit or MCP response cannot release surviving descendants.
   runner, and native stable/MSRV coverage plus public-surface/zero-dependency
   gates pass without falling back to weaker platform implementations.
 
-**Acceptance review at source `31e0c6318cb45bcc5f76468d6586e172356e466a`:**
+**Historical acceptance review at source `31e0c6318cb45bcc5f76468d6586e172356e466a`:**
+
+This table predates the interrupted-association deadline correction and does
+not accept corrected product source `9f1f175ad91609359699e3a2d670119e8cbb506a`.
+At that corrected source, CI `37376949993` independently verifies 81 native
+cases on each compiler and passes zero dependencies plus Ubuntu stable's full
+gate (`111988370337`, including debug/release workspace tests, all-target
+Clippy, documentation, fuzz compilation and decimal regeneration).
+The other five portable axes remain live; local frozen host verification and
+complete contract reconciliation remain outstanding.
 
 | Requirement | Inspected implementation and evidence | Remaining acceptance |
 | --- | --- | --- |
