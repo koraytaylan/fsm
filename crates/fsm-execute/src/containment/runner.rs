@@ -236,7 +236,8 @@ pub(super) fn execute_cancellable(
         },
     };
     let result = object([
-        ("format", Value::Str("fsm.native-run-result/2".into())),
+        ("format", Value::Str("fsm.native-run-result/3".into())),
+        ("handler_contract", handler.contract_value()),
         (
             "handler_kind",
             Value::Str(

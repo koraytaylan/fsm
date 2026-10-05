@@ -241,9 +241,13 @@ fn complete(binding: Value) {
             let result = Value::Obj(BTreeMap::from([
                 (
                     "format".into(),
-                    Value::Str("fsm.native-run-result/2".into()),
+                    Value::Str("fsm.native-run-result/3".into()),
                 ),
                 ("handler_kind".into(), Value::Str("process".into())),
+                (
+                    "handler_contract".into(),
+                    completion.handler().contract_value(),
+                ),
                 ("claim".into(), claim.to_value()),
                 ("journal_claim".into(), Value::Str(hash.into())),
                 ("receipt".into(), Value::Str(receipt)),

@@ -266,6 +266,7 @@ method fsm_execute::run::Runner::scratch_dir
 method fsm_execute::run::Runner::spawn
 method fsm_execute::run::native_client::NativeCompletion::candidate
 method fsm_execute::run::native_client::NativeCompletion::failure_class
+method fsm_execute::run::native_client::NativeCompletion::handler
 method fsm_execute::run::native_client::NativeCompletion::proof
 method fsm_execute::run::native_client::NativeCompletion::stopped_outcome
 method fsm_execute::run::native_client::NativeCompletion::verify

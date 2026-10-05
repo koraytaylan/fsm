@@ -404,6 +404,19 @@ pub(super) fn run() {
             binding.get("journal_claim").unwrap().as_str().unwrap(),
         )
         .unwrap();
+        assert_eq!(
+            completion.handler().fingerprint(),
+            original_claim
+                .to_value()
+                .get("handler_fingerprint")
+                .unwrap()
+                .as_str()
+                .unwrap()
+        );
+        assert_eq!(
+            completion.handler().contract_value(),
+            *result.get("handler_contract").unwrap()
+        );
         let expected = match mode {
             "answer" => "mcp_error",
             "protocol" => "failed",

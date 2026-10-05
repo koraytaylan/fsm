@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 /// Checked candidate and matching closure; current ownership remains the store's job.
 pub struct NativeCompletion {
+    handler: crate::config::HandlerSpec,
     candidate: Value,
     failure_class: Option<FailureClass>,
     proof: VerifiedClosure,
@@ -23,11 +24,20 @@ impl NativeCompletion {
             return Err("native completion closure does not match original claim".into());
         }
         Ok(Self {
+            handler: material.handler,
             candidate: material.candidate,
             failure_class: material.failure_class,
             proof,
             stopped: material.stopped,
         })
+    }
+
+    /// Borrow the checked original contract, including possibly secret values.
+    ///
+    /// This does not consult a current table or grant ownership/settlement;
+    /// hosts must not include its full material in health summaries.
+    pub fn handler(&self) -> &crate::config::HandlerSpec {
+        &self.handler
     }
 
     /// Borrow the unchanged acknowledgement candidate from the authenticated transport.
@@ -52,6 +62,7 @@ impl NativeCompletion {
 }
 
 struct Material {
+    handler: crate::config::HandlerSpec,
     candidate: Value,
     failure_class: Option<FailureClass>,
     receipt: PathBuf,
@@ -94,6 +105,7 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
         &[
             "format",
             "handler_kind",
+            "handler_contract",
             "claim",
             "journal_claim",
             "receipt",
@@ -101,11 +113,28 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
             "failure_class",
         ],
     )?;
-    if result.get("format").and_then(Value::as_str) != Some("fsm.native-run-result/2")
+    if result.get("format").and_then(Value::as_str) != Some("fsm.native-run-result/3")
         || result.get("claim") != Some(&claim.to_value())
         || result.get("journal_claim").and_then(Value::as_str) != Some(journal_claim)
     {
         return Err("native completion original identity differs".into());
+    }
+    let original = claim.to_value();
+    let contract = result
+        .get("handler_contract")
+        .ok_or("native completion original contract missing")?;
+    let handler = crate::config::HandlerSpec::from_contract(
+        contract,
+        original
+            .get("handler_fingerprint")
+            .and_then(Value::as_str)
+            .ok_or("native completion original fingerprint missing")?,
+    )
+    .map_err(|_| "native completion original contract differs")?;
+    if contract.get("retry") != original.get("retry")
+        || result.get("handler_kind").and_then(Value::as_str) != Some(handler.kind.as_str())
+    {
+        return Err("native completion original contract snapshot differs".into());
     }
     let domain = claim.domain().to_value();
     let namespace = domain
@@ -160,6 +189,7 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
         _ => return Err("native completion candidate and handler kind differ".into()),
     }
     Ok(Material {
+        handler,
         stopped: stopped_for_claim(candidate, failure_class, claim)?,
         candidate: candidate.clone(),
         failure_class,
@@ -377,8 +407,12 @@ mod tests {
         }
     }
 
+    fn handler() -> crate::config::HandlerSpec {
+        crate::config::HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":100,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#).unwrap().handlers.remove("notify").unwrap()
+    }
+
     fn claim() -> Claim {
-        Claim::from_value(&parse(format!(r#"{{"run_id":1,"instance_id":"instance","effect_id":"effect","attempt":1,"handler_fingerprint":"sha256:{}","retry":{{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}},"domain":{{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{{"device":0,"inode":42}},"authority":{{"device":8,"inode":43}},"generation":9}}}}"#, "a".repeat(64)).as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap()
+        Claim::from_value(&parse(format!(r#"{{"run_id":1,"instance_id":"instance","effect_id":"effect","attempt":1,"handler_fingerprint":"{}","retry":{{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}},"domain":{{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{{"device":0,"inode":42}},"authority":{{"device":8,"inode":43}},"generation":9}}}}"#, handler().fingerprint()).as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap()
     }
 
     fn response(claim: &Claim, hash: &str) -> Value {
@@ -386,8 +420,9 @@ mod tests {
             ("format".into(), Value::Str("fsm.native-response/1".into())),
             ("ok".into(), Value::Bool(true)),
             ("result".into(), Value::Obj(BTreeMap::from([
-                ("format".into(), Value::Str("fsm.native-run-result/2".into())),
+                ("format".into(), Value::Str("fsm.native-run-result/3".into())),
                 ("handler_kind".into(), Value::Str("process".into())),
+                ("handler_contract".into(), handler().contract_value()),
                 ("claim".into(), claim.to_value()),
                 ("journal_claim".into(), Value::Str(hash.into())),
                 ("receipt".into(), Value::Str("/var/lib/fsm-containment/0123456789abcdef0123456789abcdef/authority-9/closure-7-1.json".into())),
@@ -405,6 +440,9 @@ mod tests {
         let valid = validate(&response, &claim, &hash).unwrap();
         assert_eq!(valid.candidate.get("status"), Some(&Value::Num("0".into())));
         assert_eq!(valid.failure_class, None);
+        assert_eq!(valid.handler, handler());
+        let mut changed_contract = handler();
+        changed_contract.timeout_ms += 1;
         let mut old_claim = claim.to_value().as_obj().unwrap().clone();
         old_claim.insert("run_id".into(), Value::Num("2".into()));
         let original = response.get("result").unwrap().as_obj().unwrap();
@@ -421,6 +459,9 @@ mod tests {
             ("failure_class", Value::Str("unknown".into())),
             ("handler_kind", Value::Str("mcp".into())),
             ("handler_kind", Value::Str("unknown".into())),
+            ("handler_contract", Value::Null),
+            ("handler_contract", changed_contract.contract_value()),
+            ("format", Value::Str("fsm.native-run-result/2".into())),
             ("candidate", Value::Null),
         ] {
             let mut result = original.clone();

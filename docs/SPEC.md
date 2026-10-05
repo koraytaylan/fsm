@@ -1842,8 +1842,8 @@ Its bounded response MUST bind the original claim/hash, receipt path,
 candidate result and failure class. It MUST NOT write stopped results or
 settle the journal itself; the production service/broker integration remains
 required, and root-only operation MUST NOT imply an unprivileged client path.
-The private response format is `fsm.native-run-result/2`, with exactly `format`, `handler_kind`,
-`claim`, `journal_claim`, `receipt` (the exact protected receipt path),
+The private response format is `fsm.native-run-result/3`, with exactly `format`,
+`handler_kind`, `handler_contract`, `claim`, `journal_claim`, `receipt` (the exact protected receipt path),
 `candidate` (existing runner acknowledgement-result shape), and nullable
 `failure_class` (existing runner retry classification); canonical output is
 at most 64 KiB. It is not an authenticated remote broker response by itself.
@@ -1851,7 +1851,15 @@ at most 64 KiB. It is not an authenticated remote broker response by itself.
 approved catalogue. Checked completion MUST reject a missing process status,
 process use of MCP-only errors, MCP use of a process exit candidate, and unknown
 kinds; generic timeout/cancellation/spawn errors retain their shared shapes.
-The previous private result envelope version MUST refuse rather than infer kind.
+`handler_contract` MUST be the complete canonical fsm.handler-contract/1 material
+of the freshly verified catalogue handler. Checked completion MUST decode it
+against the original claim fingerprint and require agreement with the original
+retry snapshot and envelope kind before reading any closure receipt. Its
+handler accessor MUST retain this checked original contract without consulting
+a current handler table; contract values may contain secrets and MUST NOT enter
+health output. This envelope does not durably store the original contract or
+complete restart outcome-event recovery. Previous private result envelope
+versions MUST refuse rather than infer absent kind or contract material.
 The provisional Linux-only `run::native_io::NativeCapture` and
 `NativeProtocol` adapters MUST reuse the runner's capture/worker implementation;
 their constructors MUST NOT authorize launch, validate a claim or prove

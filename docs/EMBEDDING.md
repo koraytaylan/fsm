@@ -1783,3 +1783,10 @@ current handler table; it does not establish durable storage, ownership proof
 or permission to launch or settle. Unlike sanitized executor reports, these
 values include full argument templates and outcome payloads and may contain
 secrets, so do not put them in health summaries.
+
+Provisional NativeCompletion::handler() borrows the original handler carried by
+the private /3 native envelope after fingerprint, retry-snapshot and kind checks;
+it does not consult the embedder's current table. Candidate and stopped-result
+shapes remain unchanged, and closure still requires the exact original receipt.
+The accessor includes secret-bearing templates/payloads and is unsuitable for
+health output; durable original-contract recovery remains an integration gate.

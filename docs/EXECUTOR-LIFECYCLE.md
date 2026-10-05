@@ -1247,3 +1247,11 @@ This does not yet store that material durably, recover stopped advances or
 route the service through native claims, and these remain acceptance work.
 Contract values contain full templates/payloads and may contain secrets;
 health output must continue to use bounded identifiers only.
+
+The private native result now carries the catalogue-derived full contract in
+fsm.native-run-result/3. NativeCompletion checks canonical material against the
+original claim fingerprint, retry snapshot and handler kind before reading the
+closure receipt, and exposes the original handler separately from the unchanged
+candidate/stopped result. This survives later in-memory table replacement for
+that collected completion but does not yet durably recover original advances
+after a crash; journal storage and service recovery remain required.

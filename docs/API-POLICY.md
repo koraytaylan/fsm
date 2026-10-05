@@ -588,3 +588,9 @@ Neither grants native launch/settlement permission nor changes historical hash
 bytes; contract values include complete templates and payloads and may contain
 secrets, so they are distinct from sanitized diagnostics. Durable native
 transport/storage and restart outcome-event integration remain separate gates.
+
+The unreleased private native result envelope advances to /3 to carry the full
+original handler contract, and provisional NativeCompletion::handler returns
+that fingerprint/retry/kind-checked contract. Older private envelopes refuse;
+this changes no journal, closure receipt, acknowledgement or historical hash
+format, and does not release native or recovery acceptance gates.

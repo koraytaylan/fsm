@@ -2484,4 +2484,17 @@ lifecycle updates.
   prerequisite rather than task completion. Formatting/size/whitespace checks
   are local validation only; CI/compiler/native/portable acceptance is pending.
 
+- Advanced the unreleased private native result to /3 with the complete
+  catalogue-derived handler_contract, retaining unchanged candidate/stopped
+  acknowledgement shapes and historical journal/hash/receipt bytes. Completion
+  now validates the canonical contract against the original claim fingerprint,
+  retry snapshot and kind before reading native receipt evidence, and exposes
+  that checked handler through the provisional API. Unit controls reject older
+  envelopes and valid-but-substituted contracts; actual process/MCP native
+  fixtures require the original contract to survive collection/re-authentication.
+  SPEC/API/embedding/lifecycle and inventory are updated. Durable original-contract
+  storage and restart outcome-event replay remain required; this is not task
+  acceptance. Local source checks pass; frozen run 37315680969 remains queued
+  and compiler/native/all portable gates are still pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
