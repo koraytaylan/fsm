@@ -20,16 +20,18 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use fsm_core::json::Value;
 use fsm_core::sha256::{Sha256, to_hex};
 
 use crate::error::ExecError;
-use crate::mcp_client::{McpOutcome, ProtocolFault, converse};
+use crate::mcp_client::McpOutcome;
 
 mod capture;
+mod mcp_worker;
 mod pipeline;
+
+use mcp_worker::McpWorker;
 mod stream;
 
 use stream::StreamCapture;
@@ -479,7 +481,7 @@ enum Running {
         stderr: StreamCapture,
         /// The worker's one message, once it has been taken off the channel.
         answer: Option<McpOutcome>,
-        answers: Receiver<McpOutcome>,
+        worker: McpWorker,
     },
 }
 
@@ -497,20 +499,11 @@ impl Running {
     /// conversation could surface — is read as a closed stream rather than
     /// left in flight forever.
     fn collect(&mut self) -> bool {
-        let Running::Mcp {
-            answer, answers, ..
-        } = self
-        else {
+        let Running::Mcp { answer, worker, .. } = self else {
             return false;
         };
         if answer.is_none() {
-            match answers.try_recv() {
-                Ok(received) => *answer = Some(received),
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => {
-                    *answer = Some(McpOutcome::Protocol(ProtocolFault::Closed));
-                }
-            }
+            *answer = worker.collect();
         }
         answer.is_some()
     }
@@ -539,6 +532,7 @@ static SPAWN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 pub struct Runner {
     scratch: PathBuf,
     children: BTreeMap<String, Running>,
+    retiring: Vec<McpWorker>,
 }
 
 impl Runner {
@@ -565,6 +559,7 @@ impl Runner {
                     return Ok(Self {
                         scratch,
                         children: BTreeMap::new(),
+                        retiring: Vec::new(),
                     });
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && attempt < 8 => {
@@ -602,6 +597,7 @@ impl Runner {
     /// `try_wait` remembers the exit status, so asking here and taking it
     /// afterwards reaps exactly once.
     pub fn finished_effects(&mut self) -> Vec<String> {
+        self.reap_workers();
         let mut finished = Vec::new();
         for (effect_id, running) in &mut self.children {
             running.poll_captures();
@@ -642,9 +638,13 @@ impl Runner {
         argv: &[String],
         call: Option<&McpCall>,
     ) -> Result<(), ExecError> {
+        self.reap_workers();
         let Some((command, arguments)) = argv.split_first() else {
             return Err(spawn_error("", "a handler must name a command"));
         };
+        if !self.retiring.is_empty() {
+            return Err(spawn_error(command, "a prior MCP worker is still closing"));
+        }
         // Two children for one effect could produce two acks over the same
         // derived key with different captured output — the one collision the
         // whole design refuses. Displacing the entry would also orphan the
@@ -688,9 +688,8 @@ impl Runner {
     /// Stdin and stdout carry the conversation; stderr uses the shared
     /// capture transport and is drained on each runner poll on Linux.
     ///
-    /// The worker owns the pipes and the runner owns the child, which is what
-    /// lets one kill path serve both kinds: killing the child closes the
-    /// pipes, which ends the worker's read.
+    /// Linux retains independent socket cancellation controls; root death
+    /// alone cannot wake a worker when descendants hold its I/O peers.
     fn spawn_mcp(
         &self,
         command: &str,
@@ -699,49 +698,19 @@ impl Runner {
         call: &McpCall,
     ) -> Result<Running, ExecError> {
         let (stderr, stderr_handle) = StreamCapture::open(stderr_path, command)?;
-        let spawned = Command::new(command)
-            .args(arguments)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(stderr_handle)
-            .spawn();
-        let mut child = match spawned {
-            Ok(child) => child,
-            Err(error) => {
-                let _ = std::fs::remove_file(stderr_path);
-                return Err(spawn_error(command, &error.to_string()));
-            }
-        };
-        // Both are `Some` immediately after a piped spawn; treating their
-        // absence as a spawn failure keeps this free of an unwrap that would
-        // panic the executor for a subprocess's sake.
-        let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = std::fs::remove_file(stderr_path);
-            return Err(spawn_error(
-                command,
-                "the server's pipes could not be taken",
-            ));
-        };
-        let (sender, answers) = channel();
-        let tool = call.tool.clone();
-        let call_arguments = call.arguments.clone();
-        // Detached on purpose. The worker ends when the pipes close, and the
-        // runner closes them by killing the child — on a timeout, on a
-        // cancellation, and in `Drop`. Joining here would mean waiting for a
-        // subprocess inside a tick.
-        std::thread::spawn(move || {
-            let outcome = converse(stdin, stdout, &tool, &call_arguments);
-            // The receiver is gone when the effect was already settled, which
-            // is ordinary rather than an error.
-            let _ = sender.send(outcome);
-        });
+        let (child, worker) = McpWorker::spawn(
+            command,
+            arguments,
+            stderr_handle,
+            call.tool.clone(),
+            call.arguments.clone(),
+        )
+        .map_err(|error| spawn_error(command, &error.to_string()))?;
         Ok(Running::Mcp {
             child,
             stderr,
             answer: None,
-            answers,
+            worker,
         })
     }
 
@@ -751,6 +720,7 @@ impl Runner {
     /// `status: -1` so the pipeline acks it `failed` rather than unwrapping a
     /// `None`.
     pub fn poll(&mut self, effect_id: &str) -> Option<RunOutcome> {
+        self.reap_workers();
         self.children.get_mut(effect_id)?.poll_captures();
         if matches!(self.children.get(effect_id)?, Running::Mcp { .. }) {
             return self.poll_mcp(effect_id);
@@ -816,12 +786,22 @@ impl Runner {
             return completed;
         }
         if let Some(mut running) = self.children.remove(effect_id) {
-            // Killing the child closes an MCP worker's pipes, which is how the
-            // worker learns the run is over: there is no second stop signal.
+            // Stop the root and independently cancel Linux protocol I/O;
+            // retain any worker which has not joined before another launch.
             let _ = running.child_mut().kill();
             let _ = running.child_mut().wait();
+            if let Running::Mcp { mut worker, .. } = running {
+                worker.cancel();
+                if !worker.reap() {
+                    self.retiring.push(worker);
+                }
+            }
         }
         RunOutcome::Killed { reason }
+    }
+
+    fn reap_workers(&mut self) {
+        self.retiring.retain_mut(|worker| !worker.reap());
     }
 
     fn capture_path(&self, effect_id: &str, run: u64, extension: &str) -> PathBuf {

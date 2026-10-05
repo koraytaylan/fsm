@@ -1187,6 +1187,16 @@ are ignored: a server that logs is not a server that failed. The server's
 standard error is captured with the same bound and digest a process handler's
 is, so a crashing server leaves evidence.
 
+On Linux the runner owns independent cancellation controls for MCP stdin and
+stdout sockets and tracks the protocol thread until it joins. Completion is
+collected only after joining; timeout/cancellation shuts down both socket
+directions independently of root death. A worker still closing is retained,
+and further `Runner::spawn` calls refuse with `exec/spawn` until polling or a
+later launch observes its join. `Drop` performs best-effort cancellation and
+joins only already-finished threads, without blocking on an unfinished one.
+This does not prove descendant termination or authorize contained settlement;
+other portable hosts retain their pipe transport.
+
 The result becomes the ack deterministically:
 
 | Server response | Ack |

@@ -9,6 +9,13 @@ polling while handlers run. This changes capture transport, not execution
 ownership: direct-child completion and the existing MCP worker still do not
 provide the planned contained-runner closure guarantee.
 
+Unreleased Linux MCP workers now use independently cancellable stdin/stdout
+sockets and tracked join handles. Results wait for an observed worker join;
+cancelled workers still closing remain retained and prevent another launch
+until joined. Drop remains nonblocking best-effort cleanup. This prevents
+retained I/O peers from forcing reliance on root death for worker cancellation,
+but does not prove native domain closure or ship contained execution.
+
 The current format documentation consistently identifies VERSION 11,
 state-root/4 and snapshot/6; VERSION 10 sealing rules are explicitly historical.
 This clarification changes no persisted bytes or public behavior and does not

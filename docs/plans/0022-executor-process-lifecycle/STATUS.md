@@ -998,4 +998,23 @@ lifecycle updates.
   worker cancellation and uncertain ownership remain outstanding; task 9303
   stays In progress and no contained result is claimed by these tests.
 
+- **Owned Linux MCP worker integrated:** a private worker now retains its
+  thread handle and independent stdin/stdout socket cancellation controls.
+  A conversation result is collected only after the thread is observed
+  finished and joined; timeout/cancellation shuts down both directions,
+  retaining unfinished workers and refusing another launch until their join.
+  Polling performs only nonblocking completion observation; Drop cancels
+  best-effort and joins already-finished handles. Thread creation failure
+  kills/reaps the root rather than panicking or abandoning it. The retained
+  peer case passes for blocked reads and large blocked request writes while
+  both peers remain open. A separately labelled unavailable-control injection
+  checks actual runner launch refusal through the unfinished worker and
+  permits launch only after its observed join; it is not native shutdown
+  failure evidence. Both new cases pass on stable and Rust 1.89; existing
+  runner/MCP/scheduler/live-capture suites pass on both toolchains, and stable
+  all-target execute Clippy passes. No public item or error code is added.
+  Native authority authentication, domain closure, explicit contained cleanup
+  states, descendant integration and complete portable/native acceptance
+  remain outstanding, so task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

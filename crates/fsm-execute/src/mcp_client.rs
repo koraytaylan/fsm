@@ -33,8 +33,10 @@
 //! worker thread and the tick polls for its answer — exactly as it polls a
 //! subprocess for its exit. The worker owns the pipes; the **runner** owns the
 //! child, so a timeout is still enforced by the scheduler's deadline and
-//! `Runner::kill`, which closes the pipes and ends the worker. Nothing here
-//! implements a second timeout.
+//! `Runner::kill`. On Linux the runner independently shuts down socket I/O;
+//! killing only the root cannot close peers inherited by descendants. The
+//! runner tracks the worker until it joins; this protocol function implements
+//! no second timeout and provides no process-domain closure evidence.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -142,8 +144,8 @@ impl McpOutcome {
 /// [`McpOutcome`] the ack can carry.
 ///
 /// There is no timeout in here. The scheduler's deadline and `Runner::kill`
-/// enforce it by closing these pipes, which ends the read this function is
-/// sitting in — one timeout for both handler kinds, in one place.
+/// enforce it; the Linux runner can independently cancel both socket reads
+/// and writes even when descendant-held peers remain open.
 pub fn converse(stdin: impl Write, stdout: impl Read, tool: &str, arguments: &Value) -> McpOutcome {
     let mut writer = stdin;
     let mut reader = BufReader::new(stdout);
