@@ -1,5 +1,19 @@
 # API and version policy
 
+The provisional `Pipeline::claim_native_handler` derives instance/effect identity
+from journal replay, validates the original HandlerSpec and takes its fingerprint
+and retry snapshot from that same contract under a healthy durable writer.
+It rejects a mismatched effect name before claiming any request key and returns
+only a matching currently owned Claim with its original record hash available;
+an already consumed claim is not recreated from an old duplicate response.
+It starts no helpers: prepare the native domain, acquire the writer, claim, then
+use NativeExecution::start while the writer still protects launch eligibility.
+Root binding still rechecks its approved catalogue; refusal retains unresolved
+ownership and permits no direct-child fallback. Existing formats, claim/hash
+bytes and retry/ack/event semantics are unchanged, and automatic service routing
+plus compiled/native acceptance remain pending.
+
+
 The provisional `run::native_client::NativeExecution` owns the original native
 run and retains checked completion across writer contention; `observe` polls
 bounded helper work without a Store and repeatedly reports cached readiness.

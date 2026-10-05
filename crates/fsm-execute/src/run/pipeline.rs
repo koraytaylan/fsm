@@ -62,6 +62,86 @@ impl Pipeline {
             .map_err(|error| ExecError::store(&error))
     }
 
+    /// Derive and durably claim the original handler contract for a journal effect.
+    ///
+    /// This performs no helper startup; a host prepares its domain first, then
+    /// claims under the writer before calling NativeExecution::start. Refusal
+    /// never authorizes a direct-child fallback or clears existing ownership.
+    #[cfg(target_os = "linux")]
+    pub fn claim_native_handler(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        effect_id: &str,
+        handler: &HandlerSpec,
+        domain: &fsm_core::record::execution::NativeDomain,
+        request_id: &str,
+    ) -> Result<fsm_core::record::execution::Claim, ExecError> {
+        use fsm_core::record::execution::RetryPolicy;
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native claim requires a supported healthy durable writer",
+            ));
+        }
+        let effect = crate::effect::resolve(store, effect_id)?;
+        if handler.effect != effect.effect_name {
+            return Err(ExecError::new(
+                "exec/config",
+                "native handler does not match the journal-derived effect",
+            ));
+        }
+        let fingerprint = handler.fingerprint();
+        let contract = handler.contract_value();
+        HandlerSpec::from_contract(&contract, &fingerprint)?;
+        let retry = RetryPolicy::from_value(contract.get("retry").ok_or_else(|| {
+            ExecError::new("exec/config", "native original retry policy is missing")
+        })?)
+        .map_err(|error| ExecError::new("exec/config", error.to_string()))?;
+        self.claim_native(
+            store,
+            clock,
+            fsm_store::store::ExecutionClaimRequest {
+                instance_id: &effect.instance_id,
+                effect_id,
+                handler_fingerprint: &fingerprint,
+                domain,
+                retry: &retry,
+                request_id,
+                expected_seq: None,
+            },
+        )?;
+        let claim = store
+            .state
+            .execution
+            .claim_for(&effect.instance_id, effect_id)
+            .cloned()
+            .ok_or_else(|| {
+                ExecError::new(
+                    "exec/inflight_deferred",
+                    "original native claim is no longer owned",
+                )
+            })?;
+        let material = claim.to_value();
+        if claim.domain() != domain
+            || material.get("retry") != Some(&retry.to_value())
+            || material.get("handler_fingerprint") != Some(&Value::Str(fingerprint))
+        {
+            return Err(ExecError::new(
+                "exec/inflight_deferred",
+                "owned native claim differs from the original contract",
+            ));
+        }
+        store
+            .current_execution_claim_hash(&claim)
+            .map_err(|error| ExecError::store(&error))?;
+        Ok(claim)
+    }
+
     /// Recheck current durable ownership under a writer before starting binding.
     ///
     /// The returned run owns helper I/O independently of the writer; the host

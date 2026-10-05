@@ -2311,3 +2311,15 @@ key which a later run may occupy; conflicts or unavailable archived responses
 MUST refuse, never invent success. Outcome events remain a separate checked
 acknowledgement-before-event pipeline operation. This host primitive MUST NOT be
 interpreted as completed automatic production-host routing or gate acceptance.
+
+The typed `Pipeline::claim_native_handler` admission method MUST require a
+supported healthy durable writer, resolve the original instance/effect identity
+from the journal, validate the handler contract and reject a handler effect-name
+mismatch before claiming a request key. Its fingerprint and retry policy MUST
+come from that same original contract rather than independently supplied values.
+After idempotent claim publication it MUST return only a matching currently owned
+claim for the prepared domain and available original record hash; an old duplicate
+response MUST NOT recreate consumed ownership. This operation MUST start no
+helpers and grant no fallback: hosts prepare, claim under the writer, then recheck
+current launch eligibility through NativeExecution::start; Root binding still
+verifies its immutable approved catalogue before actual entry.

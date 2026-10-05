@@ -255,6 +255,7 @@ method fsm_execute::run::Pipeline::advance_native_settled
 method fsm_execute::run::Pipeline::advance_only
 method fsm_execute::run::Pipeline::attempt
 method fsm_execute::run::Pipeline::claim_native
+method fsm_execute::run::Pipeline::claim_native_handler
 method fsm_execute::run::Pipeline::poll
 method fsm_execute::run::Pipeline::recover_native
 method fsm_execute::run::Pipeline::settle

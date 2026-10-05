@@ -412,40 +412,80 @@ fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
     let effect = store.state.instances["instance"].pending[0].clone();
     let approved = super::super::catalogue::read(&fixture.directory).unwrap();
     let handler = &approved.handlers["notify"];
-    let fingerprint = handler.fingerprint();
-    let mut classes = handler.retry.on.clone();
-    classes.sort();
-    let retry = RetryPolicy::from_value(&object([
-        ("attempts", Value::Num(handler.retry.attempts.to_string())),
-        (
-            "backoff_ms",
-            Value::Num(handler.retry.backoff_ms.to_string()),
-        ),
-        (
-            "max_backoff_ms",
-            Value::Num(handler.retry.max_backoff_ms.to_string()),
-        ),
-        (
-            "on",
-            Value::Arr(classes.into_iter().map(Value::Str).collect()),
-        ),
-    ]))
-    .unwrap();
-    fsm_execute::run::Pipeline
-        .claim_native(
+    let before = store.records.clone();
+    let state = store.state.clone();
+    let mut wrong = handler.clone();
+    wrong.effect = "different_effect".into();
+    let mut pipeline = fsm_execute::run::Pipeline;
+    assert_eq!(
+        pipeline
+            .claim_native_handler(
+                &mut store,
+                &mut FixedClock::new(100, 1),
+                &effect,
+                &wrong,
+                domain,
+                "wrong-handler-claim"
+            )
+            .unwrap_err()
+            .code,
+        "exec/config"
+    );
+    assert_eq!(store.records, before);
+    assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
+    assert!(!store.state.dedup.contains_key("wrong-handler-claim"));
+    let mut invalid = handler.clone();
+    invalid.retry.attempts = 0;
+    assert_eq!(
+        pipeline
+            .claim_native_handler(
+                &mut store,
+                &mut FixedClock::new(100, 1),
+                &effect,
+                &invalid,
+                domain,
+                "invalid-handler-claim"
+            )
+            .unwrap_err()
+            .code,
+        "exec/config"
+    );
+    assert_eq!(store.records, before);
+    assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
+    assert!(!store.state.dedup.contains_key("invalid-handler-claim"));
+    let claim = pipeline
+        .claim_native_handler(
             &mut store,
             &mut FixedClock::new(100, 1),
-            ExecutionClaimRequest {
-                instance_id: "instance",
-                effect_id: &effect,
-                handler_fingerprint: &fingerprint,
-                retry: &retry,
-                domain,
-                request_id: "claim",
-                expected_seq: None,
-            },
+            &effect,
+            handler,
+            domain,
+            "claim",
         )
         .unwrap();
+    assert_eq!(
+        claim,
+        *store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .unwrap()
+    );
+    let records = store.records.clone();
+    let hash = store.current_execution_claim_hash(&claim).unwrap();
+    let duplicate = pipeline
+        .claim_native_handler(
+            &mut store,
+            &mut FixedClock::new(100, 1),
+            &effect,
+            handler,
+            domain,
+            "claim",
+        )
+        .unwrap();
+    assert_eq!(duplicate, claim);
+    assert_eq!(store.records, records);
+    assert_eq!(store.current_execution_claim_hash(&claim).unwrap(), hash);
     let binding = object([
         ("format", Value::Str("fsm.native-claim-binding/1".into())),
         (

@@ -2660,4 +2660,21 @@ lifecycle updates.
   compiled/native/portable verification and production routing remain incomplete,
   with no task acceptance changes.
 
+- Reviewed the current production service launch seam: it still starts legacy
+  direct children before writer acquisition, so automatic routing is incomplete.
+  Added Pipeline::claim_native_handler to derive instance/effect identity by
+  journal replay and validate one original HandlerSpec, fingerprint and retry
+  snapshot under a healthy durable writer before returning current ownership;
+  it starts no helper and cannot recreate a consumed claim from a duplicate key.
+  Native allocator/runner/broker fixture claim preparation now uses this typed
+  production admission seam, requiring wrong-effect and invalid original-policy refusal before request-key
+  allocation with unchanged records/full state, then an exact original claim
+  and duplicate typed admission with no new records or changed original hash.
+  SPEC/API/embedding/inventory record prepare → writer claim → launch recheck.
+  Source checks pass; CI run 37328653105 passed primitive suites including
+  the corrected evidence bridge, then failed authority catalogue setup because
+  its fresh-registration allowlist omitted store-identity.json; that confirmed
+  follow-up is being corrected separately, and full gates/task acceptance plus
+  production host routing remain required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
