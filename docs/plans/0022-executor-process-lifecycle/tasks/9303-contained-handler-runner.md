@@ -354,3 +354,19 @@ connection/response I/O and never mutates journal ownership.
 These checks match the provisional endpoint contract and native takeover,
 route-replacement, epoch and client-lifetime controls; no additional finding
 was identified in this portion, and complete-range acceptance remains pending.
+
+Stop/revocation review at corrected `9f1f175`: closing serializes with authority
+admission, validates original prepared/boot/cgroup identity, syncs an irreversible
+closing marker before removing both visible and pending grants, then syncs the
+directory; repeating a visible marker repeats durability rather than assuming it.
+Manager stop revokes a live original group before reading potentially damaged
+handoff, then requires original binding, invocation and policy before stop/reset;
+an absent group cannot substitute for that original handoff verification.
+`stop::fence` preserves manager refusal while independently attempting original
+kernel freeze/kill under the lock, rechecking parent/control identity before each
+write; neither submission supplies closure proof or journal disposition.
+Only the separately reviewed complete-close protocol can publish a receipt.
+Native corrupted-handoff, refusal and original-identity termination controls
+support these boundaries; no additional finding was identified in this portion.
+Manager observation/retirement parsing and complete-range reconciliation remain
+to review before aggregate acceptance.
