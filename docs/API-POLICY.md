@@ -1,5 +1,27 @@
 # API and version policy
 
+The provisional `run::native_client::NativeExecution` owns the original native
+run and retains checked completion across writer contention; `observe` polls
+bounded helper work without a Store and repeatedly reports cached readiness.
+Its bounded progress exposes only phase, optional helper retirement facts and
+whether the host retains capacity, never identifiers, contracts or captures.
+`start` uses the writer-held pipeline check; `recover` uses a durable snapshot
+and never launches, while `from_completion` adopts independently checked original
+material without spawning helpers and grants no current ownership.
+`settle` requires a healthy durable writer and matching physical store, persists
+stopped evidence when absent, consumes it with the original retry policy, and
+releases its retained slot only after durable success or exact original request
+ledger replay; any refusal preserves completion and unresolved capacity.
+An existing stopped result must match; a different/newer owner never authorizes
+new stopped writes for this original run, and replay does not select policy from
+a changed table or create unused request keys.
+Outcome events remain a separate `Pipeline::advance_native_settled` step after
+acknowledgement; journal/receipt bytes and existing ack/attempt/event keys remain
+unchanged, with the provisional stopped key derived from effect and run identity.
+This component is not yet automatic routing for service, scheduler or public
+ticks, and full native/portable/frozen acceptance remains pending.
+
+
 Native closure and legacy-quiescence file proofs now retain the physical store
 identity from the protected authority's immutable `store-identity.json`;
 new stop/admission writes reject a different directory device/inode with

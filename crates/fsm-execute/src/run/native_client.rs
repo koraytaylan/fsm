@@ -13,10 +13,12 @@ use std::time::{Duration, Instant};
 
 mod claimed;
 mod completion;
+mod execution;
 mod preparation;
 
 pub use claimed::{NativeRun, NativeRunPhase, NativeRunProgress};
 pub use completion::NativeCompletion;
+pub use execution::{NativeExecution, NativeExecutionProgress};
 pub use preparation::{NativePreparation, NativePreparationPhase, NativePreparationProgress};
 
 const HELPER: &str = "/usr/libexec/fsm-containment-authority";

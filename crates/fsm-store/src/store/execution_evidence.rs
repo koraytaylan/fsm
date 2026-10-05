@@ -29,6 +29,13 @@ impl VerifiedClosure {
             && closure.get("domain") == Some(&claim.domain().to_value())
     }
 
+    /// Check the proof's registered physical store before applying its result.
+    ///
+    /// This performs no journal mutation and grants no current ownership.
+    pub fn check_store(&self, directory: &Path) -> Result<(), ErrorObj> {
+        validate_store_identity(self.store_identity, directory)
+    }
+
     /// Read bounded protected native evidence; unsupported platforms refuse.
     pub fn read(path: &Path) -> Result<Self, ErrorObj> {
         let material = read_protected(path)?;

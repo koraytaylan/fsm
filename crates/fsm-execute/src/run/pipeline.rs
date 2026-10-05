@@ -199,6 +199,10 @@ impl Pipeline {
         if !completion.matches_original(claim) {
             return Err(unproven());
         }
+        completion
+            .proof()
+            .check_store(&store.data_dir)
+            .map_err(|error| ExecError::store(&error))?;
         let hash = store
             .current_execution_claim_hash(claim)
             .map_err(|error| ExecError::store(&error))?;

@@ -2606,6 +2606,24 @@ lifecycle updates.
   Source checks pass; compiled/native CI and frozen review remain pending,
   so task 9303 stays in progress and plans 20–23 remain incomplete.
 
+- Added an owned NativeExecution host component retaining original run/checked
+  completion independently of the writer, with bounded metadata-only progress,
+  cached observation, healthy-writer stop/settlement application and exact
+  original settlement replay before slot release; the direct native settlement
+  pipeline now also checks the protected proof's physical store identity.
+  Actual unprivileged success/timeout fixtures now start through the owned host,
+  and recovery fixtures exercise cached observation during an
+  independent writer lease and read-only application refusal without releasing
+  capacity; Root success/timeout fixtures adopt checked completion, consume an
+  already durable stopped result and require repeated exact replay with no new
+  records; a previously unstopped process success requires the owned host to append
+  stop then settlement, while runner failure/retry/interruption controls exercise owned
+  settlement and freshly reconstructed original-ledger replay after consumption. SPEC/API/embedding/inventory describe the provisional component.
+  Source checks pass; run 37325435831 has failed completed jobs with macOS
+  still queued as recorded below, and production service/scheduler/
+  public-tick routing and full native/portable/frozen gates remain incomplete,
+  and task 9303 stays in progress.
+
 - CI review of frozen physical-store commit 2aec1f4, run 37325435831,
   found native-fixture compile errors: imports missing from typed preparation,
   StoreState compared with unsupported PartialEq, pending String slices compared

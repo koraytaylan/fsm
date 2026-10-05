@@ -543,9 +543,53 @@ fn run_case(timeout: bool) {
             "exec/inflight_deferred"
         );
         assert_eq!(store.records.len(), before);
-        let settled = pipeline
-            .settle_native_stopped(&mut store, &mut clock, &original_claim, &completion)
-            .unwrap();
+        let mut stale_material = original_claim.to_value().as_obj().unwrap().clone();
+        stale_material.insert(
+            "run_id".into(),
+            Value::Num((original_claim.run_id() + 1).to_string()),
+        );
+        let stale =
+            fsm_core::record::execution::Claim::from_value(&Value::Obj(stale_material)).unwrap();
+        assert!(
+            fsm_execute::run::native_client::NativeExecution::from_completion(
+                &stale,
+                text(&binding, "journal_claim").unwrap(),
+                fsm_execute::run::native_client::NativeCompletion::verify(
+                    &execution,
+                    &original_claim,
+                    text(&binding, "journal_claim").unwrap(),
+                )
+                .unwrap(),
+            )
+            .is_err()
+        );
+        let mut host = fsm_execute::run::native_client::NativeExecution::from_completion(
+            &original_claim,
+            text(&binding, "journal_claim").unwrap(),
+            fsm_execute::run::native_client::NativeCompletion::verify(
+                &execution,
+                &original_claim,
+                text(&binding, "journal_claim").unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(host.progress().retained);
+        assert!(host.progress().helper.is_none());
+        assert!(host.observe().unwrap());
+        let settled = host.settle(&mut store, &mut clock).unwrap();
+        assert!(!host.progress().retained);
+        assert_eq!(
+            host.completion().unwrap().candidate(),
+            completion.candidate()
+        );
+        assert_eq!(
+            host.settle(&mut store, &mut clock)
+                .unwrap()
+                .get("duplicate"),
+            Some(&Value::Bool(true))
+        );
+        assert_eq!(store.records.len(), before + 1);
         assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
         let replay = pipeline
             .settle_stopped(

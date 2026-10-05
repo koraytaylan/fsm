@@ -117,6 +117,9 @@ field fsm_execute::run::RunOutcome::Mcp::stderr
 field fsm_execute::run::RunOutcome::NotStarted::code
 field fsm_execute::run::RunOutcome::NotStarted::detail
 field fsm_execute::run::RunOutcome::SpawnFailed::argv0
+field fsm_execute::run::native_client::NativeExecutionProgress::helper
+field fsm_execute::run::native_client::NativeExecutionProgress::phase
+field fsm_execute::run::native_client::NativeExecutionProgress::retained
 field fsm_execute::run::native_client::NativeHelperProgress::reaped
 field fsm_execute::run::native_client::NativeHelperProgress::stderr_eof
 field fsm_execute::run::native_client::NativeHelperProgress::stdout_eof
@@ -276,6 +279,15 @@ method fsm_execute::run::native_client::NativeCompletion::handler
 method fsm_execute::run::native_client::NativeCompletion::proof
 method fsm_execute::run::native_client::NativeCompletion::stopped_outcome
 method fsm_execute::run::native_client::NativeCompletion::verify
+method fsm_execute::run::native_client::NativeExecution::cancel
+method fsm_execute::run::native_client::NativeExecution::completion
+method fsm_execute::run::native_client::NativeExecution::from_completion
+method fsm_execute::run::native_client::NativeExecution::observe
+method fsm_execute::run::native_client::NativeExecution::progress
+method fsm_execute::run::native_client::NativeExecution::reap
+method fsm_execute::run::native_client::NativeExecution::recover
+method fsm_execute::run::native_client::NativeExecution::settle
+method fsm_execute::run::native_client::NativeExecution::start
 method fsm_execute::run::native_client::NativePreparation::cancel
 method fsm_execute::run::native_client::NativePreparation::poll
 method fsm_execute::run::native_client::NativePreparation::progress
@@ -341,6 +353,8 @@ reexport fsm_execute::contract::analyze_effects from effects
 reexport fsm_execute::run::Pipeline from pipeline
 reexport fsm_execute::run::SettleOutcome from pipeline
 reexport fsm_execute::run::native_client::NativeCompletion from completion
+reexport fsm_execute::run::native_client::NativeExecution from execution
+reexport fsm_execute::run::native_client::NativeExecutionProgress from execution
 reexport fsm_execute::run::native_client::NativePreparation from preparation
 reexport fsm_execute::run::native_client::NativePreparationPhase from preparation
 reexport fsm_execute::run::native_client::NativePreparationProgress from preparation
@@ -365,6 +379,8 @@ struct fsm_execute::run::McpCall
 struct fsm_execute::run::Pipeline
 struct fsm_execute::run::Runner
 struct fsm_execute::run::native_client::NativeCompletion
+struct fsm_execute::run::native_client::NativeExecution
+struct fsm_execute::run::native_client::NativeExecutionProgress
 struct fsm_execute::run::native_client::NativeHelperProgress
 struct fsm_execute::run::native_client::NativePreparation
 struct fsm_execute::run::native_client::NativePreparationProgress

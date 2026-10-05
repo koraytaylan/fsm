@@ -460,6 +460,48 @@ pub(super) fn run() {
             settle_failure(&fixture, &effect, &original_claim, &completion);
         } else if matches!(mode, "cancel-process" | "cancel-mcp") {
             settle_interrupted(&fixture, &effect, &original_claim, &completion);
+        } else if mode == "process-exit" {
+            let mut store = Store::open(&fixture.store).unwrap();
+            let before = store.records.len();
+            assert!(
+                store
+                    .state
+                    .execution
+                    .stopped_for("instance", &effect)
+                    .is_none()
+            );
+            settle_owned(
+                &fixture,
+                &mut store,
+                &mut fsm_store::clock::FixedClock::new(1000, 1),
+                &original_claim,
+                &completion,
+            );
+            assert_eq!(store.records.len(), before + 2);
+            assert!(
+                store
+                    .state
+                    .execution
+                    .claim_for("instance", &effect)
+                    .is_none()
+            );
+            assert!(
+                store
+                    .state
+                    .execution
+                    .stopped_for("instance", &effect)
+                    .is_none()
+            );
+            assert!(!store.state.instances["instance"].pending.contains(&effect));
+            let records = store.records.clone();
+            drop(store);
+            let reopened = Store::open(&fixture.store).unwrap();
+            assert_eq!(reopened.records, records);
+            assert!(
+                !reopened.state.instances["instance"]
+                    .pending
+                    .contains(&effect)
+            );
         }
         assert!(runner::execute(&fixture.directory, 1).is_err());
         fixture.cleanup().unwrap();
@@ -494,9 +536,7 @@ fn settle_failure(
             .unwrap(),
         Settlement::Acked
     );
-    pipeline
-        .settle_native_stopped(&mut store, &mut clock, claim, completion)
-        .unwrap();
+    settle_owned(fixture, &mut store, &mut clock, claim, completion);
     let replay = pipeline
         .settle_stopped(
             &mut store,
@@ -570,9 +610,7 @@ fn settle_retry(
             .unwrap(),
         Settlement::Attempted
     );
-    let settled = pipeline
-        .settle_native_stopped(&mut store, &mut clock, claim, completion)
-        .unwrap();
+    let settled = settle_owned(fixture, &mut store, &mut clock, claim, completion);
     assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
     let replay = pipeline
         .settle_stopped(
@@ -770,9 +808,7 @@ fn settle_interrupted(
             "native-interrupted-stop",
         )
         .unwrap();
-    let settled = pipeline
-        .settle_native_stopped(&mut store, &mut clock, claim, completion)
-        .unwrap();
+    let settled = settle_owned(fixture, &mut store, &mut clock, claim, completion);
     assert_eq!(
         settled
             .get("execution")
@@ -838,4 +874,42 @@ fn settle_interrupted(
             .iter()
             .any(|pending| pending == effect)
     );
+}
+
+fn settle_owned(
+    fixture: &Fixture,
+    store: &mut Store,
+    clock: &mut dyn fsm_store::clock::Clock,
+    claim: &fsm_core::record::execution::Claim,
+    expected: &fsm_execute::run::native_client::NativeCompletion,
+) -> Value {
+    use fsm_execute::run::native_client::{NativeCompletion, NativeExecution};
+    let hash = store.current_execution_claim_hash(claim).unwrap();
+    let response = object([
+        ("format", Value::Str("fsm.native-response/1".into())),
+        ("ok", Value::Bool(true)),
+        ("result", runner::recover(&fixture.directory, 1).unwrap()),
+    ]);
+    let completion = NativeCompletion::verify(&response, claim, &hash).unwrap();
+    assert_eq!(completion.candidate(), expected.candidate());
+    let mut host = NativeExecution::from_completion(claim, &hash, completion).unwrap();
+    assert!(host.progress().retained);
+    let settled = host.settle(store, clock).unwrap();
+    assert!(!host.progress().retained);
+    let records = store.records.len();
+    assert_eq!(
+        host.settle(store, clock).unwrap().get("duplicate"),
+        Some(&Value::Bool(true))
+    );
+    assert_eq!(store.records.len(), records);
+    let recovered = NativeCompletion::verify(&response, claim, &hash).unwrap();
+    let mut recovered = NativeExecution::from_completion(claim, &hash, recovered).unwrap();
+    assert!(recovered.progress().retained);
+    assert_eq!(
+        recovered.settle(store, clock).unwrap().get("duplicate"),
+        Some(&Value::Bool(true))
+    );
+    assert!(!recovered.progress().retained);
+    assert_eq!(store.records.len(), records);
+    settled
 }

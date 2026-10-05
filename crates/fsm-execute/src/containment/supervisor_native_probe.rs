@@ -2,7 +2,7 @@
 
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::Claim;
-use fsm_execute::run::native_client::{NativeRequest, NativeRun, NativeRunPhase};
+use fsm_execute::run::native_client::{NativeExecution, NativeRequest, NativeRun, NativeRunPhase};
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
@@ -46,10 +46,11 @@ fn complete(binding: Value) {
         .unwrap();
     let negative = matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1"))
         || matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1"));
-    let mut contention = None;
-    let mut owned = if negative {
-        NativeRun::start(&claim, hash, Duration::from_secs(30)).unwrap()
-    } else {
+    if negative {
+        reject_run(&claim, hash);
+        return;
+    }
+    let (mut owned, mut contention) = {
         let path = std::env::var("FSM_NATIVE_TEST_STORE")
             .expect("positive host requires operator-owned store");
         let mut store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
@@ -76,14 +77,13 @@ fn complete(binding: Value) {
         assert_eq!(store.records.len(), records);
         assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
         let mut holder = WriterHolder::start(&path);
-        let mut owned = pipeline
-            .start_native(&mut store, &claim, Duration::from_secs(30))
-            .unwrap();
+        let mut owned =
+            NativeExecution::start(&mut store, &claim, Duration::from_secs(30)).unwrap();
         assert_eq!(store.records.len(), records);
         assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
         // Send binding before the lease barrier, but never dispatch execute
         // on this first poll even if the binding response is already available.
-        assert!(owned.poll().unwrap().is_none());
+        assert!(!owned.observe().unwrap());
         assert!(matches!(
             owned.progress().phase,
             NativeRunPhase::Binding | NativeRunPhase::Bound
@@ -116,61 +116,8 @@ fn complete(binding: Value) {
                 "competing executor created {name}",
             );
         }
-        contention = Some(holder);
-        owned
+        (owned, Some(holder))
     };
-    if negative {
-        assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
-        assert!(!owned.progress().helper.reaped);
-    }
-    if matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1")) {
-        owned.cancel().unwrap();
-        match owned.poll() {
-            Err(error) => assert!(error.contains("cancelled")),
-            Ok(_) => panic!("cancelled run continued polling"),
-        }
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !owned.reap().unwrap() {
-            assert!(
-                Instant::now() < deadline,
-                "cancelled helper did not reap with EOF"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        assert_retired_uncertain(&owned);
-        println!("\nFSM_NATIVE_TEST_CANCELLED");
-        return;
-    }
-    if matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1")) {
-        let deadline = Instant::now() + Duration::from_secs(3);
-        loop {
-            match owned.poll() {
-                Err(error) => {
-                    assert!(
-                        error.contains("binding refused"),
-                        "unexpected refusal: {error}"
-                    );
-                    assert!(owned.poll().is_err());
-                    break;
-                }
-                Ok(None) => {}
-                Ok(Some(_)) => panic!("mismatched original hash produced completion"),
-            }
-            assert!(Instant::now() < deadline, "binding refusal timed out");
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !owned.reap().unwrap() {
-            assert!(
-                Instant::now() < deadline,
-                "refused helper did not reap with EOF"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        assert_retired_uncertain(&owned);
-        println!("\nFSM_NATIVE_TEST_REFUSED");
-        return;
-    }
     loop {
         if let Some(holder) = &mut contention {
             assert!(
@@ -178,7 +125,9 @@ fn complete(binding: Value) {
                 "independent writer exited early"
             );
         }
-        if let Some(completion) = owned.poll().unwrap() {
+        if owned.observe().unwrap() {
+            assert!(owned.progress().retained);
+            let completion = owned.completion().unwrap();
             let mut holder = contention
                 .take()
                 .expect("positive native run requires independent writer contention");
@@ -189,7 +138,7 @@ fn complete(binding: Value) {
                 Err(error) => assert_eq!(error.code, "store/lock"),
                 Ok(_) => panic!("independent writer did not retain its lease through completion"),
             }
-            let snapshot = fsm_store::store::Store::open_read_only(path).unwrap();
+            let mut snapshot = fsm_store::store::Store::open_read_only(path).unwrap();
             let (instance, effect) = claim.effect();
             assert_eq!(
                 snapshot.state.execution.claim_for(instance, effect),
@@ -214,24 +163,24 @@ fn complete(binding: Value) {
                 hash.strip_prefix("sha256:").unwrap()
             );
             let retained = snapshot.state.execution.clone();
-            let mut pipeline = fsm_execute::run::Pipeline;
-            let mut recovery = pipeline
-                .recover_native(&snapshot, &claim, Duration::from_secs(3))
-                .unwrap();
+            let mut recovery =
+                NativeExecution::recover(&snapshot, &claim, Duration::from_secs(3)).unwrap();
             assert_eq!(recovery.progress().phase, NativeRunPhase::Recovering);
-            let recovered = loop {
+            loop {
                 assert!(
                     holder.child.try_wait().unwrap().is_none(),
                     "writer exited during native recovery"
                 );
-                if let Some(recovered) = recovery.poll().unwrap() {
-                    break recovered;
+                if recovery.observe().unwrap() {
+                    break;
                 }
                 std::thread::sleep(Duration::from_millis(5));
-            };
+            }
             assert_eq!(recovery.progress().phase, NativeRunPhase::Closed);
-            let helper = recovery.progress().helper;
+            let helper = recovery.progress().helper.unwrap();
             assert!(helper.reaped && helper.stdout_eof && helper.stderr_eof);
+            assert!(recovery.progress().retained);
+            let recovered = recovery.completion().unwrap();
             assert_eq!(recovered.candidate(), completion.candidate());
             assert_eq!(recovered.handler(), completion.handler());
             assert_eq!(recovered.failure_class(), completion.failure_class());
@@ -239,10 +188,20 @@ fn complete(binding: Value) {
             assert!(recovered.proof().matches_claim(&claim, hash));
             assert_eq!(snapshot.state.execution, retained);
             assert_eq!(snapshot.current_execution_claim_hash(&claim).unwrap(), hash);
-            assert!(
-                recovery.poll().is_err(),
-                "recovery delivered completion twice"
+            assert!(recovery.observe().unwrap(), "retained completion was lost");
+            assert!(recovery.progress().retained);
+            assert_eq!(
+                recovery
+                    .settle(
+                        &mut snapshot,
+                        &mut fsm_store::clock::FixedClock::new(1000, 1)
+                    )
+                    .unwrap_err()
+                    .code,
+                "exec/mode"
             );
+            assert!(recovery.progress().retained);
+            assert_eq!(snapshot.state.execution, retained);
             drop(snapshot);
             holder.release();
             let writer = fsm_store::store::Store::open(path).unwrap();
@@ -250,7 +209,7 @@ fn complete(binding: Value) {
             assert_eq!(writer.current_execution_claim_hash(&claim).unwrap(), hash);
             drop(writer);
             assert_eq!(owned.progress().phase, NativeRunPhase::Closed);
-            let helper = owned.progress().helper;
+            let helper = owned.progress().helper.unwrap();
             assert!(helper.reaped && helper.stdout_eof && helper.stderr_eof);
             assert_eq!(
                 completion.candidate().get("status"),
@@ -563,4 +522,59 @@ fn prepare_domain() {
         "\nFSM_NATIVE_TEST_DOMAIN={}",
         std::str::from_utf8(&fsm_core::canon::canon_bytes(&domain.to_value())).unwrap()
     );
+}
+
+fn reject_run(claim: &Claim, hash: &str) {
+    let mut owned = NativeRun::start(claim, hash, Duration::from_secs(30)).unwrap();
+    assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
+    assert!(!owned.progress().helper.reaped);
+    if matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1")) {
+        owned.cancel().unwrap();
+        match owned.poll() {
+            Err(error) => assert!(error.contains("cancelled")),
+            Ok(_) => panic!("cancelled run continued polling"),
+        }
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !owned.reap().unwrap() {
+            assert!(
+                Instant::now() < deadline,
+                "cancelled helper did not reap with EOF"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_retired_uncertain(&owned);
+        println!("\nFSM_NATIVE_TEST_CANCELLED");
+        return;
+    }
+    if matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1")) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            match owned.poll() {
+                Err(error) => {
+                    assert!(
+                        error.contains("binding refused"),
+                        "unexpected refusal: {error}"
+                    );
+                    assert!(owned.poll().is_err());
+                    break;
+                }
+                Ok(None) => {}
+                Ok(Some(_)) => panic!("mismatched original hash produced completion"),
+            }
+            assert!(Instant::now() < deadline, "binding refusal timed out");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !owned.reap().unwrap() {
+            assert!(
+                Instant::now() < deadline,
+                "refused helper did not reap with EOF"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_retired_uncertain(&owned);
+        println!("\nFSM_NATIVE_TEST_REFUSED");
+        return;
+    }
+    panic!("negative native fixture requires cancellation or binding refusal");
 }

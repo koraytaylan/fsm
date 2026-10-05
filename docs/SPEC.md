@@ -2284,3 +2284,30 @@ quarantined. Operator assertions, force flags, timeout expiry and counter reset
 MUST NOT substitute for evidence. Newer-format refusal happens before mutation
 so an older binary cannot ignore claim-era ownership. Read-only inspection
 MUST neither migrate, enable execution nor reconcile native work.
+
+### Owned native execution host (provisional, plan 0022)
+
+An owned `NativeExecution` MUST retain its original claim and checked completion
+independently of writer availability; bounded observation MUST take no writer
+and MUST NOT deliver the completion twice or release capacity on helper EOF.
+Its progress MUST expose only phase, optional helper retirement facts and retained
+capacity, without identifiers, handler contracts, authority paths or captures.
+Starting MUST use the healthy writer-held current-claim admission check; recovery
+MUST read the durable original completion and MUST NOT fall back to binding or
+launch. Adopting verified completion MUST match the original full claim/hash and
+MUST NOT itself assert current journal ownership or physical store identity.
+Application MUST require a healthy durable writer, recheck the protected proof's
+physical store identity and current original claim/hash, persist matching stopped
+evidence before settlement, and refuse a mismatched existing stopped outcome.
+Its stopped key is `exec-stop-<effect_id>-<run_id>`; existing stopped evidence can
+be consumed without introducing a second stopped key. Capacity MUST remain
+retained until durable settlement or exact original settlement-ledger replay;
+refusals MUST preserve the checked completion and unresolved ownership.
+If original ownership has already been consumed, application MUST use only exact
+original interruption, attempt or acknowledgement request fingerprints and MUST
+NOT reselect policy using current pending state or a changed handler table.
+Original interruption and attempt keys MUST be checked before the acknowledgement
+key which a later run may occupy; conflicts or unavailable archived responses
+MUST refuse, never invent success. Outcome events remain a separate checked
+acknowledgement-before-event pipeline operation. This host primitive MUST NOT be
+interpreted as completed automatic production-host routing or gate acceptance.
