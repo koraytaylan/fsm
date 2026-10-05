@@ -117,6 +117,7 @@ pub(super) fn begin(
         .stderr(stderr);
     publish_once(&intent_path, &intent)?;
     let child = command.spawn().map_err(io)?;
+    drop(command);
     // This guard drops before the authority lock: incomplete handoff revokes
     // entry while launch/authorize/closing are still serialized.
     let mut submission = Submission {

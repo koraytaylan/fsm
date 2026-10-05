@@ -1426,4 +1426,17 @@ lifecycle updates.
   compiled/native CI; permanent manager fencing, uncertain-start recovery and
   full runner/closure integration remain outstanding, and 9303 stays In progress.
 
+- **CI-driven retained-writer repair:** both native jobs in run `37277460229`
+  fail frozen `bffeba4` at the first allocator case with the bounded manager
+  query deadline; both named logs and reports are retained. Source review found
+  the shared query refactor retained the `Command` object and therefore its
+  original socket writers after spawn, preventing truthful EOF even when the
+  child exited. Production capture now explicitly drops that object before
+  polling, and a real `/usr/bin/true` case exercises this exact capture path
+  without depending on manager availability. Startup also drops its command
+  descriptor copies immediately. The deadline remains unchanged; formatting,
+  source and file-length checks precede new frozen compiled/native CI. The
+  earlier descendant readiness failure remains unresolved until execution
+  reaches its retained diagnostic, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

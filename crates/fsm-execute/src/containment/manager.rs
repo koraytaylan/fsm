@@ -64,17 +64,24 @@ fn query(unit: &str, keys: &[&str], requested: Instant) -> Result<Vec<u8>, Strin
     if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
         return Err("system-manager executable is not root protected".into());
     }
+    let mut command = Command::new(binary);
+    command.args(["show", unit, "--no-pager"]);
+    for key in keys {
+        command.arg(format!("--property={key}"));
+    }
+    capture(command, deadline)
+}
+
+fn capture(mut command: Command, deadline: Instant) -> Result<Vec<u8>, String> {
+    if Instant::now() >= deadline {
+        return Err("system-manager query deadline or incomplete I/O".into());
+    }
     let (mut stdout, output) = UnixStream::pair().map_err(io)?;
     let (mut stderr, diagnostics) = UnixStream::pair().map_err(io)?;
     stdout.set_nonblocking(true).map_err(io)?;
     stderr.set_nonblocking(true).map_err(io)?;
     let output: OwnedFd = output.into();
     let diagnostics: OwnedFd = diagnostics.into();
-    let mut command = Command::new(binary);
-    command.args(["show", unit, "--no-pager"]);
-    for key in keys {
-        command.arg(format!("--property={key}"));
-    }
     let mut query = Query(
         command
             .env_clear()
@@ -86,6 +93,9 @@ fn query(unit: &str, keys: &[&str], requested: Instant) -> Result<Vec<u8>, Strin
             .spawn()
             .map_err(io)?,
     );
+    // Command owns the original descriptors even after spawn: keeping it
+    // alive would keep both streams open after the manager exits.
+    drop(command);
     let mut output = Vec::with_capacity(LIMIT);
     let mut diagnostics = Vec::with_capacity(LIMIT);
     let mut output_eof = false;
@@ -170,6 +180,16 @@ mod tests {
                 .unwrap_err()
                 .contains("query deadline")
         );
+    }
+
+    #[test]
+    fn production_capture_observes_eof_after_child_exit() {
+        let bytes = capture(
+            Command::new("/usr/bin/true"),
+            Instant::now() + Duration::from_secs(2),
+        )
+        .unwrap();
+        assert!(bytes.is_empty());
     }
 
     #[test]
