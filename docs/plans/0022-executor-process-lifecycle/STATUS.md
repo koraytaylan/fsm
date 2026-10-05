@@ -2386,4 +2386,16 @@ lifecycle updates.
   `37311368249` is queued, full current native/portable integration remains
   required, and local swap is still nearly full with no Rust build started.
 
+- Re-polled lifetime-EOF control run `37298399506` at frozen
+  `1ee5976e63d017a18fb4cdcd064afcd945d4b898`: native stable/MSRV and zero-deps
+  succeeded, Ubuntu/Windows four jobs failed, both macOS jobs remain queued.
+  Retained both artifacts and independently verified 78 cases against that
+  source with exact `rustc 1.99.0 (b940084d7 2026-09-28)` and
+  `rustc 1.89.0 (29483883e 2025-08-04)`; executable bytes remain independently
+  unverified and the native gate unreleased. This source includes process/MCP
+  client-watch lifetime-EOF controls but predates the owned lifetime watcher,
+  public host-death controls and later pipeline/service integration; no current
+  or portable acceptance is inferred. Latest `7d58210` run `37311594997` is
+  queued, full plans 20–23 requirements and task 9303 acceptance remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
