@@ -1,5 +1,24 @@
 # Releasing
 
+Native exec-status association now uses a 32-byte ready-kernel-random challenge
+sent only through the original manager stdin, and an exact PID/nonce hello;
+PID and group permissions alone never authenticate a result. The installed
+ordinary Root helper must be 0711, unreadable to the isolated gate, whose private
+proc fd directory must be Root-owned and whose status must show no tracer before
+and after association; pre-launch inspection requires fs.suid_dumpable 0 or 2
+to protect the interval before enrollment. This protects the challenge from unprivileged same-UID
+access, including stale dynamic-identity actors; Root tracing actors are outside
+the guarantee. MCP startup follows the authenticated hello, and process exec
+restores null stdin after consuming the challenge, preserving handler input.
+The nonce is neither persisted nor passed to handler argv/environment; the
+status descriptor closes before handler exec can restore dumpability. An invalid
+nonce retains uncertainty with no grant. This replaces the provisional sender
+exclusivity assumption for exec-status authentication; existing private metadata
+and journal/receipt/attestation/hash/public response formats remain unchanged.
+The unreleased installed-helper permission profile requires reprovisioning and
+fresh native/portable/frozen acceptance before production routing.
+
+
 The provisional native runner adds a private one-shot exec-status stream bound
 to its original protected claim and enrolled gate before entry grant. A Root-only
 initial directory prevents socket-publication races; only the verified reserved
@@ -12,10 +31,9 @@ select it. Separate private `fsm.native-exec-status/1` metadata binds original
 socket/directory identities for conservative crash cleanup; journal, receipt,
 attestation, public response and hash formats remain unchanged. This unreleased
 boundary requires fresh native faults, portable gates and frozen review; it does
-not release the production gate or finish task 9303. Authentication relies on
-the provisioned dynamic identity being exclusive before grant, including no
-stale holders from recycled identities; that deployment lemma remains a frozen
-review obligation and is not established by the PID hello alone.
+not release the production gate or finish task 9303. The inherited-input nonce
+and nondumpable-gate controls above replace the initial sender-exclusivity
+assumption; native execution and frozen acceptance remain required.
 
 
 Authenticated broker close now shares the runner's original-domain fencing:

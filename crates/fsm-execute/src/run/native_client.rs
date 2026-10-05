@@ -302,7 +302,7 @@ fn protected_helper() -> Result<(), String> {
         }
     }
     let metadata = fs::symlink_metadata(path).map_err(message)?;
-    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o7777 != 0o755 {
+    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o7777 != 0o711 {
         return Err("native helper is not protected ordinary executable".into());
     }
     Ok(())

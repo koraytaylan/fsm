@@ -40,7 +40,7 @@ def install(source, expected):
         with os.fdopen(descriptor, 'wb') as stream:
             stream.write(encoded)
             stream.flush()
-            os.fchmod(stream.fileno(), 0o755)
+            os.fchmod(stream.fileno(), 0o711)
             os.fsync(stream.fileno())
             metadata = os.fstat(stream.fileno())
         # Existing product installations are never overwritten or reused.

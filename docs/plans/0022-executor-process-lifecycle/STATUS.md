@@ -2886,4 +2886,33 @@ lifecycle updates.
   at c73c8cf. The remaining identity-exclusivity authentication review, fresh
   current native/portable/full gates and production host routing remain required.
 
+- Frozen ac331c2 local stable workspace debug gate passes in full with serial
+  tests and compiler/rustdoc warnings denied. Sender review replaces the
+  provisional exclusive-dynamic-identity assumption for exec-status with a
+  32-byte ready-kernel-random nonce delivered solely through inherited manager
+  stdin before launch; the 44-byte PID/nonce hello must match before grant.
+  Ordinary installed Root helper/client validation now requires 0711, with
+  fs.suid_dumpable 0 or 2 checked before launch and protected Root-owned proc fd
+  directory/no tracer verified before and after association. Kernel exec closes
+  CLOEXEC descriptors before restoring dumpability. Primary Linux v6.8 exec/proc
+  source supports these mechanisms; /proc/PID's world-readable directory itself
+  retains effective UID ownership, so review dropped an incorrect UID-check
+  concern without changing that guard. The nonce is not persisted or exposed to
+  handler argv/env; MCP worker startup follows hello to prevent stdin read-ahead
+  loss, and process exec restores /dev/null input while retiring its Root writer.
+  A native same-UID/GID actor races the frozen original gate, cannot inspect its
+  protected descriptors, sends the correct PID with a false nonce and must be
+  refused without grant/completion/result; exact original cleanup follows.
+  Existing named controls also verify null process input and no inherited status
+  socket. Native suite budget is 90 seconds for this multi-run fault control,
+  without changing individual association/handler/closure limits. The previous
+  sender lemma is superseded for authentication; native execution, fresh full
+  stable/MSRV and portable gates, executable-byte/frozen proof, production host
+  routing and task 9303 acceptance remain pending. No journal/receipt/attestation/
+  hash/public response formats change; the unreleased installed-helper profile
+  requires reprovisioning. Stable and MSRV authority unit subsets each pass
+  24 tests with 14 provisioned controls ignored; final stable workspace all-target
+  clippy passes with warnings denied. These subsets compile the new native
+  controls but do not establish their runtime acceptance.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

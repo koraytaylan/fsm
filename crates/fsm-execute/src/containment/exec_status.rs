@@ -19,6 +19,8 @@ pub(super) struct Listener {
     allocation: u64,
     binding: Value,
     listener: UnixListener,
+    challenge: [u8; 32],
+    process_input: bool,
 }
 
 impl Listener {
@@ -26,6 +28,7 @@ impl Listener {
         directory: &Path,
         allocation: u64,
         binding: &Value,
+        kind: &fsm_execute::config::HandlerKind,
     ) -> Result<Self, String> {
         let (claim, _lock) = super::validate_binding(directory, binding, None)?;
         if number(&claim.domain().to_value(), "allocation")? != allocation {
@@ -42,6 +45,7 @@ impl Listener {
         }
         fsm_core::json::parse(&bytes, &fsm_core::json::JsonLimits::DEFAULT)
             .map_err(|_| "exec status envelope exceeds native depth bound")?;
+        let challenge = challenge()?;
         let base = directory.join(format!("exec-{allocation}"));
         fs::DirBuilder::new()
             .mode(0o700)
@@ -65,7 +69,17 @@ impl Listener {
             allocation,
             binding: binding.clone(),
             listener,
+            challenge,
+            process_input: matches!(kind, fsm_execute::config::HandlerKind::Process),
         })
+    }
+
+    pub(super) fn send_challenge(&self, input: &mut UnixStream) -> Result<(), String> {
+        let mut bytes = Vec::with_capacity(41);
+        bytes.extend(MAGIC);
+        bytes.push(u8::from(!self.process_input));
+        bytes.extend(self.challenge);
+        input.write_all(&bytes).map_err(io)
     }
 
     pub(super) fn associate(self, domain: &Value, gate: &Value) -> Result<Status, String> {
@@ -96,8 +110,8 @@ impl Listener {
         chown(&socket, Some(0), Some(enrolled.group)).map_err(io)?;
         fs::set_permissions(&socket, fs::Permissions::from_mode(0o660)).map_err(io)?;
         chown(&base, Some(0), Some(enrolled.group)).map_err(io)?;
-        // SPEC requires the provisioned dynamic identity to be exclusive;
-        // the hello is a consistency check, not independent peer credentials.
+        // Only the nondumpable installed gate receives the inherited-stdin
+        // nonce; group access and PID hello alone do not authenticate a peer.
         // Only traversal is opened, after the inaccessible socket is ready.
         fs::set_permissions(&base, fs::Permissions::from_mode(0o710)).map_err(io)?;
         let mut stream = loop {
@@ -112,7 +126,7 @@ impl Listener {
         };
         stream.set_nonblocking(true).map_err(io)?;
         close_on_exec(&stream)?;
-        let mut hello = [0; 12];
+        let mut hello = [0; 44];
         let mut received = 0;
         while received < hello.len() {
             match stream.read(&mut hello[received..]) {
@@ -126,11 +140,14 @@ impl Listener {
                 Err(error) => return Err(io(error)),
             }
         }
-        if &hello[..8] != MAGIC
-            || u32::from_be_bytes(hello[8..].try_into().map_err(|_| "invalid exec hello")?)
-                != enrolled.pid
-        {
-            return Err("exec status hello differs from enrolled gate".into());
+        verify_hello(&hello, enrolled.pid, &self.challenge)?;
+        let mut trailing = [0];
+        match stream.read(&mut trailing) {
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => return Err(io(error)),
+            Ok(_) => {
+                return Err("exec status hello ended or has trailing bytes before grant".into());
+            }
         }
         if enrollment::inspect(domain, deadline)?.to_value() != *gate {
             return Err("exec status enrollment changed".into());
@@ -145,6 +162,38 @@ impl Listener {
             resolved: None,
         })
     }
+}
+
+fn challenge() -> Result<[u8; 32], String> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(super::NOFOLLOW_NONBLOCK)
+        .open("/dev/random")
+        .map_err(io)?;
+    let metadata = file.metadata().map_err(io)?;
+    if !metadata.file_type().is_char_device() || metadata.uid() != 0 || metadata.rdev() != 0x108 {
+        return Err("exec status entropy source is not the original kernel random device".into());
+    }
+    let mut bytes = [0; 32];
+    file.read_exact(&mut bytes).map_err(io)?;
+    Ok(bytes)
+}
+
+fn verify_hello(bytes: &[u8], pid: u32, challenge: &[u8; 32]) -> Result<(), String> {
+    if bytes.len() != 44
+        || &bytes[..8] != MAGIC
+        || u32::from_be_bytes(bytes[8..12].try_into().map_err(|_| "invalid exec hello")?) != pid
+        || bytes[12..]
+            .iter()
+            .zip(challenge)
+            .fold(0_u8, |difference, (actual, expected)| {
+                difference | (actual ^ expected)
+            })
+            != 0
+    {
+        return Err("exec status hello differs from original PID or inherited challenge".into());
+    }
+    Ok(())
 }
 
 fn remaining(deadline: Instant) -> Result<(), String> {
@@ -283,7 +332,7 @@ pub(super) fn connect(
     directory: &Path,
     allocation: u64,
     deadline: Instant,
-) -> Result<Option<UnixStream>, String> {
+) -> Result<Option<GateStatus>, String> {
     let base = directory.join(format!("exec-{allocation}"));
     match fs::symlink_metadata(&base) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -292,6 +341,15 @@ pub(super) fn connect(
             if metadata.is_dir() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0 => {}
         Ok(_) => return Err("exec status route is not Root protected".into()),
     }
+    let mut challenge = [0; 41];
+    std::io::stdin()
+        .lock()
+        .read_exact(&mut challenge)
+        .map_err(io)?;
+    if &challenge[..8] != MAGIC || challenge[8] > 1 {
+        return Err("exec status inherited challenge is malformed".into());
+    }
+    remaining(deadline)?;
     let mut stream = loop {
         super::entry::ensure_open(directory, allocation)?;
         match UnixStream::connect(base.join("s")) {
@@ -314,8 +372,29 @@ pub(super) fn connect(
         .map_err(io)?;
     let mut hello = MAGIC.to_vec();
     hello.extend(std::process::id().to_be_bytes());
+    hello.extend_from_slice(&challenge[9..]);
     stream.write_all(&hello).map_err(io)?;
-    Ok(Some(stream))
+    Ok(Some(GateStatus {
+        stream,
+        process_input: challenge[8] == 0,
+    }))
+}
+
+pub(super) struct GateStatus {
+    stream: UnixStream,
+    process_input: bool,
+}
+
+impl GateStatus {
+    pub(super) fn restore_input(&self, command: &mut std::process::Command) {
+        if self.process_input {
+            command.stdin(std::process::Stdio::null());
+        }
+    }
+
+    pub(super) fn failed(&mut self, error: &std::io::Error) -> Result<(), String> {
+        failed(&mut self.stream, error)
+    }
 }
 
 fn close_on_exec(stream: &impl AsRawFd) -> Result<(), String> {
@@ -425,6 +504,24 @@ fn decode(bytes: &[u8]) -> Result<Option<i32>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn original_pid_and_inherited_nonce_are_both_required() {
+        let challenge = [7; 32];
+        let mut hello = MAGIC.to_vec();
+        hello.extend(123_u32.to_be_bytes());
+        hello.extend(challenge);
+        verify_hello(&hello, 123, &challenge).unwrap();
+        assert!(verify_hello(&hello, 124, &challenge).is_err());
+        for index in 12..44 {
+            let mut changed = hello.clone();
+            changed[index] ^= 1;
+            assert!(verify_hello(&changed, 123, &challenge).is_err());
+        }
+        assert!(verify_hello(&hello[..43], 123, &challenge).is_err());
+        hello.push(0);
+        assert!(verify_hello(&hello, 123, &challenge).is_err());
+    }
 
     #[test]
     fn private_exec_status_requires_exact_frame_and_eof() {

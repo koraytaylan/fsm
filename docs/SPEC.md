@@ -1964,21 +1964,32 @@ Root MUST create `exec-<allocation>/s` inside an initially Root-only 0700 direct
 and publish a bounded private 0600 `exec-status-<allocation>.json` record with
 exactly `format` (`fsm.native-exec-status/1`), original `binding`, `directory` and
 `socket` identities, charging the largest 8 KiB envelope before path creation.
-Hello and error frames MUST each be exactly 12 bytes; inspection MUST read at
-most 13 bytes to detect excess and descriptor metadata at most 4097 bytes
+Before launch, Root MUST obtain 32 unpredictable bytes from the ready kernel
+random device and deliver a fixed 41-byte magic/input-kind/nonce challenge solely
+through the inherited manager stdin. An exec-status hello MUST be exactly 44
+bytes (magic, original PID and nonce); error frames MUST be exactly 12 bytes;
+error-frame inspection MUST read at most 13 bytes to detect excess and descriptor metadata at most 4097 bytes
 against a 4096-byte limit. Association MUST share a two-second deadline. Before opening traversal/socket
-access to the actual enrolled
-dynamic group, Root MUST match the protected handoff and verify the installed
+access to the actual enrolled dynamic group, Root MUST match the protected handoff and verify the installed
 gate, original manager invocation and sole original cgroup process. Only that
 reserved group may connect; provisioning MUST reserve this identity range from
 static accounts and supplementary membership, and the pre-grant UID/GID MUST
-be exclusive to the installed gate, including absence of stale holders from
-recycled dynamic identities; a PID hello alone MUST NOT establish exclusivity.
-Root MUST accept exactly one
-bounded original-PID hello and repeat enrollment checks, close the listener and
+NOT substitute for authentication. The installed gate MUST be an ordinary Root
+0711 executable, unreadable to its unprivileged identity; pre-launch inspection
+MUST require `fs.suid_dumpable` to be 0 or 2 so the gate is nondumpable before
+any nonce exposure. Enrollment MUST require kernel-observed
+Root ownership of its private proc fd directory and no tracer. Root MUST verify
+those conditions before and after association. Root MUST accept exactly one
+bounded original-PID/nonce hello and repeat enrollment checks, close the listener and
 remove only its identity-matched socket/directory before publishing entry grant.
 The gate MUST keep its stream private and verify close-on-exec on that descriptor;
-it MUST NOT pass the stream as stdio, argv or environment to the handler.
+it MUST NOT pass the stream or nonce as stdio, argv or environment to the handler.
+The gate MUST consume the complete challenge before hello; MCP protocol startup
+MUST wait until that authenticated hello so buffered stdin cannot swallow MCP
+bytes across exec. Process exec MUST restore null stdin. Root MUST reject an
+incorrect nonce without grant even when a peer shares the gate UID/GID. Kernel
+close-on-exec MUST retire the status descriptor before handler exec can restore
+dumpability. Root/privileged tracing actors remain outside this guarantee.
 Only an exec syscall failure reported on this pre-grant associated stream, using
 a fixed bounded frame and positive OS error code followed by EOF, MAY select
 existing `exec/spawn`/`spawn`; successful exec closes the descriptor. Empty EOF

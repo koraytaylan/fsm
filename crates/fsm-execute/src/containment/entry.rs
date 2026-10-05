@@ -74,9 +74,14 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
         return Err("entry grant changed before execution".into());
     }
     ensure_open(&directory, allocation)?;
-    let error = Command::new(&argv[0]).args(&argv[1..]).exec();
-    if let Some(stream) = &mut exec_status {
-        super::exec_status::failed(stream, &error)?;
+    let mut command = Command::new(&argv[0]);
+    command.args(&argv[1..]);
+    if let Some(status) = &exec_status {
+        status.restore_input(&mut command);
+    }
+    let error = command.exec();
+    if let Some(status) = &mut exec_status {
+        status.failed(&error)?;
     }
     Err(format!("authorized handler exec failed: {error}"))
 }

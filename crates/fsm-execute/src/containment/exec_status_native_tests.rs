@@ -14,6 +14,7 @@ use std::process::Command;
 
 pub(super) fn run() {
     original_path_cleanup();
+    same_identity_peer_cannot_authenticate();
     for mcp in [false, true] {
         for command in ["/fsm-native-exec-command-does-not-exist", "/etc/passwd"] {
             execution(vec![command.into()], mcp, "spawn", Some("exec/spawn"));
@@ -40,6 +41,108 @@ pub(super) fn run() {
         Some("exec/mcp_protocol"),
     );
     descriptor_retirement();
+}
+
+fn same_identity_peer_cannot_authenticate() {
+    use super::super::super::{enrollment, launch, number, observation, stop};
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let mut fixture = Fixture::new();
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let material = domain.to_value();
+    let (binding, _) = claim_binding(&fixture, &domain);
+    bind(&fixture.directory, &binding).unwrap();
+    let listener = exec_status::Listener::create(
+        &fixture.directory,
+        1,
+        &binding,
+        &fsm_execute::config::HandlerKind::Process,
+    )
+    .unwrap();
+    let (mut input, peer) = UnixStream::pair().unwrap();
+    listener.send_challenge(&mut input).unwrap();
+    let (mut child, _) = launch::begin(
+        &fixture.directory,
+        1,
+        [
+            Stdio::from(OwnedFd::from(peer)),
+            Stdio::null(),
+            Stdio::null(),
+        ],
+    )
+    .unwrap();
+    let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();
+    let gate = handoff.get("gate").unwrap();
+    let pid = number(gate, "pid").unwrap();
+    let group = number(gate, "group_id").unwrap();
+    assert_eq!(
+        fs::metadata(enrollment::EXECUTABLE).unwrap().mode() & 0o7777,
+        0o711
+    );
+    assert_eq!(
+        fs::symlink_metadata(format!("/proc/{pid}/fd"))
+            .unwrap()
+            .uid(),
+        0
+    );
+    let native_group = &fixture.groups[0].0;
+    // Freeze only the fixture's original gate before opening the status route,
+    // so the independent same-UID actor wins the first connection deterministically.
+    fs::write(native_group.join("cgroup.freeze"), b"1").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while observation::read(&fixture.directory, 1)
+        .unwrap()
+        .get("frozen")
+        != Some(&Value::Bool(true))
+    {
+        assert!(Instant::now() < deadline, "original gate did not freeze");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let script = "import errno,os,socket,sys,time\nuid=int(sys.argv[1]); pid=int(sys.argv[2]); base=sys.argv[3]\nos.setgroups([]); os.setgid(uid); os.setuid(uid)\nassert os.getuid()==uid and os.getgid()==uid\ntry: os.listdir('/proc/'+str(pid)+'/fd')\nexcept PermissionError: pass\nelse: raise AssertionError('same UID could inspect protected gate descriptors')\ndeadline=time.monotonic()+2\nwhile os.stat(base).st_mode&0o777!=0o710:\n assert time.monotonic()<deadline\n time.sleep(.005)\ns=socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(base+'/s')\ns.sendall(b'FSMEXEC1'+pid.to_bytes(4,'big')+bytes(32))";
+    let fake = Command::new("/usr/bin/python3")
+        .args(["-c", script])
+        .arg(group.to_string())
+        .arg(pid.to_string())
+        .arg(fixture.directory.join("exec-1"))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let refused = listener
+        .associate(&material, gate)
+        .err()
+        .expect("same-identity forged hello authenticated");
+    assert!(refused.contains("inherited challenge"), "{refused}");
+    drop(input);
+    let output = fake.wait_with_output().unwrap();
+    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    let run = number(binding.get("claim").unwrap(), "run_id").unwrap();
+    for prefix in ["completed", "result"] {
+        assert_eq!(
+            fs::symlink_metadata(fixture.directory.join(format!("{prefix}-1-{run}.json")))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+    fs::write(native_group.join("cgroup.freeze"), b"0").unwrap();
+    let _ = stop::fence(&fixture.directory, 1);
+    closure::complete(&fixture.directory, 1).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while child.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < deadline, "forged hello retained launcher");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    fixture.cleanup().unwrap();
 }
 
 fn table(argv: Vec<String>, mcp: bool) -> Value {
@@ -114,7 +217,13 @@ fn original_path_cleanup() {
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let (binding, _) = claim_binding(&fixture, &domain);
     bind(&fixture.directory, &binding).unwrap();
-    let listener = exec_status::Listener::create(&fixture.directory, 1, &binding).unwrap();
+    let listener = exec_status::Listener::create(
+        &fixture.directory,
+        1,
+        &binding,
+        &fsm_execute::config::HandlerKind::Process,
+    )
+    .unwrap();
     let base = fixture.directory.join("exec-1");
     let socket = base.join("s");
     assert_eq!(fs::symlink_metadata(&base).unwrap().mode() & 0o777, 0o700);
@@ -174,7 +283,7 @@ fn original_path_cleanup() {
 }
 
 fn descriptor_retirement() {
-    let script = "import os,pathlib,socket,sys\nroute=pathlib.Path('/proc/self/cgroup').read_text().strip().rsplit('/',1)[1].removesuffix('.service').split('-')\nbase=pathlib.Path('/var/lib/fsm-containment')/route[2]/('authority-'+route[3])/('exec-'+route[4])\nassert not base.exists()\nfor entry in pathlib.Path('/proc/self/fd').iterdir():\n if int(entry.name)<=2: continue\n try: target=os.readlink(entry)\n except FileNotFoundError: continue\n assert not target.startswith('socket:'), target\ns=socket.socket(socket.AF_UNIX)\ntry: s.connect(str(base/'s'))\nexcept FileNotFoundError: pass\nelse: raise AssertionError('handler reopened exec status route')\nprint('retired')";
+    let script = "import os,pathlib,socket,stat,sys\nassert stat.S_ISCHR(os.fstat(0).st_mode) and os.read(0,1)==b''\nroute=pathlib.Path('/proc/self/cgroup').read_text().strip().rsplit('/',1)[1].removesuffix('.service').split('-')\nbase=pathlib.Path('/var/lib/fsm-containment')/route[2]/('authority-'+route[3])/('exec-'+route[4])\nassert not base.exists()\nfor entry in pathlib.Path('/proc/self/fd').iterdir():\n if int(entry.name)<=2: continue\n try: target=os.readlink(entry)\n except FileNotFoundError: continue\n assert not target.startswith('socket:'), target\ns=socket.socket(socket.AF_UNIX)\ntry: s.connect(str(base/'s'))\nexcept FileNotFoundError: pass\nelse: raise AssertionError('handler reopened exec status route')\nprint('retired')";
     let mut fixture = Fixture::new_for_table(table(
         vec!["/usr/bin/python3".into(), "-c".into(), script.into()],
         false,

@@ -107,16 +107,16 @@ pub(super) fn execute_cancellable(
     let (mut stderr, error_output) = NativeCapture::open().map_err(|error| error.message)?;
     let mut stdout = None;
     let mut protocol = None;
+    let (mut input, input_peer) = UnixStream::pair().map_err(io)?;
     let streams = match &kind {
         HandlerKind::Process => {
             let (capture, output) = NativeCapture::open().map_err(|error| error.message)?;
             stdout = Some(capture);
-            [Stdio::null(), output, error_output]
+            [Stdio::from(OwnedFd::from(input_peer)), output, error_output]
         }
         HandlerKind::Mcp { .. } => {
-            let (input, input_peer) = UnixStream::pair().map_err(io)?;
             let (output, output_peer) = UnixStream::pair().map_err(io)?;
-            protocol = Some((input, output));
+            protocol = Some(output);
             [
                 Stdio::from(OwnedFd::from(input_peer)),
                 Stdio::from(OwnedFd::from(output_peer)),
@@ -127,7 +127,9 @@ pub(super) fn execute_cancellable(
     if cancelled.load(Ordering::Acquire) {
         return Err("runner cancelled before launch; claim remains unresolved".into());
     }
-    let exec_listener = super::exec_status::Listener::create(directory, allocation, &binding)?;
+    let exec_listener =
+        super::exec_status::Listener::create(directory, allocation, &binding, &kind)?;
+    exec_listener.send_challenge(&mut input)?;
     let (child, _) = launch::begin(directory, allocation, streams)?;
     let mut owned = OwnedRun {
         directory: directory.into(),
@@ -136,11 +138,6 @@ pub(super) fn execute_cancellable(
         worker: None,
         native_closed: false,
     };
-    if let HandlerKind::Mcp { tool, arguments } = kind {
-        let (input, output) = protocol.ok_or("runner protocol streams missing")?;
-        owned.worker =
-            Some(NativeProtocol::from_streams(input, output, tool, arguments).map_err(io)?);
-    }
     let argv0 = argv[0].clone();
     let grant = object([
         ("format", Value::Str("fsm.native-entry/1".into())),
@@ -163,6 +160,14 @@ pub(super) fn execute_cancellable(
         .get("gate")
         .ok_or("runner cleanup uncertain: protected gate missing")?;
     let mut exec_status = exec_listener.associate(&claim.domain().to_value(), gate)?;
+    if let HandlerKind::Mcp { tool, arguments } = kind {
+        let output = protocol.ok_or("runner protocol streams missing")?;
+        owned.worker =
+            Some(NativeProtocol::from_streams(input, output, tool, arguments).map_err(io)?);
+    } else {
+        drop(input);
+    }
+
     if !cancelled.load(Ordering::Acquire) {
         authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
     }

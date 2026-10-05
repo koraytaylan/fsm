@@ -73,12 +73,14 @@ pub(super) fn inspect(domain: &Value, deadline: Instant) -> Result<GateIdentity,
         credentials(&bounded(&process.join("status"))?)
     };
     let credentials = observe()?;
+    private_descriptors(&process)?;
     if before.uid() != credentials.0
         || manager::properties_before(&unit, KEYS, deadline)? != properties
         || observe()? != credentials
     {
         return Err("enrolled gate changed during verification".into());
     }
+    private_descriptors(&process)?;
     let after = fs::symlink_metadata(&process).map_err(io)?;
     let installed_after = fs::symlink_metadata(executable).map_err(io)?;
     let group = Path::new("/sys/fs/cgroup/system.slice").join(unit);
@@ -103,15 +105,25 @@ pub(super) fn inspect(domain: &Value, deadline: Instant) -> Result<GateIdentity,
     })
 }
 
+fn private_descriptors(process: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(process.join("fd")).map_err(io)?;
+    if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o077 != 0 {
+        return Err("enrolled gate descriptors are not protected from unprivileged tracing".into());
+    }
+    Ok(())
+}
+
 pub(super) fn installed() -> Result<fs::Metadata, String> {
+    if !matches!(
+        bounded(Path::new("/proc/sys/fs/suid_dumpable"))?.as_slice(),
+        b"0\n" | b"2\n"
+    ) {
+        return Err("installed gate profile permits unprivileged tracing before enrollment".into());
+    }
     let executable = Path::new(EXECUTABLE);
     protected_directory(executable.parent().ok_or("gate executable has no parent")?)?;
     let metadata = fs::symlink_metadata(executable).map_err(io)?;
-    if !metadata.is_file()
-        || metadata.uid() != 0
-        || metadata.mode() & 0o022 != 0
-        || metadata.mode() & 0o111 == 0
-    {
+    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o7777 != 0o711 {
         return Err("installed gate executable is not root protected".into());
     }
     Ok(metadata)
@@ -184,6 +196,7 @@ fn credentials(bytes: &[u8]) -> Result<(u32, u32), String> {
         "CapBnd",
         "CapAmb",
         "NoNewPrivs",
+        "TracerPid",
     ];
     let mut fields = BTreeMap::new();
     for line in source.lines() {
@@ -192,7 +205,10 @@ fn credentials(bytes: &[u8]) -> Result<(u32, u32), String> {
             return Err("duplicate gate security field".into());
         }
     }
-    if fields.len() != keys.len() || fields.get("NoNewPrivs") != Some(&"1") {
+    if fields.len() != keys.len()
+        || fields.get("NoNewPrivs") != Some(&"1")
+        || fields.get("TracerPid") != Some(&"0")
+    {
         return Err("gate security fields missing or privilege escalation allowed".into());
     }
     for key in ["CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"] {
@@ -232,7 +248,7 @@ mod tests {
     use super::*;
 
     fn status() -> String {
-        "Uid:\t61184\t61184\t61184\t61184\nGid:\t61184\t61184\t61184\t61184\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\n".into()
+        "Uid:\t61184\t61184\t61184\t61184\nGid:\t61184\t61184\t61184\t61184\nGroups:\t\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nTracerPid:\t0\n".into()
     }
 
     #[test]
@@ -245,6 +261,8 @@ mod tests {
             valid.replace("61184", "65520"),
             valid.replace("Groups:\t\n", "Groups:\t0\n"),
             valid.replace("NoNewPrivs:\t1", "NoNewPrivs:\t0"),
+            valid.replace("TracerPid:\t0", "TracerPid:\t1"),
+            valid.replace("TracerPid:\t0\n", ""),
             valid.replace("CapBnd:\t0000000000000000", "CapBnd:\t0000000000000001"),
             valid.replace("Gid:\t61184", "Gid:\t61185"),
             valid.replace("CapAmb:\t0000000000000000\n", ""),
