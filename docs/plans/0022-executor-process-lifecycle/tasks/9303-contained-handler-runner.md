@@ -92,11 +92,11 @@ closed; a root exit or MCP response cannot release surviving descendants.
   runner, and native stable/MSRV coverage plus public-surface/zero-dependency
   gates pass without falling back to weaker platform implementations.
 
-**Acceptance review at source `893dd8b`:**
+**Acceptance review at source `31e0c6318cb45bcc5f76468d6586e172356e466a`:**
 
 | Requirement | Inspected implementation and evidence | Remaining acceptance |
 | --- | --- | --- |
-| One claimed process/MCP enrollment path | `containment/runner.rs`, `exec_status.rs`, `enrollment.rs` and `runner_native_tests.rs`; verified native stable/MSRV artifacts from CI `37361472892` include the production authority suite. | Complete frozen-range spec/API review and terminal portable gates. |
+| One claimed process/MCP enrollment path | `containment/runner.rs`, `exec_status.rs`, `enrollment.rs` and `runner_native_tests.rs`; independently verified stable/MSRV artifacts from CI `37365652966` execute the production authority suite through the frozen `lifecycle_runner` target. | Complete frozen-range spec/API review and terminal portable gates. |
 | Candidate separated from verified closure and uncertainty | `runner.rs` publishes completion only after `closure::complete`, matching `VerifiedClosure`, and owned child/worker retirement; corrupted handoff cases retain the original claim without a receipt or successful result. | Preserve these controls in the final acceptance range. |
 | Root exit, response, timeout and cancellation close descendants | Native runner controls independently observe root, child and grandchild membership, then exercise process exit/failure/signal and MCP response/protocol/timeout/cancellation paths. | Production service routing and host capacity integration belong to dependent task 9401 and remain incomplete. |
 | Bounded capture and resource retirement | `capture_native_tests.rs` checks both handler kinds at 4096, 4097, hash limit, hash limit plus one, and eight MiB; exact prefixes/digests, bounded result material and repeated FD/thread inventories are verified. | Full stable host gates remain running or unexecuted at this source. |
@@ -107,13 +107,11 @@ this count describes the whole matrix, not 81 runner-specific controls.
 The artifacts do not independently compare executable bytes and do not release
 the production native gate; task status remains `in_progress`.
 
-A command-level coverage gap remains: the named `cargo test -p fsm-execute
---test lifecycle_runner` entry currently exercises protected-entry refusal and
-legacy noisy-root capture, not claimed native process/MCP grandchildren.
-Those tree controls currently run through `authority_probe.py` selecting the
-production authority binary's ignored native cases under the provisioned Root
-fixture; green `lifecycle_runner` output alone cannot satisfy the named native
-runner requirement, which requires verified named-target native evidence before this task is accepted.
+The earlier command-level coverage gap was repaired at `0cef6f6`: the named
+`cargo test -p fsm-execute --test lifecycle_runner` target now includes claimed
+native process/MCP grandchild controls, selected by `authority_probe.py` under
+the provisioned Root fixture; an ordinary unprovisioned invocation leaves those
+native controls ignored and cannot alone prove this requirement.
 
 
 - **Done when:** the same production runner passes native process and MCP descendant/pipe/capture tests and returns a settleable result only with matching run identity and proved closed containment, while every uncertain cleanup remains explicit and bounded.
@@ -122,11 +120,20 @@ The coverage repair compiles the production authority and its existing native
 controls directly into `lifecycle_runner`; the provisioned probe selects that
 exact Cargo test artifact while still installing the separate production binary.
 Reports identify the test target, and the independent verifier derives the
-required target from frozen source; fresh local compilation and native
-stable/MSRV execution remain required before accepting this repair.
+required target from frozen source; verified provisioned native execution is
+the evidence for those ignored controls, not an ordinary portable target pass.
 
 CI `37363278015` at frozen repair `0cef6f6` passes native stable and MSRV;
 independent artifact verification confirms `lifecycle_runner` as the fixture
 target and all 81 matrix cases per compiler, including the existing claimed
 process/MCP descendant controls, so the named-target coverage gap is repaired.
 Full portable and frozen host gates and aggregate review remain pending.
+
+Current CI `37365652966` independently verifies the same named-target identity
+and all 81 cases at both stable and MSRV after the borrowed handler-input guard
+and all four production refusal branches were added; the retained earlier
+stable failure at `7bd363a` remains unexplained and is not erased by this pass.
+Static cross-checks find the original-completion retention and admission bounds
+in SPEC's native host contract, matching provisional API/embedding/release
+text and `NativePreparation`/`NativeRun`/`NativeExecution` inventory entries;
+these source checks do not replace compiled public-surface or full gate tests.
