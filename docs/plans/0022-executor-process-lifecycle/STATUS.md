@@ -481,4 +481,18 @@ lifecycle updates.
   the remaining fault inventory and native receipt publication/authentication
   are still required before task 9302 can finish.
 
+- **Resource guard negative controls:** an isolated frozen `7d8f94a` checkout
+  passed all fourteen integration and seven transition baselines. Raising each
+  shared bound independently by one byte or entry (metadata, outcome, ownership
+  count and complete block) made its named production-boundary case fail at a
+  runtime assertion with exit 101; compilation failures were explicitly
+  excluded. The original source was restored after each mutation and the
+  complete fourteen-plus-seven baselines passed again; every retained log
+  digest and the restored tracked source were verified. These four controls
+  supplement the four earlier production authorization controls and fifteen
+  pure ownership controls. They prove those tests depend on their resource
+  guards, without turning structural/preauthenticated fixtures into native
+  authentication evidence. Native receipt publication/authentication and the
+  remaining durability fault inventory still prevent task 9302 completion.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
