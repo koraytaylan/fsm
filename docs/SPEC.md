@@ -1397,3 +1397,99 @@ requests to drive ticks, including recovery; a subscription alone is insufficien
 The executor's recovery window for acknowledged effects MUST be applied after
 excluding acknowledgements with no event for their actual outcome, so unrelated acknowledgements cannot
 hide an interrupted advance. This changes no record format or state hash.
+
+## Reserved claim-era persistence contract
+
+This section specifies plan 0022 task 9302 before implementation. The shipped
+store remains VERSION 10 until the implementation and migration tests land;
+these record kinds and formats MUST NOT be advertised as available meanwhile.
+
+The claim-era writer MUST use VERSION 11. It adds `execution_claimed`,
+`execution_stopped` and `execution_settled` records, and an
+`execution_enabled` record for verified legacy-upgrade admission. A new store
+starts enabled; a migrated legacy store starts quarantined for execution.
+Migration alone MUST NOT establish quiescence. Non-executor operations and
+strictly read-only inspection remain available in quarantine.
+
+| Record | Required body and effect |
+| --- | --- |
+| `execution_claimed` | `run_id`, `instance_id`, `effect_id`, `attempt`, `handler_fingerprint`, `retry`, `domain`, `request_id`, `request_fp`. Allocates exactly the next store-local run ID and exclusive ownership of the pending effect |
+| `execution_stopped` | `run_id`, `instance_id`, `effect_id`, `handler_fingerprint`, `closure`, `outcome`, `request_id`, `request_fp`. Records verified native closure and an immutable bounded result; ownership remains exclusive |
+| `execution_settled` | `run_id`, `instance_id`, `effect_id`, `disposition`, `request_id`, `request_fp`, and the existing ack/attempt state-hash fields where applicable. Applies one disposition and consumes stopped ownership in the same record |
+| `execution_enabled` | `previous_head`, `quiescence`, `request_id`, `request_fp`. Enables a quarantined migrated store only after trusted native evidence proves the identified legacy execution environment closed |
+
+Run IDs are positive u64 counters local to the store, separate from failed
+attempt counts and journal sequences. The durable high-water mark MUST survive
+reconstruction, snapshot, sealing and reopen, including after all claims
+settle. Exhaustion refuses allocation; counters MUST NOT wrap, reset or be
+reused. A refused stale observation MUST NOT burn a run ID or append a claim.
+
+A claim's attempt is the durable failed count plus one. Its retry object is a
+closed snapshot of `attempts`, `backoff_ms`, `max_backoff_ms` and sorted unique
+`on` failure classes, with the existing handler-table bounds and semantics.
+The fingerprint is the immutable canonical handler-contract digest. A retry
+ledger retains the original fingerprint and policy, failed count, latest
+failed timestamp/class and eligibility deadline while the effect remains
+pending; a changed contract MUST NOT reinterpret it. Claim admission MUST
+validate pending state, exclusive ownership, contract agreement, allowed
+failure class, remaining attempts and supplied logical time under the writer.
+At the deadline admission is eligible; one tick earlier it is refused. Delay
+uses the existing saturating exponential backoff rule, never elapsed wall time.
+
+The domain object identifies the native backend and its full non-reusable
+authority: namespace, native allocation counter, boot identity, cgroup device
+and inode, and supervisor/authority generation. These are recorded before
+launch. PIDs, unit names alone, advisory-lock availability and time elapsed
+MUST NOT establish ownership or closure. A closure receipt MUST bind the exact
+recorded domain and run; unknown or mismatched evidence cannot produce a
+settleable stopped result. Core validates and folds these values without I/O;
+the store/native boundary authenticates closure evidence before publication.
+
+Stopped outcomes distinguish `ok`, an existing executor failure class, and
+`interrupted`; they retain the bounded result needed by settlement. An unknown
+termination state is unresolved ownership, not a stopped interruption. A
+second stopped record with different outcome bytes is refused. A stopped run
+MUST exclude every successor until its settlement is durable, even when the
+root exited and no executor currently holds the writer.
+
+Settlement is one atomic record, not a stopped-record removal followed by a
+separate ack or failed-attempt append. `acked` applies the existing effect
+acknowledgement semantics and result exactly once; `attempted` increments the
+failed count once and records its class/timestamp/backoff; `interrupted`
+consumes the proved-stopped run without incrementing that count or inventing
+an acknowledgement or outcome event. Interruption preserves any still-pending
+effect. Cancellation or an independently acknowledged effect does not erase
+unresolved ownership; after closure, its interruption disposition may consume
+ownership without recreating pending state. Stale run completions cannot
+settle a successor. Existing acknowledgement/advance request-ID derivations
+and the ack-before-outcome-event recovery order MUST remain unchanged.
+
+The execution state block contains admission/quarantine state, the run
+high-water mark, unresolved claims including stopped results, and retained
+retry ledgers. It MUST be authenticated by `fsm.state-root/4` with hash domain
+`fsm:state-root:4`, snapshot `fsm.snapshot/6` / `fsm:snapshot:6`, and sealed
+base `fsm.base/2`. The root is separate from instance `fsm.state/3` hashes.
+Historical roots and records MUST still verify under their recorded format;
+the existing root/3 and base/1 functions and bytes MUST NOT be reinterpreted.
+Old snapshots are disposable caches; old bases are authoritative and require
+explicit validated decoding. Archives, archive verification and repeated seals
+MUST retain ownership, policies and the high-water mark.
+
+There are at most 4096 distinct effect entries in the union of unresolved
+ownership and retry ledgers. A stopped outcome's canonical value is at most
+64 KiB; each claim's canonical identity/contract metadata is at most 4 KiB.
+The complete canonical execution state block is at most 8 MiB, counting all
+keys, values, delimiters, native evidence and stopped results. Admission,
+stopping, replay and cache/base decoding MUST charge these same units and
+accept the exact limit while refusing limit-plus-one before mutation. The
+existing 16 MiB persistence read cap still applies to each complete artifact.
+
+Legacy VERSION 1–10 migration MUST retain historical journal/hash bytes and
+quarantine execution until offline verified-quiescence evidence is bound to
+the migrated journal prefix. A trusted authority must identify and close the
+legacy environment; absence of its PID or a free LOCK is insufficient. An
+uncontained legacy environment without verifiable native closure remains
+quarantined. Operator assertions, force flags, timeout expiry and counter reset
+MUST NOT substitute for evidence. Newer-format refusal happens before mutation
+so an older binary cannot ignore claim-era ownership. Read-only inspection
+MUST neither migrate, enable execution nor reconcile native work.

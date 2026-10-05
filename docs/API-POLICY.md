@@ -349,3 +349,13 @@ under `execute --check`. Their versioned report and 0/1/2/3 exit contract are
 distinct from the unchanged table-only exit behavior; table-only inspection
 adds the scope string `handler-table-only`. This additive command extension
 changes no persisted machine, journal or hash representation.
+
+Plan 0022's reserved claim-era persistence contract in SPEC is not implemented
+yet: current VERSION 10, snapshot/5, base/1 and state-root/3 remain authoritative
+for shipped behavior. Implementing VERSION 11, snapshot/6, base/2 and
+state-root/4 will be a breaking pre-1.0 minor change, with explicit historical
+decoders and legacy execution quarantine; it must not reinterpret any prior
+journal bytes, instance hash or request-ID derivation. Native prerequisite
+completion does not itself change these persisted formats or the package
+version. New stable errors and usable public constructors must land with the
+production APIs, external embedding tests and release notes before shipping.

@@ -14,7 +14,7 @@ lifecycle updates.
 - **Approach:** resolve the native containment prerequisite, journal claims
   before launch, prove tree closure before reuse, and drive every execution
   host through the same shutdown and recovery protocol.
-- **Progress:** 1/7 tasks done; 0 blocked; 0 dropped; durable claims Ready.
+- **Progress:** 1/7 tasks done; 0 blocked; 0 dropped; durable claims In progress.
 - **Integration:** Phase R bound by hand on `develop` to validation base
   `8e3a8bbaed670ee9b3d7f354142090c9abc1d78d`; mode `by-hand`, following
   plan 0019's recorded execution mode. Committed scope identity, closed task
@@ -272,5 +272,13 @@ lifecycle updates.
   Production claims, journal binding and supervisor installation remain the
   downstream tasks' requirements; the plan and thread goal remain incomplete.
 - **Outcome:** native prerequisite complete; production lifecycle pending.
+
+- **Durable-claim implementation:** SPEC now reserves the claim/stopped/single-
+  record settlement schemas, durable retry eligibility, preserved run counter,
+  explicit execution quarantine, new root/snapshot/base formats and exact
+  accounting bounds before implementation. API-POLICY distinguishes this
+  reserved contract from the still-shipped VERSION 10 behavior and records
+  the breaking-minor consequence. Production APIs, error registration,
+  format migration and crash/seal/boundary tests remain in progress.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._

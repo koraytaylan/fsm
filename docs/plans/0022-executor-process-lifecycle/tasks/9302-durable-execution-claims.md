@@ -21,7 +21,7 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: ready
+status: in_progress
 merged_as: ""
 ---
 # Durable Execution Claims
