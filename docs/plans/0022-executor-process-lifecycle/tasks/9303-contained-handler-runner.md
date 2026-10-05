@@ -569,3 +569,20 @@ explicitly bounded, but it is not the standalone/embedded production service.
 Thus these controls establish helper-owner death cancellation at the primitive
 boundary, not task 9401 routing or task 9402 host shutdown acceptance; no
 additional finding was identified in the inspected fixture.
+
+Public-adapter supervisor fixture review at corrected `9f1f175`: the positive
+process case starts `NativeExecution` with the current writer-held claim/hash,
+then an independent unprivileged writer holds the lease through handler completion
+and rejects a competing domain claim without changing records/state/head.
+Read-only recovery checks identical original candidate, contract, failure class,
+stopped outcome and matching proof, actual helper reap plus both EOFs and retained
+capacity; attempted settlement on that snapshot refuses and preserves ownership.
+Releasing the competing writer must succeed before cold writer reopening, which
+still sees the original unresolved claim/hash. Missing completion recovery,
+pre-poll cancellation, wrong claim hash and preparation cancellation/single
+delivery each have separate refusal/retirement assertions.
+The test does not positively settle the retained completion in this supervisor;
+its writer barrier proves observation/recovery during contention and competing
+claim refusal, not the production service's launch/settlement crash sequence.
+No additional finding was identified; this closes direct inspection of the
+supervisor fixture while preserving the dependent integrated-host obligations.
