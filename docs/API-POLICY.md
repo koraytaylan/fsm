@@ -607,3 +607,10 @@ Pipeline::recover_native add owned, claim-bound read-only completion recovery.
 They retain deadline/EOF/reap/single-delivery checks, never bind or execute as
 fallback, and accept a durable unpoisoned read-only store snapshot for current
 ownership/hash checking; they grant no writer transition or capacity release.
+
+Provisional Store::replay_execution_settlement adds a non-writing exact
+claim/disposition request-fingerprint lookup for original outcome recovery,
+including read-only handles. Unclaimed keys remain unclaimed, missing original
+fingerprints refuse and existing conflict/sealed-outcome refusals remain;
+the helper acquires no writer and changes no journal/hash/request-fingerprint
+bytes or durable ownership.

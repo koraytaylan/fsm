@@ -482,6 +482,21 @@ fn run_case(timeout: bool) {
                 .unwrap(),
             fsm_core::record::execution::Settlement::Acked,
         );
+        assert!(
+            store
+                .replay_execution_settlement(
+                    &original_claim,
+                    fsm_core::record::execution::Settlement::Acked,
+                    "native-proof-settle",
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(store.records.len(), before);
+        assert_eq!(
+            store.state.execution.claim_for("instance", &effect),
+            Some(&original_claim)
+        );
         let settled = pipeline
             .settle_stopped(
                 &mut store,
@@ -519,7 +534,55 @@ fn run_case(timeout: bool) {
         );
         assert!(!store.state.instances["instance"].pending.contains(&effect));
     }
-    let reopened = Store::open_read_only(&fixture.store).unwrap();
+    let mut reopened = Store::open_read_only(&fixture.store).unwrap();
+    let state = reopened.state.clone();
+    let head = reopened.journal.last_hash.clone();
+    let replay = reopened
+        .replay_execution_settlement(
+            &original_claim,
+            fsm_core::record::execution::Settlement::Acked,
+            "native-proof-settle",
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(
+        replay.get("execution").unwrap().get("run_id"),
+        Some(&Value::Num(original_claim.run_id().to_string()))
+    );
+    assert_eq!(
+        replay.get("execution").unwrap().get("result"),
+        completion.stopped_outcome().result()
+    );
+    assert_eq!(
+        reopened
+            .replay_execution_settlement(
+                &original_claim,
+                fsm_core::record::execution::Settlement::Attempted,
+                "native-proof-settle",
+            )
+            .unwrap_err()
+            .code,
+        "req/request_id_conflict"
+    );
+    assert!(
+        reopened
+            .replay_execution_settlement(
+                &original_claim,
+                fsm_core::record::execution::Settlement::Acked,
+                "native-unclaimed-settlement",
+            )
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(reopened.state, state);
+    assert_eq!(reopened.journal.last_hash, head);
+    assert!(
+        !reopened
+            .state
+            .dedup
+            .contains_key("native-unclaimed-settlement")
+    );
     assert!(
         reopened
             .state

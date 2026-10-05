@@ -1880,6 +1880,14 @@ or uncertain. Pipeline::recover_native MUST require a supported durable,
 unpoisoned store snapshot and its exact current owned claim/hash; read-only
 snapshots are permitted and launch eligibility MUST NOT gate observation.
 Neither recovery API writes a stopped result or consumes ownership.
+Store::replay_execution_settlement MUST perform a non-writing lookup under the
+exact original execution_settled fingerprint of the supplied full claim and
+disposition. It MUST NOT claim an unused key, acquire a writer or consume
+ownership; read-only handles are permitted. A claimed key without its original
+fingerprint MUST refuse as store/execution_evidence, mismatched fingerprints
+retain req/request_id_conflict, and carried sealed outcomes retain the existing
+store/sealed_outcome_unavailable refusal rather than reconstruct guessed
+settlement. An unclaimed key returns no response and grants no advance.
 This protected record durably retains the original contract for broker recovery
 but does not complete restarted service stop/settlement/outcome-event recovery. Previous private result envelope
 versions MUST refuse rather than infer absent kind or contract material.

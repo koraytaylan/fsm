@@ -1807,3 +1807,11 @@ starts in Recovering and delivers checked completion only once after actual
 helper retirement and EOF within its deadline. Missing/refused recovery stays
 Uncertain and never falls back to binding/launch; observing recovery needs no
 store writer, while stop and atomic settlement still require one.
+
+Store::replay_execution_settlement can read a committed native settlement under
+its original full claim, disposition and request key, including after reopening
+read-only. It checks the exact original execution_settled request fingerprint;
+an unused key returns None without claiming it, changed intent conflicts, and
+missing fingerprint or sealed response evidence refuses. This supplies original
+settlement evidence for an eventual recovered advance but does not itself send
+an event, clear ownership or authorize launch.

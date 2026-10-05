@@ -2525,4 +2525,16 @@ lifecycle updates.
   compiler/native/all portable acceptance and automatic service recovery are
   still required, with previous durable-record run 37316870974 queued.
 
+- Added non-writing Store::replay_execution_settlement to recover an original
+  terminal settlement under its exact full-claim/disposition request fingerprint
+  without claiming missing keys, taking a writer or consuming ownership.
+  Missing original fingerprints refuse; existing request conflicts and carried
+  sealed-outcome refusals remain explicit. Actual success/timeout native fixtures
+  require an unclaimed pre-settlement lookup to leave ownership/records intact,
+  read-only reopened replay to match original run/result, changed disposition
+  refusal and unused-key/state/head preservation. SPEC/API/embedding document
+  the boundary; recovered outcome-event integration remains the next step,
+  including stronger sealed-history support. Local source checks pass, with
+  full compiler/native/portable and high-risk acceptance still pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

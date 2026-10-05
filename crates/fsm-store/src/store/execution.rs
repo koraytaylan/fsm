@@ -349,6 +349,47 @@ impl Store {
         ))
     }
 
+    /// Read a committed settlement under its exact original request fingerprint.
+    ///
+    /// Does not claim an unused key, acquire a writer, append, consume ownership
+    /// or authorize launch; read-only handles are supported. A carried sealed
+    /// key whose original response is unavailable retains the existing refusal.
+    pub fn replay_execution_settlement(
+        &mut self,
+        claim: &Claim,
+        disposition: Settlement,
+        request_id: &str,
+    ) -> Result<Option<Value>, ErrorObj> {
+        if request_id.len() > 4096 {
+            return Err(ErrorObj::new(
+                "store/execution_limit",
+                "execution request ID exceeds 4 KiB",
+            ));
+        }
+        if self
+            .state
+            .dedup
+            .get(request_id)
+            .is_some_and(|slot| slot.fp.is_none())
+        {
+            return Err(ErrorObj::new(
+                "store/execution_evidence",
+                "settlement request has no original fingerprint",
+            ));
+        }
+        let disposition = match disposition {
+            Settlement::Acked => "acked",
+            Settlement::Attempted => "attempted",
+            Settlement::Interrupted => "interrupted",
+        };
+        let material = BTreeMap::from([
+            ("claim".into(), claim.to_value()),
+            ("disposition".into(), Value::Str(disposition.into())),
+        ]);
+        self.lookup_request(request_id, &request_fp("execution_settled", &material))?
+            .transpose()
+    }
+
     /// Consume a stopped result with its engine disposition in one record.
     pub fn settle_execution_on(
         &mut self,
