@@ -3214,4 +3214,11 @@ lifecycle updates.
   source, but the final portable axis, zero-dependency job and aggregate review
   remain required; task 9303 and the production native gate stay unaccepted.
 
+- Attempt 3 zero-dependency job `111978333384` terminates cancelled without
+  executing its gate; its check annotation again states that a hosted runner
+  did not acquire the job after multiple attempts.
+  Ubuntu MSRV job `111978333841` is live in workspace release tests, after
+  completing workspace debug tests; no replacement run is started while it
+  remains active, and the zero-dependency gate remains unaccepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
