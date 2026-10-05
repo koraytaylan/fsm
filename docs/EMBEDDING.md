@@ -1,5 +1,16 @@
 # Embedding fsm as a library
 
+The provisional Linux `run::native_client::NativeRequest` supervisor now owns
+the fixed protected transport helper and nonblocking standard-stream sockets.
+It bounds request/response/diagnostic retention and work per poll, enforces a
+checked caller deadline, and collects a canonical response only after successful
+actual child reap and both stream EOFs. Cancellation or transport/deadline failure
+requests helper death and retains explicit reap progress; none of these proves
+handler closure or releases a journal claim. Drop is bounded best-effort only.
+The public inventory includes its start/poll/cancel/reap methods; pure framing,
+policy and retained-writer controls are authored, while native supervisor and
+claim/closure-matched production service integration remain pending.
+
 The provisioned authority binary now has a private unprivileged `client`
 transport helper: it validates its actual operator UID, current boot, protected
 read-only route, authority inode and exact socket identity/access before sending

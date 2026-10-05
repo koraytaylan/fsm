@@ -37,6 +37,9 @@ mod stream;
 #[cfg(target_os = "linux")]
 pub mod native_io;
 
+#[cfg(target_os = "linux")]
+pub mod native_client;
+
 use stream::StreamCapture;
 
 pub use pipeline::{Pipeline, SettleOutcome};

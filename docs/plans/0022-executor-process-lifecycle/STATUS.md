@@ -1773,4 +1773,22 @@ lifecycle updates.
   uncertainty/broker/helper changes; public supervisor/service wiring and host
   stop/drain/recovery remain required, and task 9303 stays In progress.
 
+- **Public supervised native request adapter implemented for review:** Linux
+  `run::native_client::NativeRequest` owns the fixed root-protected ordinary
+  helper executable/process and nonblocking standard-stream sockets, with no
+  connection thread or capture file. It validates canonical route/deadline and
+  closed request policy before spawn, bounds pending/retained bytes and per-poll
+  work, clears inherited overrides and drops Command descriptor copies after
+  spawn so EOF remains truthful. Deadline checks precede request writes and
+  response acceptance; failure/cancellation requests helper death while retaining
+  its process handle. Canonical response collection requires successful actual
+  reap and stdout/stderr EOF, with explicit cancel/reap methods; Drop remains
+  bounded best-effort and no transport observation clears a journal claim or
+  proves native closure. The provisional surface inventory records the module,
+  type and four methods. Pure controls cover exact framing, partial/extra and
+  noncanonical bodies, response shape, allocation aliases, policy refusal and
+  retained-writer non-EOF/bounded diagnostic capture. Formatting, size and diff
+  checks pass; compiled public-surface/native supervisor acceptance and production
+  service claim/closure matching remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

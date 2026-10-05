@@ -252,6 +252,10 @@ method fsm_execute::run::Runner::poll
 method fsm_execute::run::Runner::running_effects
 method fsm_execute::run::Runner::scratch_dir
 method fsm_execute::run::Runner::spawn
+method fsm_execute::run::native_client::NativeRequest::cancel
+method fsm_execute::run::native_client::NativeRequest::poll
+method fsm_execute::run::native_client::NativeRequest::reap
+method fsm_execute::run::native_client::NativeRequest::start
 method fsm_execute::run::native_io::NativeCapture::finish
 method fsm_execute::run::native_io::NativeCapture::open
 method fsm_execute::run::native_io::NativeCapture::poll
@@ -287,6 +291,7 @@ mod fsm_execute::run::native_io
 mod fsm_execute::sched
 mod fsm_execute::service
 mod fsm_execute::watch
+module fsm_execute::run::native_client
 reexport fsm_execute::config::substitute from template
 reexport fsm_execute::config::substitute_arguments from template
 reexport fsm_execute::contract::CheckStatus from report
@@ -316,6 +321,7 @@ struct fsm_execute::run::Exhaustion
 struct fsm_execute::run::McpCall
 struct fsm_execute::run::Pipeline
 struct fsm_execute::run::Runner
+struct fsm_execute::run::native_client::NativeRequest
 struct fsm_execute::run::native_io::NativeCapture
 struct fsm_execute::run::native_io::NativeProtocol
 struct fsm_execute::sched::Capped

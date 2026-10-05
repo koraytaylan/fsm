@@ -1,5 +1,16 @@
 # Releasing
 
+The provisional Linux `run::native_client::NativeRequest` supervisor now owns
+the fixed protected transport helper and nonblocking standard-stream sockets.
+It bounds request/response/diagnostic retention and work per poll, enforces a
+checked caller deadline, and collects a canonical response only after successful
+actual child reap and both stream EOFs. Cancellation or transport/deadline failure
+requests helper death and retains explicit reap progress; none of these proves
+handler closure or releases a journal claim. Drop is bounded best-effort only.
+The public inventory includes its start/poll/cancel/reap methods; pure framing,
+policy and retained-writer controls are authored, while native supervisor and
+claim/closure-matched production service integration remain pending.
+
 Native broker access and client-death controls now exec the installed Rust
 `client` helper after dropping root UID/group privilege, replacing Python
 transport for valid requests. Access checks decode its framed responses and

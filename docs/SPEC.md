@@ -1572,6 +1572,24 @@ blocking Unix connect or standard I/O MUST remain in that killable helper proces
 the host MUST NOT use detached unbounded connection threads or assume a portable
 Unix connect timeout. Killing the helper closes its broker connection and requests
 existing verified cancellation, without proving closure or releasing a claim.
+The provisional Linux `run::native_client::NativeRequest` host adapter MUST
+validate a closed bounded request and canonical namespace/generation, verify the
+fixed root-protected nonsymlink non-setuid helper executable, and own its process
+and nonblocking stdin/stdout/stderr sockets. It MUST bound pending request bytes
+to 8196, retained response bytes to 65540 plus one overflow-detection byte and
+diagnostic prefix to 4096, with fixed 64 KiB per-stream work per poll. Its caller
+supplies a positive checked deadline; deadline/transport failure MUST request
+helper cancellation, retain the process handle and return uncertainty without
+releasing any journal claim. Explicit cancellation MUST NOT prove tree closure.
+A response MUST be collected only after actual helper reap, successful exit,
+complete stdout/stderr EOF and one exact bounded canonical response frame with
+no extra bytes; a transport response itself MUST NOT prove matching run closure.
+Reap progress MUST remain explicit and retain unresolved handle ownership until
+actual reap/EOF observation. Drop is bounded best-effort only. No detached
+connection thread, caller-selected helper path, capture file or inherited
+manager/environment override is permitted. Public service claim/closure matching
+and lifecycle integration remain separately required.
+
 Public supervised client/service wiring remains required before acceptance.
 
 The protected entry operation MUST run as an unprivileged handler identity.
