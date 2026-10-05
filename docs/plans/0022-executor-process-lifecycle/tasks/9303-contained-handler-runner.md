@@ -400,3 +400,17 @@ retirement and original group absence, rechecks original records, then publishes
 the same immutable receipt; it cannot resolve an uncertain submitted launch.
 No additional finding was identified in this slice; acceptance still requires
 the explicitly remaining file review and corrected-source/local gates.
+
+Pure ownership delta review at corrected `9f1f175`: the only production core
+changes add nonmutating `settlement_for` selection and admit terminal unclassified
+`failed` stopped outcomes for acknowledgement while refusing attempted or
+pending interrupted disposition of that outcome.
+Selection requires the exact current stopped owner, uses its immutable retry
+classes/attempt limit and current pending presence, and mutates no state;
+removed effects or cancelled candidates select interruption without reclassifying
+failure. Independent table fixtures cover status/class branches, absent effects,
+stale runs, unstopped owners, final attempts and terminal-failure round trips.
+SPEC's selector and stopped-outcome clauses and the additive provisional API
+entry match these deltas; no new I/O, clock or hash domain enters fsm-core.
+No additional finding was identified; current workspace compiled verdicts remain
+pending and this does not accept the remaining changed-file inventory.
