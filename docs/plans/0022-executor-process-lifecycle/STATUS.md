@@ -3124,4 +3124,15 @@ lifecycle updates.
   stable is queued, while local builds remain deferred under swap pressure.
   Production gate release and task 9303 acceptance remain pending.
 
+- Diagnostic-source native MSRV CI `37365652966` at exact `31e0c63`
+  completes successfully; independent verification confirms the full 81-case
+  matrix, exact compiler/source/target identities and report/log hashes.
+  Its task-cache evidence is `ci-37365652966/msrv`; stable at this source is
+  still queued, so this second MSRV pass does not explain or erase the earlier
+  stable manager-query timeout.
+  Superseded run `37365040760` was requested cancelled only after retaining
+  that split native evidence; cancelled portable work is not acceptance.
+  Current native stable and portable verdicts remain required, alongside the
+  unfinished aggregate review and production host ownership integration.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
