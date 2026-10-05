@@ -604,3 +604,20 @@ boundary and timeout cases require readable native proof without consuming
 ownership. Repairs remove only deliberately injected fixture faults, not a
 production recovery permission. No additional finding was identified in these
 directly inspected controls; integrated service races/crashes remain unexecuted.
+
+Allocator fixture/control review at corrected `9f1f175`, registration through
+never-launched closure: the Root-only fixture creates an exclusive namespace,
+checks physical-store metadata refusal before catalogue adoption, and tracks
+original cgroup identities for nonrecursive empty-domain teardown.
+Preparation controls verify distinct monotonic allocations without journal claims,
+refuse unknown groups, rolled-back counters and persisted incomplete intents,
+and explicitly distinguish injected intermediate state from physical power loss.
+Residual cleanup refuses missing revocation, replacement identity, live manager
+ownership and child groups, leaving the other allocation untouched.
+The genuine-claim case observes without changing inventory while the authority
+lock is held, then tests pending submission material and partial receipts before
+never-launched closure. Cold replay preserves final receipt bytes/inode, rejects
+a separate identical pending copy, and accepts only a matching hard-linked pending
+inode; original durable ownership remains without a stopped record.
+No additional finding was identified in this inspected portion; the remaining
+binding helper and broker access test bodies still require direct inspection.
