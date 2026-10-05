@@ -1,4 +1,4 @@
-//! Independent native MCP tree/pipe observer around production execution.
+//! Independent native process/MCP tree observer around production execution.
 
 use super::super::super::{bind, identity, number, object, read_value, runner, text};
 use super::{Fixture, claim_binding};
@@ -19,36 +19,43 @@ def publish(name,value):
     temporary.write_text(json.dumps(value,sort_keys=True,separators=(',',':')))
     temporary.replace(base/name)
 def reply(request,result):
-    print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}),flush=True)
+    print(json.dumps(dict(jsonrpc='2.0',id=request['id'],result=result)),flush=True)
 child_code='''import json,os,subprocess,sys,time
 from pathlib import Path
 base=Path(sys.argv[1])
+os.setsid()
 grandchild=subprocess.Popen(['/usr/bin/sleep','300'])
 temporary=base/'descendant-ready.pending'
-temporary.write_text(json.dumps({'pid':os.getpid(),'grandchild':grandchild.pid},sort_keys=True,separators=(',',':')))
+temporary.write_text(json.dumps(dict(pid=os.getpid(),grandchild=grandchild.pid),sort_keys=True,separators=(',',':')))
 temporary.replace(base/'descendant-ready')
 time.sleep(300)
 '''
+def enrolled_tree():
+    child=subprocess.Popen(['/usr/bin/python3','-c',child_code,str(base)])
+    deadline=time.monotonic()+2
+    while not (base/'descendant-ready').exists():
+        assert time.monotonic()<deadline
+        time.sleep(.005)
+    publish('root-ready',dict(pid=os.getpid()))
+    while not (base/'release').exists():
+        assert time.monotonic()<deadline
+        time.sleep(.005)
+if mode=='process-exit':
+    enrolled_tree()
+    print('root-exited',flush=True)
+    sys.exit(0)
 for line in sys.stdin:
     request=json.loads(line)
     if request['method']=='initialize':
-        reply(request,{})
+        reply(request,dict())
     elif request['method']=='tools/call':
         assert request['params']['name']=='probe'
-        assert request['params']['arguments']=={'fixture':'native'}
-        child=subprocess.Popen(['/usr/bin/python3','-c',child_code,str(base)])
-        deadline=time.monotonic()+2
-        while not (base/'descendant-ready').exists():
-            assert time.monotonic()<deadline
-            time.sleep(.005)
-        publish('root-ready',{'pid':os.getpid()})
-        while not (base/'release').exists():
-            assert time.monotonic()<deadline
-            time.sleep(.005)
+        assert request['params']['arguments']==dict(fixture='native')
+        enrolled_tree()
         sys.stderr.buffer.write(bytes(4097))
         sys.stderr.buffer.flush()
         if mode=='answer':
-            reply(request,{'structuredContent':{'fixture':'native'},'isError':True})
+            reply(request,dict(structuredContent=dict(fixture='native'),isError=True))
         time.sleep(300)
 "#;
 
@@ -100,9 +107,9 @@ impl Drop for Barriers {
 }
 
 pub(super) fn run() {
-    for mode in ["answer", "timeout"] {
+    for mode in ["answer", "timeout", "process-exit"] {
         let barriers = Barriers::new();
-        let table = object([
+        let mut table = object([
             ("format", Value::Str("fsm.handlers/1".into())),
             (
                 "handlers",
@@ -142,6 +149,21 @@ pub(super) fn run() {
                 ])]),
             ),
         ]);
+        if mode == "process-exit" {
+            let Value::Obj(fields) = &mut table else {
+                panic!("fixture table is not an object")
+            };
+            let Value::Arr(handlers) = fields.get_mut("handlers").unwrap() else {
+                panic!("fixture handlers are not an array")
+            };
+            let Value::Obj(handler) = &mut handlers[0] else {
+                panic!("fixture handler is not an object")
+            };
+            handler.insert("kind".into(), Value::Str("process".into()));
+            handler.insert("timeout_ms".into(), Value::Num("10000".into()));
+            handler.remove("tool");
+            handler.remove("arguments");
+        }
         let mut fixture = Fixture::new_for_table(table);
         let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
         let (binding, effect) = claim_binding(&fixture, &domain);
@@ -240,7 +262,7 @@ pub(super) fn run() {
                     "b587fa297299ce9c602e58292b51379402bf7b1074f6b18679c2fb871c917ca8".into()
                 ))
             );
-        } else {
+        } else if mode == "timeout" {
             assert_eq!(
                 result.get("failure_class"),
                 Some(&Value::Str("timeout".into()))
@@ -248,6 +270,13 @@ pub(super) fn run() {
             assert_eq!(
                 candidate.get("error"),
                 Some(&Value::Str("exec/timeout".into()))
+            );
+        } else {
+            assert_eq!(result.get("failure_class"), Some(&Value::Null));
+            assert_eq!(candidate.get("status"), Some(&Value::Num("0".into())));
+            assert_eq!(
+                candidate.get("stdout"),
+                Some(&Value::Str("root-exited\n".into()))
             );
         }
         VerifiedClosure::read(Path::new(result.get("receipt").unwrap().as_str().unwrap())).unwrap();

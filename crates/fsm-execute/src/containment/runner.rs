@@ -17,6 +17,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
+#[path = "process_exit.rs"]
+mod process_exit;
+
 struct OwnedRun {
     directory: PathBuf,
     allocation: u64,
@@ -133,7 +136,11 @@ pub(super) fn execute(directory: &Path, allocation: u64) -> Result<Value, String
         ),
     ]);
     authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
+    let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)?;
+    let gate = handoff.get("gate").ok_or("runner protected gate missing")?;
     let deadline = Instant::now() + timeout;
+    let observation_interval = (timeout / 4).min(Duration::from_millis(100));
+    let mut root_observation = Instant::now() + observation_interval;
     let candidate = loop {
         stderr.poll();
         if let Some(stdout) = &mut stdout {
@@ -148,6 +155,19 @@ pub(super) fn execute(directory: &Path, allocation: u64) -> Result<Value, String
         }
         if Instant::now() >= deadline {
             break Candidate::Timeout;
+        }
+        if owned.worker.is_none() && Instant::now() >= root_observation {
+            match process_exit::observe(&claim.domain().to_value(), gate, deadline) {
+                Ok(Some(status)) => break Candidate::Process(status),
+                Ok(None) => {}
+                Err(error) => {
+                    if let Some(status) = owned.child.try_wait().map_err(io)? {
+                        break Candidate::Process(status.code().unwrap_or(-1));
+                    }
+                    return Err(format!("runner root inspection uncertain: {error}"));
+                }
+            }
+            root_observation = Instant::now() + observation_interval;
         }
         std::thread::sleep(Duration::from_millis(5));
     };

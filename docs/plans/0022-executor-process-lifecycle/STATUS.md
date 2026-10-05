@@ -1583,4 +1583,26 @@ lifecycle updates.
   acceptance; later closure/execution/MCP changes still need their own compiled
   native review, and task 9303 stays In progress.
 
+- **Early process-root exit observed for review:** the claimed runner now
+  periodically reads manager main-process exit fields within its remaining
+  handler deadline, matching invocation and the recorded original gate PID
+  before selecting a normal/signal exit candidate. Unknown/mismatched data
+  remains uncertain unless the owned transport has already supplied an actual
+  reaped status; closure and handle retirement still gate every result. Pure
+  controls cover live/normal/signal observations, canonical boundaries and
+  mismatched/missing/extra identity fields. The independent native tree fixture
+  now adds successful root exit with inherited child/grandchild streams and a
+  child in another session, requiring zero status/capture/proof before its
+  ten-second timeout. Source review also caught Python dictionary braces being
+  reserved argv-template syntax; fixture code now uses `dict()` without changing
+  the template contract, and both programs parse with no reserved braces.
+  Separately, retained `ab68110` run `37283037348` passes native stable/MSRV;
+  both artifacts independently verify 76 cases against source/compiler, covering
+  matched closure publication, opaque proof/store stopped replay and monotonic
+  successor allocation. This predates the claimed runner and does not establish
+  full portable/runner acceptance or independent executable-byte comparison.
+  Formatting/file-size/diff checks precede compiled/native review; broker,
+  service integration and uncertain-start reconciliation remain outstanding,
+  and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -11,6 +11,14 @@ the journal claim; no stopped result or settlement is written by this command.
 The public service runner, authenticated unprivileged broker, native MCP trees
 and uncertain-start recovery remain incomplete; this root operation does not
 release task 9303's acceptance gate.
+Process observation now also checks manager root status while its transport
+remains alive: recorded invocation and original gate PID must match canonical
+exit fields before selecting a candidate, so root exit can promptly trigger
+cleanup of surviving descendants. Query work respects the remaining handler
+deadline; mismatched/unknown inspection preserves uncertainty, and a candidate
+still requires full closure and owned handle retirement. These fields follow
+[systemd's main-process observation contract](https://github.com/systemd/systemd/blob/main/man/org.freedesktop.systemd1.xml),
+which distinguishes current MainPID from retained ExecMainPID information.
 
 Native review now exercises the production MCP execution path with a lingering
 server, child and grandchild inheriting protocol streams. An independent
@@ -25,6 +33,11 @@ diagnostics never authenticate authority or closure. This keeps the production
 launch policy: [systemd's execution contract](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml)
 documents DynamicUser's strict filesystem protection and the `/dev` exception.
 These controls are authored and still require compiled/native CI acceptance.
+The process-root-exit variant uses the same independently verified child and
+grandchild barrier, with the child entering another session; after release the
+root exits successfully and leaves inherited streams open. It must return the
+original zero status and captured root output with closure proof before its
+ten-second handler timeout, rather than waiting for the lingering tree.
 
 ## Decision status
 

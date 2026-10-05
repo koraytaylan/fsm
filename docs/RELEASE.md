@@ -12,6 +12,11 @@ a lingering server and inherited child/grandchild protocol streams, with
 independent enrollment barriers, error-answer capture/digest checks, timeout
 cleanup, matching closure evidence, retained journal ownership and duplicate
 launch refusal; this is test coverage awaiting native execution acceptance.
+Process-root observation now matches manager invocation and original gate PID
+to canonical exit information even while descendants keep the transport alive,
+then performs the same full cleanup/proof path. Native review adds an early
+root-exit tree case and preserves strict argv-template syntax by expressing
+fixture Python dictionaries without reserved brace characters.
 
 Unreleased private `complete-close` adds protected matched-stop retirement,
 domain tombstone and immutable closure receipt publication with exclusive

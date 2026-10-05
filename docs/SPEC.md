@@ -1663,6 +1663,16 @@ The provisional Linux-only `run::native_io::NativeCapture` and
 their constructors MUST NOT authorize launch, validate a claim or prove
 closure. NativeProtocol collection MUST require observed worker join, while
 cancellation and failed join MUST NOT establish native termination.
+For process handlers, a still-running manager transport MUST NOT hide root
+exit behind surviving descendants. The authority MUST periodically observe
+the manager's `InvocationID`, `ExecMainPID`, `ExecMainCode` and
+`ExecMainStatus` within the remaining handler deadline. Invocation and original
+PID MUST match the protected handoff; canonical normal exit status is 0..255,
+while killed/dumped roots project existing signal status `-1`. Unknown or
+mismatched inspection MUST retain uncertainty, except that an already reaped
+owned transport may supply its actual exit status. Root status remains only a
+candidate; descendant termination, full closure proof and owned handle cleanup
+remain mandatory. Neither PID absence nor root status alone proves closure.
 Successful stop MUST NOT publish closure evidence, clear claims or authorize
 settlement/capacity reuse; permanent closure requires independent completion.
 

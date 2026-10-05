@@ -8,6 +8,8 @@ approved invocation from its claim and returns the existing candidate result
 only after protected closure proof and owned handle retirement, in a bounded
 `fsm.native-run-result/1` response; journal formats and stable error codes are
 unchanged, with native MCP/tree/service acceptance still pending.
+Private process-root status observation changes no public API or journal
+format; matched exit data remains a candidate requiring native closure.
 
 Private `complete-close` publishes the existing native closure receipt format
 after matched accepted-submission retirement and protected admission fencing;
