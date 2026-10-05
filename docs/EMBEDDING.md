@@ -1,5 +1,8 @@
 # Embedding fsm as a library
 
+Private native startup refuses prearmed entry/pending grants before manager
+submission; embedded contained-runner and closure acceptance remain pending.
+
 Private startup now holds the authority lock until it verifies and durably
 records manager/gate handoff; a spawned utility alone does not constitute
 accepted startup. Derived grant access requires the same protected binding

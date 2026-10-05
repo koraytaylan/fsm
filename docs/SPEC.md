@@ -1476,6 +1476,10 @@ capability check is not handler termination or native closure evidence.
 The root-only `launch` operation MUST freshly validate the protected claim
 binding and approved catalogue under the authority lock before any manager
 submission. It MUST exclusively fsync a bounded cold-readable
+launch intent only after refusing any preexisting entry grant or pending grant,
+regardless of file type. Such refusal MUST leave intent absent and the
+prepared domain empty; prearmed entry MUST NOT bypass verified startup.
+The bounded cold-readable intent is
 `launch-<allocation>.json`, containing exactly `format`
 (`fsm.native-launch-intent/1`) and `binding`, before starting the fixed
 root-protected systemd-run with the installed protected gate and only its

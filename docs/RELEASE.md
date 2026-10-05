@@ -1,5 +1,8 @@
 # Releasing
 
+Unreleased launch now refuses existing entry or pending authorization of any
+file type before reserving intent, preserving verified gate handoff ordering.
+
 Unreleased startup now retains the authority lock through bounded verified
 manager/gate handoff and fsyncs its protected binding/diagnostic record before
 returning transport ownership. Failed startup revokes admission under that

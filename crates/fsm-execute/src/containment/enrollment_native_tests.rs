@@ -70,6 +70,33 @@ pub(super) fn run() {
     // Explicit repair of this test-owned injected partial record, not cold
     // production recovery or permission to recycle a failed launch.
     fs::remove_file(&intent_path).unwrap();
+    for suffix in ["json", "json.pending"] {
+        let prearmed = fixture.directory.join(format!("entry-1.{suffix}"));
+        for symlink in [false, true] {
+            if symlink {
+                std::os::unix::fs::symlink("test-owned-absent-target", &prearmed).unwrap();
+            } else {
+                fs::write(&prearmed, b"test-owned-prearmed-entry").unwrap();
+            }
+            assert!(
+                launch::begin(
+                    &fixture.directory,
+                    1,
+                    [Stdio::null(), Stdio::null(), Stdio::null()]
+                )
+                .unwrap_err()
+                .contains("preexisting entry authorization")
+            );
+            assert!(!intent_path.exists());
+            assert!(
+                fs::read_to_string(fixture.groups[0].0.join("cgroup.events"))
+                    .unwrap()
+                    .lines()
+                    .any(|line| line == "populated 0")
+            );
+            fs::remove_file(&prearmed).unwrap();
+        }
+    }
     let (child, bound) = launch::begin(
         &fixture.directory,
         1,

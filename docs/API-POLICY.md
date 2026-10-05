@@ -1,5 +1,8 @@
 # API and version policy
 
+Private launch refuses prearmed grant/pending paths before submission; this
+tightens startup admission without changing public APIs or journal formats.
+
 Private `fsm.native-launch-handoff/1` binds verified manager/gate diagnostics
 to the protected original claim binding; authorization requires exact fresh
 corroboration and replay durability. This changes no journal version or stable

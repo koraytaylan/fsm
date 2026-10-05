@@ -29,6 +29,13 @@ pub(super) fn begin(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(io(error)),
     }
+    for suffix in ["json", "json.pending"] {
+        match fs::symlink_metadata(directory.join(format!("entry-{allocation}.{suffix}"))) {
+            Ok(_) => return Err("launch refuses preexisting entry authorization".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io(error)),
+        }
+    }
     enrollment::installed()?;
     let executable = Path::new("/usr/bin/systemd-run");
     protected_directory(executable.parent().ok_or("launcher has no parent")?)?;

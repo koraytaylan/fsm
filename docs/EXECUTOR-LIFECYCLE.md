@@ -2,6 +2,10 @@
 
 ## Decision status
 
+Launch refuses preexisting entry or pending authorization, including dangling
+symlinks, before intent publication or manager submission so a prearmed grant
+cannot bypass verified handoff; native controls retain empty prepared domains.
+
 Startup keeps the authority lock until a shared two-second manager/gate
 handoff check succeeds and its bounded protected handoff record is fsynced.
 It reserves the largest envelope before intent publication, and failed handoff

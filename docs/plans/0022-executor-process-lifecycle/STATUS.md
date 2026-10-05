@@ -1439,4 +1439,11 @@ lifecycle updates.
   earlier descendant readiness failure remains unresolved until execution
   reaches its retained diagnostic, and task 9303 stays In progress.
 
+- **Prearmed startup admission refused:** review identified that a grant
+  published before launch could bypass gate handoff verification. Startup now
+  refuses either entry/pending path of any type under the authority lock before
+  intent or manager submission. Native controls cover regular and dangling
+  symlink paths, absent intent and unchanged empty population. Formatting and
+  file-length checks precede frozen compiled/native CI; 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
