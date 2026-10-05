@@ -34,7 +34,9 @@ watcher terminates the helper on channel loss and joins on ordinary return.
 The parent keeps that channel open until cancellation or
 helper retirement, and channel loss does not authorize journal settlement.
 Native broker disconnect controls exercise both direct helper death and lifetime
-EOF for process and MCP trees, but do not yet prove actual public host death.
+EOF for process and MCP trees, and now include actual death of an unprivileged
+host using the production `NativeRequest` adapter; compiled native acceptance
+remains pending, and an orphan zombie is recorded as dead rather than reaped.
 
 The provisional Linux `run::native_client::NativeRequest` supervisor now owns
 the fixed protected transport helper and nonblocking standard-stream sockets.

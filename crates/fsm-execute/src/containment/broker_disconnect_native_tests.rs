@@ -9,9 +9,9 @@ use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::{Store, VerifiedClosure};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::os::fd::OwnedFd;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -48,6 +48,71 @@ from pathlib import Path
 authority=Path(sys.argv[1]).parent
 os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client-watch',authority.parent.name,authority.name.removeprefix('authority-')])
 "#;
+
+const SUPERVISOR: &str = r#"import os,sys
+os.setgroups([])
+os.setgid(65534)
+os.setuid(65534)
+assert os.getuid()==65534 and os.geteuid()==65534 and os.getgroups()==[]
+from pathlib import Path
+authority=Path(sys.argv[1]).parent
+os.environ['FSM_NATIVE_TEST_NAMESPACE']=authority.parent.name
+os.execv(str(authority/'supervisor-test'),['supervisor-test','--exact','authority::allocator::native_tests::supervisor_probe::owned_request','--ignored','--nocapture','--color','never'])
+"#;
+
+fn install_supervisor(directory: &Path) {
+    let source = fs::File::open(std::env::current_exe().unwrap()).unwrap();
+    let length = source.metadata().unwrap().len();
+    assert!(length > 0 && length <= 64 * 1024 * 1024);
+    let mut destination = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(directory.join("supervisor-test"))
+        .unwrap();
+    assert_eq!(
+        std::io::copy(&mut source.take(length + 1), &mut destination).unwrap(),
+        length
+    );
+    destination
+        .set_permissions(fs::Permissions::from_mode(0o755))
+        .unwrap();
+    destination.sync_all().unwrap();
+    fs::File::open(directory).unwrap().sync_all().unwrap();
+}
+
+fn supervised_helper(pid: u32) -> u32 {
+    let expected = identity(&fs::metadata("/usr/libexec/fsm-containment-authority").unwrap());
+    let mut found = Vec::new();
+    for task in fs::read_dir(format!("/proc/{pid}/task")).unwrap() {
+        let children = fs::read_to_string(task.unwrap().path().join("children")).unwrap();
+        assert!(children.len() <= 4096);
+        for child in children.split_whitespace() {
+            let child: u32 = child.parse().unwrap();
+            if fs::metadata(format!("/proc/{child}/exe"))
+                .is_ok_and(|metadata| identity(&metadata) == expected)
+            {
+                assert_eq!(fs::metadata(format!("/proc/{child}")).unwrap().uid(), 65534);
+                found.push(child);
+            }
+        }
+    }
+    assert_eq!(
+        found.len(),
+        1,
+        "supervisor must own exactly one installed helper"
+    );
+    found[0]
+}
+
+fn process_dead(pid: u32) -> bool {
+    match fs::read_to_string(format!("/proc/{pid}/status")) {
+        Ok(status) => status
+            .lines()
+            .find_map(|line| line.strip_prefix("State:"))
+            .is_some_and(|state| state.trim_start().starts_with('Z')),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    }
+}
 
 struct Client(Child);
 
@@ -119,14 +184,19 @@ fn table(path: &Path, mode: &str) -> Value {
 }
 
 pub(super) fn run() {
-    for (mode, watch) in [
-        ("cancel-process", false),
-        ("cancel-mcp", false),
-        ("cancel-process", true),
-        ("cancel-mcp", true),
+    for (mode, watch, supervisor) in [
+        ("cancel-process", false, false),
+        ("cancel-mcp", false, false),
+        ("cancel-process", true, false),
+        ("cancel-mcp", true, false),
+        ("cancel-process", false, true),
+        ("cancel-mcp", false, true),
     ] {
         let barriers = Barriers::new();
         let mut fixture = Fixture::new_for_table(table(&barriers.path, mode));
+        if supervisor {
+            install_supervisor(&fixture.directory);
+        }
         broker_endpoint::provision(&fixture.directory, 65534).unwrap();
         let base = fixture.directory.join("broker");
         let mut daemon = Daemon::ready(&fixture.directory, 1);
@@ -151,7 +221,16 @@ pub(super) fn run() {
         let mut lifetime = None;
         let mut command = Command::new("/usr/bin/python3");
         command
-            .args(["-c", if watch { WATCH_CLIENT } else { CLIENT }])
+            .args([
+                "-c",
+                if supervisor {
+                    SUPERVISOR
+                } else if watch {
+                    WATCH_CLIENT
+                } else {
+                    CLIENT
+                },
+            ])
             .arg(&base);
         if watch {
             let (mut owner, input) = UnixStream::pair().unwrap();
@@ -192,8 +271,16 @@ pub(super) fn run() {
         );
         assert_eq!(
             identity(&fs::metadata(format!("/proc/{}/exe", client.0.id())).unwrap()),
-            identity(&fs::metadata("/usr/libexec/fsm-containment-authority").unwrap())
+            identity(
+                &fs::metadata(if supervisor {
+                    fixture.directory.join("supervisor-test")
+                } else {
+                    Path::new("/usr/libexec/fsm-containment-authority").to_path_buf()
+                })
+                .unwrap()
+            )
         );
+        let helper = supervisor.then(|| supervised_helper(client.0.id()));
         let root = read_value(&barriers.path.join("root-ready"), false).unwrap();
         let descendants = read_value(&barriers.path.join("descendant-ready"), false).unwrap();
         let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();
@@ -272,6 +359,16 @@ pub(super) fn run() {
             }
         }
         drop(client);
+        if let Some(helper) = helper {
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while !process_dead(helper) {
+                assert!(
+                    Instant::now() < deadline,
+                    "helper executes after supervisor death and closure"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
         let stopped = read_value(&fixture.directory.join("manager-stopped-1.json"), true).unwrap();
         assert_eq!(stopped.get("binding"), Some(&binding));
         assert_eq!(stopped.get("gate"), handoff.get("gate"));

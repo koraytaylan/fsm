@@ -1877,4 +1877,19 @@ lifecycle updates.
   size and diff checks pass; public host death and full service integration
   remain pending, and task 9303 stays In progress.
 
+- **Actual public supervisor-death controls authored:** the native disconnect
+  case now includes process and MCP hosts running the production `NativeRequest`
+  adapter as UID 65534, using an exclusively copied frozen test executable in
+  the test-owned protected authority directory. Before killing the host, an
+  independent observer verifies host/helper executable identities, operator UID,
+  enrolled root/grandchild membership and live population. Host SIGKILL must
+  lead to matched domain closure and broker worker retirement before handler
+  timeout; the helper must be absent or kernel-zombie dead, without claiming
+  adopted-zombie reap or releasing the unresolved journal claim. The native
+  case now covers six trees with a 90-second outer watchdog and a 300-second
+  unrelated survival sentinel, preserving per-tree deadlines. Formatting, size,
+  Python syntax and diff checks pass; exact-source stable/MSRV native execution,
+  public service integration and remaining plan tasks stay pending, and task
+  9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -19,6 +19,9 @@ mod runner_cases;
 #[path = "broker_native_tests.rs"]
 mod broker_cases;
 
+#[path = "supervisor_native_probe.rs"]
+mod supervisor_probe;
+
 #[test]
 #[ignore = "requires provisioned root broker and writable cgroups"]
 fn provisioned_broker_access() {
