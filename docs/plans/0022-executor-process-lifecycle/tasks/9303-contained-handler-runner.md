@@ -195,3 +195,25 @@ the provisioned supervisor's read-only recovery and retained-completion cases
 support these boundaries; production service admission remains task 9401.
 No acceptance-blocking finding was identified in this slice; enrollment and
 settlement/spec/API review still remain, together with frozen local gates.
+
+Aggregate review, launch/enrollment/grant slice at the same frozen source:
+`launch::begin` holds fresh binding validation through exclusive durable launch
+intent and protected handoff publication, refuses previous submission or entry
+grants, and reserves envelope limits before submitting the isolated systemd gate.
+Incomplete submission revokes admission under that lock and never removes the
+launch intent to permit resubmission.
+`enrollment::inspect` compares manager invocation/policy, routed membership,
+installed executable identity, bounded proc credentials and private descriptors,
+then repeats observations and cgroup/installation identity before returning.
+`authorize::publish_enrolled` repeats current binding/catalogue validation and
+actual gate inspection under the authority lock; only the matched dynamic group
+receives an exclusively linked, synced grant.
+The gate refuses Root, verifies its route/boot/cgroup/authority identity and
+rechecks the protected grant plus closing state before exec; final validation
+races depend on closing's native fence rather than pathname checks alone.
+Native enrollment controls refuse missing/altered handoff and prove approved
+execution and stopped-gate retirement; their passing frozen matrix is evidence
+for this production path, not permission for a host to skip durable claiming.
+No acceptance-blocking finding was identified in these inspected operations;
+private exec-status authentication, settlement and the complete spec/API cross-
+check still require review, and frozen local host verification remains pending.
