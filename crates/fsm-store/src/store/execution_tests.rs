@@ -557,3 +557,176 @@ fn production_claim_entry_ceiling_preserves_the_counter_and_request_slot() {
         "base state file: invalid execution field: entries"
     );
 }
+
+#[test]
+fn production_stop_charges_the_complete_eight_mib_execution_block() {
+    use fsm_core::canon::canon_bytes;
+    const LIMIT: usize = 8 * 1024 * 1024;
+    // Structural restored-state fixture and preauthenticated proof only.
+    let (mut store, effect) = pending();
+    allocate(&mut store, &effect, "claim", &mut FixedClock::new(100, 1)).unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let evidence = proof(&store, &claim);
+    let empty = Value::Obj(BTreeMap::from([
+        ("status".into(), Value::Str("ok".into())),
+        ("result".into(), Value::Str(String::new())),
+    ]));
+    let outcome_overhead = canon_bytes(&empty).len();
+    let mut entries: Vec<_> = (1..=128)
+        .map(|run| {
+            let Value::Obj(mut metadata) = claim.to_value() else {
+                panic!("claim object")
+            };
+            metadata.insert("run_id".into(), Value::Num(run.to_string()));
+            if run != 1 {
+                metadata.insert("effect_id".into(), Value::Str(format!("fixture-{run:03}")));
+            }
+            let closure = Closure::new(
+                run,
+                claim.domain().clone(),
+                format!("sha256:{}", "b".repeat(64)),
+            )
+            .unwrap();
+            Value::Obj(BTreeMap::from([
+                ("claim".into(), Value::Obj(metadata)),
+                (
+                    "stopped".into(),
+                    Value::Obj(BTreeMap::from([
+                        ("closure".into(), closure.to_value()),
+                        ("outcome".into(), empty.clone()),
+                    ])),
+                ),
+            ]))
+        })
+        .collect();
+    let block = |claims: Vec<Value>| {
+        Value::Obj(BTreeMap::from([
+            ("admission".into(), Value::Str("enabled".into())),
+            ("run_high_water".into(), Value::Num("128".into())),
+            ("claims".into(), Value::Arr(claims)),
+            ("retry".into(), Value::Arr(Vec::new())),
+        ]))
+    };
+    let mut remaining = LIMIT - canon_bytes(&block(entries.clone())).len();
+    for entry in entries.iter_mut().skip(1) {
+        let amount = remaining.min(65536 - outcome_overhead);
+        let Value::Obj(entry) = entry else {
+            panic!("entry object")
+        };
+        let Some(Value::Obj(stopped)) = entry.get_mut("stopped") else {
+            panic!("stopped object")
+        };
+        let Some(Value::Obj(outcome)) = stopped.get_mut("outcome") else {
+            panic!("outcome object")
+        };
+        outcome.insert("result".into(), Value::Str("x".repeat(amount)));
+        remaining -= amount;
+    }
+    assert_eq!(remaining, 0);
+    let exact_block = block(entries.clone());
+    assert_eq!(canon_bytes(&exact_block).len(), LIMIT);
+    let Value::Obj(first) = &mut entries[0] else {
+        panic!("entry object")
+    };
+    first.insert("stopped".into(), Value::Null);
+    store.state.execution = ExecutionState::from_value(&block(entries)).unwrap();
+    let before = store.state.clone();
+    let oversized_outcome =
+        StoppedOutcome::from_value(&json(br#"{"status":"ok","result":"x"}"#)).unwrap();
+    assert_eq!(
+        store
+            .stop_execution_on(
+                &mut FixedClock::new(100, 1),
+                ExecutionStopRequest {
+                    claim: &claim,
+                    proof: &evidence,
+                    outcome: &oversized_outcome,
+                    request_id: "overflow-stop",
+                    expected_seq: None,
+                }
+            )
+            .unwrap_err()
+            .code,
+        "store/execution_limit"
+    );
+    assert!(crate::snapshot::store_states_eq(&before, &store.state));
+    assert_eq!(store.journal.last_seq, before.last_seq);
+    assert!(!store.state.dedup.contains_key("overflow-stop"));
+    let exact_outcome = StoppedOutcome::from_value(&empty).unwrap();
+    store
+        .stop_execution_on(
+            &mut FixedClock::new(100, 1),
+            ExecutionStopRequest {
+                claim: &claim,
+                proof: &evidence,
+                outcome: &exact_outcome,
+                request_id: "exact-stop",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(store.state.execution.to_value(), exact_block);
+    assert_eq!(canon_bytes(&store.state.execution.to_value()).len(), LIMIT);
+    assert_eq!(store.state.execution.unresolved().count(), 128);
+    let snapshot = crate::snapshot::state_to_snapshot(&store.state);
+    let restored = crate::snapshot::snapshot_to_state(&snapshot).unwrap();
+    assert!(crate::snapshot::store_states_eq(&store.state, &restored));
+    let index = crate::base::BaseIndex {
+        execution_claims: store
+            .state
+            .execution
+            .unresolved()
+            .map(|(claim, _)| (claim.run_id(), format!("sha256:{}", "b".repeat(64))))
+            .collect(),
+        ..crate::base::BaseIndex::default()
+    };
+    let roots = crate::base::base_roots(&store.state, &index);
+    let base = crate::base::encode(&store.state, &index, crate::base::DefinitionLimits::Current);
+    let (restored, _) = crate::base::decode(&base, &roots).unwrap();
+    assert!(crate::snapshot::store_states_eq(&store.state, &restored));
+    let Value::Obj(mut execution) = exact_block else {
+        panic!("execution object")
+    };
+    let Some(Value::Arr(entries)) = execution.get_mut("claims") else {
+        panic!("claims array")
+    };
+    let Value::Obj(first) = &mut entries[0] else {
+        panic!("entry object")
+    };
+    let Some(Value::Obj(stopped)) = first.get_mut("stopped") else {
+        panic!("stopped object")
+    };
+    stopped.insert("outcome".into(), oversized_outcome.to_value());
+    assert_eq!(canon_bytes(&Value::Obj(execution.clone())).len(), LIMIT + 1);
+    let Value::Obj(mut snapshot) = snapshot else {
+        panic!("snapshot object")
+    };
+    snapshot.insert("execution".into(), Value::Obj(execution.clone()));
+    snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
+    let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+        "fsm:snapshot:6",
+        &Value::Obj(snapshot.clone()),
+    ));
+    snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));
+    assert_eq!(
+        crate::snapshot::snapshot_to_state(&Value::Obj(snapshot))
+            .unwrap_err()
+            .message,
+        "invalid execution field: bytes"
+    );
+    let Value::Obj(mut base) = base else {
+        panic!("base object")
+    };
+    base.insert("execution".into(), Value::Obj(execution));
+    assert_eq!(
+        crate::base::decode(&Value::Obj(base), &roots)
+            .unwrap_err()
+            .message,
+        "base state file: invalid execution field: bytes"
+    );
+}

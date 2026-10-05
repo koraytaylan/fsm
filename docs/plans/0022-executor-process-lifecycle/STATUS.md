@@ -466,4 +466,19 @@ lifecycle updates.
   stays In progress. Review CI `37254257934` now has both macOS and both Linux
   toolchains successful; the two Windows legs remain live.
 
+- **Complete execution block budget:** a restored structural fixture combines
+  128 bounded claim/closure identities and individually bounded stopped results,
+  accounting for every canonical key, delimiter and value. The production stop
+  API refuses a result that would make the complete block 8 MiB plus one byte
+  without changing state, head or request ownership, then admits the exact
+  8 MiB result while retaining all unresolved owners. Snapshot/6 and base/2
+  restore the exact block; recomputing the snapshot checksum cannot bypass
+  plus-one refusal, and authoritative base decoding also refuses `bytes`.
+  All seven transition cases pass on stable and MSRV, and all-target Clippy
+  passes. This is resource enforcement from structural restored state with
+  preauthenticated fixture evidence, not native authentication or proof that
+  every fixture result was durably produced. Resource guard negative controls,
+  the remaining fault inventory and native receipt publication/authentication
+  are still required before task 9302 can finish.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
