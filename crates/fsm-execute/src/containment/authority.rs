@@ -294,13 +294,7 @@ fn validate_binding(directory: &Path, binding: &Value) -> Result<(Claim, File), 
     }
     lock.try_lock().map_err(|_| "authority busy")?;
     let allocation = number(&domain, "allocation")?;
-    for phase in ["closing", "closed"] {
-        match fs::symlink_metadata(directory.join(format!("{phase}-{allocation}.json"))) {
-            Ok(_) => return Err("native allocation is closing or closed".into()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(io(error)),
-        }
-    }
+    entry::ensure_open(directory, allocation)?;
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
     closed(&prepared, &["format", "phase", "domain"])?;
     if text(&prepared, "format")? != "fsm.native-prepared/1"

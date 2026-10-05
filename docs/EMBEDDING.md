@@ -4,6 +4,9 @@ The private root authority can publish immutable entry grants after checking
 the protected binding and current runnable claim; this command does not
 launch a handler or provide an embedded contained runner. Broker access policy,
 trusted group derivation, native launch and closure remain under development.
+The private entry gate verifies routed enrollment before waiting up to five
+seconds for authorization and refuses closing/closed markers before exec;
+this wait does not supply an embedded launch or shutdown API.
 
 Execution blocks reserve one enclosing JSON container: `stop` and block
 decoding reject nesting above 63 containers before changing ownership.

@@ -8,6 +8,9 @@ native launch/I/O and closure integration remain required. Root-only grant
 publication now revalidates the protected binding and current claim, refuses
 closing/closed allocations and group zero, and exclusively publishes a synced
 root-owned 0440 grant. Trusted broker group selection remains outstanding.
+An enrolled gate now waits up to five seconds for publication and refuses
+closing/closed markers during the wait and before exec; real DynamicUser
+launch and closure fencing remain required for complete acceptance.
 
 Unreleased native authority work adds a separately provisioned root-only
 registration/binding binary with bounded canonical protected records and

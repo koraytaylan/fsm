@@ -280,6 +280,11 @@ fn genuine_claim_binding() {
         ("group_id", Value::Num("0".into())),
     ]);
     assert!(super::super::authorize::publish(&fixture.directory, &root_group).is_err());
+    assert!(
+        super::super::entry::wait_grant(&fixture.directory, 1, std::time::Duration::ZERO)
+            .unwrap_err()
+            .contains("deadline expired")
+    );
     for phase in ["closing", "closed"] {
         let marker = fixture.directory.join(format!("{phase}-1.json"));
         fs::write(&marker, b"malformed marker").unwrap();
@@ -289,6 +294,11 @@ fn genuine_claim_binding() {
                 .contains("closing or closed")
         );
         assert!(!fixture.directory.join("entry-1.json").exists());
+        assert!(
+            super::super::entry::wait_grant(&fixture.directory, 1, std::time::Duration::ZERO)
+                .unwrap_err()
+                .contains("closing or closed")
+        );
         fs::remove_file(marker).unwrap();
     }
     super::super::authorize::publish(&fixture.directory, &request).unwrap();
@@ -299,6 +309,10 @@ fn genuine_claim_binding() {
         (0, 1, 0o440)
     );
     assert_eq!(read_value(&entry_path, true).unwrap(), grant);
+    assert_eq!(
+        super::super::entry::wait_grant(&fixture.directory, 1, std::time::Duration::ZERO).unwrap(),
+        grant
+    );
     assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
     let mut store = Store::open(&fixture.store).unwrap();
     store.cancel_instance("instance", "cancel").unwrap();

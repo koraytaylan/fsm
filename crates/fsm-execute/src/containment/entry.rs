@@ -9,6 +9,7 @@ use std::os::unix::fs::MetadataExt;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
     if fs::metadata("/proc/self").map_err(io)?.uid() == 0 {
@@ -28,8 +29,13 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
     }
     let directory = authority_path(namespace, generation)?;
     protected_directory(&directory)?;
+    let unit = format!("fsm-containment-{namespace}-{generation}-{allocation}.service");
+    let membership = fs::read_to_string("/proc/self/cgroup").map_err(io)?;
+    if membership != format!("0::/system.slice/{unit}\n") {
+        return Err("entry is not enrolled in its routed native domain".into());
+    }
     let grant_path = directory.join(format!("entry-{allocation}.json"));
-    let grant = read_value(&grant_path, true)?;
+    let grant = wait_grant(&directory, allocation, Duration::from_secs(5))?;
     let (claim, argv) = decode(&grant)?;
     let domain = claim.domain().to_value();
     if text(&domain, "namespace")? != namespace
@@ -41,9 +47,7 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
         return Err("entry authority or route differs".into());
     }
     let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").map_err(io)?;
-    let unit = format!("fsm-containment-{namespace}-{generation}-{allocation}.service");
     let group = Path::new("/sys/fs/cgroup/system.slice").join(&unit);
-    let membership = fs::read_to_string("/proc/self/cgroup").map_err(io)?;
     let observed = fs::symlink_metadata(group).map_err(io)?;
     if boot.trim() != text(&domain, "boot")?
         || membership != format!("0::/system.slice/{unit}\n")
@@ -60,8 +64,42 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
     if read_value(&grant_path, true)? != grant {
         return Err("entry grant changed before execution".into());
     }
+    ensure_open(&directory, allocation)?;
     let error = Command::new(&argv[0]).args(&argv[1..]).exec();
     Err(format!("authorized handler exec failed: {error}"))
+}
+
+pub(super) fn ensure_open(directory: &Path, allocation: u64) -> Result<(), String> {
+    for phase in ["closing", "closed"] {
+        match fs::symlink_metadata(directory.join(format!("{phase}-{allocation}.json"))) {
+            Ok(_) => return Err("native allocation is closing or closed".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io(error)),
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn wait_grant(
+    directory: &Path,
+    allocation: u64,
+    bound: Duration,
+) -> Result<Value, String> {
+    let started = Instant::now();
+    let path = directory.join(format!("entry-{allocation}.json"));
+    loop {
+        ensure_open(directory, allocation)?;
+        match fs::symlink_metadata(&path) {
+            Ok(_) => return read_value(&path, true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io(error)),
+        }
+        let remaining = bound.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            return Err("entry authorization deadline expired".into());
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(5)));
+    }
 }
 
 pub(super) fn decode(grant: &Value) -> Result<(Claim, Vec<String>), String> {

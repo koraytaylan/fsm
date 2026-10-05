@@ -1476,6 +1476,13 @@ cgroup membership before replacing itself with the granted absolute command.
 Root ownership protects the grant; the launcher MUST independently verify
 current durable ownership before publication and revoke entry on closing.
 An absent, malformed or mismatched grant MUST execute no handler code.
+Before waiting for authorization, the gate MUST verify exact membership in
+its canonically routed cgroup. An enrolled gate may wait at most five seconds
+for the exclusively published grant, polling without retaining handler output
+or executing handler code. Closing/closed markers, including malformed markers,
+MUST refuse both during that wait and immediately before exec. Only absence
+permits waiting; inaccessible or malformed grant files MUST refuse immediately.
+This final check does not replace fencing/killing the gate during closure.
 
 Entry authorization MUST require the already protected binding and re-read
 current durable ownership under the authority lock before grant publication.

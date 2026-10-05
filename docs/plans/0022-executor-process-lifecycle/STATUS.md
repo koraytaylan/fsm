@@ -1158,4 +1158,17 @@ lifecycle updates.
   fixture, not proof of trusted broker group selection or actual gate launch;
   `production_backend: false` remains accurate. Task 9303 stays In progress.
 
+- **Enrolled entry authorization wait implemented:** exact routed cgroup
+  membership now precedes a fixed five-second wait for exclusive grant
+  publication, allowing a future launcher to derive the DynamicUser group
+  before publishing. Only absence permits waiting; errors refuse, and any
+  closing/closed marker refuses during waiting and immediately before exec.
+  The binding validator shares this fail-closed marker check. The native
+  genuine-binding case adds zero-bound missing-grant, malformed-marker and
+  published-grant checks for the actual gate helper; these do not prove
+  positive waiting or a real enrolled unprivileged gate launch. Local
+  compilation remains prohibited by the full-swap rule; frozen-source CI
+  validation is the next step. Full manager launch, trusted group selection,
+  native I/O and closure fencing remain outstanding; task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

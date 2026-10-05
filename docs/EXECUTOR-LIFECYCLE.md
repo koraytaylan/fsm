@@ -7,7 +7,11 @@ requires an unprivileged identity, reads a root-owned immutable entry grant,
 and checks authority/cgroup device and inode, boot and its own exact cgroup
 membership before replacing itself with the granted absolute command.
 It rejects caller-supplied argv and malformed grants and rechecks the grant
-before exec. The launcher must still publish that grant only after independent
+before exec. Exact routed cgroup membership precedes a bounded five-second
+wait for grant publication, allowing the launcher to derive the enrolled
+DynamicUser group before authorizing entry. Only an absent grant permits
+waiting; closing/closed markers refuse during the wait and before exec.
+The launcher must still publish that grant only after independent
 current-claim verification, and closure must fence/kill the enrolled gate to
 cover the final check-to-exec race. The root-only `authorize` operation now
 publishes grants after matching the protected binding and revalidating current
