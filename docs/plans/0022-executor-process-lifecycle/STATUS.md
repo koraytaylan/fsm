@@ -1653,4 +1653,25 @@ lifecycle updates.
   tree/root-exit/cancellation/uncertainty source still requires its own native
   acceptance. Task 9303 stays In progress.
 
+- **Production broker transport implemented for review:** private authority
+  commands now explicitly provision one nonzero operator UID outside the
+  dynamic-handler interval and serve a protected local endpoint. Startup holds
+  lifetime leadership, verifies immutable configuration/current authority,
+  checks bounded complete epoch history, burns the next epoch durably before
+  socket creation, preserves old sockets and publishes a read-only atomic route
+  only after operator-only socket permissions. Missing/pending/rollback state
+  refuses startup. Canonical length-prefixed requests have bounded acquisition
+  and response deadlines, fixed closed shapes and only prepare/bind/execute/
+  close/observe actions, with no caller path, argv, grant or manager command.
+  At most eight owned sessions dispatch existing production authority logic;
+  executing sessions own their runner thread, detect client EOF/trailing data
+  as cancellation, and observe join before returning/releasing capacity.
+  Authority loss closes admission and requests cancellation while retaining
+  leadership through owned session joins. Responses never settle the journal;
+  oversized responses refuse with an ownership-preserving error. Pure protocol
+  controls cover bounds, canonical framing, allocation aliases and policy
+  refusal. Formatting/file-size/diff checks pass; compiled/native authentication,
+  restart, disconnect and service/client integration remain required, with host
+  stop/drain/recovery still incomplete; task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

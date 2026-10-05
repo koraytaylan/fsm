@@ -1,5 +1,17 @@
 # Releasing
 
+Private broker transport is implemented for review: root `provision-broker`
+binds one operator UID outside the handler identity range, and `serve` holds
+exclusive lifetime leadership, burns durable socket epochs, preserves stale
+sockets and publishes a read-only route after applying operator-only access.
+Connections use bounded canonical length-prefixed JSON with a fixed action
+policy and at most eight owned sessions; execution delegates to the claimed
+runner and treats client EOF as cancellation, retaining worker ownership until
+cleanup returns. Missing/changed authority refuses operation, and no broker
+response settles journal ownership. Protocol controls are authored; compiled
+native authentication, restart, disconnect, client/service wiring and host
+shutdown/recovery acceptance remain required.
+
 Native runner fault controls now corrupt only fixture-owned protected handoff
 material after independent process/MCP tree enrollment and request cancellation.
 The production runner must return cleanup uncertainty, preserve durable closing

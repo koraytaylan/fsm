@@ -57,6 +57,13 @@ mod closure;
 #[path = "runner.rs"]
 mod runner;
 
+#[path = "broker.rs"]
+mod broker;
+#[path = "broker_endpoint.rs"]
+mod broker_endpoint;
+#[path = "broker_frame.rs"]
+mod broker_frame;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -66,7 +73,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() < 3 {
         return Err(
-            "usage: register|catalogue|bind|prepare|launch|execute|authorize|authorize-enrolled|begin-close|request-kill|request-stop|complete-close|observe NAMESPACE GENERATION [REQUEST]"
+            "usage: register|catalogue|bind|prepare|launch|execute|authorize|authorize-enrolled|begin-close|request-kill|request-stop|complete-close|observe|provision-broker|serve NAMESPACE GENERATION [REQUEST]"
                 .into(),
         );
     }
@@ -86,12 +93,20 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
             | "execute"
             | "observe"
             | "catalogue"
+            | "provision-broker"
+            | "serve"
     ) {
         return Err("operation outside authority policy".into());
     }
     let namespace = arguments[1].to_str().ok_or("invalid namespace")?;
     let generation = arguments[2].to_str().ok_or("invalid generation")?;
     let directory = authority_path(namespace, generation)?;
+    if operation == "serve" {
+        if arguments.len() != 3 {
+            return Err("serve takes no caller execution input".into());
+        }
+        return broker::serve(&directory);
+    }
     if operation == "prepare" {
         if arguments.len() != 3 {
             return Err("prepare takes no caller domain".into());
@@ -103,6 +118,14 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() != 4 {
         return Err("authority operation requires exactly one request path or allocation".into());
+    }
+    if operation == "provision-broker" {
+        let raw = arguments[3].to_str().ok_or("invalid operator UID")?;
+        let uid = raw.parse::<u32>().map_err(|_| "invalid operator UID")?;
+        if raw != uid.to_string() {
+            return Err("noncanonical operator UID".into());
+        }
+        return broker_endpoint::provision(&directory, uid);
     }
     if operation == "catalogue" {
         let source = Path::new(&arguments[3]);

@@ -1,5 +1,16 @@
 # Embedding fsm as a library
 
+The private Linux containment authority now includes provisioned local broker
+transport (`provision-broker NAMESPACE GENERATION UID`, then `serve NAMESPACE
+GENERATION` under UMask=0077). Its root-owned protected route and operator-only
+socket authorize one configured UID, excluding dynamic handler identities;
+canonical requests dispatch only preparation, claim binding, execution,
+closure and observation. Execution reuses the claimed native runner, and
+client disconnect requests cancellation with matching proof still required.
+This is implementation awaiting native acceptance and public client/service
+integration; it is not yet a supported embedder containment constructor or
+completed lifecycle backend.
+
 Linux `run::native_io::{NativeCapture, NativeProtocol}` expose the shared
 bounded capture and owned cancellable MCP exchange for an already enrolled
 transport; callers still must provide claim authorization and prove domain

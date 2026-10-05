@@ -1511,6 +1511,46 @@ transport/root exit MUST NOT issue closure evidence or permit settlement.
 Broker authentication, manager admission fencing and permanent closure remain
 required before the contained runner is accepted.
 
+The private root authority MUST support explicit `provision-broker` for one
+nonzero operator UID outside the reserved dynamic-handler UID interval
+61184..65519, and `serve` for that provisioned authority. Provisioning MUST
+exclusively create protected configuration and epoch counter; serving MUST NOT
+recreate missing authority. A root-owned lifetime broker lock MUST exclude a
+second server. Every server startup MUST durably burn a monotonically increasing
+epoch before binding a fresh Unix socket, preserve old sockets, and refuse
+counter rollback, missing epoch history or partial pending counter material.
+The socket MUST be created under a mask excluding all group/other permissions,
+then have mode 0600 and the configured operator owner before a root-owned,
+read-only, atomically published route exposes its epoch and native identity.
+The protected namespace prevents socket replacement by the operator; root and
+kernel administrators remain trusted. Socket permissions authenticate operator
+access without granting the handler's dynamic UID access to the control route.
+
+A broker connection MUST carry exactly one canonical JSON request, prefixed by
+a four-byte big-endian length within 1..8192, acquired within a shared 500 ms
+frame deadline. Its closed shape is `format` (`fsm.native-request/1`), `action`
+and `payload`. The only actions are `prepare` (null payload), `bind` (existing
+claim-binding payload), and `execute`, `close`, `observe` (positive canonical
+allocation number). No request may supply a namespace, filesystem path, argv,
+manager command or grant. Dispatch MUST remain bound to the provisioned
+verified authority directory; claim/catalogue/native checks remain mandatory.
+A canonical response is a length-prefixed closed object with exactly `format`
+(`fsm.native-response/1`), boolean `ok`, and `result` (operation value or bounded
+private error string); its body is at most 65536 bytes and writes share a 500 ms
+deadline. Error strings MUST NOT become stable library error codes.
+
+The server MUST retain at most eight owned connection threads, refuse excess
+connections, and observe joins before releasing their capacity. Executing
+connections MUST retain their runner thread and observe client EOF or unexpected
+trailing bytes as a cancellation request, using the same verified cleanup path;
+EOF MUST NOT prove handler closure. Before dispatch and after execution, the
+server MUST revalidate its protected authority/configuration identity. Server
+or connection death MUST NOT clear journal claims or fabricate receipts; host
+shutdown/recovery and public client/service integration remain separately
+required. Other actions may finish despite connection loss, but never launch
+handler code. Broker presence alone MUST NOT release the production acceptance
+gate.
+
 The protected entry operation MUST run as an unprivileged handler identity.
 It MUST accept only a canonical namespace/generation/allocation route and
 read an immutable root-owned entry grant from that authority; caller-supplied
