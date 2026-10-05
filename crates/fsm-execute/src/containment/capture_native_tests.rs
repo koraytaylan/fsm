@@ -99,7 +99,12 @@ fn run_case(size: usize, mcp: bool) {
     bind(&fixture.directory, &binding).unwrap();
     let result = runner::execute(&fixture.directory, 1).unwrap();
     assert!(canon_bytes(&result).len() <= 65536);
-    assert_eq!(result.get("failure_class"), Some(&Value::Null));
+    let failure_class = if mcp {
+        Value::Str("mcp_error".into())
+    } else {
+        Value::Null
+    };
+    assert_eq!(result.get("failure_class"), Some(&failure_class));
     let candidate = result.get("candidate").unwrap();
     if mcp {
         assert_eq!(

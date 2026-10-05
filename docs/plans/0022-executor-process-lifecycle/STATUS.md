@@ -2970,4 +2970,14 @@ lifecycle updates.
   fresh full gates and
   task 9303 acceptance remain pending.
 
+- Frozen 0687876 full stable debug workspace gate passes with serial tests and
+  rustc/rustdoc warnings denied. CI 37357493793 native stable and MSRV both fail
+  native_capture_bounds at the first MCP failure-class assertion: the fixture
+  incorrectly expected null for isError=true, whereas the documented tool-call
+  class is mcp_error. Correcting that expectation preserves every prefix/digest,
+  bounded result, original claim/closure and resource-retirement assertion;
+  process success still expects null. Both failed artifacts are retained and
+  do not count as 80-case acceptance; fresh runtime proof remains pending and
+  task 9303 stays active.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
