@@ -3298,4 +3298,12 @@ lifecycle updates.
   Both Ubuntu compiler gates now pass; four macOS/Windows jobs remain live,
   and full-range review plus the separate local frozen host gate remain pending.
 
+- Corrected-source macOS MSRV gate `111988370164` passes in CI
+  `37376949993` at exact `9f1f175ad91609359699e3a2d670119e8cbb506a`;
+  its exact log is retained at task-cache `ci-37376949993-macos-msrv.log`.
+  This is actual macOS execution, not cross-compilation or Linux substitution;
+  all required job steps succeed. Three portable jobs remain live, and the
+  separate frozen local host gate remains unexecuted because swap exceeds
+  the workspace limit; task 9303 and the production native gate remain open.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
