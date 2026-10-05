@@ -3244,4 +3244,16 @@ lifecycle updates.
   and aggregate high-risk review remain outstanding, and task 9303 remains
   in progress without releasing the production native gate.
 
+- Aggregate review finds interrupted exec-status accept/hello-read retries
+  bypassing the shared deadline at `31e0c63`; correction `9f1f175` checks
+  before every retry and adds provisioned production-listener fault controls
+  for both branches, asserting no post-expiry I/O, grant or stopped record.
+  SPEC/API/embedding/release contracts move with the correction; formatting,
+  source-size and full-range diff checks pass, but intensive local gates remain
+  deferred by the workspace swap limit.
+  Only the authorized review branch is pushed; new CI `37376949993` is live
+  at exact `9f1f175ad91609359699e3a2d670119e8cbb506a`.
+  Historical green `31e0c63` does not accept this correction; corrected-source
+  native/portable/dependency gates and remaining aggregate review are required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
