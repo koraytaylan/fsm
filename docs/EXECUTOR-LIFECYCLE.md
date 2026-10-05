@@ -1292,3 +1292,12 @@ observe actual removal of the original cgroup and refuses identity replacement;
 manager inactivity or an empty but still-present cgroup never proves closure.
 These fixture refinements preserve published receipt/journal bytes and the full
 native acceptance gate, whose current CI/review status remains pending.
+
+Fresh catalogue publication now includes the registration's immutable public
+`store-identity.json` in its closed unused-authority inventory, requiring Root
+ownership, mode 0444, canonical closed schema and exact equality to the private
+registration identity before accepting it. A used allocation counter or any
+unexpected file still refuses; missing, writable, torn or mismatched metadata
+cannot authorize catalogue publication or allocation. The native setup fixture
+checks these refusals before restoring its own protected metadata, and current
+full native/portable acceptance remains pending.

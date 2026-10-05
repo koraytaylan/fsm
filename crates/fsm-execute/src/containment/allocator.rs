@@ -65,12 +65,30 @@ pub(super) fn require_unused(directory: &Path) -> Result<(), String> {
     {
         return Err("catalogue must precede all native allocation".into());
     }
+    let public_path = directory.join("store-identity.json");
+    let metadata = fs::symlink_metadata(&public_path).map_err(io)?;
+    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o777 != 0o444 {
+        return Err("registered public store identity is not protected".into());
+    }
+    let public = read_value(&public_path, true)?;
+    closed(&public, &["format", "identity"])?;
+    let private = read_value(&directory.join("store.json"), true)?;
+    closed(&private, &["format", "path", "identity"])?;
+    if text(&public, "format")? != "fsm.native-store-identity/1"
+        || text(&private, "format")? != "fsm.native-store-registration/1"
+        || public.get("identity") != private.get("identity")
+    {
+        return Err("registered public store identity differs".into());
+    }
     for (index, entry) in fs::read_dir(directory).map_err(io)?.enumerate() {
         if index >= 32768 {
             return Err("authority directory inventory exceeds bound".into());
         }
         let name = entry.map_err(io)?.file_name();
-        if !matches!(name.to_str(), Some("store.json" | "counter.json" | "LOCK")) {
+        if !matches!(
+            name.to_str(),
+            Some("store.json" | "store-identity.json" | "counter.json" | "LOCK")
+        ) {
             return Err("catalogue requires a fresh unused authority".into());
         }
     }

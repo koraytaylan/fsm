@@ -2677,4 +2677,15 @@ lifecycle updates.
   follow-up is being corrected separately, and full gates/task acceptance plus
   production host routing remain required.
 
+- Fixed the authority setup failure observed in frozen 853a3a7 CI run
+  37328653105: catalogue freshness now recognizes the public store identity
+  registration record, first requiring its Root ownership/0444 regular-file
+  protection, closed canonical format and exact private registration identity.
+  A nonzero counter or any other unexpected file still refuses used authority.
+  Native fixture setup requires missing, writable, torn and mismatched public
+  metadata to refuse before catalogue/allocation publication, then restores only
+  its exact fixture-owned bytes and verifies counter 0 before successful setup.
+  No published journal/receipt/hash bytes change; source checks pass, full
+  current native/portable/frozen acceptance and production routing remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

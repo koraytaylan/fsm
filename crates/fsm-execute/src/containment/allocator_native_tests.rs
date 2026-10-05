@@ -104,6 +104,39 @@ impl Fixture {
         };
         drop(Store::open(&fixture.store).unwrap());
         super::super::register(&fixture.directory, &fixture.store).unwrap();
+        let public = fixture.directory.join("store-identity.json");
+        let saved = fixture.directory.join("fixture-store-identity.saved");
+        let encoded = fs::read(&public).unwrap();
+        assert!(require_unused(&fixture.directory).is_ok());
+        fs::rename(&public, &saved).unwrap();
+        assert!(require_unused(&fixture.directory).is_err());
+        fs::rename(&saved, &public).unwrap();
+        fs::set_permissions(&public, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(require_unused(&fixture.directory).is_err());
+        fs::set_permissions(&public, fs::Permissions::from_mode(0o444)).unwrap();
+        fs::write(&public, b"{").unwrap();
+        assert!(require_unused(&fixture.directory).is_err());
+        fs::write(
+            &public,
+            canon_bytes(&object([
+                ("format", Value::Str("fsm.native-store-identity/1".into())),
+                (
+                    "identity",
+                    object([
+                        ("device", Value::Num("0".into())),
+                        ("inode", Value::Num("0".into())),
+                    ]),
+                ),
+            ])),
+        )
+        .unwrap();
+        assert!(require_unused(&fixture.directory).is_err());
+        fs::write(&public, &encoded).unwrap();
+        assert!(require_unused(&fixture.directory).is_ok());
+        assert_eq!(fs::read(&public).unwrap(), encoded);
+        assert_eq!(fixture.counter(), 0);
+        assert!(!fixture.directory.join("catalogue.json").exists());
+        assert!(!fixture.directory.join("allocation-1.json").exists());
         let before = fixture.counter();
         assert!(prepare(&fixture.directory).is_err());
         assert_eq!(fixture.counter(), before);
