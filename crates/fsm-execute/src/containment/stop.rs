@@ -1,12 +1,21 @@
 //! Matched manager stop after durable entry revocation; never closure proof.
 
-use super::{closed, closing, manager, number, read_value, text};
+use super::{closed, closing, io, manager, number, object, publish_once, read_value, text};
+use fsm_core::canon::canon_bytes;
+use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::Claim;
+use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
     let (domain, _lock) = closing::revoke(directory, allocation)?;
+    let completed = directory.join(format!("manager-stopped-{allocation}.json"));
+    match fs::symlink_metadata(&completed) {
+        Ok(_) => return Err("manager stop completion already exists or is uncertain".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io(error)),
+    }
     let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
     let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)?;
     closed(&handoff, &["format", "binding", "gate"])?;
@@ -47,6 +56,18 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
         text(&domain, "namespace")?,
         number(&domain, "generation")?
     );
+    let material = object([
+        ("format", Value::Str("fsm.native-manager-stopped/1".into())),
+        ("domain", domain.clone()),
+        ("binding", binding.clone()),
+        ("gate", gate.clone()),
+    ]);
+    let bytes = canon_bytes(&material);
+    if bytes.len() as u64 > super::MAX_RECORD {
+        return Err("manager stop completion exceeds native byte bound".into());
+    }
+    parse(&bytes, &JsonLimits::DEFAULT)
+        .map_err(|_| "manager stop completion exceeds native depth bound")?;
     let deadline = Instant::now() + Duration::from_secs(2);
     let keys = [
         "InvocationID",
@@ -78,5 +99,6 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
     if closing::prepared_domain(directory, allocation)? != domain {
         return Err("manager stop native identity changed".into());
     }
-    manager::stop(&unit, deadline)
+    manager::stop(&unit, deadline)?;
+    publish_once(&completed, &material)
 }

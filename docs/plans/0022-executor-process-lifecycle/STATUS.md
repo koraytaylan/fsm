@@ -1491,4 +1491,17 @@ lifecycle updates.
   This is a fixture repair, not relaxed containment; compiled/native reruns
   remain required and task 9303 stays In progress.
 
+- **Manager completion made durable:** successful matched synchronous stop
+  now exclusively publishes and fsyncs a protected bounded domain/binding/gate
+  completion record; preexisting paths refuse replacement and publication
+  failure remains uncertain. Complete record size/depth is checked before
+  manager submission, and the running-handler native control requires exact
+  completion material, preserved preexisting regular/dangling-symlink paths
+  and a still-running handler after refusal, while requiring unresolved ownership and no
+  closed marker. This records a closure cutpoint, not a closure receipt;
+  permanent fencing/closure and runner integration remain outstanding.
+  Both stable and MSRV retained `9e50756` evidence pass installed-gate
+  authorization and fail the same descendant membership expectation corrected
+  in `e95b4a2`; the repair workflow `37281659587` remains queued.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -2,6 +2,9 @@
 
 Private root `request-stop` adds matched manager stop after entry revocation;
 it changes no stable Rust API/journal format and produces no closure proof.
+Its private `fsm.native-manager-stopped/1` completion record binds domain,
+original claim binding and enrolled gate after successful synchronous stop;
+it remains distinct from file-verified native closure evidence.
 
 Private launch refuses prearmed grant/pending paths before submission; this
 tightens startup admission without changing public APIs or journal formats.

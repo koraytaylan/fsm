@@ -3,6 +3,8 @@
 Private root `request-stop` revokes entry and stops only the matched manager
 invocation after current domain/policy validation; it is not an embedded
 shutdown-success API, `VerifiedClosure`, or permission to settle/reuse capacity.
+Successful stop durably records the matched domain/binding/gate in an exclusive
+protected manager-stopped file; missing or failed publication remains uncertain.
 
 Private native startup refuses prearmed entry/pending grants before manager
 submission; embedded contained-runner and closure acceptance remain pending.

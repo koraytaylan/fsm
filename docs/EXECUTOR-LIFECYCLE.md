@@ -2,6 +2,11 @@
 
 ## Decision status
 
+Private `request-stop` publishes an exclusive fsynced bounded
+`manager-stopped-<allocation>.json` record only after matched synchronous stop;
+it binds domain, original claim binding and enrolled gate, and publication
+failure remains uncertain rather than releasing ownership.
+
 Private `request-stop` now retains the authority lock through durable entry
 revocation, protected binding/handoff matching, current invocation/control-group
 and isolation/lifetime/kill-policy checks, native identity revalidation and

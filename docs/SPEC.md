@@ -1593,6 +1593,14 @@ control-group lifetime/kill and no-restart policy before stopping the unit.
 It MUST use the fixed protected systemctl with replacement job semantics,
 cleared environment, bounded capture and a two-second observation deadline.
 Policy/identity/query failures MUST preserve closing and journal ownership.
+After synchronous manager stop succeeds, the authority MUST exclusively
+publish and fsync `manager-stopped-<allocation>.json`, a protected closed
+object with `format: "fsm.native-manager-stopped/1"`, the exact `domain`,
+`binding` and enrolled `gate` from the handoff. It MUST validate the complete
+8 KiB/depth-bounded material before manager submission; an existing completion
+path of any type MUST refuse replacement. Publication failure remains uncertain.
+This record acknowledges the matched manager operation and MUST NOT stand in
+for permanent closure or a native closure receipt.
 Successful stop MUST NOT publish closure evidence, clear claims or authorize
 settlement/capacity reuse; permanent closure requires independent completion.
 

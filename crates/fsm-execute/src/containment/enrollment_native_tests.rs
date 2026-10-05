@@ -292,7 +292,34 @@ fn stop_running_handler() {
         );
         std::thread::sleep(Duration::from_millis(5));
     }
+    let completion_path = fixture.directory.join("manager-stopped-1.json");
+    fs::write(&completion_path, b"existing completion must survive").unwrap();
+    assert!(super::super::super::stop::request(&fixture.directory, 1).is_err());
+    assert_eq!(
+        fs::read(&completion_path).unwrap(),
+        b"existing completion must survive"
+    );
+    assert!(gate.child.try_wait().unwrap().is_none());
+    fs::remove_file(&completion_path).unwrap();
+    std::os::unix::fs::symlink("missing-completion", &completion_path).unwrap();
+    assert!(super::super::super::stop::request(&fixture.directory, 1).is_err());
+    assert_eq!(
+        fs::read_link(&completion_path).unwrap(),
+        std::path::Path::new("missing-completion")
+    );
+    assert!(gate.child.try_wait().unwrap().is_none());
+    fs::remove_file(&completion_path).unwrap();
     super::super::super::stop::request(&fixture.directory, 1).unwrap();
+    let completed = read_value(&fixture.directory.join("manager-stopped-1.json"), true).unwrap();
+    assert_eq!(
+        completed,
+        object([
+            ("format", Value::Str("fsm.native-manager-stopped/1".into())),
+            ("domain", domain.to_value()),
+            ("binding", binding.clone()),
+            ("gate", handoff.get("gate").unwrap().clone()),
+        ])
+    );
     assert!(fixture.directory.join("closing-1.json").exists());
     assert!(!fixture.directory.join("entry-1.json").exists());
     assert!(!fixture.directory.join("closed-1.json").exists());
