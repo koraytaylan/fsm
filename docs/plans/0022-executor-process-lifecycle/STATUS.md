@@ -634,4 +634,11 @@ lifecycle updates.
   pending, and no native receipt/publication acceptance is claimed. Task 9302
   remains In progress.
 
+- **Native bridge first-run correction:** source `13e4456` compiled both
+  fixture binaries, then the provisioned driver failed before claim binding
+  because it tried to read the helper's deliberately root-private response
+  directly. Owned unit/namespace cleanup ran. The driver now reads that
+  response through the existing explicit privileged read path, preserving its
+  permissions; native acceptance remains unproven until a complete rerun.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

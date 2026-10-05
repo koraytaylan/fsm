@@ -85,7 +85,7 @@ def exercise(native_binary, store_binary):
         for binary, name in ((native_binary, "fixture"), (store_binary, "store-fixture")):
             command(["sudo", "-n", "install", "-m", "755", str(binary), str(base / name)])
         invoke("allocate", privileged=True)
-        record = handle((base / "response").read_text())
+        record = handle(command(["sudo", "-n", "cat", str(base / "response")]))
         assert record["id"] == 1 and record["phase"] == "prepared"
         cgroup = Path("/sys/fs/cgroup/system.slice") / unit
         identity, authority_identity = cgroup.stat(), authority.stat()
