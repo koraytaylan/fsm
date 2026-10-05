@@ -332,6 +332,9 @@ fn register(directory: &Path, store_path: &Path) -> Result<(), String> {
 }
 
 fn verify_claim(store: &Store, claim: &Claim, original: &str) -> Result<(), String> {
+    if store.state.execution.admission() != fsm_core::record::execution::Admission::Enabled {
+        return Err("claim execution admission is quarantined".into());
+    }
     let (instance_id, effect_id) = claim.effect();
     let instance = store
         .state

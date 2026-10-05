@@ -65,6 +65,11 @@ original claim hash: the adapter must report binding refusal, retain that error
 on repeated poll and observe real helper reap/EOF; an independent root observer
 requires binding, launch intent, entry grant and handoff to be absent before
 allowing the genuine claim run, with no direct handler fallback.
+Authority claim verification explicitly requires enabled execution admission
+before current ownership, hash and catalogue checks; retaining a claim in a
+quarantined state cannot authorize binding, launch or entry. Its in-memory
+read-only snapshot control tests this guard without claiming migrated-store
+quiescence or changing journal bytes.
 
 Native broker access and client-death controls now exec the installed Rust
 `client` helper after dropping root UID/group privilege, replacing Python

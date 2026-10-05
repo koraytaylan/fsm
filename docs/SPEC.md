@@ -1627,6 +1627,9 @@ against the same claim/hash. Cancellation, bind refusal, helper failure and
 missing closure MUST retain uncertainty; helper reap alone MUST NOT authorize
 journal settlement or capacity release. It MUST retain explicit helper cleanup
 progress and never fall back to direct handler execution.
+Protected authority claim verification MUST explicitly require enabled
+execution admission as well as current runnable ownership; a retained claim
+in a quarantined execution state MUST NOT authorize binding, launch or entry.
 
 Public supervised client/service wiring remains required before acceptance.
 

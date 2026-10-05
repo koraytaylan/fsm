@@ -1943,4 +1943,17 @@ lifecycle updates.
   stable/MSRV native and all portable acceptance remain pending, and task 9303
   stays In progress.
 
+- **Protected admission verification tightened:** review found that fresh
+  authority verification checked current runnable claim ownership but did not
+  explicitly require enabled execution admission. It now refuses quarantined
+  state before ownership/hash/catalogue authorization, so retained claims cannot
+  independently authorize binding, launch or entry. The genuine-binding native
+  case includes a read-only in-memory snapshot control preserving its full
+  claim while changing admission to quarantine, requiring the exact refusal;
+  its journal remains unchanged and subsequent genuine binding still succeeds.
+  This guard control is not migrated-store quiescence evidence. Formatting, size
+  and diff checks pass; run `37300579630` is authoritatively queued for
+  `df72aed`, compiled current-source/native acceptance and public service
+  integration remain pending, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

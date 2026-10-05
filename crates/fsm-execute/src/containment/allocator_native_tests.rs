@@ -255,6 +255,34 @@ fn genuine_claim_binding() {
     assert_eq!(listing(), before);
     drop(lock);
     let (binding, effect) = claim_binding(&fixture, &domain);
+    {
+        let claim =
+            fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
+        let mut snapshot = Store::open_read_only(&fixture.store).unwrap();
+        let hash = binding.get("journal_claim").unwrap().as_str().unwrap();
+        super::super::verify_claim(&snapshot, &claim, hash).unwrap();
+        let mut execution = snapshot
+            .state
+            .execution
+            .to_value()
+            .as_obj()
+            .unwrap()
+            .clone();
+        execution.insert("admission".into(), Value::Str("quarantined".into()));
+        snapshot.state.execution =
+            fsm_core::record::execution::ExecutionState::from_value(&Value::Obj(execution))
+                .unwrap();
+        assert_eq!(
+            snapshot.state.execution.claim_for("instance", &effect),
+            Some(&claim)
+        );
+        assert_eq!(
+            super::super::verify_claim(&snapshot, &claim, hash).unwrap_err(),
+            "claim execution admission is quarantined"
+        );
+        // This is a read-only in-memory guard control, not a journal mutation
+        // or evidence that an actual migrated native environment is quiescent.
+    }
     super::super::bind(&fixture.directory, &binding).unwrap();
     let path = fixture.directory.join("binding-1.json");
     assert_eq!(read_value(&path, true).unwrap(), binding);
