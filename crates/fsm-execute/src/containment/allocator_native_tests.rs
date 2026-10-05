@@ -204,6 +204,22 @@ fn incomplete_intent_refusal() {
 fn genuine_claim_binding() {
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let listing = || {
+        let mut names = fs::read_dir(&fixture.directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        names.sort();
+        names
+    };
+    let before = listing();
+    let lock = super::super::authority_lock(&fixture.directory).unwrap();
+    let observed = super::super::observation::read(&fixture.directory, 1).unwrap();
+    assert_eq!(observed.get("domain"), Some(&domain.to_value()));
+    assert_eq!(observed.get("closing"), Some(&Value::Bool(false)));
+    assert_eq!(observed.get("populated"), Some(&Value::Bool(false)));
+    assert_eq!(listing(), before);
+    drop(lock);
     let mut store = Store::open(&fixture.store).unwrap();
     store
         .define_machine(

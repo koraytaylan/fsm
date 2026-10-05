@@ -36,6 +36,9 @@ mod termination;
 #[path = "manager.rs"]
 mod manager;
 
+#[path = "observation.rs"]
+mod observation;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -45,14 +48,14 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() < 3 {
         return Err(
-            "usage: register|bind|prepare|authorize|begin-close|request-kill NAMESPACE GENERATION [REQUEST]"
+            "usage: register|bind|prepare|authorize|begin-close|request-kill|observe NAMESPACE GENERATION [REQUEST]"
                 .into(),
         );
     }
     let operation = arguments[0].to_str().ok_or("invalid operation")?;
     if !matches!(
         operation,
-        "register" | "bind" | "prepare" | "authorize" | "begin-close" | "request-kill"
+        "register" | "bind" | "prepare" | "authorize" | "begin-close" | "request-kill" | "observe"
     ) {
         return Err("operation outside authority policy".into());
     }
@@ -71,11 +74,17 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.len() != 4 {
         return Err("authority operation requires exactly one request path or allocation".into());
     }
-    if matches!(operation, "begin-close" | "request-kill") {
+    if matches!(operation, "begin-close" | "request-kill" | "observe") {
         let raw = arguments[3].to_str().ok_or("invalid allocation")?;
         let allocation = raw.parse::<u64>().map_err(|_| "invalid allocation")?;
         if allocation == 0 || raw != allocation.to_string() {
             return Err("noncanonical closing allocation".into());
+        }
+        if operation == "observe" {
+            let value = observation::read(&directory, allocation)?;
+            let mut output = std::io::stdout().lock();
+            output.write_all(&canon_bytes(&value)).map_err(io)?;
+            return output.write_all(b"\n").map_err(io);
         }
         return if operation == "begin-close" {
             closing::begin(&directory, allocation)

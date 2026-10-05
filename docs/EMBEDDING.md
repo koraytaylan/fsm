@@ -1,5 +1,9 @@
 # Embedding fsm as a library
 
+Private native `observe` reports read-only matched-domain cleanup progress;
+its closing/population/freeze booleans are not a `VerifiedClosure` and cannot
+settle ownership, release capacity or prove successful embedded shutdown.
+
 Native preparation now checks actual system-manager access before burning an
 allocation, with bounded nonblocking diagnostic capture and query cleanup;
 this prerequisite does not enable a contained embedded runner.

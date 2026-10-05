@@ -1,6 +1,6 @@
 //! Administrative tree fixtures exercise production kernel submission only.
 
-use super::super::super::{identity, termination};
+use super::super::super::{identity, observation, termination};
 use super::Fixture;
 use std::fs;
 use std::io::{Read, Write};
@@ -94,6 +94,15 @@ pub(super) fn members(fixture: &Fixture) {
     for pid in children.roots.iter().map(Child::id).chain([descendant]) {
         assert!(members.lines().any(|line| line == pid.to_string()));
     }
+    let observed = observation::read(&fixture.directory, 1).unwrap();
+    assert_eq!(
+        observed.get("populated"),
+        Some(&fsm_core::json::Value::Bool(true))
+    );
+    assert_eq!(
+        observed.get("closing"),
+        Some(&fsm_core::json::Value::Bool(true))
+    );
     termination::request(&fixture.directory, 1).unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
     for child in &mut children.roots {
@@ -124,6 +133,15 @@ pub(super) fn members(fixture: &Fixture) {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(!fixture.directory.join("closed-1.json").exists());
+    let observed = observation::read(&fixture.directory, 1).unwrap();
+    assert_eq!(
+        observed.get("populated"),
+        Some(&fsm_core::json::Value::Bool(false))
+    );
+    assert_eq!(
+        observed.get("closing"),
+        Some(&fsm_core::json::Value::Bool(true))
+    );
 }
 
 fn ready(reader: &mut UnixStream) -> u32 {

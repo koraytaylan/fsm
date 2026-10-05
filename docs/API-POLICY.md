@@ -1,5 +1,9 @@
 # API and version policy
 
+Private `fsm.native-observation/1` is a read-only progress projection with
+exact domain and closing/population/freeze booleans; it changes no persisted
+format or public Rust API and cannot replace authenticated closure evidence.
+
 The private manager capability check changes preparation refusal behavior
 before allocation without changing persisted shapes, journal versions or
 public Rust APIs; the required runtime remains provisioned Linux/systemd.

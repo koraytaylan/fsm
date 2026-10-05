@@ -1526,6 +1526,19 @@ before and after each control-file open. Any failure preserves closing
 admission and durable claim ownership. Successful submission MUST NOT imply
 observed termination, permanent closure or permission to settle/reuse capacity.
 
+The root-only `observe` operation MUST be read-only, validate the prepared
+domain's route, authority, boot and actual cgroup identity, and accept at most
+4 KiB from its no-follow regular root-protected `cgroup.events`, allowing one
+excess byte solely to detect and refuse an oversized sample. It reports
+exactly `format` (`fsm.native-observation/1`), `domain`, `closing`, `populated`
+and `frozen`, with boolean observations. Missing/duplicate/unknown event
+fields or noncanonical boolean values MUST refuse. Closing material must
+match exactly and remain unchanged across the sample; domain identity MUST
+be revalidated afterward. A live domain carrying any closed marker MUST refuse
+observation as inconsistent. Failure retains uncertainty. The projection MUST
+NOT create locks/records, revoke grants, issue closure evidence, clear claims
+or authorize settlement/capacity reuse, even when `populated` is false.
+
 A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
 `format`, `claim` and `journal_claim`. The authority MUST independently read
 the registered store, verify its path identity, the original durable claim

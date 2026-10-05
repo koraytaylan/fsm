@@ -1,5 +1,10 @@
 # Releasing
 
+Unreleased root-only `observe` adds bounded read-only cleanup progress with
+domain/phase revalidation and no lock/record creation. Empty population is
+not closure; manager fencing, verified permanent closure and shared runner
+integration remain required before contained execution can ship.
+
 Unreleased production preparation requires a bounded read-only query proving
 access to the active system slice before burning allocation intent/counter.
 Manager failure, malformed/excessive output or incomplete I/O refuses;

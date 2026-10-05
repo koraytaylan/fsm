@@ -1255,4 +1255,19 @@ lifecycle updates.
   Formatting/diff/file-size checks pass; compiled/runtime evidence remains
   pending CI and task 9303 stays In progress.
 
+- **Read-only native cleanup observation implemented:** root-only `observe`
+  validates the actual prepared domain, reads a bounded no-follow protected
+  event sample, rejects malformed/duplicate/unknown event fields, and
+  revalidates domain and exact closing phase afterward. Its closed progress
+  shape reports domain/closing/population/freeze without creating locks or
+  records, issuing receipts or releasing ownership/capacity. Closing and
+  observation share the unchanged prepared-domain validation. The genuine
+  native case requires observation under an already held authority lock and
+  unchanged directory listing; the inherited-descendant case samples actual
+  populated-before-kill and empty-but-closing-after-kill states. Pure fixtures
+  cover canonical boolean samples and malformed event shapes. Formatting and
+  source checks precede frozen CI; complete manager fencing, closure issuance
+  and shared runner/service integration remain outstanding, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

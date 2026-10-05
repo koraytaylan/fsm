@@ -17,41 +17,7 @@ pub(super) fn begin(directory: &Path, allocation: u64) -> Result<(), String> {
 pub(super) fn revoke(directory: &Path, allocation: u64) -> Result<(Value, File), String> {
     protected_directory(directory)?;
     let lock = authority_lock(directory)?;
-    let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
-    closed(&prepared, &["format", "phase", "domain"])?;
-    if text(&prepared, "format")? != "fsm.native-prepared/1"
-        || text(&prepared, "phase")? != "prepared"
-    {
-        return Err("closing requires a protected prepared allocation".into());
-    }
-    let domain = NativeDomain::from_value(prepared.get("domain").ok_or("domain missing")?)
-        .map_err(|error| error.to_string())?
-        .to_value();
-    let namespace = text(&domain, "namespace")?;
-    let generation = number(&domain, "generation")?.to_string();
-    if number(&domain, "allocation")? != allocation
-        || authority_path(namespace, &generation)? != directory
-        || domain.get("authority") != Some(&identity(&fs::symlink_metadata(directory).map_err(io)?))
-        || fs::read_to_string("/proc/sys/kernel/random/boot_id")
-            .map_err(io)?
-            .trim()
-            != text(&domain, "boot")?
-    {
-        return Err("closing domain authority or route differs".into());
-    }
-    let groups = Path::new("/sys/fs/cgroup/system.slice");
-    protected_directory(groups)?;
-    let group = groups.join(format!(
-        "fsm-containment-{namespace}-{generation}-{allocation}.service"
-    ));
-    let observed = fs::symlink_metadata(group).map_err(io)?;
-    if !observed.is_dir()
-        || observed.uid() != 0
-        || observed.mode() & 0o022 != 0
-        || domain.get("cgroup") != Some(&identity(&observed))
-    {
-        return Err("closing native domain identity differs".into());
-    }
+    let domain = prepared_domain(directory, allocation)?;
     match fs::symlink_metadata(directory.join(format!("closed-{allocation}.json"))) {
         Ok(_) => return Err("allocation already carries closed evidence".into()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -92,4 +58,44 @@ pub(super) fn revoke(directory: &Path, allocation: u64) -> Result<(Value, File),
     }
     File::open(directory).map_err(io)?.sync_all().map_err(io)?;
     Ok((domain, lock))
+}
+
+pub(super) fn prepared_domain(directory: &Path, allocation: u64) -> Result<Value, String> {
+    protected_directory(directory)?;
+    let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
+    closed(&prepared, &["format", "phase", "domain"])?;
+    if text(&prepared, "format")? != "fsm.native-prepared/1"
+        || text(&prepared, "phase")? != "prepared"
+    {
+        return Err("closing requires a protected prepared allocation".into());
+    }
+    let domain = NativeDomain::from_value(prepared.get("domain").ok_or("domain missing")?)
+        .map_err(|error| error.to_string())?
+        .to_value();
+    let namespace = text(&domain, "namespace")?;
+    let generation = number(&domain, "generation")?.to_string();
+    if number(&domain, "allocation")? != allocation
+        || authority_path(namespace, &generation)? != directory
+        || domain.get("authority") != Some(&identity(&fs::symlink_metadata(directory).map_err(io)?))
+        || fs::read_to_string("/proc/sys/kernel/random/boot_id")
+            .map_err(io)?
+            .trim()
+            != text(&domain, "boot")?
+    {
+        return Err("closing domain authority or route differs".into());
+    }
+    let groups = Path::new("/sys/fs/cgroup/system.slice");
+    protected_directory(groups)?;
+    let group = groups.join(format!(
+        "fsm-containment-{namespace}-{generation}-{allocation}.service"
+    ));
+    let observed = fs::symlink_metadata(group).map_err(io)?;
+    if !observed.is_dir()
+        || observed.uid() != 0
+        || observed.mode() & 0o022 != 0
+        || domain.get("cgroup") != Some(&identity(&observed))
+    {
+        return Err("closing native domain identity differs".into());
+    }
+    Ok(domain)
 }

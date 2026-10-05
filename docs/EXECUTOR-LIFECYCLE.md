@@ -2,6 +2,14 @@
 
 ## Decision status
 
+Root-only `observe` reads matched prepared-domain closing/population/freeze
+progress with a bounded no-follow event sample and identity/phase revalidation.
+It creates no lock or record and issues no closure evidence; an empty sample
+does not release a claim or capacity. Native cases require observation while
+the authority lock is held, unchanged directory contents, population before
+kill and empty-but-still-closing state afterward. Full service integration
+and verified permanent closure remain required.
+
 The production termination native case now includes a gated administrative
 fixture that forks only after explicit cgroup enrollment. The parent checks
 the new descendant's exact inherited membership before calling `request-kill`,
