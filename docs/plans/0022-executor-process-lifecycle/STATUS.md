@@ -2952,4 +2952,22 @@ lifecycle updates.
   workspace all-target clippy with denied warnings and format/size/diff checks
   pass. Fresh native prerequisite execution and full-source gates remain pending.
 
+- Frozen ea5da75 full stable release workspace gate passes with serial tests
+  and rustc/rustdoc warnings denied. CI 37356196081 native artifacts pass the
+  frozen-source evidence verifier independently at stable/MSRV, each with 79
+  cases, expected negative-failure proof and exact report/log hashes; executable
+  bytes remain unverified and the gate unreleased. Portable full matrix remains
+  pending. Review identified that capture boundary tests exercised the legacy
+  direct-child runner, so native_capture_bounds now drives the actual claimed
+  runner at 4096/4097, 1 MiB/1 MiB+1 and 8 MiB for process stdout/stderr and MCP
+  failure stderr. It verifies exact prefixes, only complete bounded digests,
+  bounded response, matching original closure, actual group absence, retained
+  journal ownership and no stopped record before application, plus equal owned
+  descriptor/thread inventories after each of ten runs. The named native case
+  receives 90 seconds without changing handler/cleanup deadlines. Stable
+  authority subsets at stable and MSRV each pass 24 with 15 provisioned controls
+  ignored, and all-target stable clippy passes; new native capture runtime proof,
+  fresh full gates and
+  task 9303 acceptance remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -1301,3 +1301,12 @@ unexpected file still refuses; missing, writable, torn or mismatched metadata
 cannot authorize catalogue publication or allocation. The native setup fixture
 checks these refusals before restoring its own protected metadata, and current
 full native/portable acceptance remains pending.
+
+The provisioned `native_capture_bounds` control now exercises the actual claimed
+process/MCP runner at the 4096-byte prefix and 1 MiB hash-work boundaries, their
+limit-plus-one values, and 8 MiB. Ten owned runs must preserve exact prefixes,
+complete-only digests, bounded result material and original-claim closure while
+retiring descriptors and worker threads; process and MCP failure streams share
+these expectations. This control supplements the earlier legacy capture tests;
+registration/compilation does not establish runtime acceptance or release task
+9303, production service routing, or the native gate.

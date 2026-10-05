@@ -9,7 +9,7 @@ import sys
 
 INVENTORY = ('empty_domain_preparation', 'unknown_domain_refusal',
          'counter_rollback_refusal', 'incomplete_intent_refusal',
-         'enrolled_gate_authorization', 'private_exec_status', 'genuine_claim_binding',
+         'enrolled_gate_authorization', 'private_exec_status', 'native_capture_bounds', 'genuine_claim_binding',
          'provisioned_broker_access', 'provisioned_broker_disconnect')
 
 
@@ -62,7 +62,7 @@ def main():
             result = subprocess.run(['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
                                      str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never'],
                                     cwd=repo, capture_output=True,
-                                    timeout=90 if case in ('provisioned_broker_disconnect', 'private_exec_status') else 30)
+                                    timeout=90 if case in ('provisioned_broker_disconnect', 'private_exec_status', 'native_capture_bounds') else 30)
             diagnostics = result.stdout + result.stderr
             assert len(diagnostics) <= 1024 * 1024, 'authority diagnostics exceed bound'
             log = args.report.with_name('authority-' + case + '.log')

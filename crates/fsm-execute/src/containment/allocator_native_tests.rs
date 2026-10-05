@@ -18,6 +18,15 @@ mod termination_cases;
 #[path = "exec_status_native_tests.rs"]
 mod exec_status_cases;
 
+#[path = "capture_native_tests.rs"]
+mod capture_cases;
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn native_capture_bounds() {
+    capture_cases::run();
+}
+
 #[test]
 #[ignore = "requires installed production gate and writable provisioned root cgroups"]
 fn private_exec_status() {
