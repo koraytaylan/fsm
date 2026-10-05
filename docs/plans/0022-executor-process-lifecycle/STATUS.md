@@ -2755,4 +2755,18 @@ lifecycle updates.
   missing live-domain revocation on the corrupted-handoff path; that distinct
   regression is under repair and no task acceptance or production gate changed.
 
+- Corrected the corrupted-handoff regression from e34e10d CI run 37336060083:
+  stop durably revokes a present verified original cgroup before inspecting
+  handoff material, while absent-domain revocation retains exact completed
+  handoff and manager-policy requirements. Runner stop refusal now also attempts
+  original-identity kernel freeze/kill before transport retirement, without a
+  writer, successful closure inference or claim release. Native uncertain cases
+  require durable closing, revoked entry and an empty/absent original tree while
+  corrupted handoff bytes and unresolved journal ownership remain unchanged;
+  repair/recovery still require full matched proof. SPEC/API/embedding/release
+  document both revocation paths. Local all-target execute clippy passes with
+  warnings denied, authority unit tests pass 20 with 13 provisioned controls
+  ignored, and format/size/diff checks pass; native/portable/frozen acceptance
+  and production host routing remain pending with task 9303 in progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

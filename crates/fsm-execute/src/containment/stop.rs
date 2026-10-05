@@ -12,6 +12,22 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
     super::protected_directory(directory)?;
     let _lock = super::authority_lock(directory)?;
     let domain = closing::recorded_domain(directory, allocation)?;
+    // A live original resource can always have admission revoked, even when
+    // damaged handoff material prevents a matched manager operation or proof.
+    let group_path = Path::new("/sys/fs/cgroup/system.slice").join(format!(
+        "fsm-containment-{}-{}-{allocation}.service",
+        text(&domain, "namespace")?,
+        number(&domain, "generation")?
+    ));
+    match fs::symlink_metadata(&group_path) {
+        Ok(_) => {
+            if closing::revoke_locked(directory, allocation)? != domain {
+                return Err("manager stop live native identity changed".into());
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io(error)),
+    }
     let completed = directory.join(format!("manager-stopped-{allocation}.json"));
     match fs::symlink_metadata(&completed) {
         Ok(_) => return Err("manager stop completion already exists or is uncertain".into()),

@@ -1940,9 +1940,13 @@ PID MUST match the protected handoff; canonical normal exit status is 0..255,
 while killed/dumped roots project existing signal status `-1`. Unknown or
 mismatched inspection MUST retain uncertainty. Launch MUST retain the original manager status with `RemainAfterExit=yes` and
 `CollectMode=inactive`, without `--collect`, until matched Root stop. Stop MUST
-verify the original completed handoff and manager invocation/security policy
-before durably revoking entry, including when the original cgroup is already
-absent; a present replacement identity MUST refuse. A failed unit MAY be reset
+durably revoke entry for a present verified original cgroup even when damaged
+handoff material prevents manager stop or closure. If matched manager stop
+refuses, the runner MUST attempt original-identity kernel freeze/kill independently
+of writer access; that attempt MUST NOT establish closure or release ownership.
+An already absent cgroup MUST require the verified original completed handoff and
+unchanged manager invocation/security policy before revocation; a present
+replacement identity MUST refuse. A failed unit MAY be reset
 only after stop and exact original invocation and ExecMainPID matching. Reset
 MUST NOT establish closure: actual cgroup absence, unit unloading, absence of
 queued jobs and owned helper retirement remain mandatory.

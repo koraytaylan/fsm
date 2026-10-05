@@ -297,6 +297,30 @@ pub(super) fn run() {
             let error = execution_result.unwrap_err();
             assert!(error.contains("runner cleanup uncertain"), "{error}");
             assert!(fixture.directory.join("closing-1.json").is_file());
+            // Failed proof must still fence the original live tree; an empty
+            // sample or physical absence never releases the unresolved claim.
+            let group = Path::new("/sys/fs/cgroup/system.slice").join(&unit);
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                match fs::symlink_metadata(&group) {
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                    Err(error) => panic!("uncertain native identity inspection failed: {error}"),
+                    Ok(_) => {
+                        let sample =
+                            super::super::super::observation::read(&fixture.directory, 1).unwrap();
+                        assert_eq!(sample.get("domain"), Some(&domain.to_value()));
+                        assert_eq!(sample.get("closing"), Some(&Value::Bool(true)));
+                        if sample.get("populated") == Some(&Value::Bool(false)) {
+                            break;
+                        }
+                    }
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "uncertain original tree remains populated"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
             assert!(fs::symlink_metadata(fixture.directory.join("entry-1.json")).is_err());
             assert!(fs::symlink_metadata(fixture.directory.join("closed-1.json")).is_err());
             let receipt = fixture.directory.join(format!(

@@ -1,5 +1,16 @@
 # API and version policy
 
+A present verified original cgroup retains an unconditional admission-revocation
+path even when protected handoff corruption prevents matched manager stop;
+absent-domain revocation still requires the verified handoff and original manager
+policy. On stop refusal, the native runner additionally attempts original-identity
+kernel freeze/kill before transport retirement, without writer access and without
+claiming closure, manager retirement or reusable capacity. Replacement identities
+still refuse; later closure still requires exact original handoff and independent
+full retirement proof. This repairs the corrupted-handoff control failure in
+CI run 37336060083; full native/portable/frozen acceptance remains pending.
+
+
 After durable entry revocation and exact manager unit/job retirement, submitted
 native closure may remove an original protected residual empty cgroup using a
 bounded exact no-follow population sample and repeat identity/manager checks;
