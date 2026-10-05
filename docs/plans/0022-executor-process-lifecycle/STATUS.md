@@ -2218,4 +2218,14 @@ lifecycle updates.
   CI remains pending (`35c0cfe` run `37306871810` queued), and task 9303 remains
   In progress with all remaining native/portable acceptance gates required.
 
+- Added read-only `Store::current_execution_claim_hash` for production host
+  binding/recovery: exact current full ownership is mandatory before using the
+  existing original-record/authenticated sealed-index lookup; changed/consumed
+  claims refuse as stale without writer acquisition or mutation. Native claim
+  fixtures now use this API instead of assuming the last record is the claim;
+  controls cover identity substitution, stopped/consumed ownership and read-only
+  repeated sealed reopening. Task 9303 adopts this recovery seam without changing
+  accepted historical formats; local formatting/size/diff checks pass, compiled
+  CI (`d1908af` run `37307245166`) is queued, full integration remains incomplete.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

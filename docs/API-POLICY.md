@@ -574,3 +574,8 @@ without mutation or authorizing a launch before the recorded backoff deadline.
 The additive provisional Linux `Pipeline::claim_native` adapter refuses
 unsupported native architectures and delegates complete admission requests to
 the existing writer-protected store mutator without launching handler code.
+
+`Store::current_execution_claim_hash` is an additive provisional read-only
+recovery API over current exact ownership and the existing authenticated sealed
+claim index, preserving journal/base bytes, hash domains and stable error codes;
+it grants no execution or closure authority.

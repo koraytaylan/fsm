@@ -459,7 +459,17 @@ fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
         ),
         (
             "journal_claim",
-            Value::Str(format!("sha256:{}", store.records.last().unwrap().hash)),
+            Value::Str(
+                store
+                    .current_execution_claim_hash(
+                        store
+                            .state
+                            .execution
+                            .claim_for("instance", &effect)
+                            .unwrap(),
+                    )
+                    .unwrap(),
+            ),
         ),
     ]);
     drop(store);

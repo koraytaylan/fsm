@@ -171,8 +171,16 @@ fn stopped_owner_survives_repeated_seals_and_spent_archived_completion_is_stale(
                 .to_value(),
             stopped
         );
+        assert_eq!(
+            read_only.current_execution_claim_hash(&claim).unwrap(),
+            original_hash
+        );
         drop(read_only);
         store = Store::open(&directory.0).unwrap();
+        assert_eq!(
+            store.current_execution_claim_hash(&claim).unwrap(),
+            original_hash
+        );
         assert_eq!(store.execution_claim_hash(&claim).unwrap(), original_hash);
         assert_eq!(store.state.execution.run_high_water(), 1);
         assert_eq!(store.state.execution.unresolved().count(), 1);

@@ -16,6 +16,8 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py
   - crates/fsm-execute/Cargo.toml
   - crates/fsm-execute/src/containment/
+  - crates/fsm-store/src/store/execution.rs
+  - crates/fsm-store/src/store/execution_crash_tests.rs
   - crates/fsm-store/src/store/execution_evidence.rs
   - crates/fsm-store/src/store/execution_tests.rs
   - crates/fsm-execute/src/config.rs

@@ -1,5 +1,13 @@
 # Embedding fsm as a library
 
+`Store::current_execution_claim_hash` reads the original journal claim hash for
+an exactly matching current owner, including a stopped or externally cancelled
+owner retained through sealing; read-only handles use the authenticated base
+index when the original record has been archived. Changed full claim identity
+or consumed ownership returns `store/execution_stale`; unavailable original
+material returns `store/execution_evidence`. This lookup performs no writer
+acquisition or journal mutation and grants no launch/closure permission.
+
 The provisional Linux native client exposes side-effect-free `progress` snapshots:
 `NativeHelperProgress` reports only last-observed reap and stdout/stderr EOF;
 `NativeRunProgress` adds binding, executing, uncertain or closed phase.

@@ -900,3 +900,63 @@ fn opaque_receipt_matches_only_run_full_domain_and_original_claim_hash() {
         Some(&claim)
     );
 }
+
+#[test]
+fn current_claim_hash_requires_complete_identity_and_survives_stopping() {
+    let (mut store, effect) = pending();
+    allocate(
+        &mut store,
+        &effect,
+        "claim-hash",
+        &mut FixedClock::new(100, 1),
+    )
+    .unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let expected = format!("sha256:{}", store.records.last().unwrap().hash);
+    let before = store.state.clone();
+    let count = store.records.len();
+    assert_eq!(
+        store.current_execution_claim_hash(&claim).unwrap(),
+        expected
+    );
+    let mut changed = claim.to_value().as_obj().unwrap().clone();
+    changed.insert(
+        "handler_fingerprint".into(),
+        Value::Str(format!("sha256:{}", "c".repeat(64))),
+    );
+    let changed = Claim::from_value(&Value::Obj(changed)).unwrap();
+    assert_eq!(
+        store
+            .current_execution_claim_hash(&changed)
+            .unwrap_err()
+            .code,
+        "store/execution_stale"
+    );
+    assert_eq!(store.state, before);
+    assert_eq!(store.records.len(), count);
+    stop(&mut store, &claim, "timeout", "hash-stop");
+    assert_eq!(
+        store.current_execution_claim_hash(&claim).unwrap(),
+        expected
+    );
+    store
+        .settle_execution_on(
+            &mut FixedClock::new(100, 1),
+            ExecutionSettleRequest {
+                claim: &claim,
+                disposition: Settlement::Attempted,
+                request_id: "hash-settle",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        store.current_execution_claim_hash(&claim).unwrap_err().code,
+        "store/execution_stale"
+    );
+}

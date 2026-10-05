@@ -305,6 +305,23 @@ impl Store {
         )
     }
 
+    /// Read the original journal hash for an exactly matching current owner.
+    ///
+    /// Works on read-only handles and after sealing through the authenticated
+    /// base index; performs no mutation, writer acquisition or handler lookup.
+    /// Matching identifies original material but does not authorize launch or
+    /// prove closure, pending eligibility or execution admission.
+    pub fn current_execution_claim_hash(&self, claim: &Claim) -> Result<String, ErrorObj> {
+        let (instance_id, effect_id) = claim.effect();
+        if self.state.execution.claim_for(instance_id, effect_id) != Some(claim) {
+            return Err(ErrorObj::new(
+                "store/execution_stale",
+                "run or immutable claim does not match current ownership",
+            ));
+        }
+        self.execution_claim_hash(claim)
+    }
+
     fn execution_claim_hash(&self, claim: &Claim) -> Result<String, ErrorObj> {
         if let Some(record) = self.records.iter().find(|record| {
             record.kind == RecordKind::ExecutionClaimed
