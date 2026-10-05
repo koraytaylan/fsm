@@ -1496,6 +1496,18 @@ replacing an existing grant, and fsync its parent. This is a privileged
 publisher interface; the future broker MUST derive the group from the trusted
 enrolled gate and MUST NOT delegate arbitrary group selection to handlers.
 
+The root-only `begin-close` operation MUST validate the prepared domain
+against its route, authority device/inode, boot and actual cgroup device/inode
+under the authority lock. It MUST durably publish `closing-<allocation>.json`,
+containing exactly `format` (`fsm.native-closing/1`) and `domain`, before
+removing the entry grant and any pending grant, then fsync the authority
+directory. Existing closing material permits replay only if it matches
+exactly. Unexpected grant file types or ownership MUST refuse removal.
+Runnable journal ownership is not required to revoke entry after cancellation.
+This transition MUST NOT issue closure evidence, clear claims or imply
+termination; manager admission fencing, native termination and permanent
+closure remain required before settlement or capacity reuse.
+
 A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
 `format`, `claim` and `journal_claim`. The authority MUST independently read
 the registered store, verify its path identity, the original durable claim

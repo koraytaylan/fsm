@@ -1,5 +1,9 @@
 # API and version policy
 
+Unreleased private `fsm.native-closing/1` records retain exact domain identity
+for admission revocation and replay; they change no journal version or public
+Rust API and cannot authorize settlement without full native closure evidence.
+
 Unreleased private native entry grants use `fsm.native-entry/1`; root-only
 publication adds no public Rust API or journal format change. The provisioned
 broker must derive the isolated reader group before this path can support

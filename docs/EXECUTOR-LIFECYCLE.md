@@ -2,6 +2,13 @@
 
 ## Decision status
 
+Root-only `begin-close` now validates the actual prepared domain under the
+authority lock and durably publishes its closing marker before removing
+entry and pending grants and syncing the directory. Exact replay is allowed;
+changed identities or unexpected grant ownership/types refuse. This remains
+admission revocation, without manager fencing, termination or closure receipts,
+and preserves durable ownership even after instance cancellation.
+
 The protected `gate` entry verifier now accepts only a canonical native route,
 requires an unprivileged identity, reads a root-owned immutable entry grant,
 and checks authority/cgroup device and inode, boot and its own exact cgroup

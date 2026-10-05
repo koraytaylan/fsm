@@ -1171,4 +1171,17 @@ lifecycle updates.
   validation is the next step. Full manager launch, trusted group selection,
   native I/O and closure fencing remain outstanding; task 9303 stays In progress.
 
+- **Durable admission revocation implemented:** root-only `begin-close`
+  checks the protected prepared domain, canonical route, actual authority
+  and cgroup identities and boot under the shared authority lock. It fsyncs
+  an exact domain closing marker before removing entry and pending grants
+  and syncing the directory. Exact replay is permitted; malformed existing
+  material and unexpected grant types/ownership refuse. Cancellation does
+  not prevent revocation, and no claim is cleared. The genuine native binding
+  case adds revocation/replay assertions and confirms that journal ownership
+  remains and no closed marker is issued; execution remains pending CI.
+  This is not manager admission fencing, native termination or a closure
+  receipt, all of which remain required by task 9303. Local builds remain
+  prohibited by the full-swap rule without a specific exception.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

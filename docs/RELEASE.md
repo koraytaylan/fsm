@@ -1,5 +1,10 @@
 # Releasing
 
+Unreleased root-only `begin-close` publishes a durable matched-domain closing
+marker before revoking grants, with exact replay and ownership/type refusal.
+It neither terminates the domain nor issues closure evidence, and preserves
+journal claims; manager fencing and complete native shutdown remain required.
+
 Unreleased protected entry verification requires an unprivileged handler
 identity, immutable root-owned claim grant and actual boot/authority/cgroup
 enrollment before exec, with no caller-provided command authorization.

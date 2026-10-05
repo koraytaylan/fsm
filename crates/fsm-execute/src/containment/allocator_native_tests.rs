@@ -329,5 +329,24 @@ fn genuine_claim_binding() {
             .contains("runnable ownership")
     );
     assert_eq!(read_value(&path, true).unwrap(), binding);
+    super::super::closing::begin(&fixture.directory, 1).unwrap();
+    assert!(!entry_path.exists());
+    assert!(!fixture.directory.join("entry-1.json.pending").exists());
+    assert!(!fixture.directory.join("closed-1.json").exists());
+    let closing_path = fixture.directory.join("closing-1.json");
+    let closing = read_value(&closing_path, true).unwrap();
+    assert_eq!(closing.get("domain"), Some(&domain.to_value()));
+    super::super::closing::begin(&fixture.directory, 1).unwrap();
+    assert_eq!(read_value(&closing_path, true).unwrap(), closing);
+    assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    drop(store);
     fixture.cleanup().unwrap();
 }

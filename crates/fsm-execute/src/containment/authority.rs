@@ -27,6 +27,9 @@ mod entry;
 #[path = "authorize.rs"]
 mod authorize;
 
+#[path = "closing.rs"]
+mod closing;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -35,10 +38,16 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         return Err("requires separately provisioned root authority".into());
     }
     if arguments.len() < 3 {
-        return Err("usage: register|bind|prepare|authorize NAMESPACE GENERATION [REQUEST]".into());
+        return Err(
+            "usage: register|bind|prepare|authorize|begin-close NAMESPACE GENERATION [REQUEST]"
+                .into(),
+        );
     }
     let operation = arguments[0].to_str().ok_or("invalid operation")?;
-    if !matches!(operation, "register" | "bind" | "prepare" | "authorize") {
+    if !matches!(
+        operation,
+        "register" | "bind" | "prepare" | "authorize" | "begin-close"
+    ) {
         return Err("operation outside authority policy".into());
     }
     let namespace = arguments[1].to_str().ok_or("invalid namespace")?;
@@ -54,7 +63,15 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         return output.write_all(b"\n").map_err(io);
     }
     if arguments.len() != 4 {
-        return Err("register/bind/authorize requires one path".into());
+        return Err("authority operation requires exactly one request path or allocation".into());
+    }
+    if operation == "begin-close" {
+        let raw = arguments[3].to_str().ok_or("invalid allocation")?;
+        let allocation = raw.parse::<u64>().map_err(|_| "invalid allocation")?;
+        if allocation == 0 || raw != allocation.to_string() {
+            return Err("noncanonical closing allocation".into());
+        }
+        return closing::begin(&directory, allocation);
     }
     if operation == "register" {
         register(&directory, Path::new(&arguments[3]))
@@ -279,20 +296,7 @@ fn validate_binding(directory: &Path, binding: &Value) -> Result<(Claim, File), 
     {
         return Err("authority identity differs".into());
     }
-    let lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(NOFOLLOW_NONBLOCK)
-        .open(directory.join("LOCK"))
-        .map_err(io)?;
-    let metadata = lock.metadata().map_err(io)?;
-    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o077 != 0 {
-        return Err("authority lock is not protected".into());
-    }
-    lock.try_lock().map_err(|_| "authority busy")?;
+    let lock = authority_lock(directory)?;
     let allocation = number(&domain, "allocation")?;
     entry::ensure_open(directory, allocation)?;
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
@@ -339,6 +343,24 @@ fn validate_binding(directory: &Path, binding: &Value) -> Result<(Claim, File), 
         return Err("registered store changed during verification".into());
     }
     Ok((claim, lock))
+}
+
+fn authority_lock(directory: &Path) -> Result<File, String> {
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(NOFOLLOW_NONBLOCK)
+        .open(directory.join("LOCK"))
+        .map_err(io)?;
+    let metadata = lock.metadata().map_err(io)?;
+    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o077 != 0 {
+        return Err("authority lock is not protected".into());
+    }
+    lock.try_lock().map_err(|_| "authority busy")?;
+    Ok(lock)
 }
 
 fn object<const N: usize>(fields: [(&str, Value); N]) -> Value {
