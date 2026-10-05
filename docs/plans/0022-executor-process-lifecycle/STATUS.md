@@ -617,4 +617,21 @@ lifecycle updates.
   Linux stable/MSRV legs, both native prerequisite jobs and zero-dependencies
   passing; macOS and Windows legs remain live. Task 9302 stays In progress.
 
+- **Native receipt/public-store bridge authored:** task 9302 adopts the
+  new `evidence_probe.py` driver alongside its existing store-test footprint.
+  A native-only store fixture reuses the proved root identity helper, binds
+  the exact durable claim/hash in protected authority state before authorizing
+  launch, and issues a protected canonical store receipt only after the
+  helper's real closed-domain observation. The driver requires a real root
+  and descendant before native closure, exercises public opaque receipt reads,
+  stop and atomic acknowledgement, and covers unprivileged binding, unbound
+  launch, premature receipt publication, writable receipt and symlink refusal.
+  All units/directories use fresh task-specific namespaces; unrelated-process
+  survival and cleanup are checked. This issuer is proof infrastructure, not
+  the shipped production authority or runner. Initial fixture compilation on
+  stable/MSRV and all-target Clippy passed before the latest binding/launch
+  wiring review; final compilation and provisioned native execution are still
+  pending, and no native receipt/publication acceptance is claimed. Task 9302
+  remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

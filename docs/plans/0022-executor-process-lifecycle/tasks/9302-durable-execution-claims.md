@@ -14,6 +14,7 @@ touches:
   - crates/fsm-core/tests/
   - crates/fsm-store/src/
   - crates/fsm-store/tests/
+  - crates/fsm-execute/tests/lifecycle_platform/evidence_probe.py
   - crates/fsm-embed-acceptance/src/
   - crates/fsm-embed-acceptance/tests/
   - crates/fsm-cli/tests/fixtures/
