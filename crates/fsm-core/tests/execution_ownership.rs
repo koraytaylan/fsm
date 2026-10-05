@@ -127,6 +127,13 @@ fn stale_observation_quarantine_and_exhaustion_do_not_burn_allocations() {
                 .is_err()
         );
         assert_eq!(state, before);
+        if admission == Admission::Quarantined {
+            assert_eq!(
+                state.claim(claim(1, "effect", 1), PendingEffect::Present, 0),
+                Err(ShapeError("quarantined"))
+            );
+            assert_eq!(state, before);
+        }
     }
     let mut state = ExecutionState::new(Admission::Enabled);
     let before = state.clone();
@@ -171,6 +178,10 @@ fn native_closure_must_bind_the_full_domain_and_run() {
     set(&mut domain, "generation", Value::Num("10".into()));
     set(&mut changed, "domain", domain);
     let wrong_authority = Claim::from_value(&changed).unwrap();
+    assert_eq!(
+        state.stop(&wrong_authority, stopped(&wrong_authority, "ok")),
+        Err(ShapeError("claim_binding"))
+    );
     assert_eq!(
         state.stop(&owned, stopped(&wrong_authority, "ok")),
         Err(ShapeError("closure_binding"))
@@ -455,6 +466,13 @@ fn complete_block_bound_counts_every_delimiter_identity_and_result() {
     let mut accepted = initial.clone();
     accepted.stop(&last_claim, last_stopped).unwrap();
     assert_eq!(accepted.to_value(), exact);
+    let before = accepted.clone();
+    assert!(
+        accepted
+            .claim(claim(129, "extra", 1), PendingEffect::Present, 0)
+            .is_err()
+    );
+    assert_eq!(accepted, before);
     let mut too_big_stopped = entries[127].get("stopped").unwrap().clone();
     let mut outcome = too_big_stopped.get("outcome").unwrap().clone();
     let result = format!("{}x", outcome.get("result").unwrap().as_str().unwrap());

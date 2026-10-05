@@ -300,4 +300,11 @@ lifecycle updates.
   pending for this unit. No production record kinds or VERSION 11
   store integration have landed, and task 9302 remains In progress.
 
+- **Ownership review follow-up:** direct fixtures now also reach quarantined
+  admission with a pending effect, mismatched full claim identity and a new
+  claim against an exactly-full state block; all 16 stable ownership tests pass.
+  These close coverage gaps found while choosing individual guard mutations;
+  final frozen review uses the follow-up commit rather than the earlier code
+  head alone, and production store wiring remains incomplete.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
