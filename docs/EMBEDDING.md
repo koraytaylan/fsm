@@ -1,5 +1,27 @@
 # Embedding fsm as a library
 
+NativeCompletion now additionally authenticates the full bounded successful
+response using separate immutable Root-issued result attestation; a matching
+closure receipt alone cannot authenticate candidate output or its failure class.
+After proving closure, Root publishes `result-<allocation>-<run_id>.json` as a
+bounded canonical Root-owned 0444 object with exactly `format` (the private
+`fsm.native-result-attestation/1` tag), `domain`, `run_id`, `journal_claim` and
+`response_hash`; the last is SHA-256 over the entire response in the new private
+`fsm:native-response:1` hash domain. No argv, contract or captured output is
+published in this attestation, and historical closure/journal/hash bytes remain
+unchanged under the unreleased provisional native boundary.
+Publication creates once, syncs the file and its protected parent, then makes
+and syncs its immutable public mode before checking NativeCompletion and writing
+the existing private completed response; crashes before full publication refuse
+recovery rather than inferring a candidate. Verification checks protected location,
+authority identity, original run/claim and exact response digest without repairing
+missing/torn/writable evidence. Older unattested native responses refuse.
+Native fixtures require changed captured output to fail attestation despite a
+matching original closure, plus missing/torn/symlink/writable attestation refusal and
+unchanged fixture-owned bytes after restoration; current native/portable/frozen
+acceptance and automatic production routing remain pending.
+
+
 The provisional `Pipeline::claim_native_handler` derives instance/effect identity
 from journal replay, validates the original HandlerSpec and takes its fingerprint
 and retry snapshot from that same contract under a healthy durable writer.

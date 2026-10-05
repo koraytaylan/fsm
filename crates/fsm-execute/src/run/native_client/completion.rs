@@ -23,6 +23,16 @@ impl NativeCompletion {
         if !proof.matches_claim(claim, journal_claim) {
             return Err("native completion closure does not match original claim".into());
         }
+        let response_hash = format!(
+            "sha256:{}",
+            fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+                "fsm:native-response:1",
+                response
+            ),)
+        );
+        proof
+            .check_result_digest(&response_hash)
+            .map_err(|error| format!("native completion result attestation: {}", error.message))?;
         Ok(Self {
             claim: claim.clone(),
             handler: material.handler,

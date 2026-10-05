@@ -275,6 +275,62 @@ fn run_case(timeout: bool) {
         text(&binding, "journal_claim").unwrap(),
     )
     .unwrap();
+    let mut forged = execution.clone();
+    let Value::Obj(frame) = &mut forged else {
+        panic!("response object")
+    };
+    let Some(Value::Obj(result)) = frame.get_mut("result") else {
+        panic!("result object")
+    };
+    let Some(Value::Obj(candidate)) = result.get_mut("candidate") else {
+        panic!("candidate object")
+    };
+    candidate.insert("stdout".into(), Value::Str("forged captured output".into()));
+    let error = match fsm_execute::run::native_client::NativeCompletion::verify(
+        &forged,
+        &original_claim,
+        text(&binding, "journal_claim").unwrap(),
+    ) {
+        Err(error) => error,
+        Ok(_) => panic!("changed candidate reused original closure proof"),
+    };
+    assert!(error.contains("attestation"), "{error}");
+    let attestation = fixture
+        .directory
+        .join(format!("result-1-{}.json", original_claim.run_id()));
+    let metadata = fs::symlink_metadata(&attestation).unwrap();
+    assert_eq!(metadata.uid(), 0);
+    assert_eq!(metadata.mode() & 0o777, 0o444);
+    let attested_bytes = fs::read(&attestation).unwrap();
+    let saved_attestation = fixture.directory.join("fixture-result-attestation.saved");
+    fs::rename(&attestation, &saved_attestation).unwrap();
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    fs::write(&attestation, b"{").unwrap();
+    fs::set_permissions(&attestation, fs::Permissions::from_mode(0o444)).unwrap();
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(fs::read(&attestation).unwrap(), b"{");
+    fs::remove_file(&attestation).unwrap();
+    std::os::unix::fs::symlink(&saved_attestation, &attestation).unwrap();
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    fs::remove_file(&attestation).unwrap();
+    fs::rename(&saved_attestation, &attestation).unwrap();
+    fs::set_permissions(&attestation, fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(
+        request(&base, "recover", Value::Num("1".into())).get("ok"),
+        Some(&Value::Bool(false))
+    );
+    fs::set_permissions(&attestation, fs::Permissions::from_mode(0o444)).unwrap();
+    assert_eq!(fs::read(&attestation).unwrap(), attested_bytes);
+    assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
     assert_eq!(
         completion.candidate().get("status"),
         Some(&Value::Num(if timeout { "-1" } else { "0" }.into()))

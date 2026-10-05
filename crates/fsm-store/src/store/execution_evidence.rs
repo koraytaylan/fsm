@@ -36,6 +36,14 @@ impl VerifiedClosure {
         validate_store_identity(self.store_identity, directory)
     }
 
+    /// Authenticate a bounded executor-computed native response digest.
+    ///
+    /// Matching closure alone does not authenticate captured result or policy;
+    /// this separate immutable Root attestation binds the original full response.
+    pub fn check_result_digest(&self, response_hash: &str) -> Result<(), ErrorObj> {
+        read_result_attestation(self, response_hash)
+    }
+
     /// Read bounded protected native evidence; unsupported platforms refuse.
     pub fn read(path: &Path) -> Result<Self, ErrorObj> {
         let material = read_protected(path)?;
@@ -263,6 +271,10 @@ fn validate_location(path: &Path, value: &Value) -> Result<(), ErrorObj> {
             "closure-{allocation}-{}.json",
             string_number(value, "run_id")?
         ),
+        "fsm.native-result-attestation/1" => format!(
+            "result-{allocation}-{}.json",
+            string_number(value, "run_id")?
+        ),
         "fsm.native-quiescence/1" => {
             let head = string(value, "previous_head")?;
             if !digest(head) {
@@ -396,5 +408,62 @@ fn validate_physical_store(
 ) -> Result<(), ErrorObj> {
     Err(invalid(
         "native store identity requires the provisioned Linux/systemd backend",
+    ))
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn read_result_attestation(proof: &VerifiedClosure, response_hash: &str) -> Result<(), ErrorObj> {
+    if !digest(response_hash) {
+        return Err(invalid("invalid native response digest"));
+    }
+    let closure = proof.closure.to_value();
+    let domain = closure
+        .get("domain")
+        .ok_or_else(|| invalid("missing closure domain"))?;
+    let path = Path::new("/var/lib/fsm-containment")
+        .join(string(domain, "namespace")?)
+        .join(format!(
+            "authority-{}",
+            string_number(domain, "generation")?
+        ))
+        .join(format!(
+            "result-{}-{}.json",
+            string_number(domain, "allocation")?,
+            string_number(&closure, "run_id")?
+        ));
+    let material = read_protected(&path)?;
+    closed(
+        &material,
+        &[
+            "format",
+            "domain",
+            "run_id",
+            "journal_claim",
+            "response_hash",
+        ],
+    )?;
+    if string(&material, "format")? != "fsm.native-result-attestation/1"
+        || material.get("domain") != Some(domain)
+        || material.get("run_id") != closure.get("run_id")
+        || string(&material, "journal_claim")? != proof.journal_claim
+        || string(&material, "response_hash")? != response_hash
+    {
+        return Err(invalid(
+            "native response attestation differs from original result",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+fn read_result_attestation(_proof: &VerifiedClosure, _response_hash: &str) -> Result<(), ErrorObj> {
+    Err(invalid(
+        "native result authentication requires the provisioned Linux/systemd backend",
     ))
 }

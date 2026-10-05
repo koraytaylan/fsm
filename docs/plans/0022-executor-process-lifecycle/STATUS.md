@@ -2688,6 +2688,20 @@ lifecycle updates.
   No published journal/receipt/hash bytes change; source checks pass, full
   current native/portable/frozen acceptance and production routing remain pending.
 
+- Native result authenticity review found that closure proof alone authenticated
+  original run/domain/hash but did not bind the returned candidate bytes, so an
+  altered response could pass identity checks after true closure. Root completion
+  publication now creates a separate protected immutable digest attestation of
+  the entire bounded response before private completed-record publication;
+  NativeCompletion requires the original authority/run/claim and exact digest.
+  The new private attestation/hash domain preserves historical closure/journal
+  bytes and exposes no full contract or captures. Broker fixtures require altered
+  output to fail attestation despite original closure, and missing/torn/symlink/writable
+  metadata to refuse until exact fixture-owned bytes are restored. SPEC/API/
+  embedding describe crash refusal and the unreleased boundary; source checks
+  pass, with full native/portable/frozen verification and production routing
+  remaining required and no task acceptance changes.
+
 - CI review of dac1a37, run 37330135992, found the new freshness fixture
   compared its full counter Value to integer 0; the assertion now extracts the
   checked last_allocation field with the existing native numeric reader.

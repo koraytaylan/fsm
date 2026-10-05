@@ -2323,3 +2323,19 @@ response MUST NOT recreate consumed ownership. This operation MUST start no
 helpers and grant no fallback: hosts prepare, claim under the writer, then recheck
 current launch eligibility through NativeExecution::start; Root binding still
 verifies its immutable approved catalogue before actual entry.
+
+A matching closure receipt MUST NOT by itself authenticate a native candidate.
+NativeCompletion MUST also verify a separate immutable Root-issued attestation
+of the complete bounded response under the private `fsm:native-response:1`
+hash domain before exposing the result. The protected authority record is
+`result-<allocation>-<run_id>.json`, with exactly `format` set to
+`fsm.native-result-attestation/1`, `domain`, `run_id`, `journal_claim` and canonical
+SHA-256 `response_hash`; it MUST match the original closure's full domain/run/hash
+and the response digest. Protected bounded regular-file and authority identity
+checks MUST be applied before accepting it. It MUST expose no full contract or
+captured output, alter no historical closure material/hash domain, and grant no
+launch, settlement or capacity release independently of current ownership.
+After closure, Root MUST create once and sync this attestation, publish and sync
+mode 0444, then verify completion before durably publishing its private response.
+Missing, partial, writable, relocated or mismatched attestations MUST refuse;
+recovery MUST NOT repair them or substitute caller-selected candidate material.
