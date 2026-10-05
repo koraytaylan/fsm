@@ -42,8 +42,8 @@ touches:
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "9f1f175ad91609359699e3a2d670119e8cbb506a"
 ---
 # Contained Handler Runner
 
@@ -770,3 +770,22 @@ Formatting, oversized-file and complete frozen range diff checks were also
 rerun successfully in the isolated checkout. All required stable host
 commands now pass at the frozen product source; the task acceptance record
 still requires final consolidation before changing its status.
+
+## Final task acceptance
+
+Task 9303 is accepted at frozen product `9f1f175ad91609359699e3a2d670119e8cbb506a`
+against base `cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb`. The five obligations
+in the corrected-source table above are satisfied at the primitive runner
+boundary by its recorded source reviews and independently verified native
+stable/MSRV controls; all nine exact-source CI jobs and every required local
+stable host command have now passed. Both review findings are resolved: the
+interrupted association deadline by the frozen product correction, and the
+historical result-envelope wording by documentation commit `3efdde6`.
+No outstanding task-9303 finding remains. This final verdict supersedes earlier
+withheld acceptance and resource-blocked observations in this historical record.
+
+The native matrix retains `production_backend:false`, `gate_released:false`
+and `executable_bytes_verified:false`: primitive acceptance does not assert
+production host routing or an independent binary-byte comparison. Tasks
+9401–9404 still own integrated concurrency capacity, shutdown, uncertainty
+reconciliation and host crash acceptance; plans 20, 21 and 23 remain unfinished.

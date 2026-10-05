@@ -22,7 +22,7 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Executor Ownership Integration
@@ -137,3 +137,7 @@ instances, stopped ownership and uncertain retained handles; then compose the
 writer-held launch path and original-contract recovery through every public tick.
 These are implementation decisions, not executed integration evidence, and the
 task remains planned behind task 9303's outstanding acceptance.
+
+Task 9303 has now completed its frozen local and nine-job CI acceptance at
+`9f1f175`; ownership integration is opened for implementation using the
+projection/capacity design above, with all integrated-host cases still pending.
