@@ -236,6 +236,24 @@ pub(super) fn run() {
         Some(&Value::Bool(true)),
         "{execution:?}"
     );
+    let original_claim =
+        fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
+    let completion = fsm_execute::run::native_client::NativeCompletion::verify(
+        &execution,
+        &original_claim,
+        text(&binding, "journal_claim").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        completion.candidate().get("status"),
+        Some(&Value::Num("0".into()))
+    );
+    assert_eq!(completion.failure_class(), None);
+    assert!(
+        completion
+            .proof()
+            .matches_claim(&original_claim, text(&binding, "journal_claim").unwrap())
+    );
     let result = execution.get("result").unwrap();
     assert_eq!(result.get("claim"), binding.get("claim"));
     assert_eq!(result.get("journal_claim"), binding.get("journal_claim"));

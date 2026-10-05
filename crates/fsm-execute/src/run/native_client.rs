@@ -11,6 +11,10 @@ use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+mod completion;
+
+pub use completion::NativeCompletion;
+
 const HELPER: &str = "/usr/libexec/fsm-containment-authority";
 const RESPONSE_LIMIT: usize = 65540;
 const POLL_BUDGET: usize = 65536;

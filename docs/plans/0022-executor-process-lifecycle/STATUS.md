@@ -1820,4 +1820,20 @@ lifecycle updates.
   journal format, hash domain or stable error change, and task 9303 stays
   In progress.
 
+- **Claim-matched completion validation implemented for review:** provisional
+  Linux `NativeCompletion` requires successful closed broker/result envelopes,
+  the original immutable full claim/hash, its canonical derived receipt path,
+  object acknowledgement candidate and known nullable failure class. It reads
+  protected opaque closure evidence and requires exact run/domain/hash matching
+  before exposing unchanged candidate, class and proof; it performs no stopped
+  write or settlement, and current ownership must still be rechecked by the
+  store under the writer lease. Pure controls reject stale claim, wrong hash,
+  alternate receipt route, unknown class, non-object candidate and failed broker
+  response before receipt I/O. The real provisioned broker access case now
+  verifies its receipt through this production validator and checks proof and
+  zero-status/no-failure preservation. The provisional inventory records the
+  reexported type and four methods. Formatting, size and diff checks pass;
+  compiled/native completion acceptance and public supervisor/service claim/
+  stop/settle integration remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

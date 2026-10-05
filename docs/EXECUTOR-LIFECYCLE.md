@@ -1,5 +1,15 @@
 # Executor lifecycle feasibility
 
+The provisional `run::native_client::NativeCompletion` now checks a successful
+broker response against the original full claim/hash, closed result envelope,
+canonical derived receipt path and existing failure classes, preserving the
+acknowledgement candidate unchanged. It reads protected opaque evidence and
+requires exact run/domain/hash matching before exposing candidate/class/proof;
+this still writes no stopped result and permits no settlement or capacity release
+without the store's current-ownership recheck. Pure mismatch controls and the
+actual native broker receipt case exercise this validator; compiled/native
+acceptance and production service wiring remain pending.
+
 Opaque native closure evidence now offers read-only `matches_claim`, comparing
 run ID, complete native domain and original journal-claim hash before the
 executor accepts a candidate. This does not establish current ownership or

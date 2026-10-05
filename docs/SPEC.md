@@ -1579,6 +1579,17 @@ assert that supplied ownership is current; the store's stopped transition still
 MUST recheck current ownership under its writer lease. A matching predicate
 alone MUST NOT authorize settlement, retry or capacity release.
 
+The provisional `run::native_client::NativeCompletion` validator MUST accept
+only a successful closed broker response with the exact native result envelope,
+original immutable claim/hash and canonical derived receipt path for that run.
+It MUST preserve the candidate acknowledgement value and accept only existing
+nullable failure classes, without reinterpreting the current handler table.
+It MUST read opaque protected closure evidence and require `matches_claim`
+before returning a checked completion. Missing/mismatched material MUST retain
+uncertainty; validation MUST NOT write stopped results, settle ownership or
+release capacity. The service MUST still recheck current ownership and persist
+its stopped result through the store's writer-protected mutator before settlement.
+
 The provisional Linux `run::native_client::NativeRequest` host adapter MUST
 validate a closed bounded request and canonical namespace/generation, verify the
 fixed root-protected nonsymlink non-setuid helper executable, and own its process
