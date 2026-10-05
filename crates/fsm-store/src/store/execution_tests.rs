@@ -301,3 +301,136 @@ fn cancellation_drops_settled_retry_ledger_without_dropping_unresolved_claim() {
     );
     assert_eq!(store.journal.last_seq, before);
 }
+
+#[test]
+fn exact_outcome_budget_survives_stop_snapshot_and_base_without_releasing_ownership() {
+    use fsm_core::canon::canon_bytes;
+    let (mut store, effect) = pending();
+    allocate(&mut store, &effect, "claim", &mut FixedClock::new(100, 1)).unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let mut outcome = BTreeMap::from([
+        ("status".into(), Value::Str("ok".into())),
+        ("result".into(), Value::Str(String::new())),
+    ]);
+    let overhead = canon_bytes(&Value::Obj(outcome.clone())).len();
+    // A control character costs six canonical bytes; the non-ASCII glyph costs two.
+    let result = format!("\u{0001}é{}", "x".repeat(65536 - overhead - 8));
+    outcome.insert("result".into(), Value::Str(result.clone()));
+    let exact = Value::Obj(outcome.clone());
+    assert_eq!(canon_bytes(&exact).len(), 65536);
+    outcome.insert("result".into(), Value::Str(format!("{result}x")));
+    let oversized = Value::Obj(outcome);
+    assert_eq!(canon_bytes(&oversized).len(), 65537);
+    assert_eq!(
+        StoppedOutcome::from_value(&oversized).unwrap_err().0,
+        "bytes"
+    );
+    let typed = StoppedOutcome::from_value(&exact).unwrap();
+    let before = store.journal.last_seq;
+    store
+        .stop_execution_on(
+            &mut FixedClock::new(100, 1),
+            ExecutionStopRequest {
+                claim: &claim,
+                proof: &proof(&store, &claim),
+                outcome: &typed,
+                request_id: "exact-stop",
+                expected_seq: Some(before),
+            },
+        )
+        .unwrap();
+    assert_eq!(store.journal.last_seq, before + 1);
+    assert_eq!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .unwrap()
+            .outcome()
+            .to_value(),
+        exact
+    );
+    assert_eq!(
+        allocate(
+            &mut store,
+            &effect,
+            "successor",
+            &mut FixedClock::new(101, 1)
+        )
+        .unwrap_err()
+        .code,
+        "store/execution_owned"
+    );
+    assert_fold(&store);
+
+    let snapshot = crate::snapshot::state_to_snapshot(&store.state);
+    let restored = crate::snapshot::snapshot_to_state(&snapshot).unwrap();
+    assert!(crate::snapshot::store_states_eq(&store.state, &restored));
+    let mut index = crate::base::BaseIndex::default();
+    index
+        .execution_claims
+        .insert(claim.run_id(), store.execution_claim_hash(&claim).unwrap());
+    let roots = crate::base::base_roots(&store.state, &index);
+    let base = crate::base::encode(&store.state, &index, crate::base::DefinitionLimits::Current);
+    let (restored, _) = crate::base::decode(&base, &roots).unwrap();
+    assert!(crate::snapshot::store_states_eq(&store.state, &restored));
+
+    let Value::Obj(mut execution) = store.state.execution.to_value() else {
+        panic!("execution must be an object");
+    };
+    let Some(Value::Arr(claims)) = execution.get_mut("claims") else {
+        panic!("claims must be an array");
+    };
+    let Value::Obj(entry) = &mut claims[0] else {
+        panic!("claim entry must be an object");
+    };
+    let Some(Value::Obj(stopped)) = entry.get_mut("stopped") else {
+        panic!("stopped result must be an object");
+    };
+    stopped.insert("outcome".into(), oversized.clone());
+    let Value::Obj(mut snapshot) = snapshot else {
+        panic!("snapshot must be an object")
+    };
+    snapshot.insert("execution".into(), Value::Obj(execution.clone()));
+    snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
+    let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+        "fsm:snapshot:6",
+        &Value::Obj(snapshot.clone()),
+    ));
+    snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));
+    assert_eq!(
+        crate::snapshot::snapshot_to_state(&Value::Obj(snapshot))
+            .unwrap_err()
+            .message,
+        "invalid execution field: bytes"
+    );
+    let Value::Obj(mut base) = base else {
+        panic!("base must be an object")
+    };
+    base.insert("execution".into(), Value::Obj(execution));
+    assert_eq!(
+        crate::base::decode(&Value::Obj(base), &roots)
+            .unwrap_err()
+            .message,
+        "base state file: invalid execution field: bytes"
+    );
+    let mut records = store.records.clone();
+    let last = records.pop().unwrap();
+    let Value::Obj(mut body) = last.body else {
+        panic!("stop body must be an object")
+    };
+    body.insert("outcome".into(), oversized);
+    records.push(fsm_core::record::seal(
+        last.seq,
+        last.ts,
+        last.kind,
+        Value::Obj(body),
+        &last.prev,
+    ));
+    assert!(fsm_core::replay::fold_with(records, &mut NopSink).is_err());
+}

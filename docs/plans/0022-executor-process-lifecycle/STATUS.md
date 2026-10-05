@@ -435,4 +435,20 @@ lifecycle updates.
   receipt publication/authentication are still required; task 9302 remains
   In progress.
 
+- **Stopped outcome byte budget:** a production-transition case accounts for
+  a six-byte escaped control character and a two-byte UTF-8 glyph, accepts
+  exactly 65,536 canonical outcome bytes, and rejects 65,537 at the public
+  bounded constructor. With an explicitly preauthenticated fixture proof, the
+  exact outcome is published through `stop_execution_on`, retains exclusive
+  ownership, agrees with full replay, and survives snapshot/6 and base/2 codec
+  round trips. Snapshot decoding with a recomputed checksum and authoritative
+  base decoding both reject the oversized outcome at `bytes`; a rehashed
+  stopped record is also refused by replay. All five transition cases pass on
+  stable and MSRV, and all-target Clippy passes. This is transition/codec
+  evidence, not native receipt authentication or a disk durability proof;
+  entry/aggregate resource bounds and the remaining native/fault acceptance
+  inventory remain outstanding, so task 9302 stays In progress.
+  Review CI `37254257934` has additionally completed macOS stable successfully;
+  macOS MSRV and both Windows legs remain live.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
