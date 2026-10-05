@@ -3081,4 +3081,17 @@ lifecycle updates.
   portable and frozen host gates remain pending under host swap pressure.
   Task 9303 remains active and no downstream integration is accepted.
 
+- CI `37358669917` at historical source `e1d358f` is now terminal success:
+  all six portable stable/MSRV Linux/macOS/Windows gates, zero-dependency and
+  both native jobs pass; this supplements its independently verified 80-case
+  native reports but does not validate the later profile/observation/target/
+  caller-input changes.
+  Cancellation was requested for superseded runs `37363278015`, `37361472892`
+  and `37359888477` after verifying their exact obsolete review-branch commits;
+  retained native evidence is preserved, and unfinished portable axes from
+  cancelled runs must never be reported as passing.
+  Current source `602b3dc` remains under live CI `37364129624`, with its clean
+  frozen checkout at task-cache `runner-review-602b3dc`; freeing obsolete CI
+  work does not accept task 9303 or release any production native gate.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
