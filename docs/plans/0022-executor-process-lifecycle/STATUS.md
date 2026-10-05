@@ -422,4 +422,17 @@ lifecycle updates.
   live, so the portable matrix is not yet accepted and task 9302 remains
   In progress.
 
+- **Authoritative-base metadata bound:** the metadata case now cancels the
+  instance while retaining its unresolved exact-size claim, creates a real
+  seal/archive, verifies that archive, and loads base/2 with the 4,096-byte
+  claim intact. Replacing only the persisted retry policy produces the measured
+  4,097-byte metadata variant; direct base decoding refuses `bytes` before
+  root comparison, and both read-only and writer opens refuse the hostile
+  authoritative base without changing its bytes or falling back to a cache.
+  Restoring the original base restores sealed ownership. The expanded test
+  passes on stable and MSRV, and all-target Clippy passes. Production entry,
+  outcome and aggregate bounds, the remaining durability faults and native
+  receipt publication/authentication are still required; task 9302 remains
+  In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

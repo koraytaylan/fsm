@@ -762,7 +762,61 @@ fn production_claim_metadata_accepts_exact_canonical_limit_before_reopen() {
     assert!(Store::open(&directory.0).is_err());
     assert_eq!(std::fs::read(&segment).unwrap(), hostile_journal);
     std::fs::write(&segment, healthy_journal).unwrap();
+    let mut restored = Store::open(&directory.0).unwrap();
+    assert_eq!(
+        restored.state.execution.claim_for(&instance_id, &effect),
+        Some(&claim)
+    );
+    restored
+        .cancel_instance(&instance_id, "cancel-before-seal")
+        .unwrap();
+    let archive = directory.0.join("metadata-archive");
+    std::fs::create_dir_all(&archive).unwrap();
+    restored.seal_and_archive(&archive, None).unwrap();
+    fsm_store::archive::verify(&archive).unwrap();
+    let opened = fsm_store::base::open_from_base(&directory.0, &restored.records).unwrap();
+    assert_eq!(
+        opened.state.execution.claim_for(&instance_id, &effect),
+        Some(&claim)
+    );
+    let roots = fsm_store::base::base_roots(&opened.state, &opened.index);
+    let Value::Obj(mut base) = fsm_store::base::read_value(&directory.0).unwrap() else {
+        panic!("base must be an object");
+    };
+    let Value::Obj(mut execution) = opened.state.execution.to_value() else {
+        panic!("execution block must be an object");
+    };
+    let Some(Value::Arr(claims)) = execution.get_mut("claims") else {
+        panic!("execution claims must be an array");
+    };
+    let Value::Obj(entry) = &mut claims[0] else {
+        panic!("execution entry must be an object");
+    };
+    let Value::Obj(mut metadata) = claim.to_value() else {
+        panic!("claim metadata must be an object");
+    };
+    metadata.insert("retry".into(), oversized_policy.to_value());
+    entry.insert("claim".into(), Value::Obj(metadata));
+    base.insert("execution".into(), Value::Obj(execution));
+    let hostile_base = Value::Obj(base);
+    assert_eq!(
+        fsm_store::base::decode(&hostile_base, &roots)
+            .unwrap_err()
+            .message,
+        "base state file: invalid execution field: bytes"
+    );
+    let path = fsm_store::base::base_path(&directory.0);
+    drop(restored);
+    let original_base = std::fs::read(&path).unwrap();
+    let hostile_base_bytes = canon_bytes(&hostile_base);
+    std::fs::write(&path, &hostile_base_bytes).unwrap();
+    assert!(Store::open_read_only(&directory.0).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), hostile_base_bytes);
+    assert!(Store::open(&directory.0).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), hostile_base_bytes);
+    std::fs::write(&path, original_base).unwrap();
     let restored = Store::open(&directory.0).unwrap();
+    assert!(restored.sealed_open);
     assert_eq!(
         restored.state.execution.claim_for(&instance_id, &effect),
         Some(&claim)
