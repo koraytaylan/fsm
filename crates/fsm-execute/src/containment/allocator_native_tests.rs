@@ -555,6 +555,39 @@ fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
     assert_eq!(store.records, before);
     assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
     assert!(!store.state.dedup.contains_key("invalid-handler-claim"));
+    for nested in [false, true] {
+        let mut excessive = handler.clone();
+        if nested {
+            let mut payload = Value::Null;
+            for _ in 0..=JsonLimits::DEFAULT.max_depth {
+                payload = Value::Arr(vec![payload]);
+            }
+            excessive.on_ok = Some(fsm_execute::config::Advance {
+                event: "done".into(),
+                payload,
+                stamps: Vec::new(),
+            });
+        } else {
+            excessive
+                .argv
+                .push("x".repeat(JsonLimits::DEFAULT.max_bytes + 1));
+        }
+        let error = pipeline
+            .claim_native_handler(
+                &mut store,
+                &mut FixedClock::new(100, 1),
+                &effect,
+                &excessive,
+                domain,
+                "oversized-handler-claim",
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "exec/config");
+        assert_eq!(error.message, "native handler input exceeds JSON bounds");
+        assert_eq!(store.records, before);
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
+        assert!(!store.state.dedup.contains_key("oversized-handler-claim"));
+    }
     let claim = pipeline
         .claim_native_handler(
             &mut store,

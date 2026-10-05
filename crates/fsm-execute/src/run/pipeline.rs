@@ -95,8 +95,7 @@ impl Pipeline {
                 "native handler does not match the journal-derived effect",
             ));
         }
-        let fingerprint = handler.fingerprint();
-        let contract = handler.contract_value();
+        let (fingerprint, contract) = handler.checked_contract()?;
         HandlerSpec::from_contract(&contract, &fingerprint)?;
         let retry = RetryPolicy::from_value(contract.get("retry").ok_or_else(|| {
             ExecError::new("exec/config", "native original retry policy is missing")

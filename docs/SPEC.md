@@ -2402,7 +2402,12 @@ interpreted as completed automatic production-host routing or gate acceptance.
 The typed `Pipeline::claim_native_handler` admission method MUST require a
 supported healthy durable writer, resolve the original instance/effect identity
 from the journal, validate the handler contract and reject a handler effect-name
-mismatch before claiming a request key. Its fingerprint and retry policy MUST
+mismatch before claiming a request key. Admission MUST charge borrowed handler
+strings and nested argument/outcome values against the existing JSON byte/depth
+bounds before cloning full contract material or hashing it; excessive caller
+material MUST refuse with `exec/config` before claiming or starting helpers.
+The complete normalized contract MUST still pass the same exact JSON limits.
+Its fingerprint and retry policy MUST
 come from that same original contract rather than independently supplied values.
 After idempotent claim publication it MUST return only a matching currently owned
 claim for the prepared domain and available original record hash; an old duplicate

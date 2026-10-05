@@ -14,7 +14,7 @@ fn charge(bytes: usize, remaining: &mut usize) -> Result<(), ()> {
     Ok(())
 }
 
-fn string(value: &str, remaining: &mut usize) -> Result<(), ()> {
+pub(crate) fn string(value: &str, remaining: &mut usize) -> Result<(), ()> {
     charge(2, remaining)?;
     for character in value.chars() {
         charge(
@@ -29,7 +29,7 @@ fn string(value: &str, remaining: &mut usize) -> Result<(), ()> {
     Ok(())
 }
 
-fn charge_value(value: &Value, depth: u32, remaining: &mut usize) -> Result<(), ()> {
+pub(crate) fn charge_value(value: &Value, depth: u32, remaining: &mut usize) -> Result<(), ()> {
     if matches!(value, Value::Arr(_) | Value::Obj(_)) && depth >= JsonLimits::DEFAULT.max_depth {
         return Err(());
     }

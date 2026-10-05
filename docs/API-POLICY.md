@@ -827,3 +827,9 @@ reader as observation, requires an empty unfrozen domain and repeats original
 directory checks before prepared publication. Failure retains the burned
 allocation without authorizing claims, launch or reuse; record formats stay
 unchanged and the production native gate remains unreleased.
+
+Native typed handler admission bounds borrowed caller-owned strings and nested
+argument/outcome values before cloning or hashing the full contract, refusing
+excess with the existing `exec/config` error before claim mutation or helpers.
+This preserves public signatures and journal/hash formats; fresh native,
+portable and frozen host acceptance remains required before production routing.

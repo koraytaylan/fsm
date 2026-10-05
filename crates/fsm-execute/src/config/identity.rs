@@ -121,3 +121,62 @@ pub(super) fn recover(
     }
     Ok(handler)
 }
+
+/// Bound caller-owned material before cloning the normalized contract.
+#[cfg(target_os = "linux")]
+pub(super) fn checked_material(handler: &HandlerSpec) -> Result<(String, Value), super::ExecError> {
+    let refused =
+        || super::ExecError::new("exec/config", "native handler input exceeds JSON bounds");
+    let mut remaining = fsm_core::json::JsonLimits::DEFAULT.max_bytes;
+    for text in std::iter::once(&handler.effect)
+        .chain(&handler.argv)
+        .chain(&handler.retry.on)
+    {
+        crate::value_limits::string(text, &mut remaining).map_err(|_| refused())?;
+    }
+    if let HandlerKind::Mcp { tool, arguments } = &handler.kind {
+        crate::value_limits::string(tool, &mut remaining).map_err(|_| refused())?;
+        crate::value_limits::charge_value(arguments, 0, &mut remaining).map_err(|_| refused())?;
+    }
+    for advance in [handler.on_ok.as_ref(), handler.on_failed.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        for text in std::iter::once(&advance.event).chain(&advance.stamps) {
+            crate::value_limits::string(text, &mut remaining).map_err(|_| refused())?;
+        }
+        crate::value_limits::charge_value(&advance.payload, 0, &mut remaining)
+            .map_err(|_| refused())?;
+    }
+    let material = material(handler);
+    crate::value_limits::canonical(&material, fsm_core::json::JsonLimits::DEFAULT.max_bytes)
+        .map_err(|_| refused())?;
+    let fingerprint = format!(
+        "sha256:{}",
+        to_hex(&domain_hash("fsm:handler-contract:1", &material))
+    );
+    Ok((fingerprint, material))
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checked_contract_accepts_exact_canonical_limit_and_refuses_plus_one() {
+        let table = super::super::HandlerTable::parse(
+            r#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true", ""],"timeout_ms":100}]}"#,
+        ).unwrap();
+        let mut handler = table.handlers["notify"].clone();
+        let overhead = fsm_core::canon::canon_bytes(&material(&handler)).len();
+        handler.argv[1] = "x".repeat(fsm_core::json::JsonLimits::DEFAULT.max_bytes - overhead);
+        let (identity, contract) = checked_material(&handler).unwrap();
+        assert_eq!(
+            fsm_core::canon::canon_bytes(&contract).len(),
+            fsm_core::json::JsonLimits::DEFAULT.max_bytes
+        );
+        assert_eq!(identity, fingerprint(&handler));
+        handler.argv[1].push('x');
+        assert_eq!(checked_material(&handler).unwrap_err().code, "exec/config");
+    }
+}

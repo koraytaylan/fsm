@@ -3072,4 +3072,13 @@ lifecycle updates.
   cannot stand in for that frozen gate, and full portable verdicts remain
   pending while host swap pressure prevents additional local builds.
 
+- Admission review repairs prevalidation cloning/hashing of caller-constructed
+  handler material: borrowed strings and nested values are charged first, then
+  the complete normalized contract is checked against the exact JSON ceiling.
+  A limit/limit-plus-one unit control and production claim refusal controls
+  check unchanged records/state/request keys for excessive bytes/depth.
+  Formatting, source-size and diff checks pass; compilation and fresh native,
+  portable and frozen host gates remain pending under host swap pressure.
+  Task 9303 remains active and no downstream integration is accepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
