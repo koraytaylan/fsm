@@ -681,8 +681,40 @@ fn production_claim_metadata_accepts_exact_canonical_limit_before_reopen() {
         panic!("claim metadata must be an object");
     };
     oversized_metadata.insert("retry".into(), oversized_policy.to_value());
-    assert_eq!(canon_bytes(&Value::Obj(oversized_metadata)).len(), 4097);
+    assert_eq!(
+        canon_bytes(&Value::Obj(oversized_metadata.clone())).len(),
+        4097
+    );
     assert_eq!(claim.run_id(), 1);
+    let record = store.records.last().unwrap().clone();
+    let cache = fsm_store::snapshot::write_snapshot(&directory.0, &store.state).unwrap();
+    let Value::Obj(mut snapshot) = fsm_store::snapshot::state_to_snapshot(&store.state) else {
+        panic!("snapshot must be an object");
+    };
+    let Value::Obj(mut execution) = store.state.execution.to_value() else {
+        panic!("execution block must be an object");
+    };
+    let Some(Value::Arr(claims)) = execution.get_mut("claims") else {
+        panic!("execution claims must be an array");
+    };
+    let Value::Obj(entry) = &mut claims[0] else {
+        panic!("execution entry must be an object");
+    };
+    entry.insert("claim".into(), Value::Obj(oversized_metadata));
+    snapshot.insert("execution".into(), Value::Obj(execution));
+    snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
+    let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+        "fsm:snapshot:6",
+        &Value::Obj(snapshot.clone()),
+    ));
+    snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));
+    let hostile_snapshot = Value::Obj(snapshot);
+    assert_eq!(
+        fsm_store::snapshot::snapshot_to_state(&hostile_snapshot)
+            .unwrap_err()
+            .message,
+        "invalid execution field: bytes"
+    );
     drop(store);
     let store = Store::open(&directory.0).unwrap();
     assert_eq!(
@@ -690,4 +722,49 @@ fn production_claim_metadata_accepts_exact_canonical_limit_before_reopen() {
         Some(&claim)
     );
     assert_eq!(store.state.execution.run_high_water(), 1);
+    drop(store);
+    let healthy_cache = std::fs::read(&cache).unwrap();
+    let hostile_bytes = canon_bytes(&hostile_snapshot);
+    std::fs::write(&cache, &hostile_bytes).unwrap();
+    let read_only = Store::open_read_only(&directory.0).unwrap();
+    assert_eq!(
+        read_only.state.execution.claim_for(&instance_id, &effect),
+        Some(&claim)
+    );
+    assert_eq!(std::fs::read(&cache).unwrap(), hostile_bytes);
+    drop(read_only);
+    std::fs::write(&cache, healthy_cache).unwrap();
+
+    // Keep the chain hash valid so refusal cannot be attributed to hash damage.
+    let segment = directory.0.join("journal/seg-00000000000000000000.jsonl");
+    let healthy_journal = std::fs::read(&segment).unwrap();
+    let original_line = record.to_line();
+    assert!(healthy_journal.ends_with(&original_line));
+    let Value::Obj(mut body) = record.body.clone() else {
+        panic!("claim body must be an object");
+    };
+    body.insert("retry".into(), oversized_policy.to_value());
+    let mut hostile_journal =
+        healthy_journal[..healthy_journal.len() - original_line.len()].to_vec();
+    hostile_journal.extend(
+        fsm_core::record::seal(
+            record.seq,
+            record.ts,
+            record.kind,
+            Value::Obj(body),
+            &record.prev,
+        )
+        .to_line(),
+    );
+    std::fs::write(&segment, &hostile_journal).unwrap();
+    assert!(Store::open_read_only(&directory.0).is_err());
+    assert_eq!(std::fs::read(&segment).unwrap(), hostile_journal);
+    assert!(Store::open(&directory.0).is_err());
+    assert_eq!(std::fs::read(&segment).unwrap(), hostile_journal);
+    std::fs::write(&segment, healthy_journal).unwrap();
+    let restored = Store::open(&directory.0).unwrap();
+    assert_eq!(
+        restored.state.execution.claim_for(&instance_id, &effect),
+        Some(&claim)
+    );
 }

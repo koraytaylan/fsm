@@ -407,4 +407,19 @@ lifecycle updates.
   production entry/outcome/aggregate bounds and native receipt authentication
   remain outstanding, so task 9302 stays In progress.
 
+- **Hostile metadata loading:** the exact metadata case now replaces the
+  persisted claim with its measured 4,097-byte variant and recomputes the
+  snapshot checksum or journal chain hash to isolate bounded decoding from
+  ordinary hash damage. Direct snapshot decoding refuses the `bytes` field;
+  read-only store loading skips that hostile cache, recovers the original
+  journal claim and leaves cache bytes unchanged. Both read-only and writer
+  opens refuse the oversized journal claim without changing journal bytes;
+  restoring the original bytes restores ownership. The expanded case passes
+  on stable and MSRV, and all-target Clippy passes. Authoritative-base plus-one
+  controls and the other production resource bounds remain outstanding.
+  CI run `37254257934` now has successful Linux stable/MSRV legs alongside both
+  native jobs and zero-dependencies; both macOS and Windows toolchains remain
+  live, so the portable matrix is not yet accepted and task 9302 remains
+  In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
