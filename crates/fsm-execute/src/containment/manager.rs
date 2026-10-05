@@ -58,18 +58,33 @@ fn query(unit: &str, keys: &[&str], requested: Instant) -> Result<Vec<u8>, Strin
     if Instant::now() >= deadline {
         return Err("system-manager query deadline or incomplete I/O".into());
     }
-    let binary = Path::new("/usr/bin/systemctl");
-    protected_directory(binary.parent().ok_or("manager binary has no parent")?)?;
-    let metadata = fs::symlink_metadata(binary).map_err(io)?;
-    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
-        return Err("system-manager executable is not root protected".into());
-    }
+    let binary = binary()?;
     let mut command = Command::new(binary);
     command.args(["show", unit, "--no-pager"]);
     for key in keys {
         command.arg(format!("--property={key}"));
     }
     capture(command, deadline)
+}
+
+pub(super) fn stop(unit: &str, deadline: Instant) -> Result<(), String> {
+    let mut command = Command::new(binary()?);
+    command.args(["stop", "--job-mode=replace", "--no-ask-password", unit]);
+    capture(
+        command,
+        deadline.min(Instant::now() + Duration::from_secs(2)),
+    )
+    .map(|_| ())
+}
+
+fn binary() -> Result<&'static Path, String> {
+    let binary = Path::new("/usr/bin/systemctl");
+    protected_directory(binary.parent().ok_or("manager binary has no parent")?)?;
+    let metadata = fs::symlink_metadata(binary).map_err(io)?;
+    if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
+        return Err("system-manager executable is not root protected".into());
+    }
+    Ok(binary)
 }
 
 fn capture(mut command: Command, deadline: Instant) -> Result<Vec<u8>, String> {

@@ -1467,4 +1467,19 @@ lifecycle updates.
   EOF timeout repaired later in `9e50756`; no positive gate or full native
   acceptance is inferred. Task 9303 remains In progress.
 
+- **Matched manager stop implemented:** root-only `request-stop` durably
+  revokes entry and retains the lock while matching protected binding/handoff,
+  actual prepared domain and current manager invocation/isolation/lifetime/
+  kill/no-restart policy. It revalidates native identity before fixed bounded
+  replacement stop through the shared protected manager capture path. Failures
+  preserve closing/claims; success issues no closure evidence or capacity
+  release. The production gate case approves a bounded sleep handler, verifies
+  actual exec, then stops it and requires failed transport exit plus unresolved
+  ownership and no closed marker. Ungranted gates can exit on revocation before
+  manager observation, so this control deliberately proves the live-handler
+  stop path rather than treating that absence as completion. Formatting,
+  file-length and source review precede frozen compiled/native CI; full manager
+  fencing, permanent receipts and runner integration remain outstanding, and
+  task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

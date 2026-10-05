@@ -1,5 +1,8 @@
 # API and version policy
 
+Private root `request-stop` adds matched manager stop after entry revocation;
+it changes no stable Rust API/journal format and produces no closure proof.
+
 Private launch refuses prearmed grant/pending paths before submission; this
 tightens startup admission without changing public APIs or journal formats.
 

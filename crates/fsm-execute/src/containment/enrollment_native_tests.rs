@@ -243,4 +243,80 @@ pub(super) fn run() {
     drop(store);
     drop(gate);
     fixture.cleanup().unwrap();
+    stop_running_handler();
+}
+
+fn stop_running_handler() {
+    let table = fsm_core::json::parse(
+        br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/usr/bin/sleep","300"],"timeout_ms":100,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#,
+        &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+    let mut fixture = Fixture::new_for_table(table);
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let (binding, effect) = claim_binding(&fixture, &domain);
+    bind(&fixture.directory, &binding).unwrap();
+    let (child, _) = launch::begin(
+        &fixture.directory,
+        1,
+        [Stdio::null(), Stdio::null(), Stdio::null()],
+    )
+    .unwrap();
+    let mut gate = Gate {
+        fixture: &fixture,
+        child,
+    };
+    let grant = object([
+        ("format", Value::Str("fsm.native-entry/1".into())),
+        ("claim", binding.get("claim").unwrap().clone()),
+        (
+            "journal_claim",
+            binding.get("journal_claim").unwrap().clone(),
+        ),
+        (
+            "argv",
+            Value::Arr(vec![
+                Value::Str("/usr/bin/sleep".into()),
+                Value::Str("300".into()),
+            ]),
+        ),
+    ]);
+    authorize::publish_enrolled(&fixture.directory, &object([("grant", grant)])).unwrap();
+    let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();
+    let pid = super::super::super::number(handoff.get("gate").unwrap(), "pid").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while fs::read_link(format!("/proc/{pid}/exe")).unwrap()
+        != std::path::Path::new("/usr/bin/sleep")
+    {
+        assert!(
+            Instant::now() < deadline,
+            "approved stop fixture did not exec"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    super::super::super::stop::request(&fixture.directory, 1).unwrap();
+    assert!(fixture.directory.join("closing-1.json").exists());
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    assert!(!fixture.directory.join("closed-1.json").exists());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Some(status) = gate.child.try_wait().unwrap() {
+            assert!(!status.success(), "running handler survived manager stop");
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "stopped gate transport did not exit"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    drop(store);
+    drop(gate);
+    fixture.cleanup().unwrap();
 }

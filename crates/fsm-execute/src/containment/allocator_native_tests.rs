@@ -22,6 +22,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::new_for_table(approved_table())
+    }
+
+    fn new_for_table(table: Value) -> Self {
         assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
         protected_directory(Path::new(GROUPS)).unwrap();
         let seed = format!(
@@ -57,8 +61,8 @@ impl Fixture {
         assert!(prepare(&fixture.directory).is_err());
         assert_eq!(fixture.counter(), before);
         assert!(!fixture.directory.join("allocation-1.json").exists());
-        super::super::catalogue::publish(&fixture.directory, &approved_table()).unwrap();
-        assert!(super::super::catalogue::publish(&fixture.directory, &approved_table()).is_err());
+        super::super::catalogue::publish(&fixture.directory, &table).unwrap();
+        assert!(super::super::catalogue::publish(&fixture.directory, &table).is_err());
         fixture
     }
 

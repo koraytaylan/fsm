@@ -1,5 +1,11 @@
 # Releasing
 
+Unreleased `request-stop` verifies protected handoff, actual prepared domain
+and current manager invocation/isolation policy under the authority lock,
+revokes admission before bounded replacement stop, and retains durable claims.
+Its new native control stops an approved running handler without producing
+closure evidence; full runner and permanent closure acceptance remain pending.
+
 Unreleased launch now refuses existing entry or pending authorization of any
 file type before reserving intent, preserving verified gate handoff ordering.
 

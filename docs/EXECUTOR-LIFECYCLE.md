@@ -2,6 +2,15 @@
 
 ## Decision status
 
+Private `request-stop` now retains the authority lock through durable entry
+revocation, protected binding/handoff matching, current invocation/control-group
+and isolation/lifetime/kill-policy checks, native identity revalidation and
+bounded replacement manager stop. Failed checks retain closing and claims;
+success produces no closed record or receipt. The installed-gate case exercises
+stop after verified exec of an approved sleep handler and requires failed
+transport exit with continued ownership;
+native execution and permanent closure integration remain pending.
+
 Launch refuses preexisting entry or pending authorization, including dangling
 symlinks, before intent publication or manager submission so a prearmed grant
 cannot bypass verified handoff; native controls retain empty prepared domains.

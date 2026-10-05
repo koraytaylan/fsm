@@ -1,5 +1,9 @@
 # Embedding fsm as a library
 
+Private root `request-stop` revokes entry and stops only the matched manager
+invocation after current domain/policy validation; it is not an embedded
+shutdown-success API, `VerifiedClosure`, or permission to settle/reuse capacity.
+
 Private native startup refuses prearmed entry/pending grants before manager
 submission; embedded contained-runner and closure acceptance remain pending.
 

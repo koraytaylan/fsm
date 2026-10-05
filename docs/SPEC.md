@@ -1586,6 +1586,16 @@ before and after each control-file open. Any failure preserves closing
 admission and durable claim ownership. Successful submission MUST NOT imply
 observed termination, permanent closure or permission to settle/reuse capacity.
 
+The root-only `request-stop` operation MUST durably revoke entry under the
+authority lock, then match the protected handoff/binding to that prepared
+domain and the manager's current invocation, control group and fixed isolation,
+control-group lifetime/kill and no-restart policy before stopping the unit.
+It MUST use the fixed protected systemctl with replacement job semantics,
+cleared environment, bounded capture and a two-second observation deadline.
+Policy/identity/query failures MUST preserve closing and journal ownership.
+Successful stop MUST NOT publish closure evidence, clear claims or authorize
+settlement/capacity reuse; permanent closure requires independent completion.
+
 The root-only `observe` operation MUST be read-only, validate the prepared
 domain's route, authority, boot and actual cgroup identity, and accept at most
 4 KiB from its no-follow regular root-protected `cgroup.events`, allowing one
