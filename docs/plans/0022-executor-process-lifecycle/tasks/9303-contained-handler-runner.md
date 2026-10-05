@@ -230,3 +230,24 @@ proves interrupted retries cannot bypass it; the affected native and portable
 gates must then be rerun at the corrected source.
 The existing green matrix remains evidence for `31e0c63`, not proof that this
 previously untested refusal is load-bearing.
+
+Aggregate review, settlement slice at corrected source `9f1f175` (unchanged
+from the earlier frozen source): `NativeExecution::settle` requires a healthy
+durable writer and original physical-store proof, persists matching stopped
+evidence before disposition, and retains completion/capacity on refusal.
+`Pipeline::settle_native_stopped` checks current original claim hash and exact
+stopped outcome, selects disposition from original policy and current pending
+state, and uses existing derived ack/attempt keys or the original run's
+interruption key; it consults no changed handler table.
+`Store::settle_execution_on` validates a projected ownership/instance transition
+and commits one settlement record before publishing projected state; replay
+uses the original claim/disposition fingerprint without claiming unused keys.
+`advance_native_settled` requires exact acknowledged settlement response and
+matching original result before using the retained original contract's advance,
+preserving acknowledgement-before-event and existing event request keys.
+Native retry/interruption/owned-settlement controls and store abrupt-death,
+write/fsync-failure and copied-store controls exercise these boundaries;
+corrected-source compiled verdicts remain pending despite unchanged code.
+No acceptance-blocking finding was identified in this slice; integrated host
+race/crash recovery remains task 9401 rather than evidence supplied by these
+primitive-level controls.
