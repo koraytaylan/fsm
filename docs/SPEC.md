@@ -1512,9 +1512,15 @@ Broker authentication, manager admission fencing and permanent closure remain
 required before the contained runner is accepted.
 
 The private root authority MUST support explicit `provision-broker` for one
-nonzero operator UID outside the reserved dynamic-handler UID interval
+nonzero operator UID other than the chown sentinel `u32::MAX`, outside the reserved dynamic-handler UID interval
 61184..65519, and `serve` for that provisioned authority. Provisioning MUST
-exclusively create protected configuration and epoch counter; serving MUST NOT
+exclusively create protected configuration and epoch counter. Its newly created
+broker directory MUST explicitly have mode 0755, independent of the process
+mask; existing authority ancestors MUST permit operator traversal or provisioning
+MUST refuse without changing their permissions. Registration MUST explicitly
+apply mode 0755 to its own newly created namespace/authority directories so a
+restrictive mask cannot silently prevent dynamic gate or operator traversal;
+preexisting namespace permissions MUST NOT be broadened. Serving MUST NOT
 recreate missing authority. A root-owned lifetime broker lock MUST exclude a
 second server. Every server startup MUST durably burn a monotonically increasing
 epoch before binding a fresh Unix socket, preserve old sockets, and refuse

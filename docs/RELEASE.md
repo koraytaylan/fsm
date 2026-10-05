@@ -1,5 +1,13 @@
 # Releasing
 
+Broker provisioning now applies 0755 explicitly to its newly created directory
+and refuses existing ancestors without operator traversal; registration does
+the same for its own newly created namespace/authority directories, preserving
+existing namespace permissions. This avoids umask=0077 filtering away required
+traversal. The chown sentinel UID is refused and socket type, final operator
+owner and exact 0600 access are verified before route publication; native
+acceptance remains pending.
+
 Private broker transport is implemented for review: root `provision-broker`
 binds one operator UID outside the handler identity range, and `serve` holds
 exclusive lifetime leadership, burns durable socket epochs, preserves stale

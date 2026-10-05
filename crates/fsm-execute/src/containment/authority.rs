@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use fsm_core::canon::canon_bytes;
@@ -288,6 +288,7 @@ fn register(directory: &Path, store_path: &Path) -> Result<(), String> {
             .mode(0o755)
             .create(namespace)
             .map_err(io)?;
+        fs::set_permissions(namespace, fs::Permissions::from_mode(0o755)).map_err(io)?;
         File::open(BASE).map_err(io)?.sync_all().map_err(io)?;
     }
     protected_directory(namespace)?;
@@ -302,6 +303,7 @@ fn register(directory: &Path, store_path: &Path) -> Result<(), String> {
         .mode(0o755)
         .create(directory)
         .map_err(io)?;
+    fs::set_permissions(directory, fs::Permissions::from_mode(0o755)).map_err(io)?;
     File::open(namespace).map_err(io)?.sync_all().map_err(io)?;
     publish_once(
         &directory.join("store.json"),

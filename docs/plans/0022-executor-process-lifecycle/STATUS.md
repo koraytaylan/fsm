@@ -1674,4 +1674,15 @@ lifecycle updates.
   restart, disconnect and service/client integration remain required, with host
   stop/drain/recovery still incomplete; task 9303 stays In progress.
 
+- **Broker permissions reviewed before native acceptance:** source review
+  caught mode 0755 being filtered by the required restrictive server mask.
+  Provisioning now explicitly applies traversal permissions only to its own
+  new broker directory and refuses inaccessible existing authority ancestors;
+  registration applies its intended 0755 to its own new namespace/authority
+  directories while preserving preexisting namespace permissions. The chown
+  sentinel UID is rejected, and socket type/operator owner/exact 0600 mode are
+  checked before route publication. Formatting, size and diff checks pass;
+  compiled native operator/authentication/restart/disconnect controls and
+  service/client wiring remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

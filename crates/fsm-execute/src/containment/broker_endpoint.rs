@@ -8,14 +8,16 @@ use fsm_core::canon::canon_bytes;
 use fsm_core::json::Value;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt, chown};
+use std::os::unix::fs::{
+    DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt, chown,
+};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn configuration(directory: &Path, uid: u32) -> Result<Value, String> {
     protected_directory(directory)?;
-    if uid == 0 || (61184..=65519).contains(&uid) {
+    if uid == 0 || uid == u32::MAX || (61184..=65519).contains(&uid) {
         return Err("broker operator overlaps privileged or handler identity".into());
     }
     super::catalogue::read(directory)?;
@@ -48,6 +50,11 @@ fn counter(configuration: &Value, epoch: u64) -> Value {
 
 pub(super) fn provision(directory: &Path, uid: u32) -> Result<(), String> {
     protected_directory(directory)?;
+    for ancestor in directory.ancestors() {
+        if fs::symlink_metadata(ancestor).map_err(io)?.mode() & 0o001 == 0 {
+            return Err("broker route is not operator-traversable".into());
+        }
+    }
     let _lock = super::authority_lock(directory)?;
     let configuration = configuration(directory, uid)?;
     let base = directory.join("broker");
@@ -55,6 +62,7 @@ pub(super) fn provision(directory: &Path, uid: u32) -> Result<(), String> {
         .mode(0o755)
         .create(&base)
         .map_err(io)?;
+    fs::set_permissions(&base, fs::Permissions::from_mode(0o755)).map_err(io)?;
     File::open(directory).map_err(io)?.sync_all().map_err(io)?;
     publish_once(&base.join("configuration.json"), &configuration)?;
     publish_once(&base.join("counter.json"), &counter(&configuration, 0))?;
@@ -236,6 +244,12 @@ pub(super) fn open(directory: &Path) -> Result<Endpoint, String> {
     fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)).map_err(io)?;
     chown(&socket, Some(uid), None).map_err(io)?;
     let socket_metadata = fs::symlink_metadata(&socket).map_err(io)?;
+    if !socket_metadata.file_type().is_socket()
+        || socket_metadata.uid() != uid
+        || socket_metadata.mode() & 0o777 != 0o600
+    {
+        return Err("broker socket ownership or access differs".into());
+    }
     let route = object([
         ("format", Value::Str("fsm.native-broker-route/1".into())),
         ("configuration", configuration_value),
