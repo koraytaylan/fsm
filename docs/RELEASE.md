@@ -1,5 +1,12 @@
 # Releasing
 
+Unreleased pure `HandlerSpec::fingerprint` supplies full canonical contract
+identity for future claim/privileged-catalogue integration; it includes command,
+MCP tool/templates, timeout, outcomes and normalized retry policy. The new
+domain changes no historical hash, and hashing alone grants no execution.
+Public inventory, independent digest/default/field-binding checks and the
+full applicable release gates must pass before publication.
+
 Unreleased root-only `observe` adds bounded read-only cleanup progress with
 domain/phase revalidation and no lock/record creation. Empty population is
 not closure; manager fencing, verified permanent closure and shared runner

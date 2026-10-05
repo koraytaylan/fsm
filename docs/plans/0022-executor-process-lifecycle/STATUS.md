@@ -1315,4 +1315,19 @@ lifecycle updates.
   source reviews remain separate; this regression acceptance does not
   complete task 9303 or enable contained execution.
 
+- **Full handler contract fingerprint defined and implemented:** adopted
+  config identity code/tests under task 9303 and added provisional
+  `HandlerSpec::fingerprint` plus its public inventory entry. SPEC defines
+  exact versioned full material, explicit parsed defaults, ordered argv/stamps,
+  MCP tool/templates, timeout, both advances and sorted unique retry classes,
+  hashed under `fsm:handler-contract:1` plus LF. Concurrency/manual hosting
+  policy and substituted runtime arguments are excluded; hashing validates
+  no manually constructed handler and authorizes no launch. An independent
+  Python/SPEC process-default digest anchors the fixture, with explicit-default
+  equivalence and field/template/payload/stamp-order/host-policy cases. Local
+  Rust execution remains prohibited by the full-swap rule; compiled/public
+  surface/native and portable evidence require a new frozen-source review.
+  Shared runner and privileged catalogue wiring remain outstanding; this is
+  not the sanitized public compatibility identity and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

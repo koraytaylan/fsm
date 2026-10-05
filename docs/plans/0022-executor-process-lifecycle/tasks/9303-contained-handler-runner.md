@@ -12,6 +12,9 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py
   - crates/fsm-execute/Cargo.toml
   - crates/fsm-execute/src/containment/
+  - crates/fsm-execute/src/config.rs
+  - crates/fsm-execute/src/config/identity.rs
+  - crates/fsm-execute/tests/handler_identity.rs
   - crates/fsm-execute/src/run.rs
   - crates/fsm-execute/src/run/
   - crates/fsm-execute/src/mcp_client.rs

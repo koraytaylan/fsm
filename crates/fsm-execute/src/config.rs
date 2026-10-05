@@ -31,6 +31,7 @@ use fsm_core::json::{JsonLimits, Value, parse};
 
 use crate::error::ExecError;
 
+mod identity;
 mod template;
 
 use template::{Segment, scan_template};
@@ -194,6 +195,15 @@ pub struct HandlerSpec {
 }
 
 impl HandlerSpec {
+    /// Full immutable contract digest for durable claims, including templates,
+    /// outcomes and retry defaults; distinct from sanitized report identity.
+    ///
+    /// Use a handler obtained from [`HandlerTable::parse`]; hashing neither
+    /// validates a manually constructed handler nor authorizes its launch.
+    pub fn fingerprint(&self) -> String {
+        identity::fingerprint(self)
+    }
+
     /// Effect argument names this validated handler substitutes at run time.
     ///
     /// The same scanner used by validation and substitution discovers names

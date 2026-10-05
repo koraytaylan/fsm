@@ -1638,7 +1638,21 @@ available. This refusal MUST survive reopening and cache selection.
 The claim's retry object is a
 closed snapshot of `attempts`, `backoff_ms`, `max_backoff_ms` and sorted unique
 `on` failure classes, with the existing handler-table bounds and semantics.
-The fingerprint is the immutable canonical handler-contract digest. A retry
+The fingerprint is the immutable canonical handler-contract digest. For a
+validated `HandlerSpec`, its material contains exactly `format`
+(`fsm.handler-contract/1`), `effect`, `kind` (`process` or `mcp`), ordered
+`argv`, `tool`, `arguments`, integer `timeout_ms`, `on_ok`, `on_failed` and
+`retry`. Process `tool` and `arguments` are null; MCP retains the fixed tool
+and complete argument template. Missing advances are null; an advance contains
+exactly `event`, complete `payload` and ordered `stamps`. Retry contains exactly
+`attempts`, `backoff_ms`, `max_backoff_ms` and sorted unique failure-class `on`.
+Parsed defaults MUST be explicit in this material. The digest is `sha256:`
+followed by lowercase SHA-256 of `fsm:handler-contract:1`, one LF byte, then
+canonical material JSON. Table concurrency/manual policy and runtime effect
+substitutions MUST NOT enter the per-handler digest. Computing it validates
+no handler and grants no launch authorization. It is distinct from the
+sanitized public executor-check report identity and changes no historical hash.
+A retry
 ledger retains the original fingerprint and policy, failed count, latest
 failed timestamp/class and eligibility deadline while the effect remains
 pending; a changed contract MUST NOT reinterpret it. Claim admission MUST

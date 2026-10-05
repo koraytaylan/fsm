@@ -1,5 +1,13 @@
 # API and version policy
 
+Unreleased `HandlerSpec::fingerprint` adds a pure provisional executor API
+for full immutable handler identity, using `fsm.handler-contract/1` and hash
+domain `fsm:handler-contract:1` with the established LF domain separator.
+It is distinct from sanitized public executor-check identity and hashes no
+table concurrency policy or substituted runtime arguments. It changes no
+historical engine/journal hash or format version; publication requires the
+normal executor minor-release review, with no version or tag bump here.
+
 Private `fsm.native-observation/1` is a read-only progress projection with
 exact domain and closing/population/freeze booleans; it changes no persisted
 format or public Rust API and cannot replace authenticated closure evidence.

@@ -1,5 +1,12 @@
 # Embedding fsm as a library
 
+For handlers returned by `HandlerTable::parse`, `HandlerSpec::fingerprint`
+returns the full `sha256:` contract identity for durable claims: command/tool
+templates, timeout, outcomes and normalized retry policy are included. It
+does not validate manually constructed specs, authorize launch or replace
+the sanitized compatibility-report identity. Runtime argument substitution
+and host concurrency policy do not change this per-handler digest.
+
 Private native `observe` reports read-only matched-domain cleanup progress;
 its closing/population/freeze booleans are not a `VerifiedClosure` and cannot
 settle ownership, release capacity or prove successful embedded shutdown.

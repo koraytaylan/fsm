@@ -2,6 +2,12 @@
 
 ## Decision status
 
+`HandlerSpec::fingerprint` now defines full canonical contract identity for
+validated handler specs, including command/MCP templates, timeout, outcomes
+and normalized retry policy, with explicit defaults. The runner and future
+privileged catalogue must use the same digest; this pure API grants no launch
+authorization and is not yet wired into the contained runner or catalogue.
+
 Retained native evidence can now be independently rechecked with
 `python3 crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py
 --source-commit <exact-sha> --rustc '<exact compiler identity>'
