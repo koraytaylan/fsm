@@ -113,7 +113,14 @@ legacy noisy-root capture, not claimed native process/MCP grandchildren.
 Those tree controls currently run through `authority_probe.py` selecting the
 production authority binary's ignored native cases under the provisioned Root
 fixture; green `lifecycle_runner` output alone cannot satisfy the named native
-runner requirement, which remains unresolved before this task is accepted.
+runner requirement, which requires verified named-target native evidence before this task is accepted.
 
 
 - **Done when:** the same production runner passes native process and MCP descendant/pipe/capture tests and returns a settleable result only with matching run identity and proved closed containment, while every uncertain cleanup remains explicit and bounded.
+
+The coverage repair compiles the production authority and its existing native
+controls directly into `lifecycle_runner`; the provisioned probe selects that
+exact Cargo test artifact while still installing the separate production binary.
+Reports identify the test target, and the independent verifier derives the
+required target from frozen source; fresh local compilation and native
+stable/MSRV execution remain required before accepting this repair.

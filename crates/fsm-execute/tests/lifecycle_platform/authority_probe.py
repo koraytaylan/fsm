@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+FIXTURE_TARGET = 'lifecycle_runner'
+
 INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_domain_refusal',
          'counter_rollback_refusal', 'incomplete_intent_refusal',
          'enrolled_gate_authorization', 'private_exec_status', 'native_capture_bounds', 'genuine_claim_binding',
@@ -14,8 +16,10 @@ INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_doma
 
 
 def build_authority(repo, toolchain, operation):
+    target = FIXTURE_TARGET if operation == 'test' else 'fsm-containment-authority'
+    selector = '--test' if operation == 'test' else '--bin'
     command = ['cargo', '+' + toolchain, operation, '-p', 'fsm-execute',
-               '--bin', 'fsm-containment-authority', '--message-format=json']
+               selector, target, '--message-format=json']
     if operation == 'test':
         command.append('--no-run')
     build = subprocess.run(command, cwd=repo, env=dict(os.environ, CARGO_BUILD_JOBS='1'),
@@ -28,7 +32,7 @@ def build_authority(repo, toolchain, operation):
                            + build.stderr.decode(errors='replace'))
     artifacts = [row['executable'] for row in messages
                  if row.get('reason') == 'compiler-artifact'
-                 and row['target']['name'] == 'fsm-containment-authority'
+                 and row['target']['name'] == target
                  and row['profile']['test'] is (operation == 'test') and row.get('executable')]
     assert len(artifacts) == 1, 'exact authority artifact required'
     return Path(artifacts[0]).resolve()
@@ -90,6 +94,7 @@ def main():
     report = {'schema': 'fsm.lifecycle-probe/1', 'gate_released': False,
               'evidence_schema': 'fsm.native-authority-allocation/1', 'source_commit': commit, 'source_dirty': dirty,
               'rustc': rustc, 'fixture_sha256': hashlib.sha256(executable.read_bytes()).hexdigest(),
+              'fixture_target': FIXTURE_TARGET,
               'authority_sha256': authority_digest,
               'scope': 'production-authority-allocation', 'production_allocator': True, 'production_backend': False,
               'cases': rows, 'passed': len(rows) == len(INVENTORY) and all(row['passed'] for row in rows),

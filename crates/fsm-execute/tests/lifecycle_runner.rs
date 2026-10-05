@@ -1,4 +1,5 @@
-//! Production capture checks; these do not establish native domain closure.
+//! Portable capture/refusal checks and opt-in provisioned native runner controls.
+//! Ignored native cases require the separately installed Root fixture.
 
 #[test]
 fn protected_entry_does_not_accept_a_caller_supplied_command() {
@@ -130,4 +131,22 @@ mod linux {
             assert!(runner.running_effects().is_empty());
         }
     }
+}
+
+// Compile the production authority and its independently observed native cases
+// into the plan's named integration target without exporting privileged internals.
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[path = "../src/containment/authority.rs"]
+mod authority;
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[test]
+fn native_authority_command_entry_refuses_missing_operation() {
+    assert!(authority::run(Vec::new()).is_err());
 }

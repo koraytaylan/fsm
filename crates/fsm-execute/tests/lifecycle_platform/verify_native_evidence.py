@@ -95,6 +95,9 @@ def verify(repo, directory, commit, rustc):
                 require(receipt_case['missing_torn_symlink_writable_identity_refused'] is True,
                         'store bridge metadata refusal controls missing')
         if name == 'authority':
+            target = literal(repo, commit, 'authority_probe', 'FIXTURE_TARGET', optional=True)
+            if target is not None:
+                require(report.get('fixture_target') == target, 'authority fixture target differs')
             require(report['scope'] == 'production-authority-allocation'
                     and report['production_allocator'] is True
                     and report['production_backend'] is False, 'authority scope differs')
