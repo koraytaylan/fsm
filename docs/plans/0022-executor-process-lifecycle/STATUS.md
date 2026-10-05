@@ -2458,4 +2458,18 @@ lifecycle updates.
   Source formatting/size/whitespace checks pass; new native CI remains required,
   latest frozen fix run 37314402122 is queued and task 9303 remains in progress.
 
+- Strengthened both positive-host writer-contention controls with an actual
+  second UID-65534 process attempting Pipeline.claim_native for the same effect
+  against a distinct, Root-prepared native domain before releasing its ready
+  barrier. It requires store/execution_owned through exec/store, unchanged full
+  state/record count/journal head/original claim hash and no competing domain
+  binding/launch/entry/handoff artifacts; the second process then retains the
+  real writer lease through the first host's success or timeout closure.
+  The later stopped-owner exclusion check reuses that same prepared domain,
+  and fixture cleanup independently tracks both domain identities. This extends
+  claim-exclusion evidence without claiming completed standalone/embedded
+  service integration or the full live-tree race gate. Formatting, size and
+  whitespace checks pass; native execution remains pending, with current run
+  37314803628 queued, and no task acceptance changes.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

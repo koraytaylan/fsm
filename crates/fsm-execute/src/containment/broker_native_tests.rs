@@ -250,8 +250,9 @@ fn run_case(timeout: bool) {
         .groups
         .push((group, domain.to_value().get("cgroup").unwrap().clone()));
     let (binding, effect) = claim_binding(&fixture, &domain);
+    let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
     permit_operator_store(&fixture.store);
-    let execution = disconnect_cases::complete(&fixture.directory, &binding, timeout);
+    let execution = disconnect_cases::complete(&fixture.directory, &binding, timeout, &successor);
     assert_eq!(
         read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
         binding
@@ -375,7 +376,6 @@ fn run_case(timeout: bool) {
             Err(error) => assert_eq!(error.code, "exec/inflight_deferred"),
             Ok(_) => panic!("stopped owner started another native helper"),
         }
-        let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
         let claim_material = original_claim.to_value();
         let retry = fsm_core::record::execution::RetryPolicy::from_value(
             claim_material.get("retry").unwrap(),

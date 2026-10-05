@@ -86,6 +86,18 @@ fn complete(binding: Value) {
                 std::io::ErrorKind::NotFound
             );
         }
+        let competitor = std::env::var("FSM_NATIVE_TEST_COMPETING_DOMAIN").unwrap();
+        let competitor = parse(competitor.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+        let allocation = competitor.get("allocation").unwrap().as_num().unwrap();
+        for name in ["binding", "launch", "entry", "handoff"] {
+            assert_eq!(
+                std::fs::symlink_metadata(authority.join(format!("{name}-{allocation}.json")))
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::NotFound,
+                "competing executor created {name}",
+            );
+        }
         contention = Some(holder);
         owned
     };
@@ -270,6 +282,8 @@ fn assert_retired_uncertain(owned: &NativeRun) {
 #[test]
 #[ignore = "invoked only by the unprivileged native supervisor"]
 fn writer_holder() {
+    use std::os::unix::fs::MetadataExt;
+    assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
     use std::io::Read;
     let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
     use std::io::Write;
@@ -278,7 +292,63 @@ fn writer_holder() {
     let mut byte = [0];
     std::io::stdin().read_exact(&mut byte).unwrap();
     assert_eq!(byte, [1]);
-    let store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
+    let mut store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
+    let binding = std::env::var("FSM_NATIVE_TEST_BINDING").unwrap();
+    assert!(binding.len() <= 8192);
+    let binding = parse(binding.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+    let claim = Claim::from_value(binding.get("claim").unwrap()).unwrap();
+    let domain = std::env::var("FSM_NATIVE_TEST_COMPETING_DOMAIN").unwrap();
+    assert!(domain.len() <= 8192);
+    let domain = fsm_core::record::execution::NativeDomain::from_value(
+        &parse(domain.as_bytes(), &JsonLimits::DEFAULT).unwrap(),
+    )
+    .unwrap();
+    assert_ne!(domain, *claim.domain());
+    let material = claim.to_value();
+    let retry =
+        fsm_core::record::execution::RetryPolicy::from_value(material.get("retry").unwrap())
+            .unwrap();
+    let records = store.records.len();
+    let state = store.state.clone();
+    let head = store.journal.last_hash.clone();
+    let mut pipeline = fsm_execute::run::Pipeline;
+    let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+    let error = pipeline
+        .claim_native(
+            &mut store,
+            &mut clock,
+            fsm_store::store::ExecutionClaimRequest {
+                instance_id: claim.effect().0,
+                effect_id: claim.effect().1,
+                handler_fingerprint: material
+                    .get("handler_fingerprint")
+                    .unwrap()
+                    .as_str()
+                    .unwrap(),
+                retry: &retry,
+                domain: &domain,
+                request_id: "native-independent-competing-claim",
+                expected_seq: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "exec/store");
+    assert_eq!(
+        error
+            .details
+            .as_ref()
+            .unwrap()
+            .get("code")
+            .and_then(Value::as_str),
+        Some("store/execution_owned")
+    );
+    assert_eq!(store.records.len(), records);
+    assert_eq!(store.state, state);
+    assert_eq!(store.journal.last_hash, head);
+    assert_eq!(
+        store.current_execution_claim_hash(&claim).unwrap(),
+        binding.get("journal_claim").unwrap().as_str().unwrap()
+    );
     println!("\nFSM_NATIVE_WRITER_READY");
     std::io::stdout().flush().unwrap();
     assert_eq!(
