@@ -52,6 +52,7 @@ pub(super) fn members(fixture: &Fixture) {
     );
     let (mut reader, writer) = UnixStream::pair().unwrap();
     reader.set_nonblocking(true).unwrap();
+    let diagnostics: OwnedFd = writer.try_clone().unwrap().into();
     let writer: OwnedFd = writer.into();
     let membership = format!(
         "0::{}\n",
@@ -70,7 +71,7 @@ pub(super) fn members(fixture: &Fixture) {
             .env("FSM_TERMINATION_FIXTURE_CGROUP", &membership)
             .stdin(Stdio::piped())
             .stdout(Stdio::from(writer))
-            .stderr(Stdio::null())
+            .stderr(Stdio::from(diagnostics))
             .spawn()
             .unwrap(),
     );
@@ -150,7 +151,10 @@ fn ready(reader: &mut UnixStream) -> u32 {
     let mut chunk = [0; 512];
     loop {
         match reader.read(&mut chunk) {
-            Ok(0) => panic!("native descendant fixture exited before readiness"),
+            Ok(0) => panic!(
+                "native descendant fixture exited before readiness: {}",
+                String::from_utf8_lossy(&bytes)
+            ),
             Ok(count) => {
                 assert!(
                     count <= 4096 - bytes.len(),

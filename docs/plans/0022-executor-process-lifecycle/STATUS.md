@@ -1373,4 +1373,14 @@ lifecycle updates.
   enrollment, launch, native I/O, broker policy and complete closure remain
   outstanding, and task 9303 remains In progress.
 
+- **Repair CI reached runtime; descendant failure retained:** stable native
+  job in run `37276994386` compiles frozen `086df77` and passes the four
+  allocation/refusal cases, but the genuine binding case fails when its
+  administrative descendant fixture exits before readiness. Its retained
+  named log confirms that failure; no full/native acceptance is inferred.
+  Fixture stderr now shares the already bounded nonblocking readiness stream,
+  and an early EOF reports those retained bytes rather than discarding the
+  child diagnostic. Runtime behavior is unchanged pending the next exact
+  source review; task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
