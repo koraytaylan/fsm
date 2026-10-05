@@ -713,4 +713,21 @@ lifecycle updates.
   release failure. No task acceptance advances until the new source-bound
   review, required controls and matrix complete.
 
+- **Expanded native CI inventory verified:** both provisioned jobs in run
+  `37259980746` completed successfully at exact clean source
+  `bcf663297f872d1232f97351b7771c0878d27685`, with all 70 cases passing.
+  Downloaded stable/MSRV artifacts were checked independently against each
+  frozen suite's declared inventory: eight suite reports, nine genuine
+  receipt/public-store bridge cases, source/compiler identities, fixture
+  digest fields, per-report SHA digests, I/O cancellation log digest, unrelated
+  process survival and expected final-kill negative-control evidence match.
+  Bridge scope remains explicitly fixture issuer / non-production backend.
+  The task cache retains both artifacts under `ci-37259980746/`. The frozen
+  local gate has passed debug workspace tests and entered release compilation;
+  six portable CI legs remain running, so the overall matrix is not accepted.
+  An exact-source isolated checkout and source-restoring harness are prepared
+  for explicit-unlock and native no-follow causal controls; they have not run
+  while the host gate occupies the serialized build slot. Task 9302 remains
+  In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
