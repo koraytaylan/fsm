@@ -1,5 +1,12 @@
 # Releasing
 
+Unreleased writer-lock release now explicitly unlocks through one internal
+guard shared by open, initialization and repair, including error returns.
+A deterministic Unix duplicate-descriptor regression reproduces the previous
+retained-lease defect and checks that a replacement writer remains exclusive.
+This changes no public API, error, persisted byte or format; the complete
+portable matrix must validate the fix before release.
+
 Unreleased execution ownership preparation now rejects stopped results that
 would exceed the persistence parser's depth after adding its outer envelope;
 the exact 63-container block limit remains accepted without partial mutation.

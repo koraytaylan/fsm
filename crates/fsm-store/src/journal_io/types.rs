@@ -29,6 +29,20 @@ impl Seg {
     }
 }
 
+/// Owning writer lease, released explicitly before its descriptor closes.
+/// SPEC writer-lock release applies equally to normal and error returns.
+pub(super) struct WriterLock {
+    pub(super) file: File,
+}
+
+impl Drop for WriterLock {
+    fn drop(&mut self) {
+        // Closing one descriptor alone leaves a duplicated open description
+        // locked on Unix; spawn can temporarily retain one before exec.
+        let _ = self.file.unlock();
+    }
+}
+
 pub struct Journal {
     pub dir: PathBuf,
     pub(super) seg: Seg,
@@ -39,7 +53,7 @@ pub struct Journal {
     pub last_seq: u64,
     pub last_hash: String,
     pub poisoned: bool,
-    pub(super) _lock: Option<File>,
+    pub(super) _lock: Option<WriterLock>,
     pub(super) mem_records: Option<Vec<Record>>,
 }
 

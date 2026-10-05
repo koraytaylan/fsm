@@ -1,10 +1,9 @@
-use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use fsm_core::json::{JsonLimits, Value, parse};
 
-use super::types::JournalIoError;
+use super::types::{JournalIoError, WriterLock};
 
 pub fn journal_dir(data: &Path) -> PathBuf {
     data.join("journal")
@@ -27,7 +26,7 @@ pub(super) fn io_err(op: &str, path: &Path, e: impl std::fmt::Display) -> Journa
     JournalIoError::Io(format!("{op} {}: {e}", path.display()))
 }
 
-pub(super) fn acquire_lock(jdir: &Path) -> Result<File, JournalIoError> {
+pub(super) fn acquire_lock(jdir: &Path) -> Result<WriterLock, JournalIoError> {
     crate::ensure_persistence_directory(jdir).map_err(|e| io_err("create journal dir", jdir, e))?;
     let path = jdir.join("LOCK");
     let mut f = crate::open_regular_file_for_write(
@@ -73,15 +72,22 @@ pub(super) fn acquire_lock(jdir: &Path) -> Result<File, JournalIoError> {
             }
         }
     }
-    f.set_len(0)
+    // Own the explicit-release guard before any fallible metadata write, so
+    // an initialization error cannot leave an inherited reference locked.
+    let mut lock = WriterLock { file: f };
+    lock.file
+        .set_len(0)
         .map_err(|e| io_err("truncate lock", &path, e))?;
     let pid = std::process::id();
     let ts = crate::clock::now_ms();
     let line = format!("{{\"pid\":{pid},\"started_ts\":{ts}}}\n");
-    f.write_all(line.as_bytes())
+    lock.file
+        .write_all(line.as_bytes())
         .map_err(|e| io_err("write lock", &path, e))?;
-    f.sync_all().map_err(|e| io_err("sync lock", &path, e))?;
-    Ok(f)
+    lock.file
+        .sync_all()
+        .map_err(|e| io_err("sync lock", &path, e))?;
+    Ok(lock)
 }
 
 pub(super) fn sync_dir(dir: &Path) -> Result<(), JournalIoError> {

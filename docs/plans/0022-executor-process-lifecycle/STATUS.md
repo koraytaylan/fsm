@@ -675,4 +675,21 @@ lifecycle updates.
   crash tests require a load-bearing investigation before the next review.
   Task 9302 remains In progress.
 
+- **Writer lease retained-descriptor defect reproduced and fixed:** a named
+  Unix test keeps a real duplicate of the owned lock descriptor alive after
+  dropping its writer; the original code fails at immediate reinitialization
+  with `Locked { pid: <same process> }` and runtime exit 101. One internal
+  `WriterLock` guard now attempts explicit unlock before closing, including
+  init/migration/repair error paths. The same test passes and independently
+  confirms the replacement writer stays exclusive; all journal/migration tests
+  pass on stable/MSRV, all five execution crash/fault harness tests pass on
+  stable, and all-target Clippy passes with terminal command success. The task
+  cache retains `writer-lease-original-failure.log` and `writer-lease-fix.log`.
+  SPEC/API/embedding/release docs bind this no-byte/no-public-API correction.
+  The deterministic defect is consistent with the failed macOS init path
+  beside concurrent subprocess spawning, but a new native macOS/MSRV CI leg
+  must validate that axis rather than treating Linux as proof. Full frozen
+  host review and portable/native matrix remain required; task 9302 remains
+  In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

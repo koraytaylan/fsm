@@ -796,6 +796,14 @@ strict `load_records`, writer open, classification, and verification report
 that same line as `TornTail`, and an unterminated non-final line is interior
 corruption. Mutating methods on a read-only Store refuse with `io/write`.
 
+Mutating store, initialization, migration and repair paths MUST hold the
+exclusive advisory writer lock throughout their persistence writes. Releasing
+the owning guard MUST attempt an explicit unlock before closing its file
+handle: transient duplicated references, including those created during
+process spawning before exec, do not constitute another writer lease. An
+unlock error remains best-effort during destruction; closing the handle is
+the fallback, and subsequent writers still MUST acquire the lock normally.
+
 ### Recovery
 
 | Health | Posture |

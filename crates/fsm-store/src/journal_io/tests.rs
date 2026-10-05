@@ -218,6 +218,32 @@ fn version_marker_preflight() {
     ));
 }
 
+#[cfg(unix)]
+#[test]
+fn writer_release_does_not_leave_a_duplicated_descriptor_holding_the_lease() {
+    let dir = tmp();
+    let writer = init(&dir).unwrap();
+    // A process spawn may transiently duplicate this description before exec;
+    // keep a real duplicate alive without relying on a scheduling window.
+    let duplicate = writer._lock.as_ref().unwrap().file.try_clone().unwrap();
+    drop(writer);
+    let replacement = init(&dir).unwrap();
+    assert!(duplicate.metadata().unwrap().is_file());
+    let independent = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(journal_dir(&dir).join("LOCK"))
+        .unwrap();
+    assert!(matches!(
+        independent.try_lock(),
+        Err(std::fs::TryLockError::WouldBlock)
+    ));
+    drop(replacement);
+    independent.try_lock().unwrap();
+    independent.unlock().unwrap();
+    drop(duplicate);
+}
+
 #[test]
 fn migratable_marker_stamps_after_successful_open() {
     let dir = tmp();

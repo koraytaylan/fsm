@@ -1,5 +1,11 @@
 # API and version policy
 
+Unreleased writer-lock guards explicitly unlock before closing their owned
+descriptor, including initialization/repair error paths, so transient duplicate
+descriptors do not extend a successfully released writer lease. This is an
+internal correctness fix: public types, errors, persisted bytes, format
+versions and MSRV are unchanged.
+
 The unreleased execution block codec bounds nesting to 63 JSON containers,
 reserving one container for persistence; scalar values do not consume depth.
 This corrects the preparatory bounds without changing an existing disk format.

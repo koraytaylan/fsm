@@ -250,6 +250,12 @@ one dedicated blocking thread** and send commands to it over a channel — a wri
 actor. Do not put it behind a `Mutex` shared across tasks: you would serialise
 anyway, but on the async executor's threads.
 
+The store's writer-lock guard attempts explicit unlock when released, before
+closing its file handle, including initialization and repair error paths.
+This permits immediate reopen after successful release even if process
+spawning transiently duplicated a descriptor; a new writer always acquires
+its own exclusive lock. Destruction remains best-effort if unlock fails.
+
 ### Measured cost
 
 From `crates/fsm-store/tests/append_latency.rs`, release build, three 2000-iteration
