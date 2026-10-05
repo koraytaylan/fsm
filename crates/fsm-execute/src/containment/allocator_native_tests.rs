@@ -455,6 +455,8 @@ fn genuine_claim_binding() {
             .stopped_for("instance", &effect)
             .is_none()
     );
+    drop(snapshot);
+    fixture.cleanup().unwrap();
 }
 
 fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
@@ -733,7 +735,7 @@ fn exercise_binding(
             .is_some()
     );
     drop(store);
-    fixture.cleanup().unwrap();
+    // The caller still exercises closure faults against these same resources.
 }
 
 fn approved_table() -> Value {

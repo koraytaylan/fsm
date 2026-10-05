@@ -2779,4 +2779,15 @@ lifecycle updates.
   workspace all-targets stable clippy passed before this fixture correction,
   with current native/portable/frozen gates and task 9303 acceptance pending.
 
+- Native run 37337395680 at 85b0194 passed the corrected cancellation control
+  and then found exercise_binding deleted its fixture before its caller's
+  one-shot closure fault cases. Cleanup now occurs once, after all parent
+  assertions and after releasing the read-only snapshot, preserving the same
+  original kernel domains and protected records through every fault/retry case;
+  no production behavior changes. The frozen local stable workspace debug gate
+  at 85b0194 completed with two failed CLI targets (session marker parsing under
+  serial libtest and Git fixture commits rejected by the local global hook),
+  with all other targets completed; those distinct harness repairs follow.
+  Native closure acceptance, current full gates and task 9303 remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
