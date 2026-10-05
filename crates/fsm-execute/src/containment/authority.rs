@@ -33,6 +33,9 @@ mod closing;
 #[path = "termination.rs"]
 mod termination;
 
+#[path = "manager.rs"]
+mod manager;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);

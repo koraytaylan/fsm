@@ -1210,4 +1210,17 @@ lifecycle updates.
   CI must execute these new assertions before acceptance. Full runner and
   closure integration remain outstanding; task 9303 stays In progress.
 
+- **Production manager capability check implemented:** preparation verifies
+  the fixed root-protected systemctl and clears inherited environment before
+  querying loaded/active `system.slice` at `/system.slice`. It bounds each
+  output stream to 4 KiB, observation to two seconds and query-child cleanup
+  to one second; failure refuses before allocation intent/counter mutation.
+  Pure response cases refuse missing/inactive/wrong/duplicate/unknown fields
+  and invalid encoding. Socket cases independently cover exact 4096/4097
+  bytes, retained-writer nonblocking progress and truthful EOF. Existing five
+  production allocator native cases now require the actual manager query;
+  new source execution remains pending frozen CI because local builds remain
+  prohibited by the full-swap rule. This is capability detection, not launch
+  authorization or closure proof; task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

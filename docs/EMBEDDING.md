@@ -1,5 +1,9 @@
 # Embedding fsm as a library
 
+Native preparation now checks actual system-manager access before burning an
+allocation, with bounded nonblocking diagnostic capture and query cleanup;
+this prerequisite does not enable a contained embedded runner.
+
 Private root `request-kill` submits matched-cgroup freeze/kill after durable
 entry revocation; success is submission only and does not allow settlement,
 capacity reuse or an embedded shutdown-success report.

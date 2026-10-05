@@ -1,5 +1,11 @@
 # Releasing
 
+Unreleased production preparation requires a bounded read-only query proving
+access to the active system slice before burning allocation intent/counter.
+Manager failure, malformed/excessive output or incomplete I/O refuses;
+no journal format or release version changes, and complete native acceptance
+is still required before shipping contained execution.
+
 Unreleased root `request-kill` retains the authority lock through durable
 revocation and matched-cgroup freeze/kill submission. Successful submission
 does not establish native closure; manager fencing, completed inspection and

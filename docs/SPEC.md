@@ -1464,6 +1464,14 @@ at most 4096 lifetime allocations and bounds directory inventory to 32768
 entries. Unit/cgroup names include namespace, generation and allocation:
 `fsm-containment-<namespace>-<generation>-<allocation>.service`.
 Preparation MUST NOT launch user code or enable execution admission.
+Before burning an allocation intent, preparation MUST also verify that the
+system manager reports `system.slice` loaded and active with control group
+`/system.slice`. The query MUST use the fixed root-protected systemctl binary,
+clear inherited environment overrides, bound retained output to 4 KiB per
+stream and apply a two-second observation deadline. Missing access, excessive
+output, failed execution or incomplete I/O MUST refuse preparation before
+counter/intent mutation. Cleanup of the query process MUST be bounded; this
+capability check is not handler termination or native closure evidence.
 
 The protected entry operation MUST run as an unprivileged handler identity.
 It MUST accept only a canonical namespace/generation/allocation route and

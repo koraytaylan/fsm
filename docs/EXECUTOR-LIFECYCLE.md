@@ -2,6 +2,14 @@
 
 ## Decision status
 
+Production preparation now queries the fixed root-protected systemctl with
+an empty inherited environment before allocating. The manager must report
+`system.slice` loaded/active at `/system.slice`; retained stdout and stderr
+are each limited to 4 KiB, observation to two seconds, and failed-query child
+cleanup to one second. A missing manager or incomplete/excessive response
+refuses before intent/counter mutation. This read-only capability probe does
+not establish handler launch or closure.
+
 Root-only `request-kill` now revokes entry durably and retains the authority
 lock while submitting freeze and kill to the exact recorded cgroup. Control
 opens reject symlinks and recheck the parent identity before writing. A

@@ -222,6 +222,7 @@ pub(super) fn prepare(directory: &Path) -> Result<Value, String> {
     protected_directory(directory)?;
     // A missing/delegated facility refuses before burning an allocation.
     protected_directory(Path::new(GROUPS))?;
+    super::manager::require()?;
     let lock = OpenOptions::new()
         .read(true)
         .write(true)

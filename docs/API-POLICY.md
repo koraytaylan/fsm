@@ -1,5 +1,9 @@
 # API and version policy
 
+The private manager capability check changes preparation refusal behavior
+before allocation without changing persisted shapes, journal versions or
+public Rust APIs; the required runtime remains provisioned Linux/systemd.
+
 Private root `request-kill` adds no journal record shape or public Rust API;
 it cannot manufacture a verified closure proof from a successful kernel write.
 
