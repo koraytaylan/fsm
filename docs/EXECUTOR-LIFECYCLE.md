@@ -1,5 +1,14 @@
 # Executor lifecycle feasibility
 
+Private claimed execution now accepts an explicit shared cancellation control:
+an observed pre-launch request refuses launch and retains the claim, while
+an in-flight request selects existing `exec/cancelled` semantics through the
+same descendant termination, matching closure proof and owned-handle cleanup
+path; this adds no stable API/error or journal version, and authenticated
+broker/service wiring remains incomplete. Native controls cover process and
+MCP cancellation after independent child/grandchild enrollment, plus
+pre-cancelled launch refusal; compiled acceptance remains pending.
+
 Private root `execute` now owns claimed process/MCP execution through the
 same installed-gate launch, derived-group grant and closure path. It derives
 argv, kind, tool/arguments and timeout from approved catalogue plus the

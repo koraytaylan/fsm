@@ -1605,4 +1605,24 @@ lifecycle updates.
   service integration and uncertain-start reconciliation remain outstanding,
   and task 9303 stays In progress.
 
+- **Explicit runner cancellation authored; first claimed-runner proof retained:**
+  private execution now accepts a shared cancellation flag, refusing observed
+  pre-launch cancellation without intent publication, withholding an unissued
+  grant when cancellation is observed after handoff, and selecting existing
+  `exec/cancelled` semantics before collecting another candidate. In-flight
+  cancellation uses the same admission revocation, descendant stop, immutable
+  closure proof and owned transport/worker retirement; journal ownership is
+  unchanged. Independent native process/MCP cases request cancellation only
+  after checking actual root/child/grandchild enrollment and require matching
+  proof, no retry classification, retained claims and duplicate-launch refusal;
+  pre-cancelled controls require absent launch intent. Formatting, size, diff
+  checks and embedded Python parsing pass; compiled cancellation acceptance
+  remains pending. Frozen `a5f5366` run `37285594470` passes both native jobs;
+  retained stable/MSRV artifacts independently verify all 76 cases against exact
+  source/compiler, including process capture boundaries and timeout closure.
+  These predate later MCP/tree/root-exit/cancellation changes and do not prove
+  those changes, full portable acceptance or executable-byte equivalence.
+  Broker/service integration, explicit host stop/drain and uncertain-start
+  recovery remain outstanding, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
