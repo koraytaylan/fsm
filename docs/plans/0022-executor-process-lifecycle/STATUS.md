@@ -358,4 +358,18 @@ lifecycle updates.
   Task count and dependency edges are unchanged. No task status or landing OID
   is advanced by these partial checks.
 
+- **Frozen persistence review:** implementation commit `b482fe0` is frozen in
+  a clean detached checkout with a checkout-specific Cargo target; its full
+  stable debug workspace command completed successfully and the sequential
+  release command is running, so the complete host gate is not yet accepted.
+  Review CI run `37254257934` is bound to
+  `b482fe03d9bedc0626d8a4e8ef06f82a005840cc` on the authorized review branch;
+  both provisioned native jobs and zero-dependencies completed successfully,
+  while all six portable legs are still running. Follow-up tests
+  now model empty, partial and complete production-generated claim appends
+  and semantically invalid claims with recomputed chain hashes; they await
+  serialized execution after the live host gate and do not prove native
+  launch/authentication or every durability fault boundary. Task 9302 remains
+  In progress with no landing OID or task-count change.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

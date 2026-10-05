@@ -375,6 +375,75 @@ fn arbitrary_caller_written_receipts_cannot_construct_opaque_proofs() {
 }
 
 #[test]
+fn claim_append_boundaries_recover_only_the_complete_durable_prefix() {
+    // Reproduce interrupted append bytes from a production-generated record;
+    // no native allocation or launch occurs before this durability boundary.
+    for boundary in ["empty", "prefix", "body", "missing-lf", "complete"] {
+        let directory = Directory::new();
+        let (mut store, effect) = populated(&directory);
+        let head = store.journal.last_seq;
+        let hash = store.journal.last_hash.clone();
+        let segment = directory.0.join("journal/seg-00000000000000000000.jsonl");
+        let prefix = std::fs::read(&segment).unwrap();
+        allocate(&mut store, &effect, "claim", None).unwrap();
+        let complete = std::fs::read(&segment).unwrap();
+        assert!(complete.starts_with(&prefix));
+        let record_bytes = &complete[prefix.len()..];
+        let keep = match boundary {
+            "empty" => 0,
+            "prefix" => 1,
+            "body" => record_bytes.len() / 2,
+            "missing-lf" => record_bytes.len() - 1,
+            _ => record_bytes.len(),
+        };
+        drop(store);
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&segment)
+            .unwrap();
+        file.set_len((prefix.len() + keep) as u64).unwrap();
+        file.sync_all().unwrap();
+        drop(file);
+
+        let read_only = Store::open_read_only(&directory.0).unwrap();
+        let durable = boundary == "complete";
+        assert_eq!(
+            read_only.state.execution.run_high_water(),
+            u64::from(durable)
+        );
+        assert_eq!(read_only.state.dedup.contains_key("claim"), durable);
+        assert_eq!(
+            std::fs::read(&segment).unwrap(),
+            complete[..prefix.len() + keep]
+        );
+        drop(read_only);
+        if keep > 0 && !durable {
+            assert!(Store::open(&directory.0).is_err());
+            let repair = fsm_store::journal_io::repair_truncate_torn_tail(&directory.0).unwrap();
+            assert_eq!(repair.truncated_to_seq, head);
+            assert_eq!(std::fs::read(&segment).unwrap(), prefix);
+        }
+        let mut store = Store::open(&directory.0).unwrap();
+        if durable {
+            assert_eq!(store.journal.last_seq, head + 1);
+            assert_eq!(
+                allocate(&mut store, &effect, "successor", None)
+                    .unwrap_err()
+                    .code,
+                "store/execution_owned"
+            );
+            assert_eq!(store.state.execution.run_high_water(), 1);
+        } else {
+            assert_eq!(store.journal.last_seq, head);
+            assert_eq!(store.journal.last_hash, hash);
+            assert_eq!(store.state.execution.run_high_water(), 0);
+            allocate(&mut store, &effect, "claim", None).unwrap();
+            assert_eq!(store.state.execution.run_high_water(), 1);
+        }
+    }
+}
+
+#[test]
 fn historical_attempts_cannot_restart_at_one_after_reopen() {
     let directory = Directory::new();
     let (mut store, effect) = populated(&directory);
@@ -401,4 +470,43 @@ fn historical_attempts_cannot_restart_at_one_after_reopen() {
     assert_eq!(store.state.execution.run_high_water(), 0);
     assert_eq!(store.journal.last_seq, head);
     assert!(!store.state.dedup.contains_key("reset-count"));
+}
+
+#[test]
+fn loaders_refuse_semantically_invalid_claims_even_with_a_valid_chain_hash() {
+    use fsm_core::record::seal;
+    for (field, replacement) in [
+        ("run_id", Value::Num("2".into())),
+        ("attempt", Value::Num("2".into())),
+        ("effect_id", Value::Str("not-pending".into())),
+        ("instance_id", Value::Str("unknown-instance".into())),
+    ] {
+        let directory = Directory::new();
+        let (mut store, effect) = populated(&directory);
+        let segment = directory.0.join("journal/seg-00000000000000000000.jsonl");
+        let mut bytes = std::fs::read(&segment).unwrap();
+        allocate(&mut store, &effect, "claim", None).unwrap();
+        let record = store.records.last().unwrap();
+        let Value::Obj(mut body) = record.body.clone() else {
+            panic!("production claim body must be an object");
+        };
+        body.insert(field.into(), replacement);
+        // Recompute the chain hash to isolate semantic folding from hash checks.
+        bytes.extend(
+            seal(
+                record.seq,
+                record.ts,
+                record.kind,
+                Value::Obj(body),
+                &record.prev,
+            )
+            .to_line(),
+        );
+        drop(store);
+        std::fs::write(&segment, &bytes).unwrap();
+        assert!(Store::open_read_only(&directory.0).is_err(), "{field}");
+        assert_eq!(std::fs::read(&segment).unwrap(), bytes);
+        assert!(Store::open(&directory.0).is_err(), "{field}");
+        assert_eq!(std::fs::read(&segment).unwrap(), bytes);
+    }
 }
