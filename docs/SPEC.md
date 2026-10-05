@@ -1898,6 +1898,17 @@ The advance MUST come from that original contract's on_ok/on_failed, never a
 current table, and MUST preserve existing event_rid, engine enablement and
 acknowledgement-before-event/sequence retry behavior. No advance is sent for
 unsettled, attempted, interrupted or substituted completion evidence.
+Pipeline::settle_native_stopped MUST require a supported healthy durable writer,
+exact retained claim/hash, matching closure and a previously persisted stopped
+outcome equal to the checked completion. It MUST select disposition from the
+original claim policy and current pending/lifecycle state, without consulting a
+current handler table, then atomically consume that stopped result through the
+existing store settlement mutator. Acked MUST use existing ack_rid and Attempted
+MUST use existing attempt_rid; Interrupted MUST use exec-interrupted-EFFECT-RUN
+so a pending interruption cannot consume a later acknowledgement/attempt key.
+Missing stopped evidence MUST refuse as exec/inflight_deferred. This API sends
+no outcome event and requires retained stopped ownership; recovery of a committed
+transaction MUST use exact settlement replay instead of reselecting disposition.
 This protected record durably retains the original contract for broker recovery
 but does not complete restarted service stop/settlement/outcome-event recovery. Previous private result envelope
 versions MUST refuse rather than infer absent kind or contract material.

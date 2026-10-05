@@ -458,6 +458,8 @@ pub(super) fn run() {
             settle_retry(&mut fixture, &effect, &original_claim, &completion);
         } else if mode == "process-failure" {
             settle_failure(&fixture, &effect, &original_claim, &completion);
+        } else if matches!(mode, "cancel-process" | "cancel-mcp") {
+            settle_interrupted(&fixture, &effect, &original_claim, &completion);
         }
         assert!(runner::execute(&fixture.directory, 1).is_err());
         fixture.cleanup().unwrap();
@@ -493,13 +495,7 @@ fn settle_failure(
         Settlement::Acked
     );
     pipeline
-        .settle_stopped(
-            &mut store,
-            &mut clock,
-            claim,
-            Settlement::Acked,
-            "native-failure-settle",
-        )
+        .settle_native_stopped(&mut store, &mut clock, claim, completion)
         .unwrap();
     let replay = pipeline
         .settle_stopped(
@@ -507,7 +503,7 @@ fn settle_failure(
             &mut clock,
             claim,
             Settlement::Acked,
-            "native-failure-settle",
+            &fsm_execute::rid::ack_rid(effect),
         )
         .unwrap();
     assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
@@ -569,13 +565,7 @@ fn settle_retry(
         Settlement::Attempted
     );
     let settled = pipeline
-        .settle_stopped(
-            &mut store,
-            &mut clock,
-            claim,
-            Settlement::Attempted,
-            "native-retry-settle",
-        )
+        .settle_native_stopped(&mut store, &mut clock, claim, completion)
         .unwrap();
     assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
     let replay = pipeline
@@ -584,7 +574,7 @@ fn settle_retry(
             &mut clock,
             claim,
             Settlement::Attempted,
-            "native-retry-settle",
+            &fsm_execute::rid::attempt_rid(effect, 1),
         )
         .unwrap();
     assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
@@ -746,4 +736,88 @@ fn assert_unresolved(fixture: &Fixture, effect: &str) {
             .is_none()
     );
     drop(store);
+}
+
+fn settle_interrupted(
+    fixture: &Fixture,
+    effect: &str,
+    claim: &fsm_core::record::execution::Claim,
+    completion: &fsm_execute::run::native_client::NativeCompletion,
+) {
+    use fsm_core::record::execution::Settlement;
+    let mut store = Store::open(&fixture.store).unwrap();
+    let mut pipeline = fsm_execute::run::Pipeline;
+    let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+    let before = store.records.len();
+    pipeline
+        .stop_native(
+            &mut store,
+            &mut clock,
+            claim,
+            completion,
+            "native-interrupted-stop",
+        )
+        .unwrap();
+    let settled = pipeline
+        .settle_native_stopped(&mut store, &mut clock, claim, completion)
+        .unwrap();
+    assert_eq!(
+        settled
+            .get("execution")
+            .unwrap()
+            .get("disposition")
+            .and_then(Value::as_str),
+        Some("interrupted")
+    );
+    assert_eq!(store.records.len(), before + 2);
+    assert!(store.state.instances["instance"].pending.contains(effect));
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", effect)
+            .is_none()
+    );
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", effect)
+            .is_none()
+    );
+    assert_eq!(store.state.execution.failed_count("instance", effect), 0);
+    let request = format!("exec-interrupted-{effect}-{}", claim.run_id());
+    let replay = pipeline
+        .settle_stopped(
+            &mut store,
+            &mut clock,
+            claim,
+            Settlement::Interrupted,
+            &request,
+        )
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(
+        pipeline
+            .advance_native_settled(&mut store, &mut clock, claim, completion, &request)
+            .unwrap_err()
+            .code,
+        "exec/inflight_deferred"
+    );
+    assert_eq!(store.records.len(), before + 2);
+    assert!(
+        !store
+            .state
+            .dedup
+            .contains_key(&fsm_execute::rid::ack_rid(effect))
+    );
+    let execution = store.state.execution.clone();
+    drop(store);
+    let reopened = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(reopened.state.execution, execution);
+    assert!(
+        reopened.state.instances["instance"]
+            .pending
+            .contains(effect)
+    );
 }

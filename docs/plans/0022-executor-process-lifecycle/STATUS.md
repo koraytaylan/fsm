@@ -2552,4 +2552,17 @@ lifecycle updates.
   native/compiler/portable acceptance, automatic service routing/enumeration and
   stronger sealed-history recovery remain required, so no task is accepted.
 
+- Added Pipeline::settle_native_stopped to require a healthy durable writer,
+  exactly retained original claim/hash, matching closure and a persisted stopped
+  outcome before selecting disposition from the original policy/current pending
+  state and atomically consuming it. Acked/Attempted retain existing ack_rid /
+  attempt_rid; pending Interrupted uses a run-specific key, consumes no ack and
+  sends no event. Actual success/timeout and nonzero-exit native controls now use
+  automatic original-policy settlement, with pre-stop refusal and exact derived-key
+  replay; retry-timeout controls require Attempted/backoff behavior, while actual
+  process/MCP cancellation controls require Interrupted, pending-effect/zero-failed-
+  count preservation, no ack/event and reopened replay. Inventory and SPEC/API/
+  embedding are updated. Local source checks pass; full compiler/native/portable
+  gates, automatic service routing and stronger sealed recovery remain required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

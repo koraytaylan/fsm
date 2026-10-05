@@ -166,6 +166,85 @@ impl Pipeline {
             .map_err(|error| ExecError::store(&error))
     }
 
+    /// Atomically settle a matching stopped result using its original claim policy.
+    ///
+    /// Requires a healthy durable writer and the exactly retained stopped owner;
+    /// it consults no current table and sends no outcome event. A host recovering
+    /// a committed transaction uses exact settlement replay instead of reselecting.
+    #[cfg(target_os = "linux")]
+    pub fn settle_native_stopped(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        claim: &fsm_core::record::execution::Claim,
+        completion: &super::native_client::NativeCompletion,
+    ) -> Result<Value, ExecError> {
+        use fsm_core::record::execution::{PendingEffect, Settlement};
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native settlement requires a supported healthy durable writer",
+            ));
+        }
+        let unproven = || {
+            ExecError::new(
+                "exec/inflight_deferred",
+                "matching stopped native ownership is not proven",
+            )
+        };
+        if !completion.matches_original(claim) {
+            return Err(unproven());
+        }
+        let hash = store
+            .current_execution_claim_hash(claim)
+            .map_err(|error| ExecError::store(&error))?;
+        let (instance_id, effect_id) = claim.effect();
+        if !completion.proof().matches_claim(claim, &hash)
+            || store
+                .state
+                .execution
+                .stopped_for(instance_id, effect_id)
+                .is_none_or(|stopped| stopped.outcome() != completion.stopped_outcome())
+        {
+            return Err(unproven());
+        }
+        let instance = store
+            .state
+            .instances
+            .get(instance_id)
+            .ok_or_else(unproven)?;
+        let pending = if instance.status == fsm_core::machine::Status::Running
+            && instance.pending.iter().any(|effect| effect == effect_id)
+        {
+            PendingEffect::Present
+        } else {
+            PendingEffect::Absent
+        };
+        let disposition = store
+            .state
+            .execution
+            .settlement_for(claim, pending)
+            .map_err(|_| unproven())?;
+        let request_id = match disposition {
+            Settlement::Acked => ack_rid(effect_id),
+            Settlement::Attempted => {
+                let material = claim.to_value();
+                let attempt = material
+                    .get("attempt")
+                    .and_then(Value::as_num)
+                    .and_then(|raw| raw.parse::<u32>().ok())
+                    .ok_or_else(unproven)?;
+                attempt_rid(effect_id, attempt)
+            }
+            Settlement::Interrupted => format!("exec-interrupted-{effect_id}-{}", claim.run_id()),
+        };
+        self.settle_stopped(store, clock, claim, disposition, &request_id)
+    }
+
     /// Persist verified native completion while retaining claim ownership.
     #[cfg(target_os = "linux")]
     pub fn stop_native(

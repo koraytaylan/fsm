@@ -620,3 +620,9 @@ contract's outcome event after exact terminal settlement replay, on a healthy
 durable writer. It verifies original identity and committed outcome/result,
 retains existing event keys and acknowledgement-before-event behavior, and
 refuses missing/conflicting/sealed evidence; no journal/hash format changes.
+
+Provisional Pipeline::settle_native_stopped adds writer-held original-policy
+selection and atomic stopped-result consumption after exact claim/hash,
+closure and persisted outcome checks. It preserves existing ack/attempt keys,
+uses a run-specific interrupted key without consuming a pending effect's ack,
+and sends no event; committed transaction recovery remains exact replay.

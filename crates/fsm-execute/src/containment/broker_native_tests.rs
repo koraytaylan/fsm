@@ -250,6 +250,7 @@ fn run_case(timeout: bool) {
         .groups
         .push((group, domain.to_value().get("cgroup").unwrap().clone()));
     let (binding, effect) = claim_binding(&fixture, &domain);
+    let settlement_request = fsm_execute::rid::ack_rid(&effect);
     let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
     permit_operator_store(&fixture.store);
     assert_eq!(
@@ -355,6 +356,15 @@ fn run_case(timeout: bool) {
         let stale = fsm_core::record::execution::Claim::from_value(&Value::Obj(stale)).unwrap();
         let mut pipeline = fsm_execute::run::Pipeline;
         let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+        assert_eq!(
+            pipeline
+                .settle_native_stopped(&mut store, &mut clock, &original_claim, &completion,)
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
+        assert_eq!(store.records.len(), before);
+        assert_eq!(store.state.execution, before_ownership);
         assert!(
             pipeline
                 .stop_native(
@@ -487,7 +497,7 @@ fn run_case(timeout: bool) {
                 .replay_execution_settlement(
                     &original_claim,
                     fsm_core::record::execution::Settlement::Acked,
-                    "native-proof-settle",
+                    &settlement_request,
                 )
                 .unwrap()
                 .is_none()
@@ -504,7 +514,7 @@ fn run_case(timeout: bool) {
                     &mut clock,
                     &original_claim,
                     &completion,
-                    "native-proof-settle",
+                    &settlement_request,
                 )
                 .unwrap_err()
                 .code,
@@ -512,13 +522,7 @@ fn run_case(timeout: bool) {
         );
         assert_eq!(store.records.len(), before);
         let settled = pipeline
-            .settle_stopped(
-                &mut store,
-                &mut clock,
-                &original_claim,
-                fsm_core::record::execution::Settlement::Acked,
-                "native-proof-settle",
-            )
+            .settle_native_stopped(&mut store, &mut clock, &original_claim, &completion)
             .unwrap();
         assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
         let replay = pipeline
@@ -527,7 +531,7 @@ fn run_case(timeout: bool) {
                 &mut clock,
                 &original_claim,
                 fsm_core::record::execution::Settlement::Acked,
-                "native-proof-settle",
+                &settlement_request,
             )
             .unwrap();
         assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
@@ -555,7 +559,7 @@ fn run_case(timeout: bool) {
         .replay_execution_settlement(
             &original_claim,
             fsm_core::record::execution::Settlement::Acked,
-            "native-proof-settle",
+            &settlement_request,
         )
         .unwrap()
         .unwrap();
@@ -573,7 +577,7 @@ fn run_case(timeout: bool) {
             .replay_execution_settlement(
                 &original_claim,
                 fsm_core::record::execution::Settlement::Attempted,
-                "native-proof-settle",
+                &settlement_request,
             )
             .unwrap_err()
             .code,
@@ -639,7 +643,7 @@ fn run_case(timeout: bool) {
                     &mut clock,
                     &stale,
                     &recovered,
-                    "native-proof-settle",
+                    &settlement_request,
                 )
                 .unwrap_err()
                 .code,
@@ -653,7 +657,7 @@ fn run_case(timeout: bool) {
                     &mut clock,
                     &original_claim,
                     &recovered,
-                    "native-proof-settle",
+                    &settlement_request,
                 )
                 .unwrap(),
             fsm_execute::run::SettleOutcome::Advanced
@@ -697,7 +701,7 @@ fn run_case(timeout: bool) {
                 &mut clock,
                 &original_claim,
                 &recovered,
-                "native-proof-settle",
+                &settlement_request,
             )
             .unwrap();
         assert_eq!(store.records.len(), before + 1);

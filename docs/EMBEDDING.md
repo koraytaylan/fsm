@@ -1825,3 +1825,11 @@ advance event keys, engine enablement and acknowledgement-before-event ordering
 remain in force, and missing/conflicting/sealed evidence refuses rather than
 sending a guessed event. Automatic service enumeration and sealed recovery
 support remain acceptance work.
+
+Pipeline::settle_native_stopped requires a healthy durable writer and exact
+retained stopped ownership matching the checked completion/closure. It selects
+Acked, Attempted or Interrupted from the original claim policy and current
+pending state, then uses atomic store settlement with the existing ack/attempt
+keys or a run-specific interrupted key. It consults no current handler table,
+sends no event and cannot settle before stop persistence; committed settlement
+recovery uses exact replay, with advance_native_settled for a proven terminal ack.
