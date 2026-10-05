@@ -1494,6 +1494,13 @@ request ledger). Instance/effect identifiers are nonempty strings, attempt is
 positive and no greater than the policy's attempt limit, and handler
 fingerprints are `sha256:` followed by 64 lowercase hex digits.
 
+A legacy `quiescence` value is a closed object containing the complete
+`domain`, canonical SHA-256 `receipt`, and canonical SHA-256 `previous_head`.
+The latter MUST equal both the enabled record's `previous_head` and the hash
+of the immediately preceding record. This value names protected evidence;
+core shape validation alone MUST NOT authenticate it or establish that a
+legacy uncontained environment was closed.
+
 A closure value contains exactly positive `run_id`, the complete `domain`,
 and a canonical SHA-256 `receipt` digest naming protected native evidence.
 Decoding that value MUST NOT authenticate the receipt; native publication
