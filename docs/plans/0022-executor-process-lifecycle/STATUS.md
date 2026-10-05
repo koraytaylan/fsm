@@ -2422,4 +2422,18 @@ lifecycle updates.
   stopped/settlement and writer-held host changes; current full native/portable
   gates, frozen review and automatic service integration remain required.
 
+- Re-polled positive host run `37299691645` (`e90982135c47303f67fa95aa2cda425321c65688`)
+  and initial NativeRun run `37300307569` (`28bf92a7854e75852aec9fe55be0121845cf6aee`):
+  each has MSRV native and zero-deps success, stable native and four completed
+  portable failures, with both macOS jobs queued. Retained and independently
+  verified 78 MSRV native cases for each frozen source using exact
+  `rustc 1.89.0 (29483883e 2025-08-04)`; executable verification and gate
+  release stay false. Retained the NativeRun stable failure, confirming its
+  broker-access case stops at the same 64 MiB copied executable assertion
+  repaired by `587620e`, rather than demonstrating a handler/closure failure.
+  This is scoped positive-host/bind-execute evidence only, predating current
+  result schema, stopped settlement, writer-held startup and contention controls;
+  repaired stable/current native, all portable gates and full service integration
+  remain required, and no task is marked accepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
