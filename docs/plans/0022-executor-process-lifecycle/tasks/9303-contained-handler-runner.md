@@ -698,3 +698,27 @@ the evidence that the named target actually executed native controls.
 No additional finding was identified in these deltas. The current local memory
 check still exceeds the workspace swap threshold, so no intensive frozen host
 command was started; remote CI remains the only live gate execution.
+
+## Corrected-source acceptance reconciliation
+
+Product review range is `cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb` through
+`9f1f175ad91609359699e3a2d670119e8cbb506a`; subsequent review records and the
+API-policy envelope clarification are documentation only.
+
+| Task obligation | Reconciled evidence | Verdict |
+| --- | --- | --- |
+| One claimed process/MCP enrollment path | Launch/enrollment/grant, catalogue, private exec-status and native runner slices; exact provisioned `lifecycle_runner` artifact inventory on stable/MSRV. | Source and native controls reviewed; compiled portable matrix not yet complete. |
+| Candidate, closure and uncertainty remain separate | Closure publication, manager/stop/revocation, transport and completion/attestation slices; corrupted handoff, partial receipt and retained-ownership assertions. | Reviewed primitive boundary; no claim release from kill, root exit or helper EOF. |
+| Exit, answer, timeout and cancellation close descendants | Independently enrolled process/MCP tree controls and helper/supervisor-death controls with verified closure and original claim retained. | Native evidence passes on both compilers; production host routing is task 9401. |
+| Bounded capture and owned resource cleanup | Limit/plus-one/hash-limit/noisy capture, worker join, helper streams and repeated native resource assertions. | Reviewed native/portable boundaries; remaining platform verdicts and local frozen invocation still required. |
+| Explicit progress, best-effort Drop and public contract | Native preparation/run/execution progress, public inventory, original-contract recovery/settlement and scoped SPEC/API/guide reconciliation. | Reviewed provisional interface; full task acceptance remains withheld. |
+
+The interrupted-association deadline finding has a product correction executed
+by both native compiler jobs; the stale API-policy envelope reference has a
+documentation correction. No other finding emerged from the recorded slices.
+CI `37376949993` passes native stable/MSRV, both Ubuntu gates and zero dependencies;
+four macOS/Windows axes remain live. The separate frozen local stable host gate
+is unexecuted under the workspace swap rule. Retained artifacts verify source,
+compiler, report/log integrity and inventory, not independent executable bytes.
+This reconciliation does not mark the task done, release production routing,
+or accept dependent shutdown/reconciliation/crash work or plans 20, 21 and 23.
