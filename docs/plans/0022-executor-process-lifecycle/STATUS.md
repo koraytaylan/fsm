@@ -571,4 +571,18 @@ lifecycle updates.
   failure case, not failed-fsync, partial-write or power-loss evidence, and
   does not change task 9302's In progress status.
 
+- **Legacy and rotation regressions executed:** at committed source `5deaeb3`,
+  both the corrected legacy cache/cold/seal-pin admission case and the
+  claim/stop/settlement automatic-rotation obstruction case pass on stable and
+  MSRV 1.89.0, followed by passing workspace all-target Clippy; the serialized
+  command group exits successfully. The task cache retains
+  `legacy-rotation-5deaeb3.log` with the four named test results. The earlier
+  isolated, clean `9e4119a` frozen host review also completed all eight stable
+  commands successfully, covering workspace debug/release, formatting, source
+  size, Clippy, rustdoc, zero dependencies and external embed acceptance;
+  `9e4119a-host-gates.log` retains that evidence. The `5deaeb3` additions remain
+  outside that frozen range and require the next complete review/matrix.
+  Neither result establishes production native receipt authentication or
+  failed-fsync/partial-write/power-loss coverage, so task 9302 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
