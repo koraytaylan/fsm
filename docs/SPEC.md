@@ -1736,8 +1736,10 @@ This record acknowledges the matched manager operation and MUST NOT stand in
 for permanent closure or a native closure receipt.
 
 The root-only `complete-close` operation MUST retain the authority lock and
-require exact protected prepared, one-shot launch intent, handoff and binding
-records for the same domain and original claim. Verified handoff MUST include
+require exact protected prepared and binding records for the same domain and
+original claim. When a launch intent exists, it MUST additionally require exact
+one-shot intent and completed handoff records; a partial or unreadable intent
+MUST NOT select the never-launched path. Verified handoff MUST include
 the fixed control-group lifetime/kill/no-restart policy in its admission checks.
 It MUST durably revoke entry before observing retirement, checking any present
 cgroup against the recorded native identity; a missing cgroup does not itself
@@ -1745,15 +1747,21 @@ authorize closure. A present manager-stopped record MUST match exactly; when
 that record is absent, natural retirement MUST be acknowledged separately as
 `fsm.native-manager-retired/1` with the exact domain, binding and gate, only
 after the same full retirement observations succeed. Natural retirement MUST
-NOT be represented as successful manager stop. Both routes retain and recheck
+NOT be represented as successful manager stop. Both submitted routes retain and recheck
 the protected closing marker through publication.
-It MUST refuse either grant path of any type, a different boot/authority,
+Before final publication it MUST refuse either grant path of any type, a different boot/authority,
 present or unreadable native cgroup, a listed manager unit or a queued job
 for that unit. Manager inventory capture MUST be bounded and use a shared
 two-second deadline. The irreversible closing marker and one-shot launch
-intent fence future authority admission; the matched accepted handoff and
+intent fence future authority admission for submitted runs; the matched accepted handoff and
 manager inventories retire the accepted submission. Root/kernel administrators
 remain outside this exclusion guarantee. An absent cgroup alone is insufficient.
+For a never-launched bound allocation, exact absence of final and pending
+launch/handoff/manager stop/retirement material, durable admission revocation
+and empty manager unit/job inventories MUST instead be proved under the lock.
+The original protected empty cgroup MAY then be removed; a cold retry with an
+absent cgroup MUST require exact durable revocation and repeat all absence
+checks. This route MUST NOT fabricate handoff or manager completion records.
 After revalidating protected material and native absence, it MUST publish and
 fsync the exact `fsm.native-domain-closed/1` domain tombstone, then exclusively
 publish the matching `fsm.native-closure/1` receipt by writing an exclusive

@@ -1995,4 +1995,16 @@ lifecycle updates.
   native/portable acceptance and remaining integration stay required, and task
   9303 stays In progress.
 
+- **Complete-close normative review reconciled:** the main SPEC operation
+  paragraph still unconditionally required launch/handoff after the new
+  never-launched exception was specified. It now explicitly requires those
+  records for submitted runs, refuses partial/unreadable intents from selecting
+  the exception, and states the separate final/pending absence, revocation,
+  inventory and original empty-domain removal/cold-retry conditions together.
+  Final publication still requires native absence and unchanged ordinary
+  tombstone/receipt publication; no implementation or persisted bytes changed.
+  Diff and size checks pass; run `37301794834` remains authoritatively queued
+  for `7985174`, compiled native/portable acceptance and remaining production
+  integration stay required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
