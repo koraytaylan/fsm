@@ -276,6 +276,97 @@ pub(super) fn run() {
     drop(gate);
     fixture.cleanup().unwrap();
     stop_running_handler();
+    execute_process_handlers();
+}
+
+fn execute_process_handlers() {
+    for size in [4096, 4097, 1048577] {
+        let source = format!(
+            r#"{{"format":"fsm.handlers/1","handlers":[{{"effect":"notify","argv":["/usr/bin/head","-c","{size}","/dev/zero"],"timeout_ms":1000,"retry":{{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}}}]}}"#
+        );
+        let table =
+            fsm_core::json::parse(source.as_bytes(), &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+        let mut fixture = Fixture::new_for_table(table);
+        let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+        let (binding, effect) = claim_binding(&fixture, &domain);
+        bind(&fixture.directory, &binding).unwrap();
+        let result = super::super::super::runner::execute(&fixture.directory, 1).unwrap();
+        assert_eq!(result.get("claim"), binding.get("claim"));
+        assert_eq!(result.get("journal_claim"), binding.get("journal_claim"));
+        assert_eq!(result.get("failure_class"), Some(&Value::Null));
+        let candidate = result.get("candidate").unwrap();
+        assert_eq!(candidate.get("status"), Some(&Value::Num("0".into())));
+        assert_eq!(
+            candidate
+                .get("stdout")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .as_bytes(),
+            &[0; 4096]
+        );
+        if size == 4097 {
+            // Independently calculated SHA-256 of 4097 zero bytes.
+            assert_eq!(
+                candidate.get("stdout_sha256"),
+                Some(&Value::Str(
+                    "b587fa297299ce9c602e58292b51379402bf7b1074f6b18679c2fb871c917ca8".into()
+                ))
+            );
+        } else {
+            assert!(candidate.get("stdout_sha256").is_none());
+        }
+        fsm_store::store::VerifiedClosure::read(std::path::Path::new(
+            result.get("receipt").unwrap().as_str().unwrap(),
+        ))
+        .unwrap();
+        let store = Store::open_read_only(&fixture.store).unwrap();
+        assert!(
+            store
+                .state
+                .execution
+                .claim_for("instance", &effect)
+                .is_some()
+        );
+        assert!(
+            store
+                .state
+                .execution
+                .stopped_for("instance", &effect)
+                .is_none()
+        );
+        drop(store);
+        assert!(super::super::super::runner::execute(&fixture.directory, 1).is_err());
+        fixture.cleanup().unwrap();
+    }
+    let table = fsm_core::json::parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/usr/bin/sleep","300"],"timeout_ms":100,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#, &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+    let mut fixture = Fixture::new_for_table(table);
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let (binding, effect) = claim_binding(&fixture, &domain);
+    bind(&fixture.directory, &binding).unwrap();
+    let result = super::super::super::runner::execute(&fixture.directory, 1).unwrap();
+    assert_eq!(
+        result.get("failure_class"),
+        Some(&Value::Str("timeout".into()))
+    );
+    assert_eq!(
+        result.get("candidate").unwrap().get("error"),
+        Some(&Value::Str("exec/timeout".into()))
+    );
+    fsm_store::store::VerifiedClosure::read(std::path::Path::new(
+        result.get("receipt").unwrap().as_str().unwrap(),
+    ))
+    .unwrap();
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    drop(store);
+    fixture.cleanup().unwrap();
 }
 
 fn stop_running_handler() {

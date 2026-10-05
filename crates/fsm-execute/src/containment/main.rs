@@ -1,4 +1,4 @@
-//! Separately provisioned privileged control entry point, not a handler runner.
+//! Separately provisioned privileged control and claimed execution entry point.
 
 #[cfg(all(
     target_os = "linux",

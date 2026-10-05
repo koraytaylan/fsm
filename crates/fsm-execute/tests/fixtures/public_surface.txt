@@ -252,6 +252,13 @@ method fsm_execute::run::Runner::poll
 method fsm_execute::run::Runner::running_effects
 method fsm_execute::run::Runner::scratch_dir
 method fsm_execute::run::Runner::spawn
+method fsm_execute::run::native_io::NativeCapture::finish
+method fsm_execute::run::native_io::NativeCapture::open
+method fsm_execute::run::native_io::NativeCapture::poll
+method fsm_execute::run::native_io::NativeProtocol::cancel
+method fsm_execute::run::native_io::NativeProtocol::collect
+method fsm_execute::run::native_io::NativeProtocol::from_streams
+method fsm_execute::run::native_io::NativeProtocol::reap
 method fsm_execute::sched::Scheduler::capped
 method fsm_execute::sched::Scheduler::complete
 method fsm_execute::sched::Scheduler::deferred
@@ -276,6 +283,7 @@ mod fsm_execute::error
 mod fsm_execute::mcp_client
 mod fsm_execute::rid
 mod fsm_execute::run
+mod fsm_execute::run::native_io
 mod fsm_execute::sched
 mod fsm_execute::service
 mod fsm_execute::watch
@@ -308,6 +316,8 @@ struct fsm_execute::run::Exhaustion
 struct fsm_execute::run::McpCall
 struct fsm_execute::run::Pipeline
 struct fsm_execute::run::Runner
+struct fsm_execute::run::native_io::NativeCapture
+struct fsm_execute::run::native_io::NativeProtocol
 struct fsm_execute::sched::Capped
 struct fsm_execute::sched::Inflight
 struct fsm_execute::sched::Scheduler

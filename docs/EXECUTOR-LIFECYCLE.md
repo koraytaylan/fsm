@@ -1,5 +1,17 @@
 # Executor lifecycle feasibility
 
+Private root `execute` now owns claimed process/MCP execution through the
+same installed-gate launch, derived-group grant and closure path. It derives
+argv, kind, tool/arguments and timeout from approved catalogue plus the
+verified journal effect, shares bounded capture/owned protocol workers through
+Linux `run::native_io`, and treats exit/answer only as a candidate. Before
+returning its bounded identity-bound response it requires protected closure
+proof, owned transport reap and observed MCP worker join. Failed cleanup retains
+the journal claim; no stopped result or settlement is written by this command.
+The public service runner, authenticated unprivileged broker, native MCP trees
+and uncertain-start recovery remain incomplete; this root operation does not
+release task 9303's acceptance gate.
+
 ## Decision status
 
 Private `complete-close` handles a successfully matched, durably acknowledged

@@ -1536,4 +1536,20 @@ lifecycle updates.
   stable/MSRV native review, with Runner/MCP integration and uncertain-start
   reconciliation still outstanding; task 9303 remains In progress.
 
+- **Claimed authority execution path authored:** private root `execute`
+  derives the complete approved invocation from a freshly verified claim and
+  journal effect, launches both process/MCP through installed enrollment and
+  grant, drains bounded live capture, and requires matching closure plus owned
+  transport/MCP-worker retirement before an identity-bound candidate response.
+  Linux native I/O adapters reuse the existing capture and owned protocol
+  worker; provisional API inventory and guides move with that surface. Source
+  review replaced source-file inclusion (whose worker tests depended on the
+  library Runner) with an explicit shared adapter, avoiding duplicated workers
+  or bypassed tests. Native controls cover exact-prefix, prefix-plus-one with
+  independently calculated digest, hash-limit excess/no digest, timeout,
+  closure proof, unresolved journal state and duplicate-launch refusal.
+  Formatting/file-size/diff checks pass; compiled native process/MCP/tree,
+  broker authentication, public service integration and uncertain-start
+  reconciliation remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

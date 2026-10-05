@@ -1632,6 +1632,37 @@ different or partial records MUST NOT be replaced. Publication failures retain
 journal ownership; this operation MUST NOT itself settle or clear a claim.
 Uncertain submissions without matched completed handoff remain unresolved
 and require the separate native reconciliation protocol.
+
+The private root authority `execute` operation MUST derive argv, handler kind,
+MCP tool/arguments and timeout from the protected approved catalogue and the
+freshly verified claim's journal effect, never caller-supplied execution input.
+It MUST use the same enrolled manager launch and grant path for process and
+MCP handlers, pass owned bounded capture/protocol streams, and treat process
+exit or an MCP answer only as a candidate. Before returning a result, it MUST
+close admission, stop any surviving domain members, obtain the matching
+file-verified closure receipt, reap its owned transport and join its MCP worker.
+MCP I/O MUST have independent shutdown controls and bounded join observation.
+Capture MUST share the public runner's prefix/digest accounting and drain
+excess bytes within a fixed poll budget without spool files. Cleanup failures
+MUST return uncertainty with journal ownership retained, never a settleable
+candidate.
+An unavailable live stop after natural exit MAY be resolved only by the
+independent matching complete-close protocol; its error MUST NOT itself
+authorize a result or be relabeled successful manager stop.
+Its bounded response MUST bind the original claim/hash, receipt path,
+candidate result and failure class. It MUST NOT write stopped results or
+settle the journal itself; the production service/broker integration remains
+required, and root-only operation MUST NOT imply an unprivileged client path.
+The response format is `fsm.native-run-result/1`, with exactly `format`,
+`claim`, `journal_claim`, `receipt` (the exact protected receipt path),
+`candidate` (existing runner acknowledgement-result shape), and nullable
+`failure_class` (existing runner retry classification); canonical output is
+at most 64 KiB. It is not an authenticated remote broker response by itself.
+The provisional Linux-only `run::native_io::NativeCapture` and
+`NativeProtocol` adapters MUST reuse the runner's capture/worker implementation;
+their constructors MUST NOT authorize launch, validate a claim or prove
+closure. NativeProtocol collection MUST require observed worker join, while
+cancellation and failed join MUST NOT establish native termination.
 Successful stop MUST NOT publish closure evidence, clear claims or authorize
 settlement/capacity reuse; permanent closure requires independent completion.
 

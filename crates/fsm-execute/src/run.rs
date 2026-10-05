@@ -34,6 +34,9 @@ mod pipeline;
 use mcp_worker::McpWorker;
 mod stream;
 
+#[cfg(target_os = "linux")]
+pub mod native_io;
+
 use stream::StreamCapture;
 
 pub use pipeline::{Pipeline, SettleOutcome};

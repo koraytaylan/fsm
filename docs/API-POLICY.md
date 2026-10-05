@@ -1,5 +1,14 @@
 # API and version policy
 
+The provisional Linux-only `run::native_io` surface adds `NativeCapture`
+and `NativeProtocol` owned stream adapters; the inventory includes their
+constructors, bounded polling/finalization, cancellation and observed join.
+They authorize no launch or closure. Private root `execute` derives the
+approved invocation from its claim and returns the existing candidate result
+only after protected closure proof and owned handle retirement, in a bounded
+`fsm.native-run-result/1` response; journal formats and stable error codes are
+unchanged, with native MCP/tree/service acceptance still pending.
+
 Private `complete-close` publishes the existing native closure receipt format
 after matched accepted-submission retirement and protected admission fencing;
 it adds no stable API or journal version, and does not settle journal ownership.

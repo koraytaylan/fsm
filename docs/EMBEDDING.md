@@ -1,5 +1,16 @@
 # Embedding fsm as a library
 
+Linux `run::native_io::{NativeCapture, NativeProtocol}` expose the shared
+bounded capture and owned cancellable MCP exchange for an already enrolled
+transport; callers still must provide claim authorization and prove domain
+closure before settlement. Private root authority `execute` now derives a
+claimed process/MCP invocation from the approved catalogue, enters through the
+installed gate, closes the domain after a candidate answer/timeout, reads the
+matching receipt and retires its owned transport/worker before returning a
+bounded identity-bound candidate response, without writing or settling the
+journal. This is not the unprivileged broker or integrated service API;
+public service ownership and full native process/MCP acceptance remain pending.
+
 Private root `complete-close` validates the complete protected submission/stop
 chain, absence of the manager unit, queued jobs and native cgroup, and retained
 closing admission before publishing an immutable receipt for the exact claim.

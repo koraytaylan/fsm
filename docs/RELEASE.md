@@ -1,5 +1,13 @@
 # Releasing
 
+Unreleased private root `execute` adds one claimed enrolled execution/cleanup
+path for process and MCP handlers, with approved journal-derived invocation,
+shared bounded live capture, independently cancellable/joined protocol I/O,
+matching closure proof and owned transport retirement before returning a
+candidate result. Provisional Linux native I/O adapters expose the shared
+implementation; native process boundary/timeout controls are authored, while
+native MCP/tree, broker and production service acceptance remain pending.
+
 Unreleased private `complete-close` adds protected matched-stop retirement,
 domain tombstone and immutable closure receipt publication with exclusive
 fsynced pending/hard-link ordering and identity-preserving replay; missing,

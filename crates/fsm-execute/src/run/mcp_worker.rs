@@ -31,14 +31,13 @@ impl McpWorker {
         let mut builder = Command::new(command);
         builder.args(arguments).stderr(stderr);
         #[cfg(target_os = "linux")]
-        let (stdin, stdout, controls) = {
+        let (stdin, stdout) = {
             let (stdin, input_peer) = UnixStream::pair()?;
             let (stdout, output_peer) = UnixStream::pair()?;
-            let controls = vec![stdin.try_clone()?, stdout.try_clone()?];
             builder
                 .stdin(Stdio::from(OwnedFd::from(input_peer)))
                 .stdout(Stdio::from(OwnedFd::from(output_peer)));
-            (stdin, stdout, controls)
+            (stdin, stdout)
         };
         #[cfg(not(target_os = "linux"))]
         builder.stdin(Stdio::piped()).stdout(Stdio::piped());
@@ -52,31 +51,42 @@ impl McpWorker {
                 return Err(std::io::Error::other("server pipes unavailable"));
             }
         };
-        let (sender, answers) = channel();
-        let thread = std::thread::Builder::new()
-            .name("fsm-mcp".into())
-            .spawn(move || {
-                let outcome = exchange(stdin, stdout, &tool, &call_arguments);
-                let _ = sender.send(outcome);
+        #[cfg(target_os = "linux")]
+        let worker = Self::from_streams(stdin, stdout, tool, call_arguments);
+        #[cfg(not(target_os = "linux"))]
+        let worker =
+            exchange_thread(stdin, stdout, tool, call_arguments).map(|(answers, thread)| Self {
+                answers,
+                answer: None,
+                thread: Some(thread),
             });
-        let thread = match thread {
-            Ok(thread) => thread,
+        let worker = match worker {
+            Ok(worker) => worker,
             Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(error);
             }
         };
-        Ok((
-            child,
-            Self {
-                answers,
-                answer: None,
-                thread: Some(thread),
-                #[cfg(target_os = "linux")]
-                controls,
-            },
-        ))
+        Ok((child, worker))
+    }
+
+    /// Adopt already enrolled protocol streams with independent cancellation.
+    #[cfg(target_os = "linux")]
+    pub(super) fn from_streams(
+        stdin: UnixStream,
+        stdout: UnixStream,
+        tool: String,
+        arguments: Value,
+    ) -> std::io::Result<Self> {
+        let controls = vec![stdin.try_clone()?, stdout.try_clone()?];
+        let (answers, thread) = exchange_thread(stdin, stdout, tool, arguments)?;
+        Ok(Self {
+            answers,
+            answer: None,
+            thread: Some(thread),
+            controls,
+        })
     }
 
     pub(super) fn cancel(&self) {
@@ -129,6 +139,22 @@ impl Drop for McpWorker {
 
 fn exchange(stdin: impl Write, stdout: impl Read, tool: &str, arguments: &Value) -> McpOutcome {
     converse(stdin, stdout, tool, arguments)
+}
+
+fn exchange_thread(
+    stdin: impl Write + Send + 'static,
+    stdout: impl Read + Send + 'static,
+    tool: String,
+    arguments: Value,
+) -> std::io::Result<(Receiver<McpOutcome>, JoinHandle<()>)> {
+    let (sender, answers) = channel();
+    let thread = std::thread::Builder::new()
+        .name("fsm-mcp".into())
+        .spawn(move || {
+            let outcome = exchange(stdin, stdout, &tool, &arguments);
+            let _ = sender.send(outcome);
+        })?;
+    Ok((answers, thread))
 }
 
 #[cfg(all(test, target_os = "linux"))]
