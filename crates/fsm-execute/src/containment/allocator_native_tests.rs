@@ -555,22 +555,34 @@ fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
     assert_eq!(store.records, before);
     assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
     assert!(!store.state.dedup.contains_key("invalid-handler-claim"));
-    for nested in [false, true] {
+    for field in ["argv", "mcp_arguments", "on_ok", "on_failed"] {
         let mut excessive = handler.clone();
-        if nested {
+        if field == "argv" {
+            excessive
+                .argv
+                .push("x".repeat(JsonLimits::DEFAULT.max_bytes + 1));
+        } else {
             let mut payload = Value::Null;
             for _ in 0..=JsonLimits::DEFAULT.max_depth {
                 payload = Value::Arr(vec![payload]);
             }
-            excessive.on_ok = Some(fsm_execute::config::Advance {
-                event: "done".into(),
-                payload,
-                stamps: Vec::new(),
-            });
-        } else {
-            excessive
-                .argv
-                .push("x".repeat(JsonLimits::DEFAULT.max_bytes + 1));
+            if field == "mcp_arguments" {
+                excessive.kind = fsm_execute::config::HandlerKind::Mcp {
+                    tool: "notify".into(),
+                    arguments: payload,
+                };
+            } else {
+                let advance = Some(fsm_execute::config::Advance {
+                    event: "done".into(),
+                    payload,
+                    stamps: Vec::new(),
+                });
+                if field == "on_ok" {
+                    excessive.on_ok = advance;
+                } else {
+                    excessive.on_failed = advance;
+                }
+            }
         }
         let error = pipeline
             .claim_native_handler(

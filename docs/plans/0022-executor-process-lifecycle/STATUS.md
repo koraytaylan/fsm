@@ -3094,4 +3094,11 @@ lifecycle updates.
   frozen checkout at task-cache `runner-review-602b3dc`; freeing obsolete CI
   work does not accept task 9303 or release any production native gate.
 
+- Admission guard review extends the production claim refusal control to all
+  three nested-value branches: MCP arguments and both outcome payloads, beside
+  the excessive argv byte case; each requires the exact early bound refusal
+  and unchanged records/state/request keys before the successful original claim.
+  These controls require fresh native execution; they are not accepted from
+  the previous source's smaller branch coverage.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
