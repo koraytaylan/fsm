@@ -601,4 +601,20 @@ lifecycle updates.
   changes. Formatting/source-size/diff checks pass; execution is pending.
   Task 9302 remains In progress.
 
+- **Descriptor faults and poisoned-writer controls executed:** committed
+  source `7ad7c89` passes both named write/fsync fault cases on stable and
+  MSRV 1.89.0 plus workspace all-target Clippy; the serialized command exits
+  successfully. In a separate clean checkout of that exact source, all three
+  rotation/write/fsync tests pass before mutation; changing only the disk
+  poisoned-append predicate produces a named runtime failure with exit 101
+  in each test, without compilation failure. Restoring the exact source
+  returns all three to passing and leaves the checkout clean. The task cache
+  retains `execution-descriptor-faults.log`, `poison-negative-7ad7c89.json` and
+  its SHA-bound logs; report/log digests and named failures were checked.
+  These cases make poisoned exclusion load-bearing through each production
+  execution mutator, without claiming partial persistence before failed fsync
+  or native closure authentication. Frozen CI run `37257557135` now has both
+  Linux stable/MSRV legs, both native prerequisite jobs and zero-dependencies
+  passing; macOS and Windows legs remain live. Task 9302 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
