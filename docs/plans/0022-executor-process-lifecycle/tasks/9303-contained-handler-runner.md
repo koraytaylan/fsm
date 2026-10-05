@@ -7,6 +7,8 @@ depends_on:
   - durable-execution-claims
 gated: false
 touches:
+  - crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
+  - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py
   - crates/fsm-execute/Cargo.toml
   - crates/fsm-execute/src/containment/
   - crates/fsm-execute/src/run.rs
@@ -30,6 +32,8 @@ The task adopts the separately provisioned privileged authority binary and
 its private modules as part of the proved native backend implementation;
 adding that footprint does not declare the authority or contained runner
 accepted before native integration review.
+The native matrix and authority probe are adopted to execute the production
+allocator on actual writable Linux cgroups at stable and MSRV.
 
 The runner reports a settleable result only after the entire owned domain is
 closed; a root exit or MCP response cannot release surviving descendants.

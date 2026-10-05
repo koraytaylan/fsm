@@ -18,20 +18,35 @@ const BASE: &str = "/var/lib/fsm-containment";
 const MAX_RECORD: u64 = 8192;
 const NOFOLLOW_NONBLOCK: i32 = 0x20000 | 0x800;
 
+#[path = "allocator.rs"]
+mod allocator;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if fs::metadata("/proc/self").map_err(io)?.uid() != 0 {
         return Err("requires separately provisioned root authority".into());
     }
-    if arguments.len() != 4 {
-        return Err("usage: register|bind NAMESPACE GENERATION STORE|BINDING".into());
+    if arguments.len() < 3 {
+        return Err("usage: register|bind|prepare NAMESPACE GENERATION [STORE|BINDING]".into());
     }
     let operation = arguments[0].to_str().ok_or("invalid operation")?;
-    if !matches!(operation, "register" | "bind") {
+    if !matches!(operation, "register" | "bind" | "prepare") {
         return Err("operation outside authority policy".into());
     }
     let namespace = arguments[1].to_str().ok_or("invalid namespace")?;
     let generation = arguments[2].to_str().ok_or("invalid generation")?;
     let directory = authority_path(namespace, generation)?;
+    if operation == "prepare" {
+        if arguments.len() != 3 {
+            return Err("prepare takes no caller domain".into());
+        }
+        let domain = allocator::prepare(&directory)?;
+        let mut output = std::io::stdout().lock();
+        output.write_all(&canon_bytes(&domain)).map_err(io)?;
+        return output.write_all(b"\n").map_err(io);
+    }
+    if arguments.len() != 4 {
+        return Err("register/bind requires one path".into());
+    }
     if operation == "register" {
         register(&directory, Path::new(&arguments[3]))
     } else {
@@ -170,7 +185,8 @@ fn register(directory: &Path, store_path: &Path) -> Result<(), String> {
             ),
             ("identity", identity(&metadata)),
         ]),
-    )
+    )?;
+    allocator::initialize(directory)
 }
 
 fn verify_claim(store: &Store, claim: &Claim, original: &str) -> Result<(), String> {
@@ -274,8 +290,9 @@ fn bind(directory: &Path, binding: &Value) -> Result<(), String> {
         return Err("native boot differs".into());
     }
     let cgroup = Path::new("/sys/fs/cgroup/system.slice").join(format!(
-        "fsm-containment-{}-{allocation}.service",
-        text(&domain, "namespace")?
+        "fsm-containment-{}-{}-{allocation}.service",
+        text(&domain, "namespace")?,
+        number(&domain, "generation")?
     ));
     let metadata = fs::symlink_metadata(cgroup).map_err(io)?;
     if !metadata.is_dir()
@@ -387,6 +404,17 @@ mod tests {
         let head = (store.journal.last_seq, store.journal.last_hash.clone());
         drop(store);
         register(&directory, &store_path).unwrap();
+        let counter = read_value(&directory.join("counter.json"), true).unwrap();
+        assert_eq!(number(&counter, "last_allocation").unwrap(), 0);
+        if fs::metadata("/sys/fs/cgroup/system.slice").unwrap().uid() != 0 {
+            // Actual unprovisioned parent refusal, not native allocation proof.
+            assert!(allocator::prepare(&directory).is_err());
+            assert_eq!(
+                read_value(&directory.join("counter.json"), true).unwrap(),
+                counter
+            );
+            assert!(!directory.join("allocation-1.json").exists());
+        }
         protected_directory(&directory).unwrap();
         let registered = read_value(&directory.join("store.json"), true).unwrap();
         assert_eq!(

@@ -11,8 +11,21 @@ authority/cgroup identities and a protected prepared record before writing a
 private create-once, fsynced binding. Its input format is closed and bounded;
 unsupported runtimes and unprivileged callers refuse before request I/O.
 These commands perform no handler launch and publish no closure receipt;
-the production allocator, protected entry, broker and runner integration
+the protected entry, broker and runner integration
 remain unfinished, so this binary is not an accepted contained runtime.
+
+The production `prepare` operation now creates an empty protected cgroup
+after durably recording its allocation intent and counter advance, then
+publishes its actual native identity as a prepared record. It verifies all
+prior intents, rejects unresolved preparation, rollback, copied authority or
+boot changes, and refuses unknown domains in its generation. Cgroup names
+include namespace, generation and allocation. Each generation currently
+allows 4096 lifetime allocations; directory scans are limited to 32768 entries.
+It neither launches a gate/handler nor enables execution admission. Five
+opt-in real cgroup cases cover empty preparation, unknown-domain refusal,
+counter rollback, persisted incomplete intent and genuine durable claim
+binding; the native matrix must execute them on writable provisioned Linux,
+not count ignored portable cases or local read-only cgroups as native proof.
 
 Task 9303 now shares a bounded accumulator and Linux nonblocking socket
 capture between process output and MCP stderr in the existing runner: each

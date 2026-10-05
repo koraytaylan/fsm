@@ -1452,6 +1452,19 @@ or recreate missing authority during binding. Its canonical private
 path and native device/inode identity. This registration does not enable
 execution or establish legacy quiescence.
 
+Registration MUST initialize a protected allocation counter bound to the
+actual authority directory identity, namespace, generation and current boot.
+Preparation MUST refuse missing, copied, rollback or noncanonical counter
+state and unknown native domains. It MUST durably create an immutable
+allocation intent and advance the counter before creating the empty cgroup;
+it MUST then inspect actual device/inode identity and `populated 0` before
+publishing its prepared record. Incomplete intents remain unresolved and MUST
+NOT be recycled or silently skipped. The initial authority generation allows
+at most 4096 lifetime allocations and bounds directory inventory to 32768
+entries. Unit/cgroup names include namespace, generation and allocation:
+`fsm-containment-<namespace>-<generation>-<allocation>.service`.
+Preparation MUST NOT launch user code or enable execution admission.
+
 A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
 `format`, `claim` and `journal_claim`. The authority MUST independently read
 the registered store, verify its path identity, the original durable claim

@@ -1058,4 +1058,31 @@ lifecycle updates.
   been rerun for this task's current source, and remain required before final
   task acceptance. Task 9303 stays In progress; all plans retain full scope.
 
+- **Production allocator implemented, native execution pending:** authority
+  registration now initializes a root-protected counter bound to namespace,
+  generation, boot and actual authority directory identity. `prepare` checks
+  the registered store identity, counter and complete bounded intent/native
+  inventory; it durably writes a create-once intent and advances the counter
+  before creating a protected empty cgroup and publishing actual native
+  identity. Missing/incomplete intents, rollback, copied authority, boot
+  changes and unknown domains refuse without recycling. Names include
+  generation; explicit initial limits are 4096 lifetime allocations and
+  32768 inventory entries. Preparation runs no user code and does not enable
+  admission. Stable/MSRV authority/refusal/capture checks compile the five
+  opt-in native cases; ignored cases are not claimed as native passes.
+  Stable all-target execute Clippy passes. The actual privileged registration
+  test also passes locally, including the unprovisioned-parent branch that
+  refuses before publishing an intent or advancing its counter. This host's
+  cgroup mount is read-only and its system.slice owner is mapped to nobody,
+  so positive cgroup allocation requires the existing real provisioned CI
+  runtime. The matrix adopts a production authority probe with five cases:
+  empty preparation, unknown-domain refusal, counter rollback, persisted
+  incomplete intent and genuine journal claim binding. Reports retain exact
+  compiler/source/executable hashes, per-case logs and unrelated-process
+  survival; scope is production allocator/binding, not complete backend.
+  Full native inventory becomes 75 cases only when those five execute and
+  pass alongside the existing 70. Frozen-source CI is the next review step;
+  protected entry, broker, closure and contained runner remain incomplete,
+  and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

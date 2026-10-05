@@ -9,7 +9,7 @@ import platform
 import subprocess
 import sys
 
-SUITES = ('systemd', 'identity', 'broker', 'window', 'signal', 'restart', 'facility', 'evidence')
+SUITES = ('systemd', 'identity', 'broker', 'window', 'signal', 'restart', 'facility', 'evidence', 'authority')
 
 
 def git(repo, *args):
@@ -70,6 +70,9 @@ def main():
             assert report['scope'] == 'native-store-evidence-bridge'
             assert report['production_backend'] is False
             assert len(report['native_fixture_sha256']) == 64
+        if name == 'authority':
+            assert report['scope'] == 'production-authority-allocation'
+            assert report['production_allocator'] is True and report['production_backend'] is False
         rows.append({'suite': name, 'cases': len(cases), 'report_sha256': digest})
     path = args.report_dir.resolve() / 'negative-final-kill.json'
     result = subprocess.run([sys.executable, str(Path(__file__).with_name('systemd_probe.py')),
