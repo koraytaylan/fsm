@@ -614,3 +614,9 @@ including read-only handles. Unclaimed keys remain unclaimed, missing original
 fingerprints refuse and existing conflict/sealed-outcome refusals remain;
 the helper acquires no writer and changes no journal/hash/request-fingerprint
 bytes or durable ownership.
+
+Provisional Pipeline::advance_native_settled sends only the original checked
+contract's outcome event after exact terminal settlement replay, on a healthy
+durable writer. It verifies original identity and committed outcome/result,
+retains existing event keys and acknowledgement-before-event behavior, and
+refuses missing/conflicting/sealed evidence; no journal/hash format changes.

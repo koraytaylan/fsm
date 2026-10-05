@@ -1815,3 +1815,13 @@ an unused key returns None without claiming it, changed intent conflicts, and
 missing fingerprint or sealed response evidence refuses. This supplies original
 settlement evidence for an eventual recovered advance but does not itself send
 an event, clear ownership or authorize launch.
+
+Pipeline::advance_native_settled can resume an original outcome event using
+recovered NativeCompletion and the exact original terminal settlement request
+key on a healthy durable writer. It requires successful full-claim Acked replay
+and original outcome/result agreement before selecting on_ok/on_failed from
+the checked recovered contract; current tables are not consulted. Existing
+advance event keys, engine enablement and acknowledgement-before-event ordering
+remain in force, and missing/conflicting/sealed evidence refuses rather than
+sending a guessed event. Automatic service enumeration and sealed recovery
+support remain acceptance work.

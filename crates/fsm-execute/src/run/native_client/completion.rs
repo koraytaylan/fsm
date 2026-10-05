@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 /// Checked candidate and matching closure; current ownership remains the store's job.
 pub struct NativeCompletion {
+    claim: Claim,
     handler: crate::config::HandlerSpec,
     candidate: Value,
     failure_class: Option<FailureClass>,
@@ -24,12 +25,17 @@ impl NativeCompletion {
             return Err("native completion closure does not match original claim".into());
         }
         Ok(Self {
+            claim: claim.clone(),
             handler: material.handler,
             candidate: material.candidate,
             failure_class: material.failure_class,
             proof,
             stopped: material.stopped,
         })
+    }
+
+    pub(crate) fn matches_original(&self, claim: &Claim) -> bool {
+        &self.claim == claim
     }
 
     /// Borrow the checked original contract, including possibly secret values.

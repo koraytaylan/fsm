@@ -311,6 +311,80 @@ impl Pipeline {
         self.advance(store, clock, effect_id, instance_id, advance, None)
     }
 
+    /// Resume the original outcome event only after exact terminal settlement replay.
+    ///
+    /// Uses the recovered checked contract, never a current handler table;
+    /// missing/conflicting/archived settlement evidence cannot authorize an event.
+    #[cfg(target_os = "linux")]
+    pub fn advance_native_settled(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        claim: &fsm_core::record::execution::Claim,
+        completion: &super::native_client::NativeCompletion,
+        settlement_request_id: &str,
+    ) -> Result<SettleOutcome, ExecError> {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native advance requires a supported healthy durable writer",
+            ));
+        }
+        let unproven = || {
+            ExecError::new(
+                "exec/inflight_deferred",
+                "original native terminal settlement is not proven",
+            )
+        };
+        if !completion.matches_original(claim)
+            || completion.stopped_outcome().status() == "interrupted"
+        {
+            return Err(unproven());
+        }
+        let response = store
+            .replay_execution_settlement(
+                claim,
+                fsm_core::record::execution::Settlement::Acked,
+                settlement_request_id,
+            )
+            .map_err(|error| ExecError::store(&error))?
+            .ok_or_else(unproven)?;
+        let body = response.get("execution").ok_or_else(unproven)?;
+        let outcome = if completion.stopped_outcome().status() == "ok" {
+            "ok"
+        } else {
+            "failed"
+        };
+        let (instance_id, effect_id) = claim.effect();
+        if body.get("disposition").and_then(Value::as_str) != Some("acked")
+            || body.get("instance_id").and_then(Value::as_str) != Some(instance_id)
+            || body.get("effect_id").and_then(Value::as_str) != Some(effect_id)
+            || body.get("run_id") != Some(&Value::Num(claim.run_id().to_string()))
+            || body.get("outcome").and_then(Value::as_str) != Some(outcome)
+            || body.get("result") != completion.stopped_outcome().result()
+        {
+            return Err(unproven());
+        }
+        let handler = completion.handler();
+        let advance = if outcome == "ok" {
+            handler.on_ok.as_ref()
+        } else {
+            handler.on_failed.as_ref()
+        };
+        let Some(advance) = advance else {
+            return Ok(SettleOutcome::AckedNoAdvance);
+        };
+        let seq = response
+            .get("seq")
+            .and_then(Value::as_num)
+            .and_then(|raw| raw.parse().ok());
+        self.advance(store, clock, effect_id, instance_id, advance, seq)
+    }
+
     /// Poll one due deadline under a derived key.
     ///
     /// A `NotDue` observation is journaled and claims its key, exactly as SPEC

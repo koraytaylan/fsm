@@ -245,6 +245,7 @@ method fsm_execute::mcp_client::ProtocolFault::as_str
 method fsm_execute::run::BoundedBytes::empty
 method fsm_execute::run::BoundedBytes::to_json_string
 method fsm_execute::run::KillReason::code
+method fsm_execute::run::Pipeline::advance_native_settled
 method fsm_execute::run::Pipeline::advance_only
 method fsm_execute::run::Pipeline::attempt
 method fsm_execute::run::Pipeline::claim_native

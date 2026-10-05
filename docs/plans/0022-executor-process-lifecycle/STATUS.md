@@ -2537,4 +2537,19 @@ lifecycle updates.
   including stronger sealed-history support. Local source checks pass, with
   full compiler/native/portable and high-risk acceptance still pending.
 
+- Added writer-held Pipeline::advance_native_settled: checked completion now
+  retains its exact original claim, and advance requires exact Acked settlement
+  replay plus matching committed disposition/instance/effect/run/outcome/result
+  before selecting the recovered original on_ok/on_failed. Existing event_rid,
+  enablement and acknowledgement-before-event/sequence retry are preserved;
+  missing, substituted, conflicting or unavailable evidence cannot send an event.
+  Actual success/timeout fixtures declare distinct original events, refuse an
+  advance before acknowledgement, reopen after settlement and restart the broker,
+  remove only the fixture catalogue, re-verify recovered completion, reject a
+  stale claim and require the original docs_ok/note_added event exactly once;
+  repeated calls preserve journal count/state and cannot send withdraw.
+  Inventory and SPEC/API/embedding are updated. Local source checks pass;
+  native/compiler/portable acceptance, automatic service routing/enumeration and
+  stronger sealed-history recovery remain required, so no task is accepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

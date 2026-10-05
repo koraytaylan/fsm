@@ -174,7 +174,7 @@ pub(super) fn run() {
 }
 
 fn run_case(timeout: bool) {
-    let mut table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#, &JsonLimits::DEFAULT).unwrap();
+    let mut table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000,"on_ok":{"event":"docs_ok"},"on_failed":{"event":"note_added","payload":{"text":"original"}},"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#, &JsonLimits::DEFAULT).unwrap();
     if timeout {
         let Value::Obj(document) = &mut table else {
             unreachable!()
@@ -497,6 +497,20 @@ fn run_case(timeout: bool) {
             store.state.execution.claim_for("instance", &effect),
             Some(&original_claim)
         );
+        assert_eq!(
+            pipeline
+                .advance_native_settled(
+                    &mut store,
+                    &mut clock,
+                    &original_claim,
+                    &completion,
+                    "native-proof-settle",
+                )
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
+        assert_eq!(store.records.len(), before);
         let settled = pipeline
             .settle_stopped(
                 &mut store,
@@ -598,7 +612,98 @@ fn run_case(timeout: bool) {
     drop(reopened);
     drop(daemon);
     let daemon = Daemon::ready(&fixture.directory, 2);
-    assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
+    fs::rename(&catalogue, &saved_catalogue).unwrap();
+    let recovered_response = request(&base, "recover", Value::Num("1".into()));
+    assert_eq!(recovered_response, execution);
+    let recovered = fsm_execute::run::native_client::NativeCompletion::verify(
+        &recovered_response,
+        &original_claim,
+        text(&binding, "journal_claim").unwrap(),
+    )
+    .unwrap();
+    {
+        let mut store = Store::open(&fixture.store).unwrap();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        let mut clock = fsm_store::clock::FixedClock::new(3000, 1);
+        let before = store.records.len();
+        let mut stale = original_claim.to_value().as_obj().unwrap().clone();
+        stale.insert(
+            "run_id".into(),
+            Value::Num((original_claim.run_id() + 1).to_string()),
+        );
+        let stale = fsm_core::record::execution::Claim::from_value(&Value::Obj(stale)).unwrap();
+        assert_eq!(
+            pipeline
+                .advance_native_settled(
+                    &mut store,
+                    &mut clock,
+                    &stale,
+                    &recovered,
+                    "native-proof-settle",
+                )
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
+        assert_eq!(store.records.len(), before);
+        assert_eq!(
+            pipeline
+                .advance_native_settled(
+                    &mut store,
+                    &mut clock,
+                    &original_claim,
+                    &recovered,
+                    "native-proof-settle",
+                )
+                .unwrap(),
+            fsm_execute::run::SettleOutcome::Advanced
+        );
+        assert_eq!(store.records.len(), before + 1);
+        let event = if timeout { "note_added" } else { "docs_ok" };
+        assert!(
+            store
+                .state
+                .dedup
+                .contains_key(&fsm_execute::rid::event_rid(&effect, event))
+        );
+        assert!(
+            !store
+                .state
+                .dedup
+                .contains_key(&fsm_execute::rid::event_rid(&effect, "withdraw"))
+        );
+        let view = store.instance_view("instance", None, None).unwrap();
+        if timeout {
+            assert_eq!(
+                view.get("context")
+                    .unwrap()
+                    .get("notes")
+                    .and_then(Value::as_str),
+                Some("1")
+            );
+        } else {
+            assert_eq!(
+                view.get("configuration")
+                    .unwrap()
+                    .get("leaf")
+                    .and_then(Value::as_str),
+                Some("risk_review")
+            );
+        }
+        let state = store.state.clone();
+        pipeline
+            .advance_native_settled(
+                &mut store,
+                &mut clock,
+                &original_claim,
+                &recovered,
+                "native-proof-settle",
+            )
+            .unwrap();
+        assert_eq!(store.records.len(), before + 1);
+        assert_eq!(store.state, state);
+    }
+    fs::rename(&saved_catalogue, &catalogue).unwrap();
     assert_eq!(fs::read(&completed).unwrap(), completed_bytes);
     assert_eq!(
         identity(&fs::symlink_metadata(&first_socket).unwrap()),
