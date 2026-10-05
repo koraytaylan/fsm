@@ -4,7 +4,7 @@ use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::Claim;
 use fsm_execute::run::native_client::{NativeRequest, NativeRun};
 use std::collections::BTreeMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[test]
 #[ignore = "invoked only as an unprivileged subprocess of native broker tests"]
@@ -44,6 +44,35 @@ fn complete(binding: Value) {
         .and_then(Value::as_str)
         .unwrap();
     let mut owned = NativeRun::start(&claim, hash, Duration::from_secs(30)).unwrap();
+    if matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1")) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            match owned.poll() {
+                Err(error) => {
+                    assert!(
+                        error.contains("binding refused"),
+                        "unexpected refusal: {error}"
+                    );
+                    assert!(owned.poll().is_err());
+                    break;
+                }
+                Ok(None) => {}
+                Ok(Some(_)) => panic!("mismatched original hash produced completion"),
+            }
+            assert!(Instant::now() < deadline, "binding refusal timed out");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !owned.reap().unwrap() {
+            assert!(
+                Instant::now() < deadline,
+                "refused helper did not reap with EOF"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        println!("\nFSM_NATIVE_TEST_REFUSED");
+        return;
+    }
     loop {
         if let Some(completion) = owned.poll().unwrap() {
             assert_eq!(

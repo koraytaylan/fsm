@@ -58,13 +58,61 @@ from pathlib import Path
 authority=Path(sys.argv[1]).parent
 os.environ['FSM_NATIVE_TEST_NAMESPACE']=authority.parent.name
 os.environ.pop('FSM_NATIVE_TEST_BINDING',None)
-if len(sys.argv)==3:
+os.environ.pop('FSM_NATIVE_TEST_REFUSE',None)
+if len(sys.argv)>=3:
     os.environ['FSM_NATIVE_TEST_BINDING']=sys.argv[2]
+if len(sys.argv)==4:
+    assert sys.argv[3]=='refuse'
+    os.environ['FSM_NATIVE_TEST_REFUSE']='1'
 os.execv(str(authority/'supervisor-test'),['supervisor-test','--exact','authority::allocator::native_tests::supervisor_probe::owned_request','--ignored','--nocapture','--color','never'])
 "#;
 
 pub(super) fn complete(directory: &Path, binding: &Value) -> Value {
     install_supervisor(directory);
+    let mut wrong = binding.as_obj().unwrap().clone();
+    let hash = wrong.get("journal_claim").unwrap().as_str().unwrap();
+    let mut changed = hash.as_bytes().to_vec();
+    changed[7] = if changed[7] == b'0' { b'1' } else { b'0' };
+    wrong.insert(
+        "journal_claim".into(),
+        Value::Str(String::from_utf8(changed).unwrap()),
+    );
+    let refused = Command::new("/usr/bin/python3")
+        .args(["-c", SUPERVISOR])
+        .arg(directory.join("broker"))
+        .arg(std::str::from_utf8(&canon_bytes(&Value::Obj(wrong))).unwrap())
+        .arg("refuse")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(refused.stdout.len() <= 8192 && refused.stderr.len() <= 8192);
+    assert!(
+        refused.status.success(),
+        "refusal supervisor failed: {}",
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    assert_eq!(
+        std::str::from_utf8(&refused.stdout)
+            .unwrap()
+            .lines()
+            .filter(|line| *line == "FSM_NATIVE_TEST_REFUSED")
+            .count(),
+        1
+    );
+    for name in [
+        "binding-1.json",
+        "launch-1.json",
+        "entry-1.json",
+        "handoff-1.json",
+    ] {
+        assert_eq!(
+            fs::symlink_metadata(directory.join(name))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound,
+            "refused binding left {name} or inspection failed"
+        );
+    }
     let output = Command::new("/usr/bin/python3")
         .args(["-c", SUPERVISOR])
         .arg(directory.join("broker"))

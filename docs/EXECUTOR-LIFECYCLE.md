@@ -60,6 +60,11 @@ progress. The native access case exercises this bind/execute adapter from an
 unprivileged host and independently re-authenticates a test-only reconstructed
 envelope and protected receipt; it does not claim raw envelope round-trip
 identity, journal settlement or production service integration.
+Before that successful run, the native case supplies a canonical but mismatched
+original claim hash: the adapter must report binding refusal, retain that error
+on repeated poll and observe real helper reap/EOF; an independent root observer
+requires binding, launch intent, entry grant and handoff to be absent before
+allowing the genuine claim run, with no direct handler fallback.
 
 Native broker access and client-death controls now exec the installed Rust
 `client` helper after dropping root UID/group privilege, replacing Python

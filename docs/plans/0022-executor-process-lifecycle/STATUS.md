@@ -1930,4 +1930,17 @@ lifecycle updates.
   claim/admission/stopped/settlement integration and remaining tasks stay
   required, and task 9303 stays In progress.
 
+- **Claim-bound runner refusal control authored:** before the successful native
+  run, the unprivileged host now gives `NativeRun` a canonical SHA-256 hash with
+  one original-record digest character changed. Broker binding must refuse;
+  repeated poll must retain the refusal and explicit cleanup must observe real
+  helper reap and EOF within bounded deadlines. The independent root observer
+  requires exact NotFound for binding, launch intent, entry grant and handoff
+  before the genuine hash is allowed to run, proving failed binding cannot
+  dispatch execution or leave launch authorization. Test-mode environment is
+  cleared before each host entry. Formatting, size and diff checks pass; run
+  `37300307569` is authoritatively queued for `28bf92a`, current-source compiled
+  stable/MSRV native and all portable acceptance remain pending, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
