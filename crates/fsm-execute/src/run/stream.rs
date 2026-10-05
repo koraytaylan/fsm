@@ -5,11 +5,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Stdio;
 
-use super::{BoundedBytes, ExecError, spawn_error};
+use super::{BoundedBytes, ExecError};
 
 #[cfg(target_os = "linux")]
 use {
-    super::capture::Capture,
+    super::{capture::Capture, spawn_error},
     std::io::{ErrorKind, Read},
     std::os::{fd::OwnedFd, unix::net::UnixStream},
 };

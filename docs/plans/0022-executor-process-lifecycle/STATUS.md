@@ -1085,4 +1085,23 @@ lifecycle updates.
   protected entry, broker, closure and contained runner remain incomplete,
   and task 9303 stays In progress.
 
+- **Allocator native review passes; portable import defect corrected:** frozen
+  source `dffc2086718080067b1a42c597ee8eb49bef5957` runs in CI `37270144908`.
+  Both native jobs pass all 75 cases, including the five actual production
+  allocator/binding cases; artifacts retained under `ci-37270144908/{stable,msrv}`
+  were independently checked against exact frozen AST inventories, nine suite
+  hashes, per-case successes, compiler/source identity, executable digests,
+  unrelated-process survival, I/O cancellation and the expected failing live
+  final-kill control. Stable uses Rust 1.99.0 and MSRV uses 1.89.0. Each new
+  authority case log hash and named runtime pass is checked; its scope remains
+  production allocator/binding with `production_backend: false`. Zero
+  dependencies also passes. Four macOS/Windows portable legs fail compilation:
+  sanitized retained macOS stable and Windows MSRV logs identify the shared
+  capture module's unconditional `spawn_error` import, unused outside Linux
+  under CI's warning refusal. The import is now grouped under its Linux cfg;
+  no capture behavior or native authority implementation changes. The two
+  Linux portable legs remain live on the frozen source and are not restarted
+  or cancelled. A new source review is required for the portable fix; these
+  failures cannot count as six-leg acceptance, and task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
