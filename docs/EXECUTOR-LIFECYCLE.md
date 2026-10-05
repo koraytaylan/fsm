@@ -1,5 +1,13 @@
 # Executor lifecycle feasibility
 
+Process-root observation now distinguishes a manager-query deadline from
+identity and other inspection failures: if the approved handler deadline has
+actually elapsed, that specific query deadline selects the existing timeout
+candidate and still requires full matched closure and owned-handle retirement.
+An earlier query timeout, mismatched identity or other inspection error remains
+uncertain. This repairs a native short-timeout race without inferring root exit
+or relaxing proof, and changes no public error code or journal format.
+
 The provisional Linux `run::native_client::NativeRequest` supervisor now owns
 the fixed protected transport helper and nonblocking standard-stream sockets.
 It bounds request/response/diagnostic retention and work per poll, enforces a

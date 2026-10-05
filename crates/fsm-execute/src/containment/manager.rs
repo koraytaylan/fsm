@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 
 const LIMIT: usize = 4096;
 
+pub(super) const DEADLINE_ERROR: &str = "system-manager query deadline or incomplete I/O";
+
 struct Query(Child);
 
 impl Drop for Query {
@@ -56,7 +58,7 @@ pub(super) fn properties_before(
 fn query(unit: &str, keys: &[&str], requested: Instant) -> Result<Vec<u8>, String> {
     let deadline = requested.min(Instant::now() + Duration::from_secs(2));
     if Instant::now() >= deadline {
-        return Err("system-manager query deadline or incomplete I/O".into());
+        return Err(DEADLINE_ERROR.into());
     }
     let binary = binary()?;
     let mut command = Command::new(binary);
@@ -140,7 +142,7 @@ fn jobs_clear(bytes: &[u8], unit: &str) -> Result<bool, String> {
 
 fn capture(mut command: Command, deadline: Instant) -> Result<Vec<u8>, String> {
     if Instant::now() >= deadline {
-        return Err("system-manager query deadline or incomplete I/O".into());
+        return Err(DEADLINE_ERROR.into());
     }
     let (mut stdout, output) = UnixStream::pair().map_err(io)?;
     let (mut stderr, diagnostics) = UnixStream::pair().map_err(io)?;
@@ -178,7 +180,7 @@ fn capture(mut command: Command, deadline: Instant) -> Result<Vec<u8>, String> {
             }
         }
         if Instant::now() >= deadline {
-            return Err("system-manager query deadline or incomplete I/O".into());
+            return Err(DEADLINE_ERROR.into());
         }
         std::thread::sleep(Duration::from_millis(5));
     }

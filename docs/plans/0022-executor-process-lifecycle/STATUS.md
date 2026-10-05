@@ -1791,4 +1791,20 @@ lifecycle updates.
   checks pass; compiled public-surface/native supervisor acceptance and production
   service claim/closure matching remain required, and task 9303 stays In progress.
 
+- **Frozen uncertainty run diagnosed; handler-deadline race repaired:** run
+  `37290017991` for `fa7ed2a` passes MSRV native and zero dependencies, but stable
+  fails the real sleep handler's 100 ms timeout control because a root-status
+  query exhausts the approved handler deadline and was classified as inspection
+  uncertainty. Retained MSRV artifacts independently verify all 76 cases against
+  exact source/compiler, including process/MCP protected-handoff fault refusal
+  and independent restored-fault cleanup; failed stable evidence stays retained.
+  Manager query deadline diagnostics are now centrally named, and the runner
+  selects the existing timeout candidate only for that error with an actually
+  elapsed handler deadline, still requiring full matched closure/reap/join.
+  Earlier query deadlines, identity mismatch and other inspection errors remain
+  uncertain, with deterministic pure classification controls. Formatting, size
+  and diff checks pass; corrected stable/MSRV native acceptance and all six
+  portable gates remain pending/live, no executable-byte equivalence or gate
+  release is claimed, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -185,6 +185,9 @@ pub(super) fn execute_cancellable(
                     if let Some(status) = owned.child.try_wait().map_err(io)? {
                         break Candidate::Process(status.code().unwrap_or(-1));
                     }
+                    if process_exit::deadline_expired(&error, deadline, Instant::now()) {
+                        break Candidate::Timeout;
+                    }
                     return Err(format!("runner root inspection uncertain: {error}"));
                 }
             }

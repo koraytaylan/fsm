@@ -33,6 +33,10 @@ pub(super) fn observe(
     )
 }
 
+pub(super) fn deadline_expired(error: &str, deadline: Instant, observed: Instant) -> bool {
+    error == manager::DEADLINE_ERROR && observed >= deadline
+}
+
 fn decode(
     properties: &BTreeMap<String, String>,
     pid: u64,
@@ -78,6 +82,24 @@ fn decode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_expired_handler_deadline_can_classify_a_query_deadline_as_timeout() {
+        let now = Instant::now();
+        assert!(deadline_expired(manager::DEADLINE_ERROR, now, now));
+        assert!(!deadline_expired(
+            manager::DEADLINE_ERROR,
+            now + std::time::Duration::from_secs(1),
+            now
+        ));
+        for error in [
+            "manager root status identity differs",
+            "system-manager query failed",
+            "authority record changed during read",
+        ] {
+            assert!(!deadline_expired(error, now, now));
+        }
+    }
 
     fn fields(code: &str, status: &str) -> BTreeMap<String, String> {
         BTreeMap::from([

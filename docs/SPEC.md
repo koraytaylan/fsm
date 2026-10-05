@@ -1759,7 +1759,12 @@ the manager's `InvocationID`, `ExecMainPID`, `ExecMainCode` and
 PID MUST match the protected handoff; canonical normal exit status is 0..255,
 while killed/dumped roots project existing signal status `-1`. Unknown or
 mismatched inspection MUST retain uncertainty, except that an already reaped
-owned transport may supply its actual exit status. Root status remains only a
+owned transport may supply its actual exit status. A manager-query deadline
+failure MAY select the existing timeout candidate only when the approved handler
+deadline has actually elapsed; an earlier manager-query deadline, identity
+mismatch or other inspection failure MUST remain uncertain. This timer observation
+MUST NOT infer root exit or native termination, and matching full cleanup/proof
+remains mandatory before returning a timeout result. Root status remains only a
 candidate; descendant termination, full closure proof and owned handle cleanup
 remain mandatory. Neither PID absence nor root status alone proves closure.
 Successful stop MUST NOT publish closure evidence, clear claims or authorize
