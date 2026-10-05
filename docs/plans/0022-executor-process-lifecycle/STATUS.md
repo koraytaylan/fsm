@@ -3324,4 +3324,16 @@ lifecycle updates.
   Only Windows stable remains live in release tests; the separate local frozen
   host gate remains unexecuted under the workspace swap rule.
 
+- Corrected-source CI `37376949993` completes successfully with all nine jobs
+  green at `9f1f175ad91609359699e3a2d670119e8cbb506a`.
+  Final Windows stable job `111988370545` passes every required step; its exact
+  log is retained at task-cache `ci-37376949993-windows-stable.log`.
+  All six actual portable axes, both independently verified 81-case native
+  compiler matrices and zero dependencies now pass on the deadline correction.
+  Reviewed evidence is consolidated in task 9303's corrected-source acceptance
+  table; the separate local frozen stable host invocation remains unexecuted
+  under the workspace swap limit. This CI verdict does not release the native
+  production gate or finish task 9401 host integration, shutdown/reconciliation,
+  concurrent host/crash acceptance, or plans 20, 21 and 23.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

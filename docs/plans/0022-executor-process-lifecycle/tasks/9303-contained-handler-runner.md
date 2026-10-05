@@ -722,3 +722,12 @@ is unexecuted under the workspace swap rule. Retained artifacts verify source,
 compiler, report/log integrity and inventory, not independent executable bytes.
 This reconciliation does not mark the task done, release production routing,
 or accept dependent shutdown/reconciliation/crash work or plans 20, 21 and 23.
+
+Corrected-source CI `37376949993` subsequently completed successfully: all nine
+jobs pass at exact `9f1f175`, including all six portable axes, both independently
+verified native matrices and zero dependencies. Each portable/dependency log is
+retained in the task cache, with final Windows stable log
+`ci-37376949993-windows-stable.log`. This supersedes the live-job observations
+above. The separate local frozen stable host gate remains unexecuted under the
+workspace swap rule, so status remains `in_progress` and no production gate is
+released; dependent integrated-host acceptance remains outside this verdict.
