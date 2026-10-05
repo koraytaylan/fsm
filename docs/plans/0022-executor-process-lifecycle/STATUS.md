@@ -802,4 +802,17 @@ lifecycle updates.
   The earlier failed macOS/MSRV axis now passes at `bcf6632`; macOS stable and
   both Windows legs remain running. Task 9302 remains In progress.
 
+- **Archived stale-completion guard made load-bearing:** an isolated clean
+  checkout of `4e6c3be81298fa577d8d46b18006e67dcbbdac67` passes the real
+  stopped-owner/base/archive lifecycle case. Disabling only the producer's
+  owner-match check before original evidence lookup changes the spent archived
+  completion from `store/execution_stale` to `store/execution_evidence`, causing
+  the named runtime test to fail with exit 101 without compilation failure.
+  Exact source restoration returns the same test to passing and leaves the
+  checkout clean. The report and all log SHA digests were checked and retained
+  as `spent-stale-negative-4e6c3be.json` and associated logs in the task cache.
+  Both macOS stable/MSRV legs now pass at frozen `bcf6632`; both Windows legs
+  remain running. No later test is attributed to that older frozen range, and
+  task 9302 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
