@@ -1269,3 +1269,14 @@ recovery cannot clear ownership, repair records, launch or authorize settlement.
 Native controls cover missing catalogue, torn-record refusal and unchanged
 recovery after broker restart and journal settlement for success and timeout.
 Service recovery and ack-before-event completion remain integration work.
+
+Owned completion recovery now uses NativeRun::recover with a distinct Recovering
+phase and the same deadline, stream EOF, actual helper retirement and checked
+single-delivery rules as execution. Pipeline::recover_native checks the exact
+current owned claim/hash against a durable unpoisoned snapshot, including a
+read-only open, without checking launch eligibility or acquiring a writer.
+Actual success/timeout host controls recover the same original candidate,
+contract, class and closure while the independent writer lease remains held,
+then retain ownership until writer-held stop/settlement; missing completion
+controls remain retired-but-Uncertain and never bind or launch as fallback.
+This remains a building block for automatic service recovery.

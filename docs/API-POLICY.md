@@ -601,3 +601,9 @@ ordinary 8 KiB authority record bounds and published journal/receipt/hash bytes
 remain unchanged. Recorded original contracts and candidates remain sensitive,
 Root-owned mode 0600, and available only through the provisioned operator broker;
 recover grants neither launch nor journal settlement permission.
+
+Provisional NativeRun::recover, NativeRunPhase::Recovering and
+Pipeline::recover_native add owned, claim-bound read-only completion recovery.
+They retain deadline/EOF/reap/single-delivery checks, never bind or execute as
+fallback, and accept a durable unpoisoned read-only store snapshot for current
+ownership/hash checking; they grant no writer transition or capacity release.

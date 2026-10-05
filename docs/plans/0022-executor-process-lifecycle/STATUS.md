@@ -2512,4 +2512,17 @@ lifecycle updates.
   Local formatting/size/whitespace checks pass; native/compiler/platform gates
   and service original-advance recovery remain required, so no task is accepted.
 
+- Wired protected completion recovery into the owned client: NativeRun::recover
+  starts in the new Recovering phase, requests only recover and shares original
+  identity, deadline, helper reap/EOF and single-delivery checks; refusal never
+  transitions to bind/execute. Pipeline::recover_native accepts a supported
+  durable unpoisoned read-only snapshot and rechecks exact current claim/hash
+  independently of writer access or launch eligibility. Actual unprivileged
+  success/timeout host controls require identical original completion recovery
+  while the independent writer lease remains held, plus missing-record refusal
+  with unchanged ownership and retired-but-Uncertain helper state. Inventory and
+  SPEC/API/embedding/lifecycle contracts are updated. Local source checks pass;
+  compiler/native/all portable acceptance and automatic service recovery are
+  still required, with previous durable-record run 37316870974 queued.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

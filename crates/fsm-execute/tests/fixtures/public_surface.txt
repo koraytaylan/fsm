@@ -249,6 +249,7 @@ method fsm_execute::run::Pipeline::advance_only
 method fsm_execute::run::Pipeline::attempt
 method fsm_execute::run::Pipeline::claim_native
 method fsm_execute::run::Pipeline::poll
+method fsm_execute::run::Pipeline::recover_native
 method fsm_execute::run::Pipeline::settle
 method fsm_execute::run::Pipeline::settle_stopped
 method fsm_execute::run::Pipeline::start_native
@@ -279,6 +280,7 @@ method fsm_execute::run::native_client::NativeRun::cancel
 method fsm_execute::run::native_client::NativeRun::poll
 method fsm_execute::run::native_client::NativeRun::progress
 method fsm_execute::run::native_client::NativeRun::reap
+method fsm_execute::run::native_client::NativeRun::recover
 method fsm_execute::run::native_client::NativeRun::start
 method fsm_execute::run::native_io::NativeCapture::finish
 method fsm_execute::run::native_io::NativeCapture::open
@@ -399,6 +401,7 @@ variant fsm_execute::run::native_client::NativeRunPhase::Binding
 variant fsm_execute::run::native_client::NativeRunPhase::Bound
 variant fsm_execute::run::native_client::NativeRunPhase::Closed
 variant fsm_execute::run::native_client::NativeRunPhase::Executing
+variant fsm_execute::run::native_client::NativeRunPhase::Recovering
 variant fsm_execute::run::native_client::NativeRunPhase::Uncertain
 variant fsm_execute::sched::Directive::InvocationReturn
 variant fsm_execute::sched::Directive::InvokeChild

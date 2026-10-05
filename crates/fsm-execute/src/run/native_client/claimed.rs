@@ -10,6 +10,7 @@ enum Phase {
     Binding,
     Bound,
     Executing,
+    Recovering,
     Finished,
 }
 
@@ -22,6 +23,8 @@ pub enum NativeRunPhase {
     Bound,
     /// Execution has been requested; authenticated closure is still pending.
     Executing,
+    /// Recorded original completion is requested; no binding/launch is permitted.
+    Recovering,
     /// A matching verified completion has been delivered to the host.
     Closed,
     /// Execution failed or was cancelled without delivering verified closure.
@@ -53,6 +56,23 @@ pub struct NativeRun {
 impl NativeRun {
     /// Bind an already durable claim; callers must recheck admission under the writer.
     pub fn start(claim: &Claim, journal_claim: &str, timeout: Duration) -> Result<Self, String> {
+        Self::begin(claim, journal_claim, timeout, false)
+    }
+
+    /// Read a recorded original completion without binding or launching a handler.
+    ///
+    /// The caller supplies the retained original identity/hash; matching proof
+    /// and current writer-held ownership checks still govern journal application.
+    pub fn recover(claim: &Claim, journal_claim: &str, timeout: Duration) -> Result<Self, String> {
+        Self::begin(claim, journal_claim, timeout, true)
+    }
+
+    fn begin(
+        claim: &Claim,
+        journal_claim: &str,
+        timeout: Duration,
+        recovery: bool,
+    ) -> Result<Self, String> {
         if !journal_claim.strip_prefix("sha256:").is_some_and(|hex| {
             hex.len() == 64
                 && hex
@@ -85,8 +105,13 @@ impl NativeRun {
             ("claim", claim.to_value()),
             ("journal_claim", Value::Str(journal_claim.into())),
         ]);
+        let (action, payload) = if recovery {
+            ("recover", allocation.clone())
+        } else {
+            ("bind", binding)
+        };
         let request =
-            NativeRequest::start(&namespace, generation, &request("bind", binding), timeout)?;
+            NativeRequest::start(&namespace, generation, &request(action, payload), timeout)?;
         Ok(Self {
             claim: claim.clone(),
             journal_claim: journal_claim.into(),
@@ -95,7 +120,11 @@ impl NativeRun {
             allocation,
             deadline,
             request,
-            phase: Phase::Binding,
+            phase: if recovery {
+                Phase::Recovering
+            } else {
+                Phase::Binding
+            },
             error: None,
         })
     }
@@ -148,7 +177,7 @@ impl NativeRun {
                 self.phase = Phase::Bound;
                 Ok(None)
             }
-            Phase::Executing => {
+            Phase::Executing | Phase::Recovering => {
                 let completion =
                     NativeCompletion::verify(&response, &self.claim, &self.journal_claim)?;
                 if Instant::now() >= self.deadline {
@@ -177,6 +206,7 @@ impl NativeRun {
             Phase::Binding => NativeRunPhase::Binding,
             Phase::Bound => NativeRunPhase::Bound,
             Phase::Executing => NativeRunPhase::Executing,
+            Phase::Recovering => NativeRunPhase::Recovering,
         };
         NativeRunProgress {
             phase,

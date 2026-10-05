@@ -1872,6 +1872,14 @@ closure. It MUST return only the recorded original result, without current
 catalogue lookup, launch, writer acquisition, journal mutation or record repair.
 Recovery MAY return that original result after stopped/settled journaling;
 current writer-held claim checks remain mandatory before applying it.
+NativeRun::recover MUST request only this read-only operation, expose a distinct
+Recovering phase and enforce the retained original claim/hash, global deadline,
+actual helper retirement/stream EOF and completion single delivery. It MUST NOT
+transition to binding or execution when recovery is missing, refused, cancelled
+or uncertain. Pipeline::recover_native MUST require a supported durable,
+unpoisoned store snapshot and its exact current owned claim/hash; read-only
+snapshots are permitted and launch eligibility MUST NOT gate observation.
+Neither recovery API writes a stopped result or consumes ownership.
 This protected record durably retains the original contract for broker recovery
 but does not complete restarted service stop/settlement/outcome-event recovery. Previous private result envelope
 versions MUST refuse rather than infer absent kind or contract material.

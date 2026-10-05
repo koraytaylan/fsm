@@ -1799,3 +1799,11 @@ Hosts must still check their original claim/hash with NativeCompletion and
 acquire a healthy writer for stop/settlement; missing or torn records remain
 uncertain, and recovery neither repairs evidence nor launches a replacement.
 Automatic service recovery and original outcome-event replay are not yet wired.
+
+A replacement host can now use Pipeline::recover_native with a durable read-only
+store and its exact current owned claim; NativeRun::recover also accepts a
+retained original claim/hash directly for record retrieval. The owned request
+starts in Recovering and delivers checked completion only once after actual
+helper retirement and EOF within its deadline. Missing/refused recovery stays
+Uncertain and never falls back to binding/launch; observing recovery needs no
+store writer, while stop and atomic settlement still require one.

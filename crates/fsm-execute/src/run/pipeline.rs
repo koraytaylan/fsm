@@ -114,6 +114,36 @@ impl Pipeline {
         })
     }
 
+    /// Recover original completion from a durable snapshot, independently of a writer.
+    ///
+    /// The retained current claim/hash must match; recovery does not require
+    /// pending launch eligibility or consult a current handler table, and does
+    /// not stop/settle the journal or authorize a replacement handler.
+    #[cfg(target_os = "linux")]
+    pub fn recover_native(
+        &mut self,
+        store: &Store,
+        claim: &fsm_core::record::execution::Claim,
+        timeout: std::time::Duration,
+    ) -> Result<super::native_client::NativeRun, ExecError> {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native recovery requires a supported durable snapshot",
+            ));
+        }
+        let hash = store
+            .current_execution_claim_hash(claim)
+            .map_err(|error| ExecError::store(&error))?;
+        super::native_client::NativeRun::recover(claim, &hash, timeout).map_err(|error| {
+            ExecError::new("exec/spawn", error)
+                .hint("retain the durable claim when original completion cannot be recovered")
+        })
+    }
+
     /// Atomically consume a durable stopped result under the store writer.
     pub fn settle_stopped(
         &mut self,

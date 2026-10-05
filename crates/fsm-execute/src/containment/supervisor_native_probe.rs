@@ -57,6 +57,24 @@ fn complete(binding: Value) {
         let records = store.records.len();
         let state = store.state.clone();
         assert_eq!(store.current_execution_claim_hash(&claim).unwrap(), hash);
+        // A claimed allocation without a recorded completion must stay
+        // uncertain; recovery cannot bind or launch it as a fallback.
+        let mut missing = pipeline
+            .recover_native(&store, &claim, Duration::from_secs(3))
+            .unwrap();
+        assert_eq!(missing.progress().phase, NativeRunPhase::Recovering);
+        loop {
+            match missing.poll() {
+                Err(_) => break,
+                Ok(None) => std::thread::sleep(Duration::from_millis(5)),
+                Ok(Some(_)) => panic!("missing completion fabricated a result"),
+            }
+        }
+        assert!(missing.poll().is_err());
+        assert!(missing.reap().unwrap());
+        assert_retired_uncertain(&missing);
+        assert_eq!(store.records.len(), records);
+        assert_eq!(store.state, state);
         let mut holder = WriterHolder::start(&path);
         let mut owned = pipeline
             .start_native(&mut store, &claim, Duration::from_secs(30))
@@ -196,6 +214,35 @@ fn complete(binding: Value) {
                 hash.strip_prefix("sha256:").unwrap()
             );
             let retained = snapshot.state.execution.clone();
+            let mut pipeline = fsm_execute::run::Pipeline;
+            let mut recovery = pipeline
+                .recover_native(&snapshot, &claim, Duration::from_secs(3))
+                .unwrap();
+            assert_eq!(recovery.progress().phase, NativeRunPhase::Recovering);
+            let recovered = loop {
+                assert!(
+                    holder.child.try_wait().unwrap().is_none(),
+                    "writer exited during native recovery"
+                );
+                if let Some(recovered) = recovery.poll().unwrap() {
+                    break recovered;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            };
+            assert_eq!(recovery.progress().phase, NativeRunPhase::Closed);
+            let helper = recovery.progress().helper;
+            assert!(helper.reaped && helper.stdout_eof && helper.stderr_eof);
+            assert_eq!(recovered.candidate(), completion.candidate());
+            assert_eq!(recovered.handler(), completion.handler());
+            assert_eq!(recovered.failure_class(), completion.failure_class());
+            assert_eq!(recovered.stopped_outcome(), completion.stopped_outcome());
+            assert!(recovered.proof().matches_claim(&claim, hash));
+            assert_eq!(snapshot.state.execution, retained);
+            assert_eq!(snapshot.current_execution_claim_hash(&claim).unwrap(), hash);
+            assert!(
+                recovery.poll().is_err(),
+                "recovery delivered completion twice"
+            );
             drop(snapshot);
             holder.release();
             let writer = fsm_store::store::Store::open(path).unwrap();
