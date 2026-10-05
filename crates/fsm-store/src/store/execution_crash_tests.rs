@@ -19,6 +19,116 @@ impl Drop for Process {
     }
 }
 
+fn execution_operation(
+    store: &mut Store,
+    effect: &str,
+    claim: Option<&Claim>,
+    stage: &str,
+) -> Result<Value, ErrorObj> {
+    match stage {
+        "claim" => allocate(store, effect, "boundary", &mut FixedClock::new(100, 1)),
+        "stop" => {
+            let claim = claim.unwrap();
+            let evidence = proof(store, claim);
+            let outcome =
+                StoppedOutcome::from_value(&json(br#"{"status":"timeout","result":null}"#))
+                    .unwrap();
+            store.stop_execution_on(
+                &mut FixedClock::new(100, 1),
+                ExecutionStopRequest {
+                    claim,
+                    proof: &evidence,
+                    outcome: &outcome,
+                    request_id: "boundary",
+                    expected_seq: None,
+                },
+            )
+        }
+        "settle" => store.settle_execution_on(
+            &mut FixedClock::new(100, 1),
+            ExecutionSettleRequest {
+                claim: claim.unwrap(),
+                disposition: Settlement::Attempted,
+                request_id: "boundary",
+                expected_seq: None,
+            },
+        ),
+        _ => panic!("unknown execution operation"),
+    }
+}
+
+#[test]
+fn failed_rotation_preserves_execution_state_and_requires_writer_reopen() {
+    for stage in ["claim", "stop", "settle"] {
+        let directory = Directory(std::env::temp_dir().join(format!(
+            "fsm-execution-rotation-failure-{}-{}-{stage}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        )));
+        std::fs::create_dir_all(&directory.0).unwrap();
+        let (mut store, effect) = pending_store(Store::open(&directory.0).unwrap());
+        if stage != "claim" {
+            allocate(&mut store, &effect, "claim", &mut FixedClock::new(100, 1)).unwrap();
+        }
+        let claim = store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .cloned();
+        if stage == "settle" {
+            stop(&mut store, claim.as_ref().unwrap(), "timeout", "stop");
+        }
+        let before = store.state.clone();
+        let head = store.journal.last_seq;
+        let hash = store.journal.last_hash.clone();
+        let segment = directory.0.join("journal").join(&store.journal.seg_name);
+        let bytes = std::fs::read(&segment).unwrap();
+        let obstruction = directory
+            .0
+            .join("journal")
+            .join(format!("seg-{:020}.jsonl", head + 1));
+        std::fs::create_dir(&obstruction).unwrap();
+        // Accelerate only the rotation threshold; the filesystem refusal and
+        // poisoned-writer handling run through the actual production append.
+        store.journal.seg_records = u32::MAX;
+        assert_eq!(
+            execution_operation(&mut store, &effect, claim.as_ref(), stage)
+                .unwrap_err()
+                .code,
+            "io/write"
+        );
+        assert!(store.journal.poisoned);
+        assert!(crate::snapshot::store_states_eq(&store.state, &before));
+        assert_eq!(store.journal.last_seq, head);
+        assert_eq!(store.journal.last_hash, hash);
+        assert_eq!(std::fs::read(&segment).unwrap(), bytes);
+        assert!(!store.state.dedup.contains_key("boundary"));
+        std::fs::remove_dir(&obstruction).unwrap();
+        assert_eq!(
+            execution_operation(&mut store, &effect, claim.as_ref(), stage)
+                .unwrap_err()
+                .code,
+            "io/write"
+        );
+        assert!(crate::snapshot::store_states_eq(&store.state, &before));
+        drop(store);
+        let read_only = Store::open_read_only(&directory.0).unwrap();
+        assert!(crate::snapshot::store_states_eq(&read_only.state, &before));
+        drop(read_only);
+        let mut store = Store::open(&directory.0).unwrap();
+        assert!(!store.journal.poisoned);
+        assert!(crate::snapshot::store_states_eq(&store.state, &before));
+        execution_operation(&mut store, &effect, claim.as_ref(), stage).unwrap();
+        assert_eq!(store.journal.last_seq, head + 1);
+        assert!(store.state.dedup.contains_key("boundary"));
+        assert_fold(&store);
+        assert!(matches!(
+            crate::journal_io::verify(&directory.0).health,
+            crate::journal_io::JournalHealth::Ok
+        ));
+    }
+}
+
 #[test]
 fn execution_writer_child() {
     let Some(path) = std::env::var_os("FSM_PRIVATE_EXECUTION_CRASH_DIR") else {

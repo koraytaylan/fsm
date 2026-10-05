@@ -549,4 +549,17 @@ lifecycle updates.
   zero-dependencies job have passed while the six portable legs remain live.
   Task 9302 remains In progress and this entry does not claim new acceptance.
 
+- **Automatic rotation refusal harness added:** the production claim, stop
+  and settlement APIs now each have a filesystem-obstruction case at their
+  append's automatic rotation boundary. The test accelerates the public
+  segment-record threshold, then makes the next segment path a directory;
+  no synthetic I/O result or poison flag is injected. It checks unchanged
+  state/head/hash/segment bytes, unused request identity, poisoned-writer
+  refusal after removing the obstruction, cold read-only recovery and success
+  only after writer reopen. Closure values remain preauthenticated fixtures.
+  Formatting, source-size and diff checks pass; runtime execution awaits the
+  existing serialized frozen review. This adds a real pre-publication rotation
+  failure case, not failed-fsync, partial-write or power-loss evidence, and
+  does not change task 9302's In progress status.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
