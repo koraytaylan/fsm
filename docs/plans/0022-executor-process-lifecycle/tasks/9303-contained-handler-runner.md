@@ -414,3 +414,20 @@ SPEC's selector and stopped-outcome clauses and the additive provisional API
 entry match these deltas; no new I/O, clock or hash domain enters fsm-core.
 No additional finding was identified; current workspace compiled verdicts remain
 pending and this does not accept the remaining changed-file inventory.
+
+Catalogue/root-exit/preparation review at corrected `9f1f175`: catalogue
+publication validates the wrapped byte/depth envelope and only a fresh unused
+authority can adopt it; later verification resolves the journal effect and
+matches original full fingerprint/retry plus substituted argv before entry.
+Root-exit projection requires original invocation/PID and canonical recognized
+exit fields, treating root retirement only as a candidate; only the exact
+manager deadline refusal at an expired handler deadline becomes timeout.
+Other identity/inspection failures remain uncertain.
+`NativePreparation` requests only preparation, delivers one parsed original-
+route domain after actual helper retirement, and checks its overall deadline
+before/after collection; cancellation/refusal keeps uncertainty and never binds
+or launches. Metadata alone does not authorize execution or cleanup.
+Catalogue mismatch, root-status parser/classification and provisioned
+preparation cancellation/delivery controls cover these boundaries; no additional
+finding was identified, and remaining authority/helpers, historical runner and
+evidence changes still require their direct range review.
