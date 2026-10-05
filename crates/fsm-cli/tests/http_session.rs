@@ -127,6 +127,11 @@ fn the_no_urandom_platform_is_exercised_on_every_platform() {
         .env("FSM_HTTP_SEED_FALLBACK", "1")
         .output()
         .expect("run the fallback child");
+    assert!(
+        output.status.success(),
+        "fallback child failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let text = String::from_utf8_lossy(&output.stdout);
     let ids: BTreeSet<&str> = text
         .lines()
@@ -153,6 +158,8 @@ fn prints_a_thousand_fallback_ids() {
         Some("1"),
         "this child must run with the fallback forced"
     );
+    // Serial libtest prints its test label without a terminating newline.
+    println!();
     for _ in 0..1_000 {
         println!("ID {}", new_session_id());
     }

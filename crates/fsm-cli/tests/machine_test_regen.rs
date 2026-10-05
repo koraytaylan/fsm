@@ -103,16 +103,22 @@ impl Repo {
     }
 
     fn git(&self, args: &[&str]) -> std::process::Output {
-        Command::new("git")
+        let output = Command::new("git")
             .args(args)
             .current_dir(&self.0)
             .output()
-            .expect("git runs")
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "fixture git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output
     }
 
     fn commit(&self) {
         self.git(&["add", "-A"]);
-        self.git(&["commit", "-q", "-m", "cases"]);
+        self.git(&["commit", "-q", "-m", "test: add cases"]);
     }
 
     fn cases(&self) -> PathBuf {

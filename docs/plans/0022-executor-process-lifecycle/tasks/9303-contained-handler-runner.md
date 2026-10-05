@@ -28,6 +28,8 @@ touches:
   - crates/fsm-execute/src/config.rs
   - crates/fsm-execute/src/config/identity.rs
   - crates/fsm-execute/tests/handler_identity.rs
+  - crates/fsm-cli/tests/http_session.rs
+  - crates/fsm-cli/tests/machine_test_regen.rs
   - crates/fsm-execute/src/run.rs
   - crates/fsm-execute/src/run/
   - crates/fsm-execute/src/mcp_client.rs
@@ -51,6 +53,10 @@ adding that footprint does not declare the authority or contained runner
 accepted before native integration review.
 The native matrix and authority probe are adopted to execute the production
 allocator on actual writable Linux cgroups at stable and MSRV.
+
+The task also adopts the two CLI test harness repairs needed to execute the
+required local stable gate with serial libtest and conventional commit hooks;
+this does not add a production CLI capability or accept the native runner.
 
 The runner reports a settleable result only after the entire owned domain is
 closed; a root exit or MCP response cannot release surviving descendants.

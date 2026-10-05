@@ -2790,4 +2790,16 @@ lifecycle updates.
   with all other targets completed; those distinct harness repairs follow.
   Native closure acceptance, current full gates and task 9303 remain pending.
 
+- Repaired the two failed targets from the frozen 85b0194 local stable debug
+  gate without changing production behavior: the fallback child begins markers
+  on a fresh line under serial libtest and its exit must succeed before counting
+  all 1,000 IDs; regeneration fixtures use Conventional Commit messages and
+  assert every Git setup command succeeds, preserving the user's global hook.
+  Task 9303 adopts these isolated gate-harness footprints. Under the same
+  serial/warnings-denied settings, http_session passes 9 with its subprocess
+  helper ignored in the parent inventory, machine_test_regen passes all 20,
+  and CLI all-targets clippy plus format/size/diff checks pass. A current frozen
+  full debug/release rerun, native/portable gates, production routing and task
+  acceptance remain pending; subset repairs are not full acceptance evidence.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
