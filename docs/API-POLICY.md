@@ -1,5 +1,8 @@
 # API and version policy
 
+Private root `request-kill` adds no journal record shape or public Rust API;
+it cannot manufacture a verified closure proof from a successful kernel write.
+
 Unreleased private `fsm.native-closing/1` records retain exact domain identity
 for admission revocation and replay; they change no journal version or public
 Rust API and cannot authorize settlement without full native closure evidence.

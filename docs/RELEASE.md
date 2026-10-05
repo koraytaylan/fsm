@@ -1,5 +1,10 @@
 # Releasing
 
+Unreleased root `request-kill` retains the authority lock through durable
+revocation and matched-cgroup freeze/kill submission. Successful submission
+does not establish native closure; manager fencing, completed inspection and
+closure receipts remain required before contained execution can ship.
+
 Unreleased root-only `begin-close` publishes a durable matched-domain closing
 marker before revoking grants, with exact replay and ownership/type refusal.
 It neither terminates the domain nor issues closure evidence, and preserves

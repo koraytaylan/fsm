@@ -358,6 +358,7 @@ fn genuine_claim_binding() {
     super::super::closing::begin(&fixture.directory, 1).unwrap();
     assert_eq!(read_value(&closing_path, true).unwrap(), closing);
     assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
+    kill_fixture_members(&fixture);
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert!(
         store
@@ -368,4 +369,79 @@ fn genuine_claim_binding() {
     );
     drop(store);
     fixture.cleanup().unwrap();
+}
+
+fn kill_fixture_members(fixture: &Fixture) {
+    use std::process::{Child, Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    struct Children(Vec<Child>);
+    impl Drop for Children {
+        fn drop(&mut self) {
+            for child in &mut self.0 {
+                let _ = child.kill();
+                let _ = child.try_wait();
+            }
+        }
+    }
+
+    // These two administrative fixture processes start outside the group
+    // and are moved explicitly: this tests kernel termination submission,
+    // not atomic handler enrollment, DynamicUser isolation or descendants.
+    let group = &fixture.groups[0].0;
+    let mut children = Children(Vec::new());
+    for _ in 0..2 {
+        children.0.push(
+            Command::new("/usr/bin/sleep")
+                .arg("300")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let pid = children.0.last().unwrap().id().to_string();
+        fs::write(group.join("cgroup.procs"), &pid).unwrap();
+        assert!(
+            fs::read_to_string(group.join("cgroup.procs"))
+                .unwrap()
+                .lines()
+                .any(|line| line == pid)
+        );
+    }
+    assert!(
+        fs::read_to_string(group.join("cgroup.events"))
+            .unwrap()
+            .contains("populated 1")
+    );
+    super::super::termination::request(&fixture.directory, 1).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    for child in &mut children.0 {
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(!status.success());
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "native fixture termination timed out"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    loop {
+        if fs::read_to_string(group.join("cgroup.events"))
+            .unwrap()
+            .lines()
+            .any(|line| line == "populated 0")
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "native fixture remains populated"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!fixture.directory.join("closed-1.json").exists());
 }

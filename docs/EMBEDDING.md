@@ -1,5 +1,9 @@
 # Embedding fsm as a library
 
+Private root `request-kill` submits matched-cgroup freeze/kill after durable
+entry revocation; success is submission only and does not allow settlement,
+capacity reuse or an embedded shutdown-success report.
+
 The private authority's `begin-close` durably revokes entry authorization for
 a matched prepared domain while retaining journal ownership; it supplies no
 termination proof, closure receipt or public embedded shutdown API.

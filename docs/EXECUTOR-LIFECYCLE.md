@@ -2,6 +2,14 @@
 
 ## Decision status
 
+Root-only `request-kill` now revokes entry durably and retains the authority
+lock while submitting freeze and kill to the exact recorded cgroup. Control
+opens reject symlinks and recheck the parent identity before writing. A
+successful request does not inspect completed termination, inhibit outstanding
+manager jobs or issue a closure receipt. The kernel's freeze operation is
+asynchronous and permits migration; full manager admission fencing remains
+required ([kernel cgroup-v2 documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html)).
+
 Root-only `begin-close` now validates the actual prepared domain under the
 authority lock and durably publishes its closing marker before removing
 entry and pending grants and syncing the directory. Exact replay is allowed;

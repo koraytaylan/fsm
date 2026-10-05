@@ -1510,6 +1510,14 @@ This transition MUST NOT issue closure evidence, clear claims or imply
 termination; manager admission fencing, native termination and permanent
 closure remain required before settlement or capacity reuse.
 
+The root-only `request-kill` operation MUST complete admission revocation
+under the authority lock before writing `1` to the matched domain's
+`cgroup.freeze` and then `cgroup.kill`. It MUST retain that lock throughout
+both writes, reject symlink control files and verify actual domain identity
+before and after each control-file open. Any failure preserves closing
+admission and durable claim ownership. Successful submission MUST NOT imply
+observed termination, permanent closure or permission to settle/reuse capacity.
+
 A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
 `format`, `claim` and `journal_claim`. The authority MUST independently read
 the registered store, verify its path identity, the original durable claim

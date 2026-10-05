@@ -30,6 +30,9 @@ mod authorize;
 #[path = "closing.rs"]
 mod closing;
 
+#[path = "termination.rs"]
+mod termination;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -39,14 +42,14 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() < 3 {
         return Err(
-            "usage: register|bind|prepare|authorize|begin-close NAMESPACE GENERATION [REQUEST]"
+            "usage: register|bind|prepare|authorize|begin-close|request-kill NAMESPACE GENERATION [REQUEST]"
                 .into(),
         );
     }
     let operation = arguments[0].to_str().ok_or("invalid operation")?;
     if !matches!(
         operation,
-        "register" | "bind" | "prepare" | "authorize" | "begin-close"
+        "register" | "bind" | "prepare" | "authorize" | "begin-close" | "request-kill"
     ) {
         return Err("operation outside authority policy".into());
     }
@@ -65,13 +68,17 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.len() != 4 {
         return Err("authority operation requires exactly one request path or allocation".into());
     }
-    if operation == "begin-close" {
+    if matches!(operation, "begin-close" | "request-kill") {
         let raw = arguments[3].to_str().ok_or("invalid allocation")?;
         let allocation = raw.parse::<u64>().map_err(|_| "invalid allocation")?;
         if allocation == 0 || raw != allocation.to_string() {
             return Err("noncanonical closing allocation".into());
         }
-        return closing::begin(&directory, allocation);
+        return if operation == "begin-close" {
+            closing::begin(&directory, allocation)
+        } else {
+            termination::request(&directory, allocation)
+        };
     }
     if operation == "register" {
         register(&directory, Path::new(&arguments[3]))

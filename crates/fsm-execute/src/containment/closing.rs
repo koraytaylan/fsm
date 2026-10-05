@@ -11,8 +11,12 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 pub(super) fn begin(directory: &Path, allocation: u64) -> Result<(), String> {
+    revoke(directory, allocation).map(|_| ())
+}
+
+pub(super) fn revoke(directory: &Path, allocation: u64) -> Result<(Value, File), String> {
     protected_directory(directory)?;
-    let _lock = authority_lock(directory)?;
+    let lock = authority_lock(directory)?;
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
     closed(&prepared, &["format", "phase", "domain"])?;
     if text(&prepared, "format")? != "fsm.native-prepared/1"
@@ -55,7 +59,7 @@ pub(super) fn begin(directory: &Path, allocation: u64) -> Result<(), String> {
     }
     let material = object([
         ("format", Value::Str("fsm.native-closing/1".into())),
-        ("domain", domain),
+        ("domain", domain.clone()),
     ]);
     let marker = directory.join(format!("closing-{allocation}.json"));
     match fs::symlink_metadata(&marker) {
@@ -86,5 +90,6 @@ pub(super) fn begin(directory: &Path, allocation: u64) -> Result<(), String> {
             Err(error) => return Err(io(error)),
         }
     }
-    File::open(directory).map_err(io)?.sync_all().map_err(io)
+    File::open(directory).map_err(io)?.sync_all().map_err(io)?;
+    Ok((domain, lock))
 }

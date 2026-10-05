@@ -1195,4 +1195,19 @@ lifecycle updates.
   power-loss or full native termination proof. Formatting and source checks
   precede a new frozen-source CI review; task 9303 remains In progress.
 
+- **Kernel termination submission implemented:** root-only `request-kill`
+  completes durable revocation and retains the authority lock while opening
+  no-follow freeze/kill controls, verifying root ownership/native device and
+  actual cgroup identity before and after each open, then submitting `1`.
+  Failures preserve closing admission and journal ownership; success is
+  submission only, without closure receipts or capacity release. The genuine
+  binding native case moves two administrative sleep fixtures into its actual
+  prepared group, verifies membership/population, submits the production
+  operation and observes both fail/reap and the group become empty within
+  three seconds. This deliberately does not prove atomic handler enrollment,
+  DynamicUser isolation, descendant inheritance or complete manager fencing.
+  Local builds remain prohibited by the full-swap rule; frozen-source native
+  CI must execute these new assertions before acceptance. Full runner and
+  closure integration remain outstanding; task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
