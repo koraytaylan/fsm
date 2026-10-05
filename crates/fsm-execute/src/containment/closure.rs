@@ -13,6 +13,9 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+#[path = "closure_unlaunched.rs"]
+mod unlaunched;
+
 pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> {
     protected_directory(directory)?;
     let _lock = authority_lock(directory)?;
@@ -35,6 +38,16 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     }) {
         return Err("closure journal claim hash invalid".into());
+    }
+    if absent(&directory.join(format!("launch-{allocation}.json")))? {
+        return unlaunched::complete(
+            directory,
+            allocation,
+            &domain,
+            &binding,
+            &claim,
+            journal_claim,
+        );
     }
     let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)?;
     closed(&handoff, &["format", "binding", "gate"])?;

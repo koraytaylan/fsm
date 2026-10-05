@@ -1967,4 +1967,18 @@ lifecycle updates.
   queued for `e79c7be`, current-source compiled/native acceptance and public
   service integration remain required, and task 9303 stays In progress.
 
+- **Never-launched bound allocation closure implemented for review:** complete-
+  close now has a separate branch only when launch intent is exactly absent;
+  protected binding, durable revocation, no handoff/stop/retirement material,
+  empty manager unit/job inventories and original empty/absent cgroup are
+  required under the retained authority lock. It removes the original empty
+  cgroup, rechecks retirement and protected records, and publishes the ordinary
+  immutable matching receipt without fabricating launch or manager history.
+  Cold retry after removal requires the durable revocation and repeats absence
+  checks. The genuine-binding case now closes its cancelled never-launched
+  allocation twice, authenticates matching proof and checks absent native
+  history while the journal claim remains unresolved and unstopped. Formatting,
+  size and diff checks pass; compiled/native acceptance and pre-binding/uncertain
+  launch reconciliation remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

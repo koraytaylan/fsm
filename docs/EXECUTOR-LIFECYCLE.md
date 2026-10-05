@@ -73,6 +73,11 @@ before current ownership, hash and catalogue checks; retaining a claim in a
 quarantined state cannot authorize binding, launch or entry. Its in-memory
 read-only snapshot control tests this guard without claiming migrated-store
 quiescence or changing journal bytes.
+Bound allocations that never submitted a launch can now receive matching
+closure through complete-close after durable revocation, empty manager
+inventories and removal of their original empty cgroup, with no fabricated
+handoff or stop record; partial/present launch intents retain the completed-
+handoff requirement, and compiled native acceptance remains pending.
 
 Native broker access and client-death controls now exec the installed Rust
 `client` helper after dropping root UID/group privilege, replacing Python

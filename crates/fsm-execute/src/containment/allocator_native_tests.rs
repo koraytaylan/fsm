@@ -288,6 +288,42 @@ fn genuine_claim_binding() {
     assert_eq!(read_value(&path, true).unwrap(), binding);
     assert!(super::super::bind(&fixture.directory, &binding).is_err());
     exercise_binding(&mut fixture, &domain, &binding, &path, &effect);
+    super::super::closure::complete(&fixture.directory, 1).unwrap();
+    super::super::closure::complete(&fixture.directory, 1).unwrap();
+    let claim =
+        fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
+    let receipt = fixture
+        .directory
+        .join(format!("closure-1-{}.json", claim.run_id()));
+    assert!(
+        fsm_store::store::VerifiedClosure::read(&receipt)
+            .unwrap()
+            .matches_claim(
+                &claim,
+                binding.get("journal_claim").unwrap().as_str().unwrap()
+            )
+    );
+    assert!(!fixture.groups[0].0.exists());
+    for prefix in ["launch", "handoff", "manager-stopped", "manager-retired"] {
+        assert_eq!(
+            fs::symlink_metadata(fixture.directory.join(format!("{prefix}-1.json")))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+    let snapshot = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(
+        snapshot.state.execution.claim_for("instance", &effect),
+        Some(&claim)
+    );
+    assert!(
+        snapshot
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_none()
+    );
 }
 
 fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {

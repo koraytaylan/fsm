@@ -1630,6 +1630,14 @@ progress and never fall back to direct handler execution.
 Protected authority claim verification MUST explicitly require enabled
 execution admission as well as current runnable ownership; a retained claim
 in a quarantined execution state MUST NOT authorize binding, launch or entry.
+Complete-close MAY publish matching closure for a protected bound allocation
+that never launched only while retaining the authority lock, with exact absence
+of launch intent, handoff and manager stop/retirement records, durable entry
+revocation, empty manager unit/job inventory, and the original empty cgroup
+removed or absent after durable revocation. A present or partial launch intent
+MUST retain the completed-handoff requirement. Cold retry after cgroup removal
+MUST recheck the durable revocation and all absence conditions before publishing
+the ordinary immutable receipt; it MUST NOT fabricate a handoff or manager stop.
 
 Public supervised client/service wiring remains required before acceptance.
 
