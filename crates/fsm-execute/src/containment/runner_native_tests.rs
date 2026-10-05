@@ -775,14 +775,14 @@ fn assert_unresolved(fixture: &Fixture, effect: &str) {
         store
             .state
             .execution
-            .claim_for("instance", &effect)
+            .claim_for("instance", effect)
             .is_some()
     );
     assert!(
         store
             .state
             .execution
-            .stopped_for("instance", &effect)
+            .stopped_for("instance", effect)
             .is_none()
     );
     drop(store);

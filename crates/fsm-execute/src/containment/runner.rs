@@ -173,10 +173,10 @@ pub(super) fn execute_cancellable(
         if let Some(stdout) = &mut stdout {
             stdout.poll();
         }
-        if let Some(worker) = &mut owned.worker {
-            if let Some(answer) = worker.collect() {
-                break Candidate::Mcp(answer);
-            }
+        if let Some(worker) = &mut owned.worker
+            && let Some(answer) = worker.collect()
+        {
+            break Candidate::Mcp(answer);
         }
         // The owned child is systemd-run, not the invocation-matched handler;
         // its retirement cannot authenticate the handler's exit status.

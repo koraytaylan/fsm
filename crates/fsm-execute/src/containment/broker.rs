@@ -165,11 +165,11 @@ fn execute(
         if stopping.load(Ordering::Acquire) {
             cancellation.store(true, Ordering::Release);
         }
-        if authority_error.is_none() {
-            if let Err(error) = guard.check() {
-                authority_error = Some(error);
-                cancellation.store(true, Ordering::Release);
-            }
+        if authority_error.is_none()
+            && let Err(error) = guard.check()
+        {
+            authority_error = Some(error);
+            cancellation.store(true, Ordering::Release);
         }
         let mut trailing = [0];
         match stream.read(&mut trailing) {

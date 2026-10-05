@@ -272,10 +272,10 @@ fn complete(binding: Value) {
                 ("ok".into(), Value::Bool(true)),
                 ("result".into(), result),
             ]));
-            println!(
+            emit(format_args!(
                 "\nFSM_NATIVE_TEST_RESPONSE={}",
                 std::str::from_utf8(&fsm_core::canon::canon_bytes(&response)).unwrap()
-            );
+            ));
             return;
         }
         std::thread::sleep(Duration::from_millis(5));
@@ -297,7 +297,7 @@ fn writer_holder() {
     use std::io::Read;
     let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
     use std::io::Write;
-    println!("\nFSM_NATIVE_WRITER_WAITING");
+    emit(format_args!("\nFSM_NATIVE_WRITER_WAITING"));
     std::io::stdout().flush().unwrap();
     let mut byte = [0];
     std::io::stdin().read_exact(&mut byte).unwrap();
@@ -359,7 +359,7 @@ fn writer_holder() {
         store.current_execution_claim_hash(&claim).unwrap(),
         binding.get("journal_claim").unwrap().as_str().unwrap()
     );
-    println!("\nFSM_NATIVE_WRITER_READY");
+    emit(format_args!("\nFSM_NATIVE_WRITER_READY"));
     std::io::stdout().flush().unwrap();
     assert_eq!(
         std::io::stdin().read(&mut byte).unwrap(),
@@ -518,10 +518,10 @@ fn prepare_domain() {
     assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);
     assert!(prepared.poll().is_err());
     assert_eq!(prepared.progress(), progress);
-    println!(
+    emit(format_args!(
         "\nFSM_NATIVE_TEST_DOMAIN={}",
         std::str::from_utf8(&fsm_core::canon::canon_bytes(&domain.to_value())).unwrap()
-    );
+    ));
 }
 
 fn reject_run(claim: &Claim, hash: &str) {
@@ -543,7 +543,7 @@ fn reject_run(claim: &Claim, hash: &str) {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert_retired_uncertain(&owned);
-        println!("\nFSM_NATIVE_TEST_CANCELLED");
+        emit(format_args!("\nFSM_NATIVE_TEST_CANCELLED"));
         return;
     }
     if matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1")) {
@@ -573,8 +573,15 @@ fn reject_run(claim: &Claim, hash: &str) {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert_retired_uncertain(&owned);
-        println!("\nFSM_NATIVE_TEST_REFUSED");
+        emit(format_args!("\nFSM_NATIVE_TEST_REFUSED"));
         return;
     }
     panic!("negative native fixture requires cancellation or binding refusal");
+}
+
+// This test-only subprocess publishes bounded fixture barriers to its parent;
+// production libraries never print, and stdout failures remain test failures.
+fn emit(message: std::fmt::Arguments<'_>) {
+    use std::io::Write;
+    writeln!(std::io::stdout().lock(), "{message}").unwrap();
 }

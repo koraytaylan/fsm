@@ -2745,4 +2745,14 @@ lifecycle updates.
   all 7, and probe inventory controls plus formatting/file-size/diff checks pass;
   provisioned native/portable/frozen gates and task 9303 acceptance remain pending.
 
+- Local stable clippy review found nested candidate/authority checks, needless
+  borrowed effect identifiers and forbidden println macros in native test
+  subprocesses. Conditions now use the MSRV-supported let-chain form, test
+  barriers use an explicit fallible stdout writer, and borrowed arguments are
+  corrected without changing marker bytes or execution semantics; all-targets
+  execute clippy now passes with warnings denied, as do format/size/diff checks.
+  Native run 37336060083 passed residual-cleanup refusal controls, then found
+  missing live-domain revocation on the corrupted-handoff path; that distinct
+  regression is under repair and no task acceptance or production gate changed.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
