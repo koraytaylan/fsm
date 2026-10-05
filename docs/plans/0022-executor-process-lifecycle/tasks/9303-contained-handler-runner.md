@@ -217,3 +217,16 @@ for this production path, not permission for a host to skip durable claiming.
 No acceptance-blocking finding was identified in these inspected operations;
 private exec-status authentication, settlement and the complete spec/API cross-
 check still require review, and frozen local host verification remains pending.
+
+Aggregate review finding at frozen `31e0c63`: private exec-status association
+does not enforce its shared deadline on every interrupted I/O retry.
+The listener accept loop continues directly on `Interrupted`, bypassing its
+bottom-of-loop `remaining(deadline)` check, and the hello read loop checks the
+deadline only for `WouldBlock`; repeated interruptions can therefore extend
+association beyond SPEC's two-second bound.
+This blocks acceptance of the frozen range until both production loops check
+the shared deadline for every retry and a production-facing fault control
+proves interrupted retries cannot bypass it; the affected native and portable
+gates must then be rerun at the corrected source.
+The existing green matrix remains evidence for `31e0c63`, not proof that this
+previously untested refusal is load-bearing.
