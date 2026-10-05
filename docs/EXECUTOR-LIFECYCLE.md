@@ -29,7 +29,9 @@ or relaxing proof, and changes no public error code or journal format.
 
 The supervised helper retains a nonblocking stdin lifetime channel after its
 request, and abandons its broker connection on EOF or trailing input while
-awaiting a response; the parent keeps that channel open until cancellation or
+connecting, awaiting a response or writing output; an owned nonblocking lifetime
+watcher terminates the helper on channel loss and joins on ordinary return.
+The parent keeps that channel open until cancellation or
 helper retirement, and channel loss does not authorize journal settlement.
 Native broker disconnect controls exercise both direct helper death and lifetime
 EOF for process and MCP trees, but do not yet prove actual public host death.

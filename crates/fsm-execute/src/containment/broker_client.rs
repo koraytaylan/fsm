@@ -14,9 +14,11 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+#[path = "client_lifetime.rs"]
+mod client_lifetime;
+
 struct Retrying<'a, R> {
     input: &'a mut R,
-    lifetime: Option<&'a mut dyn Read>,
     deadline: Option<Instant>,
 }
 
@@ -31,23 +33,6 @@ impl<R: Read> Read for Retrying<'_, R> {
                     std::io::ErrorKind::TimedOut,
                     "client frame deadline",
                 ));
-            }
-            if let Some(lifetime) = &mut self.lifetime {
-                let mut byte = [0];
-                match lifetime.read(&mut byte) {
-                    Ok(_) => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::BrokenPipe,
-                            "client supervisor lost or trailing input",
-                        ));
-                    }
-                    Err(error)
-                        if matches!(
-                            error.kind(),
-                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
-                        ) => {}
-                    Err(error) => return Err(error),
-                }
             }
             match self.input.read(buffer) {
                 Err(error)
@@ -164,7 +149,6 @@ pub(super) fn run(arguments: &[OsString], supervised: bool) -> Result<(), String
         read_frame(
             &mut Retrying {
                 input: &mut input,
-                lifetime: None,
                 deadline: Some(Instant::now() + Duration::from_millis(500)),
             },
             8192,
@@ -173,6 +157,12 @@ pub(super) fn run(arguments: &[OsString], supervised: bool) -> Result<(), String
         read_frame(&mut input, 8192)?
     };
     broker_frame::validate(&request)?;
+    drop(input);
+    let _lifetime = if supervised {
+        Some(client_lifetime::Lifetime::start()?)
+    } else {
+        None
+    };
     let (original, socket) = route(&directory)?;
     // Connect remains in the host-owned killable process.
     let mut stream = UnixStream::connect(&socket).map_err(io)?;
@@ -185,7 +175,6 @@ pub(super) fn run(arguments: &[OsString], supervised: bool) -> Result<(), String
         read_frame(
             &mut Retrying {
                 input: &mut stream,
-                lifetime: Some(&mut input),
                 deadline: None,
             },
             65536,
@@ -216,42 +205,17 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn watched_response_refuses_supervisor_eof_and_trailing_input() {
-        for trailing in [false, true] {
-            let (mut lifetime, mut owner) = UnixStream::pair().unwrap();
-            lifetime.set_nonblocking(true).unwrap();
-            if trailing {
-                owner.write_all(b"x").unwrap();
-            } else {
-                drop(owner);
-            }
-            let mut response = Cursor::new(b"response");
-            let mut watched = Retrying {
-                input: &mut response,
-                lifetime: Some(&mut lifetime),
-                deadline: Some(Instant::now() + Duration::from_secs(1)),
-            };
-            assert_eq!(
-                watched.read(&mut [0]).unwrap_err().kind(),
-                std::io::ErrorKind::BrokenPipe
-            );
-            assert_eq!(response.position(), 0);
-        }
-    }
-
-    #[test]
-    fn watched_response_progresses_with_live_supervisor() {
-        let (mut lifetime, _owner) = UnixStream::pair().unwrap();
-        lifetime.set_nonblocking(true).unwrap();
-        let mut response = Cursor::new(b"x");
-        let mut watched = Retrying {
-            input: &mut response,
-            lifetime: Some(&mut lifetime),
-            deadline: Some(Instant::now() + Duration::from_secs(1)),
+    fn incomplete_nonblocking_request_obeys_deadline() {
+        let (mut input, _owner) = UnixStream::pair().unwrap();
+        input.set_nonblocking(true).unwrap();
+        let mut reader = Retrying {
+            input: &mut input,
+            deadline: Some(Instant::now() + Duration::from_millis(20)),
         };
-        let mut byte = [0];
-        assert_eq!(watched.read(&mut byte).unwrap(), 1);
-        assert_eq!(byte, *b"x");
+        assert_eq!(
+            reader.read(&mut [0]).unwrap_err().kind(),
+            std::io::ErrorKind::TimedOut
+        );
     }
 
     #[test]

@@ -1591,10 +1591,12 @@ release capacity. The service MUST still recheck current ownership and persist
 its stopped result through the store's writer-protected mutator before settlement.
 
 The supervised helper MUST retain an open nonblocking stdin lifetime channel
-after the request frame; EOF or further input MUST abandon its broker socket
-while awaiting a response, so host death triggers broker cancellation without
+after the request frame; EOF or further input MUST terminate the helper even
+during blocking connect or output, so host death triggers broker cancellation without
 depending on the handler timeout, and that cancellation MUST NOT itself prove
 closure or release a claim.
+Its lifetime watcher MUST be owned and joined on ordinary return, use bounded
+nonblocking reads, and MUST NOT create a detached connection worker.
 
 The provisional Linux `run::native_client::NativeRequest` host adapter MUST
 validate a closed bounded request and canonical namespace/generation, verify the

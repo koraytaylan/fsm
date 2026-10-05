@@ -1865,4 +1865,16 @@ lifecycle updates.
   public supervisor death/service integration remain required, and task 9303
   stays In progress.
 
+- **Blocking helper transport lifetime gap repaired:** subsequent review found
+  that response-read checks alone leave an orphan blocked in Unix connect or
+  stdout writing. The helper now owns a nonblocking stdin watcher after bounded
+  request receipt; loss/trailing input terminates the transport-only process,
+  closing every connection descriptor without writing journal state or claiming
+  closure. Ordinary return stops and joins that watcher, with no detached
+  connection worker. The superseded read-loop lifetime controls are replaced
+  by an incomplete-request deadline control; real process/MCP lifetime-EOF
+  controls remain load-bearing and await compiled native execution. Formatting,
+  size and diff checks pass; public host death and full service integration
+  remain pending, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
