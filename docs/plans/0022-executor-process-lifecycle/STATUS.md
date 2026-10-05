@@ -1140,4 +1140,22 @@ lifecycle updates.
   Trusted broker group derivation, real gate launch, I/O and closure remain
   outstanding, and task 9303 stays In progress.
 
+- **Grant publisher native review passes:** source
+  `6ede0027cfbe885ef62a0a7da4f3897939f3f1a8` is frozen in CI `37272197029`.
+  Both native jobs and zero dependencies pass. Retained artifacts under
+  `ci-37272197029/{stable,msrv}` independently verify all 75 named cases
+  against frozen AST inventories, nine report hashes, exact source/compiler
+  identity, executable digests, authority named-pass log hashes and unrelated
+  process survival. Stable uses Rust 1.99.0; MSRV uses 1.89.0. The expanded
+  genuine binding case executes the actual publisher and checks malformed
+  closing/closed marker refusal, group-zero refusal, root/group/mode ownership,
+  duplicate refusal and current-claim refusal after durable cancellation.
+  I/O cancellation and the expected failing final-kill control are verified
+  separately. This supersedes pending native compilation/execution evidence
+  above through independent CI hosts; local builds remain disallowed by the
+  full-swap rule without a specific user exception. All six portable jobs
+  remain live, and their full acceptance is not inferred. Group 1 is a test
+  fixture, not proof of trusted broker group selection or actual gate launch;
+  `production_backend: false` remains accurate. Task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
