@@ -1836,4 +1836,16 @@ lifecycle updates.
   compiled/native completion acceptance and public supervisor/service claim/
   stop/settle integration remain required, and task 9303 stays In progress.
 
+- **Broker test compile failure repaired:** frozen `5915552` run `37291349077`
+  fails both native jobs and both Linux portable jobs before runtime execution
+  because the protocol policy test moves its BTreeMap into a JSON object and
+  then attempts to mutate it again (E0382). Independent native and Linux stable
+  job diagnostics identify the same source line. The second refusal control now
+  starts from a fresh original request map, preserving both closed-shape/path
+  refusal and prohibited-action assertions without touching production behavior.
+  Zero dependencies passes; other portable jobs remain live/queued, and no
+  broker/runtime acceptance is inferred from this failed build. Formatting, size
+  and diff checks pass; corrected compiled native/portable gates and remaining
+  production integration remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

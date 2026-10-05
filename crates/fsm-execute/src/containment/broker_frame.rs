@@ -127,7 +127,7 @@ mod tests {
         let mut fields = request.as_obj().unwrap().clone();
         fields.insert("path".into(), Value::Str("/tmp/other".into()));
         assert!(validate(&Value::Obj(fields)).is_err());
-        fields.remove("path");
+        let mut fields = request.as_obj().unwrap().clone();
         fields.insert("action".into(), Value::Str("authorize".into()));
         assert!(validate(&Value::Obj(fields)).is_err());
     }
