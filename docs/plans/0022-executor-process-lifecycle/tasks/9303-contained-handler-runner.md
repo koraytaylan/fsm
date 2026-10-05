@@ -19,7 +19,7 @@ touches:
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/RELEASE.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Contained Handler Runner

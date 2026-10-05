@@ -26,6 +26,7 @@ use fsm_core::sha256::{Sha256, to_hex};
 use crate::error::ExecError;
 use crate::mcp_client::{McpOutcome, ProtocolFault, converse};
 
+mod capture;
 mod pipeline;
 
 pub use pipeline::{Pipeline, SettleOutcome};
@@ -84,8 +85,7 @@ impl BoundedBytes {
         let Ok(mut file) = File::open(path) else {
             return Self::empty();
         };
-        let mut bytes = Vec::new();
-        let mut hasher = Sha256::new();
+        let mut capture = capture::Capture::new();
         let mut total = 0usize;
         let mut chunk = [0u8; 8192];
         let mut complete = true;
@@ -93,12 +93,8 @@ impl BoundedBytes {
             match file.read(&mut chunk) {
                 Ok(0) => break,
                 Ok(read) => {
-                    hasher.update(&chunk[..read]);
+                    capture.push(&chunk[..read]);
                     total = total.saturating_add(read);
-                    if bytes.len() < ACK_OUTPUT_CAP {
-                        let room = ACK_OUTPUT_CAP - bytes.len();
-                        bytes.extend_from_slice(&chunk[..read.min(room)]);
-                    }
                     if total >= MAX_CAPTURE_READ_BYTES {
                         // A runaway handler must not turn one tick into a
                         // multi-gigabyte hash.
@@ -112,12 +108,7 @@ impl BoundedBytes {
                 }
             }
         }
-        let over_cap = total > ACK_OUTPUT_CAP;
-        Self {
-            bytes,
-            truncated: over_cap || !complete,
-            sha256: (over_cap && complete).then(|| to_hex(&hasher.finalize())),
-        }
+        capture.finish(complete)
     }
 
     /// Render the capture as a valid JSON string, lossily and on a character

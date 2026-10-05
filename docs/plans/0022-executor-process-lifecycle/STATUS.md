@@ -5,7 +5,7 @@ file; task frontmatter is authoritative and the integration coordinator owns
 lifecycle updates.
 
 - **Status:** Registered by hand; native prerequisite complete;
-  durable execution persistence complete; contained runner is next.
+  durable execution persistence complete; contained runner implementation started.
 - **Goal:** prevent a successor from overlapping a surviving local handler
   tree, with bounded shutdown and evidence-based restart for both process and
   MCP handlers.
@@ -14,7 +14,7 @@ lifecycle updates.
 - **Approach:** resolve the native containment prerequisite, journal claims
   before launch, prove tree closure before reuse, and drive every execution
   host through the same shutdown and recovery protocol.
-- **Progress:** 2/7 tasks done; 0 blocked; 0 dropped; contained runner Ready.
+- **Progress:** 2/7 tasks done; 0 blocked; 0 dropped; contained runner In progress.
 - **Integration:** Phase R bound by hand on `develop` to validation base
   `8e3a8bbaed670ee9b3d7f354142090c9abc1d78d`; mode `by-hand`, following
   plan 0019's recorded execution mode. Committed scope identity, closed task
@@ -968,5 +968,17 @@ lifecycle updates.
   ownership, shutdown, reconciliation and complete runtime acceptance remain
   downstream work. This closes persistence acceptance, not plan 0022 or the
   plans 20–23 goal, and makes no claim that the fixture issuer is shipped.
+
+- **Task 9303 started:** a private shared capture accumulator retains at most
+  4 KiB, hashes at most 1 MiB and accepts further drained chunks without
+  retaining them; EOF is required for a whole-stream digest. The existing
+  file reader uses it without changing its read-limit behavior. Two focused
+  runtime tests pass for exact prefix/hash limits, excess draining, bounded
+  retained capacity and cancelled-stream truthfulness. An initial compile
+  check found a shared MCP hash import removed during extraction; restoring
+  it resolved the failure before both tests passed. This is preparation for
+  live contained capture, not proof of bounded existing spool files, native
+  closure, worker cleanup or a shipped production backend; those requirements
+  and the complete runner review remain outstanding.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._
