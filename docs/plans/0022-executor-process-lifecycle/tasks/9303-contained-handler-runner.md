@@ -287,3 +287,19 @@ boundary; exact canonical limit/plus-one and all four production refusal
 branches have native evidence at the corrected source.
 No additional finding was identified here; this entry covers the claim/admit
 contract portion and does not complete the entire frozen-range contract review.
+
+Contract cross-check, result evidence at corrected `9f1f175`:
+`NativeCompletion::verify` bounds caller material before canonicalization/hash,
+requires closed response/result shapes and exact original claim/hash, decodes
+the original contract against its fingerprint/retry/kind, and requires the
+derived original receipt route before reading protected closure evidence.
+The full response digest under `fsm:native-response:1` must match a separate
+immutable Root attestation for that domain/run/claim hash; a valid closure
+cannot authenticate substituted candidate or policy material by itself.
+`VerifiedClosure::check_store` compares the registered physical directory
+device/inode before application; unsupported platform proof readers refuse.
+This agrees with SPEC's response-attestation contract and provisional API policy;
+native missing/torn/symlink/writable-attestation controls and copied-store
+refusal provide targeted evidence, while the full workspace gate remains live.
+No additional finding was identified in this portion; registration/allocation,
+broker policy and complete range review still require aggregate reconciliation.
