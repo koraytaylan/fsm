@@ -545,6 +545,57 @@ fn settle_retry(
     assert_eq!(store.records.len(), before);
     assert_eq!(store.state.execution, execution);
     let mut due = fsm_store::clock::FixedClock::new(1011, 1);
+    let mut changed_fingerprint = material
+        .get("handler_fingerprint")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .as_bytes()
+        .to_vec();
+    changed_fingerprint[7] = if changed_fingerprint[7] == b'0' {
+        b'1'
+    } else {
+        b'0'
+    };
+    let changed_fingerprint = String::from_utf8(changed_fingerprint).unwrap();
+    let mut changed_policy = retry.to_value().as_obj().unwrap().clone();
+    changed_policy.insert("attempts".into(), Value::Num("3".into()));
+    let changed_policy =
+        fsm_core::record::execution::RetryPolicy::from_value(&Value::Obj(changed_policy)).unwrap();
+    for changed in [
+        fsm_store::store::ExecutionClaimRequest {
+            handler_fingerprint: &changed_fingerprint,
+            ..request()
+        },
+        fsm_store::store::ExecutionClaimRequest {
+            retry: &changed_policy,
+            ..request()
+        },
+    ] {
+        let refused = pipeline
+            .claim_native(&mut store, &mut due, changed)
+            .unwrap_err();
+        assert_eq!(refused.code, "exec/store");
+        assert_eq!(
+            refused
+                .details
+                .as_ref()
+                .unwrap()
+                .get("code")
+                .and_then(Value::as_str),
+            Some("store/execution_contract")
+        );
+        assert_eq!(store.records.len(), before);
+        assert_eq!(store.state.execution, execution);
+        for name in ["binding", "launch", "entry", "handoff"] {
+            assert_eq!(
+                fs::symlink_metadata(fixture.directory.join(format!("{name}-2.json")))
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::NotFound
+            );
+        }
+    }
     pipeline
         .claim_native(&mut store, &mut due, request())
         .unwrap();

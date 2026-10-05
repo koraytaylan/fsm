@@ -2188,4 +2188,14 @@ lifecycle updates.
   service wiring; formatting/size/diff checks pass, compiled verification remains
   pending (`1f26028` run `37306152802` queued), and task 9303 stays In progress.
 
+- Added native retry controls at the eligible deadline for changed handler
+  fingerprint and changed attempt budget: the production admission adapter
+  rejects each with `store/execution_contract`, preserves the retry ledger and
+  journal length, and leaves successor binding/launch/entry/handoff absent;
+  the original contract then succeeds with the same request key and clock.
+  This proves sequential immutable-contract refusal after actual tree closure,
+  not changed-table service recovery; compiled CI for prior head `b24e693` is
+  queued as run `37306340523`, local formatting/size/diff checks pass, and
+  production service integration plus full acceptance remain incomplete.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
