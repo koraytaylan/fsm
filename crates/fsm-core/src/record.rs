@@ -10,6 +10,7 @@ use crate::sha256::to_hex;
 use crate::trace::{MicrostepTrace, MicrostepTrigger};
 
 mod body_shape;
+pub mod execution;
 
 use body_shape::body_ok;
 

@@ -280,5 +280,10 @@ lifecycle updates.
   reserved contract from the still-shipped VERSION 10 behavior and records
   the breaking-minor consequence. Production APIs, error registration,
   format migration and crash/seal/boundary tests remain in progress.
+  Pure native identity and retry-policy constructors/closed decoders now
+  implement the specified value shapes without I/O, record kinds or persisted
+  format changes. Initial MSRV boundary/canonical/arithmetic tests and the
+  external construction test pass; full frozen host/portable validation and
+  production claim-state folding remain pending for this code unit.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._

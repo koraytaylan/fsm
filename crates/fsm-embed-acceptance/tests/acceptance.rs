@@ -19,6 +19,27 @@ use fsm_embed_acceptance::{
 
 const SPEC: &[u8] = include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json");
 
+#[test]
+fn claim_era_values_have_usable_external_constructors() {
+    use fsm_core::record::execution::{FailureClass, FileIdentity, NativeDomain, RetryPolicy};
+    let domain = NativeDomain::new(
+        "0123456789abcdef0123456789abcdef".into(),
+        1,
+        "01234567-89ab-cdef-0123-456789abcdef".into(),
+        FileIdentity::new(0, 42).unwrap(),
+        FileIdentity::new(8, 43).unwrap(),
+        1,
+    )
+    .unwrap();
+    assert_eq!(
+        NativeDomain::from_value(&domain.to_value()).unwrap(),
+        domain
+    );
+    let retry = RetryPolicy::new(2, 10, 20, vec![FailureClass::Timeout]).unwrap();
+    assert!(retry.admits_retry(1, FailureClass::Timeout, 100, 110));
+    assert!(!retry.admits_retry(1, FailureClass::Timeout, 100, 109));
+}
+
 const PARALLEL_DEADLINE_SPEC: &[u8] = br#"{
     "format":"fsm.machine/1",
     "name":"parallel_deadline",

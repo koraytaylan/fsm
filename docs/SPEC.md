@@ -1445,6 +1445,15 @@ recorded domain and run; unknown or mismatched evidence cannot produce a
 settleable stopped result. Core validates and folds these values without I/O;
 the store/native boundary authenticates closure evidence before publication.
 
+The closed native domain fields are `backend: "linux-systemd/1"`, `namespace`
+(32 lowercase hex digits), positive u64 `allocation`, canonical lowercase
+UUID `boot`, `cgroup` and `authority` objects each containing exactly u64
+`device` and positive u64 `inode`, and positive u64 `generation`. Device zero
+is valid. Persisted retry failure classes MUST already be sorted and unique;
+decoding MUST reject unknown fields/classes, duplicate classes and unsorted
+arrays instead of repairing authenticated data. In-memory constructors may
+normalize an input of at most four known classes.
+
 Stopped outcomes distinguish `ok`, an existing executor failure class, and
 `interrupted`; they retain the bounded result needed by settlement. An unknown
 termination state is unresolved ownership, not a stopped interruption. A

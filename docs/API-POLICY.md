@@ -359,3 +359,8 @@ journal bytes, instance hash or request-ID derivation. Native prerequisite
 completion does not itself change these persisted formats or the package
 version. New stable errors and usable public constructors must land with the
 production APIs, external embedding tests and release notes before shipping.
+
+The additive pure types in `fsm_core::record::execution` model the reserved
+native identity and retry policy, with usable constructors and closed-value
+decoders. They introduce no journal records, hash changes or execution
+permissions; their typed shape errors have no new stable error-code strings.

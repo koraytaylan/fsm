@@ -1,5 +1,12 @@
 # Releasing
 
+Unreleased plan 0022 preparation adds pure, constructor-validated native
+identity and retry-policy values under `fsm_core::record::execution`, with
+external embedding coverage. It does not yet implement durable claims or
+change VERSION 10 persistence. The reserved claim-era format changes require
+their own migration/crash/seal evidence and a breaking minor release before
+they ship; completing native feasibility does not waive those requirements.
+
 Releases are cut from `develop` and driven entirely by pushing a tag.
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) is
 authoritative for what happens next; this document covers the decisions and the

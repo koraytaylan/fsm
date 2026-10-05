@@ -1,5 +1,13 @@
 # Embedding fsm as a library
 
+Plan 0022's claim-era value types are available under
+`fsm_core::record::execution`: `FileIdentity`, `NativeDomain`, `FailureClass`
+and `RetryPolicy` provide validated constructors and pure JSON conversion.
+Retry eligibility uses caller-supplied logical time and saturating arithmetic.
+Constructing a native identity does not authenticate a supervisor or prove
+closure, and these types do not yet expose a production store claim API;
+VERSION 10 persistence remains unchanged while task 9302 is implemented.
+
 The CLI and the MCP server are two front ends over the same engine. This page is
 for the third consumer: a Rust program that drives the engine in process.
 
