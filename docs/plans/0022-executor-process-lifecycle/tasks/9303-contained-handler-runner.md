@@ -621,3 +621,19 @@ a separate identical pending copy, and accepts only a matching hard-linked pendi
 inode; original durable ownership remains without a stopped record.
 No additional finding was identified in this inspected portion; the remaining
 binding helper and broker access test bodies still require direct inspection.
+
+Allocator binding-helper review at corrected `9f1f175`: typed admission rejects
+a different effect, invalid retry and oversized/deep argv, MCP arguments and both
+outcome payloads with unchanged records/state and no request-key claim; duplicate
+valid admission returns the original currently owned claim/hash without append.
+Grant controls reject group zero, substituted argv and an unenrolled prepared
+domain, refuse catalogue replacement and malformed closing/closed markers, and
+verify immutable original grant publication. Cancellation prevents later binding
+or authorization without replacing the original binding/grant. A separately
+claimed unapproved fingerprint cannot bind or publish entry.
+Revocation of a deliberately symlinked pending grant preserves that obstacle,
+removes the valid visible grant and retains closing; only explicit test-owned
+fault removal allows replay. Kernel-submission controls follow while journal
+ownership remains. No additional finding was identified; all allocator fixture
+body portions have now been directly inspected, while broker access and final
+aggregate reconciliation remain outstanding.
