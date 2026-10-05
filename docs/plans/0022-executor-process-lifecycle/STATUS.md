@@ -1285,4 +1285,22 @@ lifecycle updates.
   independent binary-byte comparison. Newer runtime CI remains queued and
   full backend/runner acceptance remains incomplete; task 9303 stays In progress.
 
+- **Production kernel submission native review passes:** frozen source
+  `c9f877ea03b6eeae80a209f373af7d4b50d01a76` passes stable and MSRV native
+  jobs in CI `37273243518`. Retained `ci-37273243518/{stable,msrv}` artifacts
+  independently pass the committed verifier: exact frozen inventories and
+  all 75 cases, source/compiler identity, report/log hashes, named authority
+  passes/counts, unrelated-process survival, I/O cancellation and the expected
+  live-domain negative control. Stable uses Rust 1.99.0; MSRV uses 1.89.0.
+  The actual production request revokes admission and submits matched-domain
+  freeze/kill; its genuine binding case enrolls two administrative sleep
+  processes, verifies membership/population, observes both fail/reap and the
+  group become empty while durable claim ownership remains and no closed
+  evidence is published. This source predates the inherited-descendant test,
+  manager probe and observation command; their pending runs cannot inherit
+  this acceptance. Executable digest syntax is checked, with independent
+  byte comparison explicitly false because artifacts omit binaries. Full
+  manager fencing, closure issuance and shared runner/service integration
+  remain outstanding; task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
