@@ -337,3 +337,20 @@ Native disconnect/trailing-byte and frame-policy controls support these
 dispatch boundaries; no additional finding was identified in this portion.
 Endpoint provisioning/leadership checks and the full frozen range still need
 their remaining review; host shutdown/reconciliation remain dependent tasks.
+
+Endpoint leadership review at corrected `9f1f175`: provisioning excludes Root
+and the reserved dynamic handler identity range from operator access;
+leadership retains a protected lock descriptor and repeatedly compares its
+pathname identity, broker/authority identity, original boot and configuration.
+Epoch startup checks bounded complete history, refuses incomplete publication,
+durably burns a new epoch before socket creation and publishes its synced
+immutable route only after restrictive bind permissions and operator ownership.
+The client derives only that published socket, verifies original authority,
+boot, operator and socket identity/access, then repeats route verification
+after connect and before dispatch; connection remains in the host-owned helper.
+The checked supervised stdin is nonblocking and initial framing is bounded by
+the original 500-ms deadline; the owner lifetime watcher survives blocking
+connection/response I/O and never mutates journal ownership.
+These checks match the provisional endpoint contract and native takeover,
+route-replacement, epoch and client-lifetime controls; no additional finding
+was identified in this portion, and complete-range acceptance remains pending.
