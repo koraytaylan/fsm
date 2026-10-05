@@ -69,3 +69,43 @@ result before considering another run.
   interrupted-outcome suites pass with unchanged domain event semantics.
 
 - **Done when:** production standalone, embedded and public tick paths pass concurrent-executor and launch/settle crash tests proving that a matching durable claim precedes every start and that unresolved or stale ownership cannot authorize a second run.
+
+## Integration review before implementation
+
+Reviewed against product source `31e0c6318cb45bcc5f76468d6586e172356e466a`;
+this task remains planned while task 9303's current native stable and full
+portable gates are pending.
+
+The existing primitives provide the following handoff, but the service does
+not yet compose it:
+
+| Host phase | Existing entry | Integration obligation |
+| --- | --- | --- |
+| Observe ownership | `store.state.execution.unresolved()` | Project claims and stopped results from the same read-only prefix as pending effects, including claims for removed effects; do not filter them through the current handler table. |
+| Prepare empty domain | `NativePreparation::start/poll` | Obtain the provisioned original namespace and generation, retain the helper between ticks, and distinguish preparation from permission to execute. |
+| Claim and admit | `Pipeline::claim_native_handler`, `NativeExecution::start` | Acquire a healthy writer, revalidate eligibility, durably claim the prepared domain, and start binding before releasing that writer; contention must leave user code unstarted. |
+| Observe active run | `NativeExecution::observe/cancel/reap` | Drive owned handles before requesting a writer, retaining original run identity and capacity on uncertainty or unavailable settlement. |
+| Apply stopped result | `NativeExecution::settle` | Persist authenticated stopped evidence, then atomically consume it under the original retry policy; preserve completion on refusal. |
+| Apply outcome event | `Pipeline::advance_native_settled` | Use the retained original completion only after durable acknowledgement, with the existing derived event key. |
+| Recover completion | `NativeExecution::recover` | Read original completion without binding or launching; missing completion retains ownership and requires the reconciliation work in task 9403. |
+
+`Observation` currently carries attempts and executor request keys but no
+execution claims, and `Scheduler::on_observation` excludes only local
+in-flight runs and those keys before producing starts; both need durable
+ownership facts before the service can authorize starts safely.
+`service::tick_reporting` currently calls `prepare` before opening the writer,
+and its contention path clears scheduler entries for immediate settles;
+that path must be replaced with retained claimed execution rather than used
+for native completions.
+
+The public tick signatures accept a `Runner`, so changing only `service::run`
+would leave embedded and downstream callers on the old sequence; the runner
+must own the same preparation/execution state used by all tick entries.
+Provisioned route discovery and startup admission still need a production
+design: neither a caller-supplied unchecked route nor a direct-child fallback
+satisfies this task, and native helper retirement alone never permits claim
+release.
+
+This review establishes implementation boundaries, not acceptance evidence;
+the race, contention, crash, changed-contract and downstream API cases above
+remain unexecuted for the integrated host.
