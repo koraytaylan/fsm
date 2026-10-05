@@ -3113,4 +3113,15 @@ lifecycle updates.
   relaxing production deadlines or converting uncertainty into success.
   Current MSRV/portable validation remains unexecuted or queued at this source.
 
+- The MSRV native job for failed-stable run `37365040760` completes with
+  success at exact source `7bd363a`; independent verification confirms all
+  81 matrix cases, frozen named-target identity and report/log hashes, including
+  the expanded production handler admission refusal branches.
+  Evidence is retained in task-cache `ci-37365040760/msrv`; stable evidence
+  remains a separate failure and neither verdict explains its timing cause.
+  Diagnostic source `31e0c63` is under CI `37365652966`, with its frozen
+  task-cache checkout at `runner-review-31e0c63`; native MSRV is live and
+  stable is queued, while local builds remain deferred under swap pressure.
+  Production gate release and task 9303 acceptance remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
