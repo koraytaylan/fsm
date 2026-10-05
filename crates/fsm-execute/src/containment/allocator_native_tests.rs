@@ -50,6 +50,12 @@ impl Fixture {
         };
         drop(Store::open(&fixture.store).unwrap());
         super::super::register(&fixture.directory, &fixture.store).unwrap();
+        let before = fixture.counter();
+        assert!(prepare(&fixture.directory).is_err());
+        assert_eq!(fixture.counter(), before);
+        assert!(!fixture.directory.join("allocation-1.json").exists());
+        super::super::catalogue::publish(&fixture.directory, &approved_table()).unwrap();
+        assert!(super::super::catalogue::publish(&fixture.directory, &approved_table()).is_err());
         fixture
     }
 
@@ -245,6 +251,10 @@ fn genuine_claim_binding() {
         )
         .unwrap();
     let effect = store.state.instances["instance"].pending[0].clone();
+    let fingerprint = super::super::catalogue::read(&fixture.directory)
+        .unwrap()
+        .handlers["notify"]
+        .fingerprint();
     let retry = RetryPolicy::new(1, 10, 10, Vec::new()).unwrap();
     store
         .claim_execution_on(
@@ -252,7 +262,7 @@ fn genuine_claim_binding() {
             ExecutionClaimRequest {
                 instance_id: "instance",
                 effect_id: &effect,
-                handler_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+                handler_fingerprint: &fingerprint,
                 retry: &retry,
                 domain: &domain,
                 request_id: "claim",
@@ -299,6 +309,22 @@ fn genuine_claim_binding() {
         ("group_id", Value::Num("0".into())),
     ]);
     assert!(super::super::authorize::publish(&fixture.directory, &root_group).is_err());
+    let mut wrong_grant = grant.as_obj().unwrap().clone();
+    wrong_grant.insert(
+        "argv".into(),
+        Value::Arr(vec![Value::Str("/bin/false".into())]),
+    );
+    let wrong_request = object([
+        ("grant", Value::Obj(wrong_grant)),
+        ("group_id", Value::Num("1".into())),
+    ]);
+    assert!(
+        super::super::authorize::publish(&fixture.directory, &wrong_request)
+            .unwrap_err()
+            .contains("approved journal-derived handler")
+    );
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    assert!(super::super::catalogue::publish(&fixture.directory, &approved_table()).is_err());
     assert!(
         super::super::entry::wait_grant(&fixture.directory, 1, std::time::Duration::ZERO)
             .unwrap_err()
@@ -333,6 +359,7 @@ fn genuine_claim_binding() {
         grant
     );
     assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
+    unapproved_claim_is_not_bound(&mut fixture);
     let mut store = Store::open(&fixture.store).unwrap();
     store.cancel_instance("instance", "cancel").unwrap();
     drop(store);
@@ -388,4 +415,66 @@ fn genuine_claim_binding() {
     );
     drop(store);
     fixture.cleanup().unwrap();
+}
+
+fn approved_table() -> Value {
+    parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":100,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#,
+        &JsonLimits::DEFAULT).unwrap()
+}
+
+fn unapproved_claim_is_not_bound(fixture: &mut Fixture) {
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let mut store = Store::open(&fixture.store).unwrap();
+    store
+        .create_instance("case_review", "unapproved", "unapproved-create", None)
+        .unwrap();
+    store
+        .send_event(
+            "unapproved",
+            "docs_ok",
+            Value::Obj(BTreeMap::new()),
+            "unapproved-send",
+            None,
+        )
+        .unwrap();
+    let effect = store.state.instances["unapproved"].pending[0].clone();
+    let retry = RetryPolicy::new(1, 10, 10, Vec::new()).unwrap();
+    store
+        .claim_execution_on(
+            &mut FixedClock::new(100, 1),
+            ExecutionClaimRequest {
+                instance_id: "unapproved",
+                effect_id: &effect,
+                handler_fingerprint: &format!("sha256:{}", "a".repeat(64)),
+                retry: &retry,
+                domain: &domain,
+                request_id: "unapproved-claim",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    let binding = object([
+        ("format", Value::Str("fsm.native-claim-binding/1".into())),
+        (
+            "claim",
+            store
+                .state
+                .execution
+                .claim_for("unapproved", &effect)
+                .unwrap()
+                .to_value(),
+        ),
+        (
+            "journal_claim",
+            Value::Str(format!("sha256:{}", store.records.last().unwrap().hash)),
+        ),
+    ]);
+    drop(store);
+    assert!(
+        super::super::bind(&fixture.directory, &binding)
+            .unwrap_err()
+            .contains("approved handler identity or retry differs")
+    );
+    assert!(!fixture.directory.join("binding-2.json").exists());
+    assert!(!fixture.directory.join("entry-2.json").exists());
 }

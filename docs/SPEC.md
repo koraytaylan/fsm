@@ -1539,6 +1539,23 @@ observation as inconsistent. Failure retains uncertainty. The projection MUST
 NOT create locks/records, revoke grants, issue closure evidence, clear claims
 or authorize settlement/capacity reuse, even when `populated` is false.
 
+Before allocation, a root provisioner MUST publish an immutable catalogue
+containing exactly `format` (`fsm.native-catalogue/1`) and `table`, a fully
+validated `fsm.handlers/1` document. Publication is exclusive and fsynced
+under the authority lock, permitted only while the allocation counter is zero.
+The counter must match current authority/boot provenance and the directory
+must contain only fresh registration/counter/lock records; existing or lost
+catalogue history MUST NOT be silently re-provisioned.
+The wrapped document MUST remain within private record byte/depth limits.
+The root-only `catalogue` command reads only a root-protected source file and
+ancestors. Preparation MUST refuse an absent or invalid catalogue. Binding
+and entry authorization MUST independently replay the claimed pending effect
+from the registered store, select its approved handler, and match the full
+handler fingerprint and retry snapshot. Granted argv MUST equal substitution
+of that handler's template using only journal-derived effect arguments.
+Neither an operator request nor a claim alone may select another command.
+Catalogue validation MUST NOT launch handlers or establish native closure.
+
 A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
 `format`, `claim` and `journal_claim`. The authority MUST independently read
 the registered store, verify its path identity, the original durable claim

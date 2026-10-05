@@ -56,6 +56,27 @@ pub(super) fn initialize(directory: &Path) -> Result<(), String> {
     publish_once(&directory.join("counter.json"), &origin(directory)?)
 }
 
+pub(super) fn require_unused(directory: &Path) -> Result<(), String> {
+    let expected = origin(directory)?;
+    if counter(
+        &read_value(&directory.join("counter.json"), true)?,
+        &expected,
+    )? != 0
+    {
+        return Err("catalogue must precede all native allocation".into());
+    }
+    for (index, entry) in fs::read_dir(directory).map_err(io)?.enumerate() {
+        if index >= 32768 {
+            return Err("authority directory inventory exceeds bound".into());
+        }
+        let name = entry.map_err(io)?.file_name();
+        if !matches!(name.to_str(), Some("store.json" | "counter.json" | "LOCK")) {
+            return Err("catalogue requires a fresh unused authority".into());
+        }
+    }
+    Ok(())
+}
+
 fn counter(value: &Value, expected: &Value) -> Result<u64, String> {
     closed(
         value,
@@ -222,6 +243,7 @@ pub(super) fn prepare(directory: &Path) -> Result<Value, String> {
     protected_directory(directory)?;
     // A missing/delegated facility refuses before burning an allocation.
     protected_directory(Path::new(GROUPS))?;
+    super::catalogue::read(directory)?;
     super::manager::require()?;
     let lock = OpenOptions::new()
         .read(true)

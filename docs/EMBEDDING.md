@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+The private native authority now requires a root-approved immutable handler
+catalogue before allocation and verifies claimed fingerprint/retry plus
+journal-derived argv before grant publication. Provisioning this catalogue
+does not enable the embedded contained runner or authenticate a broker client.
+
 For handlers returned by `HandlerTable::parse`, `HandlerSpec::fingerprint`
 returns the full `sha256:` contract identity for durable claims: command/tool
 templates, timeout, outcomes and normalized retry policy are included. It

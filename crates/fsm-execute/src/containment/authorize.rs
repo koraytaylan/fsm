@@ -12,7 +12,7 @@ pub(super) fn publish(directory: &Path, request: &Value) -> Result<(), String> {
     protected_directory(directory)?;
     closed(request, &["grant", "group_id"])?;
     let grant = request.get("grant").ok_or("entry grant missing")?;
-    let (claim, _) = entry::decode(grant)?;
+    let (claim, argv) = entry::decode(grant)?;
     let group =
         u32::try_from(number(request, "group_id")?).map_err(|_| "invalid isolated group")?;
     if group == 0 {
@@ -40,7 +40,7 @@ pub(super) fn publish(directory: &Path, request: &Value) -> Result<(), String> {
     }
     // Keep the lock through visibility/durability so closing can serialize
     // revocation against this operation; the journal is freshly re-read.
-    let (_, _lock) = validate_binding(directory, &binding)?;
+    let (_, _lock) = validate_binding(directory, &binding, Some(&argv))?;
     publish_file(directory, allocation, group, &bytes)
 }
 

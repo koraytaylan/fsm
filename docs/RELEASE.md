@@ -1,5 +1,12 @@
 # Releasing
 
+Unreleased native catalogue approval precedes allocation and binds grants to
+the replayed effect's approved full handler contract, retry and substituted
+argv. Root-protected source/provenance/freshness checks prevent silent hot
+reload or reconstruction of lost authority; record byte/depth limits remain
+enforced. Broker authorization, actual enrollment, I/O and closure integration
+are still required before shipping contained execution.
+
 Unreleased pure `HandlerSpec::fingerprint` supplies full canonical contract
 identity for future claim/privileged-catalogue integration; it includes command,
 MCP tool/templates, timeout, outcomes and normalized retry policy. The new

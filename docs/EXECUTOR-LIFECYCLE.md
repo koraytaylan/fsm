@@ -2,6 +2,17 @@
 
 ## Decision status
 
+The root-only `catalogue` operation now approves an immutable validated handler
+table before the first allocation, with current counter provenance and fresh
+authority checks. Its input file and ancestors must be root protected; the
+bounded wrapped table is exclusively published and fsynced. Preparation refuses
+a missing catalogue. Binding independently replays the pending effect and
+matches the approved full handler fingerprint and retry snapshot; entry grants
+must also match journal-derived argv substitution. These checks prevent a
+request or opaque claim from choosing another command, but do not supply
+DynamicUser enrollment, trusted group derivation, broker access policy or
+complete closure.
+
 `HandlerSpec::fingerprint` now defines full canonical contract identity for
 validated handler specs, including command/MCP templates, timeout, outcomes
 and normalized retry policy, with explicit defaults. The runner and future

@@ -1330,4 +1330,22 @@ lifecycle updates.
   Shared runner and privileged catalogue wiring remain outstanding; this is
   not the sanitized public compatibility identity and task 9303 stays In progress.
 
+- **Privileged contract approval wired into binding and grants:** root-only
+  catalogue publication validates a root-protected source, wraps the table
+  within cold-readable byte/depth bounds, and exclusively fsyncs it under the
+  authority lock before any allocation. Current counter provenance and an
+  otherwise fresh registration/counter/lock directory are required; missing
+  catalogues refuse preparation and late/duplicate publication refuses.
+  Binding replays the registered pending effect, selects its approved handler
+  and matches full fingerprint/retry; grant argv must exactly equal approved
+  substitution from journal-derived arguments. Native fixtures now provision
+  the catalogue first, verify missing-catalogue refusal leaves counter/intent
+  unchanged, and claim using the actual handler fingerprint. The genuine case
+  refuses a changed command before grant publication and a separately durable
+  real-domain claim bearing an unapproved fingerprint before binding; no
+  binding/grant is published for that claim. Formatting/source checks pass;
+  compiled/native/public-surface/full portable acceptance require a new frozen
+  review. Broker access policy, real enrollment/group derivation, native I/O
+  and full closure remain outstanding; task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

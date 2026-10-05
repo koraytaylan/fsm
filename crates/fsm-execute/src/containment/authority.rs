@@ -39,6 +39,9 @@ mod manager;
 #[path = "observation.rs"]
 mod observation;
 
+#[path = "catalogue.rs"]
+mod catalogue;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -48,14 +51,21 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() < 3 {
         return Err(
-            "usage: register|bind|prepare|authorize|begin-close|request-kill|observe NAMESPACE GENERATION [REQUEST]"
+            "usage: register|catalogue|bind|prepare|authorize|begin-close|request-kill|observe NAMESPACE GENERATION [REQUEST]"
                 .into(),
         );
     }
     let operation = arguments[0].to_str().ok_or("invalid operation")?;
     if !matches!(
         operation,
-        "register" | "bind" | "prepare" | "authorize" | "begin-close" | "request-kill" | "observe"
+        "register"
+            | "bind"
+            | "prepare"
+            | "authorize"
+            | "begin-close"
+            | "request-kill"
+            | "observe"
+            | "catalogue"
     ) {
         return Err("operation outside authority policy".into());
     }
@@ -73,6 +83,11 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() != 4 {
         return Err("authority operation requires exactly one request path or allocation".into());
+    }
+    if operation == "catalogue" {
+        let source = Path::new(&arguments[3]);
+        protected_directory(source.parent().ok_or("catalogue source has no parent")?)?;
+        return catalogue::publish(&directory, &read_value(source, true)?);
     }
     if matches!(operation, "begin-close" | "request-kill" | "observe") {
         let raw = arguments[3].to_str().ok_or("invalid allocation")?;
@@ -286,7 +301,7 @@ fn verify_claim(store: &Store, claim: &Claim, original: &str) -> Result<(), Stri
 }
 
 fn bind(directory: &Path, binding: &Value) -> Result<(), String> {
-    let (claim, _lock) = validate_binding(directory, binding)?;
+    let (claim, _lock) = validate_binding(directory, binding, None)?;
     let allocation = number(&claim.domain().to_value(), "allocation")?;
     publish_once(
         &directory.join(format!("binding-{allocation}.json")),
@@ -294,7 +309,11 @@ fn bind(directory: &Path, binding: &Value) -> Result<(), String> {
     )
 }
 
-fn validate_binding(directory: &Path, binding: &Value) -> Result<(Claim, File), String> {
+fn validate_binding(
+    directory: &Path,
+    binding: &Value,
+    argv: Option<&[String]>,
+) -> Result<(Claim, File), String> {
     protected_directory(directory)?;
     closed(binding, &["format", "claim", "journal_claim"])?;
     if text(binding, "format")? != "fsm.native-claim-binding/1" {
@@ -358,6 +377,7 @@ fn validate_binding(directory: &Path, binding: &Value) -> Result<(Claim, File), 
     }
     let store = Store::open_read_only(store_path).map_err(|error| error.message)?;
     verify_claim(&store, &claim, text(binding, "journal_claim")?)?;
+    catalogue::verify(directory, &store, &claim, argv)?;
     if identity(&fs::symlink_metadata(store_path).map_err(io)?) != identity(&before) {
         return Err("registered store changed during verification".into());
     }

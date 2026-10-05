@@ -1,5 +1,10 @@
 # API and version policy
 
+Private `fsm.native-catalogue/1` wraps a validated handler table in the
+root-protected native authority; it changes no journal version or public Rust
+signature. Native preparation/binding/authorization now refuse absent or
+mismatched approved contracts, without changing legacy uncontained execution.
+
 Unreleased `HandlerSpec::fingerprint` adds a pure provisional executor API
 for full immutable handler identity, using `fsm.handler-contract/1` and hash
 domain `fsm:handler-contract:1` with the established LF domain separator.
