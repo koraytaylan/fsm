@@ -69,6 +69,10 @@ pub(super) fn begin(directory: &Path, allocation: u64) -> Result<(), String> {
         }
         Err(error) => return Err(io(error)),
     }
+    // A valid marker may survive an earlier sync failure: visibility alone
+    // cannot establish the durable ordering required before revocation.
+    File::open(&marker).map_err(io)?.sync_all().map_err(io)?;
+    File::open(directory).map_err(io)?.sync_all().map_err(io)?;
     for suffix in ["json", "json.pending"] {
         let grant = directory.join(format!("entry-{allocation}.{suffix}"));
         match fs::symlink_metadata(&grant) {

@@ -5,8 +5,10 @@
 Root-only `begin-close` now validates the actual prepared domain under the
 authority lock and durably publishes its closing marker before removing
 entry and pending grants and syncing the directory. Exact replay is allowed;
-changed identities or unexpected grant ownership/types refuse. This remains
-admission revocation, without manager fencing, termination or closure receipts,
+changed identities or unexpected grant ownership/types refuse.
+Replay syncs the matched marker and its parent again before deleting grants,
+so a marker visible after an earlier sync failure does not bypass durability.
+This remains admission revocation, without manager fencing, termination or closure receipts,
 and preserves durable ownership even after instance cancellation.
 
 The protected `gate` entry verifier now accepts only a canonical native route,

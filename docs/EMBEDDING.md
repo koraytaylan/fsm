@@ -3,6 +3,8 @@
 The private authority's `begin-close` durably revokes entry authorization for
 a matched prepared domain while retaining journal ownership; it supplies no
 termination proof, closure receipt or public embedded shutdown API.
+An interrupted revocation retains its closing marker; exact replay syncs it
+before further deletion, while unexpected grant types require explicit repair.
 
 The private root authority can publish immutable entry grants after checking
 the protected binding and current runnable claim; this command does not

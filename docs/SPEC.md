@@ -1503,6 +1503,8 @@ containing exactly `format` (`fsm.native-closing/1`) and `domain`, before
 removing the entry grant and any pending grant, then fsync the authority
 directory. Existing closing material permits replay only if it matches
 exactly. Unexpected grant file types or ownership MUST refuse removal.
+Replay MUST fsync the validated marker and its parent before deleting grants;
+a prior attempt may have made the marker visible without completing durability.
 Runnable journal ownership is not required to revoke entry after cancellation.
 This transition MUST NOT issue closure evidence, clear claims or imply
 termination; manager admission fencing, native termination and permanent

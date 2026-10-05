@@ -1184,4 +1184,15 @@ lifecycle updates.
   receipt, all of which remain required by task 9303. Local builds remain
   prohibited by the full-swap rule without a specific exception.
 
+- **Closing replay durability review corrected:** an existing exact marker
+  is now synced with its parent before any grant deletion, covering replay
+  after a previous visibility-without-durability failure. The genuine native
+  binding case replaces only its owned pending grant with a symlink: closing
+  durably fences admission and removes the entry, then refuses the unexpected
+  pending type without touching its binding target; authorization remains
+  refused. Explicit fixture repair permits replay and ownership remains
+  durable. This is a real filesystem refusal/replay case, not a physical
+  power-loss or full native termination proof. Formatting and source checks
+  precede a new frozen-source CI review; task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

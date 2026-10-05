@@ -329,6 +329,25 @@ fn genuine_claim_binding() {
             .contains("runnable ownership")
     );
     assert_eq!(read_value(&path, true).unwrap(), binding);
+    let pending = fixture.directory.join("entry-1.json.pending");
+    fs::remove_file(&pending).unwrap();
+    std::os::unix::fs::symlink(&path, &pending).unwrap();
+    assert!(
+        super::super::closing::begin(&fixture.directory, 1)
+            .unwrap_err()
+            .contains("unexpected grant ownership or type")
+    );
+    assert!(!entry_path.exists());
+    assert!(
+        fs::symlink_metadata(&pending)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(read_value(&path, true).unwrap(), binding);
+    assert!(fixture.directory.join("closing-1.json").exists());
+    assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
+    fs::remove_file(&pending).unwrap();
     super::super::closing::begin(&fixture.directory, 1).unwrap();
     assert!(!entry_path.exists());
     assert!(!fixture.directory.join("entry-1.json.pending").exists());
