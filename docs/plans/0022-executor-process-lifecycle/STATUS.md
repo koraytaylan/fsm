@@ -3183,4 +3183,15 @@ lifecycle updates.
   `111966694085`, macOS stable `111966694437`, macOS MSRV `111966694744` and
   Ubuntu MSRV `111966694772` remain queued and unaccepted.
 
+- Attempt 2 macOS stable job `111966694437` completes successfully at exact
+  `31e0c63`, with formatting, size, debug/release workspace tests, all-target
+  Clippy, documentation and decimal regeneration passing; fuzz compilation is
+  skipped by the existing platform condition.
+  Its exact retained log is task-cache `ci-37365652966-macos-stable.log`.
+  Windows stable and macOS MSRV remain live in release tests; zero-dependency
+  and Ubuntu MSRV retries terminate cancelled again with check annotations
+  explicitly reporting hosted runner acquisition failure after multiple attempts.
+  Those two gates remain unexecuted and require another exact-source retry
+  after the active work finishes; neither cancellation accepts task 9303.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
