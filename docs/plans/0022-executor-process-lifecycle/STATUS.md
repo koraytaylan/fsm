@@ -3336,4 +3336,12 @@ lifecycle updates.
   production gate or finish task 9401 host integration, shutdown/reconciliation,
   concurrent host/crash acceptance, or plans 20, 21 and 23.
 
+- Prepared an isolated detached checkout of exact corrected `9f1f175` at
+  task-cache `runner-review-9f1f175` for the remaining frozen local gate;
+  its tracked/untracked status is clean and stable formatting plus source-size
+  checks pass there. No build or intensive test was started: current swap
+  remains above the workspace threshold. The isolated checkout prevents later
+  documentation commits or the user's untracked workflow from changing the
+  code verified by the eventual local gate.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
