@@ -552,3 +552,20 @@ does not clear durable ownership or stand in for a production closure receipt.
 These directly inspected assertions support early-refusal coverage without
 proving concurrent production host exclusion; no additional finding was
 identified, and broker-disconnect fixture review remains to be completed.
+
+Broker-disconnect fixture review at corrected `9f1f175`: six process/MCP
+variants kill the actual unprivileged installed helper, close its sole lifetime
+endpoint, or kill the unprivileged public-adapter supervisor without sending an
+explicit cancellation request. Before that fault, independent barriers verify
+original handoff PID and root/child/grandchild cgroup membership and isolated
+identity, live population and absence of closure proof. Afterward, a bounded
+wait requires readable verified closure, actual group absence and broker worker
+retirement while the broker remains alive; lifetime EOF must retire its helper
+unsuccessfully and supervisor death must retire the separately observed helper.
+Original manager-stop binding/gate and authority identity remain matched,
+durable journal ownership remains without a stopped result, and duplicate execute
+refuses. The copied test supervisor invokes production public adapters and is
+explicitly bounded, but it is not the standalone/embedded production service.
+Thus these controls establish helper-owner death cancellation at the primitive
+boundary, not task 9401 routing or task 9402 host shutdown acceptance; no
+additional finding was identified in the inspected fixture.
