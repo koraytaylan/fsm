@@ -176,3 +176,22 @@ cancellation and final capture, so peer drop does not substitute for retirement.
 No acceptance-blocking finding was identified in this slice; historical
 non-Linux direct-child capture is outside the proved native path and does not
 provide fallback acceptance for task 9401.
+
+Aggregate review, host transport slice at the same frozen source:
+`NativeRequest` validates the fixed route, bounded canonical request and
+protected ordinary helper before spawning with a cleared environment;
+nonblocking output retains only response limit plus one overflow byte and a
+4096-byte diagnostic prefix, draining with separate 64-KiB budgets.
+Response decoding requires exact length, canonical closed shape, successful
+helper exit and both observed EOFs; deadlines and failures cancel the helper
+without proving domain closure, while `Drop` makes only a bounded reap attempt.
+`NativeRun` retains the original claim/hash and one overall deadline across
+binding and execution; a successful bind advances to a separate later poll,
+and only verified original completion changes its phase to closed.
+Recovery requests only the original allocation and never transitions through
+binding or execution; helper cancellation leaves the run uncertain.
+Framing, retained-writer, request-policy and recovery-alias unit controls plus
+the provisioned supervisor's read-only recovery and retained-completion cases
+support these boundaries; production service admission remains task 9401.
+No acceptance-blocking finding was identified in this slice; enrollment and
+settlement/spec/API review still remain, together with frozen local gates.
