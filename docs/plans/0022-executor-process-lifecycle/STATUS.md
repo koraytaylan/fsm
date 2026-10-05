@@ -918,4 +918,19 @@ lifecycle updates.
   In progress pending those gates and final review, with downstream contained
   runner and runtime integration still planned.
 
+- **Final-source native proof verified:** both native jobs in `37263404252`
+  pass all 70 cases at frozen
+  `cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb`; retained artifacts are under
+  `ci-37263404252/{stable,msrv}` in the task cache. Independent verification
+  checks all eight suite hashes and exact AST-literal inventories, every
+  success row, clean source and compiler identity, executable digest fields,
+  unrelated-process survival, I/O cancellation log and its digest, and the
+  deliberately failing live-domain final-kill control. Stable used 1.99.0 and
+  MSRV used 1.89.0. The native evidence bridge remains labelled fixture issuer
+  and non-production backend. The final host process and six portable legs
+  remain live; no new tests or production changes are added to this frozen
+  range while its acceptance gates run. The earlier `1f21fe4` run now has
+  both Linux portable legs passing, with macOS and Windows still running.
+  Task 9302 remains In progress, and the full plans 20–23 goal is unchanged.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
