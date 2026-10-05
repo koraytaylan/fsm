@@ -1,5 +1,12 @@
 # Embedding fsm as a library
 
+The private root `authorize-enrolled` operation verifies the actual installed
+DynamicUser gate and derives its grant group under the authority lock; callers
+cannot select a group through this route. It is not an embedded launch API,
+broker authentication or proof of closure. The positive native fixture uses
+administrative transport to exercise the production gate and keeps its claim
+owned after root exit; contained runner and settlement integration remain pending.
+
 The private native authority now requires a root-approved immutable handler
 catalogue before allocation and verifies claimed fingerprint/retry plus
 journal-derived argv before grant publication. Provisioning this catalogue
@@ -33,7 +40,7 @@ before further deletion, while unexpected grant types require explicit repair.
 The private root authority can publish immutable entry grants after checking
 the protected binding and current runnable claim; this command does not
 launch a handler or provide an embedded contained runner. Broker access policy,
-trusted group derivation, native launch and closure remain under development.
+native launch and closure remain under development.
 The private entry gate verifies routed enrollment before waiting up to five
 seconds for authorization and refuses closing/closed markers before exec;
 this wait does not supply an embedded launch or shutdown API.

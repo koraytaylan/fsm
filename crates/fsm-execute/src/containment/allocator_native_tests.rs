@@ -10,6 +10,9 @@ use std::collections::BTreeMap;
 #[path = "termination_native_tests.rs"]
 mod termination_cases;
 
+#[path = "enrollment_native_tests.rs"]
+mod enrollment_cases;
+
 struct Fixture {
     directory: PathBuf,
     store: PathBuf,
@@ -226,6 +229,15 @@ fn genuine_claim_binding() {
     assert_eq!(observed.get("populated"), Some(&Value::Bool(false)));
     assert_eq!(listing(), before);
     drop(lock);
+    let (binding, effect) = claim_binding(&fixture, &domain);
+    super::super::bind(&fixture.directory, &binding).unwrap();
+    let path = fixture.directory.join("binding-1.json");
+    assert_eq!(read_value(&path, true).unwrap(), binding);
+    assert!(super::super::bind(&fixture.directory, &binding).is_err());
+    exercise_binding(&mut fixture, &domain, &binding, &path, &effect);
+}
+
+fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
     let mut store = Store::open(&fixture.store).unwrap();
     store
         .define_machine(
@@ -264,7 +276,7 @@ fn genuine_claim_binding() {
                 effect_id: &effect,
                 handler_fingerprint: &fingerprint,
                 retry: &retry,
-                domain: &domain,
+                domain,
                 request_id: "claim",
                 expected_seq: None,
             },
@@ -287,10 +299,22 @@ fn genuine_claim_binding() {
         ),
     ]);
     drop(store);
-    super::super::bind(&fixture.directory, &binding).unwrap();
-    let path = fixture.directory.join("binding-1.json");
-    assert_eq!(read_value(&path, true).unwrap(), binding);
-    assert!(super::super::bind(&fixture.directory, &binding).is_err());
+    (binding, effect)
+}
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn enrolled_gate_authorization() {
+    enrollment_cases::run();
+}
+
+fn exercise_binding(
+    fixture: &mut Fixture,
+    domain: &NativeDomain,
+    binding: &Value,
+    path: &Path,
+    effect: &str,
+) {
     let grant = object([
         ("format", Value::Str("fsm.native-entry/1".into())),
         ("claim", binding.get("claim").unwrap().clone()),
@@ -367,7 +391,7 @@ fn genuine_claim_binding() {
         grant
     );
     assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
-    unapproved_claim_is_not_bound(&mut fixture);
+    unapproved_claim_is_not_bound(fixture);
     let mut store = Store::open(&fixture.store).unwrap();
     store.cancel_instance("instance", "cancel").unwrap();
     drop(store);
@@ -378,14 +402,14 @@ fn genuine_claim_binding() {
     );
     assert_eq!(read_value(&entry_path, true).unwrap(), grant);
     assert!(
-        super::super::bind(&fixture.directory, &binding)
+        super::super::bind(&fixture.directory, binding)
             .unwrap_err()
             .contains("runnable ownership")
     );
-    assert_eq!(read_value(&path, true).unwrap(), binding);
+    assert_eq!(&read_value(path, true).unwrap(), binding);
     let pending = fixture.directory.join("entry-1.json.pending");
     fs::remove_file(&pending).unwrap();
-    std::os::unix::fs::symlink(&path, &pending).unwrap();
+    std::os::unix::fs::symlink(path, &pending).unwrap();
     assert!(
         super::super::closing::begin(&fixture.directory, 1)
             .unwrap_err()
@@ -398,7 +422,7 @@ fn genuine_claim_binding() {
             .file_type()
             .is_symlink()
     );
-    assert_eq!(read_value(&path, true).unwrap(), binding);
+    assert_eq!(&read_value(path, true).unwrap(), binding);
     assert!(fixture.directory.join("closing-1.json").exists());
     assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
     fs::remove_file(&pending).unwrap();
@@ -412,13 +436,13 @@ fn genuine_claim_binding() {
     super::super::closing::begin(&fixture.directory, 1).unwrap();
     assert_eq!(read_value(&closing_path, true).unwrap(), closing);
     assert!(super::super::authorize::publish(&fixture.directory, &request).is_err());
-    termination_cases::members(&fixture);
+    termination_cases::members(fixture);
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert!(
         store
             .state
             .execution
-            .claim_for("instance", &effect)
+            .claim_for("instance", effect)
             .is_some()
     );
     drop(store);

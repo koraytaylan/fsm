@@ -85,6 +85,8 @@ def verify(repo, directory, commit, rustc):
             require(report['scope'] == 'production-authority-allocation'
                     and report['production_allocator'] is True
                     and report['production_backend'] is False, 'authority scope differs')
+            if 'enrolled_gate_authorization' in cases:
+                require(digest(report['authority_sha256']), 'installed authority digest missing')
             for case in report['cases']:
                 require(re.fullmatch(r'[a-z_]+', case['case']) is not None, 'invalid authority case name')
                 log = bounded(directory / ('authority-' + case['case'] + '.log'))

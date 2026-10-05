@@ -1,5 +1,14 @@
 # Releasing
 
+Unreleased root `authorize-enrolled` checks the installed gate's actual
+manager/proc identity and derives immutable grant access without a caller
+group override. A new native case requires the real production gate under
+DynamicUser, unchanged durable ownership after approved handler exit and no
+closed receipt. CI installs only its freshly built binary exclusively at the
+fixed protected path and removes only the matched owned inode/digest; existing
+installations refuse the fixture. This remains partial backend evidence,
+pending compiled native acceptance and complete runner/closure integration.
+
 Unreleased native catalogue approval precedes allocation and binds grants to
 the replayed effect's approved full handler contract, retry and substituted
 argv. Root-protected source/provenance/freshness checks prevent silent hot

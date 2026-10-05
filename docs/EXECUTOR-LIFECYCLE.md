@@ -2,6 +2,16 @@
 
 ## Decision status
 
+The native authority inventory now includes `enrolled_gate_authorization`:
+it runs the freshly built production gate at its fixed root-protected install
+path in an administrative transient DynamicUser service, confirms the exact
+gate remains enrolled before grant publication, derives grant permissions
+from its real identity, and requires successful exec of the approved handler.
+Root exit leaves the durable claim unresolved and no closed receipt. The
+fixture installer uses exclusive publication and owned inode/digest cleanup;
+an existing installation refuses. Native execution of this new case is pending,
+and administrative launch is not the production broker/runner transport.
+
 The root-only `catalogue` operation now approves an immutable validated handler
 table before the first allocation, with current counter provenance and fresh
 authority checks. Its input file and ancestors must be root protected; the

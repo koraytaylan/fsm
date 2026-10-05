@@ -1383,4 +1383,18 @@ lifecycle updates.
   child diagnostic. Runtime behavior is unchanged pending the next exact
   source review; task 9303 remains In progress.
 
+- **Positive installed-gate native integration case authored:** authority
+  inventory adds `enrolled_gate_authorization` (six authority cases; complete
+  matrix becomes 76). The producer serially builds the real binary and test
+  artifact, exclusively installs the frozen real binary at the fixed root
+  path, records its digest and removes only the matching owned inode/digest;
+  existing installations refuse. The case administratively starts the actual
+  gate under DynamicUser, observes exact gate identity before any grant,
+  publishes through the derived-group operation, requires approved `/bin/true`
+  execution and confirms the journal claim survives with no closed receipt.
+  Shared real-store claim setup retains the original binding/termination
+  controls. Formatting, file-length, Python syntax and source review precede
+  new frozen CI; no positive native pass, production launch transport or full
+  runner acceptance is claimed, and task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

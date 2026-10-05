@@ -1,5 +1,11 @@
 # API and version policy
 
+Unreleased private `authorize-enrolled` derives grant access from a verified
+installed DynamicUser gate instead of accepting a group override; this
+root-only control interface adds no stable Rust API or journal version.
+Its positive native case runs the production gate with administrative launch
+transport, while contained runner, broker and closure acceptance remain pending.
+
 Private `fsm.native-catalogue/1` wraps a validated handler table in the
 root-protected native authority; it changes no journal version or public Rust
 signature. Native preparation/binding/authorization now refuse absent or
