@@ -3171,4 +3171,16 @@ lifecycle updates.
   not a substitute for the five unexecuted cancelled jobs or the still-running
   Windows MSRV gate, nor proof of the separate local frozen host invocation.
 
+- Windows MSRV job `111950022633` in CI `37365652966` completes successfully
+  at exact `31e0c63`; formatting, size, debug/release workspace tests, all-target
+  Clippy, documentation and decimal regeneration all pass; fuzz compilation is
+  skipped on Windows by the existing workflow.
+  Its retained exact log is task-cache `ci-37365652966-windows-msrv.log`.
+  After the first attempt became terminal, `gh run rerun --failed` started
+  attempt 2 at the same exact source, retrying only the five jobs cancelled
+  for hosted runner acquisition; all four successful gates remain successful.
+  Windows stable retry job `111966694566` is live; zero-dependency
+  `111966694085`, macOS stable `111966694437`, macOS MSRV `111966694744` and
+  Ubuntu MSRV `111966694772` remain queued and unaccepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
