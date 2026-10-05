@@ -168,7 +168,9 @@ fn execution(argv: Vec<String>, mcp: bool, failure: &str, error: Option<&str>) {
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let (binding, effect) = claim_binding(&fixture, &domain);
     bind(&fixture.directory, &binding).unwrap();
-    let result = runner::execute(&fixture.directory, 1).unwrap();
+    let result = runner::execute(&fixture.directory, 1).unwrap_or_else(|error| {
+        panic!("private exec-status fixture argv0={argv0:?} mcp={mcp}: {error}")
+    });
     let expected_failure = if failure.is_empty() {
         Value::Null
     } else {

@@ -3101,4 +3101,16 @@ lifecycle updates.
   These controls require fresh native execution; they are not accepted from
   the previous source's smaller branch coverage.
 
+- Stable native CI `37365040760` at `7bd363a` fails in
+  `private_exec_status` before the later genuine-claim admission controls:
+  production execution returns `runner cleanup uncertain` after a bounded
+  manager query deadline; no positive closure/result is accepted.
+  Failed reports and exact job diagnostics are retained in task-cache
+  `ci-37365040760/stable` and `ci-37365040760-native-stable-job.log`.
+  The failure does not establish its timing cause or prove the admission fix;
+  the fixture now labels its fixed command/kind when execution refuses, so
+  further native diagnosis can distinguish exec-status scenarios without
+  relaxing production deadlines or converting uncertainty into success.
+  Current MSRV/portable validation remains unexecuted or queued at this source.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
