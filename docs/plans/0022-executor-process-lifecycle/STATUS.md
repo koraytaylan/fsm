@@ -1642,4 +1642,15 @@ lifecycle updates.
   Broker/service integration, host stop/drain and uncertain-start recovery remain
   required, and task 9303 stays In progress.
 
+- **Frozen MCP fixture failure diagnosed:** run `37286722581` for `95edb3`
+  completes both native jobs with failure; retained stable/MSRV artifacts show
+  catalogue validation rejected argv element 2 because Python dictionary braces
+  were parsed as a noncanonical placeholder name, before MCP runner execution.
+  This confirms the source-reviewed fixture repair already committed in
+  `7b104fe`, which uses brace-free `dict()` while preserving the strict template
+  contract. The failed evidence remains retained and is not relabelled passing;
+  zero dependencies passes, remaining portable jobs are live, and the repaired
+  tree/root-exit/cancellation/uncertainty source still requires its own native
+  acceptance. Task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
