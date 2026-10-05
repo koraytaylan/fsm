@@ -303,3 +303,21 @@ native missing/torn/symlink/writable-attestation controls and copied-store
 refusal provide targeted evidence, while the full workspace gate remains live.
 No additional finding was identified in this portion; registration/allocation,
 broker policy and complete range review still require aggregate reconciliation.
+
+Registration/allocation review at corrected `9f1f175`: registration opens the
+canonical physical store read-only before exclusive authority publication,
+keeps its path private and publishes synced immutable public device/inode
+identity; it neither takes the store writer nor creates launch permission.
+Preparation validates the installed profile/catalogue/facility, serializes on
+the protected authority lock and checks bounded original intent inventory
+before publishing intent and advancing the durable counter ahead of cgroup
+creation; partial preparation cannot reuse the allocation.
+The initial cgroup sample requires protected original identity, bounded empty
+and unfrozen events, then repeats directory identity before prepared publication.
+Binding requires original authority/prepared/boot/cgroup identities, no closing
+marker, fresh current claim/hash and approved catalogue, and repeats physical
+store identity after its read-only journal verification.
+These operations agree with the native registration/allocation contract and
+existing fault/inventory controls; no further finding was identified here.
+Production route discovery remains an explicit dependent task 9401 obligation,
+and none of these primitives implements it implicitly.
