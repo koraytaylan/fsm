@@ -2354,4 +2354,14 @@ lifecycle updates.
   failure classification and all current native/portable gates remain required.
   Local swap remains nearly full, so no local Rust build was started.
 
+- Classified the remaining completed portable failures in frozen
+  `37297046995`: Ubuntu MSRV job `111720629638`, Windows stable
+  `111720629645`, and Windows MSRV `111720629679` each report only the
+  public-surface target failing its inventory/byte-regeneration checks, with
+  the same observed `mod` versus declared `module` native-client entry already
+  fixed by `c98c4fe`; Ubuntu stable was classified previously. No broader pass
+  is inferred from the failing jobs, and later APIs/native-host changes remain
+  unverified. Current inventory-fix run `37311042697` at `c98c4fe` is queued;
+  full six-axis/native acceptance and production integration remain required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
