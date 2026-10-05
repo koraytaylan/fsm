@@ -12,6 +12,20 @@ The public service runner, authenticated unprivileged broker, native MCP trees
 and uncertain-start recovery remain incomplete; this root operation does not
 release task 9303's acceptance gate.
 
+Native review now exercises the production MCP execution path with a lingering
+server, child and grandchild inheriting protocol streams. An independent
+observer checks their actual cgroup membership and dynamic identities before
+releasing the answer/timeout barrier; successful execution must return matching
+closure proof while journal ownership remains unresolved. The error-answer
+case checks exact stderr prefix and an independently calculated whole-stream
+digest; the timeout case exercises cancellation with inherited pipe holders.
+Fixture barriers use an exclusively created, identity-checked `/dev/shm`
+directory and delete only known names, leaving unknown entries intact; these
+diagnostics never authenticate authority or closure. This keeps the production
+launch policy: [systemd's execution contract](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml)
+documents DynamicUser's strict filesystem protection and the `/dev` exception.
+These controls are authored and still require compiled/native CI acceptance.
+
 ## Decision status
 
 Private `complete-close` handles a successfully matched, durably acknowledged

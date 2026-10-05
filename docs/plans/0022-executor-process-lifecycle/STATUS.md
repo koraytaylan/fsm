@@ -1552,4 +1552,22 @@ lifecycle updates.
   broker authentication, public service integration and uncertain-start
   reconciliation remain required, and task 9303 stays In progress.
 
+- **Native MCP tree controls authored:** the installed-gate authority case
+  now calls production `runner::execute` for both a tool-error answer and a
+  withheld-answer timeout. Approved fixture Python servers leave child and
+  grandchild processes holding inherited protocol streams; an independent
+  observer requires their actual cgroup membership/dynamic UIDs and the
+  recorded root gate PID before releasing the fixture barrier. Results must
+  bind the original claim/hash, verify closure, retain unresolved/un-stopped
+  journal ownership and refuse duplicate execution; error-answer stderr must
+  preserve the exact prefix and independently calculated digest. Marker
+  cleanup checks its exclusively created namespace identity and removes only
+  known files, preserving unknown entries. Source review corrected umask
+  filtering of its writable fixture directory and moved barriers to `/dev/shm`
+  to respect unchanged DynamicUser strict protection, checked against upstream
+  systemd documentation; both embedded fixture programs parse successfully.
+  Formatting/file-size/diff checks pass; stable/MSRV native review remains
+  queued, process early-root-exit observation, broker/service integration and
+  uncertain-start reconciliation remain outstanding, and 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

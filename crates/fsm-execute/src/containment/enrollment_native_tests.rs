@@ -277,6 +277,7 @@ pub(super) fn run() {
     fixture.cleanup().unwrap();
     stop_running_handler();
     execute_process_handlers();
+    super::runner_cases::run();
 }
 
 fn execute_process_handlers() {

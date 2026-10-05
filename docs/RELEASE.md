@@ -7,6 +7,11 @@ matching closure proof and owned transport retirement before returning a
 candidate result. Provisional Linux native I/O adapters expose the shared
 implementation; native process boundary/timeout controls are authored, while
 native MCP/tree, broker and production service acceptance remain pending.
+Native MCP review controls now exercise the production authority path against
+a lingering server and inherited child/grandchild protocol streams, with
+independent enrollment barriers, error-answer capture/digest checks, timeout
+cleanup, matching closure evidence, retained journal ownership and duplicate
+launch refusal; this is test coverage awaiting native execution acceptance.
 
 Unreleased private `complete-close` adds protected matched-stop retirement,
 domain tombstone and immutable closure receipt publication with exclusive

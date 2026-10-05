@@ -13,6 +13,9 @@ mod termination_cases;
 #[path = "enrollment_native_tests.rs"]
 mod enrollment_cases;
 
+#[path = "runner_native_tests.rs"]
+mod runner_cases;
+
 struct Fixture {
     directory: PathBuf,
     store: PathBuf,
