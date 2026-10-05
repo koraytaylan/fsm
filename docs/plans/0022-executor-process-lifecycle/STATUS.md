@@ -815,4 +815,20 @@ lifecycle updates.
   remain running. No later test is attributed to that older frozen range, and
   task 9302 remains In progress.
 
+- **Latest persistence range frozen for final gates:** clean detached source
+  `1f21fe480440261eae20a75d066d3cb903643026` includes the nine in-append
+  process-death cases and repeated stopped-owner archives omitted from the
+  earlier `bcf6632` review. All eight stable host checks are running serially
+  in an isolated checkout with a separate target directory and retained
+  `1f21fe4-host-gates.log`; completion has not yet been observed. The same
+  exact source is pushed only to the authorized native-review branch, and
+  CI run `37262415626` is running its six portable legs, two native matrices
+  and zero-dependency job. The workflow has no cancellation rule, so the
+  earlier `37259980746` Windows release-test legs continue independently;
+  that older run currently has seven completed successes. The archived stale
+  control's three log digests and runtime-only failure were independently
+  rechecked. Task 9302 remains In progress pending review and terminal gates;
+  no contained runner, authority publisher or legacy-quiescence issuer is
+  advertised as shipped by these fixture and persistence proofs.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
