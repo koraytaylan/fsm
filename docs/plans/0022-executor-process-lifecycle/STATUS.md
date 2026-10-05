@@ -899,4 +899,23 @@ lifecycle updates.
   acceptance. Diff and file-size checks pass; no build runs concurrently with
   the still-live isolated host gate.
 
+- **Final audited persistence source frozen:** the isolated `1f21fe4` host
+  process terminated successfully with all eight commands passing; its final
+  marker and eight exit records were independently checked, with log SHA-256
+  `5e6a77e8b4bf9250c869006462f3eb5713e1e42809f54beffb2aa33f3192b5c4`.
+  After that process ended, the new legacy-admission producer case passed at
+  stable and MSRV and all-target store Clippy passed on exact `cf3f600` source;
+  `legacy-admission-cf3f600.log` retains both named runtime passes, three zero
+  exits and its completion marker. No native legacy-issuer proof is inferred
+  from this preauthenticated fixture case. Source
+  `cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb` now freezes the complete audited
+  persistence test set, corrected format documentation and Windows timeout.
+  Its isolated eight-command host gate is running serially, retaining
+  `cf3f600-host-gates.log`; run `37263404252` starts the full nine-job CI matrix
+  on the same source with the bounded Windows budget. Both earlier runs are
+  preserved, including the diagnosed timeout and pending `1f21fe4` portable
+  axes; none substitutes for the latest terminal results. Task 9302 remains
+  In progress pending those gates and final review, with downstream contained
+  runner and runtime integration still planned.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
