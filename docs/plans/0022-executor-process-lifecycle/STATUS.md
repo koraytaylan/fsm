@@ -1412,4 +1412,18 @@ lifecycle updates.
   native execution, broker transport, capture/result integration, manager
   fencing and permanent closure remain outstanding, and 9303 stays In progress.
 
+- **Launch handoff race closed for accepted startup:** review found that
+  returning immediately after utility spawn allowed closing to race pending
+  manager submission. Startup now retains the authority lock through one
+  shared two-second deadline for manager/proc handoff and protected exclusive
+  handoff-record fsync; largest envelope size is reserved before intent.
+  Failure best-effort revokes entry under the same lock and boundedly retires
+  its owned utility, retaining intent/claims. Derived-group authorization
+  requires the exact binding and freshly corroborated gate identity, syncing
+  validated handoff/parent on replay before granting. Native controls refuse
+  missing/changed handoff with no grant; the pure expired-deadline case refuses
+  before manager spawn. Formatting/file-length/source checks precede frozen
+  compiled/native CI; permanent manager fencing, uncertain-start recovery and
+  full runner/closure integration remain outstanding, and 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

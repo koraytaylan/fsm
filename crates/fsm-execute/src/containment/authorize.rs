@@ -52,7 +52,33 @@ fn publish_grant(directory: &Path, request: &Value, selected: Option<u32>) -> Re
     let (_, _lock) = validate_binding(directory, &binding, Some(&argv))?;
     let group = match selected {
         Some(group) => group,
-        None => super::enrollment::group(&claim.domain().to_value())?,
+        None => {
+            let handoff_path = directory.join(format!("handoff-{allocation}.json"));
+            let handoff = read_value(&handoff_path, true)?;
+            closed(&handoff, &["format", "binding", "gate"])?;
+            if super::text(&handoff, "format")? != "fsm.native-launch-handoff/1"
+                || handoff.get("binding") != Some(&binding)
+            {
+                return Err("entry handoff differs from protected binding".into());
+            }
+            let gate = super::enrollment::inspect(
+                &claim.domain().to_value(),
+                std::time::Instant::now() + std::time::Duration::from_secs(4),
+            )?;
+            if handoff.get("gate") != Some(&gate.to_value()) {
+                return Err("enrolled gate differs from protected handoff".into());
+            }
+            // Exact replay syncs handoff bytes exposed by a prior failed sync.
+            OpenOptions::new()
+                .read(true)
+                .custom_flags(super::NOFOLLOW_NONBLOCK)
+                .open(&handoff_path)
+                .map_err(io)?
+                .sync_all()
+                .map_err(io)?;
+            File::open(directory).map_err(io)?.sync_all().map_err(io)?;
+            gate.group
+        }
     };
     publish_file(directory, allocation, group, &bytes)
 }

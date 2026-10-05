@@ -83,6 +83,13 @@ pub(super) fn run() {
     };
     let intent = read_value(&intent_path, true).unwrap();
     assert_eq!(intent.get("binding"), Some(&binding));
+    let handoff_path = fixture.directory.join("handoff-1.json");
+    let handoff = read_value(&handoff_path, true).unwrap();
+    assert_eq!(handoff.get("binding"), Some(&binding));
+    assert_eq!(
+        handoff.get("format"),
+        Some(&Value::Str("fsm.native-launch-handoff/1".into()))
+    );
     assert!(
         launch::begin(
             &fixture.directory,
@@ -110,6 +117,10 @@ pub(super) fn run() {
     // Exact executable/argv/proc/security validation proves this is still the
     // gate rather than the approved handler, before any grant exists.
     let group = enrollment::group(&material).unwrap();
+    assert_eq!(
+        handoff.get("gate").unwrap().get("group_id"),
+        Some(&Value::Num(group.to_string()))
+    );
     assert!(!fixture.directory.join("entry-1.json").exists());
     assert!(gate.child.try_wait().unwrap().is_none());
     let grant = object([
@@ -121,7 +132,31 @@ pub(super) fn run() {
         ),
         ("argv", Value::Arr(vec![Value::Str("/bin/true".into())])),
     ]);
-    authorize::publish_enrolled(&fixture.directory, &object([("grant", grant)])).unwrap();
+    let request = object([("grant", grant)]);
+    // A missing protected handoff is not inferred from a live gate alone.
+    let saved = fixture.directory.join("test-owned-handoff.json");
+    fs::rename(&handoff_path, &saved).unwrap();
+    assert!(authorize::publish_enrolled(&fixture.directory, &request).is_err());
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    fs::rename(&saved, &handoff_path).unwrap();
+    let mut altered = handoff.as_obj().unwrap().clone();
+    let mut identity = handoff.get("gate").unwrap().as_obj().unwrap().clone();
+    identity.insert("invocation_id".into(), Value::Str("0".repeat(32)));
+    altered.insert("gate".into(), Value::Obj(identity));
+    fs::write(
+        &handoff_path,
+        fsm_core::canon::canon_bytes(&Value::Obj(altered)),
+    )
+    .unwrap();
+    assert!(
+        authorize::publish_enrolled(&fixture.directory, &request)
+            .unwrap_err()
+            .contains("differs from protected handoff")
+    );
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    // Repair only this deliberately injected test-owned corruption.
+    fs::write(&handoff_path, fsm_core::canon::canon_bytes(&handoff)).unwrap();
+    authorize::publish_enrolled(&fixture.directory, &request).unwrap();
     let metadata = fs::symlink_metadata(fixture.directory.join("entry-1.json")).unwrap();
     assert_eq!(
         (metadata.uid(), metadata.gid(), metadata.mode() & 0o777),

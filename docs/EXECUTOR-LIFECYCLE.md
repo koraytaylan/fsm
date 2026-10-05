@@ -2,13 +2,22 @@
 
 ## Decision status
 
+Startup keeps the authority lock until a shared two-second manager/gate
+handoff check succeeds and its bounded protected handoff record is fsynced.
+It reserves the largest envelope before intent publication, and failed handoff
+best-effort revokes entry under the retained lock before retiring the owned
+utility. Derived-group grants require the exact protected binding and fresh
+PID/group/invocation corroboration, with handoff/parent sync on replay.
+The native case now refuses missing and changed handoff before any grant;
+these controls await compiled CI and do not establish permanent closure.
+
 The production root `launch` path now validates current binding/catalogue,
 publishes bounded cold-readable `fsm.native-launch-intent/1` exclusively before
 submission, and starts the fixed installed gate with the canonical route and
 fixed isolation through the protected manager launcher. It owns direct pipe
 streams, clears inherited manager overrides, bounds runtime by approved timeout
-plus entry wait, and releases the authority lock after spawning so grant/close
-operations can proceed. Duplicate/partial intent refuses replay; failures keep
+plus entry wait, and releases the authority lock after verified durable handoff
+so grant/close operations can proceed. Duplicate/partial intent refuses replay; failures keep
 ownership. Its command monitor has a finite deadline and best-effort native
 revocation/kill plus bounded direct-child cleanup. Exit is not closure evidence.
 The positive gate case now calls this actual startup path and verifies intent

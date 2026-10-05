@@ -1486,8 +1486,18 @@ use a dynamic unprivileged identity, protected control groups, no delegation,
 no capabilities or privilege escalation, no restart, control-group lifetime
 and termination, and a runtime ceiling of approved timeout plus the five-second
 entry bound. Owned standard streams MUST pass through `--pipe` without spool
-files or journald capture. The authority lock MUST be released after spawning
-the owned transport so grant publication and closing can proceed.
+files or journald capture. The authority lock MUST remain held after spawning
+until a shared two-second deadline verifies active/running manager handoff and
+the actual installed enrolled gate. Manager queries MUST respect the remaining
+deadline rather than each resetting the startup bound. Before releasing the
+lock, launch MUST exclusively fsync `handoff-<allocation>.json`, containing
+exactly `format` (`fsm.native-launch-handoff/1`), `binding` and `gate`; `gate`
+contains exactly `pid`, `group_id` and `invocation_id` from the verified
+manager/proc observations. The largest handoff envelope MUST be charged before
+reserving launch intent so accepted submissions remain cold-readable.
+An incomplete handoff MUST best-effort revoke entry while retaining the lock
+and kill/reap its owned transport within a bounded cleanup interval; failures
+retain intent and journal ownership without issuing closure evidence.
 The command monitor MUST have a finite deadline and bounded best-effort cleanup;
 transport/root exit MUST NOT issue closure evidence or permit settlement.
 Broker authentication, manager admission fencing and permanent closure remain
@@ -1553,6 +1563,12 @@ revalidation before publication; a missing, changed or malformed observation
 MUST refuse without publishing a grant. Provisioning MUST reserve the dynamic
 identity range from static accounts. This privileged operation does not
 launch the gate, authenticate a broker peer or establish permanent closure.
+The protected handoff MUST match the exact binding and freshly observed gate
+PID/group/invocation. These corroborating diagnostics MUST NOT substitute for
+native domain identity or establish termination/permanent closure. Before
+publishing a grant, exact validated handoff replay MUST fsync the handoff and
+its parent, covering a prior interrupted durability step. An absent or changed
+handoff MUST refuse even when a live process appears enrolled.
 
 The root-only `request-kill` operation MUST complete admission revocation
 under the authority lock before writing `1` to the matched domain's

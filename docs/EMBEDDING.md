@@ -1,5 +1,12 @@
 # Embedding fsm as a library
 
+Private startup now holds the authority lock until it verifies and durably
+records manager/gate handoff; a spawned utility alone does not constitute
+accepted startup. Derived grant access requires the same protected binding
+and freshly observed gate identity, with replay sync before publication.
+Failure retains ownership and best-effort revokes entry, while complete
+embedded closure/result integration remains unavailable.
+
 Private root `launch` validates the live bound claim and approved handler,
 durably reserves one manager submission, and starts only the installed routed
 gate with isolated identity and direct owned streams. Its returned transport

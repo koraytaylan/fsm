@@ -7,6 +7,9 @@ use std::fs::{self, OpenOptions};
 use std::io::Read;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::time::Duration;
+use std::time::Instant;
 
 pub(super) const EXECUTABLE: &str = "/usr/libexec/fsm-containment-authority";
 const KEYS: &[&str] = &[
@@ -21,13 +24,34 @@ const KEYS: &[&str] = &[
     "InvocationID",
 ];
 
+#[cfg(test)]
 pub(super) fn group(domain: &Value) -> Result<u32, String> {
+    inspect(domain, Instant::now() + Duration::from_secs(4)).map(|gate| gate.group)
+}
+
+pub(super) struct GateIdentity {
+    pub(super) pid: u32,
+    pub(super) group: u32,
+    pub(super) invocation: String,
+}
+
+impl GateIdentity {
+    pub(super) fn to_value(&self) -> Value {
+        super::object([
+            ("pid", Value::Num(self.pid.to_string())),
+            ("group_id", Value::Num(self.group.to_string())),
+            ("invocation_id", Value::Str(self.invocation.clone())),
+        ])
+    }
+}
+
+pub(super) fn inspect(domain: &Value, deadline: Instant) -> Result<GateIdentity, String> {
     let namespace = text(domain, "namespace")?;
     let generation = number(domain, "generation")?.to_string();
     let allocation = number(domain, "allocation")?.to_string();
     let unit = format!("fsm-containment-{namespace}-{generation}-{allocation}.service");
     let membership = format!("0::/system.slice/{unit}\n");
-    let properties = manager::properties(&unit, KEYS)?;
+    let properties = manager::properties_before(&unit, KEYS, deadline)?;
     let pid = main_pid(&properties, &unit)?;
     let process = PathBuf::from(format!("/proc/{pid}"));
     let executable = Path::new(EXECUTABLE);
@@ -45,7 +69,7 @@ pub(super) fn group(domain: &Value) -> Result<u32, String> {
     };
     let credentials = observe()?;
     if before.uid() != credentials.0
-        || manager::properties(&unit, KEYS)? != properties
+        || manager::properties_before(&unit, KEYS, deadline)? != properties
         || observe()? != credentials
     {
         return Err("enrolled gate changed during verification".into());
@@ -63,10 +87,15 @@ pub(super) fn group(domain: &Value) -> Result<u32, String> {
         || observed_group.uid() != 0
         || observed_group.mode() & 0o022 != 0
         || domain.get("cgroup") != Some(&identity(&observed_group))
+        || Instant::now() >= deadline
     {
         return Err("enrolled gate or native identity changed".into());
     }
-    Ok(credentials.1)
+    Ok(GateIdentity {
+        pid,
+        group: credentials.1,
+        invocation: properties["InvocationID"].clone(),
+    })
 }
 
 pub(super) fn installed() -> Result<fs::Metadata, String> {

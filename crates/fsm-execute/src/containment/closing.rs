@@ -17,6 +17,12 @@ pub(super) fn begin(directory: &Path, allocation: u64) -> Result<(), String> {
 pub(super) fn revoke(directory: &Path, allocation: u64) -> Result<(Value, File), String> {
     protected_directory(directory)?;
     let lock = authority_lock(directory)?;
+    let domain = revoke_locked(directory, allocation)?;
+    Ok((domain, lock))
+}
+
+/// Caller retains the authority lock through this entire revocation.
+pub(super) fn revoke_locked(directory: &Path, allocation: u64) -> Result<Value, String> {
     let domain = prepared_domain(directory, allocation)?;
     match fs::symlink_metadata(directory.join(format!("closed-{allocation}.json"))) {
         Ok(_) => return Err("allocation already carries closed evidence".into()),
@@ -57,7 +63,7 @@ pub(super) fn revoke(directory: &Path, allocation: u64) -> Result<(Value, File),
         }
     }
     File::open(directory).map_err(io)?.sync_all().map_err(io)?;
-    Ok((domain, lock))
+    Ok(domain)
 }
 
 pub(super) fn prepared_domain(directory: &Path, allocation: u64) -> Result<Value, String> {

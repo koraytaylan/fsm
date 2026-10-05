@@ -32,18 +32,32 @@ pub(super) fn require() -> Result<(), String> {
     validate(&query(
         "system.slice",
         &["LoadState", "ActiveState", "ControlGroup"],
+        Instant::now() + Duration::from_secs(2),
     )?)
 }
 
+#[cfg(test)]
 pub(super) fn properties(unit: &str, keys: &[&str]) -> Result<BTreeMap<String, String>, String> {
-    let fields = fields(&query(unit, keys)?)?;
+    properties_before(unit, keys, Instant::now() + Duration::from_secs(2))
+}
+
+pub(super) fn properties_before(
+    unit: &str,
+    keys: &[&str],
+    deadline: Instant,
+) -> Result<BTreeMap<String, String>, String> {
+    let fields = fields(&query(unit, keys, deadline)?)?;
     if fields.len() != keys.len() || keys.iter().any(|key| !fields.contains_key(*key)) {
         return Err("system-manager property inventory differs".into());
     }
     Ok(fields)
 }
 
-fn query(unit: &str, keys: &[&str]) -> Result<Vec<u8>, String> {
+fn query(unit: &str, keys: &[&str], requested: Instant) -> Result<Vec<u8>, String> {
+    let deadline = requested.min(Instant::now() + Duration::from_secs(2));
+    if Instant::now() >= deadline {
+        return Err("system-manager query deadline or incomplete I/O".into());
+    }
     let binary = Path::new("/usr/bin/systemctl");
     protected_directory(binary.parent().ok_or("manager binary has no parent")?)?;
     let metadata = fs::symlink_metadata(binary).map_err(io)?;
@@ -72,7 +86,6 @@ fn query(unit: &str, keys: &[&str]) -> Result<Vec<u8>, String> {
             .spawn()
             .map_err(io)?,
     );
-    let deadline = Instant::now() + Duration::from_secs(2);
     let mut output = Vec::with_capacity(LIMIT);
     let mut diagnostics = Vec::with_capacity(LIMIT);
     let mut output_eof = false;
@@ -149,6 +162,15 @@ fn validate(bytes: &[u8]) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn expired_manager_observation_refuses_before_spawn() {
+        assert!(
+            properties_before("system.slice", &["ActiveState"], Instant::now())
+                .unwrap_err()
+                .contains("query deadline")
+        );
+    }
 
     #[test]
     fn manager_capture_bounds_exact_limit_and_refuses_excess() {

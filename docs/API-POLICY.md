@@ -1,5 +1,10 @@
 # API and version policy
 
+Private `fsm.native-launch-handoff/1` binds verified manager/gate diagnostics
+to the protected original claim binding; authorization requires exact fresh
+corroboration and replay durability. This changes no journal version or stable
+Rust API and supplies no permanent closure evidence.
+
 Private `fsm.native-launch-intent/1` reserves exactly one manager submission
 per bound allocation; this root-only launch command adds no public Rust API,
 stable error code or journal version. Transport exit remains distinct from

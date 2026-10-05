@@ -1,5 +1,13 @@
 # Releasing
 
+Unreleased startup now retains the authority lock through bounded verified
+manager/gate handoff and fsyncs its protected binding/diagnostic record before
+returning transport ownership. Failed startup revokes admission under that
+lock and retires the owned transport; claims remain unresolved. Derived-group
+authorization requires a matching handoff and syncs exact replay before
+publication. Native missing/changed-handoff controls and a shared-deadline
+refusal check remain pending compiled CI, without full runner acceptance.
+
 Unreleased private root `launch` now fsyncs single-submission intent before
 starting the installed gate through a fixed protected manager launcher.
 Isolation, direct owned pipe streams, environment clearing, approved runtime

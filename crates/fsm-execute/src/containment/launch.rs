@@ -1,8 +1,8 @@
 //! Durable single-submission manager launch; never a closure receipt.
 
 use super::{
-    catalogue, enrollment, io, number, object, protected_directory, publish_once, read_value, text,
-    validate_binding,
+    catalogue, enrollment, io, manager, number, object, protected_directory, publish_once,
+    read_value, text, validate_binding,
 };
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
@@ -59,6 +59,21 @@ pub(super) fn begin(
     // Reserve the extra container before any durable submission marker.
     parse(&canon_bytes(&intent), &JsonLimits::DEFAULT)
         .map_err(|_| "launch intent exceeds native depth bound")?;
+    // Charge the largest handoff envelope before reserving submission.
+    let reserved = handoff(
+        intent
+            .get("binding")
+            .ok_or("launch binding missing")?
+            .clone(),
+        object([
+            ("pid", Value::Num(u32::MAX.to_string())),
+            ("group_id", Value::Num("65519".into())),
+            ("invocation_id", Value::Str("f".repeat(32))),
+        ]),
+    );
+    if canon_bytes(&reserved).len() as u64 > super::MAX_RECORD {
+        return Err("launch handoff envelope exceeds native byte bound".into());
+    }
     let namespace = text(&domain, "namespace")?;
     let generation = number(&domain, "generation")?.to_string();
     let allocation_text = allocation.to_string();
@@ -102,7 +117,76 @@ pub(super) fn begin(
         .stderr(stderr);
     publish_once(&intent_path, &intent)?;
     let child = command.spawn().map_err(io)?;
+    // This guard drops before the authority lock: incomplete handoff revokes
+    // entry while launch/authorize/closing are still serialized.
+    let mut submission = Submission {
+        directory,
+        allocation,
+        child: Some(child),
+    };
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let child = submission
+            .child
+            .as_mut()
+            .ok_or("launch transport missing")?;
+        if child.try_wait().map_err(io)?.is_some() {
+            return Err("gate transport exited before verified handoff".into());
+        }
+        if manager::properties_before(&unit, &["ActiveState", "SubState"], deadline).is_ok_and(
+            |fields| fields["ActiveState"] == "active" && fields["SubState"] == "running",
+        ) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err("gate manager handoff deadline exceeded".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let gate = enrollment::inspect(&domain, deadline)?;
+    let receipt = handoff(
+        intent
+            .get("binding")
+            .ok_or("launch binding missing")?
+            .clone(),
+        gate.to_value(),
+    );
+    publish_once(
+        &directory.join(format!("handoff-{allocation}.json")),
+        &receipt,
+    )?;
+    let child = submission.child.take().ok_or("launch transport missing")?;
     Ok((child, Duration::from_millis(runtime_ms)))
+}
+
+fn handoff(binding: Value, gate: Value) -> Value {
+    object([
+        ("format", Value::Str("fsm.native-launch-handoff/1".into())),
+        ("binding", binding),
+        ("gate", gate),
+    ])
+}
+
+struct Submission<'a> {
+    directory: &'a Path,
+    allocation: u64,
+    child: Option<Child>,
+}
+
+impl Drop for Submission<'_> {
+    fn drop(&mut self) {
+        if let Some(child) = &mut self.child {
+            let _ = super::closing::revoke_locked(self.directory, self.allocation);
+            let _ = child.kill();
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while Instant::now() < deadline {
+                match child.try_wait() {
+                    Ok(None) => std::thread::sleep(Duration::from_millis(5)),
+                    Ok(Some(_)) | Err(_) => break,
+                }
+            }
+        }
+    }
 }
 
 struct Monitor<'a> {
