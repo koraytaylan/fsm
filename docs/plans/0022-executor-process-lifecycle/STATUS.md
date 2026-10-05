@@ -2875,4 +2875,15 @@ lifecycle updates.
   native stable/MSRV proof, six portable axes, frozen high-risk review, installed
   executable-byte proof and production routing remain pending; 9303 stays active.
 
+- Authoritative CI run 37340474722 has completed successfully at frozen
+  181cbad11d169e3a3c46126a42687b1b5be74d46: all six full portable platform/
+  toolchain axes, zero-dependency job and both provisioned native jobs pass.
+  Previously independently verified native artifacts each contain 78 cases with
+  executable bytes unverified and production gate unreleased. This establishes
+  that baseline only, predating shared broker fencing and private exec reporting;
+  it does not validate current 0848dfd/c73c8cf source or the newly named native
+  private_exec_status control. Warning-free stable workspace documentation passes
+  at c73c8cf. The remaining identity-exclusivity authentication review, fresh
+  current native/portable/full gates and production host routing remain required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
