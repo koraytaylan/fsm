@@ -3306,4 +3306,13 @@ lifecycle updates.
   separate frozen local host gate remains unexecuted because swap exceeds
   the workspace limit; task 9303 and the production native gate remain open.
 
+- Corrected-source macOS stable gate `111988370324` passes in CI
+  `37376949993` at exact `9f1f175ad91609359699e3a2d670119e8cbb506a`;
+  exact log retained at task-cache `ci-37376949993-macos-stable.log`.
+  Required debug/release tests, formatting/size, all-target Clippy,
+  documentation and decimal regeneration pass; Linux-only fuzz compilation
+  is skipped on macOS by the workflow. Both macOS and both Ubuntu axes now
+  pass; the two Windows jobs remain live, including stable now in release tests.
+  The local frozen host gate and task acceptance remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
