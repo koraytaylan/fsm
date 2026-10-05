@@ -107,4 +107,13 @@ this count describes the whole matrix, not 81 runner-specific controls.
 The artifacts do not independently compare executable bytes and do not release
 the production native gate; task status remains `in_progress`.
 
+A command-level coverage gap remains: the named `cargo test -p fsm-execute
+--test lifecycle_runner` entry currently exercises protected-entry refusal and
+legacy noisy-root capture, not claimed native process/MCP grandchildren.
+Those tree controls currently run through `authority_probe.py` selecting the
+production authority binary's ignored native cases under the provisioned Root
+fixture; green `lifecycle_runner` output alone cannot satisfy the named native
+runner requirement, which remains unresolved before this task is accepted.
+
+
 - **Done when:** the same production runner passes native process and MCP descendant/pipe/capture tests and returns a settleable result only with matching run identity and proved closed containment, while every uncertain cleanup remains explicit and bounded.
