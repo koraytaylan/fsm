@@ -3203,4 +3203,15 @@ lifecycle updates.
   beside both independently verified native matrices; macOS MSRV remains live
   in release tests and the two cancelled Linux jobs still require retry.
 
+- Attempt 2 macOS MSRV job `111966694744` completes successfully at exact
+  `31e0c63`, with every applicable gate step passing and the existing non-Linux
+  fuzz condition skipped; its exact log is retained at task-cache
+  `ci-37365652966-macos-msrv.log`.
+  After attempt 2 became terminal, targeted failed-job rerun starts attempt 3
+  at the same source for only zero-dependency `111978333384` and Ubuntu MSRV
+  `111978333841`; both are queued and remain unexecuted.
+  Five portable OS/toolchain gates and both native matrices now pass at this
+  source, but the final portable axis, zero-dependency job and aggregate review
+  remain required; task 9303 and the production native gate stay unaccepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
