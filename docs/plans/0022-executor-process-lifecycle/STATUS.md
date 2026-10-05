@@ -764,4 +764,25 @@ lifecycle updates.
   contract; no production behavior changes. The failed runtime log is retained
   and complete stable/MSRV execution still requires a corrected rerun.
 
+- **Append phases and authentication/release controls executed:** committed
+  source `f27b132` passes the nine actual claim/stop/settlement writer-death
+  phases on stable and MSRV, followed by passing all-target Clippy; the
+  serialized command exits successfully. `append-death-ledger-rerun.log`
+  retains the named parent/fixture results. These later tests remain outside
+  the completed eight-command `bcf6632` frozen host gate.
+
+  In the separate exact-`bcf6632` control checkout, the duplicate-descriptor
+  lock regression and all nine genuine native receipt cases pass. Neutralizing
+  only explicit writer unlock yields the named runtime failure with exit 101;
+  neutralizing only the reader's no-follow flag makes the genuine symlink
+  refusal case fail at runtime with an unexpectedly accepted opaque proof
+  (driver exit 1). Each temporary committed mutation changes one source file;
+  neither failure is a compilation error. Restoring the exact base yields
+  passing lock/native baselines and a clean checkout. The report, mutation
+  source identities, named phase, log/report SHA digests and restored source
+  were checked; `auth-lock-negative-bcf6632.json` and its artifacts remain in
+  the task cache. Both Linux portable CI legs now pass at `bcf6632`, while
+  macOS/Windows legs remain live. Task 9302 remains In progress with final
+  review and remaining acceptance requirements explicit.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
