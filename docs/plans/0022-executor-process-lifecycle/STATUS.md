@@ -2565,4 +2565,18 @@ lifecycle updates.
   embedding are updated. Local source checks pass; full compiler/native/portable
   gates, automatic service routing and stronger sealed recovery remain required.
 
+- Source review found and fixed a client admission defect: the provisioned
+  broker allowed recover, but NativeRequest's separate closed action allowlist
+  omitted it, preventing the new owned recovery constructor from starting.
+  Both now admit only canonical positive-allocation recovery; a direct client
+  policy control rejects paths, zero/noncanonical allocations and launch aliases.
+  The review also found Value serialization before limits in new contract and
+  native request/completion validation. A task-adopted private helper now charges
+  existing depth and exact canonical bytes before allocating/serializing;
+  escape/Unicode/punctuation boundary and deep/oversized controls preserve hash
+  bytes and envelope limits, with contract integration refusal coverage.
+  SPEC/API are updated. Local formatting/size/whitespace checks pass; current
+  run 37319670969 remains queued, so no compiler/native/portable acceptance or
+  previously queued recovery runtime success is claimed.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

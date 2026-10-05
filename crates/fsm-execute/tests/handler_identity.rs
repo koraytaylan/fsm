@@ -151,3 +151,21 @@ fn recovery_refuses_semantically_equivalent_noncanonical_contracts() {
     extra.insert("future".into(), Value::Null);
     assert!(HandlerSpec::from_contract(&Value::Obj(extra), &original.fingerprint()).is_err());
 }
+
+#[test]
+fn contract_recovery_bounds_caller_values_before_serializing() {
+    use fsm_core::json::{JsonLimits, Value};
+    let original = handler(BASE);
+    let mut deep = Value::Null;
+    for _ in 0..=JsonLimits::DEFAULT.max_depth {
+        deep = Value::Arr(vec![deep]);
+    }
+    let mut material = original.contract_value().as_obj().unwrap().clone();
+    material.insert("arguments".into(), deep);
+    assert_eq!(
+        HandlerSpec::from_contract(&Value::Obj(material), &original.fingerprint())
+            .unwrap_err()
+            .code,
+        "exec/config"
+    );
+}

@@ -20,6 +20,8 @@ touches:
   - crates/fsm-store/src/store/execution_crash_tests.rs
   - crates/fsm-store/src/store/execution_evidence.rs
   - crates/fsm-store/src/store/execution_tests.rs
+  - crates/fsm-execute/src/lib.rs
+  - crates/fsm-execute/src/value_limits.rs
   - crates/fsm-execute/src/config.rs
   - crates/fsm-execute/src/config/identity.rs
   - crates/fsm-execute/tests/handler_identity.rs

@@ -626,3 +626,9 @@ selection and atomic stopped-result consumption after exact claim/hash,
 closure and persisted outcome checks. It preserves existing ack/attempt keys,
 uses a run-specific interrupted key without consuming a pending effect's ack,
 and sends no event; committed transaction recovery remains exact replay.
+
+Native request/completion and original-contract validation now charge depth and
+canonical byte size before serializing caller-owned Values, using a private
+bounded helper without altering hash bytes or public API. Native client policy
+also explicitly admits allocation-only recover, matching the provisioned broker;
+paths, noncanonical allocations and launch aliases still refuse.

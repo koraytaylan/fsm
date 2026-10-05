@@ -122,10 +122,8 @@ impl NativeRequest {
             .checked_add(timeout)
             .ok_or("native client deadline exceeds clock range")?;
         validate_request(request)?;
-        let bytes = canon_bytes(request);
-        if bytes.len() > 8192 {
-            return Err("native client request exceeds bound".into());
-        }
+        let bytes = crate::value_limits::canonical(request, 8192)
+            .map_err(|_| "native client request exceeds bound")?;
         parse(&bytes, &JsonLimits::DEFAULT)
             .map_err(|_| "native client request exceeds JSON limits")?;
         protected_helper()?;
@@ -331,7 +329,7 @@ fn validate_request(value: &Value) -> Result<(), String> {
                 Err("native binding shape differs".into())
             }
         }
-        Some("execute" | "close" | "observe") => {
+        Some("execute" | "close" | "observe" | "recover") => {
             let raw = payload
                 .as_num()
                 .ok_or("native allocation is not a number")?;
@@ -410,6 +408,29 @@ mod tests {
             .is_err()
         );
         assert!(decode_response(&vec![0; RESPONSE_LIMIT + 1]).is_err());
+    }
+
+    #[test]
+    fn recovery_is_an_allocation_only_request_without_launch_aliases() {
+        use std::collections::BTreeMap;
+        let mut fields = BTreeMap::from([
+            ("format".into(), Value::Str("fsm.native-request/1".into())),
+            ("action".into(), Value::Str("recover".into())),
+            ("payload".into(), Value::Num("1".into())),
+        ]);
+        assert!(validate_request(&Value::Obj(fields.clone())).is_ok());
+        for payload in [
+            Value::Num("0".into()),
+            Value::Num("01".into()),
+            Value::Str("/tmp/completed.json".into()),
+            Value::Null,
+        ] {
+            fields.insert("payload".into(), payload);
+            assert!(validate_request(&Value::Obj(fields.clone())).is_err());
+        }
+        fields.insert("payload".into(), Value::Num("1".into()));
+        fields.insert("action".into(), Value::Str("recover-and-execute".into()));
+        assert!(validate_request(&Value::Obj(fields)).is_err());
     }
 
     #[test]

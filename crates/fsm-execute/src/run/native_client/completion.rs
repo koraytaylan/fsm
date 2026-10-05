@@ -1,6 +1,5 @@
 //! Claim-bound candidates with opaque native proof, without journal mutation.
 
-use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::{Claim, FailureClass, StoppedOutcome};
 use fsm_store::store::VerifiedClosure;
@@ -84,10 +83,8 @@ fn closed(value: &Value, fields: &[&str]) -> Result<(), String> {
 }
 
 fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Material, String> {
-    let bytes = canon_bytes(response);
-    if bytes.len() > 65536 {
-        return Err("native completion exceeds response bound".into());
-    }
+    let bytes = crate::value_limits::canonical(response, 65536)
+        .map_err(|_| "native completion exceeds response bound")?;
     parse(&bytes, &JsonLimits::DEFAULT).map_err(|_| "native completion exceeds JSON limits")?;
     closed(response, &["format", "ok", "result"])?;
     if response.get("format").and_then(Value::as_str) != Some("fsm.native-response/1")

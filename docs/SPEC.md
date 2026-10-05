@@ -2088,8 +2088,12 @@ material or its digest differs from the caller-held original fingerprint.
 It MUST recover literal templates, outcome payloads and stamp ordering without
 consulting a current handler table; decoding MUST NOT grant launch or settlement
 permission. Full contract values MAY contain secrets and MUST NOT be used as
-sanitized health summaries. This decoder alone does not establish durable
-original-contract storage or stopped-result/advance recovery.
+sanitized health summaries. Contract decoding and native request/completion
+validation MUST charge caller-owned Value depth and canonical byte size before
+canonical serialization or copying, retaining the existing JSON and envelope
+limits; invalid number syntax remains subject to the existing JSON parser.
+This decoder alone does not establish durable original-contract storage or
+stopped-result/advance recovery.
 A retry
 ledger retains the original fingerprint and policy, failed count, latest
 failed timestamp/class and eligibility deadline while the effect remains

@@ -72,7 +72,6 @@ pub(super) fn recover(
     expected: &str,
 ) -> Result<HandlerSpec, crate::error::ExecError> {
     use crate::error::ExecError;
-    use fsm_core::canon::canon_bytes;
     use fsm_core::json::{JsonLimits, parse};
     let refused = || {
         ExecError::new(
@@ -80,7 +79,8 @@ pub(super) fn recover(
             "immutable handler contract is invalid or differs from its fingerprint",
         )
     };
-    let bytes = canon_bytes(value);
+    let bytes = crate::value_limits::canonical(value, JsonLimits::DEFAULT.max_bytes)
+        .map_err(|_| refused())?;
     parse(&bytes, &JsonLimits::DEFAULT).map_err(|_| refused())?;
     let fields = value.as_obj().ok_or_else(refused)?;
     let keys = [
