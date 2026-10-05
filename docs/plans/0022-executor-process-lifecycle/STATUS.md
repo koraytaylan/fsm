@@ -2410,4 +2410,16 @@ lifecycle updates.
   Formatting/size/diff checks pass; repaired stable/current native and full
   portable gates remain required, and task 9303 stays In progress.
 
+- Retained and independently verified 78 native cases for owned lifetime watcher
+  source `f4ba7482f1b7cb0cfea4cf4d12e036d859001353` from `37298657515`
+  on exact stable `rustc 1.99.0 (b940084d7 2026-09-28)` and MSRV
+  `rustc 1.89.0 (29483883e 2025-08-04)`, plus 78 MSRV native cases for public
+  supervisor-death source `f7b61d3b8a82db7c9056ffc0bc09cc61d4523c09` from
+  `37299058913`. Artifacts remain in the task cache; executable-byte verification
+  and native gate release remain false. The stable supervisor-death failure is
+  retained separately and awaits the fixture-cap repair in `587620e`, whose run
+  `37312292423` is queued. These frozen sources predate later NativeRun,
+  stopped/settlement and writer-held host changes; current full native/portable
+  gates, frozen review and automatic service integration remain required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
