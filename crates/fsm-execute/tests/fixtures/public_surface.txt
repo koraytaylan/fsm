@@ -308,11 +308,11 @@ mod fsm_execute::error
 mod fsm_execute::mcp_client
 mod fsm_execute::rid
 mod fsm_execute::run
+mod fsm_execute::run::native_client
 mod fsm_execute::run::native_io
 mod fsm_execute::sched
 mod fsm_execute::service
 mod fsm_execute::watch
-module fsm_execute::run::native_client
 reexport fsm_execute::config::substitute from template
 reexport fsm_execute::config::substitute_arguments from template
 reexport fsm_execute::contract::CheckStatus from report

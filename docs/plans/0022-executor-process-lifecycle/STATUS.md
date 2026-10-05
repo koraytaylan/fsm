@@ -2337,4 +2337,21 @@ lifecycle updates.
   run `37310521292` remains queued, compiled/native/portable gates and complete
   plans 20–23 integration remain required.
 
+- Re-polled frozen compile-fix run `37297046995` at
+  `adb53e169bd5069476243a205277a858010cb6a5`: both native jobs and zero-deps
+  succeeded, Ubuntu stable/MSRV and Windows stable/MSRV failed, macOS stable is
+  in progress and macOS MSRV queued. Retained both native artifacts in the task
+  cache and independently verified 78 cases with exact compilers
+  `rustc 1.99.0 (b940084d7 2026-09-28)` and
+  `rustc 1.89.0 (29483883e 2025-08-04)` against that frozen source;
+  executable bytes remain independently unverified and the gate unreleased.
+  This source predates the later lifetime, claimed-host and pipeline integration.
+- Ubuntu stable's authoritative public-surface failure identified the sole
+  inventory diff as observed `mod fsm_execute::run::native_client` versus
+  declared `module ...`; corrected the current fixture to the scanner's `mod`
+  vocabulary without changing the API or scanner. Formatting/size/diff checks
+  pass; current pre-fix `054cd4b` run `37310659834` is queued, other portable
+  failure classification and all current native/portable gates remain required.
+  Local swap remains nearly full, so no local Rust build was started.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
