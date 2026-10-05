@@ -431,3 +431,18 @@ Catalogue mismatch, root-status parser/classification and provisioned
 preparation cancellation/delivery controls cover these boundaries; no additional
 finding was identified, and remaining authority/helpers, historical runner and
 evidence changes still require their direct range review.
+
+Authority helper/dispatch review at corrected `9f1f175`: privileged commands
+require observed Root identity, exact argument counts and canonical fixed routes;
+client/gate dispatch instead applies their separately reviewed identity checks.
+Unsupported target binaries refuse rather than selecting a fallback.
+Protected reads use nofollow/nonblocking regular-file checks, size plus one
+overflow detection, repeated descriptor identity/mode/owner/length and canonical
+JSON; create-once private publication syncs record and parent and leaves partial
+material refusing cold replay. Original claim verification requires enabled
+admission, exact pending running ownership, no stopped result and the original
+record hash from records or the sealed base index before exclusive binding.
+The manifest adds only the separately provisioned authority binary, and library
+limits remain private; MCP-client changes document socket cancellation without
+changing protocol behavior. No additional finding was identified in these deltas;
+historical Runner and evidence/test harness range review remain outstanding.
