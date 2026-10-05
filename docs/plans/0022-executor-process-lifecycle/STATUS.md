@@ -1704,4 +1704,18 @@ lifecycle updates.
   proof, production client/service wiring and host stop/drain/recovery remain
   required, and task 9303 stays In progress.
 
+- **Frozen process/MCP tree runner proof retained:** run `37289090885` for
+  `7b104fe` completes both native jobs successfully, with zero dependencies
+  passing and all six portable jobs still live/queued. Retained stable 1.99.0
+  and MSRV 1.89.0 artifacts independently verify all 76 cases against exact
+  frozen source/compiler, without executable-byte equivalence or gate release.
+  This includes production MCP tool-error/withheld-answer tree cleanup and
+  process early-root-exit with inherited child/grandchild streams in another
+  session, original claim/hash/result checks, matching closure proof, retained
+  journal ownership and duplicate-launch refusal, plus the repaired strict
+  template fixture. It predates explicit cancellation, protected-handoff fault
+  cases and broker implementation/controls; those still require separate native
+  acceptance. This is not full portable/service/backend acceptance, and task
+  9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
