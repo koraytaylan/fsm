@@ -2158,4 +2158,16 @@ lifecycle updates.
   production service preparation/scheduling remain required, and task 9303
   stays In progress.
 
+- **Native stopped-owner successor exclusion control authored:** after actual
+  closure and pipeline stopped persistence, the native access case prepares a
+  fresh successor allocation and attempts admission through `claim_native`
+  before predecessor settlement. It must preserve the exact wrapped
+  `store/execution_owned` refusal, unchanged records/full ownership, and absent
+  successor binding, launch intent, entry grant and handoff; only the existing
+  original settlement proceeds. This is sequential admission exclusion, not
+  concurrent-executor/service-race acceptance. Formatting, size and diff checks
+  pass; run `37305244263` is authoritatively queued for `0888613`, compiled
+  native/portable verification and remaining full integration/races stay
+  required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

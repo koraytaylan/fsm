@@ -339,6 +339,53 @@ pub(super) fn run() {
             .unwrap();
         assert_eq!(retained.outcome(), completion.stopped_outcome());
         assert!(store.state.instances["instance"].pending.contains(&effect));
+        let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
+        let claim_material = original_claim.to_value();
+        let retry = fsm_core::record::execution::RetryPolicy::from_value(
+            claim_material.get("retry").unwrap(),
+        )
+        .unwrap();
+        let before = store.records.len();
+        let ownership = store.state.execution.clone();
+        let refused = pipeline
+            .claim_native(
+                &mut store,
+                &mut clock,
+                fsm_store::store::ExecutionClaimRequest {
+                    instance_id: "instance",
+                    effect_id: &effect,
+                    handler_fingerprint: claim_material
+                        .get("handler_fingerprint")
+                        .unwrap()
+                        .as_str()
+                        .unwrap(),
+                    retry: &retry,
+                    domain: &successor,
+                    request_id: "native-competing-claim",
+                    expected_seq: None,
+                },
+            )
+            .unwrap_err();
+        assert_eq!(refused.code, "exec/store");
+        assert_eq!(
+            refused
+                .details
+                .as_ref()
+                .unwrap()
+                .get("code")
+                .and_then(Value::as_str),
+            Some("store/execution_owned")
+        );
+        assert_eq!(store.records.len(), before);
+        assert_eq!(store.state.execution, ownership);
+        for prefix in ["binding", "launch", "entry", "handoff"] {
+            assert_eq!(
+                fs::symlink_metadata(fixture.directory.join(format!("{prefix}-2.json")))
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::NotFound
+            );
+        }
     }
     let reopened = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(

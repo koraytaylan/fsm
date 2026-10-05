@@ -102,6 +102,10 @@ which refuses unsupported native architectures and persists the complete claim
 through existing writer-protected admission/ownership/retry checks before any
 binding or launch; automatic service domain preparation and scheduling remain
 pending.
+The native access case also prepares a fresh successor domain while the original
+verified stopped result is still unsettled; pipeline admission must refuse it
+as owned without appending or changing ownership, and successor binding, launch
+intent, entry grant and handoff must remain absent before original settlement.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.
