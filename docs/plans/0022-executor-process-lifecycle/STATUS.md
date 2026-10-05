@@ -3008,4 +3008,15 @@ lifecycle updates.
   unit. Fresh provisioned stable/MSRV and full portable proof remain required;
   task 9303 remains active and all production integration is still pending.
 
+- CI 37359888477 provisioned native stable and MSRV both pass all 81 cases at
+  frozen 2a327807ac99276420844a74e377b2dbbe71ba8d, independently verified against
+  source inventories, compiler identity, report/log hashes and negative-failure
+  proof. native_profile_refusal passes on both, closing its runtime evidence
+  gap without modifying product installations or consuming a rejected allocation.
+  This also compiles the new control at both toolchains; local host compilation
+  remains deferred under swap pressure, and full portable jobs remain active.
+  The verifier still reports executable_bytes_verified=false and gate_released
+  false; production routing, full host gates and complete 9303 acceptance remain
+  required, with every later task and plans 20/21/23 still unfinished.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
