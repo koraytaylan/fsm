@@ -14,11 +14,15 @@ silently.
 | `fsm.journal/1` | Journal record envelopes |
 | `fsm.state/3` | Instance state identity hash payloads |
 | `fsm.state/2` | Instance state identity before composition; still verified where a record declares it |
-| `fsm.state-root/3` | Complete logical store roots |
-| `fsm.snapshot/5` | Disposable snapshot caches |
-| `fsm.base/1` | Authoritative base state a sealed store opens from |
+| `fsm.state-root/4` | Current complete logical store roots, including execution admission and ownership |
+| `fsm.state-root/3` | Historical complete store roots; verified where historical records declare them |
+| `fsm.snapshot/6` | Current disposable snapshot caches, including execution state |
+| `fsm.snapshot/5` | Historical disposable snapshot caches |
+| `fsm.base/2` | Current authoritative sealed base, including execution state |
+| `fsm.base/1` | Historical authoritative sealed base; opens with quarantined execution admission |
 | `fsm.base-dedup/1` | Request-fingerprint root a seal commits over the keys its base carries |
-| `fsm.base-index/1` | Record-derived index root a seal commits over the tags, parent links, and sequences its base carries |
+| `fsm.base-index/1` | Record-derived index root over tags, parent links and sequences |
+| `fsm.base-execution-claims/1` | Separate sealed-base commitment to original execution-claim hashes |
 | `fsm.archive/1` | Manifest of a detached archive's sealed segments |
 | `expr/1` | Expression grammar |
 

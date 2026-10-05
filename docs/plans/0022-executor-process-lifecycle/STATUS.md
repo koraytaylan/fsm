@@ -1455,4 +1455,16 @@ lifecycle updates.
   formatting/file-length checks precede compiled native CI, with retained-pipe,
   noisy process/MCP capture and full runner closure still outstanding.
 
+- **Persistence summary reconciled with accepted implementation:** SPEC's
+  opening format table still named historical root/3, snapshot/5 and base/1
+  as current. It now names the implemented root/4, snapshot/6 and base/2,
+  preserving historical rows and their execution-quarantine boundary; the
+  separate base-execution-claims/1 commitment is now listed alongside the
+  unchanged base-index/1. This is
+  documentation repair, not a format or hash change. Separately, retained
+  MSRV evidence for `3ea6d5a` confirms real/test binaries compile and fixture
+  installation reaches the first case, which fails with the known manager
+  EOF timeout repaired later in `9e50756`; no positive gate or full native
+  acceptance is inferred. Task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
