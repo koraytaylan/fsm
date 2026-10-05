@@ -140,10 +140,11 @@ fn ready(reader: &mut UnixStream) -> u32 {
                 );
                 bytes.extend_from_slice(&chunk[..count]);
                 let output = std::str::from_utf8(&bytes).unwrap();
-                if let Some((_, remaining)) = output.split_once("native-descendant=") {
-                    if let Some((pid, _)) = remaining.split_once('\n') {
-                        return pid.parse().unwrap();
-                    }
+                if let Some((pid, _)) = output
+                    .split_once("native-descendant=")
+                    .and_then(|(_, remaining)| remaining.split_once('\n'))
+                {
+                    return pid.parse().unwrap();
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
