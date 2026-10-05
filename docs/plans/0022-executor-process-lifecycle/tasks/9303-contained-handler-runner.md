@@ -731,3 +731,16 @@ retained in the task cache, with final Windows stable log
 above. The separate local frozen stable host gate remains unexecuted under the
 workspace swap rule, so status remains `in_progress` and no production gate is
 released; dependent integrated-host acceptance remains outside this verdict.
+
+### Local frozen stable gate resumed
+
+At exact product `9f1f175ad91609359699e3a2d670119e8cbb506a`, the isolated
+local `cargo +stable test --workspace --no-fail-fast` completed with exit code
+zero after swap fell below the workspace threshold. The run used
+`CARGO_BUILD_JOBS=1`, `RUST_TEST_THREADS=1` and the dedicated disk-backed task
+cache as `TMPDIR`; repeated observations showed approximately 2.1 GiB swap,
+65 GiB available RAM and zero current memory pressure. The retained log is
+`~/.cache/fsm-plan-native-matrix-20261005/local-9f1f175-stable-debug.log`.
+The separate release gate has started serially; clippy, documentation and
+remaining explicit host gates are still pending, so this task remains
+`in_progress` and production ownership integration remains unaccepted.
