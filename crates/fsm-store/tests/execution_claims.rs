@@ -449,7 +449,7 @@ fn claim_append_boundaries_recover_only_the_complete_durable_prefix() {
 }
 
 #[test]
-fn historical_attempts_cannot_restart_at_one_after_reopen() {
+fn historical_attempts_cannot_restart_after_cache_cold_replay_or_sealing() {
     let directory = Directory::new();
     let (mut store, effect) = populated(&directory);
     store
@@ -462,19 +462,49 @@ fn historical_attempts_cannot_restart_at_one_after_reopen() {
             None,
         )
         .unwrap();
+    // SPEC execution admission preserves unbound historical failed counts,
+    // including when a committed checkpoint selects a disposable cache.
+    while store.journal.last_seq < 10_000 {
+        let request = format!("legacy-checkpoint-{}", store.journal.last_seq);
+        store.annotate("instance", &request, "").unwrap();
+    }
     let head = store.journal.last_seq;
     drop(store);
     let mut store = Store::open(&directory.0).unwrap();
-    assert_eq!(store.attempts_for("instance", &effect), 1);
-    assert_eq!(
-        allocate(&mut store, &effect, "reset-count", None)
-            .unwrap_err()
-            .code,
-        "store/execution_contract"
-    );
-    assert_eq!(store.state.execution.run_high_water(), 0);
+    assert!(store.opened_from_snapshot);
     assert_eq!(store.journal.last_seq, head);
-    assert!(!store.state.dedup.contains_key("reset-count"));
+    for phase in ["cache", "cold", "first-seal", "second-seal"] {
+        if phase != "cache" {
+            if phase != "cold" {
+                let archive = directory.0.join(phase);
+                std::fs::create_dir_all(&archive).unwrap();
+                store.seal_and_archive(&archive, None).unwrap();
+                fsm_store::archive::verify(&archive).unwrap();
+            }
+            drop(store);
+            std::fs::remove_dir_all(directory.0.join("snapshots")).unwrap();
+            store = Store::open(&directory.0).unwrap();
+            assert!(!store.opened_from_snapshot);
+        }
+        let head = store.journal.last_seq;
+        let hash = store.journal.last_hash.clone();
+        let request = format!("reset-count-{phase}");
+        assert_eq!(store.attempts_for("instance", &effect), 1);
+        assert_eq!(
+            allocate(&mut store, &effect, &request, None)
+                .unwrap_err()
+                .code,
+            "store/execution_contract"
+        );
+        assert_eq!(store.state.execution.run_high_water(), 0);
+        assert_eq!(store.journal.last_seq, head);
+        assert_eq!(store.journal.last_hash, hash);
+        assert!(!store.state.dedup.contains_key(&request));
+        assert!(matches!(
+            fsm_store::journal_io::verify(&directory.0).health,
+            fsm_store::journal_io::JournalHealth::Ok
+        ));
+    }
 }
 
 #[test]

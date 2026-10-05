@@ -537,4 +537,16 @@ lifecycle updates.
   acceptance, and native authentication plus remaining fault boundaries still
   keep task 9302 In progress.
 
+- **Legacy failed-count replay regression expanded:** the production admission
+  test now reaches a selected journal-bound checkpoint cache, cache-free cold
+  replay, and two seal/archive/reopen cycles for an effect with a historical
+  unbound failed attempt. Each phase checks contract refusal, unchanged head
+  and hash, no request-id consumption and no run allocation. Formatting,
+  source-size and diff checks pass; execution is pending the serialized frozen
+  `9e4119a` host gate, whose debug workspace suite has passed and whose release
+  suite is running. Review run `37257557135` covers that frozen source, not
+  this later regression expansion; its two native prerequisite jobs and
+  zero-dependencies job have passed while the six portable legs remain live.
+  Task 9302 remains In progress and this entry does not claim new acceptance.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
