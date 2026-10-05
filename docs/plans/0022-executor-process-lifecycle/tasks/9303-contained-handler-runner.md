@@ -675,3 +675,11 @@ checks; actual Root publication/file verification is established separately by
 the native bridge and broker controls, not by constructing a test-only proof.
 No additional finding was identified in these changed tests; they do not replace
 production host crash and concurrent-executor acceptance.
+
+Contract reconciliation found a stale API-policy paragraph describing the initial
+private result envelope `/1` without identifying its supersession. Corrected
+the paragraph to name current `/3`, its original kind/full contract and refusal
+of older envelopes, matching SPEC and NativeCompletion; no code, persisted
+journal/closure bytes, hash or public signature changes. This documentation
+finding is repaired independently of the interrupted-I/O product correction;
+compiled evidence remains bound to product `9f1f175`.

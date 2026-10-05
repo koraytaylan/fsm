@@ -260,9 +260,12 @@ and `NativeProtocol` owned stream adapters; the inventory includes their
 constructors, bounded polling/finalization, cancellation and observed join.
 They authorize no launch or closure. Private root `execute` derives the
 approved invocation from its claim and returns the existing candidate result
-only after protected closure proof and owned handle retirement, in a bounded
-`fsm.native-run-result/1` response; journal formats and stable error codes are
-unchanged, with native MCP/tree/service acceptance still pending.
+only after protected closure proof and owned handle retirement. Its initial
+private `fsm.native-run-result/1` response is historical: the current bounded
+envelope is `fsm.native-run-result/3`, carrying the original handler kind and
+full immutable contract; earlier versions refuse rather than infer missing
+material. Journal formats and stable error codes remain unchanged, and this
+provisional surface does not establish production service routing acceptance.
 Private process-root status observation changes no public API or journal
 format; matched exit data remains a candidate requiring native closure.
 
