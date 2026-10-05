@@ -516,4 +516,15 @@ lifecycle updates.
   APIs; they do not establish native closure authentication, power-loss safety
   or every in-append/fsync/rotation fault boundary. Task 9302 remains In progress.
 
+- **Writer death across journal rotation:** the abrupt-death harness now runs
+  every durable claim/stop/settlement stage both within one segment and with a
+  forced production rotation before each execution operation. Verified segment
+  counts prove the rotated cases span two, three or four real segment files.
+  All ten barrier/kill/reopen cases preserve head/hash, exclusion, idempotent
+  replay, stale double-consumption refusal and retry/interruption semantics;
+  the harness passes on stable and MSRV and all-target Clippy passes. This
+  proves recovery after completed rotation/publication, not interruption inside
+  rotation, failed fsync, power loss or native closure authentication. Task 9302
+  remains In progress with those acceptance gaps explicit.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
