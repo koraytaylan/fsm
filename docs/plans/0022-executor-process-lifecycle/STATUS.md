@@ -701,4 +701,16 @@ lifecycle updates.
   wiring still needs a full clean-source matrix run and does not identify the
   fixture issuer as a shipped production authority. Task 9302 stays In progress.
 
+- **New frozen review launched:** exact source
+  `bcf663297f872d1232f97351b7771c0878d27685` is isolated in a clean detached
+  checkout with its own Cargo target, covering the writer-lock correction,
+  descriptor/rotation faults, legacy seal-pin case and genuine native receipt
+  bridge/matrix wiring. The eight-command stable host gate is running with
+  serialized workers. Publication to the existing authorized review branch
+  succeeded; CI run `37259980746` is queued for six portable legs, both now
+  70-case provisioned native inventories, and zero dependencies. The older
+  `9e4119a` matrix remains unaccepted because of its recorded macOS/MSRV
+  release failure. No task acceptance advances until the new source-bound
+  review, required controls and matrix complete.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
