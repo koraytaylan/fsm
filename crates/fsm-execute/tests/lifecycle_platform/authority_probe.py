@@ -9,7 +9,8 @@ import sys
 
 INVENTORY = ('empty_domain_preparation', 'unknown_domain_refusal',
          'counter_rollback_refusal', 'incomplete_intent_refusal',
-         'enrolled_gate_authorization', 'genuine_claim_binding')
+         'enrolled_gate_authorization', 'genuine_claim_binding',
+         'provisioned_broker_access')
 
 
 def build_authority(repo, toolchain, operation):

@@ -1685,4 +1685,23 @@ lifecycle updates.
   compiled native operator/authentication/restart/disconnect controls and
   service/client wiring remain required, and task 9303 stays In progress.
 
+- **Native production broker access/restart controls authored:** the native
+  authority inventory now adds `provisioned_broker_access`, running the actual
+  installed production authority binary under UMask=0077 and separate clients
+  that drop all supplementary groups and both root UIDs before route access and
+  socket connection. The configured operator must prepare/bind/execute a real
+  claimed process with matching receipt and retained unstopped journal ownership;
+  duplicate execution and unknown policy actions must refuse. Another UID and
+  a dynamic-handler-range UID must get actual EACCES. Controls also require
+  exclusive server leadership with unchanged counter, restart with monotonically
+  increasing epochs and preserved stale socket inode, and refusal of missing or
+  rolled-back counter and missing epoch history without resetting authority.
+  Fixture daemon ownership has bounded kill/reap cleanup; exact fixture faults
+  are restored without turning their refused startups into passes. Formatting,
+  file-size, diff and Python syntax checks pass; stable/MSRV compiled native
+  acceptance remains pending. The earlier transport run `37291561643` is
+  authoritatively queued with nine jobs present. Broker client-disconnect/tree
+  proof, production client/service wiring and host stop/drain/recovery remain
+  required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

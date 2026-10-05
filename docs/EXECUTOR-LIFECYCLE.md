@@ -1,5 +1,15 @@
 # Executor lifecycle feasibility
 
+Native broker review now includes the installed production authority binary
+and independent Python clients that drop supplementary groups and both root
+UIDs before reading the protected public route and connecting. Controls require
+operator preparation/binding/execution with matching closure evidence and
+retained journal ownership, denied access for another UID and a handler-range
+UID, fixed-policy refusal, exclusive leadership, monotonic restart with stale
+socket identity preserved, and refusal of missing/rolled-back counter or missing
+epoch history. This is authored native coverage awaiting stable/MSRV execution,
+not completed broker/service acceptance.
+
 Broker provisioning now applies 0755 explicitly to its newly created directory
 and refuses existing ancestors without operator traversal; registration does
 the same for its own newly created namespace/authority directories, preserving

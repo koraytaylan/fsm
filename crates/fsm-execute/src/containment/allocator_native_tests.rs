@@ -16,6 +16,15 @@ mod enrollment_cases;
 #[path = "runner_native_tests.rs"]
 mod runner_cases;
 
+#[path = "broker_native_tests.rs"]
+mod broker_cases;
+
+#[test]
+#[ignore = "requires provisioned root broker and writable cgroups"]
+fn provisioned_broker_access() {
+    broker_cases::run();
+}
+
 struct Fixture {
     directory: PathBuf,
     store: PathBuf,
