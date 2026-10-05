@@ -60,6 +60,9 @@ os.environ['FSM_NATIVE_TEST_NAMESPACE']=authority.parent.name
 os.environ.pop('FSM_NATIVE_TEST_BINDING',None)
 os.environ.pop('FSM_NATIVE_TEST_REFUSE',None)
 os.environ.pop('FSM_NATIVE_TEST_CANCEL',None)
+os.environ.pop('FSM_NATIVE_TEST_STORE',None)
+if (authority.parent/'operator-store').is_dir():
+    os.environ['FSM_NATIVE_TEST_STORE']=str(authority.parent/'operator-store')
 if len(sys.argv)>=3:
     os.environ['FSM_NATIVE_TEST_BINDING']=sys.argv[2]
 if len(sys.argv)==4:

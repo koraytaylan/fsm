@@ -2238,4 +2238,16 @@ lifecycle updates.
   `37307522637`) is queued, automatic standalone/embedded/public-tick routing
   remains incomplete, and task 9303 remains In progress.
 
+- Routed the positive unprivileged native host through `Pipeline::start_native`
+  while holding an actual durable writer, checked no startup journal/state
+  mutation, and dropped the writer before polling authenticated completion.
+  The fixture provisions a separately reachable operator-owned store inside its
+  exact test namespace, preserving registered inode identity and cleaning that
+  store before its namespace; positive startup requires this path with no direct
+  runner fallback, while existing wrong-hash/cancel transport controls stay direct.
+  Explicit native fixture filesystem trait imports support the new provisioning.
+  Formatting/size/diff checks pass; prior head `cab915e` run `37307820825` is
+  queued, compiled native/full portable gates remain pending, and this is host
+  adapter coverage rather than completed standalone/embedded/public-tick routing.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

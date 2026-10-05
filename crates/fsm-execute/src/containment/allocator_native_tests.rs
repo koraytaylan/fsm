@@ -6,6 +6,7 @@ use fsm_core::record::execution::RetryPolicy;
 use fsm_store::clock::FixedClock;
 use fsm_store::store::{ExecutionClaimRequest, Store};
 use std::collections::BTreeMap;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 
 #[path = "termination_native_tests.rs"]
 mod termination_cases;
@@ -47,6 +48,14 @@ impl Fixture {
     }
 
     fn new_for_table(table: Value) -> Self {
+        Self::new_for_table_location(table, false)
+    }
+
+    fn new_for_operator(table: Value) -> Self {
+        Self::new_for_table_location(table, true)
+    }
+
+    fn new_for_table_location(table: Value, operator_store: bool) -> Self {
         assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
         protected_directory(Path::new(GROUPS)).unwrap();
         let seed = format!(
@@ -62,14 +71,28 @@ impl Fixture {
         let directory = super::super::authority_path(&namespace, "1").unwrap();
         let created_base = !Path::new(super::super::BASE).exists();
         if created_base {
-            use std::os::unix::fs::DirBuilderExt;
             fs::DirBuilder::new()
                 .mode(0o755)
                 .create(super::super::BASE)
                 .unwrap();
         }
         assert!(!directory.parent().unwrap().exists());
-        let store = std::env::temp_dir().join(format!("fsm-native-authority-store-{namespace}"));
+        let store = if operator_store {
+            // This test-only store must be reachable after dropping all Root
+            // credentials; shared temporary ancestors may be private to Root.
+            fs::DirBuilder::new()
+                .mode(0o755)
+                .create(directory.parent().unwrap())
+                .unwrap();
+            fs::set_permissions(
+                directory.parent().unwrap(),
+                fs::Permissions::from_mode(0o755),
+            )
+            .unwrap();
+            directory.parent().unwrap().join("operator-store")
+        } else {
+            std::env::temp_dir().join(format!("fsm-native-authority-store-{namespace}"))
+        };
         let fixture = Self {
             directory,
             store,
@@ -137,8 +160,8 @@ impl Fixture {
         }) {
             return Err("fixture retains authority for an unknown surviving domain".into());
         }
-        fs::remove_dir_all(self.directory.parent().ok_or("namespace missing")?).map_err(io)?;
         fs::remove_dir_all(&self.store).map_err(io)?;
+        fs::remove_dir_all(self.directory.parent().ok_or("namespace missing")?).map_err(io)?;
         if self.created_base {
             let _ = fs::remove_dir(super::super::BASE);
         }

@@ -43,7 +43,26 @@ fn complete(binding: Value) {
         .get("journal_claim")
         .and_then(Value::as_str)
         .unwrap();
-    let mut owned = NativeRun::start(&claim, hash, Duration::from_secs(30)).unwrap();
+    let negative = matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1"))
+        || matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1"));
+    let mut owned = if negative {
+        NativeRun::start(&claim, hash, Duration::from_secs(30)).unwrap()
+    } else {
+        let path = std::env::var("FSM_NATIVE_TEST_STORE")
+            .expect("positive host requires operator-owned store");
+        let mut store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        let records = store.records.len();
+        let state = store.state.clone();
+        assert_eq!(store.current_execution_claim_hash(&claim).unwrap(), hash);
+        let owned = pipeline
+            .start_native(&mut store, &claim, Duration::from_secs(30))
+            .unwrap();
+        assert_eq!(store.records.len(), records);
+        assert_eq!(store.state, state);
+        drop(store);
+        owned
+    };
     assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
     assert!(!owned.progress().helper.reaped);
     if matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1")) {

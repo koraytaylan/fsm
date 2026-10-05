@@ -169,7 +169,7 @@ fn request(base: &Path, action: &str, payload: Value) -> Value {
 
 pub(super) fn run() {
     let table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000,"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#, &JsonLimits::DEFAULT).unwrap();
-    let mut fixture = Fixture::new_for_table(table);
+    let mut fixture = Fixture::new_for_operator(table);
     for uid in [0, 61184, 65519, u32::MAX] {
         assert!(broker_endpoint::provision(&fixture.directory, uid).is_err());
         assert!(!fixture.directory.join("broker").exists());
@@ -226,6 +226,7 @@ pub(super) fn run() {
         .groups
         .push((group, domain.to_value().get("cgroup").unwrap().clone()));
     let (binding, effect) = claim_binding(&fixture, &domain);
+    permit_operator_store(&fixture.store);
     let execution = disconnect_cases::complete(&fixture.directory, &binding);
     assert_eq!(
         read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
@@ -492,4 +493,21 @@ pub(super) fn run() {
     );
     drop(daemon);
     fixture.cleanup().unwrap();
+}
+
+fn permit_operator_store(path: &Path) {
+    let metadata = fs::symlink_metadata(path).unwrap();
+    assert_eq!(metadata.uid(), 0);
+    assert!(metadata.is_dir() || metadata.is_file());
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path).unwrap() {
+            permit_operator_store(&entry.unwrap().path());
+        }
+    }
+    fs::set_permissions(
+        path,
+        fs::Permissions::from_mode(if metadata.is_dir() { 0o700 } else { 0o600 }),
+    )
+    .unwrap();
+    std::os::unix::fs::chown(path, Some(65534), Some(65534)).unwrap();
 }
