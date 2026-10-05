@@ -92,4 +92,19 @@ closed; a root exit or MCP response cannot release surviving descendants.
   runner, and native stable/MSRV coverage plus public-surface/zero-dependency
   gates pass without falling back to weaker platform implementations.
 
+**Acceptance review at source `893dd8b`:**
+
+| Requirement | Inspected implementation and evidence | Remaining acceptance |
+| --- | --- | --- |
+| One claimed process/MCP enrollment path | `containment/runner.rs`, `exec_status.rs`, `enrollment.rs` and `runner_native_tests.rs`; verified native stable/MSRV artifacts from CI `37361472892` include the production authority suite. | Complete frozen-range spec/API review and terminal portable gates. |
+| Candidate separated from verified closure and uncertainty | `runner.rs` publishes completion only after `closure::complete`, matching `VerifiedClosure`, and owned child/worker retirement; corrupted handoff cases retain the original claim without a receipt or successful result. | Preserve these controls in the final acceptance range. |
+| Root exit, response, timeout and cancellation close descendants | Native runner controls independently observe root, child and grandchild membership, then exercise process exit/failure/signal and MCP response/protocol/timeout/cancellation paths. | Production service routing and host capacity integration belong to dependent task 9401 and remain incomplete. |
+| Bounded capture and resource retirement | `capture_native_tests.rs` checks both handler kinds at 4096, 4097, hash limit, hash limit plus one, and eight MiB; exact prefixes/digests, bounded result material and repeated FD/thread inventories are verified. | Full stable host gates remain running or unexecuted at this source. |
+| Explicit cleanup progress and best-effort Drop | `NativePreparation`, `NativeRun` and `NativeExecution` expose bounded phase/helper progress; observation does not require a writer and settlement retains completion on refusal; authority `OwnedRun::drop` fences without manufacturing closure. | Final public-surface and zero-dependency verdicts remain required. |
+
+The independently verified native inventory contains 81 cases per compiler;
+this count describes the whole matrix, not 81 runner-specific controls.
+The artifacts do not independently compare executable bytes and do not release
+the production native gate; task status remains `in_progress`.
+
 - **Done when:** the same production runner passes native process and MCP descendant/pipe/capture tests and returns a settleable result only with matching run identity and proved closed containment, while every uncertain cleanup remains explicit and bounded.
