@@ -1,7 +1,7 @@
 //! Abrupt writer death after durable APIs; fixture proofs do not authenticate native closure.
 
 use super::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -127,6 +127,99 @@ fn failed_rotation_preserves_execution_state_and_requires_writer_reopen() {
             crate::journal_io::JournalHealth::Ok
         ));
     }
+}
+
+fn descriptor_failure(failure: &str, descriptor: impl Fn(&Path) -> std::fs::File) {
+    for stage in ["claim", "stop", "settle"] {
+        let directory = Directory(std::env::temp_dir().join(format!(
+            "fsm-execution-descriptor-{failure}-{}-{}-{stage}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        )));
+        std::fs::create_dir_all(&directory.0).unwrap();
+        let (mut store, effect) = pending_store(Store::open(&directory.0).unwrap());
+        if stage != "claim" {
+            allocate(&mut store, &effect, "claim", &mut FixedClock::new(100, 1)).unwrap();
+        }
+        let claim = store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .cloned();
+        if stage == "settle" {
+            stop(&mut store, claim.as_ref().unwrap(), "timeout", "stop");
+        }
+        let before = store.state.clone();
+        let head = store.journal.last_seq;
+        let hash = store.journal.last_hash.clone();
+        let segment = directory.0.join("journal").join(&store.journal.seg_name);
+        let bytes = std::fs::read(&segment).unwrap();
+        store.journal.replace_writer_for_test(descriptor(&segment));
+        assert_eq!(
+            execution_operation(&mut store, &effect, claim.as_ref(), stage)
+                .unwrap_err()
+                .code,
+            "io/write"
+        );
+        assert!(store.journal.poisoned);
+        assert!(crate::snapshot::store_states_eq(&store.state, &before));
+        assert_eq!(store.journal.last_seq, head);
+        assert_eq!(store.journal.last_hash, hash);
+        assert_eq!(std::fs::read(&segment).unwrap(), bytes);
+        assert!(!store.state.dedup.contains_key("boundary"));
+        // A valid descriptor does not clear the unknown writer state: only a
+        // fresh authoritative reopen may permit the next operation.
+        store.journal.replace_writer_for_test(
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&segment)
+                .unwrap(),
+        );
+        assert_eq!(
+            execution_operation(&mut store, &effect, claim.as_ref(), stage)
+                .unwrap_err()
+                .code,
+            "io/write"
+        );
+        assert_eq!(std::fs::read(&segment).unwrap(), bytes);
+        drop(store);
+        let read_only = Store::open_read_only(&directory.0).unwrap();
+        assert!(crate::snapshot::store_states_eq(&read_only.state, &before));
+        drop(read_only);
+        let mut store = Store::open(&directory.0).unwrap();
+        assert!(!store.journal.poisoned);
+        assert!(crate::snapshot::store_states_eq(&store.state, &before));
+        execution_operation(&mut store, &effect, claim.as_ref(), stage).unwrap();
+        assert_eq!(store.journal.last_seq, head + 1);
+        assert!(store.state.dedup.contains_key("boundary"));
+        assert_fold(&store);
+        assert!(matches!(
+            crate::journal_io::verify(&directory.0).health,
+            crate::journal_io::JournalHealth::Ok
+        ));
+    }
+}
+
+#[test]
+fn failed_segment_write_preserves_execution_state_until_writer_reopen() {
+    descriptor_failure("write", |segment| std::fs::File::open(segment).unwrap());
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_segment_fsync_preserves_execution_state_until_writer_reopen() {
+    descriptor_failure("fsync", |_| {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/null")
+            .unwrap();
+        // Prove the actual OS descriptor accepts writes but refuses fsync;
+        // append then exercises the same write_all -> sync_all production path.
+        file.write_all(b"fsync-phase-probe").unwrap();
+        assert!(file.sync_all().is_err());
+        file
+    });
 }
 
 #[test]

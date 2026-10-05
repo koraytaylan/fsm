@@ -44,6 +44,13 @@ impl Journal {
         self.mem_records.as_deref()
     }
 
+    /// Swap only the descriptor so tests can reach real OS write/fsync errors
+    /// through production append without injecting an error or poison flag.
+    #[cfg(test)]
+    pub(crate) fn replace_writer_for_test(&mut self, file: std::fs::File) {
+        self.seg = Seg::File(file);
+    }
+
     pub fn append(&mut self, kind: RecordKind, body: Value) -> Result<Record, JournalIoError> {
         self.append_at(kind, body, crate::clock::now_ms())
     }

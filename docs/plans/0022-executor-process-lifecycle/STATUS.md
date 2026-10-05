@@ -585,4 +585,20 @@ lifecycle updates.
   Neither result establishes production native receipt authentication or
   failed-fsync/partial-write/power-loss coverage, so task 9302 stays In progress.
 
+- **Execution descriptor fault harness added:** a crate-private `cfg(test)`
+  seam swaps only the journal's file descriptor while leaving the production
+  append path and its OS errors unchanged. Claim, stop and settlement each
+  exercise a real write refusal using a read-only segment descriptor, then
+  require poisoned refusal even after restoring a writable descriptor and
+  successful retry only after cold reopen. Linux additionally uses `/dev/null`
+  with an independently successful write and failed `sync_all` probe to reach
+  the production write-all/failed-fsync path for all three APIs. Each case
+  checks unchanged real segment bytes, logical state/head/hash and request
+  identity plus read-only reconstruction and verification. The fsync case
+  discards the attempted bytes on a substituted descriptor; it does not prove
+  recovery when real segment bytes reached storage before fsync failed, power
+  loss, or native receipt authentication. No production API or persisted byte
+  changes. Formatting/source-size/diff checks pass; execution is pending.
+  Task 9302 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
