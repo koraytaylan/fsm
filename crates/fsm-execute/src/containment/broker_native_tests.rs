@@ -615,7 +615,10 @@ fn run_case(timeout: bool) {
             .unwrap()
             .is_none()
     );
-    assert_eq!(reopened.state, state);
+    assert!(fsm_store::snapshot::store_states_eq(
+        &reopened.state,
+        &state
+    ));
     assert_eq!(reopened.journal.last_hash, head);
     assert!(
         !reopened
@@ -727,7 +730,7 @@ fn run_case(timeout: bool) {
             )
             .unwrap();
         assert_eq!(store.records.len(), before + 1);
-        assert_eq!(store.state, state);
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
     }
     fs::rename(&saved_catalogue, &catalogue).unwrap();
     assert_eq!(fs::read(&completed).unwrap(), completed_bytes);

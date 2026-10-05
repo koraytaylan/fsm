@@ -2606,4 +2606,17 @@ lifecycle updates.
   Source checks pass; compiled/native CI and frozen review remain pending,
   so task 9303 stays in progress and plans 20–23 remain incomplete.
 
+- CI review of frozen physical-store commit 2aec1f4, run 37325435831,
+  found native-fixture compile errors: imports missing from typed preparation,
+  StoreState compared with unsupported PartialEq, pending String slices compared
+  to &str via contains, and successful recovery asserted in an uncertain branch.
+  Fixes use the existing complete store_states_eq helper and typed iterator
+  comparisons, import the in-tree parser/limits, and require uncertain recovery
+  to refuse. Native stable evidence independently failed the systemd kill probe:
+  the manager reported inactive and cgroup populated 0, but the original domain
+  still existed; the absence gate is preserved and this remains unaccepted.
+  Completed Ubuntu/Windows and native jobs failed, zero-deps passed, and both
+  macOS jobs remain queued; no failed/queued job was restarted or canceled.
+  Source checks pass, compiled/native verification remains pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

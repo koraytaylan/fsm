@@ -43,7 +43,10 @@ pub(super) fn bound_claim(fixture: &Fixture, binding: &Value, effect: &str) {
             assert_eq!(refusal.code, "exec/mode");
             assert!(refusal.message.contains("healthy durable writer"));
             assert_eq!(refused_store.records.len(), records);
-            assert_eq!(refused_store.state, state);
+            assert!(fsm_store::snapshot::store_states_eq(
+                &refused_store.state,
+                &state
+            ));
         }
         let before_records = snapshot.records.len();
         let mut pipeline = fsm_execute::run::Pipeline;

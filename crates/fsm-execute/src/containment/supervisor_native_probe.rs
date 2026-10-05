@@ -74,13 +74,13 @@ fn complete(binding: Value) {
         assert!(missing.reap().unwrap());
         assert_retired_uncertain(&missing);
         assert_eq!(store.records.len(), records);
-        assert_eq!(store.state, state);
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
         let mut holder = WriterHolder::start(&path);
         let mut owned = pipeline
             .start_native(&mut store, &claim, Duration::from_secs(30))
             .unwrap();
         assert_eq!(store.records.len(), records);
-        assert_eq!(store.state, state);
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
         // Send binding before the lease barrier, but never dispatch execute
         // on this first poll even if the binding response is already available.
         assert!(owned.poll().unwrap().is_none());
@@ -394,7 +394,7 @@ fn writer_holder() {
         Some("store/execution_owned")
     );
     assert_eq!(store.records.len(), records);
-    assert_eq!(store.state, state);
+    assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
     assert_eq!(store.journal.last_hash, head);
     assert_eq!(
         store.current_execution_claim_hash(&claim).unwrap(),

@@ -306,7 +306,7 @@ pub(super) fn run() {
             assert!(VerifiedClosure::read(&receipt).is_err());
             assert_eq!(fs::read(&handoff_path).unwrap(), b"{}");
             assert_unresolved(&fixture, &effect);
-            assert_eq!(runner::recover(&fixture.directory, 1).unwrap(), result);
+            assert!(runner::recover(&fixture.directory, 1).is_err());
             assert!(runner::execute(&fixture.directory, 1).is_err());
             // Restore only the exact fixture-owned fault, then independently
             // close the domain; this cannot relabel the failed execution.
@@ -508,7 +508,12 @@ fn settle_failure(
         .unwrap();
     assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
     assert_eq!(store.records.len(), before + 2);
-    assert!(!store.state.instances["instance"].pending.contains(effect));
+    assert!(
+        !store.state.instances["instance"]
+            .pending
+            .iter()
+            .any(|pending| pending == effect)
+    );
     assert!(
         store
             .state
@@ -532,7 +537,8 @@ fn settle_failure(
     assert!(
         !reopened.state.instances["instance"]
             .pending
-            .contains(effect)
+            .iter()
+            .any(|pending| pending == effect)
     );
 }
 
@@ -593,7 +599,12 @@ fn settle_retry(
             .stopped_for("instance", effect)
             .is_none()
     );
-    assert!(store.state.instances["instance"].pending.contains(effect));
+    assert!(
+        store.state.instances["instance"]
+            .pending
+            .iter()
+            .any(|pending| pending == effect)
+    );
     let execution = store.state.execution.clone();
     drop(store);
     let reopened = Store::open_read_only(&fixture.store).unwrap();
@@ -601,7 +612,8 @@ fn settle_retry(
     assert!(
         reopened.state.instances["instance"]
             .pending
-            .contains(effect)
+            .iter()
+            .any(|pending| pending == effect)
     );
     drop(reopened);
     let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
@@ -770,7 +782,12 @@ fn settle_interrupted(
         Some("interrupted")
     );
     assert_eq!(store.records.len(), before + 2);
-    assert!(store.state.instances["instance"].pending.contains(effect));
+    assert!(
+        store.state.instances["instance"]
+            .pending
+            .iter()
+            .any(|pending| pending == effect)
+    );
     assert!(
         store
             .state
@@ -818,6 +835,7 @@ fn settle_interrupted(
     assert!(
         reopened.state.instances["instance"]
             .pending
-            .contains(effect)
+            .iter()
+            .any(|pending| pending == effect)
     );
 }

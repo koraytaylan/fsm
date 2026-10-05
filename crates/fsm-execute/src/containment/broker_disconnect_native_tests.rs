@@ -5,7 +5,7 @@ use super::{
     Daemon, Fixture, broker_endpoint, canon_bytes, cgroup, claim_binding, identity, number, object,
     origin, read_value, request,
 };
-use fsm_core::json::Value;
+use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::{Store, VerifiedClosure};
 use std::fs;
