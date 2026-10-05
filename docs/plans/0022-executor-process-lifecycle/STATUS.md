@@ -2915,4 +2915,14 @@ lifecycle updates.
   clippy passes with warnings denied. These subsets compile the new native
   controls but do not establish their runtime acceptance.
 
+- Frozen 23a0d91 full stable release workspace gate passes with serial tests
+  and rustc/rustdoc warnings denied. CI 37353887719 native stable and MSRV
+  both refuse in enrolled_gate_authorization before nonce controls: the new
+  refused-close fixture incorrectly supplies an allocation object rather than
+  the SPEC positive canonical number. Correcting only that fixture permits
+  actual broker dispatch; malformed original handoff, live-domain fencing,
+  retained refusal and no-closure assertions remain unchanged. Native acceptance
+  and fresh full portable gates remain pending; this failed run is not proof
+  of nonce authentication, and task 9303 remains in progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

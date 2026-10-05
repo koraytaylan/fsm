@@ -173,7 +173,7 @@ pub(super) fn refused_close(directory: &Path) -> Value {
     request(
         &directory.join("broker"),
         "close",
-        object([("allocation", Value::Num("1".into()))]),
+        Value::Num("1".into()),
     )
 }
 
