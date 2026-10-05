@@ -1956,4 +1956,15 @@ lifecycle updates.
   `df72aed`, compiled current-source/native acceptance and public service
   integration remain pending, and task 9303 stays In progress.
 
+- **Pre-dispatch claim-runner cancellation control authored:** the native
+  unprivileged host now starts an authentic `NativeRun`, cancels before its
+  first poll, requires a retained cancellation error and observes actual helper
+  reap/EOF within two seconds. Before the refusal and successful controls, the
+  independent root observer requires exact NotFound for binding, launch intent,
+  entry grant and handoff, proving pre-poll cancellation dispatches neither
+  binding nor execution. Each host entry clears inherited cancellation mode.
+  Formatting, size and diff checks pass; run `37300899117` is authoritatively
+  queued for `e79c7be`, current-source compiled/native acceptance and public
+  service integration remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

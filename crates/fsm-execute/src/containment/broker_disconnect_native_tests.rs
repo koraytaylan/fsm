@@ -59,16 +59,53 @@ authority=Path(sys.argv[1]).parent
 os.environ['FSM_NATIVE_TEST_NAMESPACE']=authority.parent.name
 os.environ.pop('FSM_NATIVE_TEST_BINDING',None)
 os.environ.pop('FSM_NATIVE_TEST_REFUSE',None)
+os.environ.pop('FSM_NATIVE_TEST_CANCEL',None)
 if len(sys.argv)>=3:
     os.environ['FSM_NATIVE_TEST_BINDING']=sys.argv[2]
 if len(sys.argv)==4:
-    assert sys.argv[3]=='refuse'
-    os.environ['FSM_NATIVE_TEST_REFUSE']='1'
+    assert sys.argv[3] in ('refuse','cancel')
+    os.environ['FSM_NATIVE_TEST_REFUSE' if sys.argv[3]=='refuse' else 'FSM_NATIVE_TEST_CANCEL']='1'
 os.execv(str(authority/'supervisor-test'),['supervisor-test','--exact','authority::allocator::native_tests::supervisor_probe::owned_request','--ignored','--nocapture','--color','never'])
 "#;
 
 pub(super) fn complete(directory: &Path, binding: &Value) -> Value {
     install_supervisor(directory);
+    let cancelled = Command::new("/usr/bin/python3")
+        .args(["-c", SUPERVISOR])
+        .arg(directory.join("broker"))
+        .arg(std::str::from_utf8(&canon_bytes(binding)).unwrap())
+        .arg("cancel")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(cancelled.stdout.len() <= 8192 && cancelled.stderr.len() <= 8192);
+    assert!(
+        cancelled.status.success(),
+        "cancel supervisor failed: {}",
+        String::from_utf8_lossy(&cancelled.stderr)
+    );
+    assert_eq!(
+        std::str::from_utf8(&cancelled.stdout)
+            .unwrap()
+            .lines()
+            .filter(|line| *line == "FSM_NATIVE_TEST_CANCELLED")
+            .count(),
+        1
+    );
+    for name in [
+        "binding-1.json",
+        "launch-1.json",
+        "entry-1.json",
+        "handoff-1.json",
+    ] {
+        assert_eq!(
+            fs::symlink_metadata(directory.join(name))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound,
+            "pre-poll cancellation left {name} or inspection failed"
+        );
+    }
     let mut wrong = binding.as_obj().unwrap().clone();
     let hash = wrong.get("journal_claim").unwrap().as_str().unwrap();
     let mut changed = hash.as_bytes().to_vec();

@@ -44,6 +44,23 @@ fn complete(binding: Value) {
         .and_then(Value::as_str)
         .unwrap();
     let mut owned = NativeRun::start(&claim, hash, Duration::from_secs(30)).unwrap();
+    if matches!(std::env::var("FSM_NATIVE_TEST_CANCEL").as_deref(), Ok("1")) {
+        owned.cancel().unwrap();
+        match owned.poll() {
+            Err(error) => assert!(error.contains("cancelled")),
+            Ok(_) => panic!("cancelled run continued polling"),
+        }
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !owned.reap().unwrap() {
+            assert!(
+                Instant::now() < deadline,
+                "cancelled helper did not reap with EOF"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        println!("\nFSM_NATIVE_TEST_CANCELLED");
+        return;
+    }
     if matches!(std::env::var("FSM_NATIVE_TEST_REFUSE").as_deref(), Ok("1")) {
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {

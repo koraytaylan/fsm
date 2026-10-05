@@ -65,6 +65,9 @@ original claim hash: the adapter must report binding refusal, retain that error
 on repeated poll and observe real helper reap/EOF; an independent root observer
 requires binding, launch intent, entry grant and handoff to be absent before
 allowing the genuine claim run, with no direct handler fallback.
+The same case also cancels an authentic `NativeRun` before its first poll,
+requires sticky cancellation and actual helper reap/EOF, and independently
+checks that no binding, launch intent, entry grant or handoff was created.
 Authority claim verification explicitly requires enabled execution admission
 before current ownership, hash and catalogue checks; retaining a claim in a
 quarantined state cannot authorize binding, launch or entry. Its in-memory
