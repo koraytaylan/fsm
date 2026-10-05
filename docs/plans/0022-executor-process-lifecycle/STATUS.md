@@ -3221,4 +3221,15 @@ lifecycle updates.
   completing workspace debug tests; no replacement run is started while it
   remains active, and the zero-dependency gate remains unaccepted.
 
+- Attempt 3 Ubuntu MSRV job `111978333841` completes successfully at exact
+  `31e0c63`; every gate step passes, including formatting, size, workspace
+  debug/release tests, all-target Clippy, documentation, fuzz compilation and
+  byte-identical decimal regeneration.
+  Its exact log is retained at task-cache `ci-37365652966-ubuntu-msrv.log`.
+  All six portable OS/toolchain gates now pass beside both verified native
+  matrices; after the attempt became terminal, failed-job rerun starts
+  attempt 4 for only zero-dependency job `111985628762`, now queued.
+  Zero-dependency execution, the separate frozen local host invocation and
+  aggregate review remain outstanding; task 9303 is not accepted.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
