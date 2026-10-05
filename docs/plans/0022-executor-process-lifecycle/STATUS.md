@@ -649,4 +649,30 @@ lifecycle updates.
   and a fresh liveness challenge/response before closing. Owned cleanup ran;
   this failed run does not establish native receipt acceptance.
 
+- **Genuine native receipt/public-store bridge executed:** exact clean source
+  `f802c0acb4473b2cb8c03c3b5a62f48ece9bfcf0` passes all nine driver inventory
+  cases on stable and MSRV 1.89.0, followed by passing workspace all-target
+  Clippy. Both reports bind source, compiler and both fixture executable
+  digests; inventories, passing flags, unrelated-process survival and the
+  explicit `production_backend: false` scope were checked. A live descendant
+  answers a fresh challenge in the claimed cgroup before real root-protocol
+  revocation/closure; only its protected closed observation permits receipt
+  issuance, then public `VerifiedClosure::read`, durable stop and atomic ack
+  with cold duplicate replay succeed. Unbound launch, unprivileged binding,
+  premature publication, writable receipts and symlinks refuse. The task cache
+  retains `native-evidence-liveness-rerun.json` and
+  `native-evidence-f802c0a-msrv.json` plus invocation logs. This establishes
+  genuine closure-to-public-reader integration with a fixture issuer; the
+  production authority/runner and full new-source matrix remain unfinished.
+
+- **Frozen portable CI finding:** run `37257557135` at `9e4119a` now has both
+  Linux legs and macOS stable passing, but macOS/MSRV release tests fail in
+  `journal_io::tests::version_marker_preflight` at `init` with `Io("locked
+  40023")`; Windows legs are still running. The completed failed job log was
+  fetched directly and retained as `ci-37257557135-macos-msrv-failed.log`.
+  This matrix is not accepted. The immediate init guard-drop/reacquire path
+  and possible transient descriptor inheritance beside the new subprocess
+  crash tests require a load-bearing investigation before the next review.
+  Task 9302 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
