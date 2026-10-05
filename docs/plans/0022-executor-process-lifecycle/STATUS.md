@@ -2122,4 +2122,15 @@ lifecycle updates.
   exhaustion-result and outcome-event wiring remain required, and task 9303
   stays In progress.
 
+- **Immutable retry exhaustion result preservation implemented for review:**
+  checked stopped completion now applies the existing exhaustion error/class/
+  attempt metadata only for a final attempt whose class is admitted by the
+  original claim policy, preserving capture fields and the raw candidate getter.
+  Disallowed classes, nonfinal attempts and unclassified protocol failure retain
+  ordinary results; no current handler table supplies policy. Pure controls
+  cover those distinctions and exact status/capture preservation. Formatting,
+  size and diff checks pass; run `37304348653` is authoritatively queued for
+  `bfe1893`, compiled/native exhaustion acceptance and automatic service/event
+  recovery remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

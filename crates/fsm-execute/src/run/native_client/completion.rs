@@ -45,7 +45,7 @@ impl NativeCompletion {
         &self.proof
     }
 
-    /// Borrow the unchanged candidate mapped to its immutable stopped semantics.
+    /// Borrow stopped semantics derived from the checked candidate and original claim.
     pub fn stopped_outcome(&self) -> &StoppedOutcome {
         &self.stopped
     }
@@ -160,11 +160,63 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
         _ => return Err("native completion candidate and handler kind differ".into()),
     }
     Ok(Material {
-        stopped: stopped(candidate, failure_class)?,
+        stopped: stopped_for_claim(candidate, failure_class, claim)?,
         candidate: candidate.clone(),
         failure_class,
         receipt: PathBuf::from(receipt),
     })
+}
+
+fn stopped_for_claim(
+    candidate: &Value,
+    class: Option<FailureClass>,
+    claim: &Claim,
+) -> Result<StoppedOutcome, String> {
+    use std::collections::BTreeMap;
+    let ordinary = stopped(candidate, class)?;
+    let Some(class) = class else {
+        return Ok(ordinary);
+    };
+    let material = claim.to_value();
+    let retry = material
+        .get("retry")
+        .ok_or("native completion retry policy missing")?;
+    let attempt = material
+        .get("attempt")
+        .and_then(Value::as_num)
+        .ok_or("native completion attempt missing")?
+        .parse::<u32>()
+        .map_err(|_| "native completion attempt invalid")?;
+    let limit = retry
+        .get("attempts")
+        .and_then(Value::as_num)
+        .ok_or("native completion attempt limit missing")?
+        .parse::<u32>()
+        .map_err(|_| "native completion attempt limit invalid")?;
+    let admitted = retry
+        .get("on")
+        .and_then(Value::as_arr)
+        .ok_or("native completion retry classes missing")?
+        .iter()
+        .any(|value| value.as_str() == Some(class.as_str()));
+    if !admitted || attempt < limit {
+        return Ok(ordinary);
+    }
+    let mut result = candidate
+        .as_obj()
+        .ok_or("native completion candidate missing")?
+        .clone();
+    result.insert(
+        "error".into(),
+        Value::Str(crate::error::RETRIES_EXHAUSTED.into()),
+    );
+    result.insert("class".into(), Value::Str(class.as_str().into()));
+    result.insert("attempts".into(), Value::Num(attempt.to_string()));
+    StoppedOutcome::from_value(&Value::Obj(BTreeMap::from([
+        ("status".into(), Value::Str(ordinary.status().into())),
+        ("result".into(), Value::Obj(result)),
+    ])))
+    .map_err(|error| error.to_string())
 }
 
 fn stopped(candidate: &Value, class: Option<FailureClass>) -> Result<StoppedOutcome, String> {
@@ -222,6 +274,60 @@ fn stopped(candidate: &Value, class: Option<FailureClass>) -> Result<StoppedOutc
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn exhaustion_uses_original_policy_and_preserves_raw_capture() {
+        let candidate = parse(
+            br#"{"error":"exec/timeout","status":-1,"stderr":"kept"}"#,
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        for (limit, admitted, exhausted) in
+            [(3u32, true, false), (1, true, true), (1, false, false)]
+        {
+            let mut fields = claim().to_value().as_obj().unwrap().clone();
+            let mut retry = fields.get("retry").unwrap().as_obj().unwrap().clone();
+            retry.insert("attempts".into(), Value::Num(limit.to_string()));
+            retry.insert(
+                "on".into(),
+                Value::Arr(if admitted {
+                    vec![Value::Str("timeout".into())]
+                } else {
+                    vec![]
+                }),
+            );
+            fields.insert("retry".into(), Value::Obj(retry));
+            let original = Claim::from_value(&Value::Obj(fields)).unwrap();
+            let outcome =
+                stopped_for_claim(&candidate, Some(FailureClass::Timeout), &original).unwrap();
+            assert_eq!(outcome.status(), "timeout");
+            let result = outcome.result().unwrap();
+            if exhausted {
+                assert_eq!(
+                    result.get("error").and_then(Value::as_str),
+                    Some(crate::error::RETRIES_EXHAUSTED)
+                );
+                assert_eq!(result.get("class").and_then(Value::as_str), Some("timeout"));
+                assert_eq!(result.get("attempts"), Some(&Value::Num("1".into())));
+                assert_eq!(result.get("stderr"), candidate.get("stderr"));
+                assert_eq!(result.get("status"), candidate.get("status"));
+            } else {
+                assert_eq!(result, &candidate);
+            }
+            let protocol =
+                parse(br#"{"error":"exec/mcp_protocol"}"#, &JsonLimits::DEFAULT).unwrap();
+            assert_eq!(
+                stopped_for_claim(&protocol, None, &original)
+                    .unwrap()
+                    .result(),
+                Some(&protocol)
+            );
+        }
+        assert_eq!(
+            candidate.get("error").and_then(Value::as_str),
+            Some("exec/timeout")
+        );
+    }
 
     #[test]
     fn stopped_mapping_preserves_candidates_and_refuses_class_contradictions() {

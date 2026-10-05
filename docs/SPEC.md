@@ -1604,6 +1604,12 @@ failures to their existing class, cancellation to `interrupted`, and terminal
 MCP protocol failure to `failed`. Candidate/class contradictions or unknown
 error/status forms MUST refuse before receipt verification; a null retry class
 MUST NOT by itself imply success. This conversion MUST NOT mutate the journal.
+For the final attempt of a class explicitly admitted by the immutable claim's
+retry policy, the stopped result MUST preserve existing exhaustion semantics:
+retain candidate fields while setting `error` to `exec/retries_exhausted` and
+adding original `class` and claimed `attempts`. The raw candidate getter MUST
+remain unchanged; disallowed classes and terminal unclassified failures MUST
+NOT be relabelled exhausted, and no current handler table may supply this policy.
 The provisional Linux pipeline `stop_native` method MUST persist only the
 checked completion outcome and opaque proof through `Store::stop_execution_on`,
 retaining its writer-protected current-claim/hash/domain checks and request-id

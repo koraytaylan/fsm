@@ -88,6 +88,11 @@ The private native result envelope is now version 2 and includes the approved
 catalogue's handler kind, allowing completion validation to refuse missing
 process exit status, MCP/process candidate mismatches and unknown kinds; this
 transient protocol change alters no journal format, candidate bytes or hash.
+For a final attempt in an admitted retry class, checked stopped completion
+preserves the existing exhaustion result fields using only the immutable claim
+policy, retaining capture fields and raw candidate while adding the original
+class/attempt count and exhaustion error; disallowed or unclassified terminal
+failures retain their ordinary result, with native exhaustion coverage pending.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.
