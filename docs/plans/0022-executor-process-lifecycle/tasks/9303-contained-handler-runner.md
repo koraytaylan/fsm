@@ -759,3 +759,14 @@ completed with exit code zero; retained log:
 `~/.cache/fsm-plan-native-matrix-20261005/local-9f1f175-stable-clippy.log`.
 The warnings-denied rustdoc gate is running next, with explicit zero-dependency
 and downstream acceptance commands still pending; status remains `in_progress`.
+
+The remaining frozen local host commands completed with exit code zero:
+warnings-denied `cargo +stable doc --workspace --no-deps`, explicit
+`cargo +stable test -p fsm-cli --test zero_deps`, and
+`cargo +stable test -p fsm-embed-acceptance`. Logs are retained under the
+dedicated task cache as `local-9f1f175-stable-doc.log`,
+`local-9f1f175-stable-zero-deps.log`, and `local-9f1f175-stable-embed.log`.
+Formatting, oversized-file and complete frozen range diff checks were also
+rerun successfully in the isolated checkout. All required stable host
+commands now pass at the frozen product source; the task acceptance record
+still requires final consolidation before changing its status.
