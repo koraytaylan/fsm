@@ -425,7 +425,7 @@ pub(super) fn run() {
         );
         assert_unresolved(&fixture, &effect);
         if mode == "retry-timeout" {
-            settle_retry(&fixture, &effect, &original_claim, &completion);
+            settle_retry(&mut fixture, &effect, &original_claim, &completion);
         }
         assert!(runner::execute(&fixture.directory, 1).is_err());
         fixture.cleanup().unwrap();
@@ -433,7 +433,7 @@ pub(super) fn run() {
 }
 
 fn settle_retry(
-    fixture: &Fixture,
+    fixture: &mut Fixture,
     effect: &str,
     claim: &fsm_core::record::execution::Claim,
     completion: &fsm_execute::run::native_client::NativeCompletion,
@@ -504,6 +504,69 @@ fn settle_retry(
         reopened.state.instances["instance"]
             .pending
             .contains(effect)
+    );
+    drop(reopened);
+    let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let material = claim.to_value();
+    let retry =
+        fsm_core::record::execution::RetryPolicy::from_value(material.get("retry").unwrap())
+            .unwrap();
+    let request = || fsm_store::store::ExecutionClaimRequest {
+        instance_id: "instance",
+        effect_id: effect,
+        handler_fingerprint: material
+            .get("handler_fingerprint")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        retry: &retry,
+        domain: &successor,
+        request_id: "native-retry-successor",
+        expected_seq: None,
+    };
+    let mut store = Store::open(&fixture.store).unwrap();
+    let before = store.records.len();
+    // Stop consumes 1000 and Attempted consumes 1001; the original policy
+    // permits the successor exactly ten milliseconds after settlement.
+    let mut early = fsm_store::clock::FixedClock::new(1010, 1);
+    let refused = pipeline
+        .claim_native(&mut store, &mut early, request())
+        .unwrap_err();
+    assert_eq!(refused.code, "exec/store");
+    assert_eq!(
+        refused
+            .details
+            .as_ref()
+            .unwrap()
+            .get("code")
+            .and_then(Value::as_str),
+        Some("store/execution_retry")
+    );
+    assert_eq!(store.records.len(), before);
+    assert_eq!(store.state.execution, execution);
+    let mut due = fsm_store::clock::FixedClock::new(1011, 1);
+    pipeline
+        .claim_native(&mut store, &mut due, request())
+        .unwrap();
+    assert_eq!(store.records.len(), before + 1);
+    let next = store.state.execution.claim_for("instance", effect).unwrap();
+    assert_eq!(next.run_id(), claim.run_id() + 1);
+    let next_material = next.to_value();
+    assert_eq!(next_material.get("attempt"), Some(&Value::Num("2".into())));
+    assert_eq!(next_material.get("retry"), material.get("retry"));
+    assert_eq!(
+        next_material.get("handler_fingerprint"),
+        material.get("handler_fingerprint")
+    );
+    assert_eq!(next_material.get("domain"), Some(&successor.to_value()));
+    let retained = store.state.execution.clone();
+    drop(store);
+    assert_eq!(
+        Store::open_read_only(&fixture.store)
+            .unwrap()
+            .state
+            .execution,
+        retained
     );
 }
 

@@ -2179,4 +2179,13 @@ lifecycle updates.
   head `400ddbc`, run `37305436845`, queued), and successor/backoff admission,
   automatic service integration and full gates remain required for task 9303.
 
+- Extended the verified timeout retry case through production successor admission:
+  a freshly prepared native allocation is refused one millisecond before the
+  original ten-millisecond backoff expires without changing journal/state, then
+  accepted at the deadline with attempt two, monotonic run identity and unchanged
+  original fingerprint/policy; reopening retains the successor claim.
+  This covers sequential retry admission, not concurrent executors or automatic
+  service wiring; formatting/size/diff checks pass, compiled verification remains
+  pending (`1f26028` run `37306152802` queued), and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
