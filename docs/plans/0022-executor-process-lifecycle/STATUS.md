@@ -2260,4 +2260,14 @@ lifecycle updates.
   Formatting/size/diff checks pass; compiled CI (`b651c1f` run `37308300417`) is
   queued, all native/portable acceptance and full host integration remain pending.
 
+- Review of the contention fixture found that spawning its independent writer
+  after native helper startup consumed the helper's fixed request-frame budget;
+  prewarm the test writer behind an explicit waiting barrier before native
+  startup, then release it to acquire the lease after the original writer drops.
+  Separate bounded waiting/lease-ready markers retain contention through checked
+  completion without changing production deadlines or weakening assertions.
+  Formatting/size/diff checks pass; `df39cb5` CI run `37308776012` is queued,
+  compiled verification and full integration remain required, and task 9303
+  remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

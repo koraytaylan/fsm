@@ -56,13 +56,15 @@ fn complete(binding: Value) {
         let records = store.records.len();
         let state = store.state.clone();
         assert_eq!(store.current_execution_claim_hash(&claim).unwrap(), hash);
+        let mut holder = WriterHolder::start(&path);
         let owned = pipeline
             .start_native(&mut store, &claim, Duration::from_secs(30))
             .unwrap();
         assert_eq!(store.records.len(), records);
         assert_eq!(store.state, state);
         drop(store);
-        contention = Some(WriterHolder::start(&path));
+        holder.acquire();
+        contention = Some(holder);
         owned
     };
     assert_eq!(owned.progress().phase, NativeRunPhase::Binding);
@@ -191,11 +193,15 @@ fn assert_retired_uncertain(owned: &NativeRun) {
 fn writer_holder() {
     use std::io::Read;
     let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
-    let store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
-    println!("\nFSM_NATIVE_WRITER_READY");
     use std::io::Write;
+    println!("\nFSM_NATIVE_WRITER_WAITING");
     std::io::stdout().flush().unwrap();
     let mut byte = [0];
+    std::io::stdin().read_exact(&mut byte).unwrap();
+    assert_eq!(byte, [1]);
+    let store = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
+    println!("\nFSM_NATIVE_WRITER_READY");
+    std::io::stdout().flush().unwrap();
     let _ = std::io::stdin().read(&mut byte).unwrap();
     drop(store);
 }
@@ -208,7 +214,6 @@ struct WriterHolder {
 
 impl WriterHolder {
     fn start(path: &str) -> Self {
-        use std::io::Read;
         use std::os::fd::OwnedFd;
         use std::os::unix::net::UnixStream;
         use std::process::{Command, Stdio};
@@ -236,18 +241,30 @@ impl WriterHolder {
             input: Some(input),
             output,
         };
+        owned.wait_marker(b"FSM_NATIVE_WRITER_WAITING");
+        owned
+    }
+
+    fn acquire(&mut self) {
+        use std::io::Write;
+        self.input.as_mut().unwrap().write_all(&[1]).unwrap();
+        self.wait_marker(b"FSM_NATIVE_WRITER_READY");
+    }
+
+    fn wait_marker(&mut self, marker: &[u8]) {
+        use std::io::Read;
         let deadline = Instant::now() + Duration::from_secs(3);
         let mut bytes = Vec::new();
         let mut buffer = [0; 1024];
         loop {
-            match owned.output.read(&mut buffer) {
+            match self.output.read(&mut buffer) {
                 Ok(0) => panic!("independent writer output closed before readiness"),
                 Ok(read) => {
                     bytes.extend_from_slice(&buffer[..read]);
                     assert!(bytes.len() <= 8192);
                     if bytes
                         .split(|byte| *byte == b'\n')
-                        .any(|line| line == b"FSM_NATIVE_WRITER_READY")
+                        .any(|line| line == marker)
                     {
                         break;
                     }
@@ -260,8 +277,8 @@ impl WriterHolder {
                 Err(error) => panic!("independent writer readiness read failed: {error}"),
             }
             assert!(
-                owned.child.try_wait().unwrap().is_none(),
-                "independent writer did not acquire lease"
+                self.child.try_wait().unwrap().is_none(),
+                "independent writer did not reach barrier"
             );
             assert!(
                 Instant::now() < deadline,
@@ -269,7 +286,6 @@ impl WriterHolder {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
-        owned
     }
 
     fn release(&mut self) {
