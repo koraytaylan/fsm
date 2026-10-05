@@ -539,7 +539,8 @@ lifecycle updates.
 
 - **Legacy failed-count replay regression expanded:** the production admission
   test now reaches a selected journal-bound checkpoint cache, cache-free cold
-  replay, and two seal/archive/reopen cycles for an effect with a historical
+  replay, a seal/archive/reopen cycle and a repeated pinned-seal refusal for
+  an effect with a historical
   unbound failed attempt. Each phase checks contract refusal, unchanged head
   and hash, no request-id consumption and no run allocation. Formatting,
   source-size and diff checks pass; execution is pending the serialized frozen
@@ -548,6 +549,14 @@ lifecycle updates.
   this later regression expansion; its two native prerequisite jobs and
   zero-dependencies job have passed while the six portable legs remain live.
   Task 9302 remains In progress and this entry does not claim new acceptance.
+
+  Pre-execution fixture review corrected the archive setup: a real segment
+  boundary now precedes the pending effect, permitting the first prefix seal;
+  a further seal has no remaining admissible boundary below the live effect
+  and must refuse without writing archive contents or changing state/head.
+  The failed-count refusal is then checked again after cold reopen. This
+  preserves the normative pending-effect pin rather than assuming two seals
+  can advance through unresolved legacy work; runtime verification is pending.
 
 - **Automatic rotation refusal harness added:** the production claim, stop
   and settlement APIs now each have a filesystem-obstruction case at their

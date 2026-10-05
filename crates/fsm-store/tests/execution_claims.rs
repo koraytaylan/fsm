@@ -55,6 +55,14 @@ fn populated(directory: &Directory) -> (Store, String) {
 }
 
 fn populated_named(directory: &Directory, instance_id: &str) -> (Store, String) {
+    populated_with_boundary(directory, instance_id, false)
+}
+
+fn populated_with_boundary(
+    directory: &Directory,
+    instance_id: &str,
+    rotate_before_pending: bool,
+) -> (Store, String) {
     let mut store = Store::open(&directory.0).unwrap();
     let definition = parse(
         include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
@@ -65,6 +73,9 @@ fn populated_named(directory: &Directory, instance_id: &str) -> (Store, String) 
     store
         .create_instance("case_review", instance_id, "create", None)
         .unwrap();
+    if rotate_before_pending {
+        store.journal.force_rotate().unwrap();
+    }
     store
         .send_event(
             instance_id,
@@ -451,7 +462,7 @@ fn claim_append_boundaries_recover_only_the_complete_durable_prefix() {
 #[test]
 fn historical_attempts_cannot_restart_after_cache_cold_replay_or_sealing() {
     let directory = Directory::new();
-    let (mut store, effect) = populated(&directory);
+    let (mut store, effect) = populated_with_boundary(&directory, "instance", true);
     store
         .attempt_effect_on(
             &mut FixedClock::new(100, 1),
@@ -473,13 +484,25 @@ fn historical_attempts_cannot_restart_after_cache_cold_replay_or_sealing() {
     let mut store = Store::open(&directory.0).unwrap();
     assert!(store.opened_from_snapshot);
     assert_eq!(store.journal.last_seq, head);
-    for phase in ["cache", "cold", "first-seal", "second-seal"] {
+    for phase in ["cache", "cold", "first-seal", "pinned-seal-refusal"] {
         if phase != "cache" {
             if phase != "cold" {
                 let archive = directory.0.join(phase);
                 std::fs::create_dir_all(&archive).unwrap();
-                store.seal_and_archive(&archive, None).unwrap();
-                fsm_store::archive::verify(&archive).unwrap();
+                if phase == "first-seal" {
+                    store.seal_and_archive(&archive, None).unwrap();
+                    fsm_store::archive::verify(&archive).unwrap();
+                } else {
+                    let before = store.state.clone();
+                    let hash = store.journal.last_hash.clone();
+                    assert_eq!(
+                        store.seal_and_archive(&archive, None).unwrap_err().code,
+                        "store/archive_refused"
+                    );
+                    assert!(fsm_store::snapshot::store_states_eq(&store.state, &before));
+                    assert_eq!(store.journal.last_hash, hash);
+                    assert!(std::fs::read_dir(&archive).unwrap().next().is_none());
+                }
             }
             drop(store);
             std::fs::remove_dir_all(directory.0.join("snapshots")).unwrap();
