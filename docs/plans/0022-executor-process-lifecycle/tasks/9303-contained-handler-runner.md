@@ -521,3 +521,19 @@ owned transport/worker retirement as required evidence and identifies uncertain
 starts and host integration as unfinished. No contradiction was identified in
 these inspected contract clauses; this is a scoped reconciliation, with remaining
 contract/file coverage and frozen gates still required before task acceptance.
+
+Contract reconciliation, revocation and bounded transport at corrected
+`9f1f175`: SPEC's protected entry, begin-close, enrolled authorization,
+request-kill, request-stop and complete-close clauses require durable admission
+revocation before termination, original native identity and independently proved
+manager/job/cgroup retirement before receipt publication. Kernel termination
+holds the revocation lock, rechecks original parent identity around nofollow
+control opens and submits freeze then kill without claiming closure.
+Broker framing bounds request/response material and checks the same deadline
+before each read/write retry, including interruptions; its successful transport
+does not settle ownership. Entry's five-second wait and exec-status association's
+two-second deadline are distinct bounds and neither expiry releases the claim.
+These clauses agree with the previously reviewed stopping, closure, enrollment
+and transport implementation slices; no additional finding was identified.
+Uncertain submission reconciliation and production host cancellation/shutdown
+remain dependent tasks, rather than consequences of these primitive controls.
