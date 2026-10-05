@@ -2579,4 +2579,18 @@ lifecycle updates.
   run 37319670969 remains queued, so no compiler/native/portable acceptance or
   previously queued recovery runtime success is claimed.
 
+- Added typed owned NativePreparation for the domain-before-claim sequence:
+  it requests only prepare, validates returned NativeDomain against the original
+  namespace/generation and delivers once after helper success/reap/EOF within
+  the original deadline. Identifier-free Preparing/Prepared/Uncertain progress
+  grants no claim, closure or handler entry; cancellation/refusal has no fallback.
+  Actual UID-65534 positive-host fixtures now prepare through this client before
+  Root observes the empty domain and performs the original durable claim; a
+  pre-poll cancelled request must retire Uncertain without consuming allocation
+  1, and the later success/timeout claim/run controls reuse the same protected
+  supervisor copy. Route/refusal/missing-domain unit controls and public inventory
+  plus SPEC/API/embedding are updated. Local source checks pass; latest run
+  37320800330 remains queued and automatic host routing plus full gates remain
+  incomplete, so no task acceptance changes.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

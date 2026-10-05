@@ -1880,6 +1880,14 @@ or uncertain. Pipeline::recover_native MUST require a supported durable,
 unpoisoned store snapshot and its exact current owned claim/hash; read-only
 snapshots are permitted and launch eligibility MUST NOT gate observation.
 Neither recovery API writes a stopped result or consumes ownership.
+NativePreparation MUST request only prepare and return one parsed NativeDomain
+matching its original namespace/generation after successful helper retirement
+and both stream EOF within the original deadline. Its identifier-free Preparing,
+Prepared and Uncertain progress MUST NOT authenticate closure, claim ownership
+or authorize handler entry. Refusal/cancellation/deadline failure MUST remain
+uncertain and never select a launch fallback; preparation may have allocated an
+empty domain even when its result was not collected. A returned domain MUST still
+be durably claimed under a healthy writer before original-claim binding/launch.
 Store::replay_execution_settlement MUST perform a non-writing lookup under the
 exact original execution_settled fingerprint of the supplied full claim and
 disposition. It MUST NOT claim an unused key, acquire a writer or consume

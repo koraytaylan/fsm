@@ -524,3 +524,43 @@ impl Drop for WriterHolder {
         }
     }
 }
+
+#[test]
+#[ignore = "invoked only as an unprivileged provisioned allocator subprocess"]
+fn prepare_domain() {
+    use fsm_execute::run::native_client::{NativePreparation, NativePreparationPhase};
+    use std::os::unix::fs::MetadataExt;
+    assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
+    let namespace = std::env::var("FSM_NATIVE_TEST_NAMESPACE").unwrap();
+    let mut cancelled = NativePreparation::start(&namespace, 1, Duration::from_secs(3)).unwrap();
+    assert_eq!(
+        cancelled.progress().phase,
+        NativePreparationPhase::Preparing
+    );
+    cancelled.cancel().unwrap();
+    assert!(cancelled.poll().is_err());
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !cancelled.reap().unwrap() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let progress = cancelled.progress();
+    assert_eq!(progress.phase, NativePreparationPhase::Uncertain);
+    assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);
+    let mut prepared = NativePreparation::start(&namespace, 1, Duration::from_secs(3)).unwrap();
+    let domain = loop {
+        if let Some(domain) = prepared.poll().unwrap() {
+            break domain;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let progress = prepared.progress();
+    assert_eq!(progress.phase, NativePreparationPhase::Prepared);
+    assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);
+    assert!(prepared.poll().is_err());
+    assert_eq!(prepared.progress(), progress);
+    println!(
+        "\nFSM_NATIVE_TEST_DOMAIN={}",
+        std::str::from_utf8(&fsm_core::canon::canon_bytes(&domain.to_value())).unwrap()
+    );
+}

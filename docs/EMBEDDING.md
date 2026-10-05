@@ -1833,3 +1833,11 @@ pending state, then uses atomic store settlement with the existing ack/attempt
 keys or a run-specific interrupted key. It consults no current handler table,
 sends no event and cannot settle before stop persistence; committed settlement
 recovery uses exact replay, with advance_native_settled for a proven terminal ack.
+
+NativePreparation requests an empty native domain through the fixed provisioned
+helper, validates the original namespace/generation and delivers it once after
+helper success, actual reap and EOF within its deadline. Preparing/Prepared/
+Uncertain progress contains no paths, argv or secrets and does not prove closure
+or claim ownership; cancelled/refused allocation can remain uncertain. A host
+must still use a healthy writer to claim the returned domain before binding or
+launch, and automatic service backend selection remains integration work.

@@ -74,13 +74,36 @@ if len(sys.argv)==4:
 os.execv(str(authority/'supervisor-test'),['supervisor-test','--exact','authority::allocator::native_tests::supervisor_probe::owned_request','--ignored','--nocapture','--color','never'])
 "#;
 
+pub(super) fn prepare(directory: &Path) -> Value {
+    install_supervisor(directory);
+    let script = SUPERVISOR.replace("::owned_request", "::prepare_domain");
+    let output = Command::new("/usr/bin/python3")
+        .args(["-c", &script])
+        .arg(directory.join("broker"))
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "typed preparation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+    let domains: Vec<_> = stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("FSM_NATIVE_TEST_DOMAIN="))
+        .collect();
+    assert_eq!(domains.len(), 1);
+    parse(domains[0].as_bytes(), &JsonLimits::DEFAULT).unwrap()
+}
+
 pub(super) fn complete(
     directory: &Path,
     binding: &Value,
     timeout: bool,
     competitor: &NativeDomain,
 ) -> Value {
-    install_supervisor(directory);
     let cancelled = Command::new("/usr/bin/python3")
         .args(["-c", SUPERVISOR])
         .arg(directory.join("broker"))

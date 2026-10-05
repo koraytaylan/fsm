@@ -24,6 +24,7 @@ enum fsm_execute::mcp_client::ProtocolFault
 enum fsm_execute::run::KillReason
 enum fsm_execute::run::RunOutcome
 enum fsm_execute::run::SettleOutcome
+enum fsm_execute::run::native_client::NativePreparationPhase
 enum fsm_execute::run::native_client::NativeRunPhase
 enum fsm_execute::sched::Directive
 enum fsm_execute::service::Contention
@@ -119,6 +120,8 @@ field fsm_execute::run::RunOutcome::SpawnFailed::argv0
 field fsm_execute::run::native_client::NativeHelperProgress::reaped
 field fsm_execute::run::native_client::NativeHelperProgress::stderr_eof
 field fsm_execute::run::native_client::NativeHelperProgress::stdout_eof
+field fsm_execute::run::native_client::NativePreparationProgress::helper
+field fsm_execute::run::native_client::NativePreparationProgress::phase
 field fsm_execute::run::native_client::NativeRunProgress::helper
 field fsm_execute::run::native_client::NativeRunProgress::phase
 field fsm_execute::sched::Capped::deferred
@@ -273,6 +276,11 @@ method fsm_execute::run::native_client::NativeCompletion::handler
 method fsm_execute::run::native_client::NativeCompletion::proof
 method fsm_execute::run::native_client::NativeCompletion::stopped_outcome
 method fsm_execute::run::native_client::NativeCompletion::verify
+method fsm_execute::run::native_client::NativePreparation::cancel
+method fsm_execute::run::native_client::NativePreparation::poll
+method fsm_execute::run::native_client::NativePreparation::progress
+method fsm_execute::run::native_client::NativePreparation::reap
+method fsm_execute::run::native_client::NativePreparation::start
 method fsm_execute::run::native_client::NativeRequest::cancel
 method fsm_execute::run::native_client::NativeRequest::poll
 method fsm_execute::run::native_client::NativeRequest::progress
@@ -333,6 +341,9 @@ reexport fsm_execute::contract::analyze_effects from effects
 reexport fsm_execute::run::Pipeline from pipeline
 reexport fsm_execute::run::SettleOutcome from pipeline
 reexport fsm_execute::run::native_client::NativeCompletion from completion
+reexport fsm_execute::run::native_client::NativePreparation from preparation
+reexport fsm_execute::run::native_client::NativePreparationPhase from preparation
+reexport fsm_execute::run::native_client::NativePreparationProgress from preparation
 reexport fsm_execute::run::native_client::NativeRun from claimed
 reexport fsm_execute::run::native_client::NativeRunPhase from claimed
 reexport fsm_execute::run::native_client::NativeRunProgress from claimed
@@ -355,6 +366,8 @@ struct fsm_execute::run::Pipeline
 struct fsm_execute::run::Runner
 struct fsm_execute::run::native_client::NativeCompletion
 struct fsm_execute::run::native_client::NativeHelperProgress
+struct fsm_execute::run::native_client::NativePreparation
+struct fsm_execute::run::native_client::NativePreparationProgress
 struct fsm_execute::run::native_client::NativeRequest
 struct fsm_execute::run::native_client::NativeRun
 struct fsm_execute::run::native_client::NativeRunProgress
@@ -399,6 +412,9 @@ variant fsm_execute::run::RunOutcome::SpawnFailed
 variant fsm_execute::run::SettleOutcome::AckedNoAdvance
 variant fsm_execute::run::SettleOutcome::Advanced
 variant fsm_execute::run::SettleOutcome::AlreadySettled
+variant fsm_execute::run::native_client::NativePreparationPhase::Prepared
+variant fsm_execute::run::native_client::NativePreparationPhase::Preparing
+variant fsm_execute::run::native_client::NativePreparationPhase::Uncertain
 variant fsm_execute::run::native_client::NativeRunPhase::Binding
 variant fsm_execute::run::native_client::NativeRunPhase::Bound
 variant fsm_execute::run::native_client::NativeRunPhase::Closed

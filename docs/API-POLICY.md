@@ -632,3 +632,9 @@ canonical byte size before serializing caller-owned Values, using a private
 bounded helper without altering hash bytes or public API. Native client policy
 also explicitly admits allocation-only recover, matching the provisioned broker;
 paths, noncanonical allocations and launch aliases still refuse.
+
+Provisional NativePreparation and its phase/progress types add typed owned
+allocation before writer-held claiming, returning one original-route domain
+only after successful helper retirement/EOF within the deadline. Metadata and
+helper progress grant neither ownership, native closure nor handler entry;
+uncertain preparation cannot authorize a fallback. Published bytes are unchanged.
