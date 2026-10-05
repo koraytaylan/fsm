@@ -1223,4 +1223,21 @@ lifecycle updates.
   prohibited by the full-swap rule. This is capability detection, not launch
   authorization or closure proof; task 9303 remains In progress.
 
+- **Closing replay native evidence independently accepted:** frozen source
+  `2d487a35ae49da47c07eb0b397e9dffa4389362a` passes both native jobs in CI
+  `37272965618`. Retained `ci-37272965618/{stable,msrv}` artifacts verify
+  all 75 cases against exact frozen AST inventories, nine report hashes,
+  source/compiler identity, executable digests, named authority passes/counts
+  and log hashes, and unrelated-process survival. Stable is Rust 1.99.0;
+  MSRV is 1.89.0. The actual genuine-binding test executes grant publication,
+  entry wait-helper absence/marker/read checks, cancellation refusal, closing
+  revocation, pending-symlink refusal, explicit repair and exact replay while
+  retaining journal ownership and issuing no closed evidence. Native I/O
+  cancellation and the expected failing final-kill control are checked
+  separately. This evidence covers closing replay, not later `c9f877e`
+  kernel termination or `ae738f9` manager detection, whose CI runs remain
+  queued. Older import-fix source `bfcfd79` in CI `37271018161` now passes
+  all four Linux/macOS portable legs; both Windows legs are still running,
+  so six-leg acceptance remains incomplete. Task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
