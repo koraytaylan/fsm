@@ -3162,4 +3162,13 @@ lifecycle updates.
   that same source when the run becomes terminal rather than duplicating the
   running work or substituting historical platform evidence.
 
+- Ubuntu stable job `111950022600` in CI `37365652966` completes successfully
+  at exact source `31e0c63`; each step is terminal success: formatting, size
+  limits, workspace debug/release tests, all-target Clippy with denied warnings,
+  documentation, fuzz compilation and byte-identical decimal regeneration.
+  The exact job log is retained at task-cache
+  `ci-37365652966-ubuntu-stable.log`; this is current-source Linux CI evidence,
+  not a substitute for the five unexecuted cancelled jobs or the still-running
+  Windows MSRV gate, nor proof of the separate local frozen host invocation.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
