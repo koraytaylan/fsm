@@ -1,5 +1,11 @@
 # API and version policy
 
+The pure execution ownership types and transitions are additive APIs. Their
+closed value encoding is reserved claim-era material, not an assertion that
+the VERSION 10 store persists or authenticates it. Wiring execution state
+into journal folding, roots, snapshots and bases still requires the specified
+breaking-minor format migration and its full recovery proof.
+
 What a downstream crate can rely on, and what it must expect to change.
 
 ## Supported consumption paths

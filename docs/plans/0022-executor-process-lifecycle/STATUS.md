@@ -5,7 +5,7 @@ file; task frontmatter is authoritative and the integration coordinator owns
 lifecycle updates.
 
 - **Status:** Registered by hand; native prerequisite complete;
-  production lifecycle implementation has not started.
+  durable-claim primitives are being implemented.
 - **Goal:** prevent a successor from overlapping a surviving local handler
   tree, with bounded shutdown and evidence-based restart for both process and
   MCP handlers.
@@ -283,7 +283,21 @@ lifecycle updates.
   Pure native identity and retry-policy constructors/closed decoders now
   implement the specified value shapes without I/O, record kinds or persisted
   format changes. Initial MSRV boundary/canonical/arithmetic tests and the
-  external construction test pass; full frozen host/portable validation and
-  production claim-state folding remain pending for this code unit.
+  external construction test pass. Frozen range `522df7c..0ffdca6` passes the
+  complete stable host gate; review-branch CI run `37248754934` has both native
+  jobs and zero dependencies passing, with its six portable jobs still live.
+  Production claim-state folding remains pending.
+
+- **Pure ownership implementation:** claim, stop and single-consumption
+  settlement transitions and closed state codecs are implemented as core
+  primitives; pending-effect truth and native receipt authentication remain
+  explicit caller obligations. Independent recovery, stale-run, retry-policy,
+  interruption, cancellation and exact count/byte fixtures are added, with
+  downstream API construction acceptance. All 16 ownership fixtures and five
+  value fixtures pass on MSRV; downstream use passes on both toolchains, and
+  stable all-targets core/embed Clippy passes in an isolated target directory.
+  The complete frozen host/portable gates and guard-negative review remain
+  pending for this unit. No production record kinds or VERSION 11
+  store integration have landed, and task 9302 remains In progress.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._

@@ -1491,9 +1491,10 @@ failure result; an `attempted` disposition requires a still-pending effect
 and a stopped failure result. An `interrupted` disposition requires a stopped
 interruption while the effect remains pending; when the effect was externally
 removed it may instead consume any proved-stopped outcome without applying
-that result. Ack or removal discards the effect's retry ledger, but cannot
-discard unresolved ownership. All refusals MUST leave the ownership state and
-high-water mark unchanged. Pure state constructors do not authorize native
+that result. Ack or removal discards the effect's retry ledger once ownership is
+resolved; an unresolved claim retains its preceding ledger until settlement,
+and removal cannot discard that ownership. All refusals MUST leave the
+ownership state and high-water mark unchanged. Pure state constructors do not authorize native
 launch or replace the store's pending-effect check.
 
 Stopped outcomes distinguish `ok`, an existing executor failure class, and

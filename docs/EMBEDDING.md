@@ -1,5 +1,13 @@
 # Embedding fsm as a library
 
+`record::execution::ExecutionState` now exposes the pure claim/stop/settle
+transitions and a closed bounded value round-trip; `Claim::from_value`,
+`Closure::new` and `StoppedOutcome::from_value` construct their inputs from
+outside the crate. The caller supplies journal-derived `PendingEffect` and
+logical timestamps. These methods change only the caller-owned pure state;
+they neither persist records nor authenticate native receipts or start work.
+Production store integration and claim-era migration remain unimplemented.
+
 Plan 0022's claim-era value types are available under
 `fsm_core::record::execution`: `FileIdentity`, `NativeDomain`, `FailureClass`
 and `RetryPolicy` provide validated constructors and pure JSON conversion.

@@ -8,6 +8,13 @@ use std::fmt;
 
 use crate::json::Value;
 
+mod bounded;
+mod ownership;
+mod ownership_values;
+
+pub use ownership::{Admission, ExecutionState, PendingEffect, Settlement};
+pub use ownership_values::{Claim, Closure, Stopped, StoppedOutcome};
+
 /// A malformed field in a claim-era value, without platform I/O or error codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShapeError(pub &'static str);

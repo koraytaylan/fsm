@@ -1,5 +1,11 @@
 # Releasing
 
+Unreleased preparation adds pure exclusive execution ownership, immutable
+stopped results and durable retry eligibility with bounded canonical codecs;
+the production store still uses VERSION 10 and does not yet persist claims.
+Crash, migration and seal acceptance remain required for that later format
+change, and this pure preparation cannot complete lifecycle task 9302.
+
 Unreleased plan 0022 preparation adds pure, constructor-validated native
 identity and retry-policy values under `fsm_core::record::execution`, with
 external embedding coverage. It does not yet implement durable claims or
