@@ -2083,4 +2083,17 @@ lifecycle updates.
   `51bedad`, compiled core/store/native acceptance and remaining production
   service integration remain required, and task 9303 stays In progress.
 
+- **Native protocol-failure completion controls authored:** the approved MCP
+  fixture now emits malformed JSON only after independently observed root/
+  descendant enrollment and barrier release. The contained runner must close
+  the full tree and return protocol failure with null retry class; production
+  `NativeCompletion` must authenticate matching receipt and map it to terminal
+  `failed` with the exact candidate. Every determinate existing tree mode now
+  checks its completion mapping as well (`ok`, timeout, MCP error, interruption),
+  while uncertainty stays excluded and journal claims remain unstopped and
+  unresolved. Formatting, size and diff checks pass; run `37303611999` is
+  authoritatively queued for `dd6d25f`, compiled native stable/MSRV and portable
+  gates plus remaining production integration stay required, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

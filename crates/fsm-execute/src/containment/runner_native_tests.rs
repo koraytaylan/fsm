@@ -60,6 +60,8 @@ for line in sys.stdin:
         sys.stderr.buffer.flush()
         if mode=='answer':
             reply(request,dict(structuredContent=dict(fixture='native'),isError=True))
+        elif mode=='protocol':
+            print('invalid-json',flush=True)
         time.sleep(300)
 "#;
 
@@ -113,6 +115,7 @@ impl Drop for Barriers {
 pub(super) fn run() {
     for mode in [
         "answer",
+        "protocol",
         "timeout",
         "process-exit",
         "cancel-mcp",
@@ -328,6 +331,12 @@ pub(super) fn run() {
                     "b587fa297299ce9c602e58292b51379402bf7b1074f6b18679c2fb871c917ca8".into()
                 ))
             );
+        } else if mode == "protocol" {
+            assert_eq!(result.get("failure_class"), Some(&Value::Null));
+            assert_eq!(
+                candidate.get("error"),
+                Some(&Value::Str("exec/mcp_protocol".into()))
+            );
         } else if mode.starts_with("cancel-") {
             assert_eq!(result.get("failure_class"), Some(&Value::Null));
             assert_eq!(
@@ -352,6 +361,29 @@ pub(super) fn run() {
             );
         }
         VerifiedClosure::read(Path::new(result.get("receipt").unwrap().as_str().unwrap())).unwrap();
+        let response = object([
+            ("format", Value::Str("fsm.native-response/1".into())),
+            ("ok", Value::Bool(true)),
+            ("result", result.clone()),
+        ]);
+        let original_claim =
+            fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
+        let completion = fsm_execute::run::native_client::NativeCompletion::verify(
+            &response,
+            &original_claim,
+            binding.get("journal_claim").unwrap().as_str().unwrap(),
+        )
+        .unwrap();
+        let expected = match mode {
+            "answer" => "mcp_error",
+            "protocol" => "failed",
+            "timeout" => "timeout",
+            "cancel-process" | "cancel-mcp" => "interrupted",
+            "process-exit" => "ok",
+            _ => panic!("uncertain runner must not reach verified completion"),
+        };
+        assert_eq!(completion.stopped_outcome().status(), expected);
+        assert_eq!(completion.stopped_outcome().result(), Some(candidate));
         assert!(
             !Path::new("/sys/fs/cgroup/system.slice")
                 .join(&unit)

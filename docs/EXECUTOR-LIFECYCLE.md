@@ -79,6 +79,11 @@ disposition to the atomic store mutator. The native access case reopens its
 durable stopped result, acknowledges it once, verifies replay adds no record,
 and reopens resolved ownership and removed pending state; automatic scheduling,
 retry/exhaustion selection and declared outcome-event recovery remain unwired.
+Native contained-runner controls now include malformed MCP protocol output
+after independently observed descendant enrollment, requiring full closure and
+terminal `failed` stopped mapping with no retry class; all determinate native
+tree outcomes also verify their checked completion status and exact candidate
+while retaining unresolved journal ownership.
 The same case also cancels an authentic `NativeRun` before its first poll,
 requires sticky cancellation and actual helper reap/EOF, and independently
 checks that no binding, launch intent, entry grant or handoff was created.
