@@ -109,3 +109,31 @@ release.
 This review establishes implementation boundaries, not acceptance evidence;
 the race, contention, crash, changed-contract and downstream API cases above
 remain unexecuted for the integrated host.
+
+### Ownership projection and capacity design
+
+Reinspection at corrected product source `9f1f175` confirms that `Watcher::scan`
+initializes attempts and request keys from one read-only Store, while scheduler
+capacity counts only its local `inflight` map. Integrate ownership into that same
+scan before any pending-effect filtering: retain original `Claim` and optional
+`Stopped` for every `execution.unresolved()` entry, including cancelled instances
+and removed effects. Current handler lookup must not decide which owners exist.
+
+The scheduler must exclude owned `(instance_id, effect_id)` pairs from starts,
+and compute global/per-instance occupied capacity from the union of observed
+owners and retained local handles, deduplicating a local claimed handle by its
+original run identity. An uncertain local handle remains occupied even when a
+later scan cannot establish its matching claim; missing observation is not
+permission to discard the handle. Prepared helpers also reserve local capacity
+until delivered or actually retired, but preparation grants no durable ownership.
+Stopped owners remain occupied until durable consumption, consistent with SPEC's
+owned native host clause; a stopped result is recovery work rather than a new
+candidate. This avoids both double-counting a local run and making remote or
+removed-effect ownership invisible after restart.
+
+Implement the projection and pure scheduler exclusion first with independent
+fixtures for remote ownership, local/remote overlap, removed effects, cancelled
+instances, stopped ownership and uncertain retained handles; then compose the
+writer-held launch path and original-contract recovery through every public tick.
+These are implementation decisions, not executed integration evidence, and the
+task remains planned behind task 9303's outstanding acceptance.
