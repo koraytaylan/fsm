@@ -1641,6 +1641,11 @@ the ordinary immutable receipt; it MUST NOT fabricate a handoff or manager stop.
 Pending submission records MUST also refuse this never-launched path; removal
 of the cgroup or a closed tombstone alone MUST NOT imply receipt publication
 succeeded when an incomplete receipt publication is retained.
+Receipt publication replay with both final and pending paths MUST verify the
+pending path is the same protected regular-file inode as the exact immutable
+final receipt before synchronizing and removing that owned pending link.
+A different, partial or unexpected pending file MUST remain untouched and
+refuse publication replay; final receipt bytes and identity MUST remain unchanged.
 
 Public supervised client/service wiring remains required before acceptance.
 

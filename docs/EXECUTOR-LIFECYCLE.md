@@ -82,6 +82,10 @@ Pending submission records also refuse that branch; native controls retain the
 original cgroup and publish no proof for partial submission material, then
 inject a receipt publication obstacle to require uncertainty after removal and
 independently verify cold retry after repairing only that test-owned obstacle.
+Publication replay now removes a pending receipt link only when its protected
+regular-file inode matches the exact immutable final receipt, refusing and
+preserving a different inode even with identical bytes; native controls check
+both refusal and owned-link cleanup without changing final receipt identity.
 
 Native broker access and client-death controls now exec the installed Rust
 `client` helper after dropping root UID/group privilege, replacing Python

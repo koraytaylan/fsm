@@ -205,14 +205,25 @@ fn immutable(path: &Path, material: &Value) -> Result<(), String> {
     if bytes.len() as u64 > super::MAX_RECORD || parse(&bytes, &JsonLimits::DEFAULT).is_err() {
         return Err("closure receipt exceeds native limits".into());
     }
+    let pending = path.with_extension("json.pending");
     if !absent(path)? {
         let metadata = fs::symlink_metadata(path).map_err(io)?;
         if metadata.mode() & 0o222 != 0 || read_value(path, true)? != *material {
             return Err("closure receipt differs or is incomplete".into());
         }
+        if !absent(&pending)? {
+            let staged = fs::symlink_metadata(&pending).map_err(io)?;
+            if !staged.is_file()
+                || staged.uid() != 0
+                || (staged.dev(), staged.ino()) != (metadata.dev(), metadata.ino())
+            {
+                return Err("closure pending receipt differs from final publication".into());
+            }
+            sync(&pending)?;
+            fs::remove_file(&pending).map_err(io)?;
+        }
         return sync(path);
     }
-    let pending = path.with_extension("json.pending");
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)

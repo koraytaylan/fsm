@@ -325,6 +325,34 @@ fn genuine_claim_binding() {
     fs::remove_file(pending).unwrap();
     super::super::closure::complete(&fixture.directory, 1).unwrap();
     super::super::closure::complete(&fixture.directory, 1).unwrap();
+    let final_identity = identity(&fs::symlink_metadata(&receipt).unwrap());
+    let final_bytes = fs::read(&receipt).unwrap();
+    let pending = receipt.with_extension("json.pending");
+    fs::copy(&receipt, &pending).unwrap();
+    let unrelated_pending = identity(&fs::symlink_metadata(&pending).unwrap());
+    assert_ne!(unrelated_pending, final_identity);
+    assert!(
+        super::super::closure::complete(&fixture.directory, 1)
+            .unwrap_err()
+            .contains("pending receipt differs")
+    );
+    assert_eq!(
+        identity(&fs::symlink_metadata(&pending).unwrap()),
+        unrelated_pending
+    );
+    assert_eq!(fs::read(&receipt).unwrap(), final_bytes);
+    fs::remove_file(&pending).unwrap();
+    fs::hard_link(&receipt, &pending).unwrap();
+    super::super::closure::complete(&fixture.directory, 1).unwrap();
+    assert_eq!(
+        fs::symlink_metadata(&pending).unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    assert_eq!(
+        identity(&fs::symlink_metadata(&receipt).unwrap()),
+        final_identity
+    );
+    assert_eq!(fs::read(&receipt).unwrap(), final_bytes);
     assert!(
         fsm_store::store::VerifiedClosure::read(&receipt)
             .unwrap()

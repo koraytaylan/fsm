@@ -2007,4 +2007,16 @@ lifecycle updates.
   for `7985174`, compiled native/portable acceptance and remaining production
   integration stay required, and task 9303 stays In progress.
 
+- **Receipt publication replay ownership repaired:** replay previously synced
+  an existing final receipt without checking a retained pending path. It now
+  removes that pending link only after verifying the same protected regular-
+  file inode and synchronizing it; another inode refuses and remains untouched.
+  Native controls copy identical receipt bytes into a different pending inode
+  and require refusal/preservation, then create the actual matching hard link
+  and require cleanup while final bytes/inode and matching proof stay unchanged.
+  SPEC records the ownership rule without changing receipt format or hash.
+  Formatting, size and diff checks pass; run `37301992967` is authoritatively
+  queued for `c4e0f93`, compiled native/portable verification and production
+  service integration remain required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
