@@ -40,10 +40,12 @@ def enrolled_tree():
     while not (base/'release').exists():
         assert time.monotonic()<deadline
         time.sleep(.005)
-if mode=='process-exit':
+if mode in ('process-exit','cancel-process'):
     enrolled_tree()
-    print('root-exited',flush=True)
-    sys.exit(0)
+    if mode=='process-exit':
+        print('root-exited',flush=True)
+        sys.exit(0)
+    time.sleep(300)
 for line in sys.stdin:
     request=json.loads(line)
     if request['method']=='initialize':
@@ -107,7 +109,13 @@ impl Drop for Barriers {
 }
 
 pub(super) fn run() {
-    for mode in ["answer", "timeout", "process-exit"] {
+    for mode in [
+        "answer",
+        "timeout",
+        "process-exit",
+        "cancel-mcp",
+        "cancel-process",
+    ] {
         let barriers = Barriers::new();
         let mut table = object([
             ("format", Value::Str("fsm.handlers/1".into())),
@@ -149,7 +157,7 @@ pub(super) fn run() {
                 ])]),
             ),
         ]);
-        if mode == "process-exit" {
+        if matches!(mode, "process-exit" | "cancel-process") {
             let Value::Obj(fields) = &mut table else {
                 panic!("fixture table is not an object")
             };
@@ -168,8 +176,18 @@ pub(super) fn run() {
         let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
         let (binding, effect) = claim_binding(&fixture, &domain);
         bind(&fixture.directory, &binding).unwrap();
+        let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        if mode.starts_with("cancel-") {
+            let already_cancelled = std::sync::atomic::AtomicBool::new(true);
+            assert!(
+                runner::execute_cancellable(&fixture.directory, 1, &already_cancelled).is_err()
+            );
+            assert!(fs::symlink_metadata(fixture.directory.join("launch-1.json")).is_err());
+        }
+        let control = cancelled.clone();
         let directory = fixture.directory.clone();
-        let execution = std::thread::spawn(move || runner::execute(&directory, 1));
+        let execution =
+            std::thread::spawn(move || runner::execute_cancellable(&directory, 1, &control));
         let deadline = Instant::now() + Duration::from_secs(3);
         while !barriers.path.join("root-ready").exists() {
             assert!(
@@ -217,6 +235,9 @@ pub(super) fn run() {
             .lines()
             .any(|line| line == "populated 1")
         );
+        if mode.starts_with("cancel-") {
+            cancelled.store(true, std::sync::atomic::Ordering::Release);
+        }
         fs::write(
             barriers.path.join("release"),
             b"independent enrollment verified",
@@ -261,6 +282,12 @@ pub(super) fn run() {
                 Some(&Value::Str(
                     "b587fa297299ce9c602e58292b51379402bf7b1074f6b18679c2fb871c917ca8".into()
                 ))
+            );
+        } else if mode.starts_with("cancel-") {
+            assert_eq!(result.get("failure_class"), Some(&Value::Null));
+            assert_eq!(
+                candidate.get("error"),
+                Some(&Value::Str("exec/cancelled".into()))
             );
         } else if mode == "timeout" {
             assert_eq!(

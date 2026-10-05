@@ -1646,6 +1646,14 @@ Capture MUST share the public runner's prefix/digest accounting and drain
 excess bytes within a fixed poll budget without spool files. Cleanup failures
 MUST return uncertainty with journal ownership retained, never a settleable
 candidate.
+The private runner MUST accept an explicit in-memory cancellation control shared
+with its execution host. A cancellation observed before launch MUST refuse launch
+without changing the journal claim or publishing launch intent. After enrolled
+handoff, cancellation MUST fence entry if no grant has yet been published, select
+the existing `exec/cancelled` candidate before collecting another outcome, and
+use the same revocation, descendant stop, closure proof and handle retirement
+path as other candidates. A cancellation request alone MUST NOT prove closure
+or release ownership; authenticated host/broker wiring remains required.
 An unavailable live stop after natural exit MAY be resolved only by the
 independent matching complete-close protocol; its error MUST NOT itself
 authorize a result or be relabeled successful manager stop.

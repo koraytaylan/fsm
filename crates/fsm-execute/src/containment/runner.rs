@@ -15,6 +15,7 @@ use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 #[path = "process_exit.rs"]
@@ -54,9 +55,18 @@ enum Candidate {
     Process(i32),
     Mcp(McpOutcome),
     Timeout,
+    Cancelled,
 }
 
 pub(super) fn execute(directory: &Path, allocation: u64) -> Result<Value, String> {
+    execute_cancellable(directory, allocation, &AtomicBool::new(false))
+}
+
+pub(super) fn execute_cancellable(
+    directory: &Path,
+    allocation: u64,
+    cancelled: &AtomicBool,
+) -> Result<Value, String> {
     let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
     let (claim, lock) = validate_binding(directory, &binding, None)?;
     if number(&claim.domain().to_value(), "allocation")? != allocation {
@@ -107,6 +117,9 @@ pub(super) fn execute(directory: &Path, allocation: u64) -> Result<Value, String
             ]
         }
     };
+    if cancelled.load(Ordering::Acquire) {
+        return Err("runner cancelled before launch; claim remains unresolved".into());
+    }
     let (child, _) = launch::begin(directory, allocation, streams)?;
     let mut owned = OwnedRun {
         directory: directory.into(),
@@ -135,13 +148,18 @@ pub(super) fn execute(directory: &Path, allocation: u64) -> Result<Value, String
             Value::Arr(argv.into_iter().map(Value::Str).collect()),
         ),
     ]);
-    authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
+    if !cancelled.load(Ordering::Acquire) {
+        authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
+    }
     let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)?;
     let gate = handoff.get("gate").ok_or("runner protected gate missing")?;
     let deadline = Instant::now() + timeout;
     let observation_interval = (timeout / 4).min(Duration::from_millis(100));
     let mut root_observation = Instant::now() + observation_interval;
     let candidate = loop {
+        if cancelled.load(Ordering::Acquire) {
+            break Candidate::Cancelled;
+        }
         stderr.poll();
         if let Some(stdout) = &mut stdout {
             stdout.poll();
@@ -208,6 +226,9 @@ pub(super) fn execute(directory: &Path, allocation: u64) -> Result<Value, String
         Candidate::Mcp(outcome) => RunOutcome::Mcp { outcome, stderr },
         Candidate::Timeout => RunOutcome::Killed {
             reason: KillReason::Timeout,
+        },
+        Candidate::Cancelled => RunOutcome::Killed {
+            reason: KillReason::Cancelled,
         },
     };
     let result = object([
