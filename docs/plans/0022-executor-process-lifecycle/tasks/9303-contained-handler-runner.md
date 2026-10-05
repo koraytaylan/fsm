@@ -503,3 +503,21 @@ and reject excessive nesting before serialization. These tests preserve the
 distinction between an immutable contract identity and launch permission.
 No additional finding was identified in these deltas; complete documentation
 contract reconciliation and integrated-host acceptance remain outstanding.
+
+Contract reconciliation, result/ownership boundary at corrected `9f1f175`:
+SPEC's supervised transport, native completion, settlement/recovery, physical
+store evidence and Root result-attestation clauses distinguish helper retirement,
+tree closure, authenticated candidate and writer-protected disposition.
+The reviewed implementation preserves those distinctions: receipt matching alone
+does not authenticate output; `completion_record` syncs the separate full-response
+attestation and immutable mode before verification/private completed publication;
+recovery consults original binding and recorded completion without relaunch or
+current catalogue selection. API policy and embedding text identify the new
+private response hash domain and retain historical journal/closure bytes and
+unreleased production routing. SPEC's two-second association clause includes
+every interrupted accept/read retry, matching the corrected implementation.
+The lifecycle guide separately retains manager retirement, cgroup absence and
+owned transport/worker retirement as required evidence and identifies uncertain
+starts and host integration as unfinished. No contradiction was identified in
+these inspected contract clauses; this is a scoped reconciliation, with remaining
+contract/file coverage and frozen gates still required before task acceptance.
