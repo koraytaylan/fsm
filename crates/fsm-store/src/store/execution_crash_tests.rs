@@ -20,6 +20,101 @@ impl Drop for Process {
 }
 
 #[test]
+fn legacy_admission_requires_matching_prefix_and_replays_after_cold_reopen() {
+    // This tests producer persistence with preauthenticated fixture proof;
+    // it does not authenticate a native legacy environment or issue receipts.
+    use fsm_core::record::execution::Admission;
+
+    let directory = Directory(std::env::temp_dir().join(format!(
+        "fsm-legacy-admission-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    )));
+    let journal = directory.0.join("journal");
+    std::fs::create_dir_all(&journal).unwrap();
+    let segment = journal.join("seg-00000000000000000000.jsonl");
+    let historical = include_bytes!("../../tests/fixtures/non_reactive_session.journal");
+    std::fs::write(&segment, historical).unwrap();
+    std::fs::write(directory.0.join("VERSION"), b"10\n").unwrap();
+    let mut store = Store::open(&directory.0).unwrap();
+    assert_eq!(store.state.execution.admission(), Admission::Quarantined);
+    assert_eq!(std::fs::read(&segment).unwrap(), historical);
+    let original_head = format!("sha256:{}", store.journal.last_hash);
+    let witness = |previous_head: String| VerifiedQuiescence {
+        value: Value::Obj(BTreeMap::from([
+            ("domain".into(), domain().to_value()),
+            (
+                "receipt".into(),
+                Value::Str(format!("sha256:{}", "b".repeat(64))),
+            ),
+            ("previous_head".into(), Value::Str(previous_head.clone())),
+        ])),
+        previous_head,
+    };
+    let proof = witness(original_head);
+    let stale = witness(format!("sha256:{}", "e".repeat(64)));
+    let mut clock = FixedClock::new(100, 1);
+    let sequence = store.journal.last_seq;
+    assert_eq!(
+        store
+            .enable_execution_on(&mut clock, &stale, "enable")
+            .unwrap_err()
+            .code,
+        "store/execution_evidence"
+    );
+    assert_eq!(clock.now, 100);
+    assert_eq!(store.journal.last_seq, sequence);
+    assert!(!store.state.dedup.contains_key("enable"));
+    assert_eq!(store.state.execution.admission(), Admission::Quarantined);
+    let response = store
+        .enable_execution_on(&mut clock, &proof, "enable")
+        .unwrap();
+    assert_eq!(store.state.execution.admission(), Admission::Enabled);
+    assert_eq!(store.state.execution.run_high_water(), 0);
+    assert_eq!(store.journal.last_seq, sequence + 1);
+    assert_fold(&store);
+    let committed = store.state.clone();
+    let hash = store.journal.last_hash.clone();
+    drop(store);
+    let snapshots = directory.0.join("snapshots");
+    if snapshots.exists() {
+        std::fs::remove_dir_all(snapshots).unwrap();
+    }
+    let mut store = Store::open(&directory.0).unwrap();
+    assert!(!store.opened_from_snapshot);
+    store.last_responses.clear();
+    let mut clock = FixedClock::new(500, 1);
+    let replay = store
+        .enable_execution_on(&mut clock, &proof, "enable")
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(replay.get("execution"), response.get("execution"));
+    assert_eq!(clock.now, 500);
+    assert_eq!(store.journal.last_seq, sequence + 1);
+    assert_eq!(store.journal.last_hash, hash);
+    assert!(crate::snapshot::store_states_eq(&committed, &store.state));
+    assert_eq!(
+        store
+            .enable_execution_on(&mut clock, &proof, "enable-again")
+            .unwrap_err()
+            .code,
+        "store/execution_evidence"
+    );
+    assert!(!store.state.dedup.contains_key("enable-again"));
+    assert_eq!(store.journal.last_seq, sequence + 1);
+    assert_eq!(store.journal.last_hash, hash);
+    assert_eq!(
+        std::fs::read(&segment).unwrap().get(..historical.len()),
+        Some(historical.as_slice())
+    );
+    assert_fold(&store);
+    assert!(matches!(
+        crate::journal_io::verify(&directory.0).health,
+        crate::journal_io::JournalHealth::Ok
+    ));
+}
+
+#[test]
 fn stopped_owner_survives_repeated_seals_and_spent_archived_completion_is_stale() {
     let directory = Directory(std::env::temp_dir().join(format!(
         "fsm-stopped-seals-{}-{}", std::process::id(),

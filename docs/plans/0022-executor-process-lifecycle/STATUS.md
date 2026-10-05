@@ -852,4 +852,35 @@ lifecycle updates.
   clarification changes no behavior, persisted bytes or source covered by
   the frozen code gates, so the full build gates are not repeated for it.
 
+- **Task 9302 acceptance audit in progress:** the race and observation tests
+  in `execution_claims.rs` cover the writer and pending-membership preconditions;
+  the stopped-owner/retry and atomic-ack producer tests cover exclusion through
+  settlement, exact retry eligibility and double-consumption refusal. The
+  completed-API and in-append child-death suites, torn records, descriptor
+  failures and rotation refusal cover observable recovery boundaries without
+  claiming host power-loss proof. The cancelled and stopped-owner archive
+  cases cover original claim hashes and results through real repeated bases,
+  archives and cold replay. VERSION 1–10 migration, future-version refusal,
+  checkpoint/cache tests and semantic tampering cover historical compatibility
+  and loader refusal. Producer/loader boundaries cover request IDs, claim
+  metadata, outcome bytes, entry counts and the aggregate execution block;
+  structural boundary seeds are not claimed as thousands of native domains.
+  External embedding and the genuine native closure-reader/stop/ack bridge
+  cover downstream construction and verified stop. Task completion still
+  requires terminal host and six-platform/toolchain results.
+
+- **Legacy admission producer gap addressed in source:** review found the
+  legacy-prefix admission test only exercised the pure fold. The new named
+  `legacy_admission_requires_matching_prefix_and_replays_after_cold_reopen`
+  test exercises the production store API over an actual VERSION 10 fixture:
+  migration preserves historical bytes and quarantine, wrong-prefix evidence
+  refuses without a clock tick or request slot, matching evidence enables in
+  one record, and a snapshot-free reopen replays the original request before
+  the now-stale prefix check while refusing a fresh request with that proof.
+  Its proof is explicitly preauthenticated test infrastructure, not a native
+  quiescence issuer. Formatting and diff checks pass; execution is pending the
+  live serialized host gate, so this later test is not attributed to frozen
+  `1f21fe4` or its CI results. The older Windows/MSRV leg has now passed;
+  Windows stable remains running in `37259980746`.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
