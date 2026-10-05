@@ -87,7 +87,13 @@ fn immutable_contract_recovers_original_templates_advances_and_retry() {
         let recovered =
             fsm_execute::config::HandlerSpec::from_contract(&material, &original.fingerprint())
                 .unwrap();
-        assert_eq!(recovered, original);
+        // SPEC normalizes retry classes as a set; argv and outcome stamp
+        // order remain significant and must survive full structural equality.
+        let mut normalized = original.clone();
+        normalized.retry.on.sort();
+        normalized.retry.on.dedup();
+        assert_eq!(recovered, normalized);
+        assert_eq!(recovered.fingerprint(), original.fingerprint());
         assert_eq!(recovered.contract_value(), material);
         for (field, replacement) in [
             (

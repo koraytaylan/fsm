@@ -2718,8 +2718,16 @@ lifecycle updates.
   and original manager policy before revocation even after natural cgroup removal;
   clearing retained failure requires original invocation and ExecMainPID after stop.
   Full independent closure requirements remain unchanged. Native controls add fast
-  success/nonzero/signal exits and retained-unit closure refusal; source checks and
+  success/nonzero/signal exits and retained-unit closure refusal; source checks pass and
   current compiled/native/portable/frozen acceptance remain pending, with task
   9303 still in progress and automatic production routing unfinished.
+
+- The Ubuntu portable gate in run 37332358645 also found the contract recovery
+  fixture compared declaration-order retry classes against the contract's sorted
+  set. The fixture now compares the full recovered handler against an original
+  clone with only retry classes normalized, and separately checks unchanged
+  fingerprint and exact contract bytes; argv and outcome stamp order remain
+  covered by full structural equality. Production bytes and semantics are unchanged;
+  formatting/file-size/diff checks pass, compiled gates remain pending.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._
