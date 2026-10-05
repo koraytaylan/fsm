@@ -367,7 +367,10 @@ lifecycle updates.
   both provisioned native jobs and zero-dependencies completed successfully,
   while all six portable legs are still running. Follow-up tests
   now model empty, partial and complete production-generated claim appends
-  and semantically invalid claims with recomputed chain hashes; they await
+  and semantically invalid claims with recomputed chain hashes. Additional
+  production cases exercise a claim at record 10,000 with a root-bound snapshot
+  and cold replay, plus exact 4 KiB UTF-8 request IDs and limit-plus-one refusal
+  without allocation; these follow-up cases await
   serialized execution after the live host gate and do not prove native
   launch/authentication or every durability fault boundary. Task 9302 remains
   In progress with no landing OID or task-count change.

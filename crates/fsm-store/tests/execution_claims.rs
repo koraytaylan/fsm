@@ -510,3 +510,76 @@ fn loaders_refuse_semantically_invalid_claims_even_with_a_valid_chain_hash() {
         assert_eq!(std::fs::read(&segment).unwrap(), bytes);
     }
 }
+
+#[test]
+fn claim_at_the_root_checkpoint_survives_bound_snapshot_and_cold_replay() {
+    let directory = Directory::new();
+    let (mut store, effect) = populated(&directory);
+    while store.journal.last_seq < 9_999 {
+        let request = format!("checkpoint-padding-{}", store.journal.last_seq);
+        store.annotate("instance", &request, "").unwrap();
+    }
+    let first = allocate(&mut store, &effect, "checkpoint-claim", Some(9_999)).unwrap();
+    let record = store.records.last().unwrap();
+    assert_eq!(record.seq, 10_000);
+    assert_eq!(
+        record.body.get("state_root_format").and_then(Value::as_str),
+        Some("fsm.state-root/4")
+    );
+    assert_eq!(
+        record.body.get("state_root").and_then(Value::as_str),
+        Some(fsm_core::replay::state_root_at(&store.state, 10_000).as_str())
+    );
+    let claim_hash = record.hash.clone();
+    drop(store);
+    assert!(matches!(
+        fsm_store::journal_io::verify(&directory.0).health,
+        fsm_store::journal_io::JournalHealth::Ok
+    ));
+    let mut store = Store::open(&directory.0).unwrap();
+    assert!(
+        store.opened_from_snapshot,
+        "the committed root must bind the claim snapshot"
+    );
+    assert_eq!(store.journal.last_seq, 10_000);
+    assert_eq!(store.journal.last_hash, claim_hash);
+    assert_eq!(store.state.execution.run_high_water(), 1);
+    let replay = allocate(&mut store, &effect, "checkpoint-claim", Some(9_999)).unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(replay.get("execution"), first.get("execution"));
+    assert_eq!(
+        allocate(&mut store, &effect, "successor", None)
+            .unwrap_err()
+            .code,
+        "store/execution_owned"
+    );
+    assert_eq!(store.journal.last_seq, 10_000);
+}
+
+#[test]
+fn production_request_id_limit_counts_utf8_bytes_without_allocating_on_refusal() {
+    for request in ["r".repeat(4096), "é".repeat(2048)] {
+        assert_eq!(request.len(), 4096);
+        let directory = Directory::new();
+        let (mut store, effect) = populated(&directory);
+        let before = store.state.clone();
+        let oversized = format!("{request}x");
+        assert_eq!(
+            allocate(&mut store, &effect, &oversized, None)
+                .unwrap_err()
+                .code,
+            "store/execution_limit"
+        );
+        assert!(fsm_store::snapshot::store_states_eq(&before, &store.state));
+        assert_eq!(store.journal.last_seq, before.last_seq);
+        let first = allocate(&mut store, &effect, &request, None).unwrap();
+        assert_eq!(store.state.execution.run_high_water(), 1);
+        drop(store);
+        let mut store = Store::open(&directory.0).unwrap();
+        let duplicate = allocate(&mut store, &effect, &request, None).unwrap();
+        assert_eq!(duplicate.get("duplicate"), Some(&Value::Bool(true)));
+        assert_eq!(duplicate.get("execution"), first.get("execution"));
+        assert_eq!(store.state.execution.run_high_water(), 1);
+        assert!(!store.state.dedup.contains_key(&oversized));
+    }
+}
