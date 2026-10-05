@@ -8,6 +8,9 @@ use fsm_core::record::execution::{Closure, ExecutionState};
 #[path = "execution_crash_tests.rs"]
 mod durability;
 
+#[path = "execution_append_crash_tests.rs"]
+mod append_durability;
+
 fn json(bytes: &[u8]) -> Value {
     parse(bytes, &JsonLimits::DEFAULT).unwrap()
 }

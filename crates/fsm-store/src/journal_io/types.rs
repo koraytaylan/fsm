@@ -14,8 +14,17 @@ impl Seg {
     pub(super) fn write_line(&mut self, line: &[u8]) -> std::io::Result<()> {
         match self {
             Seg::File(f) => {
+                #[cfg(test)]
+                super::append_barrier::wait(line, "before-write");
                 f.write_all(line)?;
-                f.sync_all()
+                #[cfg(test)]
+                super::append_barrier::wait(line, "after-write");
+                let result = f.sync_all();
+                #[cfg(test)]
+                if result.is_ok() {
+                    super::append_barrier::wait(line, "after-sync");
+                }
+                result
             }
             Seg::Memory(buf) => {
                 buf.extend_from_slice(line);

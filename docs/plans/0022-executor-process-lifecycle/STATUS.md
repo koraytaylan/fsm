@@ -730,4 +730,20 @@ lifecycle updates.
   while the host gate occupies the serialized build slot. Task 9302 remains
   In progress.
 
+- **In-append writer-death harness authored:** test-only barriers now pause
+  the actual segment append before `write_all`, after its successful write and
+  after successful `sync_all`, before the store API can return. A new owned
+  child harness kills/waits the writer at all three phases for claim, stop and
+  atomic failed settlement, then checks the cold observable prefix, head/hash,
+  request ledger, monotonic run state, exclusion and retry deadline. No normal
+  Drop/snapshot publication is permitted. The after-write phase establishes
+  recovery of a complete observable record before the explicit fsync call;
+  it does not simulate host power loss or claim unsynced bytes are physically
+  durable. Native receipt values remain preauthenticated transition fixtures,
+  separate from the genuine nine-case receipt bridge. Production append keeps
+  its original write/sync order and bytes. Formatting and source-size checks
+  pass; runtime compilation/execution awaits the existing serialized frozen
+  host gate. These later tests are outside frozen source `bcf6632`, and task
+  9302 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
