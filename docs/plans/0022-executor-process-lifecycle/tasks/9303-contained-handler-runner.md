@@ -137,3 +137,22 @@ Static cross-checks find the original-completion retention and admission bounds
 in SPEC's native host contract, matching provisional API/embedding/release
 text and `NativePreparation`/`NativeRun`/`NativeExecution` inventory entries;
 these source checks do not replace compiled public-surface or full gate tests.
+
+Aggregate review, candidate-to-completion slice at the frozen source above:
+`runner::execute_cancellable` collects process/MCP/timeout/cancellation candidates
+without publishing them, cancels the protocol worker, fences admission and
+requires `closure::complete` plus a readable `VerifiedClosure` before retiring
+owned child and worker handles and publishing completion.
+`closure::complete` validates the original binding and handoff, requires revoked
+entry and repeated manager retirement with original cgroup absence, retires the
+exec-status endpoint, rechecks protected records, then syncs an immutable receipt.
+`completion_record::publish` verifies original claim/hash proof, bounds the full
+response, syncs its response-hash attestation and verifies `NativeCompletion`
+before publishing the protected recoverable response; recovery reads and
+verifies that response without launching.
+The runner's uncertain process/MCP handoff controls assert no receipt, no
+recovered completion and an unresolved journal claim even after fixture-owned
+repair and independent closure; successful modes verify original result identity.
+No acceptance-blocking finding was identified in this slice, but this is a
+limited source review rather than acceptance of the remaining enrollment,
+transport, capture, settlement and spec/API portions of the complete range.
