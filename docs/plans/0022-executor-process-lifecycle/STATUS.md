@@ -1848,4 +1848,21 @@ lifecycle updates.
   and diff checks pass; corrected compiled native/portable gates and remaining
   production integration remain required, and task 9303 stays In progress.
 
+- **Supervisor lifetime loss repaired and controls authored:** review found that
+  the parent closed helper stdin after dispatch, allowing an orphaned helper to
+  retain its broker connection after host death. Commit `47eafa4` retains that
+  endpoint and uses private `client-watch`, which requires nonblocking stdin,
+  bounds request receipt and checks lifetime EOF/trailing input while waiting
+  for the broker response. Pure controls reject lost/trailing input before
+  response consumption and permit response progress with a live owner. Native
+  disconnect coverage now separately closes the lifetime endpoint without
+  killing the helper for both process and MCP trees, requiring failed helper
+  reap, complete matched closure and worker retirement before handler timeout,
+  while preserving the unresolved journal claim. The four-tree case has a
+  bounded 60-second outer watchdog; individual enrollment/closure deadlines
+  remain unchanged. Formatting, size and diff checks pass; run `37298152815`
+  is authoritatively queued for `47eafa4`, compiled native controls and actual
+  public supervisor death/service integration remain required, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

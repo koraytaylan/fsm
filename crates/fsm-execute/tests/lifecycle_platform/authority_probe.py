@@ -61,7 +61,8 @@ def main():
             name = 'authority::allocator::native_tests::' + case
             result = subprocess.run(['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
                                      str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never'],
-                                    cwd=repo, capture_output=True, timeout=30)
+                                    cwd=repo, capture_output=True,
+                                    timeout=60 if case == 'provisioned_broker_disconnect' else 30)
             diagnostics = result.stdout + result.stderr
             assert len(diagnostics) <= 1024 * 1024, 'authority diagnostics exceed bound'
             log = args.report.with_name('authority-' + case + '.log')

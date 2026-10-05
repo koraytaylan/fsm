@@ -27,6 +27,13 @@ An earlier query timeout, mismatched identity or other inspection error remains
 uncertain. This repairs a native short-timeout race without inferring root exit
 or relaxing proof, and changes no public error code or journal format.
 
+The supervised helper retains a nonblocking stdin lifetime channel after its
+request, and abandons its broker connection on EOF or trailing input while
+awaiting a response; the parent keeps that channel open until cancellation or
+helper retirement, and channel loss does not authorize journal settlement.
+Native broker disconnect controls exercise both direct helper death and lifetime
+EOF for process and MCP trees, but do not yet prove actual public host death.
+
 The provisional Linux `run::native_client::NativeRequest` supervisor now owns
 the fixed protected transport helper and nonblocking standard-stream sockets.
 It bounds request/response/diagnostic retention and work per poll, enforces a

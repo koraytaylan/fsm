@@ -9,7 +9,10 @@ use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::{Store, VerifiedClosure};
 use std::fs;
+use std::io::Write;
+use std::os::fd::OwnedFd;
 use std::os::unix::fs::MetadataExt;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -34,6 +37,16 @@ authority=base.parent
 namespace=authority.parent.name
 generation=authority.name.removeprefix('authority-')
 os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client',namespace,generation])
+"#;
+
+const WATCH_CLIENT: &str = r#"import os,sys
+os.setgroups([])
+os.setgid(65534)
+os.setuid(65534)
+assert os.getuid()==65534 and os.geteuid()==65534 and os.getgroups()==[]
+from pathlib import Path
+authority=Path(sys.argv[1]).parent
+os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client-watch',authority.parent.name,authority.name.removeprefix('authority-')])
 "#;
 
 struct Client(Child);
@@ -106,7 +119,12 @@ fn table(path: &Path, mode: &str) -> Value {
 }
 
 pub(super) fn run() {
-    for mode in ["cancel-process", "cancel-mcp"] {
+    for (mode, watch) in [
+        ("cancel-process", false),
+        ("cancel-mcp", false),
+        ("cancel-process", true),
+        ("cancel-mcp", true),
+    ] {
         let barriers = Barriers::new();
         let mut fixture = Fixture::new_for_table(table(&barriers.path, mode));
         broker_endpoint::provision(&fixture.directory, 65534).unwrap();
@@ -130,17 +148,29 @@ pub(super) fn run() {
             ("action", Value::Str("execute".into())),
             ("payload", Value::Num("1".into())),
         ]);
-        let mut client = Client(
-            Command::new("/usr/bin/python3")
-                .args(["-c", CLIENT])
-                .arg(&base)
+        let mut lifetime = None;
+        let mut command = Command::new("/usr/bin/python3");
+        command
+            .args(["-c", if watch { WATCH_CLIENT } else { CLIENT }])
+            .arg(&base);
+        if watch {
+            let (mut owner, input) = UnixStream::pair().unwrap();
+            input.set_nonblocking(true).unwrap();
+            let bytes = canon_bytes(&execution);
+            owner
+                .write_all(&(bytes.len() as u32).to_be_bytes())
+                .unwrap();
+            owner.write_all(&bytes).unwrap();
+            command.stdin(Stdio::from(OwnedFd::from(input)));
+            lifetime = Some(owner);
+        } else {
+            command
                 .arg(std::str::from_utf8(&canon_bytes(&execution)).unwrap())
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .unwrap(),
-        );
+                .stdin(Stdio::piped());
+        }
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+        let mut client = Client(command.spawn().unwrap());
+        drop(command);
         let deadline = Instant::now() + Duration::from_secs(3);
         while !barriers.path.join("root-ready").exists() {
             assert!(
@@ -195,15 +225,18 @@ pub(super) fn run() {
             number(binding.get("claim").unwrap(), "run_id").unwrap()
         ));
         assert!(VerifiedClosure::read(&receipt).is_err());
-        // Kernel closes the only control connection when this independent
-        // unprivileged client dies; it never writes a cancellation request.
-        client.0.kill().unwrap();
+        // No cancellation request is sent: either kill the helper or close
+        // the only supervisor lifetime endpoint while leaving the helper alive.
+        if watch {
+            drop(lifetime.take());
+        } else {
+            client.0.kill().unwrap();
+        }
         fs::write(
             barriers.path.join("release"),
             b"enrollment independently verified",
         )
         .unwrap();
-        drop(client);
         let deadline = Instant::now() + Duration::from_secs(8);
         loop {
             assert!(
@@ -224,6 +257,21 @@ pub(super) fn run() {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
+        if watch {
+            let deadline = Instant::now() + Duration::from_secs(1);
+            loop {
+                if let Some(status) = client.0.try_wait().unwrap() {
+                    assert!(
+                        !status.success(),
+                        "lost supervisor produced successful helper response"
+                    );
+                    break;
+                }
+                assert!(Instant::now() < deadline, "helper survived lifetime EOF");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        drop(client);
         let stopped = read_value(&fixture.directory.join("manager-stopped-1.json"), true).unwrap();
         assert_eq!(stopped.get("binding"), Some(&binding));
         assert_eq!(stopped.get("gate"), handoff.get("gate"));
