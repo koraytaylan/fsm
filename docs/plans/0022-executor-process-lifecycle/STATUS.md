@@ -990,8 +990,8 @@ lifecycle updates.
   uses real noisy roots at 4 KiB/plus-one and 1 MiB/plus-one, plus 8 MiB on
   both streams, checking exact stderr prefixes/digests and zero spool files
   throughout execution. The retained-peer unit case and accumulator bounds
-  pass; runner, MCP, scheduler and these new tests pass serially on stable
-  and Rust 1.89. All-target execute Clippy also passes on stable. Existing
+  pass; runner, MCP, scheduler and these new tests pass serially on pinned
+  Rust 1.89. All-target execute Clippy also passes on pinned Rust 1.89. Existing
   non-Linux file capture is retained; the six portable/native integration
   gates remain required for task acceptance. No new public item or error is
   introduced. Production claim authentication, native closure, MCP protocol
@@ -1010,11 +1010,52 @@ lifecycle updates.
   both peers remain open. A separately labelled unavailable-control injection
   checks actual runner launch refusal through the unfinished worker and
   permits launch only after its observed join; it is not native shutdown
-  failure evidence. Both new cases pass on stable and Rust 1.89; existing
-  runner/MCP/scheduler/live-capture suites pass on both toolchains, and stable
-  all-target execute Clippy passes. No public item or error code is added.
+  failure evidence. Both new cases pass on pinned Rust 1.89; existing
+  runner/MCP/scheduler/live-capture suites pass on that toolchain, and pinned
+  Rust 1.89 all-target execute Clippy passes. No public item or error code is added.
   Native authority authentication, domain closure, explicit contained cleanup
   states, descendant integration and complete portable/native acceptance
   remain outstanding, so task 9303 remains In progress.
+
+- **Protected authority registration/binding implemented:** task 9303 adopts
+  `fsm-execute/Cargo.toml` and `src/containment/` for the separately provisioned
+  authority binary. Supported Linux callers must be root before request I/O;
+  other runtimes refuse. Registration verifies a store read-only, creates a
+  generation exclusively and persists its canonical path/device/inode under
+  protected root ancestors. Binding checks a protected allocator-produced
+  prepared record, boot and native identities, then independently opens that
+  registered store to require the original durable claim hash, all claim
+  fields and current unstopped ownership of a pending effect on a running
+  instance. Its private canonical create-once record fsyncs before the parent;
+  symlink, nonregular, oversize, noncanonical and unprotected records refuse.
+  The real cold-journal test covers matching/wrong hashes, changed handler
+  identity and durable cancellation; pure domain metadata in that test is
+  explicitly not native enrollment evidence. File cases cover exact 8 KiB,
+  plus-one, symlink refusal and unchanged duplicate publication. A separately
+  invoked root registration test passes on stable and MSRV, checking private
+  ownership/mode, exclusive duplicate refusal and unchanged journal head,
+  with fresh owned namespaces/stores removed afterward. Positive native
+  binding awaits the production allocator, rather than seeding its prepared
+  record and mislabelling that as allocator evidence. Full broker, protected
+  entry, registered-store access policy, closure and runner integration remain
+  outstanding; registration/binding alone launches no handler and issues no
+  closure receipt.
+
+- **Toolchain attribution corrected:** the preceding capture and worker
+  entries originally labelled unqualified Cargo commands as stable even
+  though `rust-toolchain.toml` selected 1.89.0. Those historical entries now
+  correctly describe pinned MSRV checks. Explicit `cargo +stable` uses
+  Rust 1.98.1 and passes every execute target, including the unchanged public
+  inventory and cumulative capture/worker tests, the new authority tests and
+  refusal integration; its all-target execute Clippy and zero-dependency
+  check pass. Explicit Rust 1.89 authority/refusal/live-capture checks pass,
+  and actual privileged registration passes using binaries from each
+  toolchain. Review also corrected an initial cancellation-test signature
+  mismatch and the forbidden stderr logging macro before the final passes.
+  Stable formatting, source-size and diff checks pass. These are preliminary
+  local checks: full workspace debug/release, workspace Clippy/docs, external
+  embedding and the six real portable plus complete native CI gates have not
+  been rerun for this task's current source, and remain required before final
+  task acceptance. Task 9303 stays In progress; all plans retain full scope.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._

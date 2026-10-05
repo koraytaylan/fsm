@@ -1441,6 +1441,35 @@ under plan 0022 task 9302; native execution integration remains under
 development in the downstream tasks.
 Format support alone MUST NOT be advertised as contained execution support.
 
+The separately provisioned Linux authority under development uses protected
+`/var/lib/fsm-containment/<namespace>/authority-<generation>` directories.
+Namespace and generation MUST be canonical domain identities; directories and
+their ancestors MUST be root owned, nonsymlink directories without group or
+other write permission. An explicitly registered authority generation MUST
+be created exclusively and MUST NOT silently replace an existing generation
+or recreate missing authority during binding. Its canonical private
+`store.json` (`fsm.native-store-registration/1`) binds the canonical store
+path and native device/inode identity. This registration does not enable
+execution or establish legacy quiescence.
+
+A private canonical binding (`fsm.native-claim-binding/1`) contains exactly
+`format`, `claim` and `journal_claim`. The authority MUST independently read
+the registered store, verify its path identity, the original durable claim
+hash and every claim field, and require matching current unstopped ownership
+of a still-pending effect on a running instance. It MUST also verify boot,
+authority and cgroup identities against a protected allocator-produced
+`prepared-<allocation>.json` (`fsm.native-prepared/1`, with exactly `format`,
+`phase` and `domain`, phase `prepared`). Merely presenting a public
+`NativeDomain` or claiming that a domain is prepared MUST NOT suffice.
+Publishing `binding-<allocation>.json` MUST be exclusive and fsync the file
+before its parent directory. A partial existing record MUST refuse replacement,
+never be treated as a completed binding. Private authority records are bounded
+to 8 KiB and regular files, and their reads MUST refuse symlink traversal.
+Binding alone MUST NOT launch user code, authorize settlement or establish
+closure; the launch path MUST revalidate current ownership because journal
+state can change after binding. Allocation, broker authentication, protected
+entry and closure integration remain required before this capability ships.
+
 The claim-era writer MUST use VERSION 11. It adds `execution_claimed`,
 `execution_stopped` and `execution_settled` records, and an
 `execution_enabled` record for verified legacy-upgrade admission. A new store

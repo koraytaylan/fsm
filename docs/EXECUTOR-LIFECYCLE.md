@@ -2,6 +2,18 @@
 
 ## Decision status
 
+The in-development `fsm-containment-authority` binary adds root-only store
+registration and immutable claim binding under the protected persistent
+authority namespace. Registration verifies the store read-only and creates
+a fresh generation exclusively. Binding independently checks the registered
+store identity and durable claim, current runnable/pending ownership, boot,
+authority/cgroup identities and a protected prepared record before writing a
+private create-once, fsynced binding. Its input format is closed and bounded;
+unsupported runtimes and unprivileged callers refuse before request I/O.
+These commands perform no handler launch and publish no closure receipt;
+the production allocator, protected entry, broker and runner integration
+remain unfinished, so this binary is not an accepted contained runtime.
+
 Task 9303 now shares a bounded accumulator and Linux nonblocking socket
 capture between process output and MCP stderr in the existing runner: each
 poll drains at most 64 KiB per stream, retains at most 4 KiB, hashes at most

@@ -1,5 +1,40 @@
 //! Production capture checks; these do not establish native domain closure.
 
+#[test]
+fn authority_refuses_unprivileged_or_unsupported_before_request_io() {
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if std::fs::metadata("/proc/self").unwrap().uid() == 0 {
+            return; // Privileged publication requires its separate native gate.
+        }
+    }
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_fsm-containment-authority"))
+        .args([
+            "bind",
+            &"a".repeat(32),
+            "1",
+            "/nonexistent/fsm-authority-request",
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    assert!(stderr.contains("requires separately provisioned root authority"));
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    assert!(stderr.contains("native containment runtime unsupported"));
+}
+
 #[cfg(target_os = "linux")]
 mod linux {
     use fsm_core::sha256::{sha256, to_hex};

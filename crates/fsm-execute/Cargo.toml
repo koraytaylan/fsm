@@ -18,5 +18,10 @@ fsm-store = { path = "../fsm-store" }
 name = "fsm-mcp-stub"
 path = "tests/support/mcp_stub.rs"
 
+# Privileged containment control entry point; provisioned separately from fsm.
+[[bin]]
+name = "fsm-containment-authority"
+path = "src/containment/main.rs"
+
 [lints]
 workspace = true

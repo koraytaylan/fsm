@@ -1,5 +1,13 @@
 # Releasing
 
+Unreleased native authority work adds a separately provisioned root-only
+registration/binding binary with bounded canonical protected records and
+independent read-only verification of original durable claim identity and
+current pending ownership. Binding never starts a handler or publishes
+closure evidence. Production allocation, broker, protected entry and runner
+closure integration remain incomplete; the added binary does not enable or
+advertise contained execution, and no package version or release tag changes.
+
 Unreleased Linux runner capture now drains nonblocking sockets on each poll,
 without output spool files or capture-reader threads, keeping at most 4 KiB
 per stream and hashing at most 1 MiB. EOF is required for a whole-stream

@@ -7,6 +7,8 @@ depends_on:
   - durable-execution-claims
 gated: false
 touches:
+  - crates/fsm-execute/Cargo.toml
+  - crates/fsm-execute/src/containment/
   - crates/fsm-execute/src/run.rs
   - crates/fsm-execute/src/run/
   - crates/fsm-execute/src/mcp_client.rs
@@ -23,6 +25,11 @@ status: in_progress
 merged_as: ""
 ---
 # Contained Handler Runner
+
+The task adopts the separately provisioned privileged authority binary and
+its private modules as part of the proved native backend implementation;
+adding that footprint does not declare the authority or contained runner
+accepted before native integration review.
 
 The runner reports a settleable result only after the entire owned domain is
 closed; a root exit or MCP response cannot release surviving descendants.
