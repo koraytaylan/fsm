@@ -3058,4 +3058,18 @@ lifecycle updates.
   SPEC contracts; this does not replace the remaining frozen aggregate review
   or accept downstream service ownership integration.
 
+- Named-target coverage repair `0cef6f6c5be8881429dc97fa7ebd5e1ac9abfaa7`
+  passes native stable and MSRV in CI `37363278015`; independent verification
+  confirms 81 matrix cases per compiler, exact frozen source and the
+  `lifecycle_runner` fixture target, with evidence retained in task-cache
+  `ci-37363278015/stable` and `ci-37363278015/msrv`.
+  The native authority cases now execute through the plan's named integration
+  target; portable invocations still intentionally ignore provisioned cases.
+  This repairs the command-level coverage gap without accepting task 9303.
+  Frozen host validation will use `runner-review-0cef6f6` in the task cache.
+  The release gate launched earlier in the active checkout remains preliminary
+  because the test target changed while it was compiling; its completion
+  cannot stand in for that frozen gate, and full portable verdicts remain
+  pending while host swap pressure prevents additional local builds.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

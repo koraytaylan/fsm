@@ -124,3 +124,9 @@ exact Cargo test artifact while still installing the separate production binary.
 Reports identify the test target, and the independent verifier derives the
 required target from frozen source; fresh local compilation and native
 stable/MSRV execution remain required before accepting this repair.
+
+CI `37363278015` at frozen repair `0cef6f6` passes native stable and MSRV;
+independent artifact verification confirms `lifecycle_runner` as the fixture
+target and all 81 matrix cases per compiler, including the existing claimed
+process/MCP descendant controls, so the named-target coverage gap is repaired.
+Full portable and frozen host gates and aggregate review remain pending.
