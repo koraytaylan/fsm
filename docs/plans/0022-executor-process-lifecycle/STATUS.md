@@ -2309,4 +2309,14 @@ lifecycle updates.
   CI run `37309923079` is queued, compiled gates remain pending, and no task
   acceptance or native gate status changes.
 
+- Strengthened verified-completion contention evidence: the positive native host
+  now confirms a real writer-open attempt returns `store/lock` while its
+  independent writer remains alive, and read-only inspection retains exact
+  unstopped ownership, pending effect and original journal head/hash after tree
+  closure. Releasing that process then permits a healthy writer with identical
+  ownership, retaining completion for the existing stopped/settlement stage.
+  This proves observation and writer acquisition separately, not automatic
+  service settlement; formatting/size/diff checks pass, `0fcfbd0` run
+  `37310123746` is queued, and compiled/full integration gates remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

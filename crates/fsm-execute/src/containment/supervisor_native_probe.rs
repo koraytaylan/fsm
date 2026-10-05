@@ -152,7 +152,43 @@ fn complete(binding: Value) {
                 .take()
                 .expect("positive native run requires independent writer contention");
             assert!(holder.child.try_wait().unwrap().is_none());
+            let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
+            let path = std::path::Path::new(&path);
+            match fsm_store::store::Store::open(path) {
+                Err(error) => assert_eq!(error.code, "store/lock"),
+                Ok(_) => panic!("independent writer did not retain its lease through completion"),
+            }
+            let snapshot = fsm_store::store::Store::open_read_only(path).unwrap();
+            let (instance, effect) = claim.effect();
+            assert_eq!(
+                snapshot.state.execution.claim_for(instance, effect),
+                Some(&claim)
+            );
+            assert!(
+                snapshot
+                    .state
+                    .execution
+                    .stopped_for(instance, effect)
+                    .is_none()
+            );
+            assert!(
+                snapshot.state.instances[instance]
+                    .pending
+                    .iter()
+                    .any(|pending| pending == effect)
+            );
+            assert_eq!(snapshot.current_execution_claim_hash(&claim).unwrap(), hash);
+            assert_eq!(
+                snapshot.journal.last_hash,
+                hash.strip_prefix("sha256:").unwrap()
+            );
+            let retained = snapshot.state.execution.clone();
+            drop(snapshot);
             holder.release();
+            let writer = fsm_store::store::Store::open(path).unwrap();
+            assert_eq!(writer.state.execution, retained);
+            assert_eq!(writer.current_execution_claim_hash(&claim).unwrap(), hash);
+            drop(writer);
             assert_eq!(owned.progress().phase, NativeRunPhase::Closed);
             let helper = owned.progress().helper;
             assert!(helper.reaped && helper.stdout_eof && helper.stderr_eof);
