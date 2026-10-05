@@ -7,6 +7,9 @@ depends_on:
   - durable-execution-claims
 gated: false
 touches:
+  - crates/fsm-core/src/record/execution/ownership.rs
+  - crates/fsm-core/src/record/execution/ownership_values.rs
+  - crates/fsm-core/tests/execution_ownership.rs
   - crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
   - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/authority_install.py

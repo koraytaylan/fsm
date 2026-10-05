@@ -581,6 +581,8 @@ fn settlement_refuses_to_apply_an_incompatible_stopped_result() {
         ("ok", Settlement::Interrupted),
         ("interrupted", Settlement::Acked),
         ("interrupted", Settlement::Attempted),
+        ("failed", Settlement::Attempted),
+        ("failed", Settlement::Interrupted),
     ] {
         let mut state = ExecutionState::new(Admission::Enabled);
         let claim = claim(1, "effect", 1);
@@ -595,6 +597,23 @@ fn settlement_refuses_to_apply_an_incompatible_stopped_result() {
         );
         assert_eq!(state, before);
     }
+}
+
+#[test]
+fn terminal_unclassified_failure_round_trips_and_acks_without_retry() {
+    let mut state = ExecutionState::new(Admission::Enabled);
+    let claim = claim(1, "effect", 1);
+    state
+        .claim(claim.clone(), PendingEffect::Present, 0)
+        .unwrap();
+    state.stop(&claim, stopped(&claim, "failed")).unwrap();
+    assert_eq!(recovered(&state), state);
+    let result = state
+        .settle(&claim, Settlement::Acked, PendingEffect::Present, 0)
+        .unwrap();
+    assert_eq!(result.outcome().status(), "failed");
+    assert!(state.claim_for("instance", "effect").is_none());
+    assert_eq!(recovered(&state), state);
 }
 
 #[test]

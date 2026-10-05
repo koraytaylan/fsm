@@ -2056,7 +2056,7 @@ and a canonical SHA-256 `receipt` digest naming protected native evidence.
 Decoding that value MUST NOT authenticate the receipt; native publication
 must independently verify the protected evidence and its exact domain/run
 binding. An outcome is a closed object containing `status` (`ok`,
-`interrupted`, or one of the four existing failure classes) and an optional
+`failed` for a terminal failure without a retry class, `interrupted`, or one of the four existing failure classes) and an optional
 `result` value. An omitted result and an explicit null result remain distinct.
 Unknown outcome fields and statuses are refused. A stopped value's closure
 run/domain MUST match its claim. A second stopped record is refused; a
@@ -2074,7 +2074,8 @@ mismatch; they MUST NOT normalize such authenticated state.
 
 An `acked` disposition requires a still-pending effect and a stopped `ok` or
 failure result; an `attempted` disposition requires a still-pending effect
-and a stopped failure result. An `interrupted` disposition requires a stopped
+and a stopped classified failure result; terminal `failed` MUST NOT authorize
+an attempted disposition or increase the failed-attempt ledger. An `interrupted` disposition requires a stopped
 interruption while the effect remains pending; when the effect was externally
 removed it may instead consume any proved-stopped outcome without applying
 that result. Ack or removal discards the effect's retry ledger once ownership is
@@ -2083,7 +2084,7 @@ and removal cannot discard that ownership. All refusals MUST leave the
 ownership state and high-water mark unchanged. Pure state constructors do not authorize native
 launch or replace the store's pending-effect check.
 
-Stopped outcomes distinguish `ok`, an existing executor failure class, and
+Stopped outcomes distinguish `ok`, terminal nonretryable `failed`, an existing executor failure class, and
 `interrupted`; they retain the bounded result needed by settlement. An unknown
 termination state is unresolved ownership, not a stopped interruption. A
 second stopped record with different outcome bytes is refused. A stopped run

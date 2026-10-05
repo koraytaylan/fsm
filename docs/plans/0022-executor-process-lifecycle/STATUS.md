@@ -2019,4 +2019,16 @@ lifecycle updates.
   queued for `c4e0f93`, compiled native/portable verification and production
   service integration remain required, and task 9303 stays In progress.
 
+- **Terminal nonretryable stopped result gap repaired:** review found that
+  nullable retry classification could not encode an MCP protocol failure for
+  atomic failed acknowledgement without wrongly allowing retry or treating it
+  as interruption. Task 9303 adopts the shared outcome/ownership/test files and
+  extends the unreleased VERSION 11 vocabulary with terminal `failed`; it may
+  acknowledge while pending but cannot attempt or interrupt a still-pending
+  effect. Pure controls round-trip stopped/settled state and refuse incompatible
+  dispositions unchanged. Retry classes, historical bytes, hash domains and
+  published formats stay unchanged. Formatting, size and diff checks pass;
+  native completion mapping, compiled core/store/replay acceptance and remaining
+  production integration stay required, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

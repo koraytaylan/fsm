@@ -187,7 +187,11 @@ impl StoppedOutcome {
         };
         closed(value, fields)?;
         let status = text(value, "status")?;
-        if status != "ok" && status != "interrupted" && FailureClass::parse(status).is_err() {
+        if status != "ok"
+            && status != "failed"
+            && status != "interrupted"
+            && FailureClass::parse(status).is_err()
+        {
             return Err(ShapeError("status"));
         }
         Ok(Self {

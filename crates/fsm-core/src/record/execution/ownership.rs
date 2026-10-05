@@ -235,7 +235,7 @@ impl ExecutionState {
         let allowed = match settlement {
             Settlement::Acked => {
                 pending == PendingEffect::Present
-                    && (stopped.outcome.status() == "ok" || failure.is_some())
+                    && (matches!(stopped.outcome.status(), "ok" | "failed") || failure.is_some())
             }
             Settlement::Attempted => pending == PendingEffect::Present && failure.is_some(),
             Settlement::Interrupted => {

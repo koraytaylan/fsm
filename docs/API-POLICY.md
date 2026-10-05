@@ -542,6 +542,11 @@ variants affect downstream exhaustive construction and matching, reinforcing
 the breaking-minor release requirement. New stable `store/execution_*` codes
 are enumerated in SPEC Appendix A and `ALL_CODES`. Complete native-proof,
 crash/recovery and lifecycle acceptance remains required before release.
+The unreleased VERSION 11 execution outcome vocabulary includes terminal
+`failed` without a retry class, allowing atomic failed acknowledgement while
+refusing failed-attempt disposition; the four retry classes remain unchanged.
+This extends the reserved new execution schema before release and changes no
+historical journal bytes, hash domain, stable error code or published format.
 
 The additive pure types in `fsm_core::record::execution` model the reserved
 native identity and retry policy, with usable constructors and closed-value
