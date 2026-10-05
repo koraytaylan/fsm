@@ -1358,4 +1358,19 @@ lifecycle updates.
   portable CI evidence, and no runtime manager acceptance is claimed from
   the failed run. Task 9303 remains In progress.
 
+- **Trusted enrolled-gate group derivation implemented:** the root-only
+  `authorize-enrolled` operation accepts exactly a grant and no group override,
+  retains fresh binding/approved-argv verification under the authority lock,
+  and derives access from stable bounded manager/proc observations of the
+  routed live DynamicUser gate. Exact installed root-protected executable,
+  gate argv/cgroup, invocation/PID, UID/GID range, supplementary groups,
+  privilege and capability restrictions are required. The manager query now
+  shares its existing bounded capture/deadline implementation for exact
+  property inventories. Pure negative controls cover identity/policy shapes;
+  the real allocator case refuses a prepared claimed domain without an
+  enrolled manager gate and confirms no grant/pending file appeared.
+  Formatting/source checks precede frozen CI; positive installed-gate
+  enrollment, launch, native I/O, broker policy and complete closure remain
+  outstanding, and task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

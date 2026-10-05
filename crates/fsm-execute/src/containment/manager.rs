@@ -29,6 +29,21 @@ impl Drop for Query {
 }
 
 pub(super) fn require() -> Result<(), String> {
+    validate(&query(
+        "system.slice",
+        &["LoadState", "ActiveState", "ControlGroup"],
+    )?)
+}
+
+pub(super) fn properties(unit: &str, keys: &[&str]) -> Result<BTreeMap<String, String>, String> {
+    let fields = fields(&query(unit, keys)?)?;
+    if fields.len() != keys.len() || keys.iter().any(|key| !fields.contains_key(*key)) {
+        return Err("system-manager property inventory differs".into());
+    }
+    Ok(fields)
+}
+
+fn query(unit: &str, keys: &[&str]) -> Result<Vec<u8>, String> {
     let binary = Path::new("/usr/bin/systemctl");
     protected_directory(binary.parent().ok_or("manager binary has no parent")?)?;
     let metadata = fs::symlink_metadata(binary).map_err(io)?;
@@ -41,16 +56,13 @@ pub(super) fn require() -> Result<(), String> {
     stderr.set_nonblocking(true).map_err(io)?;
     let output: OwnedFd = output.into();
     let diagnostics: OwnedFd = diagnostics.into();
+    let mut command = Command::new(binary);
+    command.args(["show", unit, "--no-pager"]);
+    for key in keys {
+        command.arg(format!("--property={key}"));
+    }
     let mut query = Query(
-        Command::new(binary)
-            .args([
-                "show",
-                "system.slice",
-                "--no-pager",
-                "--property=LoadState",
-                "--property=ActiveState",
-                "--property=ControlGroup",
-            ])
+        command
             .env_clear()
             .env("LANG", "C")
             .env("LC_ALL", "C")
@@ -73,7 +85,7 @@ pub(super) fn require() -> Result<(), String> {
                 return Err("system-manager query failed".into());
             }
             if output_eof && diagnostics_eof {
-                return validate(&output);
+                return Ok(output);
             }
         }
         if Instant::now() >= deadline {
@@ -108,20 +120,24 @@ fn drain(stream: &mut UnixStream, retained: &mut Vec<u8>, eof: &mut bool) -> Res
     Ok(())
 }
 
-fn validate(bytes: &[u8]) -> Result<(), String> {
+fn fields(bytes: &[u8]) -> Result<BTreeMap<String, String>, String> {
     let output = std::str::from_utf8(bytes).map_err(|_| "invalid manager response encoding")?;
     let mut fields = BTreeMap::new();
     for line in output.lines() {
         let (key, value) = line.split_once('=').ok_or("invalid manager property")?;
-        if fields.insert(key, value).is_some() {
+        if fields.insert(key.to_owned(), value.to_owned()).is_some() {
             return Err("duplicate manager property".into());
         }
     }
-    if fields
+    Ok(fields)
+}
+
+fn validate(bytes: &[u8]) -> Result<(), String> {
+    if fields(bytes)?
         != BTreeMap::from([
-            ("LoadState", "loaded"),
-            ("ActiveState", "active"),
-            ("ControlGroup", "/system.slice"),
+            ("LoadState".into(), "loaded".into()),
+            ("ActiveState".into(), "active".into()),
+            ("ControlGroup".into(), "/system.slice".into()),
         ])
     {
         return Err("system-manager slice is unavailable or differs".into());

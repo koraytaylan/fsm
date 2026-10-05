@@ -10,8 +10,21 @@ a missing catalogue. Binding independently replays the pending effect and
 matches the approved full handler fingerprint and retry snapshot; entry grants
 must also match journal-derived argv substitution. These checks prevent a
 request or opaque claim from choosing another command, but do not supply
-DynamicUser enrollment, trusted group derivation, broker access policy or
+DynamicUser launch, broker access policy or
 complete closure.
+
+The privileged `authorize-enrolled` route accepts a grant without a group
+override and derives access from the manager's active running gate under the
+authority lock. It checks the routed cgroup, DynamicUser/nondelegation/control
+protection/no-restart properties and stable invocation/PID observations, then
+bounded proc observations of the fixed root-protected installed executable,
+exact gate argv, membership, dynamic UID/GID, supplementary groups and all
+capability sets. Changed or absent observations refuse before any grant file
+is created. Static accounts must not use the dynamic identity range, which
+[systemd documents as 61184–65519](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml).
+The earlier explicit-group route remains root-only; neither interface is a
+broker endpoint. Positive installed-gate enrollment and launch integration
+still require native evidence; no complete contained runner is accepted.
 
 `HandlerSpec::fingerprint` now defines full canonical contract identity for
 validated handler specs, including command/MCP templates, timeout, outcomes

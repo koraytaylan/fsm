@@ -324,6 +324,14 @@ fn genuine_claim_binding() {
             .contains("approved journal-derived handler")
     );
     assert!(!fixture.directory.join("entry-1.json").exists());
+    let enrolled_request = object([("grant", grant.clone())]);
+    assert!(super::super::authorize::publish_enrolled(&fixture.directory, &request).is_err());
+    // A genuine prepared/claimed domain is not an enrolled manager gate.
+    assert!(
+        super::super::authorize::publish_enrolled(&fixture.directory, &enrolled_request).is_err()
+    );
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    assert!(!fixture.directory.join("entry-1.json.pending").exists());
     assert!(super::super::catalogue::publish(&fixture.directory, &approved_table()).is_err());
     assert!(
         super::super::entry::wait_grant(&fixture.directory, 1, std::time::Duration::ZERO)

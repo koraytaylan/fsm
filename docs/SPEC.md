@@ -1518,6 +1518,22 @@ This transition MUST NOT issue closure evidence, clear claims or imply
 termination; manager admission fencing, native termination and permanent
 closure remain required before settlement or capacity reuse.
 
+The root-only `authorize-enrolled` operation accepts exactly `grant`, without
+a caller-selected group. After fresh binding/argv validation under the
+authority lock, it MUST derive the grant group from the routed system
+manager's active running DynamicUser main process. Manager properties MUST
+match the exact routed cgroup, nondelegation, protected control groups and
+disabled restart. The process MUST be the root-protected installed
+`/usr/libexec/fsm-containment-authority` executing exactly `gate` and that
+native route, with matching cgroup membership, one canonical nonzero UID/GID
+pair in the dynamic identity range (61184 through 65519), no additional supplementary group,
+no capabilities in any observed set and `NoNewPrivs: 1`.
+Manager/process/executable observations MUST be bounded and stable across
+revalidation before publication; a missing, changed or malformed observation
+MUST refuse without publishing a grant. Provisioning MUST reserve the dynamic
+identity range from static accounts. This privileged operation does not
+launch the gate, authenticate a broker peer or establish permanent closure.
+
 The root-only `request-kill` operation MUST complete admission revocation
 under the authority lock before writing `1` to the matched domain's
 `cgroup.freeze` and then `cgroup.kill`. It MUST retain that lock throughout

@@ -42,6 +42,9 @@ mod observation;
 #[path = "catalogue.rs"]
 mod catalogue;
 
+#[path = "enrollment.rs"]
+mod enrollment;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -51,7 +54,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() < 3 {
         return Err(
-            "usage: register|catalogue|bind|prepare|authorize|begin-close|request-kill|observe NAMESPACE GENERATION [REQUEST]"
+            "usage: register|catalogue|bind|prepare|authorize|authorize-enrolled|begin-close|request-kill|observe NAMESPACE GENERATION [REQUEST]"
                 .into(),
         );
     }
@@ -62,6 +65,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
             | "bind"
             | "prepare"
             | "authorize"
+            | "authorize-enrolled"
             | "begin-close"
             | "request-kill"
             | "observe"
@@ -111,6 +115,8 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         register(&directory, Path::new(&arguments[3]))
     } else if operation == "authorize" {
         authorize::publish(&directory, &read_value(Path::new(&arguments[3]), false)?)
+    } else if operation == "authorize-enrolled" {
+        authorize::publish_enrolled(&directory, &read_value(Path::new(&arguments[3]), false)?)
     } else {
         bind(&directory, &read_value(Path::new(&arguments[3]), false)?)
     }

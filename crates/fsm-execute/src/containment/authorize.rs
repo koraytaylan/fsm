@@ -9,15 +9,24 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt, chown};
 use std::path::Path;
 
 pub(super) fn publish(directory: &Path, request: &Value) -> Result<(), String> {
-    protected_directory(directory)?;
     closed(request, &["grant", "group_id"])?;
-    let grant = request.get("grant").ok_or("entry grant missing")?;
-    let (claim, argv) = entry::decode(grant)?;
     let group =
         u32::try_from(number(request, "group_id")?).map_err(|_| "invalid isolated group")?;
     if group == 0 {
         return Err("root group cannot authorize handler entry".into());
     }
+    publish_grant(directory, request, Some(group))
+}
+
+pub(super) fn publish_enrolled(directory: &Path, request: &Value) -> Result<(), String> {
+    closed(request, &["grant"])?;
+    publish_grant(directory, request, None)
+}
+
+fn publish_grant(directory: &Path, request: &Value, selected: Option<u32>) -> Result<(), String> {
+    protected_directory(directory)?;
+    let grant = request.get("grant").ok_or("entry grant missing")?;
+    let (claim, argv) = entry::decode(grant)?;
     let bytes = canon_bytes(grant);
     if bytes.len() as u64 > super::MAX_RECORD {
         return Err("entry grant exceeds bound".into());
@@ -41,6 +50,10 @@ pub(super) fn publish(directory: &Path, request: &Value) -> Result<(), String> {
     // Keep the lock through visibility/durability so closing can serialize
     // revocation against this operation; the journal is freshly re-read.
     let (_, _lock) = validate_binding(directory, &binding, Some(&argv))?;
+    let group = match selected {
+        Some(group) => group,
+        None => super::enrollment::group(&claim.domain().to_value())?,
+    };
     publish_file(directory, allocation, group, &bytes)
 }
 
