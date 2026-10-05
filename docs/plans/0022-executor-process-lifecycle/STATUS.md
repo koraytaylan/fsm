@@ -2208,4 +2208,14 @@ lifecycle updates.
   compiled acceptance remains pending (`fa86377` run `37306593261` queued),
   automatic service wiring remains incomplete, and task 9303 stays In progress.
 
+- Added an actual native process root exiting 17 with enrolled child/grandchild
+  and retained pipes: independent observation and existing protected closure
+  precede checked `nonzero_exit` completion; the unadmitted class selects Acked,
+  writes a failed outcome with the original capture through production adapters,
+  duplicate replay adds no record, and reopening retains resolved ownership and
+  an absent pending effect. This is sequential terminal settlement, not automatic
+  outcome-event/service integration; formatting/size/diff checks pass, compiled
+  CI remains pending (`35c0cfe` run `37306871810` queued), and task 9303 remains
+  In progress with all remaining native/portable acceptance gates required.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

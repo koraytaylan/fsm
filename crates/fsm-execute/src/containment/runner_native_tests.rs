@@ -42,11 +42,11 @@ def enrolled_tree():
     while not (base/'release').exists():
         assert time.monotonic()<deadline
         time.sleep(.005)
-if mode in ('process-exit','cancel-process','uncertain-process'):
+if mode in ('process-exit','process-failure','cancel-process','uncertain-process'):
     enrolled_tree()
-    if mode=='process-exit':
+    if mode in ('process-exit','process-failure'):
         print('root-exited',flush=True)
-        sys.exit(0)
+        sys.exit(17 if mode=='process-failure' else 0)
     time.sleep(300)
 for line in sys.stdin:
     request=json.loads(line)
@@ -119,6 +119,7 @@ pub(super) fn run() {
         "timeout",
         "retry-timeout",
         "process-exit",
+        "process-failure",
         "cancel-mcp",
         "cancel-process",
         "uncertain-mcp",
@@ -167,7 +168,7 @@ pub(super) fn run() {
         ]);
         if matches!(
             mode,
-            "process-exit" | "cancel-process" | "uncertain-process"
+            "process-exit" | "process-failure" | "cancel-process" | "uncertain-process"
         ) {
             let Value::Obj(fields) = &mut table else {
                 panic!("fixture table is not an object")
@@ -368,8 +369,13 @@ pub(super) fn run() {
                 Some(&Value::Str("exec/timeout".into()))
             );
         } else {
-            assert_eq!(result.get("failure_class"), Some(&Value::Null));
-            assert_eq!(candidate.get("status"), Some(&Value::Num("0".into())));
+            let (class, status) = if mode == "process-failure" {
+                (Value::Str("nonzero_exit".into()), "17")
+            } else {
+                (Value::Null, "0")
+            };
+            assert_eq!(result.get("failure_class"), Some(&class));
+            assert_eq!(candidate.get("status"), Some(&Value::Num(status.into())));
             assert_eq!(
                 candidate.get("stdout"),
                 Some(&Value::Str("root-exited\n".into()))
@@ -395,6 +401,7 @@ pub(super) fn run() {
             "timeout" | "retry-timeout" => "timeout",
             "cancel-process" | "cancel-mcp" => "interrupted",
             "process-exit" => "ok",
+            "process-failure" => "nonzero_exit",
             _ => panic!("uncertain runner must not reach verified completion"),
         };
         assert_eq!(completion.stopped_outcome().status(), expected);
@@ -426,10 +433,88 @@ pub(super) fn run() {
         assert_unresolved(&fixture, &effect);
         if mode == "retry-timeout" {
             settle_retry(&mut fixture, &effect, &original_claim, &completion);
+        } else if mode == "process-failure" {
+            settle_failure(&fixture, &effect, &original_claim, &completion);
         }
         assert!(runner::execute(&fixture.directory, 1).is_err());
         fixture.cleanup().unwrap();
     }
+}
+
+fn settle_failure(
+    fixture: &Fixture,
+    effect: &str,
+    claim: &fsm_core::record::execution::Claim,
+    completion: &fsm_execute::run::native_client::NativeCompletion,
+) {
+    use fsm_core::record::execution::{PendingEffect, Settlement};
+    let mut store = Store::open(&fixture.store).unwrap();
+    let mut pipeline = fsm_execute::run::Pipeline;
+    let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+    let before = store.records.len();
+    pipeline
+        .stop_native(
+            &mut store,
+            &mut clock,
+            claim,
+            completion,
+            "native-failure-stop",
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .state
+            .execution
+            .settlement_for(claim, PendingEffect::Present)
+            .unwrap(),
+        Settlement::Acked
+    );
+    pipeline
+        .settle_stopped(
+            &mut store,
+            &mut clock,
+            claim,
+            Settlement::Acked,
+            "native-failure-settle",
+        )
+        .unwrap();
+    let replay = pipeline
+        .settle_stopped(
+            &mut store,
+            &mut clock,
+            claim,
+            Settlement::Acked,
+            "native-failure-settle",
+        )
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(store.records.len(), before + 2);
+    assert!(!store.state.instances["instance"].pending.contains(effect));
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", effect)
+            .is_none()
+    );
+    let record = store.records.last().unwrap();
+    assert_eq!(
+        record.body.get("outcome").and_then(Value::as_str),
+        Some("failed")
+    );
+    assert_eq!(
+        record.body.get("result"),
+        completion.stopped_outcome().result()
+    );
+    let execution = store.state.execution.clone();
+    drop(store);
+    let reopened = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(reopened.state.execution, execution);
+    assert!(
+        !reopened.state.instances["instance"]
+            .pending
+            .contains(effect)
+    );
 }
 
 fn settle_retry(
