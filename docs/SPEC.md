@@ -1789,6 +1789,13 @@ that record is absent, natural retirement MUST be acknowledged separately as
 after the same full retirement observations succeed. Natural retirement MUST
 NOT be represented as successful manager stop. Both submitted routes retain and recheck
 the protected closing marker through publication.
+After durable revocation and proof of manager unit/job retirement, Root MAY
+remove a residual empty cgroup only when its protected directory identity still
+matches the original domain and the bounded no-follow exact cgroup.events sample
+reports populated=false. It MUST revalidate identity and manager retirement before
+removal and reprove actual absence and manager retirement afterward; removal
+failure, unknown children, population or replacement MUST retain uncertainty.
+This cleanup MUST NOT recursively remove cgroups or infer closure from emptiness.
 Before final publication it MUST refuse either grant path of any type, a different boot/authority,
 present or unreadable native cgroup, a listed manager unit or a queued job
 for that unit. Manager inventory capture MUST be bounded and use a shared

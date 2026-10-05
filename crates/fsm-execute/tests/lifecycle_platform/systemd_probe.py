@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -41,17 +42,41 @@ def await_file(path, process, timeout=4):
         time.sleep(.005)
 
 
-def await_removed(directory, original, timeout=3):
+def await_removed(directory, original, unit, timeout=3):
     """Require actual original-domain absence; manager inactivity is insufficient."""
     deadline = time.monotonic() + timeout
     while True:
         try:
             observed = directory.stat()
         except FileNotFoundError:
+            assert manager_retired(unit), "manager reappeared after native removal"
             return
         assert (observed.st_dev, observed.st_ino) == original, "native domain identity replaced during stop"
+        assert observed.st_uid == 0 and observed.st_mode & 0o022 == 0, "unprotected residual domain"
+        if manager_retired(unit):
+            control = os.open(directory / "cgroup.events", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(control, "rb") as stream:
+                metadata = os.fstat(stream.fileno())
+                assert stat.S_ISREG(metadata.st_mode) and metadata.st_uid == 0 and metadata.st_mode & 0o022 == 0 and metadata.st_dev == original[0], "unprotected native event control"
+                events = stream.read(4097)
+            assert len(events) <= 4096, "native events exceed bound"
+            assert events in (b"populated 0\nfrozen 0\n", b"populated 0\nfrozen 1\n"), "residual domain is not exactly empty"
+            current = directory.stat()
+            assert (current.st_dev, current.st_ino) == original, "residual domain changed before removal"
+            assert manager_retired(unit), "manager owns residual domain before removal"
+            command(["sudo", "-n", "rmdir", "--", str(directory)])
         assert time.monotonic() < deadline, "domain still exists after stop"
         time.sleep(.005)
+
+
+def manager_retired(unit):
+    units = command(["systemctl", "list-units", "--all", "--plain", "--no-legend", "--no-pager", unit])
+    jobs = command(["systemctl", "list-jobs", "--plain", "--no-legend", "--no-pager"])
+    assert len(units.encode()) <= 4096 and len(jobs.encode()) <= 4096, "manager inventory exceeds bound"
+    assert all(line.split()[0] == unit for line in units.splitlines() if line.strip()), "unexpected manager unit inventory"
+    rows = [line.split() for line in jobs.splitlines() if line.strip() and line.strip() != "No jobs running."]
+    assert all(len(row) == 4 and row[0].isdigit() and int(row[0]) > 0 and row[0] == str(int(row[0])) for row in rows), "invalid manager job inventory"
+    return not units.strip() and all(row[1] != unit for row in rows)
 
 
 def show(unit):
@@ -176,7 +201,7 @@ def run_case(binary, case, neutralize=False):
         stopped = show(unit)
         assert stopped["ActiveState"] in ("inactive", "failed"), stopped
         assert not stopped["ControlGroup"], stopped
-        await_removed(cgroup, cgroup_identity)
+        await_removed(cgroup, cgroup_identity, unit)
         assert not cgroup.exists(), "domain still exists after stop"
         stdout, stderr = process.communicate(timeout=3)
         closed = True

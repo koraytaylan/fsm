@@ -2730,4 +2730,19 @@ lifecycle updates.
   covered by full structural equality. Production bytes and semantics are unchanged;
   formatting/file-size/diff checks pass, compiled gates remain pending.
 
+- Frozen 412cca9 CI run 37334952656 failed both native jobs in the independent
+  systemd feasibility probe before authority execution: its exit case observed
+  an inactive unloaded manager and original populated-0 cgroup persisting beyond
+  three seconds. Submitted closure and the probe now explicitly remove only an
+  original protected empty residual domain after durable revocation and manager
+  unit/job retirement, repeating identity and retirement checks before removal
+  and proving actual absence afterward; recursive cleanup is forbidden and any
+  uncertainty still refuses receipt publication. SPEC/API/embedding/release
+  record the cleanup boundary. Actual kernel controls exercise no-revocation,
+  changed identity, active manager and unknown-child refusal before original
+  empty cleanup, with no receipt or unrelated-domain deletion. Local authority
+  tests pass 20 with 13 provisioned cases ignored, handler identity tests pass
+  all 7, and probe inventory controls plus formatting/file-size/diff checks pass;
+  provisioned native/portable/frozen gates and task 9303 acceptance remain pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

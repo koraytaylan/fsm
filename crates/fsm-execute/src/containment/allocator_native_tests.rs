@@ -7,6 +7,7 @@ use fsm_store::clock::FixedClock;
 use fsm_store::store::{ExecutionClaimRequest, Store};
 use std::collections::BTreeMap;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::time::{Duration, Instant};
 
 #[path = "admission_native_tests.rs"]
 mod admission_cases;
@@ -227,6 +228,45 @@ fn empty_domain_preparation() {
     assert_eq!(store.state.execution.run_high_water(), 0);
     assert_eq!(store.state.execution.unresolved().count(), 0);
     drop(store);
+    // Exercise residual cleanup on actual kernel resources, independently of
+    // systemd's sometimes immediate directory removal; this issues no receipt.
+    let group = fixture.groups[0].0.clone();
+    let unit = group.file_name().unwrap().to_str().unwrap();
+    let deadline = || Instant::now() + Duration::from_secs(2);
+    let remove = |material: &Value, manager_unit: &str| {
+        super::super::closure::remove_empty(
+            &fixture.directory,
+            1,
+            material,
+            manager_unit,
+            &group,
+            deadline(),
+        )
+    };
+    assert!(remove(&domain, unit).is_err()); // Entry has not been revoked.
+    assert!(group.exists());
+    let (revoked, lock) = super::super::closing::revoke(&fixture.directory, 1).unwrap();
+    assert_eq!(revoked, domain);
+    let mut changed = domain.as_obj().unwrap().clone();
+    changed.insert("cgroup".into(), second.get("cgroup").unwrap().clone());
+    assert!(remove(&Value::Obj(changed), unit).is_err());
+    assert!(remove(&domain, "system.slice").is_err()); // Manager still owns it.
+    assert!(group.exists());
+    let child = group.join("fixture-owned-empty-child");
+    fs::create_dir(&child).unwrap();
+    let child_identity = identity(&fs::symlink_metadata(&child).unwrap());
+    assert!(remove(&domain, unit).is_err()); // Never recursively remove children.
+    assert!(group.exists() && child.exists());
+    assert_eq!(
+        identity(&fs::symlink_metadata(&child).unwrap()),
+        child_identity
+    );
+    fs::remove_dir(&child).unwrap(); // Remove only the test-created obstacle.
+    remove(&domain, unit).unwrap();
+    assert!(!group.exists());
+    assert!(fixture.groups[1].0.exists());
+    assert!(!fixture.directory.join("closed-1.json").exists());
+    drop(lock);
     fixture.cleanup().unwrap();
 }
 

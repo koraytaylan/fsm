@@ -111,8 +111,11 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
     let group = groups.join(&unit);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        if manager::retired(&unit, deadline)? && absent(&group)? {
-            break;
+        if manager::retired(&unit, deadline)? {
+            remove_empty(directory, allocation, &domain, &unit, &group, deadline)?;
+            if manager::retired(&unit, deadline)? && absent(&group)? {
+                break;
+            }
         }
         if Instant::now() >= deadline {
             return Err("closure native retirement deadline".into());
@@ -149,6 +152,32 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
         &directory.join(format!("closure-{allocation}-{}.json", claim.run_id())),
         &receipt,
     )
+}
+
+/// Caller holds the authority lock and has already durably revoked entry.
+pub(super) fn remove_empty(
+    directory: &Path,
+    allocation: u64,
+    domain: &Value,
+    unit: &str,
+    group: &Path,
+    deadline: Instant,
+) -> Result<(), String> {
+    if absent(group)? {
+        return Ok(());
+    }
+    let sample = super::observation::read(directory, allocation)?;
+    if sample.get("domain") != Some(domain)
+        || sample.get("closing") != Some(&Value::Bool(true))
+        || sample.get("populated") != Some(&Value::Bool(false))
+        || closing::prepared_domain(directory, allocation)? != *domain
+        || !manager::retired(unit, deadline)?
+    {
+        return Err("closure residual native domain is uncertain".into());
+    }
+    // The kernel refuses a populated group or one with child cgroups; never
+    // recursively remove unknown domains or substitute emptiness for absence.
+    fs::remove_dir(group).map_err(io)
 }
 
 fn validate_records(directory: &Path, records: &[(String, Value)]) -> Result<(), String> {

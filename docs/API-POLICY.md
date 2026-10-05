@@ -1,5 +1,18 @@
 # API and version policy
 
+After durable entry revocation and exact manager unit/job retirement, submitted
+native closure may remove an original protected residual empty cgroup using a
+bounded exact no-follow population sample and repeat identity/manager checks;
+kernel removal must succeed and actual absence is still required before receipt
+publication. Replacement, population, unknown child cgroups or failed removal
+retain uncertainty; cleanup never recursively removes domains. This addresses
+CI run 37334952656's independent systemd exit probe, which observed an unloaded
+unit with the original empty cgroup still present after three seconds. The probe
+now performs the same matched residual cleanup, retaining actual absence and
+unrelated-process controls. Current native/portable/frozen acceptance remains
+pending; historical journal and closure bytes are unchanged.
+
+
 Native launch retains invocation-matched root status with `RemainAfterExit=yes`
 and `CollectMode=inactive`, without `systemd-run --collect`, until Root performs
 matched stop after durable entry revocation; fast success, failure and signal
