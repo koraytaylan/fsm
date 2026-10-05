@@ -360,19 +360,38 @@ lifecycle updates.
 
 - **Frozen persistence review:** implementation commit `b482fe0` is frozen in
   a clean detached checkout with a checkout-specific Cargo target; its full
-  stable debug workspace command completed successfully and the sequential
-  release command is running, so the complete host gate is not yet accepted.
+  stable host gate completed successfully: formatting, file size, debug and
+  release workspace suites, all-target Clippy, warning-free rustdoc, zero
+  dependencies and external embed acceptance all passed in sequence.
   Review CI run `37254257934` is bound to
   `b482fe03d9bedc0626d8a4e8ef06f82a005840cc` on the authorized review branch;
   both provisioned native jobs and zero-dependencies completed successfully,
-  while all six portable legs are still running. Follow-up tests
+  while all six portable legs are still running. Both native artifacts were
+  retained and independently checked against that exact source, all seven
+  suite-report digests, the I/O-cancellation log and expected failing final-kill
+  control: each toolchain proves the existing 61 native prerequisite cases,
+  not production receipt authentication. Follow-up tests
   now model empty, partial and complete production-generated claim appends
   and semantically invalid claims with recomputed chain hashes. Additional
   production cases exercise a claim at record 10,000 with a root-bound snapshot
   and cold replay, plus exact 4 KiB UTF-8 request IDs and limit-plus-one refusal
-  without allocation; these follow-up cases await
-  serialized execution after the live host gate and do not prove native
+  without allocation; all thirteen production integration cases passed at
+  `1364405` on stable and MSRV, and all-target Clippy passed on that source.
+  These cases do not prove native
   launch/authentication or every durability fault boundary. Task 9302 remains
   In progress with no landing OID or task-count change.
+
+- **Production guard negative controls:** an isolated `1364405` checkout
+  passed thirteen integration and four transition baselines before separately
+  disabling stale-head refusal, preservation of legacy failed counts, original
+  claim-hash receipt binding and request UTF-8 byte limits. Every mutation
+  produced exit 101 with its named runtime assertion failure, never a compiler
+  failure; the restored checkout again passed all thirteen plus four cases.
+  Source restoration and every retained log digest were checked. An initial
+  incorrect module filter was rejected for running no tests and corrected
+  before accepting this evidence. These four controls supplement the earlier
+  fifteen ownership primitive controls; full production entry/metadata/outcome/
+  aggregate limits, native receipt publication and remaining durability faults
+  are still required before task 9302 can finish.
 
 _Task frontmatter remains authoritative; registration does not release the native gate._
