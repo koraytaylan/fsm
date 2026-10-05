@@ -259,6 +259,7 @@ fn incomplete_intent_refusal() {
 #[test]
 #[ignore = "requires writable provisioned root cgroups"]
 fn genuine_claim_binding() {
+    refuse_removed_pending();
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let listing = || {
@@ -327,6 +328,30 @@ fn genuine_claim_binding() {
         let mut writer = Store::open(&fixture.store).unwrap();
         let before = writer.state.execution.clone();
         let count = writer.records.len();
+        let mut stale = claim.to_value().as_obj().unwrap().clone();
+        stale.insert(
+            "run_id".into(),
+            Value::Num((claim.run_id() + 1).to_string()),
+        );
+        let stale = fsm_core::record::execution::Claim::from_value(&Value::Obj(stale)).unwrap();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        match pipeline.start_native(&mut writer, &stale, std::time::Duration::from_secs(1)) {
+            Err(error) => {
+                assert_eq!(error.code, "exec/store");
+                assert_eq!(
+                    error
+                        .details
+                        .as_ref()
+                        .unwrap()
+                        .get("code")
+                        .and_then(Value::as_str),
+                    Some("store/execution_stale")
+                );
+            }
+            Ok(_) => panic!("stale claim started a native helper"),
+        }
+        assert_eq!(writer.records.len(), count);
+        assert_eq!(writer.state.execution, before);
         let obstruction = fixture
             .store
             .join("journal")
@@ -760,4 +785,58 @@ fn unapproved_claim_is_not_bound(fixture: &mut Fixture) {
     );
     assert!(!fixture.directory.join("binding-2.json").exists());
     assert!(!fixture.directory.join("entry-2.json").exists());
+}
+
+fn refuse_removed_pending() {
+    for cancellation in [false, true] {
+        let mut fixture = Fixture::new();
+        let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+        let (binding, effect) = claim_binding(&fixture, &domain);
+        let claim =
+            fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
+        let mut writer = Store::open(&fixture.store).unwrap();
+        if cancellation {
+            writer
+                .cancel_instance("instance", "native-before-bind-cancel")
+                .unwrap();
+        } else {
+            writer
+                .ack_effect("instance", &effect, "native-before-bind-ack")
+                .unwrap();
+        }
+        assert!(!writer.state.instances["instance"].pending.contains(&effect));
+        assert_eq!(
+            writer.state.execution.claim_for("instance", &effect),
+            Some(&claim)
+        );
+        let before = writer.state.execution.clone();
+        let count = writer.records.len();
+        let mut pipeline = fsm_execute::run::Pipeline;
+        match pipeline.start_native(&mut writer, &claim, std::time::Duration::from_secs(1)) {
+            Err(error) => assert_eq!(error.code, "exec/inflight_deferred"),
+            Ok(_) => panic!("removed pending effect started a native helper"),
+        }
+        assert_eq!(writer.records.len(), count);
+        assert_eq!(writer.state.execution, before);
+        for name in ["binding", "launch", "entry", "handoff"] {
+            assert_eq!(
+                fs::symlink_metadata(fixture.directory.join(format!("{name}-1.json")))
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::NotFound
+            );
+        }
+        drop(writer);
+        let reopened = Store::open_read_only(&fixture.store).unwrap();
+        assert_eq!(reopened.state.execution, before);
+        assert!(
+            !reopened.state.instances["instance"]
+                .pending
+                .contains(&effect)
+        );
+        drop(reopened);
+        // Exact test-owned empty domains may be removed by fixture teardown;
+        // this creates no production closure receipt or claim clearance.
+        fixture.cleanup().unwrap();
+    }
 }

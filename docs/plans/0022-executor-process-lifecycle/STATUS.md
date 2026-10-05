@@ -2290,4 +2290,14 @@ lifecycle updates.
   compiled native/portable verification and full service integration remain
   pending, and task 9303 remains In progress.
 
+- Extended native writer-held startup refusal controls with stale run identity
+  and separate actual external acknowledgement/cancellation before binding:
+  exact current ownership remains unresolved when pending work disappears,
+  admission refuses without appending or creating binding/launch/entry/handoff,
+  and read-only reopening retains the original claim. Fixture teardown removes
+  only its empty test-owned domain and creates no production closure evidence;
+  pre-binding reconciliation remains outstanding. Formatting/size/diff checks
+  pass; `e8e412a` run `37309692370` is queued, compiled full native/portable gates
+  and automatic service integration remain pending, and task 9303 stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
