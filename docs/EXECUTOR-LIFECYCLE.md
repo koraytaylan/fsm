@@ -2,6 +2,17 @@
 
 ## Decision status
 
+Private `complete-close` handles a successfully matched, durably acknowledged
+manager submission: it retains the authority lock, requires the exact protected
+prepared/closing/intent/handoff/binding/stop chain, rejects either grant path,
+and bounds manager unit/job retirement and native absence observation to a
+shared two-second deadline. Durable closing and one-shot intent prevent another
+authority launch; root/kernel administrators remain trusted. It writes a domain
+tombstone then stages, fsyncs and exclusively links an immutable receipt for
+the original claim, preserving different/partial material on failure. It does
+not settle the journal, handle uncertain starts or replace Runner handle/I/O
+retirement; native acceptance and full integration remain pending.
+
 Private `request-stop` publishes an exclusive fsynced bounded
 `manager-stopped-<allocation>.json` record only after matched synchronous stop;
 it binds domain, original claim binding and enrolled gate, and publication

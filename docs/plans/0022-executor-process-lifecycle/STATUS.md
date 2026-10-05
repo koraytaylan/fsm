@@ -1504,4 +1504,22 @@ lifecycle updates.
   authorization and fail the same descendant membership expectation corrected
   in `e95b4a2`; the repair workflow `37281659587` remains queued.
 
+- **Matched closure publication implemented for review:** private root
+  `complete-close` requires the protected prepared/closing/intent/handoff/
+  binding/completed-stop chain, absence of grants, unit, queued job and native
+  cgroup, unchanged boot/authority and retained admission fence. It publishes
+  the domain tombstone followed by an immutable existing-format claim receipt
+  through fsynced exclusive pending/hard-link ordering; exact replay preserves
+  the receipt inode while different/partial records refuse replacement. The
+  native running-handler control now requires missing/corrupt stop refusal,
+  preserved partial receipt and claim, opaque store proof reading, replay,
+  closed-launch refusal, real store publication of an interrupted stopped
+  result from that opaque proof, cold replay retaining unresolved ownership,
+  and monotonic successor allocation without settling the original claim.
+  Source review corrected premature receipt visibility
+  by fsyncing its pending inode before linking the final path. Formatting,
+  file-size and diff checks precede compiled/native review; uncertain startup,
+  natural completion, full Runner/MCP I/O and service integration remain
+  outstanding, so 9303 remains In progress and production_backend remains false.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

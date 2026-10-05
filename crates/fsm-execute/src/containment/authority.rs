@@ -51,6 +51,9 @@ mod launch;
 #[path = "stop.rs"]
 mod stop;
 
+#[path = "closure.rs"]
+mod closure;
+
 pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     if arguments.first().and_then(|operation| operation.to_str()) == Some("gate") {
         return entry::run(&arguments[1..]);
@@ -60,7 +63,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if arguments.len() < 3 {
         return Err(
-            "usage: register|catalogue|bind|prepare|launch|authorize|authorize-enrolled|begin-close|request-kill|request-stop|observe NAMESPACE GENERATION [REQUEST]"
+            "usage: register|catalogue|bind|prepare|launch|authorize|authorize-enrolled|begin-close|request-kill|request-stop|complete-close|observe NAMESPACE GENERATION [REQUEST]"
                 .into(),
         );
     }
@@ -76,6 +79,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
             | "begin-close"
             | "request-kill"
             | "request-stop"
+            | "complete-close"
             | "observe"
             | "catalogue"
     ) {
@@ -103,7 +107,7 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
     }
     if matches!(
         operation,
-        "begin-close" | "request-kill" | "request-stop" | "observe" | "launch"
+        "begin-close" | "request-kill" | "request-stop" | "complete-close" | "observe" | "launch"
     ) {
         let raw = arguments[3].to_str().ok_or("invalid allocation")?;
         let allocation = raw.parse::<u64>().map_err(|_| "invalid allocation")?;
@@ -115,6 +119,9 @@ pub(super) fn run(arguments: Vec<OsString>) -> Result<(), String> {
         }
         if operation == "request-stop" {
             return stop::request(&directory, allocation);
+        }
+        if operation == "complete-close" {
+            return closure::complete(&directory, allocation);
         }
         if operation == "observe" {
             let value = observation::read(&directory, allocation)?;

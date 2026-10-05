@@ -67,6 +67,27 @@ pub(super) fn revoke_locked(directory: &Path, allocation: u64) -> Result<Value, 
 }
 
 pub(super) fn prepared_domain(directory: &Path, allocation: u64) -> Result<Value, String> {
+    let domain = recorded_domain(directory, allocation)?;
+    let namespace = text(&domain, "namespace")?;
+    let generation = number(&domain, "generation")?.to_string();
+    let groups = Path::new("/sys/fs/cgroup/system.slice");
+    protected_directory(groups)?;
+    let group = groups.join(format!(
+        "fsm-containment-{namespace}-{generation}-{allocation}.service"
+    ));
+    let observed = fs::symlink_metadata(group).map_err(io)?;
+    if !observed.is_dir()
+        || observed.uid() != 0
+        || observed.mode() & 0o022 != 0
+        || domain.get("cgroup") != Some(&identity(&observed))
+    {
+        return Err("closing native domain identity differs".into());
+    }
+    Ok(domain)
+}
+
+/// Recorded authority identity remains checkable after native domain retirement.
+pub(super) fn recorded_domain(directory: &Path, allocation: u64) -> Result<Value, String> {
     protected_directory(directory)?;
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
     closed(&prepared, &["format", "phase", "domain"])?;
@@ -89,19 +110,6 @@ pub(super) fn prepared_domain(directory: &Path, allocation: u64) -> Result<Value
             != text(&domain, "boot")?
     {
         return Err("closing domain authority or route differs".into());
-    }
-    let groups = Path::new("/sys/fs/cgroup/system.slice");
-    protected_directory(groups)?;
-    let group = groups.join(format!(
-        "fsm-containment-{namespace}-{generation}-{allocation}.service"
-    ));
-    let observed = fs::symlink_metadata(group).map_err(io)?;
-    if !observed.is_dir()
-        || observed.uid() != 0
-        || observed.mode() & 0o022 != 0
-        || domain.get("cgroup") != Some(&identity(&observed))
-    {
-        return Err("closing native domain identity differs".into());
     }
     Ok(domain)
 }

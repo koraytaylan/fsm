@@ -1,4 +1,4 @@
-//! Positive production gate startup and entry; never permanent closure.
+//! Production startup, entry, matched stop and protected closure controls.
 
 use super::super::super::{authorize, bind, enrollment, launch, manager, object, read_value};
 use super::{Fixture, claim_binding};
@@ -309,6 +309,8 @@ fn stop_running_handler() {
     );
     assert!(gate.child.try_wait().unwrap().is_none());
     fs::remove_file(&completion_path).unwrap();
+    assert!(super::super::super::closure::complete(&fixture.directory, 1).is_err());
+    assert!(!fixture.directory.join("closed-1.json").exists());
     super::super::super::stop::request(&fixture.directory, 1).unwrap();
     let completed = read_value(&fixture.directory.join("manager-stopped-1.json"), true).unwrap();
     assert_eq!(
@@ -344,6 +346,114 @@ fn stop_running_handler() {
             .is_some()
     );
     drop(store);
+    let completed_bytes = fs::read(&completion_path).unwrap();
+    fs::write(&completion_path, b"{}").unwrap();
+    assert!(super::super::super::closure::complete(&fixture.directory, 1).is_err());
+    assert!(!fixture.directory.join("closed-1.json").exists());
+    fs::write(&completion_path, &completed_bytes).unwrap();
+    let run_id = super::super::super::number(binding.get("claim").unwrap(), "run_id").unwrap();
+    let receipt_path = fixture.directory.join(format!("closure-1-{run_id}.json"));
+    let pending_receipt = receipt_path.with_extension("json.pending");
+    fs::write(&pending_receipt, b"partial receipt").unwrap();
+    assert!(super::super::super::closure::complete(&fixture.directory, 1).is_err());
+    assert_eq!(fs::read(&pending_receipt).unwrap(), b"partial receipt");
+    assert!(!receipt_path.exists());
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    drop(store);
+    fs::remove_file(&pending_receipt).unwrap();
+    super::super::super::closure::complete(&fixture.directory, 1).unwrap();
+    fsm_store::store::VerifiedClosure::read(&receipt_path).unwrap();
+    let receipt_bytes = fs::read(&receipt_path).unwrap();
+    let receipt_identity =
+        super::super::super::identity(&fs::symlink_metadata(&receipt_path).unwrap());
+    assert_eq!(
+        fs::symlink_metadata(&receipt_path).unwrap().mode() & 0o222,
+        0
+    );
+    assert_eq!(
+        read_value(&fixture.directory.join("closed-1.json"), true).unwrap(),
+        object([
+            ("format", Value::Str("fsm.native-domain-closed/1".into())),
+            ("domain", domain.to_value()),
+        ])
+    );
+    super::super::super::closure::complete(&fixture.directory, 1).unwrap();
+    assert_eq!(fs::read(&receipt_path).unwrap(), receipt_bytes);
+    assert_eq!(
+        super::super::super::identity(&fs::symlink_metadata(&receipt_path).unwrap()),
+        receipt_identity
+    );
+    assert!(
+        launch::begin(
+            &fixture.directory,
+            1,
+            [Stdio::null(), Stdio::null(), Stdio::null()]
+        )
+        .is_err()
+    );
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    drop(store);
     drop(gate);
+    let mut store = Store::open(&fixture.store).unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let proof = fsm_store::store::VerifiedClosure::read(&receipt_path).unwrap();
+    let outcome = fsm_core::record::execution::StoppedOutcome::from_value(&object([
+        ("status", Value::Str("interrupted".into())),
+        ("result", Value::Null),
+    ]))
+    .unwrap();
+    store
+        .stop_execution_on(
+            &mut fsm_store::clock::FixedClock::new(101, 1),
+            fsm_store::store::ExecutionStopRequest {
+                claim: &claim,
+                proof: &proof,
+                outcome: &outcome,
+                request_id: "native-stop",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    drop(store);
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for("instance", &effect)
+            .is_some()
+    );
+    assert!(
+        store
+            .state
+            .execution
+            .claim_for("instance", &effect)
+            .is_some()
+    );
+    drop(store);
+    let successor = fixture.prepare();
+    assert_eq!(
+        super::super::super::number(&successor, "allocation").unwrap(),
+        2
+    );
     fixture.cleanup().unwrap();
 }

@@ -1,5 +1,12 @@
 # Embedding fsm as a library
 
+Private root `complete-close` validates the complete protected submission/stop
+chain, absence of the manager unit, queued jobs and native cgroup, and retained
+closing admission before publishing an immutable receipt for the exact claim.
+The existing `VerifiedClosure` reader can authenticate that receipt; callers
+still must durably stop and settle the claim through the store APIs, and this
+primitive is not yet the integrated contained runner or reconciliation path.
+
 Private root `request-stop` revokes entry and stops only the matched manager
 invocation after current domain/policy validation; it is not an embedded
 shutdown-success API, `VerifiedClosure`, or permission to settle/reuse capacity.

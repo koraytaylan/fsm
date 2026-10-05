@@ -1,5 +1,11 @@
 # Releasing
 
+Unreleased private `complete-close` adds protected matched-stop retirement,
+domain tombstone and immutable closure receipt publication with exclusive
+fsynced pending/hard-link ordering and identity-preserving replay; missing,
+mismatched or partial material retains ownership rather than fabricating
+closure, and full contained runner/native acceptance remains pending.
+
 Unreleased `request-stop` verifies protected handoff, actual prepared domain
 and current manager invocation/isolation policy under the authority lock,
 revokes admission before bounded replacement stop, and retains durable claims.

@@ -87,6 +87,57 @@ fn binary() -> Result<&'static Path, String> {
     Ok(binary)
 }
 
+/// Retirement requires both an unloaded unit and no queued job for its name.
+pub(super) fn retired(unit: &str, deadline: Instant) -> Result<bool, String> {
+    let mut command = Command::new(binary()?);
+    command.args([
+        "list-units",
+        "--all",
+        "--plain",
+        "--no-legend",
+        "--no-pager",
+        unit,
+    ]);
+    let units = capture(command, deadline)?;
+    let units = std::str::from_utf8(&units).map_err(|_| "invalid manager unit inventory")?;
+    if !units.trim().is_empty() {
+        if units
+            .lines()
+            .any(|line| line.split_whitespace().next() != Some(unit))
+        {
+            return Err("manager unit inventory differs".into());
+        }
+        return Ok(false);
+    }
+    let mut command = Command::new(binary()?);
+    command.args(["list-jobs", "--plain", "--no-legend", "--no-pager"]);
+    jobs_clear(&capture(command, deadline)?, unit)
+}
+
+fn jobs_clear(bytes: &[u8], unit: &str) -> Result<bool, String> {
+    let output = std::str::from_utf8(bytes).map_err(|_| "invalid manager job inventory")?;
+    if output.trim().is_empty() || output.trim() == "No jobs running." {
+        return Ok(true);
+    }
+    let mut clear = true;
+    for line in output.lines() {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        if fields.len() != 4
+            || fields[0]
+                .parse::<u64>()
+                .ok()
+                .filter(|id| *id > 0)
+                .is_none_or(|id| fields[0] != id.to_string())
+        {
+            return Err("manager job inventory differs".into());
+        }
+        if fields[1] == unit {
+            clear = false;
+        }
+    }
+    Ok(clear)
+}
+
 fn capture(mut command: Command, deadline: Instant) -> Result<Vec<u8>, String> {
     if Instant::now() >= deadline {
         return Err("system-manager query deadline or incomplete I/O".into());
@@ -195,6 +246,23 @@ mod tests {
                 .unwrap_err()
                 .contains("query deadline")
         );
+    }
+
+    #[test]
+    fn manager_job_inventory_refuses_matching_jobs_and_malformed_rows() {
+        assert!(jobs_clear(b"", "owned.service").unwrap());
+        assert!(jobs_clear(b"No jobs running.\n", "owned.service").unwrap());
+        assert!(jobs_clear(b"7 other.service start waiting\n", "owned.service").unwrap());
+        assert!(!jobs_clear(b"7 owned.service stop running\n", "owned.service").unwrap());
+        for bytes in [
+            b"0 other.service start waiting\n".as_slice(),
+            b"07 other.service start waiting\n",
+            b"7 other.service start\n",
+            b"7 other.service start waiting extra\n",
+            b"\xff",
+        ] {
+            assert!(jobs_clear(bytes, "owned.service").is_err());
+        }
     }
 
     #[test]

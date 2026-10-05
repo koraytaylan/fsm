@@ -1601,6 +1601,28 @@ object with `format: "fsm.native-manager-stopped/1"`, the exact `domain`,
 path of any type MUST refuse replacement. Publication failure remains uncertain.
 This record acknowledges the matched manager operation and MUST NOT stand in
 for permanent closure or a native closure receipt.
+
+The root-only `complete-close` operation MUST retain the authority lock and
+require exact protected prepared/closing, one-shot launch intent, handoff,
+binding and manager-stopped records for the same domain and original claim.
+It MUST refuse either grant path of any type, a different boot/authority,
+present or unreadable native cgroup, a listed manager unit or a queued job
+for that unit. Manager inventory capture MUST be bounded and use a shared
+two-second deadline. The irreversible closing marker and one-shot launch
+intent fence future authority admission; the completed matched stop and
+manager inventories retire the accepted submission. Root/kernel administrators
+remain outside this exclusion guarantee. An absent cgroup alone is insufficient.
+After revalidating protected material and native absence, it MUST publish and
+fsync the exact `fsm.native-domain-closed/1` domain tombstone, then exclusively
+publish the matching `fsm.native-closure/1` receipt by writing an exclusive
+private pending file, clearing all write bits and fsyncing it before an
+exclusive hard link exposes the final path, then fsyncing the parent before
+removing the pending link and syncing the parent again. Existing pending
+material MUST NOT be replaced. Matching durable final records may be replayed;
+different or partial records MUST NOT be replaced. Publication failures retain
+journal ownership; this operation MUST NOT itself settle or clear a claim.
+Uncertain submissions without matched completed handoff/stop remain unresolved
+and require the separate native reconciliation protocol.
 Successful stop MUST NOT publish closure evidence, clear claims or authorize
 settlement/capacity reuse; permanent closure requires independent completion.
 

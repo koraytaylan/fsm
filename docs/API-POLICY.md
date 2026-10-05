@@ -1,5 +1,11 @@
 # API and version policy
 
+Private `complete-close` publishes the existing native closure receipt format
+after matched completed-submission retirement and protected admission fencing;
+it adds no stable API or journal version, and does not settle journal ownership.
+Production runner/reconciliation integration and compiled/native acceptance
+remain pending.
+
 Private root `request-stop` adds matched manager stop after entry revocation;
 it changes no stable Rust API/journal format and produces no closure proof.
 Its private `fsm.native-manager-stopped/1` completion record binds domain,
