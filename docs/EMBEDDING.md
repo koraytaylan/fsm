@@ -1,7 +1,7 @@
 # Embedding fsm as a library
 
 The provisional Linux `Pipeline::start_native` starts the claim-bound transport
-only after writer-held checks for durable storage, exact current ownership,
+only after writer-held checks for healthy durable storage, exact current ownership,
 enabled admission, running/pending effect and absence of a stopped result;
 it obtains the original hash through sealed-aware recovery. The returned
 `NativeRun` owns bounded helper I/O independently of the writer, and the Root

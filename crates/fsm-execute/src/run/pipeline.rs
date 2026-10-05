@@ -73,10 +73,11 @@ impl Pipeline {
         if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
             || store.journal.is_memory()
             || store.journal.is_read_only()
+            || store.journal.poisoned
         {
             return Err(ExecError::new(
                 "exec/mode",
-                "native launch requires a supported durable writer",
+                "native launch requires a supported healthy durable writer",
             ));
         }
         let hash = store

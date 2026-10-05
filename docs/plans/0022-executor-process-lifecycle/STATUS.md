@@ -2280,4 +2280,14 @@ lifecycle updates.
   track the new phase; formatting/size/diff checks pass, `fda55c2` run
   `37309000534` is queued, compiled/full integration acceptance stays required.
 
+- Startup review found that `Pipeline::start_native` accepted a writer poisoned
+  by failed persistence. It now refuses poisoned journals before helper startup;
+  the genuine native claim fixture induces an actual segment-rotation filesystem
+  obstruction, verifies the failed acknowledgement leaves original ownership and
+  pending work, then checks startup refusal and absence of binding/launch before
+  removing only the owned obstruction and reopening unchanged execution state.
+  Formatting/size/diff checks pass; `2570021` CI run `37309355616` is queued,
+  compiled native/portable verification and full service integration remain
+  pending, and task 9303 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

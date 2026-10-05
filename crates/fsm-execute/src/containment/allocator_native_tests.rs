@@ -321,6 +321,45 @@ fn genuine_claim_binding() {
         // This is a read-only in-memory guard control, not a journal mutation
         // or evidence that an actual migrated native environment is quiescent.
     }
+    {
+        let claim =
+            fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
+        let mut writer = Store::open(&fixture.store).unwrap();
+        let before = writer.state.execution.clone();
+        let count = writer.records.len();
+        let obstruction = fixture
+            .store
+            .join("journal")
+            .join(format!("seg-{:020}.jsonl", writer.journal.last_seq + 1));
+        fs::create_dir(&obstruction).unwrap();
+        writer.journal.seg_records = u32::MAX;
+        assert_eq!(
+            writer
+                .ack_effect("instance", &effect, "native-poison-control")
+                .unwrap_err()
+                .code,
+            "io/write"
+        );
+        assert!(writer.journal.poisoned);
+        let mut pipeline = fsm_execute::run::Pipeline;
+        match pipeline.start_native(&mut writer, &claim, std::time::Duration::from_secs(1)) {
+            Err(error) => {
+                assert_eq!(error.code, "exec/mode");
+                assert!(error.message.contains("healthy durable writer"));
+            }
+            Ok(_) => panic!("poisoned writer started a native helper"),
+        }
+        assert_eq!(writer.records.len(), count);
+        assert_eq!(writer.state.execution, before);
+        assert!(writer.state.instances["instance"].pending.contains(&effect));
+        assert!(fs::symlink_metadata(fixture.directory.join("binding-1.json")).is_err());
+        assert!(fs::symlink_metadata(fixture.directory.join("launch-1.json")).is_err());
+        fs::remove_dir(&obstruction).unwrap();
+        drop(writer);
+        let reopened = Store::open_read_only(&fixture.store).unwrap();
+        assert!(!reopened.journal.poisoned);
+        assert_eq!(reopened.state.execution, before);
+    }
     super::super::bind(&fixture.directory, &binding).unwrap();
     let path = fixture.directory.join("binding-1.json");
     assert_eq!(read_value(&path, true).unwrap(), binding);
