@@ -270,3 +270,20 @@ controls at corrected source; SPEC and API/embedding/release text agree that
 formats, hash domains and public APIs are unchanged and fresh gates are required.
 No further acceptance-blocking finding was identified in this portion; the
 full spec/API review and frozen local verification remain outstanding.
+
+Contract cross-check, typed admission at corrected `9f1f175`:
+`Pipeline::claim_native_handler` derives effect identity from the journal,
+rejects name mismatch, validates one bounded canonical original contract and
+derives both fingerprint and retry from it before publishing ownership.
+`identity::checked_material` charges borrowed argv/retry/tool/argument and
+both outcome payload/stamp branches before cloning, then charges the complete
+normalized envelope before hashing `fsm:handler-contract:1`.
+Post-publication checks require current matching ownership/domain/contract and
+available original claim hash; duplicate responses cannot recreate consumption.
+`start_native` separately requires healthy durable writer, current original
+hash, enabled admission, no stopped result and running pending eligibility.
+This matches SPEC's typed native admission and API-POLICY's borrowed-input
+boundary; exact canonical limit/plus-one and all four production refusal
+branches have native evidence at the corrected source.
+No additional finding was identified here; this entry covers the claim/admit
+contract portion and does not complete the entire frozen-range contract review.
