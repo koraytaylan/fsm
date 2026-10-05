@@ -156,3 +156,23 @@ repair and independent closure; successful modes verify original result identity
 No acceptance-blocking finding was identified in this slice, but this is a
 limited source review rather than acceptance of the remaining enrollment,
 transport, capture, settlement and spec/API portions of the complete range.
+
+Aggregate review, capture/worker slice at the same frozen source:
+`NativeCapture` uses the Linux socket implementation of `StreamCapture`, so
+native output creates no capture spool file; polls drain at most 64 KiB per
+stream and final draining has a fixed budget.
+`Capture` retains only the 4096-byte prefix, stops hashing after the one-MiB
+work limit and emits a suffix digest only after observed EOF within that limit;
+read failure or a retained peer cannot earn complete-stream evidence.
+`NativeProtocol` adopts enrolled streams with cloned shutdown controls and
+joins only an already-finished thread; collecting a candidate requires that
+join, and the authority's completion path separately checks worker retirement.
+The native capture control exercises both handler kinds at prefix/hash exact
+limits, each limit plus one and eight MiB, asserting exact output/digest,
+bounded result material, closed cgroup and unchanged FD/thread inventories
+across ten runs; the journal claim remains held after each completion.
+Socket unit controls independently keep peers alive during blocked read/write
+cancellation and final capture, so peer drop does not substitute for retirement.
+No acceptance-blocking finding was identified in this slice; historical
+non-Linux direct-child capture is outside the proved native path and does not
+provide fallback acceptance for task 9401.
