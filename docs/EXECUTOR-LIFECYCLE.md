@@ -1237,3 +1237,13 @@ immutable handler fingerprint. Installation cannot enable direct-child
 fallback, reset counters to repair lost authority, or reinterpret an unresolved
 claim under a changed handler. Its production capability refusal and resource
 policy require their own integration tests before that task can complete.
+
+Original-contract recovery now has a pure validated building block:
+`HandlerSpec::contract_value()` retains the exact material already hashed by
+`fingerprint()`, while `HandlerSpec::from_contract(value, original_fingerprint)`
+checks the closed canonical material and recovers the original process/MCP
+contract, outcome advances and retry policy independently of a current table.
+This does not yet store that material durably, recover stopped advances or
+route the service through native claims, and these remain acceptance work.
+Contract values contain full templates/payloads and may contain secrets;
+health output must continue to use bounded identifiers only.

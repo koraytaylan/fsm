@@ -224,7 +224,9 @@ fn fsm_execute::service::tick_reporting
 fn fsm_execute::service::tick_with
 method fsm_execute::config::HandlerKind::as_str
 method fsm_execute::config::HandlerKind::is_mcp
+method fsm_execute::config::HandlerSpec::contract_value
 method fsm_execute::config::HandlerSpec::fingerprint
+method fsm_execute::config::HandlerSpec::from_contract
 method fsm_execute::config::HandlerSpec::required_args
 method fsm_execute::config::HandlerTable::parse
 method fsm_execute::config::Retry::retries

@@ -2020,6 +2020,16 @@ canonical material JSON. Table concurrency/manual policy and runtime effect
 substitutions MUST NOT enter the per-handler digest. Computing it validates
 no handler and grants no launch authorization. It is distinct from the
 sanitized public executor-check report identity and changes no historical hash.
+`HandlerSpec::contract_value` MUST expose exactly this existing fingerprint
+material, with no change to its hash domain or bytes. `HandlerSpec::from_contract`
+MUST enforce the existing JSON and handler bounds, require the closed explicit
+material and canonical parsed defaults, and reject with `exec/config` when the
+material or its digest differs from the caller-held original fingerprint.
+It MUST recover literal templates, outcome payloads and stamp ordering without
+consulting a current handler table; decoding MUST NOT grant launch or settlement
+permission. Full contract values MAY contain secrets and MUST NOT be used as
+sanitized health summaries. This decoder alone does not establish durable
+original-contract storage or stopped-result/advance recovery.
 A retry
 ledger retains the original fingerprint and policy, failed count, latest
 failed timestamp/class and eligibility deadline while the effect remains

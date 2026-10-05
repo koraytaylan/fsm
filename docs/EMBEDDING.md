@@ -1773,3 +1773,13 @@ the fix. Route on the namespace:
 `req/seq_mismatch` and `req/payload_too_large` do not consume the `request_id`;
 retry under the same key once corrected. `req/request_id_conflict` is never
 retryable — use a new key. The full list is in [SPEC.md](SPEC.md#appendix-a--error-codes).
+
+The provisional `HandlerSpec::contract_value()` returns the complete canonical
+material used by the existing handler fingerprint; `HandlerSpec::from_contract`
+accepts that material only after existing JSON/handler validation, exact explicit
+canonical defaults and agreement with a caller-held original fingerprint.
+This lets a host reconstruct original advances/retry independently of its
+current handler table; it does not establish durable storage, ownership proof
+or permission to launch or settle. Unlike sanitized executor reports, these
+values include full argument templates and outcome payloads and may contain
+secrets, so do not put them in health summaries.

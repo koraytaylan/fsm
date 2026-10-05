@@ -75,3 +75,79 @@ fn declaration_object_order_and_host_concurrency_do_not_change_handler_identity(
         handler(BASE).fingerprint()
     );
 }
+
+#[test]
+fn immutable_contract_recovers_original_templates_advances_and_retry() {
+    for source in [
+        BASE,
+        r#"{"effect":"notify","kind":"mcp","argv":["/bin/true","{message}"],"timeout_ms":100,"tool":"notify","arguments":{"secret":"{message}"},"on_ok":{"event":"ok","payload":{"sent":true},"stamps":["second","first"]},"on_failed":{"event":"failed"},"retry":{"attempts":3,"on":["timeout","mcp_error"]}}"#,
+    ] {
+        let original = handler(source);
+        let material = original.contract_value();
+        let recovered =
+            fsm_execute::config::HandlerSpec::from_contract(&material, &original.fingerprint())
+                .unwrap();
+        assert_eq!(recovered, original);
+        assert_eq!(recovered.contract_value(), material);
+        for (field, replacement) in [
+            (
+                "argv",
+                fsm_core::json::Value::Arr(vec![fsm_core::json::Value::Str("/bin/false".into())]),
+            ),
+            ("timeout_ms", fsm_core::json::Value::Num("101".into())),
+            ("on_failed", fsm_core::json::Value::Null),
+            (
+                "format",
+                fsm_core::json::Value::Str("fsm.handler-contract/0".into()),
+            ),
+        ] {
+            let mut changed = material.as_obj().unwrap().clone();
+            if changed.get(field) == Some(&replacement) {
+                continue;
+            }
+            changed.insert(field.into(), replacement);
+            assert!(
+                fsm_execute::config::HandlerSpec::from_contract(
+                    &fsm_core::json::Value::Obj(changed),
+                    &original.fingerprint()
+                )
+                .is_err()
+            );
+        }
+        let mut missing = material.as_obj().unwrap().clone();
+        missing.remove("retry");
+        assert!(
+            fsm_execute::config::HandlerSpec::from_contract(
+                &fsm_core::json::Value::Obj(missing),
+                &original.fingerprint()
+            )
+            .is_err()
+        );
+        assert!(
+            fsm_execute::config::HandlerSpec::from_contract(&material, "sha256:wrong").is_err()
+        );
+    }
+}
+
+#[test]
+fn recovery_refuses_semantically_equivalent_noncanonical_contracts() {
+    use fsm_core::json::Value;
+    let original = handler(BASE);
+    let material = original.contract_value();
+    for omitted in [false, true] {
+        let mut changed = material.as_obj().unwrap().clone();
+        let mut retry = changed["retry"].as_obj().unwrap().clone();
+        if omitted {
+            retry.remove("backoff_ms");
+        } else {
+            let mut classes = retry["on"].as_arr().unwrap().to_vec();
+            classes.reverse();
+            retry.insert("on".into(), Value::Arr(classes));
+        }
+        changed.insert("retry".into(), Value::Obj(retry));
+        assert!(HandlerSpec::from_contract(&Value::Obj(changed), &original.fingerprint()).is_err());
+    }
+    let mut extra = material.as_obj().unwrap().clone();
+    extra.insert("future".into(), Value::Null);
+    assert!(HandlerSpec::from_contract(&Value::Obj(extra), &original.fingerprint()).is_err());
+}

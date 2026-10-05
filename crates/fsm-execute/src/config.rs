@@ -204,6 +204,22 @@ impl HandlerSpec {
         identity::fingerprint(self)
     }
 
+    /// Full immutable fingerprint material, including argument and outcome values.
+    ///
+    /// This may contain secrets; it is not a sanitized health/report document
+    /// and does not validate a manually constructed handler or authorize launch.
+    pub fn contract_value(&self) -> Value {
+        identity::material(self)
+    }
+
+    /// Recover a canonical original contract against a caller-held fingerprint.
+    ///
+    /// Enforces JSON limits, handler validation and explicit canonical defaults;
+    /// this neither consults a current table nor authorizes execution/settlement.
+    pub fn from_contract(value: &Value, fingerprint: &str) -> Result<Self, ExecError> {
+        identity::recover(value, fingerprint)
+    }
+
     /// Effect argument names this validated handler substitutes at run time.
     ///
     /// The same scanner used by validation and substitution discovers names

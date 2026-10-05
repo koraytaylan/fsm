@@ -579,3 +579,12 @@ the existing writer-protected store mutator without launching handler code.
 recovery API over current exact ownership and the existing authenticated sealed
 claim index, preserving journal/base bytes, hash domains and stable error codes;
 it grants no execution or closure authority.
+
+Unreleased `HandlerSpec::contract_value` and `HandlerSpec::from_contract` are
+provisional pure executor APIs for original-contract recovery: the former
+returns the exact existing fingerprint material, and the latter validates its
+closed canonical shape, existing handler/JSON limits and caller-held digest.
+Neither grants native launch/settlement permission nor changes historical hash
+bytes; contract values include complete templates and payloads and may contain
+secrets, so they are distinct from sanitized diagnostics. Durable native
+transport/storage and restart outcome-event integration remain separate gates.

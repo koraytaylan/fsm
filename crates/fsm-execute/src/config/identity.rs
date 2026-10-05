@@ -7,12 +7,19 @@ use fsm_core::sha256::to_hex;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn fingerprint(handler: &HandlerSpec) -> String {
+    format!(
+        "sha256:{}",
+        to_hex(&domain_hash("fsm:handler-contract:1", &material(handler)))
+    )
+}
+
+pub(super) fn material(handler: &HandlerSpec) -> Value {
     let (tool, arguments) = match &handler.kind {
         HandlerKind::Process => (Value::Null, Value::Null),
         HandlerKind::Mcp { tool, arguments } => (Value::Str(tool.clone()), arguments.clone()),
     };
     let classes: BTreeSet<_> = handler.retry.on.iter().cloned().collect();
-    let material = object([
+    object([
         ("format", Value::Str("fsm.handler-contract/1".into())),
         ("effect", Value::Str(handler.effect.clone())),
         ("kind", Value::Str(handler.kind.as_str().into())),
@@ -37,11 +44,7 @@ pub(super) fn fingerprint(handler: &HandlerSpec) -> String {
                 ("on", strings(classes)),
             ]),
         ),
-    ]);
-    format!(
-        "sha256:{}",
-        to_hex(&domain_hash("fsm:handler-contract:1", &material))
-    )
+    ])
 }
 
 fn advance(value: Option<&Advance>) -> Value {
@@ -62,4 +65,59 @@ fn object<const N: usize>(values: [(&str, Value); N]) -> Value {
     Value::Obj(BTreeMap::from(
         values.map(|(name, value)| (name.into(), value)),
     ))
+}
+
+pub(super) fn recover(
+    value: &Value,
+    expected: &str,
+) -> Result<HandlerSpec, crate::error::ExecError> {
+    use crate::error::ExecError;
+    use fsm_core::canon::canon_bytes;
+    use fsm_core::json::{JsonLimits, parse};
+    let refused = || {
+        ExecError::new(
+            "exec/config",
+            "immutable handler contract is invalid or differs from its fingerprint",
+        )
+    };
+    let bytes = canon_bytes(value);
+    parse(&bytes, &JsonLimits::DEFAULT).map_err(|_| refused())?;
+    let fields = value.as_obj().ok_or_else(refused)?;
+    let keys = [
+        "format",
+        "effect",
+        "kind",
+        "argv",
+        "tool",
+        "arguments",
+        "timeout_ms",
+        "on_ok",
+        "on_failed",
+        "retry",
+    ];
+    if fields.len() != keys.len()
+        || keys.iter().any(|key| !fields.contains_key(*key))
+        || fields.get("format").and_then(Value::as_str) != Some("fsm.handler-contract/1")
+    {
+        return Err(refused());
+    }
+    let mut declaration = fields.clone();
+    declaration.remove("format");
+    if fields.get("kind").and_then(Value::as_str) == Some("process") {
+        for key in ["tool", "arguments"] {
+            if declaration.remove(key) != Some(Value::Null) {
+                return Err(refused());
+            }
+        }
+    }
+    for key in ["on_ok", "on_failed"] {
+        if declaration.get(key) == Some(&Value::Null) {
+            declaration.remove(key);
+        }
+    }
+    let handler = super::parse_handler(0, &Value::Obj(declaration))?;
+    if material(&handler) != *value || fingerprint(&handler) != expected {
+        return Err(refused());
+    }
+    Ok(handler)
 }

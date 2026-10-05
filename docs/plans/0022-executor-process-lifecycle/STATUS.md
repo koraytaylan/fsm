@@ -2472,4 +2472,16 @@ lifecycle updates.
   whitespace checks pass; native execution remains pending, with current run
   37314803628 queued, and no task acceptance changes.
 
+- Added pure original-contract material/recovery APIs without changing the
+  existing fingerprint bytes or hash domain: contract_value exposes exactly
+  fsm.handler-contract/1 material and from_contract requires closed canonical
+  fields, explicit defaults, existing JSON/handler bounds and the caller-held
+  original fingerprint. Process/MCP round-trip and substituted-material refusal
+  controls cover literal templates, both advances, payloads/stamp order and retry;
+  public inventory and SPEC/API/lifecycle contracts are updated, including the
+  secret-bearing material boundary. Durable transport/storage and restarted
+  outcome-advance recovery remain unimplemented, so this is an integration
+  prerequisite rather than task completion. Formatting/size/whitespace checks
+  are local validation only; CI/compiler/native/portable acceptance is pending.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
