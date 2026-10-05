@@ -19,6 +19,134 @@ impl Drop for Process {
     }
 }
 
+#[test]
+fn stopped_owner_survives_repeated_seals_and_spent_archived_completion_is_stale() {
+    let directory = Directory(std::env::temp_dir().join(format!(
+        "fsm-stopped-seals-{}-{}", std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    )));
+    std::fs::create_dir_all(&directory.0).unwrap();
+    let (mut store, effect) = pending_store(Store::open(&directory.0).unwrap());
+    allocate(&mut store, &effect, "claim", &mut FixedClock::new(100, 1)).unwrap();
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    let evidence = proof(&store, &claim);
+    let original_hash = evidence.journal_claim.clone();
+    stop(&mut store, &claim, "timeout", "stop");
+    let stopped = store
+        .state
+        .execution
+        .stopped_for("instance", &effect)
+        .unwrap()
+        .to_value();
+    // Cancellation removes the pending-effect pin without consuming the
+    // unresolved stopped owner, so the real base must carry the result.
+    store.cancel_instance("instance", "cancel").unwrap();
+    for index in 0..2 {
+        let archive = directory.0.join(format!("archive-{index}"));
+        std::fs::create_dir_all(&archive).unwrap();
+        store.seal_and_archive(&archive, None).unwrap();
+        crate::archive::verify(&archive).unwrap();
+        let base = crate::base::open_from_base(&directory.0, &store.records).unwrap();
+        assert_eq!(base.index.execution_claims.get(&1), Some(&original_hash));
+        assert_eq!(
+            base.state
+                .execution
+                .stopped_for("instance", &effect)
+                .unwrap()
+                .to_value(),
+            stopped
+        );
+        drop(store);
+        let read_only = Store::open_read_only(&directory.0).unwrap();
+        assert_eq!(
+            read_only.state.execution.claim_for("instance", &effect),
+            Some(&claim)
+        );
+        assert_eq!(
+            read_only
+                .state
+                .execution
+                .stopped_for("instance", &effect)
+                .unwrap()
+                .to_value(),
+            stopped
+        );
+        drop(read_only);
+        store = Store::open(&directory.0).unwrap();
+        assert_eq!(store.execution_claim_hash(&claim).unwrap(), original_hash);
+        assert_eq!(store.state.execution.run_high_water(), 1);
+        assert_eq!(store.state.execution.unresolved().count(), 1);
+        assert!(matches!(
+            crate::journal_io::verify(&directory.0).health,
+            crate::journal_io::JournalHealth::Ok
+        ));
+    }
+    store
+        .settle_execution_on(
+            &mut FixedClock::new(100, 1),
+            ExecutionSettleRequest {
+                claim: &claim,
+                disposition: Settlement::Interrupted,
+                request_id: "consume",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(store.state.execution.unresolved().count(), 0);
+    assert_eq!(store.state.execution.failed_count("instance", &effect), 0);
+    let archive = directory.0.join("spent-archive");
+    std::fs::create_dir_all(&archive).unwrap();
+    store.seal_and_archive(&archive, None).unwrap();
+    crate::archive::verify(&archive).unwrap();
+    drop(store);
+    let mut store = Store::open(&directory.0).unwrap();
+    assert!(
+        crate::base::open_from_base(&directory.0, &store.records)
+            .unwrap()
+            .index
+            .execution_claims
+            .is_empty()
+    );
+    assert_eq!(
+        store.execution_claim_hash(&claim).unwrap_err().code,
+        "store/execution_evidence"
+    );
+    let before = store.state.clone();
+    let head = store.journal.last_seq;
+    let hash = store.journal.last_hash.clone();
+    let outcome =
+        StoppedOutcome::from_value(&json(br#"{"status":"timeout","result":null}"#)).unwrap();
+    assert_eq!(
+        store
+            .stop_execution_on(
+                &mut FixedClock::new(100, 1),
+                ExecutionStopRequest {
+                    claim: &claim,
+                    proof: &evidence,
+                    outcome: &outcome,
+                    request_id: "spent-completion",
+                    expected_seq: None,
+                }
+            )
+            .unwrap_err()
+            .code,
+        "store/execution_stale"
+    );
+    assert!(crate::snapshot::store_states_eq(&before, &store.state));
+    assert_eq!(store.journal.last_seq, head);
+    assert_eq!(store.journal.last_hash, hash);
+    assert!(!store.state.dedup.contains_key("spent-completion"));
+    assert!(matches!(
+        crate::journal_io::verify(&directory.0).health,
+        crate::journal_io::JournalHealth::Ok
+    ));
+}
+
 fn execution_operation(
     store: &mut Store,
     effect: &str,

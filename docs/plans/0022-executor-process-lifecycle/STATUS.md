@@ -785,4 +785,21 @@ lifecycle updates.
   macOS/Windows legs remain live. Task 9302 remains In progress with final
   review and remaining acceptance requirements explicit.
 
+- **Stopped-result archive lifecycle exercised:** a new real disk-store case
+  allocates/stops a claim, cancels the pending effect without consuming its
+  owner, then seals/archives/reopens twice. Both verified archives and base/2
+  carry the identical stopped result and original claim-record hash; read-only
+  and writer reopen retain the owner and run high-water. Atomic interruption
+  then consumes the cancelled effect's stopped owner without a failed count;
+  a third archive removes its original evidence from the live/base indexes.
+  A subsequent production stop refuses `store/execution_stale` before missing
+  evidence lookup, without state/head/hash/request-slot changes. Stable and
+  MSRV named tests and all-target Clippy pass with terminal command success;
+  `stopped-seal-proof.log` retains execution evidence. Receipt values in this
+  persistence test are preauthenticated fixtures; genuine receipt reading is
+  covered separately by the nine-case native bridge. This later test remains
+  outside frozen `bcf6632` review and needs the next source-bound full gate.
+  The earlier failed macOS/MSRV axis now passes at `bcf6632`; macOS stable and
+  both Windows legs remain running. Task 9302 remains In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
