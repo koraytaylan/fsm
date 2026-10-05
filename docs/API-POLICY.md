@@ -568,3 +568,6 @@ request replay and claim exclusion without acknowledgement or settlement.
 `Pipeline::settle_stopped` additively delegates an explicit disposition to the
 atomic stopped-consumption mutator; it preserves current ownership checks and
 replay without launching handlers or reinterpreting a current handler table.
+The additive pure `ExecutionState::settlement_for` selector uses exact current
+stopped ownership and immutable claim retry policy, selecting a disposition
+without mutation or authorizing a launch before the recorded backoff deadline.

@@ -2110,4 +2110,16 @@ lifecycle updates.
   portable verification and remaining integration stay required, and task 9303
   stays In progress.
 
+- **Immutable stopped disposition selection implemented for review:** pure
+  `ExecutionState::settlement_for` requires exact current stopped ownership,
+  selects interruption for absent effects/interruption, and chooses retry only
+  for an admitted class with another attempt in the immutable claim policy;
+  success, terminal failure, disallowed classes and final attempts acknowledge.
+  It mutates nothing and does not bypass atomic settlement or backoff. Pure
+  controls cover all these distinctions, missing stopped result, stale claim
+  and unchanged state. Formatting, size and diff checks pass; run `37304098808`
+  is authoritatively queued for `b7a8410`, compiled acceptance and service retry/
+  exhaustion-result and outcome-event wiring remain required, and task 9303
+  stays In progress.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

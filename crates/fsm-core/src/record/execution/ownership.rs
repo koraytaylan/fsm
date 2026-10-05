@@ -215,6 +215,29 @@ impl ExecutionState {
         self.install(next)
     }
 
+    /// Select from the original stopped claim policy without mutating ownership.
+    pub fn settlement_for(
+        &self,
+        claim: &Claim,
+        pending: PendingEffect,
+    ) -> Result<Settlement, ShapeError> {
+        let stopped = self
+            .match_owned(claim)?
+            .stopped
+            .as_ref()
+            .ok_or(ShapeError("not_stopped"))?;
+        if pending == PendingEffect::Absent || stopped.outcome.status() == "interrupted" {
+            return Ok(Settlement::Interrupted);
+        }
+        if let Some(class) = stopped.outcome.failure()
+            && claim.attempt < claim.retry.attempts
+            && claim.retry.on.contains(&class)
+        {
+            return Ok(Settlement::Attempted);
+        }
+        Ok(Settlement::Acked)
+    }
+
     /// Consume a stopped run with its disposition, retaining the allocation counter.
     ///
     /// The store must combine this transition and its instance mutation in one

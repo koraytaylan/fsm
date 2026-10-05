@@ -600,6 +600,65 @@ fn settlement_refuses_to_apply_an_incompatible_stopped_result() {
 }
 
 #[test]
+fn stopped_selection_uses_immutable_retry_policy_and_preserves_state() {
+    for (status, expected) in [
+        ("ok", Settlement::Acked),
+        ("failed", Settlement::Acked),
+        ("timeout", Settlement::Attempted),
+        ("mcp_error", Settlement::Acked),
+        ("interrupted", Settlement::Interrupted),
+    ] {
+        let mut state = ExecutionState::new(Admission::Enabled);
+        let current = claim(1, "effect", 1);
+        state
+            .claim(current.clone(), PendingEffect::Present, 0)
+            .unwrap();
+        assert_eq!(
+            state.settlement_for(&current, PendingEffect::Present),
+            Err(ShapeError("not_stopped"))
+        );
+        state.stop(&current, stopped(&current, status)).unwrap();
+        let before = state.clone();
+        assert_eq!(
+            state
+                .settlement_for(&current, PendingEffect::Present)
+                .unwrap(),
+            expected
+        );
+        assert_eq!(
+            state
+                .settlement_for(&current, PendingEffect::Absent)
+                .unwrap(),
+            Settlement::Interrupted
+        );
+        assert!(
+            state
+                .settlement_for(&claim(2, "effect", 1), PendingEffect::Present)
+                .is_err()
+        );
+        assert_eq!(state, before);
+    }
+    let mut material = claim_value(1, "effect", 1);
+    let mut retry = material.get("retry").unwrap().as_obj().unwrap().clone();
+    retry.insert("attempts".into(), Value::Num("1".into()));
+    set(&mut material, "retry", Value::Obj(retry));
+    let final_attempt = Claim::from_value(&material).unwrap();
+    let mut state = ExecutionState::new(Admission::Enabled);
+    state
+        .claim(final_attempt.clone(), PendingEffect::Present, 0)
+        .unwrap();
+    state
+        .stop(&final_attempt, stopped(&final_attempt, "timeout"))
+        .unwrap();
+    assert_eq!(
+        state
+            .settlement_for(&final_attempt, PendingEffect::Present)
+            .unwrap(),
+        Settlement::Acked
+    );
+}
+
+#[test]
 fn terminal_unclassified_failure_round_trips_and_acks_without_retry() {
     let mut state = ExecutionState::new(Admission::Enabled);
     let claim = claim(1, "effect", 1);

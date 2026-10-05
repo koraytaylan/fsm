@@ -1614,6 +1614,13 @@ current stopped ownership and idempotent request replay checked under the
 writer. It MUST consume the stopped result only through that atomic mutator,
 without launching a handler or consulting a changed handler table; declared
 outcome-event recovery remains a separate acknowledgement-following step.
+The pure execution-state `settlement_for` selector MUST require the exact current
+claim and a durable stopped result. An absent effect or stopped interruption
+selects interruption; clean success and terminal `failed` select acknowledgement;
+a classified failure selects attempt only when its immutable claim policy
+includes that class and permits another attempt, otherwise acknowledgement.
+Selection MUST NOT mutate ownership or impose a new launch before backoff;
+atomic settlement and retry eligibility remain separately mandatory.
 
 The provisional Linux `run::native_client::NativeRequest` host adapter MUST
 validate a closed bounded request and canonical namespace/generation, verify the
