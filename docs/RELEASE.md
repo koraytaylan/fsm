@@ -1,5 +1,14 @@
 # Releasing
 
+Unreleased Linux runner capture now drains nonblocking sockets on each poll,
+without output spool files or capture-reader threads, keeping at most 4 KiB
+per stream and hashing at most 1 MiB. EOF is required for a whole-stream
+digest; retained peers yield an incomplete prefix within bounded final drain
+work. Other portable hosts retain file capture. Embedders must continue
+polling while handlers run. This changes capture transport, not execution
+ownership: direct-child completion and the existing MCP worker still do not
+provide the planned contained-runner closure guarantee.
+
 The current format documentation consistently identifies VERSION 11,
 state-root/4 and snapshot/6; VERSION 10 sealing rules are explicitly historical.
 This clarification changes no persisted bytes or public behavior and does not

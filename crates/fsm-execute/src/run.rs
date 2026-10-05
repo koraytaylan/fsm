@@ -13,7 +13,9 @@
 //! timeout, one kill path, one bounded capture, one `Drop`.
 
 use std::collections::BTreeMap;
+#[cfg(not(target_os = "linux"))]
 use std::fs::File;
+#[cfg(not(target_os = "linux"))]
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -28,20 +30,21 @@ use crate::mcp_client::{McpOutcome, ProtocolFault, converse};
 
 mod capture;
 mod pipeline;
+mod stream;
+
+use stream::StreamCapture;
 
 pub use pipeline::{Pipeline, SettleOutcome};
 
 /// Bytes of one captured stream that reach the journal.
 pub const ACK_OUTPUT_CAP: usize = 4096;
 
-/// Bytes of one captured stream the runner will read at all.
+/// Bytes of one captured stream the runner will hash at all.
 ///
-/// The cap above bounds what is *journaled*; this one bounds what is *read*,
-/// because the digest is taken over the whole stream and a handler in a
-/// `yes`-style loop can write a capture file faster than any timeout stops it.
-/// Past this bound the capture is reported as truncated with no digest — the
-/// honest statement that this is a prefix and the rest cannot be proved —
-/// rather than hashing gigabytes on the tick thread.
+/// The journal prefix and hash work have separate limits. Linux keeps draining
+/// excess output within a fixed work budget per poll, without retaining it;
+/// historical file captures on other hosts stop reading at this bound.
+/// Larger or incomplete streams are truncated with no whole-stream digest.
 pub const MAX_CAPTURE_READ_BYTES: usize = 1024 * 1024;
 
 /// A capped capture of one output stream, digested when it overflows.
@@ -81,6 +84,7 @@ impl BoundedBytes {
     /// which is this type's way of saying "this is a prefix, and I cannot
     /// prove what the rest was": presenting a partial capture as the whole
     /// output would put a falsehood in a permanent record.
+    #[cfg(not(target_os = "linux"))]
     fn read_capped(path: &Path) -> Self {
         let Ok(mut file) = File::open(path) else {
             return Self::empty();
@@ -466,13 +470,13 @@ enum Running {
     /// A subprocess whose exit status is the answer.
     Process {
         child: Child,
-        stdout_path: PathBuf,
-        stderr_path: PathBuf,
+        stdout: StreamCapture,
+        stderr: StreamCapture,
     },
     /// An MCP server whose answer arrives from the worker holding its pipes.
     Mcp {
         child: Child,
-        stderr_path: PathBuf,
+        stderr: StreamCapture,
         /// The worker's one message, once it has been taken off the channel.
         answer: Option<McpOutcome>,
         answers: Receiver<McpOutcome>,
@@ -511,20 +515,13 @@ impl Running {
         answer.is_some()
     }
 
-    /// Remove the capture files nothing will ever read.
-    fn discard_captures(&self) {
+    fn poll_captures(&mut self) {
         match self {
-            Running::Process {
-                stdout_path,
-                stderr_path,
-                ..
-            } => {
-                let _ = std::fs::remove_file(stdout_path);
-                let _ = std::fs::remove_file(stderr_path);
+            Self::Process { stdout, stderr, .. } => {
+                stdout.poll();
+                stderr.poll();
             }
-            Running::Mcp { stderr_path, .. } => {
-                let _ = std::fs::remove_file(stderr_path);
-            }
+            Self::Mcp { stderr, .. } => stderr.poll(),
         }
     }
 }
@@ -607,6 +604,7 @@ impl Runner {
     pub fn finished_effects(&mut self) -> Vec<String> {
         let mut finished = Vec::new();
         for (effect_id, running) in &mut self.children {
+            running.poll_captures();
             // An MCP run is over when the *conversation* is, not when the
             // server exits: a server that answers and then lingers has done
             // its job, and waiting for it to exit would hold the effect open
@@ -626,14 +624,12 @@ impl Runner {
         finished
     }
 
-    /// Start one handler, capturing both streams to files.
+    /// Start one handler, capturing both streams.
     ///
-    /// **Files, not pipes.** A child that writes past the OS pipe buffer
-    /// (~64 KiB) blocks until someone reads, and this runner only reads after
-    /// `try_wait` reports exit — so a chatty handler would hang until its
-    /// timeout killed it, and the output cap guarantees somebody eventually
-    /// writes that much. Draining incrementally would need a reader thread per
-    /// stream; a file needs neither.
+    /// Linux uses nonblocking sockets drained by `poll` and `finished_effects`
+    /// with a fixed per-stream work budget, no reader threads and no spool
+    /// files; callers must continue polling while handlers run. Other hosts
+    /// retain the historical capture-file transport.
     ///
     /// **No shell, ever.** The command is `argv[0]` and the arguments are the
     /// rest, passed as they are, so a substituted value can never be re-split
@@ -667,31 +663,21 @@ impl Runner {
             return Ok(());
         }
         let stdout_path = self.capture_path(&effect_id, run, "out");
-        let spawned = create_capture(&stdout_path, command).and_then(|stdout| {
-            let stderr = create_capture(&stderr_path, command)?;
-            Command::new(command)
-                .args(arguments)
-                .stdin(Stdio::null())
-                .stdout(Stdio::from(stdout))
-                .stderr(Stdio::from(stderr))
-                .spawn()
-                .map_err(|error| spawn_error(command, &error.to_string()))
-        });
-        let child = match spawned {
-            Ok(child) => child,
-            Err(error) => {
-                // Nothing is running, so nothing will ever collect these.
-                let _ = std::fs::remove_file(&stdout_path);
-                let _ = std::fs::remove_file(&stderr_path);
-                return Err(error);
-            }
-        };
+        let (stdout, stdout_handle) = StreamCapture::open(&stdout_path, command)?;
+        let (stderr, stderr_handle) = StreamCapture::open(&stderr_path, command)?;
+        let child = Command::new(command)
+            .args(arguments)
+            .stdin(Stdio::null())
+            .stdout(stdout_handle)
+            .stderr(stderr_handle)
+            .spawn()
+            .map_err(|error| spawn_error(command, &error.to_string()))?;
         self.children.insert(
             effect_id,
             Running::Process {
                 child,
-                stdout_path,
-                stderr_path,
+                stdout,
+                stderr,
             },
         );
         Ok(())
@@ -699,10 +685,8 @@ impl Runner {
 
     /// Start one MCP server and the worker that talks to it.
     ///
-    /// **Pipes for stdin and stdout, a file for stderr.** The conversation is
-    /// short and strictly alternating, so neither pipe can fill; the server's
-    /// logs are unbounded chatter and go to a file for the same reason a
-    /// process handler's do — nobody is reading them until the run is over.
+    /// Stdin and stdout carry the conversation; stderr uses the shared
+    /// capture transport and is drained on each runner poll on Linux.
     ///
     /// The worker owns the pipes and the runner owns the child, which is what
     /// lets one kill path serve both kinds: killing the child closes the
@@ -714,12 +698,12 @@ impl Runner {
         stderr_path: &Path,
         call: &McpCall,
     ) -> Result<Running, ExecError> {
-        let stderr = create_capture(stderr_path, command)?;
+        let (stderr, stderr_handle) = StreamCapture::open(stderr_path, command)?;
         let spawned = Command::new(command)
             .args(arguments)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::from(stderr))
+            .stderr(stderr_handle)
             .spawn();
         let mut child = match spawned {
             Ok(child) => child,
@@ -755,7 +739,7 @@ impl Runner {
         });
         Ok(Running::Mcp {
             child,
-            stderr_path: stderr_path.to_path_buf(),
+            stderr,
             answer: None,
             answers,
         })
@@ -767,6 +751,7 @@ impl Runner {
     /// `status: -1` so the pipeline acks it `failed` rather than unwrapping a
     /// `None`.
     pub fn poll(&mut self, effect_id: &str) -> Option<RunOutcome> {
+        self.children.get_mut(effect_id)?.poll_captures();
         if matches!(self.children.get(effect_id)?, Running::Mcp { .. }) {
             return self.poll_mcp(effect_id);
         }
@@ -786,18 +771,13 @@ impl Runner {
             }
         };
         let running = self.children.remove(effect_id)?;
-        let Running::Process {
-            stdout_path,
-            stderr_path,
-            ..
-        } = &running
-        else {
+        let Running::Process { stdout, stderr, .. } = running else {
             return None;
         };
         Some(RunOutcome::Completed {
             status,
-            stdout: take_capture(stdout_path),
-            stderr: take_capture(stderr_path),
+            stdout: stdout.finish(),
+            stderr: stderr.finish(),
         })
     }
 
@@ -814,17 +794,12 @@ impl Runner {
         let mut running = self.children.remove(effect_id)?;
         let _ = running.child_mut().kill();
         let _ = running.child_mut().wait();
-        let Running::Mcp {
-            answer,
-            stderr_path,
-            ..
-        } = running
-        else {
+        let Running::Mcp { answer, stderr, .. } = running else {
             return None;
         };
         Some(RunOutcome::Mcp {
             outcome: answer?,
-            stderr: take_capture(&stderr_path),
+            stderr: stderr.finish(),
         })
     }
 
@@ -845,7 +820,6 @@ impl Runner {
             // worker learns the run is over: there is no second stop signal.
             let _ = running.child_mut().kill();
             let _ = running.child_mut().wait();
-            running.discard_captures();
         }
         RunOutcome::Killed { reason }
     }
@@ -910,6 +884,7 @@ fn unique_suffix(attempt: u32) -> u128 {
         .wrapping_add(u128::from(attempt))
 }
 
+#[cfg(not(target_os = "linux"))]
 fn create_capture(path: &Path, command: &str) -> Result<File, ExecError> {
     File::create(path).map_err(|error| {
         spawn_error(
@@ -919,6 +894,7 @@ fn create_capture(path: &Path, command: &str) -> Result<File, ExecError> {
     })
 }
 
+#[cfg(not(target_os = "linux"))]
 fn take_capture(path: &Path) -> BoundedBytes {
     let captured = BoundedBytes::read_capped(path);
     let _ = std::fs::remove_file(path);

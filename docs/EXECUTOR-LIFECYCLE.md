@@ -2,6 +2,16 @@
 
 ## Decision status
 
+Task 9303 now shares a bounded accumulator and Linux nonblocking socket
+capture between process output and MCP stderr in the existing runner: each
+poll drains at most 64 KiB per stream, retains at most 4 KiB, hashes at most
+1 MiB and creates no capture spool or reader thread. Final draining is bounded
+and an open descendant-held peer leaves an incomplete capture without a
+whole-stream digest. This transport does not authenticate a claim or prove
+domain closure; MCP protocol worker cancellation and the production native
+authority remain implementation work, and existing direct-child results
+must not be used as contained settlement evidence.
+
 Plan 0022 task `lifecycle-containment-feasibility` is **complete** at reviewed
 source `399ed6ed5636118151ffb7ad94140538f865d1a7`; this releases its native
 prerequisite, not a production containment capability.

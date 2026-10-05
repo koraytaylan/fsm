@@ -1009,7 +1009,14 @@ not a table error. There is no escape for a literal brace: values may contain
 Handler output is captured and bounded. At most 4 KiB of each stream reaches
 the journal; when the stream was longer the ack also carries a SHA-256 of the
 whole thing, so a permanent record keeps a tamper-evident reference to output
-it does not store. Bytes that are not valid UTF-8 survive as replacement
+it does not store, when EOF was observed and the complete stream fits the
+1 MiB hash-work limit; incomplete or larger captures have no whole-stream
+digest. Linux drains nonblocking socket captures during `Runner::poll` and
+`Runner::finished_effects`, retaining no capture spool files or reader threads;
+embedders must keep polling while handlers execute. Other portable hosts
+retain the historical file transport. This capture bound does not establish
+descendant termination or enable the planned contained runtime.
+Bytes that are not valid UTF-8 survive as replacement
 characters, and a character the cap cut in half is dropped rather than
 rendered, so an ack never fails to journal because of what a handler printed.
 

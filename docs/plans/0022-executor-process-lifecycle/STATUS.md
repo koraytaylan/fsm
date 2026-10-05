@@ -981,4 +981,21 @@ lifecycle updates.
   closure, worker cleanup or a shipped production backend; those requirements
   and the complete runner review remain outstanding.
 
+- **Live capture transport integrated:** the production Linux runner now
+  drains process stdout/stderr and MCP stderr through nonblocking sockets in
+  both direct polling and scheduler completion observation, with no spool
+  files or capture-reader threads. Per-poll work is 64 KiB per stream and
+  final drain work is bounded; retained peers cannot block finalization or
+  earn a whole-stream digest without EOF. The new `lifecycle_runner` case
+  uses real noisy roots at 4 KiB/plus-one and 1 MiB/plus-one, plus 8 MiB on
+  both streams, checking exact stderr prefixes/digests and zero spool files
+  throughout execution. The retained-peer unit case and accumulator bounds
+  pass; runner, MCP, scheduler and these new tests pass serially on stable
+  and Rust 1.89. All-target execute Clippy also passes on stable. Existing
+  non-Linux file capture is retained; the six portable/native integration
+  gates remain required for task acceptance. No new public item or error is
+  introduced. Production claim authentication, native closure, MCP protocol
+  worker cancellation and uncertain ownership remain outstanding; task 9303
+  stays In progress and no contained result is claimed by these tests.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._
