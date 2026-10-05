@@ -586,3 +586,21 @@ its writer barrier proves observation/recovery during contention and competing
 claim refusal, not the production service's launch/settlement crash sequence.
 No additional finding was identified; this closes direct inspection of the
 supervisor fixture while preserving the dependent integrated-host obligations.
+
+Termination/enrollment fixture review at corrected `9f1f175`: administrative
+kernel-submission controls independently enroll roots and an inherited descendant,
+observe populated closing state, then require root retirement and depopulation
+while asserting no closed tombstone; this intentionally proves no full closure.
+Production enrollment controls preserve partial intent and prearmed final/pending
+entries on refusal, match actual manager/proc gate identity, refuse missing or
+changed handoff before grant, and verify Root-owned derived-group mode 0440.
+Successful root exit still refuses closure while the manager remains retained.
+Matched stop remains distinct from immutable receipt publication and journal stop:
+damaged handoff triggers original-domain fencing without fabricated manager
+completion, malformed completion and partial receipt refuse closure, replay
+preserves receipt bytes/inode, duplicate launch refuses, and the eventual
+writer-protected stopped record retains the claim. Fast exit/signal, capture
+boundary and timeout cases require readable native proof without consuming
+ownership. Repairs remove only deliberately injected fixture faults, not a
+production recovery permission. No additional finding was identified in these
+directly inspected controls; integrated service races/crashes remain unexecuted.
