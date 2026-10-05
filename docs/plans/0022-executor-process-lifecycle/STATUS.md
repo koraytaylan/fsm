@@ -2845,4 +2845,34 @@ lifecycle updates.
   Native execution of this caller control remains pending, as does the full
   portable/frozen acceptance and production routing; task 9303 remains active.
 
+- Review identified genuine installed-gate exec failures being classified as
+  process nonzero exit or MCP protocol failure. The runner now creates a private
+  pre-grant exec-status channel with a charged bounded Root-only metadata record,
+  verifies the original handoff/enrollment and sole cgroup process before and
+  after a one-shot PID hello, and retires the listener/socket/directory before
+  grant. The gate verifies descriptor close-on-exec and reports only actual exec
+  syscall failure; candidate selection withholds process/MCP results until the
+  channel resolves and never trusts handler stdout/stderr or reserved exit codes.
+  Exact private error plus complete original closure yields existing spawn; EOF
+  alone never proves execution or termination. Partial/malformed channels retain
+  uncertainty, and identity-matched cleanup runs before every receipt, including
+  never-launched crash recovery. Association has a shared two-second deadline
+  within the existing five-second gate wait; ownership/capacity semantics and
+  journal/receipt/attestation/hash/public response formats remain unchanged.
+  Named provisioned private_exec_status inventory covers missing/permission-denied
+  process and MCP commands, forged stderr/exit 203, descriptor/path retirement,
+  denied operator connect and unknown/torn/symlink/readable/replaced private paths;
+  these native controls are compiled but not executed on this non-systemd host.
+  SPEC/API/embedding/release document the new unreleased private metadata boundary
+  and reserved identity/supplementary membership prerequisite. Review explicitly
+  retains the deployment lemma that the pre-grant dynamic identity has no other
+  holders, including stale recycled-identity processes; PID hello and same-group
+  path permissions alone do not establish that lemma. Production gate remains
+  unreleased until the supported profile and primitive authenticate it. Stable
+  and MSRV authority units pass 23 with 14 provisioned controls ignored; workspace
+  all-target stable clippy, formatting, size/diff and native script syntax pass.
+  Fresh full gates,
+  native stable/MSRV proof, six portable axes, frozen high-risk review, installed
+  executable-byte proof and production routing remain pending; 9303 stays active.
+
 _Task frontmatter remains authoritative; registration does not release the native gate._

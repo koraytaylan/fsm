@@ -1703,7 +1703,8 @@ current durable ownership before publication and revoke entry on closing.
 An absent, malformed or mismatched grant MUST execute no handler code.
 Before waiting for authorization, the gate MUST verify exact membership in
 its canonically routed cgroup. An enrolled gate may wait at most five seconds
-for the exclusively published grant, polling without retaining handler output
+for the exclusively published grant, including optional exec-status association
+within the same five-second entry wait, polling without retaining handler output
 or executing handler code. Closing/closed markers, including malformed markers,
 MUST refuse both during that wait and immediately before exec. Only absence
 permits waiting; inaccessible or malformed grant files MUST refuse immediately.
@@ -1957,6 +1958,38 @@ replacement identity MUST refuse. A failed unit MAY be reset
 only after stop and exact original invocation and ExecMainPID matching. Reset
 MUST NOT establish closure: actual cgroup absence, unit unloading, absence of
 queued jobs and owned helper retirement remain mandatory.
+The native runner MUST establish a separate one-shot exec-status channel before
+launch; handler stdout, stderr and exit codes MUST NOT authenticate spawn failure.
+Root MUST create `exec-<allocation>/s` inside an initially Root-only 0700 directory
+and publish a bounded private 0600 `exec-status-<allocation>.json` record with
+exactly `format` (`fsm.native-exec-status/1`), original `binding`, `directory` and
+`socket` identities, charging the largest 8 KiB envelope before path creation.
+Hello and error frames MUST each be exactly 12 bytes; inspection MUST read at
+most 13 bytes to detect excess and descriptor metadata at most 4097 bytes
+against a 4096-byte limit. Association MUST share a two-second deadline. Before opening traversal/socket
+access to the actual enrolled
+dynamic group, Root MUST match the protected handoff and verify the installed
+gate, original manager invocation and sole original cgroup process. Only that
+reserved group may connect; provisioning MUST reserve this identity range from
+static accounts and supplementary membership, and the pre-grant UID/GID MUST
+be exclusive to the installed gate, including absence of stale holders from
+recycled dynamic identities; a PID hello alone MUST NOT establish exclusivity.
+Root MUST accept exactly one
+bounded original-PID hello and repeat enrollment checks, close the listener and
+remove only its identity-matched socket/directory before publishing entry grant.
+The gate MUST keep its stream private and verify close-on-exec on that descriptor;
+it MUST NOT pass the stream as stdio, argv or environment to the handler.
+Only an exec syscall failure reported on this pre-grant associated stream, using
+a fixed bounded frame and positive OS error code followed by EOF, MAY select
+existing `exec/spawn`/`spawn`; successful exec closes the descriptor. Empty EOF
+MUST NOT prove successful user execution or closure: other candidates still
+require original manager/protocol observation and complete cleanup. Malformed,
+partial or changed channel evidence MUST retain uncertainty. Closure MUST retire
+only identity-matched auxiliary paths under the authority lock before receipt
+publication, including never-launched allocations; unknown or torn metadata MUST
+refuse, and auxiliary metadata MUST NOT itself establish any outcome. Existing
+administrative launch/enrollment controls may omit this runner-only channel and
+MUST NOT derive a spawn candidate from their gate exit.
 The owned manager launcher is
 not the handler root: its exit status MUST NOT select a process candidate or
 resolve uncertain root inspection, even after actual launcher retirement.

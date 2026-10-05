@@ -59,6 +59,7 @@ impl Drop for OwnedRun {
 
 enum Candidate {
     Process(i32),
+    Spawn,
     Mcp(McpOutcome),
     Timeout,
     Cancelled,
@@ -126,6 +127,7 @@ pub(super) fn execute_cancellable(
     if cancelled.load(Ordering::Acquire) {
         return Err("runner cancelled before launch; claim remains unresolved".into());
     }
+    let exec_listener = super::exec_status::Listener::create(directory, allocation, &binding)?;
     let (child, _) = launch::begin(directory, allocation, streams)?;
     let mut owned = OwnedRun {
         directory: directory.into(),
@@ -139,6 +141,7 @@ pub(super) fn execute_cancellable(
         owned.worker =
             Some(NativeProtocol::from_streams(input, output, tool, arguments).map_err(io)?);
     }
+    let argv0 = argv[0].clone();
     let grant = object([
         ("format", Value::Str("fsm.native-entry/1".into())),
         ("claim", claim.to_value()),
@@ -154,26 +157,33 @@ pub(super) fn execute_cancellable(
             Value::Arr(argv.into_iter().map(Value::Str).collect()),
         ),
     ]);
-    if !cancelled.load(Ordering::Acquire) {
-        authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
-    }
     let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)
         .map_err(|error| format!("runner cleanup uncertain: handoff read failed: {error}"))?;
     let gate = handoff
         .get("gate")
         .ok_or("runner cleanup uncertain: protected gate missing")?;
+    let mut exec_status = exec_listener.associate(&claim.domain().to_value(), gate)?;
+    if !cancelled.load(Ordering::Acquire) {
+        authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
+    }
     let deadline = Instant::now() + timeout;
     let observation_interval = (timeout / 4).min(Duration::from_millis(100));
     let mut root_observation = Instant::now() + observation_interval;
     let candidate = loop {
+        let exec_observation = exec_status.poll()?;
+        if exec_observation.is_some_and(|error| error.is_some()) {
+            break Candidate::Spawn;
+        }
         if cancelled.load(Ordering::Acquire) {
+            exec_status.refuse_partial()?;
             break Candidate::Cancelled;
         }
         stderr.poll();
         if let Some(stdout) = &mut stdout {
             stdout.poll();
         }
-        if let Some(worker) = &mut owned.worker
+        if exec_observation == Some(None)
+            && let Some(worker) = &mut owned.worker
             && let Some(answer) = worker.collect()
         {
             break Candidate::Mcp(answer);
@@ -182,9 +192,13 @@ pub(super) fn execute_cancellable(
         // its retirement cannot authenticate the handler's exit status.
         owned.child.try_wait().map_err(io)?;
         if Instant::now() >= deadline {
+            exec_status.refuse_partial()?;
             break Candidate::Timeout;
         }
-        if owned.worker.is_none() && Instant::now() >= root_observation {
+        if exec_observation == Some(None)
+            && owned.worker.is_none()
+            && Instant::now() >= root_observation
+        {
             match process_exit::observe(&claim.domain().to_value(), gate, deadline) {
                 Ok(Some(status)) => break Candidate::Process(status),
                 Ok(None) => {}
@@ -228,6 +242,7 @@ pub(super) fn execute_cancellable(
     }
     let stderr = stderr.finish();
     let outcome = match candidate {
+        Candidate::Spawn => RunOutcome::SpawnFailed { argv0 },
         Candidate::Process(status) => RunOutcome::Completed {
             status,
             stdout: stdout.ok_or("runner process capture missing")?.finish(),

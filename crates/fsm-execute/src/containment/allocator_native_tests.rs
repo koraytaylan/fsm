@@ -15,6 +15,15 @@ mod admission_cases;
 #[path = "termination_native_tests.rs"]
 mod termination_cases;
 
+#[path = "exec_status_native_tests.rs"]
+mod exec_status_cases;
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn private_exec_status() {
+    exec_status_cases::run();
+}
+
 #[path = "enrollment_native_tests.rs"]
 mod enrollment_cases;
 

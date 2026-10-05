@@ -1,5 +1,23 @@
 # API and version policy
 
+The provisional native runner adds a private one-shot exec-status stream bound
+to its original protected claim and enrolled gate before entry grant. A Root-only
+initial directory prevents socket-publication races; only the verified reserved
+dynamic group receives temporary traversal/connect access, and the original
+socket/listener/directory retire before grant. The gate verifies close-on-exec,
+reports only actual exec syscall failure with a bounded private frame, and never
+exposes this descriptor to handler code. Existing spawn classification requires
+this report plus full closure; stdout, stderr and reserved exit codes cannot
+select it. Separate private `fsm.native-exec-status/1` metadata binds original
+socket/directory identities for conservative crash cleanup; journal, receipt,
+attestation, public response and hash formats remain unchanged. This unreleased
+boundary requires fresh native faults, portable gates and frozen review; it does
+not release the production gate or finish task 9303. Authentication relies on
+the provisioned dynamic identity being exclusive before grant, including no
+stale holders from recycled identities; that deployment lemma remains a frozen
+review obligation and is not established by the PID hello alone.
+
+
 Authenticated broker close now shares the runner's original-domain fencing:
 when matched manager stop refuses, it attempts verified original kernel
 freeze/kill while preserving that refusal and requiring independent complete

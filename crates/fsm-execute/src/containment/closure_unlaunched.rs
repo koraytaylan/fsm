@@ -60,6 +60,7 @@ pub(super) fn complete(
     if !manager::retired(&unit, deadline)? || !absent(&group)? {
         return Err("unlaunched native retirement differs".into());
     }
+    super::super::exec_status::retire(directory, allocation)?;
     no_submission(directory, allocation)?;
     validate_records(
         directory,

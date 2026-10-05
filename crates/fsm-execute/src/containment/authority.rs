@@ -24,6 +24,9 @@ mod allocator;
 #[path = "entry.rs"]
 mod entry;
 
+#[path = "exec_status.rs"]
+mod exec_status;
+
 #[path = "authorize.rs"]
 mod authorize;
 

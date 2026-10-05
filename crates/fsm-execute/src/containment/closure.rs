@@ -122,6 +122,7 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+    super::exec_status::retire(directory, allocation)?;
     validate_records(directory, &records)?;
     revoked(directory, allocation)?;
     if closing::recorded_domain(directory, allocation)? != domain || !absent(&group)? {

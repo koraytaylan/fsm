@@ -35,7 +35,16 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
         return Err("entry is not enrolled in its routed native domain".into());
     }
     let grant_path = directory.join(format!("entry-{allocation}.json"));
-    let grant = wait_grant(&directory, allocation, Duration::from_secs(5))?;
+    let authorization_deadline = Instant::now() + Duration::from_secs(5);
+    let mut exec_status =
+        super::exec_status::connect(&directory, allocation, authorization_deadline)?;
+    let remaining = authorization_deadline
+        .checked_duration_since(Instant::now())
+        .ok_or("entry authorization deadline expired")?;
+    let grant = wait_grant(&directory, allocation, remaining)?;
+    if Instant::now() >= authorization_deadline {
+        return Err("entry authorization deadline expired".into());
+    }
     let (claim, argv) = decode(&grant)?;
     let domain = claim.domain().to_value();
     if text(&domain, "namespace")? != namespace
@@ -66,6 +75,9 @@ pub(super) fn run(arguments: &[OsString]) -> Result<(), String> {
     }
     ensure_open(&directory, allocation)?;
     let error = Command::new(&argv[0]).args(&argv[1..]).exec();
+    if let Some(stream) = &mut exec_status {
+        super::exec_status::failed(stream, &error)?;
+    }
     Err(format!("authorized handler exec failed: {error}"))
 }
 
