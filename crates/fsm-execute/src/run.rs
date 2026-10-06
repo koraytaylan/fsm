@@ -552,6 +552,7 @@ pub struct Runner {
 impl Runner {
     /// Select native preparation and durable admission for shared service ticks.
     /// Missing native capability refuses fresh work without a direct-child fallback.
+    /// Direct-child [`Runner::spawn`] refuses on a native-selected runner.
     pub fn new_native() -> Result<Self, ExecError> {
         let mut runner = Self::new()?;
         runner.native_admission = true;
@@ -681,6 +682,12 @@ impl Runner {
         argv: &[String],
         call: Option<&McpCall>,
     ) -> Result<(), ExecError> {
+        if self.native_admission {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native-selected runners require writer-held native admission",
+            ));
+        }
         self.reap_workers();
         let Some((command, arguments)) = argv.split_first() else {
             return Err(spawn_error("", "a handler must name a command"));

@@ -2137,6 +2137,11 @@ process and MCP controls remain required before production acceptance.
 
 Provisional `Runner::new_native()` explicitly selects fresh native admission
 through both shared tick entry points, with no automatic direct-child fallback.
+Public `Runner::spawn` MUST return `exec/mode` on a native-selected runner
+before child startup, capture creation or MCP worker creation, including an
+explicit direct invocation; direct-child primitives remain available through
+`Runner::new`. This closes a bypass of the selected native admission boundary,
+without changing journal formats, claim identities or request keys.
 The host MUST retain the original journal-derived effect and checked handler
 contract before requesting preparation, serialize allocator transport, collect
 one original domain only after helper retirement/EOF, and publish its claim
