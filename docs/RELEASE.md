@@ -953,3 +953,12 @@ do not yet retain this value; their formats and historical hash bytes remain
 unchanged in this additive value-only change. Cold recovery and production
 acceptance remain incomplete, and decoding a candidate grants no execution or
 event permission.
+
+
+`AcknowledgedHandoff::matches_acknowledgement` MUST compare the complete
+original Claim, actual stopped result including omitted/null semantics,
+stopped closure run/domain binding, verified original claim-record hash,
+actual acknowledgement key and append sequence; a matching key or fingerprint
+alone MUST NOT pass. The caller must supply verified journal/evidence inputs:
+this pure comparison cannot authenticate arbitrary caller-owned values and
+does not itself publish a handoff or consume an event.

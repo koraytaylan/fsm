@@ -7,7 +7,7 @@ use crate::sha256::to_hex;
 use super::bounded::{MAX_OUTCOME, size};
 use super::ownership_values::digest;
 use super::{
-    Claim, RetryPolicy, ShapeError, StoppedOutcome, closed, number, object, text, unsigned,
+    Claim, RetryPolicy, ShapeError, Stopped, StoppedOutcome, closed, number, object, text, unsigned,
 };
 
 const MAX_HANDOFF: usize = 128 * 1024;
@@ -31,6 +31,27 @@ pub struct AcknowledgedHandoff {
 }
 
 impl AcknowledgedHandoff {
+    /// Compare every binding against the actual acknowledgement inputs.
+    ///
+    /// The store must supply its original claim, authenticated stopped result,
+    /// verified claim-record hash and actual append identity; this comparison
+    /// cannot authenticate arbitrary caller-owned values or a key alone.
+    pub fn matches_acknowledgement(
+        &self,
+        claim: &Claim,
+        stopped: &Stopped,
+        original_claim_hash: &str,
+        request_id: &str,
+        sequence: u64,
+    ) -> bool {
+        &self.claim == claim
+            && stopped.closure.matches(claim)
+            && &self.outcome == stopped.outcome()
+            && self.original_claim_hash == original_claim_hash
+            && self.acknowledgement_request_id == request_id
+            && self.acknowledgement_seq == sequence
+    }
+
     /// Decode an original hash-bound candidate without consulting current handlers.
     ///
     /// The full handler parser remains the execution layer's responsibility;

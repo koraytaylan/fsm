@@ -2,7 +2,7 @@
 
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
-use fsm_core::record::execution::{AcknowledgedHandoff, ShapeError};
+use fsm_core::record::execution::{AcknowledgedHandoff, Claim, Closure, ShapeError, Stopped};
 
 fn candidate() -> Value {
     // Fingerprint derived independently with Python's stdlib SHA-256 over
@@ -12,6 +12,89 @@ fn candidate() -> Value {
         &JsonLimits::DEFAULT,
     )
     .unwrap()
+}
+
+#[test]
+fn acknowledgement_matching_rejects_foreign_material_even_with_the_original_key() {
+    let value = candidate();
+    let handoff = AcknowledgedHandoff::from_value(&value).unwrap();
+    let claim = handoff.claim().clone();
+    let stopped = Stopped::new(
+        Closure::new(
+            1,
+            claim.domain().clone(),
+            format!("sha256:{}", "c".repeat(64)),
+        )
+        .unwrap(),
+        handoff.outcome().clone(),
+    );
+    let matches = |candidate: &AcknowledgedHandoff| {
+        candidate.matches_acknowledgement(
+            &claim,
+            &stopped,
+            handoff.original_claim_hash(),
+            "exec-ack-instance/3/0",
+            6,
+        )
+    };
+    assert!(matches(&handoff));
+    for (field, replacement) in [
+        (
+            "original_claim_hash",
+            Value::Str(format!("sha256:{}", "d".repeat(64))),
+        ),
+        ("acknowledgement_seq", Value::Num("7".into())),
+    ] {
+        let mut different = value.clone();
+        set(&mut different, field, replacement);
+        assert!(!matches(
+            &AcknowledgedHandoff::from_value(&different).unwrap()
+        ));
+    }
+    let mut different = value.clone();
+    let mut outcome = different.get("outcome").unwrap().clone();
+    set(
+        &mut outcome,
+        "result",
+        Value::Obj(std::collections::BTreeMap::new()),
+    );
+    set(&mut different, "outcome", outcome);
+    assert!(!matches(
+        &AcknowledgedHandoff::from_value(&different).unwrap()
+    ));
+    let mut foreign = claim.to_value();
+    set(&mut foreign, "run_id", Value::Num("2".into()));
+    let foreign = Claim::from_value(&foreign).unwrap();
+    assert!(!handoff.matches_acknowledgement(
+        &foreign,
+        &stopped,
+        handoff.original_claim_hash(),
+        "exec-ack-instance/3/0",
+        6
+    ));
+    let foreign_stopped = Stopped::new(
+        Closure::new(
+            2,
+            claim.domain().clone(),
+            format!("sha256:{}", "c".repeat(64)),
+        )
+        .unwrap(),
+        handoff.outcome().clone(),
+    );
+    assert!(!handoff.matches_acknowledgement(
+        &claim,
+        &foreign_stopped,
+        handoff.original_claim_hash(),
+        "exec-ack-instance/3/0",
+        6
+    ));
+    assert!(!handoff.matches_acknowledgement(
+        &claim,
+        &stopped,
+        handoff.original_claim_hash(),
+        "foreign-key",
+        6
+    ));
 }
 
 fn set(value: &mut Value, field: &str, replacement: Value) {
