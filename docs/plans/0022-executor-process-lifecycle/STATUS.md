@@ -4256,6 +4256,19 @@ are assertions awaiting provisioned execution, not achieved acceptance, and
 the surviving successor fixture is not a second live executor. Progress stays
 3/7 with production/native/full-gate obligations and task states unchanged.
 
+### Standalone public behavior sensitivity — 2026-10-06
+
+Session 33913 exited zero with asserted MemoryMax=1G and zero swap after two
+expected test failures: disabling only the exclusive contention predicate makes
+the real held-writer failure-preservation test fail with exit 101, and replacing
+the independent request wait with the ordinary scheduling sleep makes the
+long-interval actual public stop test fail with exit 101. Source restoration
+runs in finally blocks; all five restored standalone tests passed and git
+comparison confirms exact committed source. standalone-mutations.log retains
+the evidence. The regressions therefore detect both behavior changes; full
+stable gates, production integration and installed native acceptance remain
+required with plan/task statuses unchanged.
+
 ### Standalone integration boundary review — 2026-10-06
 
 STANDALONE-INTEGRATION-REVIEW.md identifies production obligations before
