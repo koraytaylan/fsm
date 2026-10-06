@@ -828,3 +828,5 @@ complete production Runner routing or release its gate.
 Prepared-domain cleanup: Root `close` now handles allocations that were prepared but never bound, refusing partial binding/submission records and checking original native identity and manager retirement before tombstone publication, without issuing an execution receipt; the expanded privileged `empty_domain_preparation` control requires provisioned native execution before acceptance.
 
 Original prepared-domain cleanup adds private broker action `discard-prepared`, matching the full retained domain under the authority lock before retirement and echoing it afterward; the expanded privileged preparation control checks wrong-domain refusal before revocation and successful original-domain cold replay, with provisioned execution still required for acceptance.
+
+The provisional native client exposes NativePreparedCleanup with bounded start/poll/cancel/reap/progress methods and original-domain response matching; automatic Runner integration and provisioned validation remain unfinished.

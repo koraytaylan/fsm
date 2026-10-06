@@ -2064,3 +2064,5 @@ complete production Runner routing or release its gate.
 The provisioned Root broker can close an unbound prepared allocation on its original route: it revokes admission and verifies native retirement before publishing a domain tombstone, without issuing claim closure evidence; transport cancellation alone still cannot release a host reservation, and automatic production Runner integration remains unfinished.
 
 Hosts retiring an unclaimed prepared domain should use `discard-prepared` on the retained original route with the full original domain, retain the cleanup helper until reap and EOF, and require the successful echoed domain to match; numeric `close` alone does not convey the caller’s original domain identity, and host cleanup integration remains unfinished.
+
+NativePreparedCleanup owns a bounded cleanup request for a delivered unclaimed domain, without new discovery; retain the handle and reservation until poll confirms matching success after helper retirement, and retain uncertainty on cancellation or refusal, since reap alone proves transport retirement only.

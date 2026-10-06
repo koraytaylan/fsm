@@ -653,3 +653,5 @@ with its full log retained as `ci-37397745043/windows-msrv-job.log`; eight of
 nine original matrix jobs now pass and Windows stable remains live in release
 testing. Current cleanup provisioned validation and production host integration
 remain outstanding, and task 9401 stays in progress.
+
+NativePreparedCleanup now owns original-route cleanup and retains its complete original domain, confirming only matched successful responses after actual helper retirement and EOF; cancellation and errors remain uncertain, public inventory and capability documentation move with the API, and compilation, response-control execution and provisioned host acceptance remain pending while frozen debug session `68063` continues at the prior source.
