@@ -3844,3 +3844,16 @@ no native closure, and paired live executor and actual append-failure transfer
 coverage remain pending. Full stable verification remains pending for this unit.
 Plan count stays 3/7, task 9401 in progress and task 9402 planned; production
 selection and all native acceptance flags remain unchanged.
+
+### Owned stdio lifecycle route review — 2026-10-06
+
+OWNED-STDIO-REVIEW.md records the owned production entry that can preserve the
+borrowed session API, the single clock/writer mutation owner, elicitation reply
+demultiplexing and feed/output join constraints. The protocol and lifecycle
+paths must remain independent while actual stdio or writer work blocks; bounded
+queue acceptance cannot claim actual delivery or native cleanup.
+Session 3366 remains live for runtime source 450beb8; this review changes only
+documentation and does not invalidate that runtime freeze. Output/retirement
+drafts remain cache-only and untested, and no production control or acceptance
+flag is promoted. Formatting and diff checks apply to this documentation unit;
+its code gates are represented by the still-running frozen runtime gate.
