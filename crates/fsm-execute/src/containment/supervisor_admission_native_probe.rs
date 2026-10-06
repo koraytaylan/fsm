@@ -121,6 +121,7 @@ fn shared_tick_admission() {
     let records = writer.records.clone();
     let state = writer.state.clone();
     let mut watcher = Watcher::with_handlers(path.into(), &table);
+    assert_eq!(table.max_inflight, 1);
     let mut scheduler = Scheduler::new(table);
     let mut runner = Runner::new_native().unwrap();
     let mut pipeline = Pipeline;
@@ -407,7 +408,73 @@ fn shared_tick_admission() {
         1000,
     );
     assert_eq!(writer.records, settled_records);
+
+    // Reuse the same one-slot scheduler and Runner after durable consumption;
+    // a newly constructed host would not prove release of the original slot.
+    writer
+        .create_instance_ctx_on(
+            &mut clock,
+            "case_review",
+            "second-instance",
+            "admission-second-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    writer
+        .send_event_stamp_on(
+            &mut clock,
+            "second-instance",
+            "docs_ok",
+            &mut Value::Obj(BTreeMap::new()),
+            "admission-second-send",
+            None,
+            &[],
+        )
+        .unwrap();
+    let second = writer.state.instances["second-instance"].pending[0].clone();
+    assert_ne!(second, effect);
     drop(writer);
+    wait_until(|| {
+        let report = tick_reporting(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            path,
+            &mut clock,
+            1000,
+        );
+        assert!(!report.writer_unavailable);
+        let current = Store::open_read_only(path).unwrap();
+        current
+            .state
+            .dedup
+            .contains_key(&fsm_execute::rid::event_rid(&second, "docs_ok"))
+    });
+    assert!(scheduler.inflight_effect(&second).is_none());
+    let current = Store::open_read_only(path).unwrap();
+    assert!(current.state.execution.unresolved().next().is_none());
+    assert_eq!(
+        current
+            .records
+            .iter()
+            .filter(|record| record.kind == fsm_core::record::RecordKind::ExecutionClaimed)
+            .count(),
+        2
+    );
+    let acknowledgement = fsm_execute::rid::ack_rid(&second);
+    let event = fsm_execute::rid::event_rid(&second, "docs_ok");
+    let sequence = |request: &str| {
+        current
+            .records
+            .iter()
+            .find(|record| record.body.get("request_id").and_then(Value::as_str) == Some(request))
+            .unwrap()
+            .seq
+    };
+    assert!(sequence(&acknowledgement) < sequence(&event));
     emit(format_args!("\nFSM_NATIVE_FRESH_ADMISSION"));
 }
 
