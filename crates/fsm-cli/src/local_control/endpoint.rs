@@ -1,6 +1,6 @@
 use super::{finite_timeout, invalid, owner_uid, private_directory, protocol, server};
 use fsm_core::json::write_canonical;
-use fsm_execute::service::OwnedNativeExecutor;
+use fsm_execute::service::{ExecutorControl, OwnedNativeExecutor, PairedNativeExecutor};
 use std::{
     fs::{self, DirBuilder, File, Metadata, OpenOptions, Permissions},
     io::{self, Read, Write},
@@ -32,13 +32,37 @@ impl LocalControlEndpoint {
             .store_mut()
             .ok_or_else(|| invalid("writer already released"))?;
         let physical = fs::metadata(&store.data_dir)?;
+        Self::publish_bound(root, driver.control(), (physical.dev(), physical.ino()))
+    }
+
+    /// Publish control for the exact paired actor, without acquiring its writer.
+    pub fn publish_paired(root: &Path, driver: &PairedNativeExecutor) -> io::Result<Self> {
+        private_directory(root, owner_uid()?)?;
+        let physical = fs::metadata(driver.data_dir())?;
+        let original = driver.physical_store_identity();
+        if (physical.dev(), physical.ino()) != original {
+            return Err(invalid(
+                "paired control original physical directory differs",
+            ));
+        }
+        if driver.control().report().phase == fsm_execute::service::ExecutorPhase::Stopped {
+            return Err(invalid("paired executor already stopped"));
+        }
+        Self::publish_bound(root, driver.control(), original)
+    }
+
+    fn publish_bound(
+        root: &Path,
+        control: ExecutorControl,
+        physical: (u64, u64),
+    ) -> io::Result<Self> {
         let mut random = [0u8; 32];
         File::open("/dev/urandom")?.read_exact(&mut random)?;
         let incarnation: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
         let identity = protocol::ControlIdentity {
             incarnation: incarnation.clone(),
-            store_device: physical.dev(),
-            store_inode: physical.ino(),
+            store_device: physical.0,
+            store_inode: physical.1,
         };
         let directory = root.join(format!("c-{}", &incarnation[..16]));
         let socket = directory.join("s");
@@ -73,7 +97,6 @@ impl LocalControlEndpoint {
         let cleaned = Arc::new(AtomicBool::new(false));
         let thread_stop = stop.clone();
         let thread_cleaned = cleaned.clone();
-        let control = driver.control();
         std::thread::Builder::new()
             .name("fsm-local-control".into())
             .spawn(move || {

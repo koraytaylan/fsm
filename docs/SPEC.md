@@ -2898,3 +2898,27 @@ rendering remains synchronous. This command targets only the exact publisher
 incarnation and MUST NOT claim all durable data-directory ownership is closed.
 It MUST NOT activate native production selection or fabricate an endpoint for
 an executor that has not published one.
+
+
+### Paired native lifecycle writer strategy
+
+On supported Linux, service::PairedNativeExecutor MAY retain original native
+components and a verified durable read-only snapshot across temporary writer
+leases. Construction MUST NOT acquire or initialize a writer. Data-directory
+physical identity MUST remain pinned; replacement MUST defer rather than
+redirect original work. Explicit tick MAY schedule ordinary work; poll MUST
+only observe admitted transports, original completion and claim-bound closure.
+Closure transport MUST progress before writer attempts, using the original
+verified snapshot and existing full-claim/physical binding guards; settlement
+MUST still require a healthy original writer and actual helper retirement.
+
+Writer release MUST be unconfirmed before temporary writer I/O and confirmed
+only after the actual lease drops. A blocked writer MUST retain every unresolved
+local claim and reservation; native closure alone MUST NOT publish Stopped
+before durable original settlement. An empty paired actor MAY stop while a
+foreign actor holds its writer, without acquiring or releasing that foreign
+lease. Stopped actors MUST NOT recover new helpers. LocalControlEndpoint MAY
+publish_paired from that actual driver's pinned physical identity and control;
+a replaced directory or already stopped publisher MUST refuse. These opt-in
+APIs MUST NOT claim installed two-live-native-actor acceptance or activate the
+current production selector. Drop remains outside the shutdown guarantee.

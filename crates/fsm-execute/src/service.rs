@@ -24,8 +24,8 @@ pub use admitted::observe_admitted_with;
 mod lifecycle;
 #[cfg(target_os = "linux")]
 pub use lifecycle::{
-    ExecutorControl, ExecutorPhase, OwnedNativeExecutor, ShutdownMode, ShutdownReport,
-    ShutdownRequest,
+    ExecutorControl, ExecutorPhase, OwnedNativeExecutor, PairedNativeExecutor, ShutdownMode,
+    ShutdownReport, ShutdownRequest,
 };
 
 use std::collections::BTreeMap;

@@ -1,5 +1,8 @@
 //! Explicitly driven native lifecycle with an independently waitable control.
 
+mod paired;
+pub use paired::PairedNativeExecutor;
+
 mod closures;
 mod control;
 use closures::Closures;

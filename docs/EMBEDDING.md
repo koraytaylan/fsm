@@ -2406,3 +2406,23 @@ The command can control explicitly published library hosts while the current
 serve/execute production selectors still use their previous route and publish
 no native owned endpoint; installed production and signal acceptance remain
 pending, and stop never claims all ownership in the directory was terminated.
+
+
+### Explicit paired native lifecycle host
+
+On supported Linux, construct service::PairedNativeExecutor::new(data_dir, table)
+from an existing verified store without taking its writer, or transfer the
+original native components with from_owned_parts and a verified read-only
+snapshot. Retain its cloned control and drive tick only for explicit normal
+work; use poll for admitted-only observation and shutdown. The original
+physical directory is pinned, and replaced/unverified state remains uncertain.
+
+The actor requests authenticated closure from its verified snapshot before
+trying a temporary writer; interrupted settlement still waits for actual
+execution/closure helper retirement and the healthy original writer. Retained
+authentic completion keeps its original policy. Reports leave writer release
+unconfirmed across temporary I/O and confirm it after actual drop; they never
+release another actor's held writer. publish_paired(root, &driver) exposes the
+actual pinned actor to execute stop through the existing private transport.
+These APIs are opt-in; production service/serve integration and installed
+paired live-native-actor acceptance remain pending, with no Drop guarantee.

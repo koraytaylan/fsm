@@ -399,6 +399,7 @@ reexport fsm_execute::run::native_client::NativeShutdown from shutdown
 reexport fsm_execute::service::ExecutorControl from lifecycle
 reexport fsm_execute::service::ExecutorPhase from lifecycle
 reexport fsm_execute::service::OwnedNativeExecutor from lifecycle
+reexport fsm_execute::service::PairedNativeExecutor from lifecycle
 reexport fsm_execute::service::ShutdownMode from lifecycle
 reexport fsm_execute::service::ShutdownReport from lifecycle
 reexport fsm_execute::service::ShutdownRequest from lifecycle

@@ -141,6 +141,28 @@ fn missing_endpoint_does_not_create_data_or_confirm_admission() {
 }
 
 #[test]
+fn paired_stop_binary_does_not_acquire_or_release_another_actors_writer() {
+    use fsm_execute::service::PairedNativeExecutor;
+    let fixture = Fixture::new();
+    let writer = Store::open(&fixture.data).unwrap();
+    let mut driver = PairedNativeExecutor::new(&fixture.data, HandlerTable::default()).unwrap();
+    let endpoint = LocalControlEndpoint::publish_paired(&fixture.root, &driver).unwrap();
+    let output = bounded(&mut fixture.command("abort", "1000"), || {
+        if driver.control().report().admission_closed {
+            driver.poll(&mut FixedClock::new(0, 1), 0);
+        }
+    });
+    assert_eq!(output.status.code(), Some(0));
+    let report = json(&output.stdout);
+    assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
+    assert_eq!(report.get("writer_released"), Some(&Value::Bool(true)));
+    assert!(Store::open(&fixture.data).is_err());
+    assert!(endpoint.close(1000).unwrap());
+    drop(writer);
+    drop(Store::open(&fixture.data).unwrap());
+}
+
+#[test]
 fn invalid_stop_arguments_refuse_before_closing_admission() {
     let fixture = Fixture::new();
     let mut driver = fixture.driver();

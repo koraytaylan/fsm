@@ -4171,3 +4171,32 @@ This is the required shared implementation extraction, not a completed paired
 driver or installed no-writer native control. Full changed-source stable gate
 and remaining paired/production/native/signal acceptance are still required;
 plan progress remains 3/7 and task states remain unchanged.
+
+### Paired lifecycle implementation and focused review — 2026-10-06
+
+The shared closure extraction's full stable gate (session 65333) exited zero
+against runtime 156a750082a43aa1bef22a74df5faef8a13db55d with asserted
+MemoryMax=1G and MemorySwapMax=0; closure-pump-refactor-stable-gate.log
+records formatting, size, debug/release workspace tests, all-target Clippy,
+documentation, zero dependencies and embedding acceptance.
+
+Added opt-in PairedNativeExecutor with an original physical-store pin and verified
+reader snapshot, shared claim-bound closure observation before writer acquisition,
+temporary healthy-writer settlement, and actual writer release before publication.
+Explicit ticks retain ordinary scheduling; admitted polling does not advance due
+machine deadlines or admit pending work. The actual paired endpoint publisher uses
+the driver's pinned identity and refuses replaced paths and stopped drivers.
+
+Focused paired-lifecycle-check-v3.log reaches its final public surface suite with
+all sixteen tests passing; its process handle is now absent, so no terminal exit
+code is inferred from the missing handle. The log also records stable/MSRV Clippy,
+executor and owned lifecycle suites, three paired lifecycle tests, owned session
+and transport suites, and five real CLI stop tests. Earlier focused session 23955
+exited zero before the additional paired CLI test and inventory regeneration.
+The held-clock test proves a real temporary writer cannot be reported released;
+empty actor stop succeeds while an independent writer remains held, and idle
+observation preserves journal records and due instance state.
+
+These tests use empty native inventories: installed nonempty native closure,
+two live native executors, production selection/publication, signals and full
+changed-source gates remain required. Progress stays 3/7; task states are unchanged.

@@ -1100,3 +1100,11 @@ Added shared native admission closure and original local shutdown-target iterati
   journal writer; confirmed stopped reports exit zero, uncertainty exits one
   with preserved native report or null unknown transport facts. Current executor
   defaults and production endpoint publication remain unchanged and unproved.
+
+
+- Added an opt-in paired native lifecycle actor with verified read-only
+  snapshots, temporary writer leases and independent cloned control, reusing
+  authenticated closure before writer attempts and preserving writer-dependent
+  settlement; paired endpoint publication binds its pinned physical directory.
+  Current production selectors and installed two-live-native-actor acceptance
+  remain pending, and no persisted format or hash changes.

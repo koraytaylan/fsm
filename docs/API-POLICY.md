@@ -1142,3 +1142,11 @@ with exit zero, uncertain emits existing error details with exit one and
 transport failure preserves null unknown facts. Optional --control-dir chooses
 an explicit publisher root; no handler loading, journal format, hash domain,
 production backend selection or native installed acceptance changes.
+
+
+The unreleased Linux service::PairedNativeExecutor surface adds constructors
+new/from_owned_parts, control, data_dir, physical_store_identity, handler_table,
+tick and poll; LocalControlEndpoint::publish_paired adds the actual paired
+actor publisher. The actor uses verified read-only prefixes and temporary
+healthy writer leases, preserving existing native closure/settlement guards.
+No journal format, hash domain, error code or production selector changes.
