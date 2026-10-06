@@ -132,14 +132,18 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
     let group = groups.join(&unit);
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        if manager::retired(&unit, deadline)? {
+        let mut manager_retired = manager::retired(&unit, deadline)?;
+        if manager_retired {
             remove_empty(directory, allocation, &domain, &unit, &group, deadline)?;
-            if manager::retired(&unit, deadline)? && absent(&group)? {
+            manager_retired = manager::retired(&unit, deadline)?;
+            if manager_retired && absent(&group)? {
                 break;
             }
         }
         if Instant::now() >= deadline {
-            return Err("closure native retirement deadline".into());
+            return Err(format!(
+                "closure native retirement deadline (manager_retired={manager_retired})"
+            ));
         }
         std::thread::sleep(Duration::from_millis(5));
     }

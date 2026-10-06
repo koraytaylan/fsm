@@ -706,3 +706,11 @@ automatic Runner acceptance or replace the preserved MSRV failure. Source
 review locates that failure in the existing bound completed-submission closure
 loop, which waits for manager retirement and physical absence under a two-second
 deadline; available evidence does not yet establish why MSRV exceeded it.
+
+Retirement failure review found that the deadline error discarded the last
+actual manager-retirement observation. The private diagnostic now includes
+that observed boolean, without issuing a new query after deadline, exposing
+identifiers, extending the deadline or relaxing closure checks. This supports
+distinguishing a still-loaded manager unit/job from residual-domain retirement
+on a future provisioned failure; compilation and native validation of the
+diagnostic remain pending behind live frozen debug session `30347`.
