@@ -25,39 +25,9 @@ pub(super) fn disconnect() {
     disconnect_cases::run();
 }
 
-const CLIENT: &str = r#"import errno,json,os,socket,sys
-uid=int(sys.argv[1])
-os.setgroups([])
-os.setgid(uid)
-os.setuid(uid)
-assert os.getuid()==uid and os.geteuid()==uid and os.getgroups()==[]
-route=json.load(open(sys.argv[2]+'/route.json'))
-path=sys.argv[2]+'/s-'+str(route['epoch'])
-s=socket.socket(socket.AF_UNIX)
-s.settimeout(5)
-if sys.argv[3]=='deny':
-    try:
-        s.connect(path)
-    except OSError as error:
-        assert error.errno==errno.EACCES
-        sys.exit(0)
-    raise AssertionError('unauthorized client connected')
-from pathlib import Path
-base=Path(sys.argv[2])
-encoded=sys.argv[3].encode()
-reader,writer=os.pipe()
-framed=len(encoded).to_bytes(4,'big')+encoded
-while framed:
-    count=os.write(writer,framed)
-    framed=framed[count:]
-os.close(writer)
-os.dup2(reader,0)
-os.close(reader)
-authority=base.parent
-namespace=authority.parent.name
-generation=authority.name.removeprefix('authority-')
-os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client',namespace,generation])
-"#;
+#[path = "broker_client_native_probe.rs"]
+mod client_script;
+use client_script::CLIENT;
 
 struct Daemon(Child);
 
@@ -189,6 +159,7 @@ pub(super) fn run() {
     run_case(false, Host::Admission);
     run_case(false, Host::AdmissionMcp);
     run_case(false, Host::AdmissionCancellation);
+    run_case(false, Host::AdmissionMcpCancellation);
 }
 
 enum Host {
@@ -199,11 +170,17 @@ enum Host {
     Admission,
     AdmissionMcp,
     AdmissionCancellation,
+    AdmissionMcpCancellation,
 }
 
 fn run_case(timeout: bool, host: Host) {
-    let table =
-        fixture_table::handler_table(timeout, matches!(host, Host::FreshMcp | Host::AdmissionMcp));
+    let table = fixture_table::handler_table(
+        timeout,
+        matches!(
+            host,
+            Host::FreshMcp | Host::AdmissionMcp | Host::AdmissionMcpCancellation
+        ),
+    );
     let mut fixture = Fixture::new_for_operator(table.clone());
     for uid in [0, 61184, 65519, u32::MAX] {
         assert!(broker_endpoint::provision(&fixture.directory, uid).is_err());
@@ -253,7 +230,10 @@ fn run_case(timeout: bool, host: Host) {
     assert!(!refused.status.success());
     assert!(String::from_utf8_lossy(&refused.stderr).contains("outside policy"));
     assert_eq!(fs::read(&counter_path).unwrap(), counter);
-    if matches!(host, Host::AdmissionCancellation) {
+    if matches!(
+        host,
+        Host::AdmissionCancellation | Host::AdmissionMcpCancellation
+    ) {
         fresh_cases::cancellation(&mut fixture, &table);
         return;
     }
