@@ -565,3 +565,11 @@ stable workspace all-target Clippy gate is live in session `62881`, retaining
 embed acceptance checks at the same frozen source remain required afterward.
 The six portable CI jobs remain live, and production Runner integration is
 still unfinished; these gate passes do not complete task 9401.
+
+Frozen-source `a876df1` full stable workspace all-target Clippy completed with
+exit zero through session `62881`, retaining `local-a876df1-stable-clippy.log`.
+The serial documentation gate is now live in session `56113`, with warnings
+denied and retained `local-a876df1-stable-doc.log`. Updated CI Ubuntu stable
+also completed successfully; the other five portable legs remain live.
+These results leave production Runner composition, the remaining host gates
+and full portable matrix acceptance outstanding.
