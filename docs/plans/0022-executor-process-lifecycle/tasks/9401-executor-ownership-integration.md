@@ -25,6 +25,13 @@ touches:
 status: in_progress
 merged_as: ""
 ---
+
+### Exact-source shared recovery verification (2026-10-06)
+
+Run `37418107228` at clean source `eb783b273fc7adec698b3f4a8ca04822488b5dd4` has a successful native MSRV job `112121154038`; its downloaded artifact independently passes `verify_native_evidence.py` with `rustc 1.89.0 (29483883e 2025-08-04)` across all 81 cases, including the expanded `provisioned_broker_access` shared-tick recovery control. Evidence and verification output are retained in the dedicated task cache under `ci-37418107228/msrv` and `msrv-verification.log`. This proves recovered completion application through public ticks with independent writer contention, read-only refusal, an absent current handler catalogue, disabled-event parking and subsequent resume at this source; it does not prove new-run admission or restart between acknowledgement and event application.
+
+The stable native job `112121154143` failed before reaching that shared-tick control, in `private_exec_status` for `/bin/sh` with MCP enabled: `closure native retirement deadline (manager_retired=false)`. Its retained `ci-37418107228/stable/authority-private_exec_status.log` identifies the same retirement phase seen in earlier run `37401653979`; a later successful matrix did not establish a fix. Review of `stop.rs`, `manager.rs` and `closure.rs` confirms retirement still requires an unloaded original unit and no queued job, and failed-unit reset still requires original invocation/PID matching. The available failure does not identify the unit state, queued jobs, or a stop refusal, so it does not justify weakening those guards or extending deadlines. This matrix is not accepted, stable shared-control execution is unproven, and all production/gate/executable-verification flags remain false; six portable jobs were still live when this verdict was recorded.
+
 # Executor Ownership Integration
 
 Every execution host must claim before launch and replay a durable stopped
