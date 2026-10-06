@@ -1330,3 +1330,23 @@ No process-only substitute is used for this MCP axis; compilation and actual
 provisioned runtime execution are pending behind the live earlier-source gates.
 Formatting, diff, and oversized-file checks pass, with all Rust files still
 below the required ceiling; task 9401 remains in progress.
+
+### Corrected fresh process/MCP fixture compilation
+
+Frozen `88f15e6af34b96cd6e6c363120ad3391873c913e` passed MSRV executor
+all-target Clippy with warnings denied, all 27 library tests, all 16 public
+API inventory tests, and all five tick tests including both owner-free
+physical replacement entry paths. Checks ran serially in a verified temporary
+1 GiB scope with swap disabled; output is retained as
+`local-88f15e6-capped-msrv-executor.log`. This compiles the corrected genuine
+competing-domain context and separate fresh MCP fixture but does not execute
+the ignored provisioned controls. Formatting, diff, and source-size gates
+passed before committing the fixture corrections.
+
+The frozen `f5fb6ae2b4a32b6c14b884b3a16037fbe453bfe9` full stable debug
+workspace run finished successfully (session 49957 exit 0), retained as
+`local-f5fb6ae-capped-stable-debug.log`; that cargo result neither passes its
+failed source-size gate nor validates later fixture corrections or fresh
+native runtime behavior. Run 37429029062 Windows jobs remain live as of
+the last observation, so its full terminal verdict is not claimed and no
+new push supersedes it. Task 9401 and plans 20–23 remain incomplete.
