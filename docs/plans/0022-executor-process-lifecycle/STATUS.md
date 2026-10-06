@@ -4313,3 +4313,16 @@ assertion and an expectation for a renamed enum variant outside the scanner's
 stated scope; both expectations were corrected before the successful pass.
 This repairs verification coverage without changing execution runtime or task
 status; progress remains 3/7 and production/installed acceptance remains pending.
+
+### Paired outcome and request-wait sensitivity — 2026-10-06
+
+Mutation session 90239 exited zero under asserted 1 GiB RAM and zero swap:
+forcing only paired tick writer_unavailable to false makes the actual held-writer
+structured contention test fail with test exit 101; forcing only idle request
+wait expiry to true makes the admission-preserving idle test fail with exit 101.
+Each source file was restored in a finally block, then all 48 executor library
+and six paired lifecycle tests passed. Git comparison confirms lifecycle source
+matches the committed runtime after restoration; paired-wakeup-mutations.log
+retains the expected failures and successful restored checks. This proves these
+two regression assertions are sensitive, not production or installed acceptance;
+plan progress and task statuses remain unchanged.
