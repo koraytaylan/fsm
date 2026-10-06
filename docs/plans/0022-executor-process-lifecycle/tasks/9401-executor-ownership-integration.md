@@ -686,6 +686,13 @@ stable debug workspace gate at product source `cd70627` is live in session
 `30347`, retaining `local-cd70627-stable-debug.log`. Production Runner routing
 and current native acceptance remain unfinished; task 9401 stays in progress.
 
+The full serial stable release workspace suite at frozen product source
+`1dddd15` completed with exit zero in original session `80644`, with its full
+log retained as `local-1dddd15-stable-release.log`; this predates the physical
+replacement control and does not verify that test or resolve the preserved
+native MSRV failure. The next serial stable workspace all-target Clippy gate
+is running at frozen `7bdfcb6`, retaining `local-7bdfcb6-stable-clippy.log`.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
