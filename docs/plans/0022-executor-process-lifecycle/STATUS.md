@@ -4596,3 +4596,19 @@ debug/release workspace tests, all-target Clippy, documentation with warnings
 denied, zero dependencies and downstream embedding acceptance. Installed
 native acceptance remains separate and unexecuted here; no task promotion
 or full-suite success is inferred while this run is live.
+
+### Production standalone full stable result — 2026-10-07
+
+Session 45529 terminated with exit zero for runtime
+113cc3f1d9871f89e7e81d9d08d01e9044f8f322. Subsequent commits through
+062d9e7 changed documentation only during validation. Formatting, source size,
+debug and release workspace tests, all-target Clippy with warnings denied,
+documentation with warnings denied, zero-dependency checks and downstream
+embedding acceptance passed. The scope asserted 1 GiB RAM and zero swap before
+Cargo and live resource observations remained at zero swap. Evidence remains
+in production-standalone-stable-gate.log under the operator cache.
+
+This validates the committed portable production standalone composition and
+its empty shutdown/broken-output binary tests; installed native nonempty
+acceptance remains unexecuted, while production embedded stdio and HTTP
+ownership remain incomplete. Task statuses and plan progress remain unchanged.
