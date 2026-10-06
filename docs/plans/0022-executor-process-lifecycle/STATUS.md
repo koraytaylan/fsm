@@ -3886,3 +3886,13 @@ public constructor and exact 256-frame/plus-one boundary; clone ordering asserts
 actual canonical bytes. Full stable verification remains pending for this unit.
 No native runtime acceptance is inferred from output tests; plan progress stays
 3/7, task 9401 in progress, task 9402 planned and production acceptance false.
+
+### Complete queued-output stable gate — 2026-10-06
+
+Session 11985 completed exit 0 at exact runtime source
+d20ee063e80d82e22310c06dee21a16c74097c1a, unchanged throughout the gate.
+Formatting/size, debug/release workspace suites, all-target workspace Clippy,
+warning-denied docs, zero dependencies and full embedding acceptance passed
+under verified 1 GiB/no-swap limits; local-queued-output-stable-gate.log is
+retained. Production queue/lifecycle integration and native shutdown acceptance
+remain unimplemented/unexecuted; no plan task or acceptance flag is promoted.
