@@ -717,7 +717,9 @@ Ubuntu MSRV job `112069961706` subsequently completed successfully, with
 its complete log retained as `ci-37401653979/ubuntu-msrv-job.log`;
 macOS stable job `112069961623` also completed successfully, with its
 complete log retained as `ci-37401653979/macos-stable-job.log`;
-the two Windows jobs remain live, and that older source cannot
+Windows stable job `112069961603` subsequently completed successfully,
+with its complete log retained as `ci-37401653979/windows-stable-job.log`;
+only Windows MSRV job `112069961710` remains live, and that older source cannot
 execute the physical replacement control or the later retirement diagnostic.
 
 Physical-store discovery review added a production-entry refusal control that
