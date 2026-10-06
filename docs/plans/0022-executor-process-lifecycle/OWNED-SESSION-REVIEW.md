@@ -282,3 +282,15 @@ retained in native-stderr-mutations.log. This establishes sensitivity to
 both owner-blocking stderr paths, without native authority acceptance or
 verified handler entry, and does not remove the separate final-renderer
 process-exit limitation. Tasks 9401/9402 and plan completion remain unchanged.
+
+Embedding guide review removed an obsolete paragraph claiming the shipped
+production native stdio selector, owner-only endpoint, stop command, and
+paired standalone strategy were unfinished. It now states the actual Linux
+x86_64/aarch64 compositions, borrowed/HTTP boundary, separate operator
+delivery facts, and still-unfinished signal and nonempty native acceptance.
+Source tracing confirms NativeAdmissions::queue discovers namespace and
+generation from the physical store and maps discovery refusal to exec/mode;
+this is a prerequisite explanation, not proof that every observed exec/mode
+comes from discovery. The workflow fixture remains unregistered and all four
+production workflow failures remain unresolved. Documentation-only diff
+checks pass; runtime gates were not rerun for this prose correction.

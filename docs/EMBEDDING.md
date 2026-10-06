@@ -2353,14 +2353,20 @@ original mode escalation and deadline. Healthy EOF waits for admitted output
 delivery within that deadline; blocked output returns `output_drained=false`.
 
 The returned `OwnedSessionReport` separates native cleanup/writer facts from
-protocol delivery. `ShutdownReport::timed_out` means the original deadline
+protocol delivery and operator diagnostics (`operator_output_drained` and
+`operator_lines_dropped`). `ShutdownReport::timed_out` means the original deadline
 elapsed without confirmed native cleanup; other uncertain reports need not be
 timeouts. `ShutdownRequest::deadline` lets a host preserve that absolute bound.
 Native or journal I/O may still stall the session worker, while independent
-control waits remain bounded and truthful. The current CLI stdio selector,
-external owner-only endpoint, CLI stop and signal integration remain unfinished;
-this library entry does not establish their installed acceptance or supply a
-paired standalone writer strategy.
+control waits remain bounded and truthful. On Linux x86_64/aarch64, ordinary
+`serve --execute` selects this owned native composition and publishes the
+owner-only control endpoint; ordinary `execute` uses the paired native writer
+strategy, and `execute stop` requests authenticated drain or abort through
+the endpoint. Borrowed session helpers and HTTP do not select this native
+composition. Signal integration and installed-native nonempty workflow
+acceptance remain unfinished. Native execution requires protected authority
+registration of the actual physical store; this library entry does not install
+that authority or register the store.
 
 
 ### Opt-in local owned control endpoint
