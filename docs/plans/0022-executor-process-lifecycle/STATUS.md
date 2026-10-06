@@ -3531,3 +3531,22 @@ log is local-matched-stop-retirement-review.log in the task cache.
 This local result does not prove the installed race is corrected, nor
 authorize production defaults: genuine installed native acceptance remains
 required, and the earlier review run will not be superseded while live.
+
+### Terminal replay-anchor review — 2026-10-06
+
+Review run 37455127828 is terminal at exact source
+413d6a480e650299efddda03942264f7c5f88c86: all six portable
+Ubuntu/macOS/Windows stable/MSRV jobs, zero-deps and native MSRV passed;
+native stable failed private_exec_status during early live revocation with
+ENOENT, and the parent verdict is failure. The failed authority artifact
+and terminal job logs are retained in task-cache ci-37455127828.
+Independent verification of the completed native MSRV artifact proves
+all 81 frozen cases at rustc 1.89.0 (29483883e 2025-08-04), with
+gate_released=false and executable_bytes_verified=false.
+This run predates VERSION 12 persistence and the matched-stop correction.
+The local cf607de stable host gate passed its full debug workspace phase
+and remains live in release compilation; subsequent phases are unproven.
+Cold host implementation and controls exist only as unapplied task-cache
+drafts, and production constructors remain unchanged.
+A successor review may now test the committed VERSION 12 and race fixes
+without cancelling any job from this terminal review.
