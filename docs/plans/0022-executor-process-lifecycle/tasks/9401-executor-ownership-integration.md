@@ -785,6 +785,17 @@ successfully at `482da8f`, with its complete log retained as
 `112081460668` remains live, in release workspace tests. No new push has
 cancelled this original run, and task 9401 remains in progress.
 
+Windows MSRV job `112081460668` subsequently completed successfully, with
+its full log retained as `ci-37405315461/windows-msrv-job.log` and terminal
+run metadata as `ci-37405315461/final-run.json`. Run `37405315461` is now
+completed with all nine jobs successful at exact source
+`482da8f07a1248f3e3a62cd0b62173e22433761b`; both native artifacts have already
+been independently verified for 81 cases each. This accepts the replacement
+regression and preceding primitives across the executed matrix, while native
+gate release and executable-byte verification remain false, the earlier
+native MSRV retirement failure remains preserved without a proven cause,
+and actual production Runner routing and task 9401 remain incomplete.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
