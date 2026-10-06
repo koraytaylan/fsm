@@ -1115,3 +1115,14 @@ logs. No successful full matrix is claimed. The earlier live frozen `f2bdeea`
 local full debug gate still does not cover the subsequent provisioned probe
 extension or operation-labelled stop diagnostic; these committed changes
 require their own new-source validation.
+
+### Portable private-helper compilation review
+
+The exact-claim release helper is called by the Linux-only native owner module;
+its definition is now compiled for Linux or unit-test builds, preserving the
+pure identity regression on every test platform while avoiding an unused
+private helper in non-Linux library builds. This changes no Linux execution
+behavior or public inventory. Formatting and diff checks pass; actual portable
+Clippy/docs validation remains pending. Run 37425899114 is live at
+`a2ad1e0211dd1f090b7fd0137fb4ef7403e2e6cf` and predates this correction,
+so it cannot validate it and will not be superseded while live.

@@ -259,6 +259,7 @@ impl Scheduler {
 
     /// Release only the reservation for this exact durably consumed claim.
     /// Event delivery may still be deferred after ownership consumption.
+    #[cfg(any(target_os = "linux", test))]
     pub(crate) fn complete_claim(&mut self, claim: &Claim) -> bool {
         let (_, effect) = claim.effect();
         if self.local_claims.get(effect) != Some(claim) {
