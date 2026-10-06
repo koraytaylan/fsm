@@ -492,10 +492,16 @@ fn stop_running_handler() {
     authorize::publish_enrolled(&fixture.directory, &object([("grant", grant)])).unwrap();
     let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();
     let pid = super::super::super::number(handoff.get("gate").unwrap(), "pid").unwrap();
+    // /proc exposes the resolved image, while approved argv may use a symlink;
+    // require the actual image's physical identity instead of its spelling.
+    let expected_image = fs::metadata("/usr/bin/sleep").unwrap();
     let deadline = Instant::now() + Duration::from_secs(2);
-    while fs::read_link(format!("/proc/{pid}/exe")).unwrap()
-        != std::path::Path::new("/usr/bin/sleep")
-    {
+    loop {
+        let actual_image = fs::metadata(format!("/proc/{pid}/exe")).unwrap();
+        if (actual_image.dev(), actual_image.ino()) == (expected_image.dev(), expected_image.ino())
+        {
+            break;
+        }
         assert!(
             Instant::now() < deadline,
             "approved stop fixture did not exec"

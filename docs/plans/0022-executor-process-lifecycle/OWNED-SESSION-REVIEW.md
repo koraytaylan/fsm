@@ -625,3 +625,31 @@ passed; no Rust runtime or public capability changed in this harness unit.
 The by-hand coordinator adds these two harness paths to task 9401's mutation
 footprint; statuses and the 3/7 roll-up remain unchanged. Exact-source local
 provisioned execution is the next acceptance step and is still unexecuted.
+
+### First local provisioned authority run and physical-image correction
+
+Stable local authority probe on frozen 747edca415d448b44bbb0f38325d51a0de3d8e55
+terminated with exit 1: empty preparation, profile refusal, unknown domain,
+counter rollback and incomplete intent cases passed; enrolled authorization
+failed after 5.01 seconds at `approved stop fixture did not exec`.
+Report source is clean and exact, allocator=true, backend=false, gate unreleased;
+evidence is in local-native-authority-747edca/authority.json and per-case logs.
+Unrelated fixture process survived each case and teardown. The guarded harness
+removed only its matched installed artifact after namespace cleanup; subsequent
+stat confirmed both the installed authority and authority base absent.
+The controller asserted 1 GiB RAM / zero swap; native system-manager units
+are separate from that controller scope, so these limits do not claim to bound
+the resource settings of admitted native service units.
+
+Source inspection found the stop fixture compared /proc/<pid>/exe literally
+against /usr/bin/sleep; this host's approved path is a symlink resolving to
+/usr/lib/cargo/bin/coreutils/sleep. An independent owned sleep child confirmed
+that actual image spelling and matching approved/actual device-inode identity.
+The native fixture now waits for matching physical executable identity,
+preserving its original authorization, deadline, stop, closure and persistence
+assertions; this corrects a necessarily failing lexical observation on symlink
+installations without accepting a different image.
+Stable executor all-target Clippy and MSRV all-target compilation passed
+(native-sleep-image-identity-check.log); format and source-size checks passed.
+A frozen native rerun and later-source full host gate remain pending; no native
+handler-entry or ownership integration acceptance follows from compilation.
