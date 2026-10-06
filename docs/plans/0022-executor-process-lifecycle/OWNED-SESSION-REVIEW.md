@@ -384,3 +384,15 @@ production controls, stable all-target Clippy, and MSRV all-target compilation
 passing under verified 1 GiB/zero-swap limits. Evidence remains in
 production-broken-stderr-final-check.log. Full later-source workspace and
 installed-native workflow acceptance remain incomplete.
+
+Workflow fixture external resource files now live in a separate resource
+subdirectory, and approved helper argv names that resource path instead of
+the directory containing the store, handlers, and diagnostics. Original
+workflow assertions still inspect the same call order, phase and work bytes
+through the separate path. The actual seven-operation cleared-environment
+sequences pass across success, partial-work failure and restoration failure;
+stable CLI all-target Clippy and MSRV compilation also pass under verified
+1 GiB/zero-swap limits, command exit 0, log
+workflow-resource-separation-check.log. No filesystem access is broadened by
+this refactor; provisioned handler identity access, physical-store registration
+and immutable catalogue approval still require native integration and proof.

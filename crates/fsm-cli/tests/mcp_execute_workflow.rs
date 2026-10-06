@@ -29,6 +29,10 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Directory(PathBuf);
 
 impl Directory {
+    fn resource(&self) -> PathBuf {
+        self.0.join("resource")
+    }
+
     fn new() -> Self {
         loop {
             let path = std::env::temp_dir().join(format!(
@@ -37,7 +41,10 @@ impl Directory {
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             match fs::create_dir(&path) {
-                Ok(()) => return Self(path),
+                Ok(()) => {
+                    fs::create_dir(path.join("resource")).unwrap();
+                    return Self(path);
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("create test directory: {error}"),
             }
@@ -144,7 +151,7 @@ fn write_handlers(directory: &Path, failures: &str) {
                         string("handler-run={run}"),
                         string(&format!(
                             "handler-directory={}",
-                            directory.to_str().unwrap()
+                            directory.join("resource").to_str().unwrap()
                         )),
                         string(&format!("handler-failures={failures}")),
                     ]),
@@ -442,7 +449,7 @@ fn machine(handlers: &BTreeMap<String, Value>) -> Value {
 
 fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: &str) {
     let directory = Directory::new();
-    fs::write(directory.0.join("phase"), "active").unwrap();
+    fs::write(directory.resource().join("phase"), "active").unwrap();
     write_handlers(&directory.0, failures);
     let mut client = Client::start(&directory.0);
     let handlers = client.discover_handlers();
@@ -493,20 +500,20 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
         text(&client.call("journal_verify", object([])), "health"),
         "Ok"
     );
-    let calls = fs::read_to_string(directory.0.join("calls")).unwrap();
+    let calls = fs::read_to_string(directory.resource().join("calls")).unwrap();
     assert_eq!(calls.lines().collect::<Vec<_>>(), expected_calls);
     assert_eq!(
-        fs::read_to_string(directory.0.join("phase")).unwrap(),
+        fs::read_to_string(directory.resource().join("phase")).unwrap(),
         phase
     );
     if terminal == "succeeded" {
         assert_eq!(
-            fs::read_to_string(directory.0.join("work")).unwrap(),
+            fs::read_to_string(directory.resource().join("work")).unwrap(),
             "first,second"
         );
     }
     if terminal == "rejected" {
-        assert!(!directory.0.join("work").exists());
+        assert!(!directory.resource().join("work").exists());
     }
 }
 
@@ -542,7 +549,7 @@ fn cleanup_failures_are_explicit_after_success_or_partial_work() {
 fn workflow_helper_uses_explicit_arguments_without_operator_environment() {
     for failure in ["", "perform_work", "restore"] {
         let directory = Directory::new();
-        fs::write(directory.0.join("phase"), "active").unwrap();
+        fs::write(directory.resource().join("phase"), "active").unwrap();
         for operation in OPERATIONS {
             let output = Command::new(std::env::current_exe().unwrap())
                 .env_clear()
@@ -560,7 +567,7 @@ fn workflow_helper_uses_explicit_arguments_without_operator_environment() {
                 .arg(format!("handler-failures={failure}"))
                 .arg(format!(
                     "handler-directory={}",
-                    directory.0.to_str().unwrap()
+                    directory.resource().to_str().unwrap()
                 ))
                 .arg(format!("handler-resource={RESOURCE}"))
                 .output()
@@ -573,11 +580,11 @@ fn workflow_helper_uses_explicit_arguments_without_operator_environment() {
             );
         }
         assert_eq!(
-            fs::read_to_string(directory.0.join("calls")).unwrap(),
+            fs::read_to_string(directory.resource().join("calls")).unwrap(),
             format!("{}\n", OPERATIONS.join("\n"))
         );
         assert_eq!(
-            fs::read_to_string(directory.0.join("work")).unwrap(),
+            fs::read_to_string(directory.resource().join("work")).unwrap(),
             if failure == "perform_work" {
                 "first"
             } else {
@@ -585,7 +592,7 @@ fn workflow_helper_uses_explicit_arguments_without_operator_environment() {
             }
         );
         assert_eq!(
-            fs::read_to_string(directory.0.join("phase")).unwrap(),
+            fs::read_to_string(directory.resource().join("phase")).unwrap(),
             if failure == "restore" {
                 "suspended"
             } else {
