@@ -29,6 +29,7 @@ use crate::mcp_client::McpOutcome;
 
 mod capture;
 mod mcp_worker;
+mod native_host;
 #[cfg(target_os = "linux")]
 mod native_owners;
 mod pipeline;
@@ -588,42 +589,6 @@ impl Runner {
                     .hint("point TMPDIR at a writable directory this user owns"));
                 }
             }
-        }
-    }
-
-    pub(crate) fn recover_native_owners(
-        &mut self,
-        snapshot: &fsm_store::store::Store,
-        observation: &mut crate::watch::Observation,
-    ) -> Result<(), ExecError> {
-        #[cfg(target_os = "linux")]
-        return self.native.adopt(snapshot, observation);
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = (snapshot, observation);
-            Ok(())
-        }
-    }
-
-    pub(crate) fn native_ready(&self) -> bool {
-        #[cfg(target_os = "linux")]
-        return self.native.ready();
-        #[cfg(not(target_os = "linux"))]
-        false
-    }
-
-    pub(crate) fn apply_native(
-        &mut self,
-        store: &mut fsm_store::store::Store,
-        clock: &mut dyn fsm_store::clock::Clock,
-        pipeline: &mut Pipeline,
-    ) -> Option<Result<String, ExecError>> {
-        #[cfg(target_os = "linux")]
-        return self.native.apply(store, clock, pipeline);
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = (store, clock, pipeline);
-            None
         }
     }
 
