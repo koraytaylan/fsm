@@ -605,6 +605,36 @@ pub(super) fn discovery_faults(directory: &Path) {
     physical.insert("inode".into(), Value::Num("0".into()));
     fs::write(&public, canon_bytes(&wrong_store)).unwrap();
     refuse("native discovery store registration missing");
+    // Reach the shared directory-entry bound through real production discovery.
+    // A deliberately absent registration distinguishes exact-limit traversal
+    // from plus-one refusal without allocating another native domain.
+    let namespace = directory.parent().unwrap();
+    let base = namespace.parent().unwrap();
+    let inventory = fs::read_dir(base)
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            1 + fs::read_dir(entry.path()).unwrap().count()
+        })
+        .sum::<usize>();
+    assert!(inventory < 4096);
+    let mut fillers = Vec::new();
+    for index in 0..=4096 - inventory {
+        let path = namespace.join(format!("fixture-discovery-inventory-{index}"));
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        fillers.push(path);
+        if fillers.len() == 4096 - inventory {
+            refuse("native discovery store registration missing");
+        }
+    }
+    refuse("native discovery inventory exceeds bound");
+    for path in fillers {
+        fs::remove_file(path).unwrap();
+    }
     fs::write(&public, &original).unwrap();
     let duplicate = directory.parent().unwrap().join("authority-2");
     fs::DirBuilder::new().create(&duplicate).unwrap();

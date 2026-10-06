@@ -311,3 +311,13 @@ the original publication. These controls remain unexecuted and are outside
 the previously verified `7dc91d5` native matrix. They complement rather than
 substitute for the outstanding native directory-replacement and full
 production inventory-limit controls, and cannot accept shared host routing.
+
+The discovery fixture now also counts the actual base-plus-namespace directory
+entries and adds exclusively created owned namespace siblings to reach exactly
+4096 and then 4097 entries. With a deliberately nonmatching physical-store
+registration, production discovery must traverse the exact limit and report
+missing registration, then refuse the plus-one inventory independently of
+directory iteration order; both calls require an unchanged allocation counter.
+It removes each owned filler explicitly and restores the original publication.
+This load-bearing entry-limit control is written but not yet compiled/native
+executed; the helper-only boundary test and older native artifacts do not prove it.
