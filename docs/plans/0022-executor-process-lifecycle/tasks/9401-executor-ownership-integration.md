@@ -699,8 +699,12 @@ documentation gate completed with warnings denied and exit zero in session
 MSRV Clippy completed with exit zero in session `26164`, retaining
 `local-7bdfcb6-msrv-clippy.log`; neither compilation gate proves privileged
 native execution. Serial stable zero-dependency and embedding acceptance
-gates are running at the same source, retaining
+gates completed with exit zero at the same source: one zero-dependency case,
+eleven completeness cases and one external execution-ownership case, retaining
 `local-7bdfcb6-stable-zero-deps.log` and `local-7bdfcb6-stable-embed.log`.
+The full stable debug workspace gate is now running at frozen `7bdfcb6`,
+retaining `local-7bdfcb6-stable-debug.log`; privileged assertions remain
+unexecuted by these portable gates.
 Original cleanup CI Ubuntu stable job `112069961690` completed successfully
 at `e501679`; five portable jobs remain live, and that older source cannot
 execute the physical replacement control or the later retirement diagnostic.
