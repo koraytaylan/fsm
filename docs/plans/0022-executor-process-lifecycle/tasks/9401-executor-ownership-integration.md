@@ -829,6 +829,17 @@ workspace gate at product source `9521e41` is live in original session `54765`,
 retaining `local-9521e41-stable-debug.log`. No native result, full host gate
 completion or production Runner acceptance is claimed yet.
 
+Owned cleanup native MSRV job `112093256818` completed successfully at
+`8f179410da81c761425a4bdc9396089145a1804e`; its full artifact is retained as
+`ci-37409097908/msrv`. Independent verification exited zero for all 81 total
+cases, clean source identity and `rustc 1.89.0 (29483883e 2025-08-04)`.
+The `provisioned_broker_access` case now executes the unprivileged public
+owned-cleanup and cold replay control, including helper reap/EOF, original
+tombstone, absence of all execution receipts and unchanged journal assertions.
+Gate release and executable-byte verification remain false; stable native,
+six portable jobs and the original local debug session remain live at this
+observation, and actual production Runner routing remains unfinished.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
