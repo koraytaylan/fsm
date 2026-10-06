@@ -3946,3 +3946,15 @@ The provisioned bound-owner probe now also asserts no protected launch artifact
 or journal mutation across these passes, but is only compiled locally, not
 executed against installed authority. Full stable verification remains pending;
 progress remains 3/7 and production/native acceptance flags remain false.
+
+### Complete admission-free pass stable gate — 2026-10-06
+
+Session 46365 completed exit 0 at runtime source 94d3f5a, unchanged throughout
+the gate; the later dbffcaf commit contains only the control-pump review.
+Formatting/size, debug/release workspace tests, all-target workspace Clippy,
+warning-denied documentation, zero dependencies and full embedding acceptance
+passed under verified 1 GiB/no-swap limits. Live scope checks also confirmed
+MemorySwapCurrent=0 and no OOM events. Evidence is retained in
+local-admitted-pass-stable-gate.log. Installed native controls and other
+platform axes remain unexecuted for this source, and no task or production
+acceptance flag is promoted.
