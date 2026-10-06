@@ -4231,3 +4231,32 @@ its log records exact starting HEAD 844a3f1422f5ef0b17a0e8aaf901bd4ffe2ce86e
 and asserted MemoryMax=1G, MemorySwapMax=0. Runtime source is frozen during
 the gate; this follow-up changes review documentation only. Completion and
 changed-source full acceptance remain pending, with task statuses unchanged.
+
+### Production composition drafts and native proof ordering — 2026-10-06
+
+While session 82897 remains live, reviewed implementation drafts are retained
+only in the dedicated cache; no tested runtime file has been changed. They add
+an outcome-returning paired tick with actual writer-contention/resume tests,
+an independently waitable explicit-request notification using the existing
+Condvar, and an internal standalone log adapter sharing the current bounded
+complete-frame worker. The owner-loop draft preserves exclusive failure reasons,
+keeps admitted polling independent of ordinary scheduling intervals, separates
+admission closure from explicit stop, validates options before driving, and
+reports actual output drainage under the first shutdown deadline separately
+from native cleanup. Blocked-output and request-wakeup tests are drafted but
+unexecuted; no capability or production-selection claim follows from them.
+
+Native paired writer-contention acceptance needs a new observation stage: the
+existing root harness verifies closure only after the unprivileged child exits,
+which cannot prove closure while its writer remains held. The cached paired
+probe and parent helper coordinate a finite paused stage before writer release;
+the parent must verify the protected full original receipt, original physical
+store, original domain absence and successor survival while a real independent
+writer open still refuses. The child keeps the original claim charged until
+writer release and then verifies exact stopped/settled records without an ack
+or machine event. Synchronization markers confer no closure authority. These
+drafts still need harness wiring, compilation, sensitivity controls and actual
+provisioned execution; the successor fixture is not a second live executor.
+
+Plan progress remains 3/7 and all task states are unchanged; native production
+integration and plans 20, 21 and 23 retain their full original obligations.
