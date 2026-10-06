@@ -538,3 +538,23 @@ Production tests must establish both healthy final diagnostic preservation
 and exit with stderr still blocked; inherited-handle access failures and
 non-pipe deadline-expired delivery remain explicit limits to review.
 This experiment is not production shutdown or native execution acceptance.
+
+### Local native prerequisite revalidation (2026-10-07)
+
+Read-only host preflight outside the filesystem sandbox confirms operator UID
+1000, successful noninteractive sudo id reporting UID 0, systemd 259, and
+a read/write cgroup2 mount; the sandbox's read-only cgroup view is not the
+host's authority capability. No authority binary or authority base is currently
+installed. These observations permit preparing an exclusive local native
+fixture run after serial gate 50807 terminates; they do not prove supported
+native profile, actual handler admission, closure or acceptance.
+
+Reviewed authority_install.py requires a regular exact-digest artifact within
+64 MiB, root-protected installation ancestors, exclusive hard-link publication
+without overwriting or reusing an existing installation, and removal only
+after matching device/inode, owner/mode and digest.
+The next local provisioned run must use that owned-only lifecycle with exact
+fresh Cargo artifacts and task-cache TMPDIR, preserve native unresolved
+ownership on failure and record every terminal probe result before cleanup.
+No installer or native probe was run during this preflight, and the current
+full stable gate continues alone with runtime unchanged and zero swap.
