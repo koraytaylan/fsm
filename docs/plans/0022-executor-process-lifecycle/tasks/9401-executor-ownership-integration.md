@@ -1035,3 +1035,18 @@ serially by executor all-target Clippy with warnings denied, in a verified
 `local-native-claim-release-msrv.log`. Actual provisioned capacity reuse through
 this new composition and full frozen-source gates remain required; fresh native
 admission and sealed post-Ack recovery remain unfinished.
+
+### Installed writer-boundary native MSRV evidence
+
+Run 37423168150 native MSRV job 112136848188 succeeded at exact source
+`730b429c32b2bbd1980dfd23bd82ec39b135b7ab`; independent artifact verification
+confirmed all 81 cases with actual `rustc 1.89.0 (29483883e 2025-08-04)`.
+This source executes the installed-owner one-shot and explicit Bound-to-entry
+writer controls, while retaining the original constructor timeout axis.
+Verification output is retained as `ci-37423168150/msrv-verification.log`.
+Native stable failed earlier at the private exec-status fixture, reporting a
+manager query deadline and matched-stop ENOENT, so it does not prove the new
+boundary controls. The run remains live as of this observation; neither this
+partial evidence nor the earlier-source successful MSRV artifact validates
+`f2bdeea` local-reservation composition, full matrix acceptance, fresh
+production admission, or executable-byte installation acceptance.
