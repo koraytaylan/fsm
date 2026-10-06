@@ -235,3 +235,33 @@ not a new format; native replacement fault execution remains required.
 Provisioned discovery controls now invoke the production unprivileged `for_store` entry for writable/symlinked public identity, writable route, torn JSON, exact 4096-byte JSON rejection, 4097-byte overflow rejection and duplicate physical-store registration; each requires its exact error and unchanged allocation counter. The unique positive preparation also uses discovery. These controls are compiled, not yet native executed, and cannot accept automatic host routing.
 
 Frozen ownership/discovery range `9b32cd9..7dc91d5ac99257d55a3b9bb6bf946d374a72576d` was pushed only to the authorized review branch; CI `37392851160` is queued at that exact source. This run must execute the updated provisioned preparation/refusal controls on stable/MSRV and the portable matrix; earlier `9f1f175` acceptance cannot validate these changes. Production shared tick routing remains incomplete and is outside this frozen slice.
+
+### Shared Runner composition phases
+
+The shared Runner must retain an entry per original effect with the immutable
+observed handler contract and pending-effect identity while preparation is
+active. A prepared domain is retained between ticks; it grants no entry. The
+writer phase re-resolves that effect, verifies the retained contract against the
+current eligible handler, claims the original prepared domain, binds scheduler
+capacity through `retain_claim`, and constructs `NativeExecution::start` before
+releasing the writer. A claim followed by startup refusal remains an original
+uncertain owner, not a spawn-failed acknowledgement or a reusable reservation.
+
+Stop/observe runs before any writer acquisition, including on failed scans;
+preparation cancellation retires its owned helper without asserting domain
+closure. An already delivered but unclaimed domain must retain its original
+route for bounded closure work rather than discover a replacement. Once claimed,
+only `NativeExecution` original completion/proof and durable `settle` may release
+capacity; timeout or helper retirement cannot call scheduler `complete`.
+Outcome advance is retained separately after durable acknowledgement, using the
+original completion contract rather than the current handler table. Startup
+recovery adopts every observed original owner independently of pending-effect
+or handler lookup and never substitutes fresh discovery/binding for recovery.
+
+These phases must be used by `tick_with`, `tick_reporting`, standalone execution
+and embedded service ticks through one composition path; legacy `prepare` cannot
+remain an alternate automatic execution path. Memory/read-only/quarantined or
+unsupported hosts cannot start preparation/user code. Native host crash, held
+writer and changed-contract controls remain mandatory before task acceptance.
+CI `37392851160` currently has zero dependencies passing and the other eight
+jobs running; the isolated frozen local debug gate remains active.
