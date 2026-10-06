@@ -3595,3 +3595,20 @@ retained separately and is not overwritten by the fresh-target pass.
 Current cold implementation full stable/portable/native acceptance is pending;
 review 37460020929 still has live portable jobs and will not be superseded.
 Task 9401 remains in progress and production constructors remain legacy.
+
+### Complete cold host stable gate — 2026-10-06
+
+The serial local gate at exact code source
+2463384c27ca72b3ba705050817e4ce3d983648f completed with exit 0:
+formatting, source-size checks, full debug and release workspace tests,
+workspace all-target Clippy, warning-denied rustdoc, zero-dependency and
+full embed acceptance all passed in the dedicated cold-handoff target.
+The 1 GiB memory and zero-swap limits were verified before Cargo started;
+the retained log is local-2463384-stable-host-gate.log in the task cache.
+This is local stable acceptance, not installed cold or portable acceptance.
+The preceding review 37460020929 remains live only in its two Windows
+jobs; all seven completed jobs passed, and its native artifacts independently
+verify both 81-case results at exact source 665a71b.
+Additional genuine conflicting-key and rejected-original-key controls are
+prepared only in the task cache and are not included in this passed gate.
+Production constructors remain legacy and task 9401 remains in progress.
