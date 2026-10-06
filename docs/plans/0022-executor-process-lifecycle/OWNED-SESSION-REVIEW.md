@@ -370,3 +370,17 @@ exited 0 with the regression, stable CLI all-target Clippy, and MSRV
 all-target compilation passing; workflow-helper-compensation-check.log
 retains results. This strengthens only fixture argv/environment compatibility;
 no native entry or original production workflow acceptance is claimed.
+
+Actual broken-operator-output coverage now launches production native stdio
+with a real pending action, removes the sole stderr pipe reader, requests
+one executor-observing tool call, and leaves stdin open. Within the original
+test observation bound the actual process exits 1, the Store writer can be
+reacquired, pending work and journal sequence remain unchanged, and the
+incarnation endpoint is removed. This tests asynchronous OS BrokenPipe
+handling on quiet input, not a synthetic failing writer or installed handler
+entry. Initial compilation caught an incorrect Store accessor, corrected to
+its public state.last_seq; final session 59587 exited 0 with all 13 actual
+production controls, stable all-target Clippy, and MSRV all-target compilation
+passing under verified 1 GiB/zero-swap limits. Evidence remains in
+production-broken-stderr-final-check.log. Full later-source workspace and
+installed-native workflow acceptance remain incomplete.

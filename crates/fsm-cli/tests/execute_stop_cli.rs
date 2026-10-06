@@ -863,3 +863,79 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
     );
     assert!(String::from_utf8_lossy(&stderr).contains("fsm execute: observed pending action"));
 }
+
+#[test]
+fn production_broken_stderr_aborts_with_stdin_open_and_releases_writer() {
+    use std::io::Write;
+    struct Owner(std::process::Child);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let fixture = Fixture::new();
+    let mut store = Store::open(&fixture.data).unwrap();
+    let mut clock = FixedClock::new(1000, 1);
+    store.define_machine_on(&mut clock, json(br#"{"format":"fsm.machine/1","name":"pending","context":[],"events":[{"name":"ok","fields":[]},{"name":"failed","fields":[]}],"effects":[{"name":"action","fields":[]}],"states":[{"name":"waiting","entry":{"emit":[{"effect":"action","args":{}}]}}],"initial":"waiting","transitions":[]}"#), false, false).unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "pending",
+            "instance",
+            "create",
+            None,
+            &std::collections::BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let pending = store.state.instances["instance"].pending.clone();
+    let sequence = store.state.last_seq;
+    drop(store);
+    let handlers = fixture.root.join("handlers.json");
+    fs::write(&handlers, br#"{"format":"fsm.handlers/1","handlers":[{"effect":"action","argv":["/bin/true"],"timeout_ms":1000,"on_ok":{"event":"ok"},"on_failed":{"event":"failed"}}]}"#).unwrap();
+    let mut owner = Owner(
+        Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .env("HOME", &fixture.root)
+            .args(["--json", "--data-dir"])
+            .arg(&fixture.data)
+            .args(["serve", "--execute", "--handlers"])
+            .arg(&handlers)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    // Remove the actual sole pipe reader before admitting a diagnostic; this
+    // forces OS BrokenPipe rather than a synthetic failing writer.
+    drop(owner.0.stderr.take().unwrap());
+    let input = owner.0.stdin.as_mut().unwrap();
+    let mut frames = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n".to_vec();
+    frames.extend_from_slice(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n");
+    input.write_all(&frames).unwrap();
+    input.flush().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let status = loop {
+        if let Some(status) = owner.0.try_wait().unwrap() {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "broken stderr did not abort quiet native session"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(status.code(), Some(1));
+    assert!(owner.0.stdin.is_some());
+    let store = Store::open(&fixture.data).unwrap();
+    assert_eq!(store.state.instances["instance"].pending, pending);
+    assert_eq!(store.state.last_seq, sequence);
+    let root = fixture.root.join(".cache/fsm/control");
+    assert!(
+        !fs::read_dir(root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| entry.file_name().to_string_lossy().starts_with("c-"))
+    );
+}
