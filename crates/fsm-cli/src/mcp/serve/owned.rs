@@ -3,7 +3,10 @@
 use super::{SessionRuntime, SessionStore, serve_session_core};
 use crate::{
     clock::Clock,
-    mcp::{notify::Notifier, owned_input::OwnedInput},
+    mcp::{
+        notify::{Notifier, diagnostic_output::DiagnosticOutput},
+        owned_input::OwnedInput,
+    },
 };
 use fsm_execute::service::{ExecutorPhase, OwnedNativeExecutor, ShutdownMode, ShutdownReport};
 use std::{
@@ -17,6 +20,10 @@ pub struct OwnedSessionReport {
     pub shutdown: ShutdownReport,
     /// Actual successful write/flush of every admitted output frame.
     pub output_drained: bool,
+    /// Actual successful operator diagnostic write/flush within the same deadline.
+    pub operator_output_drained: bool,
+    /// Diagnostic lines rejected by finite admission limits, never execution loss.
+    pub operator_lines_dropped: u64,
     /// Original request deadline, reusable for endpoint retirement.
     pub shutdown_deadline: Instant,
     /// Initiating protocol failure retained alongside actual cleanup facts.
@@ -66,6 +73,7 @@ pub fn serve_owned_native_session_reporting<R: BufRead + 'static>(
     let input_control = control.clone();
     let handlers = super::super::executor::handlers(driver.handler_table());
     let mut output_control = None;
+    let mut diagnostics = DiagnosticOutput::start(io::stderr())?;
     let result = (|| {
         let (notifier, queued) = Notifier::queued(Box::new(output))?;
         output_control = Some(queued);
@@ -78,6 +86,7 @@ pub fn serve_owned_native_session_reporting<R: BufRead + 'static>(
                 executor: None,
                 handlers: Some(handlers),
                 bounded_shutdown: true,
+                diagnostics: Some(&mut diagnostics),
             },
             clock,
             None,
@@ -89,6 +98,7 @@ pub fn serve_owned_native_session_reporting<R: BufRead + 'static>(
     if let Some(output) = &output_control {
         output.close();
     }
+    diagnostics.close();
     let explicit_stop = control.report().phase != ExecutorPhase::Running;
     let mode = if explicit_stop {
         ShutdownMode::Drain
@@ -113,9 +123,10 @@ pub fn serve_owned_native_session_reporting<R: BufRead + 'static>(
     };
     // Healthy EOF must not lose queued replies on immediate empty native stop;
     // blocked delivery remains false at the same original deadline.
-    while output_control
+    while (output_control
         .as_ref()
         .is_some_and(|output| !output.drained() && !output.is_broken())
+        || (!diagnostics.drained() && !diagnostics.is_broken()))
         && Instant::now() < request.deadline()
     {
         std::thread::sleep(Duration::from_millis(10));
@@ -130,6 +141,8 @@ pub fn serve_owned_native_session_reporting<R: BufRead + 'static>(
     Ok(OwnedSessionReport {
         shutdown,
         output_drained,
+        operator_output_drained: diagnostics.drained(),
+        operator_lines_dropped: diagnostics.dropped(),
         shutdown_deadline: request.deadline(),
         failure,
     })

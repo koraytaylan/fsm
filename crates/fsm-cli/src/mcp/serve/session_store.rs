@@ -77,6 +77,8 @@ impl SessionStore<'_> {
 }
 
 pub(super) struct SessionRuntime<'a> {
+    #[cfg(target_os = "linux")]
+    pub(super) diagnostics: Option<&'a mut crate::mcp::notify::diagnostic_output::DiagnosticOutput>,
     pub(super) store: SessionStore<'a>,
     pub(super) executor: Option<&'a mut ExecutorLoop>,
     pub(super) handlers: Option<fsm_core::json::Value>,

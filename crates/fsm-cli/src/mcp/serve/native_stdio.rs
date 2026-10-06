@@ -75,6 +75,8 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
         && shutdown.unresolved_run_ids.is_empty()
         && shutdown.unclaimed_reservations == Some(0)
         && report.output_drained
+        && report.operator_output_drained
+        && report.operator_lines_dropped == 0
         && removed;
     if report.failure.is_none() && confirmed {
         return Ok(());
@@ -140,6 +142,14 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
                     .map_or(Value::Null, |error| Value::Str(error.to_string())),
             ),
             ("output_drained".into(), Value::Bool(report.output_drained)),
+            (
+                "operator_output_drained".into(),
+                Value::Bool(report.operator_output_drained),
+            ),
+            (
+                "operator_lines_dropped".into(),
+                Value::Str(report.operator_lines_dropped.to_string()),
+            ),
             (
                 "initiating_io_kind".into(),
                 report.failure.as_ref().map_or(Value::Null, |error| {

@@ -6,10 +6,7 @@
 //!
 //! Plan 0012 task 5701.
 
-#[cfg(all(
-    target_os = "linux",
-    any(target_arch = "x86_64", target_arch = "aarch64")
-))]
+#[cfg(target_os = "linux")]
 pub(crate) mod diagnostic_output;
 mod output;
 

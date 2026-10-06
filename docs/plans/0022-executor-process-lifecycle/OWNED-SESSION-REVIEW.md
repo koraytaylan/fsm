@@ -211,3 +211,19 @@ all-target compilation passed under verified 1 GiB/zero-swap bounds. This is
 a prerequisite refactor only: the native session still synchronously writes
 stderr and requires wiring plus actual blocked-stderr acceptance; the full
 workspace gate and non-Linux platform execution were not repeated here.
+
+Native session stderr wiring is implemented in the worktree: SessionRuntime
+passes bounded DiagnosticOutput to both tick paths, owned reporting closes
+both queues and uses the original stop deadline, and production retains
+operator_output_drained and operator_lines_dropped separately. Expanded
+serial stable/MSRV checks in session 38977 exited 0 with six owned session,
+16 transport, 11 production stop, 61 CLI unit, and diagnostic startup
+regressions passing. Review then added an asynchronous broken-operator-output
+check before input polling, preserving initiating BrokenPipe and owner abort;
+exact revised-source checks in session 3377 exited 0, log
+native-stdio-operator-output-final-check.log, under verified 1 GiB/zero swap.
+The revised source passes stable/MSRV all-target checks, six owned sessions,
+16 control transport tests, all 11 production control cases, and 61 CLI units.
+Actual kernel-blocked stderr with action diagnostics remains required, as
+does the full workspace gate; this does not establish installed native
+nonempty workflow acceptance or complete task 9401.

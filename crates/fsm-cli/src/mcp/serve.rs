@@ -540,6 +540,8 @@ pub fn serve_session_degraded(
     serve_session_core(
         SessionRuntime {
             store: SessionStore::Borrowed(store),
+            #[cfg(target_os = "linux")]
+            diagnostics: None,
             executor,
             handlers: None,
             bounded_shutdown: false,
@@ -561,6 +563,8 @@ fn serve_session_core(
     output: Notifier,
 ) -> std::io::Result<()> {
     let SessionRuntime {
+        #[cfg(target_os = "linux")]
+        mut diagnostics,
         mut store,
         mut executor,
         handlers,
@@ -609,6 +613,16 @@ fn serve_session_core(
         bounded_shutdown,
     };
     loop {
+        #[cfg(target_os = "linux")]
+        if diagnostics
+            .as_ref()
+            .is_some_and(|output| output.is_broken())
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "native operator output failed",
+            ));
+        }
         // Bound rather than matched in place: the borrow of `input` ends at
         // the semicolon, which is what lets a request arm lend the same
         // reader to a `SessionIo`.
@@ -624,7 +638,8 @@ fn serve_session_core(
                     &live,
                     initialized,
                     true,
-                );
+                    diagnostics.as_deref_mut(),
+                )?;
             }
             Line::Eof => {
                 // Every send already flushed under the lock, so there is
@@ -790,7 +805,9 @@ fn serve_session_core(
                             &live,
                             initialized,
                             false,
-                        );
+                            #[cfg(target_os = "linux")]
+                            diagnostics.as_deref_mut(),
+                        )?;
                     }
                 }
             }
@@ -817,6 +834,7 @@ fn refresh_read_only(store: Option<&mut Store>, refresh: Option<&std::path::Path
 ///
 /// Tick lines go to stderr: stdout carries the JSON-RPC stream, and one stray
 /// line there is a protocol error rather than a log entry.
+#[allow(clippy::too_many_arguments)]
 fn drive_executor(
     executor: Option<&mut ExecutorLoop>,
     store: &mut SessionStore<'_>,
@@ -825,7 +843,10 @@ fn drive_executor(
     live: &Live,
     initialized: bool,
     admitted_only: bool,
-) {
+    #[cfg(target_os = "linux")] mut diagnostics: Option<
+        &mut crate::mcp::notify::diagnostic_output::DiagnosticOutput,
+    >,
+) -> std::io::Result<()> {
     let lines = if admitted_only {
         store.observe_admitted(clock)
     } else {
@@ -833,8 +854,15 @@ fn drive_executor(
     };
     for line in lines {
         // Both audiences, deliberately. An operator reading a terminal must
-        // not lose output because a client attached, and a later reader who
-        // "cleans up the duplication" would take that away from them.
+        // receive action diagnostics even with an attached client; finite
+        // operator admission loss is counted independently by native sessions.
+        #[cfg(target_os = "linux")]
+        if let Some(diagnostics) = diagnostics.as_deref_mut() {
+            diagnostics.enqueue(&format!("fsm execute: {line}"))?;
+        } else {
+            let _ = writeln!(std::io::stderr(), "fsm execute: {line}");
+        }
+        #[cfg(not(target_os = "linux"))]
         let _ = writeln!(std::io::stderr(), "fsm execute: {line}");
         logging::message(
             output,
@@ -853,6 +881,7 @@ fn drive_executor(
             },
         );
     }
+    Ok(())
 }
 
 /// The sentence appended to `instructions` when this server is not the plain

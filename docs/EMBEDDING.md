@@ -2495,3 +2495,5 @@ initiating protocol failure or imply confirmed native retirement.
 
 Native stdio endpoint publication refusal is reported through the executor
 error frame; a startup transport refusal does not confirm native cleanup.
+
+Owned native MCP sessions enqueue action diagnostics to a separate bounded stderr worker; shutdown closes both queues and waits only until the original stop deadline, reporting actual stderr drainage as `operator_output_drained` and rejected lines as `operator_lines_dropped`, so blocked operator output does not retain the native writer and diagnostic loss is separate from execution outcomes.

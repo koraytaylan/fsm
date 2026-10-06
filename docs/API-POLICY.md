@@ -1217,3 +1217,5 @@ initiating protocol failure or imply confirmed native retirement.
 
 Native stdio endpoint publication refusal is reported through the executor
 error frame; a startup transport refusal does not confirm native cleanup.
+
+`OwnedSessionReport` adds `operator_output_drained: bool` and `operator_lines_dropped: u64` for bounded native MCP stderr delivery, separate from `output_drained` and native cleanup; downstream exhaustive struct construction must account for these added fields under the existing pre-1.0 API policy, with no journal, hash, authority, or wire schema change.
