@@ -829,6 +829,76 @@ fn cancelled_effect_ownership_survives_scan_without_handlers_or_writer_access() 
     assert!(observed.pending.is_empty());
     assert_eq!(observed.execution_owners, vec![(original.clone(), None)]);
     assert_eq!(writer.store.journal.last_seq, prefix);
+    #[cfg(target_os = "linux")]
+    {
+        use fsm_execute::{
+            config::HandlerTable,
+            run::{Pipeline, Runner},
+            sched::Scheduler,
+            service::tick_with,
+        };
+        let mut runner = Runner::new().unwrap();
+        let mut scheduler = Scheduler::new(HandlerTable::default());
+        let mut pipeline = Pipeline;
+        let before = writer.store.state.clone();
+        let records = writer.store.records.clone();
+        tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer.store,
+            &mut writer.clock,
+            0,
+        );
+        assert!(fsm_store::snapshot::store_states_eq(
+            &writer.store.state,
+            &before
+        ));
+        assert_eq!(writer.store.records, records);
+        // Hold the original directory and writer while presenting a different
+        // physical store at the same path; the next scan contains no owner.
+        struct Restore {
+            path: PathBuf,
+            saved: PathBuf,
+        }
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                fs::remove_dir(&self.path).unwrap();
+                fs::rename(&self.saved, &self.path).unwrap();
+            }
+        }
+        let saved = directory.path().with_extension("native-original");
+        assert!(!saved.exists());
+        fs::rename(directory.path(), &saved).unwrap();
+        let restore = Restore {
+            path: directory.path().into(),
+            saved,
+        };
+        fs::create_dir(directory.path()).unwrap();
+        let lines = tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer.store,
+            &mut writer.clock,
+            0,
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("exec/inflight_deferred")),
+            "{lines:?}"
+        );
+        assert!(fsm_store::snapshot::store_states_eq(
+            &writer.store.state,
+            &before
+        ));
+        assert_eq!(writer.store.records, records);
+        assert_eq!(writer.store.journal.last_seq, prefix);
+        drop(restore);
+    }
     drop(writer);
     let cold = scan(&mut Watcher::new(
         directory.path().to_path_buf(),

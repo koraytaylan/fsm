@@ -29,6 +29,8 @@ use crate::mcp_client::McpOutcome;
 
 mod capture;
 mod mcp_worker;
+#[cfg(target_os = "linux")]
+mod native_owners;
 mod pipeline;
 
 use mcp_worker::McpWorker;
@@ -536,6 +538,8 @@ static SPAWN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// The only component that spawns processes.
 pub struct Runner {
+    #[cfg(target_os = "linux")]
+    native: native_owners::NativeOwners,
     scratch: PathBuf,
     children: BTreeMap<String, Running>,
     retiring: Vec<McpWorker>,
@@ -564,6 +568,8 @@ impl Runner {
                 Ok(()) => {
                     return Ok(Self {
                         scratch,
+                        #[cfg(target_os = "linux")]
+                        native: native_owners::NativeOwners::default(),
                         children: BTreeMap::new(),
                         retiring: Vec::new(),
                     });
@@ -585,6 +591,20 @@ impl Runner {
         }
     }
 
+    pub(crate) fn recover_native_owners(
+        &mut self,
+        snapshot: &fsm_store::store::Store,
+        observation: &mut crate::watch::Observation,
+    ) -> Result<(), ExecError> {
+        #[cfg(target_os = "linux")]
+        return self.native.adopt(snapshot, observation);
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (snapshot, observation);
+            Ok(())
+        }
+    }
+
     /// The directory this runner captures handler output into.
     pub fn scratch_dir(&self) -> &Path {
         &self.scratch
@@ -603,6 +623,8 @@ impl Runner {
     /// `try_wait` remembers the exit status, so asking here and taking it
     /// afterwards reaps exactly once.
     pub fn finished_effects(&mut self) -> Vec<String> {
+        #[cfg(target_os = "linux")]
+        self.native.observe();
         self.reap_workers();
         let mut finished = Vec::new();
         for (effect_id, running) in &mut self.children {

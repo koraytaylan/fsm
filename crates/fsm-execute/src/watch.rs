@@ -215,6 +215,11 @@ impl Watcher {
     /// on the next open. Holding a handle across scans would mean deciding
     /// against a snapshot that is quietly going stale.
     pub fn scan(&mut self, now_ms: i64) -> Result<Observation, ExecError> {
+        self.scan_snapshot(now_ms)
+            .map(|(observation, _)| observation)
+    }
+
+    pub(crate) fn scan_snapshot(&mut self, now_ms: i64) -> Result<(Observation, Store), ExecError> {
         let store = Store::open_read_only(&self.data_dir).map_err(|error| {
             ExecError::store(&error).hint(format!(
                 "point the executor at a readable fsm data directory ({} could not be opened)",
@@ -365,7 +370,7 @@ impl Watcher {
             .map(|(instance_id, snapshot)| (instance_id.clone(), snapshot.status.clone()))
             .collect();
         self.last_seq = observation.to_seq;
-        Ok(observation)
+        Ok((observation, store))
     }
 
     /// How many effect ids the memo currently holds.

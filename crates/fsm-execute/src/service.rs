@@ -49,7 +49,7 @@ pub fn tick_with(
     clock: &mut dyn Clock,
     now_ms: i64,
 ) -> Vec<String> {
-    let mut plan = match plan(watcher, scheduler, now_ms) {
+    let mut plan = match plan(watcher, scheduler, runner, now_ms) {
         Ok(plan) => plan,
         Err(lines) => {
             // Failed journal observation must not stall owned capture transport.
@@ -110,7 +110,7 @@ pub fn tick_reporting(
     clock: &mut dyn Clock,
     now_ms: i64,
 ) -> TickOutcome {
-    let mut plan = match plan(watcher, scheduler, now_ms) {
+    let mut plan = match plan(watcher, scheduler, runner, now_ms) {
         Ok(plan) => plan,
         Err(lines) => {
             // Continue bounded owned I/O even when the store cannot be scanned.
@@ -268,16 +268,20 @@ pub struct RunConfig<'a> {
     pub contention: Contention,
 }
 
-/// Scan, then decide. Nothing here writes or spawns.
+/// Scan one prefix, adopt original recovery work, then decide; no handler starts.
 fn plan(
     watcher: &mut Watcher,
     scheduler: &mut Scheduler,
+    runner: &mut Runner,
     now_ms: i64,
 ) -> Result<Plan, Vec<String>> {
-    let observation = match watcher.scan(now_ms) {
-        Ok(observation) => observation,
+    let (mut observation, snapshot) = match watcher.scan_snapshot(now_ms) {
+        Ok(snapshot) => snapshot,
         Err(error) => return Err(vec![error_line(&error)]),
     };
+    runner
+        .recover_native_owners(&snapshot, &mut observation)
+        .map_err(|error| vec![error_line(&error)])?;
     let mut lines: Vec<String> = observation.unresolved.iter().map(error_line).collect();
     let directives = scheduler.on_observation(&observation, now_ms);
     lines.extend(scheduler.unhandled().iter().map(|effect_id| {

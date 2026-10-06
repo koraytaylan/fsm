@@ -872,3 +872,5 @@ Prepared unbound allocation cleanup now uses the existing Root `close` action an
 The provisional private broker protocol adds `discard-prepared` with a full NativeDomain payload and matching-domain result for unclaimed host cleanup; this adds no journal format or public Rust API and grants no execution receipt or settlement authority.
 
 The provisional native client adds NativePreparedCleanup for owned original-domain cleanup; its successful observation is limited to unclaimed allocation retirement and supplies no execution proof or journal settlement authority.
+
+Plan 0022 initial shared-tick native startup recovery now retains original unresolved ownership and requests original completions without current handler selection, serializing recovery transport and refusing a changed physical store. Public signatures and journal/hash formats are unchanged; this partial wiring does not release the production native-host gate, and native admission, settlement application and post-ack discovery remain unfinished.
