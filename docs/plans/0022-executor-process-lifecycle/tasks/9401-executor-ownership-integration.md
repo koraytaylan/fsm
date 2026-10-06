@@ -501,3 +501,15 @@ legs failed on the independently inspected scheduler boolean lint corrected in
 `f9e02fa`. The failed matrix is preserved, not described as green, and a new
 current-source matrix remains required. Current-source isolated debug session
 `95061` remains live; its result is not yet accepted.
+
+The isolated stable debug workspace gate at `41cfaa1` ended with exit 101:
+only `fsm-execute --test public_surface` failed, because the additive
+`NativeExecution::retain_uncertain` method was missing from the committed
+inventory. The full failed log remains `local-41cfaa1-stable-debug.log`.
+The inventory correction adds exactly that method; the non-regenerating stable
+surface suite passed all 16 tests afterward. Regeneration initially ran a
+shared-cache executable retaining the detached checkout's manifest path; its
+one-line generated fixture was copied to the active worktree, and that detached
+checkout was restored to its frozen source. The corrected committed source
+still requires the full frozen workspace and matrix gates; the narrow surface
+pass does not replace the failed workspace result.
