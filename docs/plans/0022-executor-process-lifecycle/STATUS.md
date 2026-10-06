@@ -3716,3 +3716,30 @@ routing. Installed/portable acceptance remains pending exact authorization
 for the successor push following its automatic approval rejection.
 Task 9401 stays in progress and production defaults remain legacy; shutdown,
 reconciliation and the complete plans 20–23 objective remain incomplete.
+
+### Closure-request foundation and current verification — 2026-10-06
+
+Entry/completion separation 4663bd3 passed the complete stable host gate in
+session 10029, terminal exit 0; evidence is recorded in d8a9483 and retained
+as local-4663bd3-completion-stable-gate.log. Runtime source stayed unchanged
+through that gate, with only cancellation review documentation committed.
+
+Provisional Linux NativeShutdown landed at
+37584c2a1514ee580559c47e54af09b6597d32a0 with its SPEC/API-policy/embedding/
+release notes, public-surface inventory and downstream API check. It requests
+native closure from an original verified durable snapshot without acquiring
+the writer, keeps execution transport separately owned and returns opaque
+proof only after full original receipt authentication. Session 55144 passed
+stable/MSRV executor all-target Clippy, 32 library tests and the downstream
+API/public-surface tests with verified 1 GiB/no-swap limits, terminal exit 0;
+local-native-shutdown-check.log is retained. Full source 37584c2 stable gate
+session 82449 is still running; no terminal verdict is claimed here.
+
+No installed runtime acceptance or production wiring is proved by those
+negative and API tests. Before-binding claims still require separate proof,
+and interrupted application, public lifecycle states/controls, bounded report
+deadlines and quiet/blocked stdio progress remain unfinished. Task 9402 stays
+planned, task 9401 stays in progress, the count stays 3/7 and all production
+acceptance flags stay false. Plans 20, 21 and 23 remain planned. The private
+remote push remains subject to the earlier automatic rejection and pending
+exact destination/payload authorization; no push is attempted here.
