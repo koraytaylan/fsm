@@ -93,3 +93,16 @@ expects a recorded completion. Preserve existing execute EOF containment, but
 do not describe helper cancellation as a bounded authenticated shutdown API.
 Required tests must distinguish actual protected domain closure from helper
 death, including binding, bound, executing and unavailable-writer phases.
+
+## Full stable gate for entry/completion separation
+
+Session 10029 terminated successfully with exit 0. The retained
+local-4663bd3-completion-stable-gate.log identifies source 4663bd3 and verifies
+MemoryMax=1G / MemorySwapMax=0 before Cargo; observed scope swap remained zero.
+Formatting/source-size, full debug and release workspace tests, all-target
+workspace Clippy, warning-denied documentation, zero-dependency and complete
+embedding acceptance all passed. No runtime source changed during the gate;
+documentation-only cancellation review a3e018d was committed during execution.
+These host checks prove neither installed shutdown nor production native
+selection. The cache-only shutdown request draft is outside this tested source
+and remains unintegrated, uncompiled and unaccepted; task 9402 stays planned.
