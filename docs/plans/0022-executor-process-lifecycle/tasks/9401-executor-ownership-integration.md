@@ -726,6 +726,15 @@ all six portable jobs, zero-dependency and stable native pass, but native
 MSRV failed as preserved below, so the overall matrix is a failure. That older source cannot
 execute the physical replacement control or the later retirement diagnostic.
 
+After preserving the terminal original run, the authorized review branch was
+pushed to `482da8f07a1248f3e3a62cd0b62173e22433761b`, with new CI run
+`37405315461` now confirmed live across all nine jobs. Native MSRV job
+`112081460465` and stable job `112081460634` execute the physical replacement
+control and retain the manager-retirement diagnostic if closure fails; no
+result or causal explanation for the earlier failure is assumed. The source
+contains product `7bdfcb6`, whose stable host gates pass as recorded above;
+actual production Runner routing and task 9401 remain incomplete.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
