@@ -1124,3 +1124,13 @@ This introduces no new persisted format, hash domain or execution error code.
 Owned session invalid bounds use `io::ErrorKind::InvalidInput` before workers
 start; the native report and protocol delivery flag have separate scopes.
 Portable and installed-native acceptance remain separate from host compilation.
+
+
+The unreleased Linux fsm_cli::local_control module adds LocalControlEndpoint
+(publication, directory view and finite close) and stop(root, data_dir, mode,
+timeout_ms), an opt-in owner-only Unix transport for the actual owned driver.
+The request/discovery/report schemas are versioned transport envelopes, not
+journal formats or authenticated native closure evidence; no persisted store
+format, hash, executor error code or production selector changes. Transport
+failures use standard io errors and retain unknown admission/cleanup facts;
+saturation may evict responses while preserving accepted lifecycle requests.

@@ -1084,3 +1084,12 @@ Added shared native admission closure and original local shutdown-target iterati
   timeout facts and first-deadline reuse. Existing borrowed session bounds and
   production CLI selection remain unchanged; native tree/production endpoint
   and signal acceptance are pending, and detached I/O is not claimed retired.
+
+
+- Added an opt-in Linux owner-only local control endpoint and bounded client
+  for an actual owned native driver, with exact incarnation/physical-store
+  discovery, bounded nonblocking connections and independent metadata responses;
+  waiting drains cannot occupy abort parser workers, and cleanup preserves
+  replaced files. Transport uncertainty never confirms native closure or writer
+  release; CLI/default selection and installed production acceptance remain
+  pending, with no journal format or hash changes.

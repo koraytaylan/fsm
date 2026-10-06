@@ -8,6 +8,9 @@
     clippy::collapsible_match
 )]
 
+#[cfg(target_os = "linux")]
+pub mod local_control;
+
 pub mod args;
 pub mod cli;
 pub mod mcp;

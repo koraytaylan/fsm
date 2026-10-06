@@ -42,3 +42,58 @@ response independence before the unit is committed as a capability.
 Task 9402 stays planned, task 9401 stays in progress, and plan progress stays
 3/7; installed native tree, production quiet-stdin/blocked-stdout, signal and
 paired standalone acceptance remain required.
+
+
+## Implemented opt-in endpoint and client follow-up
+
+The replacement uses one nonblocking transport loop with at most 64 retained
+connections and eight accepts per iteration; independent request parsing and
+metadata polling replace waiting response workers. Saturation evicts an old
+response without clearing its accepted lifecycle request, so an abort after
+72 long drains still reaches the actual control and preserves the first deadline.
+Silent clients and incomplete frames have an absolute 250 ms input budget;
+output frames have a separate 250 ms delivery budget. Request/response ceilings
+are 1024 bytes/128 KiB excluding LF, with capped retained connection storage.
+
+Publication now writes a private closed-schema incarnation/physical-store
+identity file; discovery validates owner, permissions, schema, socket type,
+identity and ambiguity. The client bounds discovery, connect and transport in
+one worker under its original caller deadline, checks before late transmission,
+and strictly validates the delivered report identity and types. At most eight
+client workers are charged per process, retaining the charge until actual worker
+retirement even after the caller times out. No transport error confirms native
+cleanup, and the report grants no claim-reuse authority.
+
+Explicit close requests listener admission closure and waits only to its finite
+bound for asynchronous exact captured-inode cleanup; replacement files remain
+untouched. Partial publication failures retain the same scoped cleanup guard.
+Drop only requests transport closure and promises no native cleanup or delivery.
+The endpoint uses the actual driver's cloned control and never opens the journal
+or runs native closure in its transport loop. Host polling remains necessary.
+
+Focused stable/MSRV all-target CLI Clippy and twelve actual Unix transport tests
+passed in session 34926 under asserted MemoryMax=1G/MemorySwapMax=0; the retained
+log is local-control-check-v4.log. Initial session 75002 failed because the draft
+used JsonLimits::default instead of the existing JsonLimits::DEFAULT constant;
+the corrected checks passed. Mutation session 27776 exited 0: individually
+neutralizing the request byte bound, absolute input deadline, closed schema,
+incarnation match and abort-capacity eviction caused their downstream tests to
+fail with exit 101, and restored source passed all twelve tests. Separate logs
+local-control-mutation-*.log and local-control-mutations-restored.log are retained.
+
+These are actual sockets and durable writer locks with empty native inventories;
+no native tree completion, closure receipt or installed production acceptance
+is inferred. The public library endpoint/client are opt-in; execute stop CLI,
+production publication/selection, signals, installed tree and paired standalone
+integration still remain, and the full changed-source stable gate is required.
+Task states and plan progress remain unchanged at 3/7.
+
+
+Final follow-up shares one bounded inventory snapshot per transport iteration
+rather than copying every unresolved ID list separately for each waiting drain.
+After correcting the snapshot method signature, final focused session 4656
+passed stable/MSRV all-target Clippy and twelve transport tests; the retained
+log is local-control-check-final-v3.log. The expanded refusal test also covers
+stale physical device and inode. Mutation session 61319 repeated all five
+expected downstream failures against this final source and passed restored
+tests; local-control-mutations-final.log records the terminal passing run.

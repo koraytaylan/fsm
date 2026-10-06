@@ -2838,3 +2838,41 @@ helper retirement and writer release; `output_drained` MUST only confirm
 actual successful output write/flush, separately. Input/feed detachment MUST
 NOT be advertised as proved I/O-worker retirement. The owned entry MUST NOT
 claim installed native tree acceptance or change production CLI selection.
+
+
+### Opt-in local owned executor control
+
+On Linux, an explicit LocalControlEndpoint publisher MAY expose its actual
+OwnedNativeExecutor control beneath an existing owner-only mode-0700 root.
+The endpoint MUST use a kernel-random 256-bit incarnation and the original
+writer's physical data-directory device/inode at publication, never a PID.
+Its directory MUST be mode 0700 and its socket/discovery file mode 0600.
+Requests MUST use the closed six-field fsm.executor-control/1 schema, match
+that exact identity and validate finite timeout bounds before closing admission.
+Discovery MUST refuse ambiguous matching endpoints, symlinks and nonprivate
+endpoint files; it MUST NOT select an arbitrary newest endpoint or process.
+
+Requests MUST be bounded to 1024 wire bytes before LF and reports to 128 KiB
+before LF. One nonblocking transport loop MUST retain at most 64 connections,
+each with at most one bounded input and response allocation; read and output
+frames MUST have absolute 250 ms budgets. Outstanding response waits MUST NOT
+occupy parser workers or exclude later abort requests: saturation MAY evict
+an old response connection but MUST preserve every already accepted stop.
+Control processing MUST only use actual control metadata and MUST NOT open,
+lock or write the journal or perform native closure operations.
+
+The client MUST bound discovery, connect and transport together under its
+original finite caller deadline and recheck that deadline before transmitting
+after connect. Detached client workers MUST remain charged until retirement,
+with at most eight per process. Missing/evicted/timed-out responses MUST mean
+transport uncertainty, never confirmed admission, native termination or writer
+release. Control reports MUST NOT substitute for authenticated native closure
+proofs. The server MUST preserve the actual control's first accepted deadline
+and abort escalation; the client's transport budget is a separate local bound.
+
+Explicit endpoint close MUST validate finite bounds before stopping transport
+admission, wait only to that bound and confirm cleanup only after removing its
+exact captured inode identities. Replacement files MUST remain untouched.
+Drop MUST NOT claim native shutdown, cleanup or response-delivery guarantees.
+This opt-in transport does not implement CLI stop or change production backend
+selection, and requires the host to drive the owned executor independently.

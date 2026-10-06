@@ -4094,3 +4094,19 @@ This completes the local stable host gate for the opt-in owned session entry;
 current production binary selection, installed native controls, portable CI,
 endpoint/CLI stop, signals and paired standalone acceptance remain unproved.
 Tasks 9401/9402 retain their existing states and plan progress remains 3/7.
+
+
+### Opt-in exact-incarnation local control transport — 2026-10-06
+
+Implemented the actual-driver Linux local control publisher and bounded client,
+with private discovery, strict identity/schema validation, finite deadlines,
+bounded nonblocking connections, abort admission independent of waiting drains,
+charged detached client workers and exact-inode cleanup preserving replacements.
+LOCAL-CONTROL-REVIEW.md records the rejected draft findings and resolution.
+Focused stable/MSRV checks and twelve real-socket/actual-writer tests passed in
+session 34926; mutation session 27776 proved five downstream guards load-bearing
+and restored tests passed, all under asserted 1 GiB RAM and zero swap.
+These opt-in library APIs do not wire execute stop, change current production
+selection, prove installed native trees or provide paired standalone/signal
+acceptance; the full changed-source stable host gate is still required.
+Task 9401 remains in progress, 9402 remains planned, and progress remains 3/7.

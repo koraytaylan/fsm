@@ -2361,3 +2361,32 @@ control waits remain bounded and truthful. The current CLI stdio selector,
 external owner-only endpoint, CLI stop and signal integration remain unfinished;
 this library entry does not establish their installed acceptance or supply a
 paired standalone writer strategy.
+
+
+### Opt-in local owned control endpoint
+
+On Linux, create an existing private mode-0700 root and publish
+fsm_cli::local_control::LocalControlEndpoint::publish(root, &mut driver) before
+serving an explicitly selected owned native driver. Publication derives the
+physical data-directory identity from that driver's writer and uses a fresh
+random incarnation. The host still owns and drives the executor; the endpoint
+thread handles only control metadata and cannot acquire the journal writer.
+
+A separate caller uses local_control::stop(root, data_dir, mode, timeout_ms).
+It refuses multiple matching endpoints and returns the actual report JSON
+when delivered; errors mean admission and cleanup remain unconfirmed. Its
+finite transport budget includes filesystem discovery and Unix connect, and
+is separate from the first lifecycle deadline accepted by the server. The
+server can return uncertainty while the owner retains its writer without
+polling, and an owner poll can publish Stopped only after actual writer release.
+The response is diagnostic metadata and grants no authority to reuse a claim.
+
+At most 64 server connections are retained; old response connections may be
+evicted so waiting drains and silent clients cannot consume all abort parsing
+capacity. Read and output frame budgets are 250 ms, requests 1024 bytes and
+responses 128 KiB, excluding LF; at most eight client workers remain charged
+per process, including workers detached by transport timeout.
+Endpoint close(timeout_ms) returns true only after exact captured file cleanup;
+false leaves cleanup unconfirmed and preserves replacements. Drop only requests
+listener admission closure. Keep the endpoint handle until serving finishes.
+This API is opt-in and does not yet wire execute stop or current CLI selectors.

@@ -119,3 +119,15 @@ See OWNED-SESSION-REVIEW.md and retained logs. This does not change current CLI
 selection or supply production/installed tree, endpoint, CLI stop, signals or
 paired standalone acceptance; full changed-source stable gate remains pending
 and progress stays 3/7 with no task promotion.
+
+
+Owned-session runtime 3157f1c subsequently passed the full stable host gate
+(session 30244, terminal 0; local-owned-stdio-integration-stable-gate.log).
+The opt-in actual-driver local control endpoint and client now implement private
+exact-incarnation discovery, bounded independent metadata transport, abort
+capacity despite waiting drains and replacement-preserving scoped cleanup;
+LOCAL-CONTROL-REVIEW.md records focused stable/MSRV and twelve real transport
+tests plus five guard mutation failures followed by restored passing tests.
+The new transport still needs its full stable gate; CLI stop, production
+publication, signals and installed/paired native acceptance remain unfinished,
+so this task stays planned and plan progress remains 3/7.
