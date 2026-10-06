@@ -897,3 +897,5 @@ gate now runs at the same clean source, retaining
 `local-1dddd15-stable-release.log`; six original portable CI jobs remain live.
 These checks do not diagnose or replace the preserved native MSRV retirement
 failure, and production Runner integration remains incomplete.
+
+The stable native job `112093256861` in run `37409097908` completed successfully at clean source `8f179410da81c761425a4bdc9396089145a1804e`; its downloaded artifact independently passes `verify_native_evidence.py` with `rustc 1.99.0 (b940084d7 2026-09-28)` across all 81 cases, including the public owned prepared-cleanup success and cold-replay control, while `production_backend`, `gate_released`, and `executable_bytes_verified` remain false because production Runner/service integration is still incomplete; six portable jobs remain in progress and local debug session `54765` remains live.
