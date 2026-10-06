@@ -3758,3 +3758,19 @@ authority binding guard test; the retained log is local-claimed-closure-check.lo
 Installed broker dispatch and full corrected-source gates remain pending.
 The count remains 3/7, task 9401 in progress and task 9402 planned; production
 defaults, remote-push authorization and all acceptance flags remain unchanged.
+
+### Complete bound-closure-control stable gate — 2026-10-06
+
+Session 87044 completed exit 0 at exact source
+18ddf9b9ac9c7026f82f8dbb3748f59796456f94 with runtime source frozen throughout.
+Formatting/source-size, full debug/release workspace suites, workspace all-target
+Clippy, warning-denied docs, zero-dependencies and full embedding acceptance
+passed under verified 1 GiB/no-swap limits. The retained log is
+local-18ddf9b-bound-closure-controls-stable-gate.log in the task cache.
+Provisioned process/MCP bound-closure axes compile but remain unexecuted;
+older CI native reports do not prove these axes or the new close-claimed action.
+No protected helper is installed on this host, and the private successor push
+still needs exact destination/payload authorization after automatic rejection.
+Plan progress remains 3/7: ownership integration is in progress, shutdown and
+reconciliation are planned, production selection remains legacy and all
+production acceptance flags stay false. The full plans 20–23 goal is incomplete.
