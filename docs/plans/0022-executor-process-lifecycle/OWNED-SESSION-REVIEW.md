@@ -315,3 +315,15 @@ approved argv, preserving resource/run placeholders and all four scenarios;
 rustfmt syntax formatting passed, but it is unapplied and not Cargo-compiled
 while the frozen full gate remains live. Registration, handler identity
 access, and installed-native acceptance still need implementation and proof.
+
+Final process delivery review traced args::serve_run through
+cli::execute::report to render::emit_error, which synchronously writes
+stderr after native cleanup. Cache-only native-final-error-output.rs.draft
+carries the original Instant alongside the initiating ExecError and renders
+through bounded OutputControl with no join or fresh deadline. It is syntax
+formatted but unapplied/uncompiled while gate 86747 remains live. Integration
+requires preserving original error classification and cleanup facts, actual
+process exit with the stderr reader still closed, and explicit treatment of
+a final frame that cannot be confirmed before an expired deadline; current
+healthy-error delivery tests cannot be weakened silently to accept absent
+diagnostics. This remains an incomplete bounded-exit requirement.
