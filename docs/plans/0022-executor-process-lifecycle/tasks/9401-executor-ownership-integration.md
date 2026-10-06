@@ -1276,3 +1276,13 @@ and all six nonempty portable job logs are retained under
 112145359257 (23313), 112145359315 (23004), 112145359311 (786867), and
 112145359384 (786491). This is not a successful full matrix and does not
 validate the later Runner handoff or fresh control.
+
+### Fresh fixture size-gate correction
+
+Run 37429029062 portable gates fail at `scripts/oversized-files.sh` because
+`broker_native_tests.rs` reached 1003 lines; the previous local compile checks
+did not catch that missed size gate. Moved the fresh axis Root-side verification
+and retirement unchanged into its own fixture module, retaining the genuine
+binding comparison, consumed-claim/Ack checks, original competing-domain cleanup,
+and fixture cleanup. No execution protocol, published bytes, or assertions are
+relaxed. The frozen earlier workspace test remains live and is not restarted.

@@ -15,6 +15,9 @@ use std::time::{Duration, Instant};
 #[path = "broker_disconnect_native_tests.rs"]
 mod disconnect_cases;
 
+#[path = "broker_fresh_native_tests.rs"]
+mod fresh_cases;
+
 pub(super) fn disconnect() {
     disconnect_cases::run();
 }
@@ -273,23 +276,7 @@ fn run_case(timeout: bool, host: Host) {
         Some(&Value::Bool(false))
     );
     if matches!(host, Host::Fresh) {
-        disconnect_cases::fresh_handoff(&fixture.directory, &binding);
-        assert_eq!(
-            read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
-            binding
-        );
-        let store = Store::open_read_only(&fixture.store).unwrap();
-        assert!(
-            store
-                .state
-                .execution
-                .claim_for("instance", &effect)
-                .is_none()
-        );
-        assert!(store.state.dedup.contains_key(&settlement_request));
-        drop(store);
-        disconnect_cases::discard_prepared(&fixture.directory, &successor.to_value());
-        fixture.cleanup().unwrap();
+        fresh_cases::run(&mut fixture, &binding, &effect, &successor);
         return;
     }
     let execution = disconnect_cases::complete(&fixture.directory, &binding, timeout, &successor);
