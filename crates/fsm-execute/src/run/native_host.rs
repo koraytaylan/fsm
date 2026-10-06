@@ -118,6 +118,23 @@ impl Runner {
             None
         }
     }
+    pub(crate) fn apply_native_completed(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        pipeline: &mut Pipeline,
+        scheduler: &mut Scheduler,
+    ) -> Option<Result<String, ExecError>> {
+        #[cfg(target_os = "linux")]
+        return self
+            .native
+            .apply_completed(store, clock, pipeline, scheduler);
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (store, clock, pipeline, scheduler);
+            None
+        }
+    }
 }
 
 #[cfg(test)]

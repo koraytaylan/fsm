@@ -1045,3 +1045,8 @@ Added opt-in bounded complete-frame notifier output with in-flight allocation ac
 Bound reverse-protocol reads and remove oversized stdio-frame tail accumulation
 using shared framing; preserve ordinary parse errors, exact-cap acceptance and
 next-frame synchronization. Native lifecycle deadlines remain a separate gate.
+
+
+### Admission-free native completion observation
+
+Added a supported-Linux native completion-only service pass that excludes pending admission, preparation starts, bound entry, retries and machine deadline polling while retaining original completion/event-handoff delivery; production shutdown wiring and installed native acceptance remain pending.

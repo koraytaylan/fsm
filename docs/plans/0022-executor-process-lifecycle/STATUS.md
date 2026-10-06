@@ -3925,3 +3925,24 @@ and full embedding acceptance passed under verified 1 GiB/no-swap limits.
 The retained evidence is local-bounded-input-stable-gate.log. Installed native
 controls and other platform axes remain unexecuted for this source; production
 integration and all existing task/acceptance statuses remain unchanged.
+
+### Admission-free native completion pass — 2026-10-06
+
+The public service::observe_admitted_with pass observes retained native
+transport, recovers original ownership and fairly applies at most one original
+completion/handoff action through the healthy original physical writer, without
+pending admission, preparation starts, bound entry, retries or machine deadline
+polling. This is a writer-dependent integration seam, not the independent
+shutdown/report driver required by task 9402.
+
+Focused session 9284 completed exit 0 under verified 1 GiB/no-swap limits:
+formatting/size, stable/MSRV execute all-target Clippy, 34 library tests, native
+shutdown API, all 16 public-surface tests, the authority binding guard and all
+seven tick tests passed; local-admitted-pass-check-v3.log is retained. Earlier
+runs failed because the inventory required both the function and its reexport;
+both entries were corrected before the passing run. The scheduling exclusion
+test preserves an actual pending effect, due deadline, journal head and state.
+The provisioned bound-owner probe now also asserts no protected launch artifact
+or journal mutation across these passes, but is only compiled locally, not
+executed against installed authority. Full stable verification remains pending;
+progress remains 3/7 and production/native acceptance flags remain false.

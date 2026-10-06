@@ -347,6 +347,55 @@ impl NativeOwners {
         }
     }
 
+    pub(super) fn apply_completed(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        pipeline: &mut Pipeline,
+        scheduler: &mut Scheduler,
+    ) -> Option<Result<String, ExecError>> {
+        let completed = self
+            .owners
+            .values()
+            .any(|owner| owner.settlement_ready(store.journal.last_seq));
+        if self.handoffs.ready() && (self.prefer_handoff || !completed) {
+            if !self.matches_store(store) {
+                return Some(Err(deferred()));
+            }
+            self.prefer_handoff = false;
+            return self.handoffs.apply(store, clock, pipeline);
+        }
+        let ready: Vec<u64> = self
+            .owners
+            .iter()
+            .filter(|(_, owner)| owner.settlement_ready(store.journal.last_seq))
+            .map(|(run, _)| *run)
+            .collect();
+        let selected = ready
+            .iter()
+            .find(|run| **run > self.cursor)
+            .or_else(|| ready.first())?;
+        if !self.matches_store(store) {
+            return Some(Err(deferred()));
+        }
+        self.prefer_handoff = true;
+        self.cursor = *selected;
+        let owner = self.owners.get_mut(selected)?;
+        let result = owner.apply_completion(store, clock, pipeline);
+        if !owner.execution.progress().retained {
+            scheduler.complete_claim(&owner.claim);
+        }
+        match result {
+            Ok((line, finished)) => {
+                if finished {
+                    self.owners.remove(selected);
+                }
+                Some(Ok(line))
+            }
+            Err(error) => Some(Err(error)),
+        }
+    }
+
     pub(super) fn observe(&mut self) {
         self.admissions.observe();
         for owner in self.owners.values_mut() {

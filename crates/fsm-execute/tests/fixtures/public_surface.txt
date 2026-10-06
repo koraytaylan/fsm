@@ -225,6 +225,7 @@ fn fsm_execute::rid::signal_rid
 fn fsm_execute::sched::backoff_for
 fn fsm_execute::sched::ready_at
 fn fsm_execute::service::advancing_effects
+fn fsm_execute::service::observe_admitted_with
 fn fsm_execute::service::run
 fn fsm_execute::service::tick
 fn fsm_execute::service::tick_reporting
@@ -382,6 +383,7 @@ reexport fsm_execute::run::native_client::NativeRun from claimed
 reexport fsm_execute::run::native_client::NativeRunPhase from claimed
 reexport fsm_execute::run::native_client::NativeRunProgress from claimed
 reexport fsm_execute::run::native_client::NativeShutdown from shutdown
+reexport fsm_execute::service::observe_admitted_with from admitted
 struct fsm_execute::config::Advance
 struct fsm_execute::config::HandlerSpec
 struct fsm_execute::config::HandlerTable

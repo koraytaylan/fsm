@@ -6,11 +6,11 @@ use fsm_core::record::execution::Claim;
 use fsm_execute::{
     config::{HandlerKind, HandlerSpec, HandlerTable, Retry},
     run::{
-        Runner,
+        Pipeline, Runner,
         native_client::{NativeRequest, NativeShutdown},
     },
     sched::{Directive, Scheduler},
-    watch::Observation,
+    watch::{Observation, Watcher},
 };
 use fsm_store::store::Store;
 use std::{
@@ -127,6 +127,7 @@ fn original_bound_closure() -> BoundClosure {
             retry: Retry::default(),
         },
     );
+    let mut watcher = Watcher::with_handlers(path.to_path_buf(), &table);
     let mut scheduler = Scheduler::new(table);
     assert!(matches!(
         scheduler
@@ -140,7 +141,7 @@ fn original_bound_closure() -> BoundClosure {
             .as_slice(),
         [Directive::Start { .. }]
     ));
-    let mut runner = Runner::new().unwrap();
+    let mut runner = Runner::new_native().unwrap();
     runner
         .start_native(&mut writer, &claim, &mut scheduler, Duration::from_secs(10))
         .unwrap();
@@ -168,6 +169,22 @@ fn original_bound_closure() -> BoundClosure {
     }
     // Observe only; no shared tick may enter the bound owner.
     assert!(runner.finished_effects().is_empty());
+    let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+    let mut pipeline = Pipeline;
+    for _ in 0..3 {
+        fsm_execute::service::observe_admitted_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer,
+            &mut clock,
+            1000,
+        )
+        .unwrap();
+        assert_eq!(writer.records, records);
+        assert!(!authority.join(format!("launch-{allocation}.json")).exists());
+    }
     let Value::Obj(mut wrong_binding) = binding.clone() else {
         unreachable!()
     };

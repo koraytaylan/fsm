@@ -551,3 +551,89 @@ fn an_owner_free_runner_refuses_a_replacement_physical_store() {
     );
     drop(restore);
 }
+
+#[test]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn admitted_pass_never_starts_pending_effect_or_polls_due_machine_deadline() {
+    let directory = TestDirectory::create("admitted-no-scheduling");
+    let mut store = open_writer(directory.path());
+    let mut clock = FixedClock::new(1000, 1);
+    let mut definition = tick_machine().as_obj().unwrap().clone();
+    definition.insert(
+        "deadlines".into(),
+        parse(
+            br#"[
+        {"name":"confirmation_due","from":"awaiting_confirmation",
+         "after":"dur(1, ms)","to":"unconfirmed"}
+    ]"#,
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap(),
+    );
+    store
+        .define_machine_on(&mut clock, Value::Obj(definition), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "order_confirmation_tick",
+            "order-1",
+            "admitted-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    store
+        .send_event_stamp_on(
+            &mut clock,
+            "order-1",
+            "submit",
+            &mut Value::Obj(BTreeMap::new()),
+            "admitted-submit",
+            None,
+            &[],
+        )
+        .unwrap();
+    let effect = store.state.instances["order-1"].pending[0].clone();
+    assert!(store.state.instances["order-1"].deadlines["confirmation_due"] < 10000);
+    let marker = directory.path().join("forbidden-admitted-entry");
+    let mut table = stub_table();
+    table
+        .handlers
+        .get_mut("request_confirmation")
+        .unwrap()
+        .argv
+        .push(format!("stub:marker={}", marker.display()));
+    let mut watcher = Watcher::with_handlers(directory.path().into(), &table);
+    let mut scheduler = Scheduler::new(table);
+    let mut runner = Runner::new_native().unwrap();
+    let mut pipeline = Pipeline;
+    let records = store.records.clone();
+    let state = store.state.clone();
+    let head = (store.journal.last_seq, store.journal.last_hash.clone());
+    for _ in 0..3 {
+        let lines = fsm_execute::service::observe_admitted_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut store,
+            &mut clock,
+            10000,
+        )
+        .unwrap();
+        assert!(lines.is_empty(), "{lines:?}");
+        assert_eq!(store.records, records);
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
+        assert_eq!(
+            (store.journal.last_seq, store.journal.last_hash.clone()),
+            head
+        );
+        assert!(scheduler.inflight_effect(&effect).is_none());
+        assert!(!marker.exists());
+    }
+}

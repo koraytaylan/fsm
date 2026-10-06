@@ -2291,3 +2291,8 @@ for an oversized reply after discarding that frame without retaining its tail;
 later frames stay readable. It still blocks on silent input or unfinished
 oversized-frame drainage, so independent lifecycle/control handling must not
 wait for it. The owned production lifecycle route remains unimplemented.
+
+
+### Admission-free native completion observation
+
+Use service::observe_admitted_with with the original healthy durable writer and a supported native runner when pending execution and machine deadlines must stay idle while retained original completion work advances. Original completion events and durable handoffs remain eligible for delivery. Hosts still need independent transport progress and bounded lifecycle reporting when the writer or protocol I/O is unavailable.

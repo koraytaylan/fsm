@@ -1086,3 +1086,8 @@ persisted formats or new error codes. It enforces the existing ordinary frame
 ceiling while closing the unbounded discarded-tail and reverse-read gaps;
 SessionIo now refuses oversized replies through the existing I/O error path.
 This correction must be documented as a resource-limit behavior change.
+
+
+### Admission-free native completion observation
+
+service::observe_admitted_with is an additive Rust API for original native completion observation without new execution admission; existing tick APIs and production runner selection remain unchanged, with no persisted format, hash-domain or error-code change.

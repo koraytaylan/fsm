@@ -18,6 +18,9 @@
 //! temporary directory, or a duration: those differ per machine and per run,
 //! and the golden session byte-compares this stream.
 
+mod admitted;
+pub use admitted::observe_admitted_with;
+
 use std::collections::BTreeMap;
 use std::path::Path;
 

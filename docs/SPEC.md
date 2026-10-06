@@ -2747,3 +2747,8 @@ which request_and_await maps to the existing io/read error. Ordinary serve MUST
 retain its existing parse-error response for an oversized frame. Read failures
 during drainage MUST propagate rather than claim successful resynchronization.
 This blocking framing primitive establishes no silent-client or cleanup deadline.
+
+
+### Admission-free native completion observation
+
+On supported Linux native runners, service::observe_admitted_with MUST observe retained native transport and recover original durable ownership without scheduling pending effects, new preparations, bound handler entry, retries or machine deadlines; it MAY apply at most one original completion or event-handoff action through the healthy original physical writer, and MUST refuse legacy runners, memory/read-only/poisoned writers and copied-store routes using existing exec/mode or exec/inflight_deferred errors. Recovery transport is permitted; it MUST NOT authorize handler entry. This writer-dependent pass grants no independent shutdown deadline or blocked-I/O progress guarantee.
