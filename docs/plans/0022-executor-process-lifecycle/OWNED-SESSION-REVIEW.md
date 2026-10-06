@@ -269,3 +269,16 @@ startup regressions also passing; log native-stdio-warning-output-check.log.
 Full workspace and native platform acceptance gates were not run here. Final process error
 rendering and opt-in panic-hook stderr remain separate boundaries requiring
 review, and installed-native workflow acceptance is still unproven.
+
+Actual stderr sensitivity review completed in session 48737, exit 0,
+under verified MemoryMax=1 GiB and MemorySwapMax=0. Replacing only warning
+queue admission with synchronous stderr made the real pipe regression exit
+101; replacing only action queue admission with synchronous stderr also
+made it exit 101. Both failures were test failures after successful
+compilation, not compilation refusal. The mutation harness restored exact
+original serve.rs bytes in finally, then all 12 actual production control
+tests passed; git status confirmed no residual runtime changes. Evidence is
+retained in native-stderr-mutations.log. This establishes sensitivity to
+both owner-blocking stderr paths, without native authority acceptance or
+verified handler entry, and does not remove the separate final-renderer
+process-exit limitation. Tasks 9401/9402 and plan completion remain unchanged.
