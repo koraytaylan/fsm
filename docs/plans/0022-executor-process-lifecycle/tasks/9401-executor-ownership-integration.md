@@ -655,3 +655,14 @@ testing. Current cleanup provisioned validation and production host integration
 remain outstanding, and task 9401 stays in progress.
 
 NativePreparedCleanup now owns original-route cleanup and retains its complete original domain, confirming only matched successful responses after actual helper retirement and EOF; cancellation and errors remain uncertain, public inventory and capability documentation move with the API, and compilation, response-control execution and provisioned host acceptance remain pending while frozen debug session `68063` continues at the prior source.
+
+The full isolated stable debug workspace gate for exact source `34d00da`
+completed with exit zero through session `68063`; the retained
+`local-34d00da-stable-debug.log` ends with successful workspace doc tests.
+That source includes the Root original-domain cleanup protocol but predates
+the owned handle. The clean checkout now validates exact `cd70627` with serial
+MSRV executor library tests and all-target Clippy in session `35214`, retaining
+`local-cd70627-msrv-lib.log` and `local-cd70627-msrv-clippy.log`; explicit public
+surface inventory validation remains required afterward. The original Windows
+stable job is still live, and current native cleanup acceptance and automatic
+production Runner routing remain unfinished.
