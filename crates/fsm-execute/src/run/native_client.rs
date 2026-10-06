@@ -28,6 +28,10 @@ const HELPER: &str = "/usr/libexec/fsm-containment-authority";
 const RESPONSE_LIMIT: usize = 65540;
 const POLL_BUDGET: usize = 65536;
 
+pub(super) fn discover_store(store: &Path) -> Result<(String, u64), String> {
+    discovery::discover(store)
+}
+
 pub(super) fn check_claim_store(
     store: &Path,
     claim: &fsm_core::record::execution::Claim,

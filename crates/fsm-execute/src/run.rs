@@ -29,6 +29,8 @@ use crate::mcp_client::McpOutcome;
 
 mod capture;
 mod mcp_worker;
+#[cfg(target_os = "linux")]
+mod native_admission;
 mod native_host;
 #[cfg(target_os = "linux")]
 mod native_owners;
@@ -539,6 +541,7 @@ static SPAWN_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// The only component that spawns processes.
 pub struct Runner {
+    native_admission: bool,
     #[cfg(target_os = "linux")]
     native: native_owners::NativeOwners,
     scratch: PathBuf,
@@ -547,6 +550,14 @@ pub struct Runner {
 }
 
 impl Runner {
+    /// Select native preparation and durable admission for shared service ticks.
+    /// Missing native capability refuses fresh work without a direct-child fallback.
+    pub fn new_native() -> Result<Self, ExecError> {
+        let mut runner = Self::new()?;
+        runner.native_admission = true;
+        Ok(runner)
+    }
+
     /// Retain a published original claim before requesting native binding.
     ///
     /// The scheduler must already hold its matching local effect reservation.
@@ -584,6 +595,7 @@ impl Runner {
             match private_directory().create(&scratch) {
                 Ok(()) => {
                     return Ok(Self {
+                        native_admission: false,
                         scratch,
                         #[cfg(target_os = "linux")]
                         native: native_owners::NativeOwners::default(),

@@ -271,6 +271,7 @@ method fsm_execute::run::RunOutcome::succeeded
 method fsm_execute::run::Runner::finished_effects
 method fsm_execute::run::Runner::kill
 method fsm_execute::run::Runner::new
+method fsm_execute::run::Runner::new_native
 method fsm_execute::run::Runner::poll
 method fsm_execute::run::Runner::running_effects
 method fsm_execute::run::Runner::scratch_dir

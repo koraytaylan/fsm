@@ -5,6 +5,53 @@ use crate::{error::ExecError, sched::Scheduler, watch::Observation};
 use fsm_store::{clock::Clock, store::Store};
 
 impl Runner {
+    pub(crate) fn uses_native_admission(&self) -> bool {
+        self.native_admission
+    }
+
+    pub(crate) fn queue_native(
+        &mut self,
+        snapshot: &Store,
+        effect: &crate::effect::PendingEffect,
+        handler: &crate::config::HandlerSpec,
+        scheduler: &mut Scheduler,
+    ) -> Result<(), ExecError> {
+        #[cfg(target_os = "linux")]
+        return self.native.queue(snapshot, effect, handler, scheduler);
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (snapshot, effect, handler, scheduler);
+            Err(ExecError::new(
+                "exec/mode",
+                "native admission requires a supported provisioned backend",
+            ))
+        }
+    }
+
+    pub(crate) fn accepts_native_writer(&self, store: &Store) -> bool {
+        #[cfg(target_os = "linux")]
+        return !store.journal.is_read_only()
+            && !store.journal.is_memory()
+            && !store.journal.poisoned
+            && self.native.matches_store(store);
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = store;
+            false
+        }
+    }
+
+    pub(crate) fn release_native_preparations(&mut self, scheduler: &mut Scheduler) {
+        #[cfg(target_os = "linux")]
+        self.native.release_preparations(scheduler);
+        #[cfg(not(target_os = "linux"))]
+        let _ = scheduler;
+    }
+
+    pub(crate) fn start_native_preparations(&mut self) {
+        #[cfg(target_os = "linux")]
+        self.native.start_preparations();
+    }
     pub(crate) fn native_start_claim(
         &mut self,
         store: &mut Store,
@@ -38,12 +85,13 @@ impl Runner {
         &mut self,
         snapshot: &Store,
         observation: &mut Observation,
+        scheduler: &mut Scheduler,
     ) -> Result<(), ExecError> {
         #[cfg(target_os = "linux")]
-        return self.native.adopt(snapshot, observation);
+        return self.native.adopt(snapshot, observation, scheduler);
         #[cfg(not(target_os = "linux"))]
         {
-            let _ = (snapshot, observation);
+            let _ = (snapshot, observation, scheduler);
             Ok(())
         }
     }

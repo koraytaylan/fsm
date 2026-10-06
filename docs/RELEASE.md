@@ -890,8 +890,8 @@ uncertain entry attempt cannot be repeated. Shared cancellation requests native
 transport cancellation and retains ownership rather than creating a legacy
 settlement. Unsupported platforms refuse startup with `exec/mode` and no
 automatic direct-child fallback. Persisted bytes, hash domains, and error codes
-are unchanged; automatic fresh preparation and claim admission are still
-unimplemented, and this handoff does not release production acceptance gates.
+are unchanged; default production host selection, bounded shutdown and cold post-ack recovery
+remain incomplete, and this handoff does not release production acceptance gates.
 
 Fresh Runner installation additionally MUST authenticate the claim namespace and
 authority generation against the protected registration for the physical store
@@ -901,3 +901,26 @@ match the host physical-store pin before changing entry permission or applying
 a completion; refusal preserves original ownership and local capacity. These
 checks change no public signature or persisted format, and provisioned native
 process and MCP controls remain required before production acceptance.
+
+Provisional `Runner::new_native()` explicitly selects fresh native admission
+through both shared tick entry points, with no automatic direct-child fallback.
+The host MUST retain the original journal-derived effect and checked handler
+contract before requesting preparation, serialize allocator transport, collect
+one original domain only after helper retirement/EOF, and publish its claim
+under a healthy writer on the pinned physical store before one-shot binding and
+entry. Its claim request key is `exec-claim-` followed by lowercase SHA-256 hex
+of canonical JSON `[effect_id, domain]`; existing ack/event keys are unchanged.
+Preparation does not consume handler runtime: the authority enforces the
+original actual-entry timeout. A read-only borrowed tick MUST NOT enqueue or
+start a new allocator request; owned observation and cleanup remain independent
+of writer access. A cancelled queued request that never started may release
+only its matching unclaimed local reservation; a delivered unclaimed domain
+requires exact original-domain cleanup success plus helper retirement/EOF.
+Unknown allocation, cleanup, or claim publication MUST retain capacity, never
+produce legacy synthetic acknowledgement and never allocate a replacement.
+An observed genuine claim after an uncertain append transfers to retained
+original ownership. Existing ready native owners take precedence over further
+claim publication, and readonly snapshots are dropped before the standalone
+writer opens. This selected host path is not yet provisioned-runtime accepted;
+default CLI/MCP/service host selection, shutdown, reconciliation and cold
+post-ack recovery remain unfinished, with production acceptance flags false.

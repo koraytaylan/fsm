@@ -806,3 +806,37 @@ pub(super) fn fresh_handoff(directory: &Path, binding: &Value, competitor: &Nati
         1
     );
 }
+
+pub(super) fn fresh_admission(directory: &Path, table: &Value) {
+    install_supervisor(directory);
+    let script = SUPERVISOR.replace(
+        "::owned_request",
+        "::fresh_admission::shared_tick_admission",
+    );
+    let output = Command::new("/usr/bin/python3")
+        .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
+        .env(
+            "FSM_NATIVE_TEST_HANDLER_TABLE",
+            std::str::from_utf8(&canon_bytes(table)).unwrap(),
+        )
+        .env("FSM_NATIVE_TEST_AUTHORITY", directory)
+        .args(["-c", &script])
+        .arg(directory.join("broker"))
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "fresh native admission: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| *line == "FSM_NATIVE_FRESH_ADMISSION")
+            .count(),
+        1
+    );
+}

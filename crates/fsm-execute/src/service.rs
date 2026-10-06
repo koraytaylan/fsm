@@ -34,6 +34,7 @@ use crate::watch::{Observation, Watcher};
 /// The read-only half of a tick: what the journal says, and what to do about
 /// it.
 struct Plan {
+    snapshot: Option<Store>,
     observation: Observation,
     directives: Vec<Directive>,
     lines: Vec<String>,
@@ -58,8 +59,11 @@ pub fn tick_with(
             return lines;
         }
     };
-    let settles = prepare(scheduler, runner, &mut plan);
+    let native_writer_allowed = runner.accepts_native_writer(store);
+    let settles = prepare(scheduler, runner, &mut plan, native_writer_allowed);
+    drop(plan.snapshot.take());
     let finished = runner.finished_effects();
+    runner.release_native_preparations(scheduler);
     plan.lines.extend(settle_phase(
         scheduler, runner, pipeline, store, clock, &plan, settles, finished,
     ));
@@ -125,8 +129,10 @@ pub fn tick_reporting(
     // writer is even considered. A kill in particular must not wait on the
     // lock: a handler past its timeout has to stop whether or not this tick
     // can journal the fact.
-    let settles = prepare(scheduler, runner, &mut plan);
+    let settles = prepare(scheduler, runner, &mut plan, true);
+    drop(plan.snapshot.take());
     let finished = runner.finished_effects();
+    runner.release_native_preparations(scheduler);
     if !writes_anything(&plan.directives, &settles, &finished) && !runner.native_ready() {
         return TickOutcome {
             lines: plan.lines,
@@ -280,7 +286,7 @@ fn plan(
         Err(error) => return Err(vec![error_line(&error)]),
     };
     runner
-        .recover_native_owners(&snapshot, &mut observation)
+        .recover_native_owners(&snapshot, &mut observation, scheduler)
         .map_err(|error| vec![error_line(&error)])?;
     let mut lines: Vec<String> = observation.unresolved.iter().map(error_line).collect();
     let directives = scheduler.on_observation(&observation, now_ms);
@@ -321,6 +327,7 @@ fn plan(
         ));
     }
     Ok(Plan {
+        snapshot: runner.uses_native_admission().then_some(snapshot),
         observation,
         directives,
         lines,
@@ -335,12 +342,20 @@ struct PendingSettle {
 
 /// Start and stop handlers. This phase never writes, which is what lets a
 /// timed-out handler be stopped even on a tick that cannot take the writer.
-fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> Vec<PendingSettle> {
+fn prepare(
+    scheduler: &mut Scheduler,
+    runner: &mut Runner,
+    plan: &mut Plan,
+    native_writer_allowed: bool,
+) -> Vec<PendingSettle> {
     let mut settles = Vec::new();
     // An effect whose argv could not be built never reaches the runner; it is
     // a run that failed before it began, and is acked as one.
     for unstartable in scheduler.unstartable().to_vec() {
         plan.lines.push(error_line(&unstartable.error));
+        if runner.uses_native_admission() {
+            continue;
+        }
         settles.push(PendingSettle {
             outcome: RunOutcome::NotStarted {
                 code: unstartable.error.code,
@@ -365,6 +380,47 @@ fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> V
                     "observed pending {} {}",
                     effect.effect_name, effect.effect_id
                 ));
+                if runner.uses_native_admission() {
+                    let handler = scheduler.handler(&effect.effect_name).cloned();
+                    let result = if native_writer_allowed {
+                        handler
+                            .ok_or_else(|| {
+                                ExecError::new(
+                                    "exec/config",
+                                    "native original handler is unavailable",
+                                )
+                            })
+                            .and_then(|handler| {
+                                plan.snapshot
+                                    .as_ref()
+                                    .ok_or_else(|| {
+                                        ExecError::new(
+                                            "exec/mode",
+                                            "native observation is unavailable",
+                                        )
+                                    })
+                                    .and_then(|snapshot| {
+                                        runner.queue_native(snapshot, effect, &handler, scheduler)
+                                    })
+                            })
+                    } else {
+                        Err(ExecError::new(
+                            "exec/mode",
+                            "native admission requires the original healthy durable writer",
+                        ))
+                    };
+                    match result {
+                        Ok(()) => plan.lines.push(format!(
+                            "native-preparing {} {}",
+                            effect.effect_name, effect.effect_id
+                        )),
+                        Err(error) => {
+                            plan.lines.push(error_line(&error));
+                            scheduler.complete_unclaimed(effect);
+                        }
+                    }
+                    continue;
+                }
                 match runner.spawn(effect.effect_id.clone(), argv, call.as_ref()) {
                     Ok(()) => plan.lines.push(format!(
                         "spawned handler {} {}",
@@ -417,6 +473,9 @@ fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> V
             | Directive::InvocationReturn { .. }
             | Directive::SignalDeliver { .. } => {}
         }
+    }
+    if runner.uses_native_admission() && native_writer_allowed {
+        runner.start_native_preparations();
     }
     settles
 }

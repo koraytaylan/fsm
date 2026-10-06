@@ -78,8 +78,104 @@ fn open_writer(path: &Path) -> Store {
 /// marker argument the harness ignores.
 #[test]
 fn stub_handler() {
+    if let Some(marker) = std::env::args()
+        .find_map(|argument| argument.strip_prefix("stub:marker=").map(str::to_owned))
+    {
+        fs::write(marker, b"handler entered").unwrap();
+        std::process::exit(0);
+    }
     if std::env::args().any(|argument| argument == "stub:ok") {
         std::process::exit(0);
+    }
+}
+
+#[test]
+fn native_ticks_refuse_unavailable_authority_without_legacy_entry_or_ack() {
+    for readonly in [false, true] {
+        let (directory, effect) = triggered_instance("native-authority-refusal");
+        let marker = directory.path().join("forbidden-handler-entry");
+        let mut table = stub_table();
+        table
+            .handlers
+            .get_mut("request_confirmation")
+            .unwrap()
+            .argv
+            .push(format!("stub:marker={}", marker.display()));
+        let mut watcher = Watcher::with_handlers(directory.path().into(), &table);
+        let mut scheduler = Scheduler::new(table);
+        let mut runner = Runner::new_native().unwrap();
+        let mut pipeline = Pipeline;
+        let mut clock = FixedClock::new(1000, 1);
+        let mut store = if readonly {
+            Store::open_read_only(directory.path()).unwrap()
+        } else {
+            open_writer(directory.path())
+        };
+        let records = store.records.clone();
+        let state = store.state.clone();
+        let head = (store.journal.last_seq, store.journal.last_hash.clone());
+        for _ in 0..3 {
+            let lines = tick_with(
+                &mut watcher,
+                &mut scheduler,
+                &mut runner,
+                &mut pipeline,
+                &mut store,
+                &mut clock,
+                1000,
+            );
+            assert!(
+                lines.iter().any(|line| line.contains("exec/mode")),
+                "{lines:?}"
+            );
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| line.starts_with("spawned handler") || line.starts_with("acked ")),
+                "{lines:?}"
+            );
+            assert!(runner.finished_effects().is_empty());
+            assert!(scheduler.inflight_effect(&effect).is_none());
+            assert_eq!(store.records, records);
+            assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
+            assert_eq!(
+                (store.journal.last_seq, store.journal.last_hash.clone()),
+                head
+            );
+        }
+        assert_eq!(
+            fs::symlink_metadata(marker).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound
+        );
+        drop(store);
+        let outcome = fsm_execute::service::tick_reporting(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            directory.path(),
+            &mut clock,
+            1000,
+        );
+        assert!(!outcome.writer_unavailable);
+        assert!(
+            outcome.lines.iter().any(|line| line.contains("exec/mode")),
+            "{:?}",
+            outcome.lines
+        );
+        let original = Store::open_read_only(directory.path()).unwrap();
+        assert_eq!(original.records, records);
+        assert!(fsm_store::snapshot::store_states_eq(
+            &original.state,
+            &state
+        ));
+        assert_eq!(
+            (
+                original.journal.last_seq,
+                original.journal.last_hash.clone()
+            ),
+            head
+        );
     }
 }
 

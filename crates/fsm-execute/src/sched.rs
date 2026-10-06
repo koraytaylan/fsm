@@ -712,6 +712,32 @@ impl Scheduler {
         self.inflight.remove(effect_id);
         self.local_claims.remove(effect_id);
     }
+
+    pub(crate) fn complete_unclaimed(&mut self, effect: &PendingEffect) -> bool {
+        if self.local_claims.contains_key(&effect.effect_id)
+            || self.inflight_effect(&effect.effect_id) != Some(effect)
+        {
+            return false;
+        }
+        self.complete(&effect.effect_id);
+        true
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn retain_native_preparation(&mut self, effect: &PendingEffect) -> bool {
+        if self.local_claims.contains_key(&effect.effect_id) {
+            return false;
+        }
+        let Some(local) = self.inflight.get_mut(&effect.effect_id) else {
+            return false;
+        };
+        if local.effect != *effect || local.killed {
+            return false;
+        }
+        // The authority times the actual handler; preparation is not entry.
+        local.deadline_ms = i64::MAX;
+        true
+    }
 }
 
 fn declared_advance<'a>(handler: &'a HandlerSpec, outcome: &str) -> Option<&'a Advance> {
@@ -804,6 +830,8 @@ mod claim_release_tests {
         assert!(!scheduler.complete_claim(&original));
         assert_eq!(scheduler.inflight.len(), 1);
         assert!(scheduler.retain_claim(&original));
+        let retained_effect = scheduler.inflight_effect("case-1/3/0").unwrap().clone();
+        assert!(!scheduler.complete_unclaimed(&retained_effect));
         assert!(!scheduler.complete_claim(&other));
         assert_eq!(scheduler.local_claims.get("case-1/3/0"), Some(&original));
         assert_eq!(scheduler.inflight.len(), 1);

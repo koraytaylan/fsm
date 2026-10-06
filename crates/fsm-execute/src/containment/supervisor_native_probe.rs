@@ -460,6 +460,20 @@ struct WriterHolder {
 
 impl WriterHolder {
     fn start(path: &str) -> Self {
+        Self::start_test(
+            path,
+            "authority::allocator::native_tests::supervisor_probe::writer_holder",
+        )
+    }
+
+    fn lease_only(path: &str) -> Self {
+        Self::start_test(
+            path,
+            "authority::allocator::native_tests::supervisor_probe::fresh_admission::writer_lease_only",
+        )
+    }
+
+    fn start_test(path: &str, test: &str) -> Self {
         use std::os::fd::OwnedFd;
         use std::os::unix::net::UnixStream;
         use std::process::{Command, Stdio};
@@ -470,7 +484,7 @@ impl WriterHolder {
         command
             .args([
                 "--exact",
-                "authority::allocator::native_tests::supervisor_probe::writer_holder",
+                test,
                 "--ignored",
                 "--nocapture",
                 "--color",
@@ -955,3 +969,6 @@ fn shared_tick_recovery() {
 
 #[path = "supervisor_fresh_native_probe.rs"]
 mod fresh_handoff;
+
+#[path = "supervisor_admission_native_probe.rs"]
+mod fresh_admission;

@@ -186,6 +186,8 @@ pub(super) fn run() {
     run_case(false, Host::Shared);
     run_case(false, Host::Fresh);
     run_case(false, Host::FreshMcp);
+    run_case(false, Host::Admission);
+    run_case(false, Host::AdmissionMcp);
 }
 
 enum Host {
@@ -193,11 +195,14 @@ enum Host {
     Shared,
     Fresh,
     FreshMcp,
+    Admission,
+    AdmissionMcp,
 }
 
 fn run_case(timeout: bool, host: Host) {
-    let table = fixture_table::handler_table(timeout, matches!(host, Host::FreshMcp));
-    let mut fixture = Fixture::new_for_operator(table);
+    let table =
+        fixture_table::handler_table(timeout, matches!(host, Host::FreshMcp | Host::AdmissionMcp));
+    let mut fixture = Fixture::new_for_operator(table.clone());
     for uid in [0, 61184, 65519, u32::MAX] {
         assert!(broker_endpoint::provision(&fixture.directory, uid).is_err());
         assert!(!fixture.directory.join("broker").exists());
@@ -246,6 +251,10 @@ fn run_case(timeout: bool, host: Host) {
     assert!(!refused.status.success());
     assert!(String::from_utf8_lossy(&refused.stderr).contains("outside policy"));
     assert_eq!(fs::read(&counter_path).unwrap(), counter);
+    if matches!(host, Host::Admission | Host::AdmissionMcp) {
+        fresh_cases::admission(&mut fixture, &table);
+        return;
+    }
     let prepared = disconnect_cases::prepare(&fixture.directory);
     disconnect_cases::discovery_faults(&fixture.directory);
     let domain = NativeDomain::from_value(&prepared).unwrap();
