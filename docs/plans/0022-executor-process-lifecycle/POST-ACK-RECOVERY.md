@@ -45,6 +45,13 @@ It must not put a claim record's own hash inside that record's state root,
 which would introduce a hash self-reference; the existing separately
 authenticated base index supplies the compatibility pattern, and the later
 handoff can commit the already fixed original hash safely.
+`Store::append_execution` first folds a provisional record and later replaces
+only projected `last_hash` with the published record hash; at checkpoint
+sequence 10,000, `append_at_with_root` adds root fields that change the actual
+record hash. A future replay-anchor cache must therefore capture/reconcile the
+final published claim hash, not leave a provisional anchor in projected state.
+The independent checkpoint claim/handoff regression verifies the final anchor
+against complete prefix replay and rejects the valid-shaped provisional hash.
 An acknowledgement without a declared event creates no handoff; attempted and
 interrupted settlements must never create one.
 

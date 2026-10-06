@@ -11,6 +11,9 @@ mod durability;
 #[path = "execution_append_crash_tests.rs"]
 mod append_durability;
 
+#[path = "execution_handoff_anchor_tests.rs"]
+mod handoff_anchor;
+
 fn json(bytes: &[u8]) -> Value {
     parse(bytes, &JsonLimits::DEFAULT).unwrap()
 }
