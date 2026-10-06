@@ -147,6 +147,7 @@ impl NativeOwners {
     ) -> Result<(), ExecError> {
         // Only a genuine eligible current durable claim may enter this map.
         Pipeline::native_launch_hash(store, claim)?;
+        super::native_client::check_claim_store(&store.data_dir, claim).map_err(|_| deferred())?;
         let metadata = std::fs::metadata(&store.data_dir).map_err(|_| deferred())?;
         let physical = (metadata.dev(), metadata.ino());
         if self
@@ -203,6 +204,13 @@ impl NativeOwners {
             .iter()
             .find(|run| **run > self.cursor)
             .or_else(|| ready.first())?;
+        // A copied journal has the same logical claim, but its writer cannot
+        // authorize entry or settlement for this host's original physical store.
+        let physical =
+            std::fs::metadata(&store.data_dir).map(|metadata| (metadata.dev(), metadata.ino()));
+        if self.physical_store.is_none() || physical.ok() != self.physical_store {
+            return Some(Err(deferred()));
+        }
         self.cursor = *selected;
         let owner = self.owners.get_mut(selected)?;
         let result = owner.apply(store, clock, pipeline);

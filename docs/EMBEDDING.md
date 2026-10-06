@@ -2125,3 +2125,12 @@ settlement. Unsupported platforms refuse startup with `exec/mode` and no
 automatic direct-child fallback. Persisted bytes, hash domains, and error codes
 are unchanged; automatic fresh preparation and claim admission are still
 unimplemented, and this handoff does not release production acceptance gates.
+
+Fresh Runner installation additionally MUST authenticate the claim namespace and
+authority generation against the protected registration for the physical store
+before retaining ownership or requesting binding; an identical copied journal
+does not authorize the original domain. Shared native writer application MUST
+match the host physical-store pin before changing entry permission or applying
+a completion; refusal preserves original ownership and local capacity. These
+checks change no public signature or persisted format, and provisioned native
+process and MCP controls remain required before production acceptance.

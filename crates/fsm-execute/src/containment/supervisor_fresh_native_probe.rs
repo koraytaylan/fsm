@@ -66,6 +66,47 @@ fn shared_tick_fresh() {
     let mut runner = Runner::new().unwrap();
     let mut pipeline = Pipeline;
     let mut clock = FixedClock::new(1000, 1);
+    let foreign_path = copy_store(path);
+    let mut foreign = Store::open(&foreign_path).unwrap();
+    assert_eq!(foreign.records, records);
+    assert_eq!(foreign.current_execution_claim_hash(&claim).unwrap(), hash);
+    assert_ne!(
+        std::fs::metadata(path).unwrap().ino(),
+        std::fs::metadata(&foreign_path).unwrap().ino()
+    );
+    // Even an unpinned host must authenticate the claim's physical authority
+    // before installing ownership or requesting its first binding transport.
+    let mut foreign_runner = Runner::new().unwrap();
+    assert_eq!(
+        foreign_runner
+            .start_native(
+                &mut foreign,
+                &claim,
+                &mut scheduler,
+                Duration::from_secs(30)
+            )
+            .unwrap_err()
+            .code,
+        "exec/inflight_deferred"
+    );
+    assert_eq!(foreign.records, records);
+    assert!(fsm_store::snapshot::store_states_eq(&foreign.state, &state));
+    assert_eq!(scheduler.inflight_effect(effect), Some(&pending));
+    let domain = claim.domain().to_value();
+    let authority = path.parent().unwrap().join(format!(
+        "authority-{}",
+        domain.get("generation").unwrap().as_num().unwrap()
+    ));
+    let allocation = domain.get("allocation").unwrap().as_num().unwrap();
+    for name in ["binding", "launch", "entry", "handoff"] {
+        assert_eq!(
+            std::fs::symlink_metadata(authority.join(format!("{name}-{allocation}.json")))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+    drop(foreign);
     runner
         .start_native(&mut writer, &claim, &mut scheduler, Duration::from_secs(30))
         .unwrap();
@@ -90,12 +131,6 @@ fn shared_tick_fresh() {
         &mut clock,
         &mut holder,
     );
-    let domain = claim.domain().to_value();
-    let authority = path.parent().unwrap().join(format!(
-        "authority-{}",
-        domain.get("generation").unwrap().as_num().unwrap()
-    ));
-    let allocation = domain.get("allocation").unwrap().as_num().unwrap();
     for _ in 0..3 {
         let outcome = tick_reporting(
             &mut watcher,
@@ -137,6 +172,45 @@ fn shared_tick_fresh() {
     ));
     assert_eq!(scheduler.inflight_effect(effect), Some(&pending));
     drop(readonly);
+    // The original independent writer still holds its lease: a healthy writer
+    // on an identical copied prefix must not consume Bound entry permission.
+    let mut foreign = Store::open(&foreign_path).unwrap();
+    let lines = tick_with(
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut pipeline,
+        &mut foreign,
+        &mut clock,
+        1000,
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("exec/inflight_deferred")),
+        "{lines:?}"
+    );
+    assert_eq!(foreign.records, records);
+    assert!(fsm_store::snapshot::store_states_eq(&foreign.state, &state));
+    assert_eq!(foreign.current_execution_claim_hash(&claim).unwrap(), hash);
+    assert_eq!(scheduler.inflight_effect(effect), Some(&pending));
+    for name in ["launch", "entry", "handoff"] {
+        assert_eq!(
+            std::fs::symlink_metadata(authority.join(format!("{name}-{allocation}.json")))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+    let original = Store::open_read_only(path).unwrap();
+    assert_eq!(original.records, records);
+    assert!(fsm_store::snapshot::store_states_eq(
+        &original.state,
+        &state
+    ));
+    drop(original);
+    drop(foreign);
+    std::fs::remove_dir_all(&foreign_path).unwrap();
     holder.release();
     let mut writer = Store::open(path).unwrap();
     let lines = tick_with(
@@ -281,6 +355,39 @@ fn shared_tick_fresh() {
     assert!(cold.state.dedup.contains_key(&ack) && cold.state.dedup.contains_key(&event));
     assert!(cold.state.execution.claim_for(instance, effect).is_none());
     emit(format_args!("\nFSM_NATIVE_FRESH_HANDOFF"));
+}
+
+fn copy_store(source: &std::path::Path) -> std::path::PathBuf {
+    fn copy_entry(source: &std::path::Path, target: &std::path::Path, depth: usize) {
+        assert!(depth < 32, "fixture directory depth exceeds bound");
+        let metadata = std::fs::symlink_metadata(source).unwrap();
+        if metadata.is_dir() {
+            std::fs::create_dir(target).unwrap();
+            let entries: Vec<_> = std::fs::read_dir(source).unwrap().take(4097).collect();
+            assert!(entries.len() <= 4096, "fixture directory exceeds bound");
+            for entry in entries {
+                let entry = entry.unwrap();
+                copy_entry(&entry.path(), &target.join(entry.file_name()), depth + 1);
+            }
+        } else {
+            assert!(
+                metadata.is_file(),
+                "fixture must contain only regular files"
+            );
+            std::fs::copy(source, target).unwrap();
+        }
+    }
+    // Snapshot top-level entries before creating the nested destination, so
+    // copying never descends into its own output in the unprivileged fixture.
+    let entries: Vec<_> = std::fs::read_dir(source).unwrap().take(4097).collect();
+    assert!(entries.len() <= 4096, "fixture directory exceeds bound");
+    let target = source.join("foreign-writer-prefix");
+    std::fs::create_dir(&target).unwrap();
+    for entry in entries {
+        let entry = entry.unwrap();
+        copy_entry(&entry.path(), &target.join(entry.file_name()), 0);
+    }
+    target
 }
 
 #[allow(clippy::too_many_arguments)]
