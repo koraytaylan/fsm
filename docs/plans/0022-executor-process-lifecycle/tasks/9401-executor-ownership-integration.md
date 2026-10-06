@@ -526,3 +526,13 @@ was advanced to `a876df1`; CI run `37397745043` is queued at that exact source.
 It must execute the newer native discovery inventory/binding and stopped-owner
 watcher controls, as well as corrected portable gates, before acceptance.
 No production-routing, native-execution or green-matrix claim is made now.
+
+The updated CI stable native job completed successfully at exact corrected
+source `a876df1df10ae977a2e45a5393e590c175652240`. Its full artifact is retained
+under `ci-37397745043/stable`; the independent `verify_native_evidence.py`
+command completed with exit zero and verified all 81 matrix cases against
+`rustc 1.99.0 (b940084d7 2026-09-28)`, clean source identity and retained
+per-case evidence. This is provisioned native execution for the current
+primitive/regression source, not automatic production Runner acceptance:
+`executable_bytes_verified` and `gate_released` remain false. The MSRV native
+and six portable jobs remain live; the full matrix is not yet green.
