@@ -3743,3 +3743,18 @@ planned, task 9401 stays in progress, the count stays 3/7 and all production
 acceptance flags stay false. Plans 20, 21 and 23 remain planned. The private
 remote push remains subject to the earlier automatic rejection and pending
 exact destination/payload authorization; no push is attempted here.
+
+### Closure-client gate and binding correction — 2026-10-06
+
+Session 82449 completed the full stable host gate for unchanged runtime source
+37584c2 with exit 0; local-37584c2-shutdown-stable-gate.log is retained under
+verified 1 GiB/no-swap limits. Read-only inspection confirms this host has no
+protected helper or authority directory, so native runtime proof is unexecuted.
+Review then required full protected binding validation before closure side
+effects, replacing the client's allocation-only request with close-claimed and
+retaining independent receipt authentication afterward. Session 80380 passed
+focused stable/MSRV all-target checks, 32 library tests, API inventory and the
+authority binding guard test; the retained log is local-claimed-closure-check.log.
+Installed broker dispatch and full corrected-source gates remain pending.
+The count remains 3/7, task 9401 in progress and task 9402 planned; production
+defaults, remote-push authorization and all acceptance flags remain unchanged.

@@ -2681,3 +2681,18 @@ may have no claim-matched receipt; successful retirement of its prepared domain
 MUST NOT consume that claim. Production shutdown must implement all admission
 phases, local control authentication, report deadlines and quiet/blocked stdio
 progress separately before task 9402 can complete.
+
+
+### Original binding before claimed closure
+
+The provisional NativeShutdown request uses the additive close-claimed action
+with the full original fsm.native-claim-binding/1 value. The protected authority
+MUST compare its complete stored binding and recorded domain before any fencing
+or closure side effect; a mismatched claim, original hash or domain MUST refuse.
+Allocation-only close remains a separate existing low-level operation and MUST
+NOT be used by this claim-bound client. Missing bindings retain uncertainty;
+this action does not create bindings or resolve published-before-binding claims.
+Receipt authentication after closure remains mandatory and cannot substitute
+for validation before the action. Older helpers lacking close-claimed refuse;
+the client MUST NOT fall back to allocation-only closure. No persisted format,
+hash domain or public Rust signature changes in this correction.

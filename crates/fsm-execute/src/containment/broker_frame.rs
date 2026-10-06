@@ -55,7 +55,7 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
         "discard-prepared" => fsm_core::record::execution::NativeDomain::from_value(payload)
             .map(|_| ())
             .map_err(|error| error.to_string()),
-        "bind" => closed(payload, &["format", "claim", "journal_claim"]),
+        "bind" | "close-claimed" => closed(payload, &["format", "claim", "journal_claim"]),
         "execute" | "close" | "observe" | "recover" => allocation(payload).map(|_| ()),
         _ => Err("broker action or payload outside policy".into()),
     }

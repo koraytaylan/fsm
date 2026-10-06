@@ -1008,3 +1008,12 @@ before returning opaque proof. It preserves ownership on uncertainty and
 changes no persisted format or production default. Full installed acceptance,
 all admission phases and the bounded production shutdown controls remain
 unfinished; the primitive alone does not complete task 9402.
+
+
+### Original binding before claimed closure
+
+Corrected the provisional closure client to send the full original binding
+through close-claimed, requiring the authority to match it before fencing or
+closure rather than relying solely on receipt validation afterward. Older
+helpers refuse without fallback; no Rust signature or persisted format changes.
+Installed runtime acceptance remains pending and production defaults unchanged.

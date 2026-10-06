@@ -2248,3 +2248,12 @@ independent stdio progress or report deadlines; filesystem observation belongs
 on the lifecycle owner, separate from bounded control response handling.
 Published claims whose binding never completed still require a separate
 reconciliation path and cannot settle from prepared-domain retirement.
+
+
+### Original binding before claimed closure
+
+NativeShutdown requires a helper supporting close-claimed: the authority
+checks the original full binding and domain before fencing, then the client
+independently authenticates the receipt. A missing binding or old helper
+refuses and retains uncertainty; do not substitute allocation-only close.
+Published-before-binding claims still need separate reconciliation.

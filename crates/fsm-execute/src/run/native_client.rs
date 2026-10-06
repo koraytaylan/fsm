@@ -340,7 +340,7 @@ fn validate_request(value: &Value) -> Result<(), String> {
         Some("discard-prepared") => fsm_core::record::execution::NativeDomain::from_value(payload)
             .map(|_| ())
             .map_err(|error| error.to_string()),
-        Some("bind") => {
+        Some("bind" | "close-claimed") => {
             let binding = payload.as_obj().ok_or("native binding is not an object")?;
             if binding.len() == 3
                 && ["format", "claim", "journal_claim"]

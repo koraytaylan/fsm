@@ -128,3 +128,30 @@ remain pending. The primitive is not yet wired to production or any lifecycle
 control: published-before-binding claims, all stop/admission phases, bounded
 reports and independent stdio progress remain required, so task 9402 stays
 planned and all production acceptance flags remain false.
+
+## Binding verification before closure
+
+Full host gate session 82449 completed exit 0 at runtime source 37584c2:
+debug/release workspace, all-target Clippy, warning-denied docs, zero-dependency
+and embedding gates passed with verified 1 GiB/no-swap limits. Its log is
+local-37584c2-shutdown-stable-gate.log. Status documentation ba428ed changed
+during execution; runtime source did not. This host lacks the protected helper
+and authority directory, so installed runtime proof remains unexecuted.
+
+Source review found that the first client sent allocation-only close and
+authenticated the original claim only afterward. The corrected close-claimed
+action carries the full original binding. Under the authority lock, the broker
+checks that binding and its recorded domain before fencing or completing it.
+Bindings and allocations are immutable and never reused; the lock is released
+before the existing fencing/completion operations acquire it. A missing or
+mismatched binding refuses before closure, including a valid but stale journal
+claim naming an allocation bound to different original material. Receipt checks
+remain required afterward, and older helpers refuse without numeric fallback.
+
+Session 80380 completed exit 0: format/source-size, stable/MSRV all-target
+executor Clippy, 32 library tests, downstream API/public-surface tests and the
+authority full-binding guard regression passed; local-claimed-closure-check.log
+is retained. The guard test checks original equality and changed hash/run/domain
+refusal using a literal fixture; it is not an installed broker side-effect test.
+Actual provisioned dispatch refusal/closure and full changed-source acceptance
+remain pending; production selection and task completion flags stay unchanged.

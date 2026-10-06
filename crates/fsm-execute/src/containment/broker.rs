@@ -16,6 +16,9 @@ use std::sync::{
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+#[path = "broker_claim_closure.rs"]
+mod claim_closure;
+
 pub(super) fn serve(directory: &Path) -> Result<(), String> {
     let endpoint = broker_endpoint::open(directory)?;
     let stopping = Arc::new(AtomicBool::new(false));
@@ -104,6 +107,7 @@ fn session(
             "prepare" => allocator::prepare(&directory),
             "discard-prepared" => closure::discard_prepared(&directory, payload),
             "bind" => bind(&directory, payload).map(|_| Value::Null),
+            "close-claimed" => claim_closure::close_claimed(&directory, payload),
             "recover" => runner::recover(&directory, broker_frame::allocation(payload)?),
             "observe" => observation::read(&directory, broker_frame::allocation(payload)?),
             "close" => {

@@ -68,13 +68,17 @@ impl NativeShutdown {
             .join(namespace)
             .join(format!("authority-{generation}"))
             .join(format!("closure-{allocation}-{}.json", claim.run_id()));
-        let payload = domain
-            .get("allocation")
-            .ok_or("native shutdown allocation missing")?
-            .clone();
+        let payload = Value::Obj(BTreeMap::from([
+            (
+                "format".into(),
+                Value::Str("fsm.native-claim-binding/1".into()),
+            ),
+            ("claim".into(), claim.to_value()),
+            ("journal_claim".into(), Value::Str(journal_claim.clone())),
+        ]));
         let message = Value::Obj(BTreeMap::from([
             ("format".into(), Value::Str("fsm.native-request/1".into())),
-            ("action".into(), Value::Str("close".into())),
+            ("action".into(), Value::Str("close-claimed".into())),
             ("payload".into(), payload),
         ]));
         let remaining = deadline

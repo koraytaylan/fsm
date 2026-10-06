@@ -1045,3 +1045,12 @@ domains, receipt formats or existing signatures. It supplies no completion
 result and grants no settlement, admission or production control guarantee.
 Installed native proof and complete bounded lifecycle integration remain
 required; no production selection or acceptance flag changes here.
+
+
+### Original binding before claimed closure
+
+The additive protected wire action close-claimed accepts the existing full
+fsm.native-claim-binding/1 value and checks it before closure. NativeShutdown
+uses this action without changing its Rust signatures, journal VERSION, hash
+domains or receipt formats. Older helpers refuse it with no allocation-only
+fallback; installed acceptance must cover the matched client/helper revision.
