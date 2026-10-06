@@ -1013,3 +1013,14 @@ The matched-stop retirement-race correction preserves public signatures, error c
 
 
 Cold acknowledgement-handoff host recovery is additive and uses the existing VERSION 12/root5/snapshot7/base3 contract without new formats or error codes; original physical store and authority identity checks apply before event delivery, and public production constructors remain unchanged pending installed acceptance.
+
+### Durable executor ownership discovery
+
+The additive `execution_ownership` field on `fsm://executor` reports enabled
+claim-era state and counts of unresolved runs, stopped runs and outstanding
+acknowledged event handoffs from the observed verified prefix. Unavailable
+stores report null; read-only stores can expose prefix counts without writer
+access. These are durable obligations, not live process health or closure
+proof, and disclose no identifiers, commands, native paths or handler results.
+This adds resource metadata without changing journal formats, hashes or
+execution admission; the existing `fsm.executor/1` format remains applicable.

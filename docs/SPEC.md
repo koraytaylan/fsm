@@ -1430,6 +1430,13 @@ the executor's substitution rules, including nested MCP string values.
 Outcome payload literals are part of the exposed domain event contract.
 Process output and MCP results MUST NOT be implicitly converted to events.
 
+`execution_ownership` MUST be null when the store is unavailable; otherwise
+it MUST report `enabled`, `unresolved_runs`, `stopped_runs`, and
+`outstanding_handoffs` from the verified observed journal prefix. Counts
+MUST reveal no run identifiers, native paths, commands, or results and MUST
+NOT be presented as live process observations or proof of closure. A
+read-only prefix MAY report these durable counts without taking the writer.
+
 A plain writer reports an empty handler list. A read-only or degraded session
 reports a null handler list and unknown external executor status; holding a
 read-only store MUST NOT be presented as proof of a running executor.

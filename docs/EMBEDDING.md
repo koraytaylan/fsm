@@ -2210,3 +2210,14 @@ A naturally retired native cgroup can disappear during stop inspection; the back
 
 
 On Linux, the shared tick paths discover durable acknowledged event obligations from the verified snapshot, recover the original checked contract without a current handler table, and apply only under the original healthy writer and protected authority identity. This event-only recovery occupies no execution slot, starts no helper and never acknowledges again; disabled or refused deliveries remain parked until journal progress.
+
+### Durable executor ownership discovery
+
+The additive `execution_ownership` field on `fsm://executor` reports enabled
+claim-era state and counts of unresolved runs, stopped runs and outstanding
+acknowledged event handoffs from the observed verified prefix. Unavailable
+stores report null; read-only stores can expose prefix counts without writer
+access. These are durable obligations, not live process health or closure
+proof, and disclose no identifiers, commands, native paths or handler results.
+This adds resource metadata without changing journal formats, hashes or
+execution admission; the existing `fsm.executor/1` format remains applicable.

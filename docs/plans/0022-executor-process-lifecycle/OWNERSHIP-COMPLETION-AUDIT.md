@@ -9,7 +9,7 @@ and test requirements, not a reduced definition of ownership integration.
 | Original identity and contract through recovery | Published claim anchors, physical store/authority checks and original contract reconstruction implemented; earlier provisioned removed-table recovery passes | Cold event-only implementation and named controls are later source and have no installed execution evidence |
 | Verified stopped disposition, retry/ack and ordered outcome event | Atomic format-12 handoffs and historical migration/checkpoint fixtures implemented; prior native matrix passed | New cold two-seal, rejected-key and conflicting-key process/MCP controls must execute at their exact source |
 | Shared standalone/embedded/public startup sequence | Public selected tick controls have native evidence; common original-owner recovery implemented | Production standalone/standalone and standalone/embedded races with independent external tree markers remain required; public control tests do not prove production routing |
-| Bounded uncertainty health with no secret disclosure | Current ownership retention/refusal diagnostics exist | Production health summaries, API inventory and actionable startup uncertainty inspection require completion |
+| Bounded uncertainty health with no secret disclosure | Current ownership retention/refusal diagnostics exist | Additive durable prefix counts are now implemented and locally tested; actual live lifecycle health, API inventory and actionable startup uncertainty inspection still require completion |
 
 The original crash matrix still requires crashes after claim, launch,
 verified stop, stopped record, attempt/ack and before outcome event, with

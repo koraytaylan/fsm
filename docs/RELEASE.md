@@ -977,3 +977,14 @@ Corrected matched-stop inspection racing natural cgroup retirement: a confirmed 
 
 
 Added bounded cold native post-ack event recovery through shared tick paths, retaining original contract, result and physical authority identity across cache and sealed restarts; original warm completion retry semantics remain intact, and production native defaults await installed acceptance.
+
+### Durable executor ownership discovery
+
+The additive `execution_ownership` field on `fsm://executor` reports enabled
+claim-era state and counts of unresolved runs, stopped runs and outstanding
+acknowledged event handoffs from the observed verified prefix. Unavailable
+stores report null; read-only stores can expose prefix counts without writer
+access. These are durable obligations, not live process health or closure
+proof, and disclose no identifiers, commands, native paths or handler results.
+This adds resource metadata without changing journal formats, hashes or
+execution admission; the existing `fsm.executor/1` format remains applicable.

@@ -3659,3 +3659,27 @@ No push workaround was attempted. Local work continues independently.
 Task 9401 remains in progress; production defaults remain legacy, and bounded
 shutdown, reconciliation and full lifecycle crash/concurrency proof remain
 incomplete.
+
+### Bounded durable ownership discovery — 2026-10-06
+
+Added execution_ownership to the production fsm://executor resource, with
+claim-era admission enabled and counts of unresolved runs, stopped runs and
+outstanding acknowledged handoffs from the observed verified store prefix.
+Unavailable stores return null, while read-only stores can report counts
+without a writer; external_executor remains unknown. Counts expose no run
+identifiers, commands, native paths or results and do not claim live process
+health, native capability, closure or operator reconciliation.
+SPEC, API policy, embedding and release documentation move with this field.
+
+Serial verified 1 GiB/no-swap session 31212 completed with exit 0:
+format/source-size checks, stable/MSRV CLI all-target Clippy and all three
+mcp_executor tests passed. The new test creates an actual journal claim,
+reads discovery under an independent live writer, checks the exact nonzero
+count and unchanged complete file bytes, and checks unavailable null and
+unchanged unknown external-executor status. The retained log is
+local-ownership-discovery-check.log in the task cache. This test does not
+prove native closure, actual stopped/handoff recovery or production routing.
+Full changed-source host and portable gates remain pending; earlier gates
+are not attributed to this additive resource change. Task 9401 remains in
+progress, downstream lifecycle tasks remain incomplete, and the rejected
+remote push still awaits exact authorization.

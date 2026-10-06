@@ -78,6 +78,40 @@ fn advance(advance: Option<&Advance>) -> Value {
     })
 }
 
+fn execution_ownership(store: Option<&Store>) -> Value {
+    let Some(store) = store else {
+        return Value::Null;
+    };
+    let mut unresolved = 0usize;
+    let mut stopped = 0usize;
+    for (_, result) in store.state.execution.unresolved() {
+        unresolved += 1;
+        stopped += usize::from(result.is_some());
+    }
+    Value::Obj(BTreeMap::from([
+        (
+            "enabled".into(),
+            Value::Bool(
+                store.state.execution.admission()
+                    == fsm_core::record::execution::Admission::Enabled,
+            ),
+        ),
+        ("unresolved_runs".into(), Value::Num(unresolved.to_string())),
+        ("stopped_runs".into(), Value::Num(stopped.to_string())),
+        (
+            "outstanding_handoffs".into(),
+            Value::Num(
+                store
+                    .state
+                    .execution_handoffs
+                    .outstanding()
+                    .count()
+                    .to_string(),
+            ),
+        ),
+    ]))
+}
+
 pub(crate) fn describe(store: Option<&Store>, handlers: Option<&Value>) -> Value {
     let (mode, progress, external_executor) = match store {
         None => ("degraded", "unavailable", "unknown"),
@@ -88,6 +122,7 @@ pub(crate) fn describe(store: Option<&Store>, handlers: Option<&Value>) -> Value
     let embedded = mode == "embedded";
     Value::Obj(BTreeMap::from([
         ("format".into(), Value::Str("fsm.executor/1".into())),
+        ("execution_ownership".into(), execution_ownership(store)),
         ("mode".into(), Value::Str(mode.into())),
         ("executes_effects".into(), Value::Bool(embedded)),
         ("external_executor".into(), Value::Str(external_executor.into())),

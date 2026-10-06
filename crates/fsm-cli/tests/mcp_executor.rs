@@ -183,3 +183,81 @@ fn writer_read_only_and_degraded_do_not_invent_an_executor() {
     assert_eq!(report.get("mode").and_then(Value::as_str), Some("degraded"));
     assert_eq!(report.get("handlers"), Some(&Value::Null));
 }
+
+#[test]
+fn durable_ownership_counts_are_read_only_and_do_not_invent_live_health() {
+    use fsm_core::record::execution::{NativeDomain, RetryPolicy};
+    use fsm_store::store::ExecutionClaimRequest;
+    let directory = Directory::new();
+    let mut writer = Store::open(&directory.0).unwrap();
+    assert_eq!(
+        discover(Some(&mut writer), None).get("execution_ownership"),
+        Some(&value(
+            r#"{"enabled":true,"unresolved_runs":0,"stopped_runs":0,"outstanding_handoffs":0}"#
+        ))
+    );
+    writer
+        .define_machine(
+            parse(
+                include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
+                &JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+            false,
+            false,
+        )
+        .unwrap();
+    writer
+        .create_instance("case_review", "instance", "create", None)
+        .unwrap();
+    writer
+        .send_event("instance", "docs_ok", value("{}"), "send", None)
+        .unwrap();
+    let effect = writer.state.instances["instance"].pending[0].clone();
+    let domain = NativeDomain::from_value(&value(r#"{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}"#)).unwrap();
+    let retry = RetryPolicy::from_value(&value(
+        r#"{"attempts":3,"backoff_ms":10,"max_backoff_ms":40,"on":["timeout"]}"#,
+    ))
+    .unwrap();
+    writer.claim_execution_on(&mut FixedClock::new(100, 1), ExecutionClaimRequest {
+        instance_id: "instance", effect_id: &effect,
+        handler_fingerprint: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        retry: &retry, domain: &domain, request_id: "claim", expected_seq: None,
+    }).unwrap();
+    fn files(path: &std::path::Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+        let mut result = std::collections::BTreeMap::new();
+        for entry in std::fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                result.extend(files(&entry.path()));
+            } else {
+                result.insert(entry.path(), std::fs::read(entry.path()).unwrap());
+            }
+        }
+        result
+    }
+    let before = files(&directory.0);
+    let mut reader = Store::open_read_only(&directory.0).unwrap();
+    let report = discover(Some(&mut reader), None);
+    assert_eq!(
+        report.get("execution_ownership"),
+        Some(&value(
+            r#"{"enabled":true,"unresolved_runs":1,"stopped_runs":0,"outstanding_handoffs":0}"#
+        ))
+    );
+    assert_eq!(
+        report.get("external_executor"),
+        Some(&Value::Str("unknown".into()))
+    );
+    assert_eq!(files(&directory.0), before);
+    let encoded = String::from_utf8(fsm_core::canon::canon_bytes(
+        report.get("execution_ownership").unwrap(),
+    ))
+    .unwrap();
+    assert!(!encoded.contains("instance"));
+    assert!(!encoded.contains("linux-systemd"));
+    assert_eq!(
+        discover(None, None).get("execution_ownership"),
+        Some(&Value::Null)
+    );
+}
