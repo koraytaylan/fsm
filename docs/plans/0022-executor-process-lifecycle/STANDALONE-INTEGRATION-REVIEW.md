@@ -45,7 +45,12 @@ Acceptance must launch the actual standalone binary, discover its endpoint,
 issue drain/abort while another writer is held, and verify actual actor exit,
 writer facts, admission closure and incarnation cleanup; nonempty claims require
 installed native proof and original interrupted settlement, not empty tests.
-Exclusive contention, blocked log output, long scheduling intervals, repeated
-controls and ordinary OS termination must exercise the same production owner.
+Exclusive contention, blocked log output, long scheduling intervals and repeated
+controls must exercise the same production owner. The approved Linux signal
+decision in EXECUTOR-LIFECYCLE.md keeps ordinary SIGTERM as default termination,
+with protected supervisor lease EOF and durable claims retained until verified
+closure/settlement; it does not promise graceful drain or require a signal
+callback. Actual SIGTERM/SIGKILL production acceptance must test that policy,
+separately from independently woken explicit drain/abort control.
 This review identifies integration obligations and does not claim they are
 implemented or promote either ownership or shutdown tasks.
