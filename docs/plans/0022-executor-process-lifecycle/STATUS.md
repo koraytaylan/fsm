@@ -4017,3 +4017,14 @@ cannot publish a launch artifact or mutate the journal, but remains compiled
 and unexecuted locally. Full stable verification is pending. This closes
 admission only: independent bounded reports, endpoint control and production
 stdio shutdown remain incomplete, and no task or acceptance flag is promoted.
+
+### Complete admission-fence stable gate — 2026-10-06
+
+Session 9885 completed exit 0 at exact runtime source
+716666b31fe203928ca1588110fd09d5c0329467, unchanged throughout verification.
+Formatting/size, debug/release workspace suites, all-target workspace Clippy,
+warning-denied documentation, zero dependencies and full embedding acceptance
+passed under verified 1 GiB/no-swap limits; evidence is retained in
+local-native-admission-fence-stable-gate.log. The provisioned native controls
+and other platform axes remain unexecuted for this source, and production
+shutdown integration remains incomplete; no task or acceptance status is promoted.
