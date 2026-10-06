@@ -708,7 +708,9 @@ unexecuted by these portable gates.
 Original cleanup CI Ubuntu stable job `112069961690` completed successfully
 at `e501679`; macOS MSRV job `112069961689` also completed successfully,
 with its complete log retained as `ci-37401653979/macos-msrv-job.log`;
-four portable jobs remain live, and that older source cannot
+Ubuntu MSRV job `112069961706` subsequently completed successfully, with
+its complete log retained as `ci-37401653979/ubuntu-msrv-job.log`;
+three portable jobs remain live, and that older source cannot
 execute the physical replacement control or the later retirement diagnostic.
 
 Physical-store discovery review added a production-entry refusal control that
