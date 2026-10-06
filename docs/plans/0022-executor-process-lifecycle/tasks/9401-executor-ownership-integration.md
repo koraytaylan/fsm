@@ -768,6 +768,11 @@ successfully at the same `482da8f` source, with its complete log retained as
 `ci-37405315461/ubuntu-msrv-job.log`; both macOS and both Windows jobs remain
 live, and actual production Runner routing remains unfinished.
 
+Current macOS MSRV portable job `112081460680` subsequently completed
+successfully at `482da8f`, with its complete log retained as
+`ci-37405315461/macos-msrv-job.log`; macOS stable and both Windows jobs
+remain live, so the current portable matrix is not yet terminal.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
