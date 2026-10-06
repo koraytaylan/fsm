@@ -573,3 +573,13 @@ denied and retained `local-a876df1-stable-doc.log`. Updated CI Ubuntu stable
 also completed successfully; the other five portable legs remain live.
 These results leave production Runner composition, the remaining host gates
 and full portable matrix acceptance outstanding.
+
+Frozen corrected source `a876df1` documentation completed with exit zero and
+warnings denied, retaining `local-a876df1-stable-doc.log`. The explicit serial
+zero-dependency and embed-acceptance checks also passed, as independently read
+from `local-a876df1-stable-zero-deps.log` (one test) and
+`local-a876df1-stable-embed.log` (11 completeness tests plus one external
+execution-ownership test). Together with formatting, size, range, debug,
+release and all-target lint checks, this completes the required local stable
+host gate for this frozen primitive/regression source. Five portable CI legs
+remain live; production Runner routing and task 9401 remain incomplete.
