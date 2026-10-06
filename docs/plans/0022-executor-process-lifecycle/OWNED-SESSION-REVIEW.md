@@ -439,3 +439,29 @@ execution were not repeated for this test-only diagnostic change, and the
 previous production workflow failures remain open.
 This bounds assertion allocation only and does not establish the cause of
 the previously reported host memory or swap pressure.
+
+### Final renderer process-exit and framing review (2026-10-07)
+
+A cache-only safe-Rust probe started a named stderr worker writing 1 MiB
+to an actual unread pipe; an independent Python observer checked that exact
+child's named worker was blocked in a pipe wait before releasing main through
+stdin, while retaining the stderr reader open and unread. Normal main return
+exited successfully in 0.001 seconds on this host; therefore a detached blocked
+stderr worker itself did not prevent process exit in this experiment.
+The compile and probe ran serially in a verified 1 GiB / zero-swap scope;
+source and evidence are retained as blocked-stderr-exit-probe.rs,
+blocked-stderr-exit-probe.py and blocked-stderr-exit-probe.log in the task cache.
+This is runtime feasibility evidence, not production bounded-exit acceptance.
+
+Review also rejects the earlier native-final-error-output.rs.draft as an
+integration candidate in its current form: render::write_error(false, ...)
+emits multiline human text (including a hint line), whereas OutputControl's
+enqueue rejects internal newlines by its protocol framing contract.
+Ignoring enqueue failure would silently discard healthy human diagnostics.
+Final diagnostic transport must preserve the human and JSON rendering bytes
+with separate diagnostic framing while sharing bounded allocation and
+nonjoining delivery semantics; protocol single-line validation stays intact.
+Original-deadline expiry still requires an explicit delivery policy and
+actual production tests, and no final-renderer implementation is accepted.
+No runtime source changed; documentation diff checks passed, and full Cargo
+gates were not repeated for this review-only update.
