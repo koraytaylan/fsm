@@ -725,3 +725,54 @@ pub(super) fn discovery_faults(directory: &Path) {
     refuse("native discovery socket identity or access differs");
     fs::write(&route, &original_route).unwrap();
 }
+
+pub(super) fn permit_operator_store(path: &Path) {
+    let metadata = fs::symlink_metadata(path).unwrap();
+    assert_eq!(metadata.uid(), 0);
+    assert!(metadata.is_dir() || metadata.is_file());
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path).unwrap() {
+            permit_operator_store(&entry.unwrap().path());
+        }
+    }
+    fs::set_permissions(
+        path,
+        fs::Permissions::from_mode(if metadata.is_dir() { 0o700 } else { 0o600 }),
+    )
+    .unwrap();
+    std::os::unix::fs::chown(path, Some(65534), Some(65534)).unwrap();
+}
+
+pub(super) fn shared_recovery(directory: &Path, binding: &Value, competitor: &NativeDomain) {
+    let catalogue = directory.join("catalogue.json");
+    let saved = directory.join("shared-catalogue.saved");
+    fs::rename(&catalogue, &saved).unwrap();
+    let script = SUPERVISOR.replace("::owned_request", "::shared_tick_recovery");
+    let output = Command::new("/usr/bin/python3")
+        .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
+        .env(
+            "FSM_NATIVE_TEST_COMPETING_DOMAIN",
+            std::str::from_utf8(&canon_bytes(&competitor.to_value())).unwrap(),
+        )
+        .args(["-c", &script])
+        .arg(directory.join("broker"))
+        .arg(std::str::from_utf8(&canon_bytes(binding)).unwrap())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "shared recovery: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| *line == "FSM_NATIVE_SHARED_RECOVERY")
+            .count(),
+        1
+    );
+    fs::rename(saved, catalogue).unwrap();
+}

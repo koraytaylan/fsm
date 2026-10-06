@@ -127,7 +127,7 @@ pub fn tick_reporting(
     // can journal the fact.
     let settles = prepare(scheduler, runner, &mut plan);
     let finished = runner.finished_effects();
-    if !writes_anything(&plan.directives, &settles, &finished) {
+    if !writes_anything(&plan.directives, &settles, &finished) && !runner.native_ready() {
         return TickOutcome {
             lines: plan.lines,
             writer_unavailable: false,
@@ -443,6 +443,9 @@ fn settle_phase(
     finished: Vec<String>,
 ) -> Vec<String> {
     let mut lines = Vec::new();
+    if let Some(result) = runner.apply_native(store, clock, pipeline) {
+        lines.push(result.unwrap_or_else(|error| error_line(&error)));
+    }
     let pending: BTreeMap<&str, &PendingEffect> = plan
         .observation
         .pending

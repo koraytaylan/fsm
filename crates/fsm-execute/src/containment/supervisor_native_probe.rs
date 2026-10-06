@@ -630,3 +630,193 @@ fn refuse_discovery() {
     };
     assert_eq!(error, expected);
 }
+
+#[test]
+#[ignore = "invoked only as the unprivileged shared tick native control"]
+fn shared_tick_recovery() {
+    use fsm_execute::{
+        config::HandlerTable,
+        run::{Pipeline, Runner},
+        sched::Scheduler,
+        service::{tick_reporting, tick_with},
+        watch::Watcher,
+    };
+    use fsm_store::{clock::FixedClock, store::Store};
+    use std::os::unix::fs::MetadataExt;
+    assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
+    let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
+    let path = std::path::Path::new(&path);
+    let binding = std::env::var("FSM_NATIVE_TEST_BINDING").unwrap();
+    let binding = parse(binding.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+    let claim = Claim::from_value(binding.get("claim").unwrap()).unwrap();
+    let (instance, effect) = claim.effect();
+    let original = Store::open_read_only(path).unwrap();
+    let records = original.records.clone();
+    let state = original.state.clone();
+    drop(original);
+    let table = HandlerTable::default();
+    let mut watcher = Watcher::with_handlers(path.into(), &table);
+    let mut scheduler = Scheduler::new(table);
+    let mut runner = Runner::new().unwrap();
+    let mut pipeline = Pipeline;
+    let mut clock = FixedClock::new(1000, 1);
+    let mut holder = WriterHolder::start(path.to_str().unwrap());
+    holder.acquire();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        assert!(
+            Instant::now() < deadline,
+            "shared completion readiness deadline"
+        );
+        assert!(holder.child.try_wait().unwrap().is_none());
+        let outcome = tick_reporting(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            path,
+            &mut clock,
+            1000,
+        );
+        let snapshot = Store::open_read_only(path).unwrap();
+        assert_eq!(snapshot.records, records);
+        assert!(fsm_store::snapshot::store_states_eq(
+            &snapshot.state,
+            &state
+        ));
+        if outcome.writer_unavailable {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut readonly = Store::open_read_only(path).unwrap();
+    let lines = tick_with(
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut pipeline,
+        &mut readonly,
+        &mut clock,
+        1000,
+    );
+    assert!(
+        lines.iter().any(|line| line.contains("exec/mode")),
+        "{lines:?}"
+    );
+    assert_eq!(readonly.records, records);
+    assert!(fsm_store::snapshot::store_states_eq(
+        &readonly.state,
+        &state
+    ));
+    drop(readonly);
+    holder.release();
+    let mut writer = Store::open(path).unwrap();
+    writer
+        .send_event(
+            instance,
+            "suspend",
+            Value::Obj(BTreeMap::new()),
+            "shared-suspend",
+            None,
+        )
+        .unwrap();
+    let lines = tick_with(
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut pipeline,
+        &mut writer,
+        &mut clock,
+        1000,
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("disposition=acked advance=deferred")),
+        "{lines:?}"
+    );
+    assert!(writer.state.execution.claim_for(instance, effect).is_none());
+    assert!(
+        !writer.state.instances[instance]
+            .pending
+            .iter()
+            .any(|pending| pending == effect)
+    );
+    let prefix = (writer.journal.last_seq, writer.journal.last_hash.clone());
+    let settled = writer.records.clone();
+    for _ in 0..3 {
+        tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer,
+            &mut clock,
+            1000,
+        );
+    }
+    assert_eq!(writer.records, settled);
+    assert_eq!(
+        (writer.journal.last_seq, writer.journal.last_hash.clone()),
+        prefix
+    );
+    writer
+        .send_event(
+            instance,
+            "resume",
+            Value::Obj(BTreeMap::new()),
+            "shared-resume",
+            None,
+        )
+        .unwrap();
+    let lines = tick_with(
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut pipeline,
+        &mut writer,
+        &mut clock,
+        1000,
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("disposition=acked advance=advanced")),
+        "{lines:?}"
+    );
+    let ack = fsm_execute::rid::ack_rid(effect);
+    let event = fsm_execute::rid::event_rid(effect, "docs_ok");
+    let ack_record = writer
+        .records
+        .iter()
+        .find(|record| record.body.get("request_id").and_then(Value::as_str) == Some(&ack))
+        .unwrap();
+    let event_record = writer
+        .records
+        .iter()
+        .find(|record| record.body.get("request_id").and_then(Value::as_str) == Some(&event))
+        .unwrap();
+    assert!(ack_record.seq < event_record.seq);
+    let count = writer.records.len();
+    tick_with(
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut pipeline,
+        &mut writer,
+        &mut clock,
+        1000,
+    );
+    assert_eq!(writer.records.len(), count);
+    drop(writer);
+    let reopened = Store::open_read_only(path).unwrap();
+    assert!(
+        reopened
+            .state
+            .execution
+            .claim_for(instance, effect)
+            .is_none()
+    );
+    assert!(reopened.state.dedup.contains_key(&ack) && reopened.state.dedup.contains_key(&event));
+    emit(format_args!("\nFSM_NATIVE_SHARED_RECOVERY"));
+}

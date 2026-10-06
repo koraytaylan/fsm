@@ -605,6 +605,28 @@ impl Runner {
         }
     }
 
+    pub(crate) fn native_ready(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        return self.native.ready();
+        #[cfg(not(target_os = "linux"))]
+        false
+    }
+
+    pub(crate) fn apply_native(
+        &mut self,
+        store: &mut fsm_store::store::Store,
+        clock: &mut dyn fsm_store::clock::Clock,
+        pipeline: &mut Pipeline,
+    ) -> Option<Result<String, ExecError>> {
+        #[cfg(target_os = "linux")]
+        return self.native.apply(store, clock, pipeline);
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = (store, clock, pipeline);
+            None
+        }
+    }
+
     /// The directory this runner captures handler output into.
     pub fn scratch_dir(&self) -> &Path {
         &self.scratch

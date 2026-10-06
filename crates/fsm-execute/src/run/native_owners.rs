@@ -1,8 +1,12 @@
 //! Startup ownership retained independently of pending effects and writer access.
 
-use super::native_client::{NativeExecution, NativeRunPhase};
+use super::{
+    Pipeline, SettleOutcome,
+    native_client::{NativeExecution, NativeRunPhase},
+};
 use crate::{error::ExecError, watch::Observation};
 use fsm_core::record::execution::{Claim, Stopped};
+use fsm_store::clock::Clock;
 use fsm_store::store::Store;
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt, time::Duration};
 
@@ -14,12 +18,15 @@ struct Owner {
     stopped: Option<Stopped>,
     execution: NativeExecution,
     requested: bool,
+    parked_at: Option<u64>,
 }
 
 #[derive(Default)]
 pub(super) struct NativeOwners {
     physical_store: Option<(u64, u64)>,
     owners: BTreeMap<u64, Owner>,
+    observed_seq: u64,
+    cursor: u64,
 }
 
 impl NativeOwners {
@@ -28,6 +35,7 @@ impl NativeOwners {
         snapshot: &Store,
         observation: &mut Observation,
     ) -> Result<(), ExecError> {
+        self.observed_seq = snapshot.journal.last_seq;
         if self.owners.is_empty() && observation.execution_owners.is_empty() {
             return Ok(());
         }
@@ -48,7 +56,11 @@ impl NativeOwners {
         }
         // Missing journal observation cannot retire a locally held identity.
         // Exact settlement reconciliation will explicitly consume this state.
-        for owner in self.owners.values() {
+        for owner in self
+            .owners
+            .values()
+            .filter(|owner| owner.execution.progress().retained)
+        {
             if !observation
                 .execution_owners
                 .iter()
@@ -112,9 +124,45 @@ impl NativeOwners {
                 stopped: stopped.cloned(),
                 execution: NativeExecution::retain_uncertain(claim),
                 requested: false,
+                parked_at: None,
             },
         );
         Ok(())
+    }
+
+    pub(super) fn ready(&self) -> bool {
+        self.owners
+            .values()
+            .any(|owner| owner.ready(self.observed_seq))
+    }
+
+    pub(super) fn apply(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        pipeline: &mut Pipeline,
+    ) -> Option<Result<String, ExecError>> {
+        let ready: Vec<u64> = self
+            .owners
+            .iter()
+            .filter(|(_, owner)| owner.ready(store.journal.last_seq))
+            .map(|(run, _)| *run)
+            .collect();
+        let selected = ready
+            .iter()
+            .find(|run| **run > self.cursor)
+            .or_else(|| ready.first())?;
+        self.cursor = *selected;
+        let owner = self.owners.get_mut(selected)?;
+        match owner.apply(store, clock, pipeline) {
+            Ok((line, finished)) => {
+                if finished {
+                    self.owners.remove(selected);
+                }
+                Some(Ok(line))
+            }
+            Err(error) => Some(Err(error)),
+        }
     }
 
     pub(super) fn observe(&mut self) {
@@ -125,6 +173,63 @@ impl NativeOwners {
                 let _ = owner.execution.observe();
             }
         }
+    }
+}
+
+impl Owner {
+    fn ready(&self, seq: u64) -> bool {
+        self.execution.completion().is_some() && self.parked_at != Some(seq)
+    }
+
+    fn apply(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        pipeline: &mut Pipeline,
+    ) -> Result<(String, bool), ExecError> {
+        let response = self.execution.settle(store, clock)?;
+        let disposition = response
+            .get("execution")
+            .and_then(|body| body.get("disposition"))
+            .and_then(fsm_core::json::Value::as_str)
+            .ok_or_else(deferred)?;
+        let (_, effect) = self.claim.effect();
+        let (advance, finished) = match disposition {
+            "acked" => {
+                let completion = self.execution.completion().ok_or_else(deferred)?;
+                let outcome = completion.stopped_outcome().status();
+                let handler = completion.handler();
+                let declared = if outcome == "ok" {
+                    handler.on_ok.is_some()
+                } else {
+                    handler.on_failed.is_some()
+                };
+                match pipeline.advance_native_settled(
+                    store,
+                    clock,
+                    &self.claim,
+                    completion,
+                    &crate::rid::ack_rid(effect),
+                )? {
+                    SettleOutcome::Advanced => ("advanced", true),
+                    SettleOutcome::AlreadySettled => ("already-settled", true),
+                    SettleOutcome::AckedNoAdvance if declared => {
+                        self.parked_at = Some(store.journal.last_seq);
+                        ("deferred", false)
+                    }
+                    SettleOutcome::AckedNoAdvance => ("none", true),
+                }
+            }
+            "attempted" | "interrupted" => ("none", true),
+            _ => return Err(deferred()),
+        };
+        Ok((
+            format!(
+                "native-settled {effect} run_id={} disposition={disposition} advance={advance}",
+                self.claim.run_id()
+            ),
+            finished,
+        ))
     }
 }
 

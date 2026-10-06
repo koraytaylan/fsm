@@ -175,11 +175,17 @@ pub(super) fn refused_close(directory: &Path) -> Value {
 
 pub(super) fn run() {
     for timeout in [false, true] {
-        run_case(timeout);
+        run_case(timeout, Host::Primitive);
     }
+    run_case(false, Host::Shared);
 }
 
-fn run_case(timeout: bool) {
+enum Host {
+    Primitive,
+    Shared,
+}
+
+fn run_case(timeout: bool, host: Host) {
     let mut table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":1000,"on_ok":{"event":"docs_ok"},"on_failed":{"event":"note_added","payload":{"text":"original"}},"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#, &JsonLimits::DEFAULT).unwrap();
     if timeout {
         let Value::Obj(document) = &mut table else {
@@ -259,7 +265,7 @@ fn run_case(timeout: bool) {
     let (binding, effect) = claim_binding(&fixture, &domain);
     let settlement_request = fsm_execute::rid::ack_rid(&effect);
     let successor = NativeDomain::from_value(&fixture.prepare()).unwrap();
-    permit_operator_store(&fixture.store);
+    disconnect_cases::permit_operator_store(&fixture.store);
     assert_eq!(
         request(&base, "recover", Value::Num("1".into())).get("ok"),
         Some(&Value::Bool(false))
@@ -282,6 +288,12 @@ fn run_case(timeout: bool) {
         text(&binding, "journal_claim").unwrap(),
     )
     .unwrap();
+    if matches!(host, Host::Shared) {
+        disconnect_cases::shared_recovery(&fixture.directory, &binding, &successor);
+        disconnect_cases::discard_prepared(&fixture.directory, &successor.to_value());
+        fixture.cleanup().unwrap();
+        return;
+    }
     let mut forged = execution.clone();
     let Value::Obj(frame) = &mut forged else {
         panic!("response object")
@@ -966,21 +978,4 @@ fn run_case(timeout: bool) {
     }));
     drop(daemon);
     fixture.cleanup().unwrap();
-}
-
-fn permit_operator_store(path: &Path) {
-    let metadata = fs::symlink_metadata(path).unwrap();
-    assert_eq!(metadata.uid(), 0);
-    assert!(metadata.is_dir() || metadata.is_file());
-    if metadata.is_dir() {
-        for entry in fs::read_dir(path).unwrap() {
-            permit_operator_store(&entry.unwrap().path());
-        }
-    }
-    fs::set_permissions(
-        path,
-        fs::Permissions::from_mode(if metadata.is_dir() { 0o700 } else { 0o600 }),
-    )
-    .unwrap();
-    std::os::unix::fs::chown(path, Some(65534), Some(65534)).unwrap();
 }
