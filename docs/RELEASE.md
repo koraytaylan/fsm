@@ -856,3 +856,14 @@ The provisional native client exposes NativePreparedCleanup with bounded start/p
 Plan 0022 initial shared Runner startup recovery adopts original unresolved owners from the watcher snapshot, bounds active recovery transport to one, and retains ownership through failures, missing observations and helper retirement; a changed physical directory refuses scheduling. Added a public borrowed-tick regression with a cancelled durable owner and substituted physical store, asserting refusal and unchanged state/records/head. Public signatures and persistent formats are unchanged; complete native launch/settlement and post-ack restart integration remain unfinished.
 
 Plan 0022 recovered native completions now enter shared tick writer-held settlement and original-contract event application, with one fairly selected application per tick; disabled advances retain their original completion but release consumed capacity and park until journal progress. Added a provisioned unprivileged shared-tick control covering a real recovered completion under independent writer contention, readonly refusal, temporarily disabled advance, later resume, original ack-before-event keys, duplicate-free repeated ticks and cold store reopening without current handlers or catalogue. Actual execution of this new native control remains pending; native admission and post-ack cold discovery are not complete.
+
+### Native local reservation after authenticated consumption
+
+Shared native settlement releases a local scheduler reservation only when its
+full original claim matches and `NativeExecution::settle` has authenticated
+durable consumption. Optional event deferral or an event error after consumption
+does not retain that execution slot; the original completion remains available
+for event reconciliation. Read-only refusal, uncertain closure, and a different
+claim leave the local reservation intact. This internal composition changes no
+public API, persisted bytes, hash domain, or published error code; fresh native
+admission and cold recovery between Ack and event remain incomplete.

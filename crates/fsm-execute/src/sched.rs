@@ -257,6 +257,17 @@ impl Scheduler {
         true
     }
 
+    /// Release only the reservation for this exact durably consumed claim.
+    /// Event delivery may still be deferred after ownership consumption.
+    pub(crate) fn complete_claim(&mut self, claim: &Claim) -> bool {
+        let (_, effect) = claim.effect();
+        if self.local_claims.get(effect) != Some(claim) {
+            return false;
+        }
+        self.complete(effect);
+        true
+    }
+
     fn occupied(&self, obs: &Observation) -> BTreeSet<(String, String, Option<u64>)> {
         let mut owners: BTreeSet<_> = obs
             .execution_owners
@@ -747,4 +758,57 @@ pub fn backoff_for(retry: &crate::config::Retry, attempt: u32) -> i64 {
     let factor = 1_i64 << doublings;
     let grown = retry.backoff_ms.saturating_mul(factor);
     grown.min(retry.max_backoff_ms).max(retry.backoff_ms)
+}
+
+#[cfg(test)]
+mod claim_release_tests {
+    use super::*;
+
+    fn original_owner() -> fsm_core::record::execution::Claim {
+        use fsm_core::json::{JsonLimits, parse};
+        use fsm_core::record::execution::Claim;
+        Claim::from_value(&parse(br#"{
+      "run_id":1,"instance_id":"case-1","effect_id":"case-1/3/0","attempt":1,
+      "handler_fingerprint":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "retry":{"attempts":3,"backoff_ms":10,"max_backoff_ms":40,"on":["timeout"]},
+      "domain":{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}
+    }"#, &JsonLimits::DEFAULT).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn consumption_releases_only_the_exact_original_local_claim() {
+        let original = original_owner();
+        let mut value = original.to_value();
+        if let Value::Obj(fields) = &mut value {
+            fields.insert("run_id".into(), Value::Num("2".into()));
+        }
+        let other = Claim::from_value(&value).unwrap();
+        let mut scheduler = Scheduler::new(HandlerTable::default());
+        let effect = PendingEffect {
+            instance_id: "case-1".into(),
+            effect_id: "case-1/3/0".into(),
+            effect_name: "original".into(),
+            args: BTreeMap::new(),
+            emitted_seq: 3,
+            k: 0,
+        };
+        scheduler.inflight.insert(
+            effect.effect_id.clone(),
+            Inflight {
+                effect,
+                deadline_ms: 100,
+                killed: false,
+            },
+        );
+        assert!(!scheduler.complete_claim(&original));
+        assert_eq!(scheduler.inflight.len(), 1);
+        assert!(scheduler.retain_claim(&original));
+        assert!(!scheduler.complete_claim(&other));
+        assert_eq!(scheduler.local_claims.get("case-1/3/0"), Some(&original));
+        assert_eq!(scheduler.inflight.len(), 1);
+        assert!(scheduler.complete_claim(&original));
+        assert!(scheduler.inflight.is_empty());
+        assert!(scheduler.local_claims.is_empty());
+        assert!(!scheduler.complete_claim(&original));
+    }
 }

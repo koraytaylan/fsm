@@ -4,7 +4,7 @@ use super::{
     Pipeline, SettleOutcome,
     native_client::{NativeExecution, NativeRunPhase},
 };
-use crate::{error::ExecError, watch::Observation};
+use crate::{error::ExecError, sched::Scheduler, watch::Observation};
 use fsm_core::record::execution::{Claim, Stopped};
 use fsm_store::clock::Clock;
 use fsm_store::store::Store;
@@ -141,6 +141,7 @@ impl NativeOwners {
         store: &mut Store,
         clock: &mut dyn Clock,
         pipeline: &mut Pipeline,
+        scheduler: &mut Scheduler,
     ) -> Option<Result<String, ExecError>> {
         let ready: Vec<u64> = self
             .owners
@@ -154,7 +155,13 @@ impl NativeOwners {
             .or_else(|| ready.first())?;
         self.cursor = *selected;
         let owner = self.owners.get_mut(selected)?;
-        match owner.apply(store, clock, pipeline) {
+        let result = owner.apply(store, clock, pipeline);
+        // Settlement releases durable ownership before optional event delivery;
+        // a later event error must not keep the consumed local slot occupied.
+        if !owner.execution.progress().retained {
+            scheduler.complete_claim(&owner.claim);
+        }
+        match result {
             Ok((line, finished)) => {
                 if finished {
                     self.owners.remove(selected);

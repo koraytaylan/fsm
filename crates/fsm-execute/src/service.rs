@@ -443,7 +443,7 @@ fn settle_phase(
     finished: Vec<String>,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    if let Some(result) = runner.apply_native(store, clock, pipeline) {
+    if let Some(result) = runner.apply_native(store, clock, pipeline, scheduler) {
         lines.push(result.unwrap_or_else(|error| error_line(&error)));
     }
     let pending: BTreeMap<&str, &PendingEffect> = plan

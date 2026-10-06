@@ -1,7 +1,7 @@
 //! Shared-tick native host operations, including portable capability boundaries.
 
 use super::{Pipeline, Runner};
-use crate::{error::ExecError, watch::Observation};
+use crate::{error::ExecError, sched::Scheduler, watch::Observation};
 use fsm_store::{clock::Clock, store::Store};
 
 impl Runner {
@@ -31,12 +31,13 @@ impl Runner {
         store: &mut Store,
         clock: &mut dyn Clock,
         pipeline: &mut Pipeline,
+        scheduler: &mut Scheduler,
     ) -> Option<Result<String, ExecError>> {
         #[cfg(target_os = "linux")]
-        return self.native.apply(store, clock, pipeline);
+        return self.native.apply(store, clock, pipeline, scheduler);
         #[cfg(not(target_os = "linux"))]
         {
-            let _ = (store, clock, pipeline);
+            let _ = (store, clock, pipeline, scheduler);
             None
         }
     }

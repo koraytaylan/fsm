@@ -1015,3 +1015,23 @@ check passed all 16 tests in a verified temporary scope with `MemoryMax=1G` and
 `MemorySwapMax=0`; evidence is retained in the task cache as
 `local-public-surface-corrected.log`. A full corrected workspace gate remains
 required, and task 9401 remains in progress.
+
+### Exact local reservation consumption composition
+
+Shared native application now passes the scheduler into the owned settlement
+path and checks `NativeExecution` retained ownership after the application
+attempt, including its error branch. That flag becomes false only after
+authenticated durable settlement or authenticated replay; optional event failure
+occurs later and must not retain consumed capacity. The scheduler removes an
+in-flight reservation only if its retained full claim equals the consumed
+original claim, so another incarnation and an unbound local reservation cannot
+be released. Deferred event completion remains in the native owner map.
+
+Review checked the `settle` flag transition, the post-Ack event-error path,
+exact-claim refusal, portable no-op compilation, and unchanged public inventory
+and persistent formats. The MSRV focused identity regression passed, followed
+serially by executor all-target Clippy with warnings denied, in a verified
+1 GiB scope with swap disabled; retained evidence is
+`local-native-claim-release-msrv.log`. Actual provisioned capacity reuse through
+this new composition and full frozen-source gates remain required; fresh native
+admission and sealed post-Ack recovery remain unfinished.

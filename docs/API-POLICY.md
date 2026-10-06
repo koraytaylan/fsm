@@ -892,3 +892,14 @@ The provisional native client adds NativePreparedCleanup for owned original-doma
 Plan 0022 initial shared-tick native startup recovery now retains original unresolved ownership and requests original completions without current handler selection, serializing recovery transport and refusing a changed physical store. Public signatures and journal/hash formats are unchanged; this partial wiring does not release the production native-host gate, and native admission, settlement application and post-ack discovery remain unfinished.
 
 Initial shared native recovery now applies authenticated original completions under the writer, preserving original retry/ack/event keys and persistent formats; consumed capacity is distinct from retained original-contract event handoffs, and disabled advances park until a changed journal prefix. One native application per tick rotates fairly. Public signatures remain unchanged; complete native admission, shutdown and cold post-ack discovery remain unfinished.
+
+### Native local reservation after authenticated consumption
+
+Shared native settlement releases a local scheduler reservation only when its
+full original claim matches and `NativeExecution::settle` has authenticated
+durable consumption. Optional event deferral or an event error after consumption
+does not retain that execution slot; the original completion remains available
+for event reconciliation. Read-only refusal, uncertain closure, and a different
+claim leave the local reservation intact. This internal composition changes no
+public API, persisted bytes, hash domain, or published error code; fresh native
+admission and cold recovery between Ack and event remain incomplete.

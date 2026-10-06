@@ -2089,3 +2089,14 @@ NativePreparedCleanup owns a bounded cleanup request for a delivered unclaimed d
 On Linux, shared tick functions now retain unresolved original native owners from the watcher snapshot and asynchronously request original completion with one recovery transport at a time; subsequent Runner polling drains/reaps those helpers even when scanning fails, and a different physical store at the same path refuses scheduling. Helper failure retains ownership rather than authorizing a replacement. Native start/settlement integration and cold recovery after acknowledgement remain pending; this initial recovery wiring is not complete native execution support.
 
 Shared ticks now acquire a writer for a recovered native completion even with no other scheduled work, settle it using its original proof/retry contract, then apply its original outcome event. A disabled event retains that contract and waits for journal progress while consumed execution capacity is released; readonly or unavailable writers retain the completion. Native applications rotate one per tick. New native preparation/launch integration and cold startup discovery after acknowledgement remain pending.
+
+### Native local reservation after authenticated consumption
+
+Shared native settlement releases a local scheduler reservation only when its
+full original claim matches and `NativeExecution::settle` has authenticated
+durable consumption. Optional event deferral or an event error after consumption
+does not retain that execution slot; the original completion remains available
+for event reconciliation. Read-only refusal, uncertain closure, and a different
+claim leave the local reservation intact. This internal composition changes no
+public API, persisted bytes, hash domain, or published error code; fresh native
+admission and cold recovery between Ack and event remain incomplete.

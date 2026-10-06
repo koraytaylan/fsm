@@ -2512,3 +2512,14 @@ NativePreparedCleanup MUST retain the complete original domain and use only its 
 Shared tick recovery MUST adopt unresolved original claims from the same verified read-only snapshot used for observation, independently of current handlers, cancelled instances or pending effects; the Runner MUST retain original identities and stopped evidence across missing observations, pin that retained state to the physical store directory, and refuse physical-store substitution before scheduling. Recovery MUST request only original completion, with at most one owned recovery transport active at a time; failed or retired transport MUST NOT authorize binding, launching, acknowledgement or capacity release. Shared Runner observation MUST continue bounded recovery transport polling and reaping when journal scanning fails. This is initial startup recovery wiring; production native admission, completion application and post-ack discovery remain provisional.
 
 Shared native completion application MUST require a supported healthy durable writer and matching original physical-store proof, persist original stopped evidence and consume its exact disposition before any original-contract event. Helper readiness alone MUST NOT release capacity. After matching durable consumption, the host MUST exclude that owner from retained capacity, retain a declared but disabled/refused event handoff, and retry a disabled handoff only after a changed journal prefix; it MUST use the existing event request key and original checked contract, independently of current handlers. Each tick MUST apply at most one ready native owner, with fair rotation across ready identities; missing completion and writer/readonly refusal MUST retain ownership. This implements recovered-owner application only; native preparation/admission and authenticated post-ack cold discovery remain provisional.
+
+### Native local reservation after authenticated consumption
+
+Shared native settlement releases a local scheduler reservation only when its
+full original claim matches and `NativeExecution::settle` has authenticated
+durable consumption. Optional event deferral or an event error after consumption
+does not retain that execution slot; the original completion remains available
+for event reconciliation. Read-only refusal, uncertain closure, and a different
+claim leave the local reservation intact. This internal composition changes no
+public API, persisted bytes, hash domain, or published error code; fresh native
+admission and cold recovery between Ack and event remain incomplete.
