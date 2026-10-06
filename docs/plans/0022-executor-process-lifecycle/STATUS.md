@@ -4216,6 +4216,23 @@ tests; formatting was corrected before this successful run. This adds a physical
 identity refusal test, not installed native or production acceptance; statuses
 remain unchanged.
 
+### Paired publication identity guards — 2026-10-06
+
+Actual downstream publisher tests replace the paired actor's original physical
+directory with a different healthy store and verify publication refuses before
+creating endpoint files or closing admission; restoring the directory retains
+the independent original writer lease. A second test stops the actual empty
+actor while that writer remains held and verifies publication refuses a new
+incarnation with no endpoint files. Regression failures explicitly close any
+unexpected endpoint before assertions to avoid leaving transport workers live.
+
+Focused session 30614 exited zero under asserted 1 GiB RAM and zero swap,
+passing stable/MSRV Clippy, executor/lifecycle/session/CLI/public inventory
+checks, fourteen real local control tests and 61 CLI library tests;
+paired-publisher-check.log is retained. Production publication/routing,
+nonempty native acceptance and full changed-runtime gates remain unfinished;
+plan progress stays 3/7 and task states are unchanged.
+
 ### Standalone integration boundary review — 2026-10-06
 
 STANDALONE-INTEGRATION-REVIEW.md identifies production obligations before

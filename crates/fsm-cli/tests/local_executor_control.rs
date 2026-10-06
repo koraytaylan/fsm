@@ -8,7 +8,7 @@ use fsm_cli::local_control::{LocalControlEndpoint, stop};
 use fsm_core::json::{JsonLimits, Value, parse, write_canonical};
 use fsm_execute::{
     config::HandlerTable,
-    service::{ExecutorPhase, OwnedNativeExecutor, ShutdownMode},
+    service::{ExecutorPhase, OwnedNativeExecutor, PairedNativeExecutor, ShutdownMode},
 };
 use fsm_store::{clock::FixedClock, store::Store};
 use std::{
@@ -336,4 +336,43 @@ fn maximum_timeout_is_accepted_without_renewing_it_on_abort() {
         deadline
     );
     assert!(endpoint.close(1000).unwrap());
+}
+
+#[test]
+fn paired_publication_refuses_replaced_physical_directory_without_endpoint_files() {
+    let fixture = Fixture::new();
+    let writer = Store::open(&fixture.data).unwrap();
+    let driver = PairedNativeExecutor::new(&fixture.data, HandlerTable::default()).unwrap();
+    let original = fixture.root.join("original");
+    fs::rename(&fixture.data, &original).unwrap();
+    drop(Store::open(&fixture.data).unwrap());
+    let published = LocalControlEndpoint::publish_paired(&fixture.root, &driver);
+    if let Ok(endpoint) = &published {
+        assert!(endpoint.close(1000).unwrap());
+    }
+    fs::remove_dir_all(&fixture.data).unwrap();
+    fs::rename(&original, &fixture.data).unwrap();
+    assert!(published.is_err());
+    assert_eq!(fs::read_dir(&fixture.root).unwrap().count(), 1);
+    assert!(!driver.control().report().admission_closed);
+    assert!(Store::open(&fixture.data).is_err());
+    drop(writer);
+}
+
+#[test]
+fn paired_publication_refuses_stopped_actor_without_new_incarnation() {
+    let fixture = Fixture::new();
+    let writer = Store::open(&fixture.data).unwrap();
+    let mut driver = PairedNativeExecutor::new(&fixture.data, HandlerTable::default()).unwrap();
+    let request = driver.control().stop(ShutdownMode::Abort, 1000).unwrap();
+    driver.poll(&mut FixedClock::new(0, 1), 0);
+    assert_eq!(request.wait().phase, ExecutorPhase::Stopped);
+    let published = LocalControlEndpoint::publish_paired(&fixture.root, &driver);
+    if let Ok(endpoint) = &published {
+        assert!(endpoint.close(1000).unwrap());
+    }
+    assert!(published.is_err());
+    assert_eq!(fs::read_dir(&fixture.root).unwrap().count(), 1);
+    assert!(Store::open(&fixture.data).is_err());
+    drop(writer);
 }
