@@ -4647,3 +4647,49 @@ retained in serve-opened-diagnostic-check.log. The dependent production stdio
 composition is syntax-formatted in the task cache, not yet applied or compiled.
 Actual diagnostic fallback coverage and native stdio binary acceptance remain
 required, with task statuses unchanged.
+
+### Production retained native stdio routing — 2026-10-07
+
+run_with_mode now selects the retained native writer/session/endpoint composition
+for healthy embedded stdio, with worker-owned input construction and original
+deadline retirement. Contended/unhealthy opens pass the exact observed result
+to the existing diagnostic startup, avoiding legacy execution after a reopen
+race; unsupported production platforms refuse. Borrowed session APIs retain
+their existing bounds and explicit backend. Focused session 33332 is live under
+asserted 1 GiB RAM and zero swap, with pending evidence in
+production-native-stdio-check.log. Actual quiet-input binary shutdown, broader
+production error facts, installed native execution and HTTP integration remain
+required; this unit is uncommitted and all task statuses remain unchanged.
+
+Session 33332 exited zero under asserted 1 GiB RAM and zero swap, passing
+stable/MSRV Clippy and focused executor/lifecycle/session/transport/CLI/public
+inventory suites plus 61 CLI library tests. Added actual production serve
+--execute binary controls for drain and abort with stdin left open and quiet:
+they require actual endpoint publication, held original writer before stop,
+authenticated Stopped/writer release, bounded successful process exit, endpoint
+removal and successful subsequent writer acquisition. Scoped cleanup kills
+and reaps only the owned test child on failure. Session 2276 validates these
+controls; production-quiet-stdio-check.log retains pending evidence. This
+remains empty-inventory stdio acceptance, not native execution or plan 20
+autonomous scheduling; statuses and 3/7 progress are unchanged.
+
+Session 2276 exited 101 at Clippy's collapsible-if test lint; corrected it
+with an MSRV-compatible let-chain. Session 82977 then exited zero under
+asserted 1 GiB RAM and zero swap, passing stable/MSRV checks, all eight binary
+stop/output tests including quiet embedded stdin, six owned session tests,
+16 transport tests, remaining focused suites and 61 CLI library tests.
+Review corrected endpoint cleanup error precedence so an initiating protocol
+error survives cleanup refusal. Expanded session 7711 is checking that change
+and existing embedded read-only, lock degradation, degraded serve and gating
+suites in addition to focused coverage; evidence remains pending in
+production-native-stdio-expanded-check.log.
+
+Session 7711 terminated with exit zero under asserted 1 GiB RAM and zero
+swap. Stable/MSRV all-target Clippy, eight actual binary controls, six owned
+session tests, 16 transport tests, executor/lifecycle/public inventory suites,
+61 CLI library tests and existing embedded read-only/lock-degradation/degraded
+serve/gating suites passed. Evidence remains in
+production-native-stdio-expanded-check.log. Production stdio routing is ready
+to commit at this tested empty-inventory scope; broader actual production
+diagnostic/error/output cases, full gates and installed nonempty native
+acceptance remain required, with all plan task statuses unchanged.

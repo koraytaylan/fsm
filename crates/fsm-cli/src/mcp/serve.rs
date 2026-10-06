@@ -19,6 +19,11 @@ use super::tools;
 use super::{cancel, logging, subscribe, watch};
 
 use super::framing::{LINE_CAP, Line, read_capped_line};
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+mod native_stdio;
 mod session_store;
 use session_store::{SessionLive, SessionRuntime, SessionStore};
 #[cfg(target_os = "linux")]
@@ -181,6 +186,23 @@ pub fn run_with_dir(dir: &std::path::Path) -> std::io::Result<()> {
 /// Run the server over stdio in one of the three modes.
 pub fn run_with_mode(dir: &std::path::Path, mode: ServeMode) -> std::io::Result<()> {
     install_panic_hook();
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    let mode = match mode {
+        ServeMode::Embedded(executor) => return native_stdio::run(dir, *executor),
+        other => other,
+    };
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    if matches!(&mode, ServeMode::Embedded(_)) {
+        return Err(std::io::Error::other(
+            "native embedded stdio is unsupported on this platform",
+        ));
+    }
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     // `stdout()` itself is `Send`; a borrowed `StdoutLock` is not, and the

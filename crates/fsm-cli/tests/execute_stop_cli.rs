@@ -379,3 +379,92 @@ fn production_broken_stdout_preserves_failure_and_separate_cleanup_facts() {
     assert!(Store::open(&fixture.data).is_err());
     drop(writer);
 }
+
+#[test]
+fn production_embedded_stdio_stops_with_input_open_and_quiet() {
+    struct Owner(std::process::Child);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    for mode in ["drain", "abort"] {
+        let fixture = Fixture::new();
+        drop(Store::open(&fixture.data).unwrap());
+        let handlers = fixture.root.join("handlers.json");
+        fs::write(
+            &handlers,
+            br#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator"]}"#,
+        )
+        .unwrap();
+        let mut owner = Owner(
+            Command::new(env!("CARGO_BIN_EXE_fsm"))
+                .env("HOME", &fixture.root)
+                .arg("--data-dir")
+                .arg(&fixture.data)
+                .args(["serve", "--execute", "--handlers"])
+                .arg(&handlers)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let control_root = fixture.root.join(".cache/fsm/control");
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let endpoint = loop {
+            if let Ok(entries) = fs::read_dir(&control_root)
+                && let Some(path) = entries
+                    .map(|entry| entry.unwrap().path())
+                    .find(|path| path.join("identity").exists())
+            {
+                break path;
+            }
+            assert!(
+                owner.0.try_wait().unwrap().is_none(),
+                "native stdio owner exited before publication"
+            );
+            assert!(
+                Instant::now() < deadline,
+                "native stdio owner did not publish"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        assert!(Store::open(&fixture.data).is_err());
+        let mut stop = Command::new(env!("CARGO_BIN_EXE_fsm"));
+        stop.args(["--json", "--data-dir"])
+            .arg(&fixture.data)
+            .args(["execute", "stop", "--control-dir"])
+            .arg(&control_root)
+            .args(["--mode", mode, "--timeout-ms", "1000"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let output = bounded(&mut stop, || {});
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = json(&output.stdout);
+        assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
+        assert_eq!(report.get("writer_released"), Some(&Value::Bool(true)));
+        // Never send or close stdin: explicit control must wake the owner itself.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = owner.0.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "quiet stdin suspended native shutdown"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        assert!(status.success());
+        assert!(owner.0.stdin.is_some());
+        assert!(!endpoint.exists());
+        drop(Store::open(&fixture.data).unwrap());
+    }
+}

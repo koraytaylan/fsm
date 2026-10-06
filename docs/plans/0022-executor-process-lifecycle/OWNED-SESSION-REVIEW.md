@@ -124,3 +124,13 @@ while the existing entry preserves error-return behavior. Session 32806 passed
 stable/MSRV focused checks and actual failing-reader/writer-release plus exact
 first-control-deadline regressions. This resolves the reporting prerequisite
 identified above, not production stdio/HTTP routing or nonempty acceptance.
+
+Production run_with_mode now selects retained native stdio on supported Linux.
+Exact contended/unhealthy startup results reuse diagnostic session composition
+without reopening; borrowed APIs retain explicit selection and input bounds.
+The actual binary drain/abort controls passed with stdin open and quiet,
+confirming original writer release and incarnation cleanup. Review corrected
+cleanup error precedence to preserve initiating protocol failures; expanded
+session 7711 validates this and existing diagnostic fallback suites. HTTP
+still discards its executor and remains incomplete, and these empty stdio
+controls cannot establish native nonempty execution or autonomous scheduling.

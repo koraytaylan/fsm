@@ -2972,3 +2972,13 @@ facts and `shutdown_deadline`, the original monotonic control deadline.
 The existing `serve_owned_native_session` entry preserves its error-return
 behavior. Invalid timeout options refuse before worker startup or admission
 changes; this additive entry does not select production embedded execution.
+
+Production embedded stdio through `run_with_mode` now retains a native writer
+owner and publishes its private endpoint under `$HOME/.cache/fsm/control`.
+Quiet input permits admitted observation and explicit control; sole reader
+construction occurs in its worker. Healthy native startup has no legacy
+fallback; contended/unhealthy startup preserves the exact observed diagnostic
+prefix without publication or reopening into execution. Borrowed session APIs
+retain their bounds and explicit backend selection. Unsupported production
+embedded stdio refuses; HTTP ownership remains incomplete. This routing change
+does not establish installed native or autonomous plan 20 acceptance.
