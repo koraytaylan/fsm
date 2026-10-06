@@ -2296,3 +2296,13 @@ wait for it. The owned production lifecycle route remains unimplemented.
 ### Admission-free native completion observation
 
 Use service::observe_admitted_with with the original healthy durable writer and a supported native runner when pending execution and machine deadlines must stay idle while retained original completion work advances. Original completion events and durable handoffs remain eligible for delivery. Hosts still need independent transport progress and bounded lifecycle reporting when the writer or protocol I/O is unavailable.
+
+
+### Original interrupted native retirement
+
+After authenticated interruption settlement, retain the original
+Runner, claim, NativeShutdown and Scheduler, and retry bounded retirement
+observation against the original healthy writer. Ok(false) retains capacity;
+errors preserve ownership. Ok(true) releases only that original local owner.
+Already retained success/failure completion follows its original pipeline.
+This operation does not implement endpoint control or independent reporting.

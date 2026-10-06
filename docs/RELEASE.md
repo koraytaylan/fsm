@@ -1050,3 +1050,11 @@ next-frame synchronization. Native lifecycle deadlines remain a separate gate.
 ### Admission-free native completion observation
 
 Added a supported-Linux native completion-only service pass that excludes pending admission, preparation starts, bound entry, retries and machine deadline polling while retaining original completion/event-handoff delivery; production shutdown wiring and installed native acceptance remain pending.
+
+
+### Original interrupted native retirement
+
+Added exact original interrupted-run retirement after authenticated
+settlement and retirement of both native transports, preserving pending work
+and refusing foreign ownership or missing/pruned ledger evidence; production
+shutdown wiring and installed native acceptance remain incomplete.

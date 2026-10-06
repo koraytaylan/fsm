@@ -396,6 +396,50 @@ impl NativeOwners {
         }
     }
 
+    pub(super) fn retire_interrupted(
+        &mut self,
+        store: &mut Store,
+        claim: &Claim,
+        shutdown: &mut super::native_client::NativeShutdown,
+        scheduler: &mut Scheduler,
+    ) -> Result<bool, ExecError> {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "interruption retirement requires the original healthy durable writer",
+            ));
+        }
+        if !self.matches_store(store) || !shutdown.matches_original(claim) {
+            return Err(deferred());
+        }
+        let owner = self.owners.get_mut(&claim.run_id()).ok_or_else(deferred)?;
+        if &owner.claim != claim || !owner.locally_admitted {
+            return Err(deferred());
+        }
+        let proof = shutdown
+            .poll()
+            .map_err(|_| deferred())?
+            .ok_or_else(deferred)?;
+        proof.check_store(&store.data_dir).map_err(|_| deferred())?;
+        if !shutdown.reap().map_err(|_| deferred())? {
+            return Ok(false);
+        }
+        let helper = shutdown.progress();
+        if !helper.reaped || !helper.stdout_eof || !helper.stderr_eof {
+            return Ok(false);
+        }
+        if !owner.execution.retire_interrupted(store)? {
+            return Ok(false);
+        }
+        scheduler.complete_claim(&owner.claim);
+        self.owners.remove(&claim.run_id());
+        Ok(true)
+    }
+
     pub(super) fn observe(&mut self) {
         self.admissions.observe();
         for owner in self.owners.values_mut() {

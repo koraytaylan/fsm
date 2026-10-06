@@ -577,6 +577,19 @@ impl Runner {
         self.native_start_claim(store, claim, scheduler, timeout)
     }
 
+    /// Retire an original local interrupted run after both helpers and settlement.
+    /// No claim is consumed here; missing/pruned original settlement refuses.
+    #[cfg(target_os = "linux")]
+    pub fn retire_native_interrupted(
+        &mut self,
+        store: &mut fsm_store::store::Store,
+        claim: &fsm_core::record::execution::Claim,
+        shutdown: &mut native_client::NativeShutdown,
+        scheduler: &mut crate::sched::Scheduler,
+    ) -> Result<bool, ExecError> {
+        self.native_retire_interrupted(store, claim, shutdown, scheduler)
+    }
+
     /// Create the capture directory this runner owns.
     ///
     /// Created exclusively, never adopted. The temporary directory is world

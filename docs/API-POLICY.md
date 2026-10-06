@@ -1091,3 +1091,10 @@ This correction must be documented as a resource-limit behavior change.
 ### Admission-free native completion observation
 
 service::observe_admitted_with is an additive Rust API for original native completion observation without new execution admission; existing tick APIs and production runner selection remain unchanged, with no persisted format, hash-domain or error-code change.
+
+
+### Original interrupted native retirement
+
+Add the Linux-only Runner::retire_native_interrupted method using
+the existing Linux NativeShutdown type; persisted bytes, hash domains and
+existing error codes remain unchanged. No portable availability is claimed.

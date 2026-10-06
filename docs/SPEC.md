@@ -2752,3 +2752,17 @@ This blocking framing primitive establishes no silent-client or cleanup deadline
 ### Admission-free native completion observation
 
 On supported Linux native runners, service::observe_admitted_with MUST observe retained native transport and recover original durable ownership without scheduling pending effects, new preparations, bound handler entry, retries or machine deadlines; it MAY apply at most one original completion or event-handoff action through the healthy original physical writer, and MUST refuse legacy runners, memory/read-only/poisoned writers and copied-store routes using existing exec/mode or exec/inflight_deferred errors. Recovery transport is permitted; it MUST NOT authorize handler entry. This writer-dependent pass grants no independent shutdown deadline or blocked-I/O progress guarantee.
+
+
+### Original interrupted native retirement
+
+On supported Linux, Runner::retire_native_interrupted MUST release an
+original locally admitted owner only after matching original NativeShutdown
+closure authentication, exact original Interrupted settlement replay under the
+healthy original physical writer, and actual reap/stdout EOF/stderr EOF of both
+closure and execution helpers. It MUST refuse foreign observed ownership,
+missing/pruned replay and replacement routes; actual retained completion MUST
+keep its original settlement/event policy. It MUST NOT append a record, launch
+work, consume pending effects, clear unrelated reservations or infer closure
+from helper death. A false result means helper retirement remains incomplete.
+The caller retains NativeShutdown independently until its helper is retired.

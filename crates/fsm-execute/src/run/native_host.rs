@@ -118,6 +118,18 @@ impl Runner {
             None
         }
     }
+    #[cfg(target_os = "linux")]
+    pub(crate) fn native_retire_interrupted(
+        &mut self,
+        store: &mut Store,
+        claim: &fsm_core::record::execution::Claim,
+        shutdown: &mut super::native_client::NativeShutdown,
+        scheduler: &mut Scheduler,
+    ) -> Result<bool, ExecError> {
+        self.native
+            .retire_interrupted(store, claim, shutdown, scheduler)
+    }
+
     pub(crate) fn apply_native_completed(
         &mut self,
         store: &mut Store,

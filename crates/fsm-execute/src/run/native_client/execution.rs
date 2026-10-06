@@ -197,6 +197,50 @@ impl NativeExecution {
         Ok(response)
     }
 
+    pub(crate) fn retire_interrupted(&mut self, store: &mut Store) -> Result<bool, ExecError> {
+        use fsm_core::record::execution::Settlement;
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "interruption retirement requires the original healthy durable writer",
+            ));
+        }
+        super::check_claim_store(&store.data_dir, &self.claim).map_err(|_| unproven())?;
+        if self.completion.is_some() {
+            // Actual handler completion keeps its original disposition and event path.
+            return Err(unproven());
+        }
+        let (instance, effect) = self.claim.effect();
+        if store.state.execution.claim_for(instance, effect) == Some(&self.claim) {
+            return Err(unproven());
+        }
+        let request_id = format!("exec-interrupted-{effect}-{}", self.claim.run_id());
+        if store
+            .replay_execution_settlement(&self.claim, Settlement::Interrupted, &request_id)
+            .map_err(|error| ExecError::store(&error))?
+            .is_none()
+        {
+            return Err(unproven());
+        }
+        // Reap is bounded observation, never an assertion about native closure.
+        if !self.reap().map_err(|_| unproven())? {
+            return Ok(false);
+        }
+        if self
+            .progress()
+            .helper
+            .is_some_and(|helper| !helper.reaped || !helper.stdout_eof || !helper.stderr_eof)
+        {
+            return Ok(false);
+        }
+        self.retained = false;
+        Ok(true)
+    }
+
     fn replay(&self, store: &mut Store) -> Result<Option<Value>, ExecError> {
         let (_, effect) = self.claim.effect();
         let claim = self.claim.to_value();
@@ -296,6 +340,28 @@ mod tests {
         assert_eq!(progress.phase, NativeRunPhase::Uncertain);
         assert!(progress.retained);
         assert!(progress.helper.is_none());
+    }
+
+    #[test]
+    fn interruption_retirement_refuses_memory_before_route_or_helper_access() {
+        // Literal claim metadata is not closure evidence; no receipt is created.
+        let mut execution = NativeExecution::retain_uncertain(&original_owner());
+        let mut store = Store::open_memory().unwrap();
+        let state = store.state.clone();
+        let records = store.records.clone();
+        let head = (store.journal.last_seq, store.journal.last_hash.clone());
+        assert_eq!(
+            execution.retire_interrupted(&mut store).unwrap_err().code,
+            "exec/mode"
+        );
+        assert!(execution.progress().retained);
+        assert!(execution.progress().helper.is_none());
+        assert_eq!(store.records, records);
+        assert_eq!(
+            (store.journal.last_seq, store.journal.last_hash.clone()),
+            head
+        );
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
     }
 
     #[test]

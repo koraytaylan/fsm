@@ -27,6 +27,10 @@ pub struct NativeShutdown {
 }
 
 impl NativeShutdown {
+    pub(crate) fn matches_original(&self, claim: &Claim) -> bool {
+        &self.claim == claim
+    }
+
     /// Request native closure without requiring or acquiring the writer lease.
     ///
     /// The snapshot must contain the exact original unresolved claim and its

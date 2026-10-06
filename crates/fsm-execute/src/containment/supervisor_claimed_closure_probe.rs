@@ -31,15 +31,42 @@ struct BoundClosure {
     data_dir: PathBuf,
     claim: Claim,
     shutdown: NativeShutdown,
+    runner: Runner,
+    scheduler: Scheduler,
 }
 
 #[test]
 #[ignore = "invoked only by the provisioned unprivileged interrupted closure control"]
 fn bound_claimed_interruption() {
-    let closed = original_bound_closure();
+    let mut closed = original_bound_closure();
     let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
     let mut readonly = Store::open_read_only(&closed.data_dir).unwrap();
     let count = readonly.records.len();
+    assert!(
+        closed
+            .scheduler
+            .inflight_effect(closed.claim.effect().1)
+            .is_some()
+    );
+    assert_eq!(
+        closed
+            .runner
+            .retire_native_interrupted(
+                &mut readonly,
+                &closed.claim,
+                &mut closed.shutdown,
+                &mut closed.scheduler,
+            )
+            .unwrap_err()
+            .code,
+        "exec/mode",
+    );
+    assert!(
+        closed
+            .scheduler
+            .inflight_effect(closed.claim.effect().1)
+            .is_some()
+    );
     assert_eq!(
         closed
             .shutdown
@@ -52,7 +79,44 @@ fn bound_claimed_interruption() {
     drop(readonly);
     let mut writer = Store::open(&closed.data_dir).unwrap();
     let instance = writer.state.instances[closed.claim.effect().0].clone();
+    assert_eq!(
+        closed
+            .runner
+            .retire_native_interrupted(
+                &mut writer,
+                &closed.claim,
+                &mut closed.shutdown,
+                &mut closed.scheduler,
+            )
+            .unwrap_err()
+            .code,
+        "exec/inflight_deferred",
+    );
+    assert!(
+        closed
+            .scheduler
+            .inflight_effect(closed.claim.effect().1)
+            .is_some()
+    );
     let count = writer.records.len();
+    // A separate native runner observes the genuine original claim without
+    // locally admitting it; observation must not grant retirement authority.
+    let foreign_table = HandlerTable::default();
+    let mut foreign_watcher = Watcher::with_handlers(closed.data_dir.clone(), &foreign_table);
+    let mut foreign_scheduler = Scheduler::new(foreign_table);
+    let mut foreign_runner = Runner::new_native().unwrap();
+    let mut foreign_pipeline = Pipeline;
+    fsm_execute::service::observe_admitted_with(
+        &mut foreign_watcher,
+        &mut foreign_scheduler,
+        &mut foreign_runner,
+        &mut foreign_pipeline,
+        &mut writer,
+        &mut clock,
+        2000,
+    )
+    .unwrap();
+    assert_eq!(writer.records.len(), count);
     let response = closed
         .shutdown
         .settle_interrupted(&mut writer, &mut clock)
@@ -81,6 +145,69 @@ fn bound_claimed_interruption() {
             .claim_for(closed.claim.effect().0, closed.claim.effect().1)
             .is_none()
     );
+    assert_eq!(
+        foreign_runner
+            .retire_native_interrupted(
+                &mut writer,
+                &closed.claim,
+                &mut closed.shutdown,
+                &mut foreign_scheduler,
+            )
+            .unwrap_err()
+            .code,
+        "exec/inflight_deferred",
+    );
+    assert!(
+        closed
+            .scheduler
+            .inflight_effect(closed.claim.effect().1)
+            .is_some()
+    );
+    assert_eq!(writer.records.len(), count + 2);
+    let retirement_deadline = Instant::now() + Duration::from_secs(5);
+    while !closed
+        .runner
+        .retire_native_interrupted(
+            &mut writer,
+            &closed.claim,
+            &mut closed.shutdown,
+            &mut closed.scheduler,
+        )
+        .unwrap()
+    {
+        assert!(Instant::now() < retirement_deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        closed
+            .scheduler
+            .inflight_effect(closed.claim.effect().1)
+            .is_none()
+    );
+    assert_eq!(writer.records.len(), count + 2);
+    assert_eq!(writer.state.instances[closed.claim.effect().0], instance);
+    // A repeated stale retirement cannot infer success from the absent claim
+    // or release another reservation after the original owner was removed.
+    assert_eq!(
+        closed
+            .runner
+            .retire_native_interrupted(
+                &mut writer,
+                &closed.claim,
+                &mut closed.shutdown,
+                &mut closed.scheduler,
+            )
+            .unwrap_err()
+            .code,
+        "exec/inflight_deferred",
+    );
+    assert!(
+        closed
+            .scheduler
+            .inflight_effect(closed.claim.effect().1)
+            .is_none()
+    );
+    assert_eq!(writer.records.len(), count + 2);
     let replay = closed
         .shutdown
         .settle_interrupted(&mut writer, &mut clock)
@@ -274,5 +401,7 @@ fn original_bound_closure() -> BoundClosure {
         data_dir: path.to_owned(),
         claim,
         shutdown,
+        runner,
+        scheduler,
     }
 }

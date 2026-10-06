@@ -20,3 +20,22 @@ fn closure_request_accepts_a_borrowed_snapshot_and_returns_an_opaque_proof() {
     ) -> Result<fsm_core::json::Value, fsm_execute::error::ExecError> =
         NativeShutdown::settle_interrupted;
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn interrupted_retirement_uses_original_runner_claim_and_separate_closure_transport() {
+    use fsm_core::record::execution::Claim;
+    use fsm_execute::{
+        error::ExecError,
+        run::{Runner, native_client::NativeShutdown},
+        sched::Scheduler,
+    };
+    use fsm_store::store::Store;
+    let _: fn(
+        &mut Runner,
+        &mut Store,
+        &Claim,
+        &mut NativeShutdown,
+        &mut Scheduler,
+    ) -> Result<bool, ExecError> = Runner::retire_native_interrupted;
+}

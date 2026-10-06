@@ -3958,3 +3958,25 @@ MemorySwapCurrent=0 and no OOM events. Evidence is retained in
 local-admitted-pass-stable-gate.log. Installed native controls and other
 platform axes remain unexecuted for this source, and no task or production
 acceptance flag is promoted.
+
+### Original interrupted native retirement — 2026-10-06
+
+Runner::retire_native_interrupted now releases an exact locally admitted owner
+only after authenticated original closure, replay of its exact Interrupted
+settlement and reap/stdout EOF/stderr EOF of both execution and closure helpers.
+It appends no records and preserves pending work; foreign observation, retained
+completion, unhealthy/copied writers and missing/pruned replay refuse retirement.
+The provisioned bound-interruption probe retains the original Runner/Scheduler,
+checks pre-settlement and read-only refusal, observed foreign-owner exclusion,
+successful local capacity release and stale repeated refusal; these actual
+authority controls are compiled locally but remain unexecuted here.
+
+Focused session 25243 completed exit 0 under verified 1 GiB/no-swap limits:
+formatting/size, stable/MSRV execute all-target Clippy, 35 library tests, both
+downstream native shutdown API tests, all 16 surface tests and the binding guard
+passed; evidence is local-interrupted-retirement-check-v2.log. The first run
+exposed a public-inventory blind spot for methods in private implementation
+modules; the public wrapper now lives beside Runner::start_native and the
+private implementation stays in native_host. Full stable verification remains
+pending; task 9402, production lifecycle integration and installed acceptance
+remain incomplete, with progress and acceptance flags unchanged.

@@ -274,6 +274,7 @@ method fsm_execute::run::Runner::kill
 method fsm_execute::run::Runner::new
 method fsm_execute::run::Runner::new_native
 method fsm_execute::run::Runner::poll
+method fsm_execute::run::Runner::retire_native_interrupted
 method fsm_execute::run::Runner::running_effects
 method fsm_execute::run::Runner::scratch_dir
 method fsm_execute::run::Runner::spawn
