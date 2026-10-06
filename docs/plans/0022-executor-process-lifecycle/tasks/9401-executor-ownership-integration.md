@@ -299,3 +299,15 @@ prefix removes the owner. It asserts scheduling behavior rather than native
 proof authentication or persistence. This new fixture is not part of the
 frozen `7dc91d5` gates and remains unexecuted until the serial release gate
 finishes; the stopped-owner watcher persistence fixture remains outstanding.
+
+### Discovery binding refusal controls
+
+The provisioned discovery fixture additionally replaces the public physical
+store inode, then independently changes the operator UID, boot identity and
+published socket inode. Each control invokes the production `for_store`
+entry as the unprivileged operator, requires the exact discovery-layer refusal
+and checks that the durable allocation counter is unchanged before restoring
+the original publication. These controls remain unexecuted and are outside
+the previously verified `7dc91d5` native matrix. They complement rather than
+substitute for the outstanding native directory-replacement and full
+production inventory-limit controls, and cannot accept shared host routing.

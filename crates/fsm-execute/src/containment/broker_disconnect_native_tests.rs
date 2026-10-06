@@ -594,6 +594,18 @@ pub(super) fn discovery_faults(directory: &Path) {
     fs::write(&public, b"{").unwrap();
     refuse("native discovery document JSON invalid");
     fs::write(&public, &original).unwrap();
+    let mut wrong_store = parse(&original, &JsonLimits::DEFAULT).unwrap();
+    let Value::Obj(registration) = &mut wrong_store else {
+        unreachable!()
+    };
+    let Value::Obj(physical) = registration.get_mut("identity").unwrap() else {
+        unreachable!()
+    };
+    // A real directory inode is nonzero; copied publication bytes cannot identify it.
+    physical.insert("inode".into(), Value::Num("0".into()));
+    fs::write(&public, canon_bytes(&wrong_store)).unwrap();
+    refuse("native discovery store registration missing");
+    fs::write(&public, &original).unwrap();
     let duplicate = directory.parent().unwrap().join("authority-2");
     fs::DirBuilder::new().create(&duplicate).unwrap();
     fs::set_permissions(&duplicate, fs::Permissions::from_mode(0o755)).unwrap();
@@ -612,4 +624,35 @@ pub(super) fn discovery_faults(directory: &Path) {
     fs::set_permissions(&route, fs::Permissions::from_mode(0o644)).unwrap();
     refuse("native discovery document is not immutable root publication");
     fs::set_permissions(&route, fs::Permissions::from_mode(0o444)).unwrap();
+    let original_route = fs::read(&route).unwrap();
+    for (field, replacement) in [
+        ("operator", Value::Num("1".into())),
+        (
+            "boot",
+            Value::Str("00000000-0000-0000-0000-000000000000".into()),
+        ),
+    ] {
+        let mut wrong_route = parse(&original_route, &JsonLimits::DEFAULT).unwrap();
+        let Value::Obj(fields) = &mut wrong_route else {
+            unreachable!()
+        };
+        let Value::Obj(configuration) = fields.get_mut("configuration").unwrap() else {
+            unreachable!()
+        };
+        configuration.insert(field.into(), replacement);
+        fs::write(&route, canon_bytes(&wrong_route)).unwrap();
+        refuse("native discovery operator, boot or authority differs");
+        fs::write(&route, &original_route).unwrap();
+    }
+    let mut wrong_socket = parse(&original_route, &JsonLimits::DEFAULT).unwrap();
+    let Value::Obj(fields) = &mut wrong_socket else {
+        unreachable!()
+    };
+    let Value::Obj(socket) = fields.get_mut("socket").unwrap() else {
+        unreachable!()
+    };
+    socket.insert("inode".into(), Value::Num("0".into()));
+    fs::write(&route, canon_bytes(&wrong_socket)).unwrap();
+    refuse("native discovery socket identity or access differs");
+    fs::write(&route, &original_route).unwrap();
 }
