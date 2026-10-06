@@ -696,8 +696,14 @@ frozen `7bdfcb6` completed with exit zero in session `74551`, retaining
 does not execute its privileged assertions. The next serial stable workspace
 documentation gate completed with warnings denied and exit zero in session
 `25649`, retaining `local-7bdfcb6-stable-doc.log`. Serial executor all-target
-MSRV Clippy is now running, retaining `local-7bdfcb6-msrv-clippy.log`; neither
-compilation gate proves privileged native execution.
+MSRV Clippy completed with exit zero in session `26164`, retaining
+`local-7bdfcb6-msrv-clippy.log`; neither compilation gate proves privileged
+native execution. Serial stable zero-dependency and embedding acceptance
+gates are running at the same source, retaining
+`local-7bdfcb6-stable-zero-deps.log` and `local-7bdfcb6-stable-embed.log`.
+Original cleanup CI Ubuntu stable job `112069961690` completed successfully
+at `e501679`; five portable jobs remain live, and that older source cannot
+execute the physical replacement control or the later retirement diagnostic.
 
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
