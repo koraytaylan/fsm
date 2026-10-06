@@ -20,6 +20,13 @@
 
 mod admitted;
 pub use admitted::observe_admitted_with;
+#[cfg(target_os = "linux")]
+mod lifecycle;
+#[cfg(target_os = "linux")]
+pub use lifecycle::{
+    ExecutorControl, ExecutorPhase, OwnedNativeExecutor, ShutdownMode, ShutdownReport,
+    ShutdownRequest,
+};
 
 use std::collections::BTreeMap;
 use std::path::Path;

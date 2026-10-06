@@ -2771,3 +2771,32 @@ The caller retains NativeShutdown independently until its helper is retired.
 ### Shared native admission closure and local targets
 
 On supported Linux native runners, NativeAdmissionControl::close MUST irreversibly close that original runner's shared admission fence without waiting for journal or native I/O; clones MUST share closure and MUST NOT affect a successor runner. Queuing, allocator dispatch, claim publication and bound entry MUST check the fence at their authorization boundaries, after preceding route/writer validation where applicable. A transition authorized before closure MUST retain its original reservation and any published claim; original binding may finish but a separately closed entry fence MUST forbid handler entry. Owner observation MUST cancel never-requested queues and request cleanup for delivered preparations while retaining unknown allocation and uncertain publication. Original completion and event-handoff application remain eligible. Closure alone MUST NOT assert native termination, writer release, completed shutdown or a bounded report. Native runner Drop closes this local fence only and grants no native cleanup guarantee. Runner::local_native_claims MUST borrow original locally admitted execution-retained claims in run-ID order, excluding foreign observation and already consumed completion owners; it MUST NOT claim to enumerate unclaimed preparations or prove liveness.
+
+### Explicitly owned native lifecycle driver
+
+On supported Linux, `service::OwnedNativeExecutor` MAY own a healthy durable
+writer and native runner; the host MUST explicitly drive `tick` or `poll`.
+Its cloned `ExecutorControl::stop` MUST validate a finite timeout in
+`1..=MAX_TIMEOUT_MS` before closing the original shared admission fence.
+Repeated requests MUST preserve the first absolute deadline; abort MUST NOT
+de-escalate to drain. Control waits MUST operate only on metadata, never
+journal, native or protocol I/O, and MUST report `Uncertain` at the deadline
+when the worker has not confirmed cleanup.
+
+Shutdown polling MUST NOT admit pending effects, launch bound entries, schedule
+retries or advance machine deadlines. Drain permits original completion until
+its deadline; abort requests exact original local claim closure immediately.
+Closure starts are bounded to four attempts and four retained helpers per
+poll, with fair target rotation. An authenticated original completion MUST
+retain its original policy; interruption MUST wait for execution transport
+reap and both EOFs before deciding that completion is absent. Authenticated
+interruption MUST preserve pending effects and MUST NOT invent acknowledgement
+or outcome events. Foreign client helpers MAY be cancelled; foreign native
+domains MUST NOT be closed by this driver.
+
+`Stopped` MUST require an empty retained local claim inventory, zero unclaimed
+preparation reservations, actual helper retirement, a successful original-store
+observation and completed release of the owned writer. Unknown preparation
+ownership MUST remain charged. `Drop` MUST NOT publish guaranteed cleanup.
+This opt-in, explicitly driven library API does not establish independent
+production stdio progress or install a native authority.

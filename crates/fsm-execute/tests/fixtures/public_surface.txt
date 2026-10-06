@@ -348,6 +348,12 @@ method fsm_execute::sched::Scheduler::retain_claim
 method fsm_execute::sched::Scheduler::stalled
 method fsm_execute::sched::Scheduler::unhandled
 method fsm_execute::sched::Scheduler::unstartable
+method fsm_execute::service::OwnedNativeExecutor::control
+method fsm_execute::service::OwnedNativeExecutor::from_owned_parts
+method fsm_execute::service::OwnedNativeExecutor::new
+method fsm_execute::service::OwnedNativeExecutor::poll
+method fsm_execute::service::OwnedNativeExecutor::store_mut
+method fsm_execute::service::OwnedNativeExecutor::tick
 method fsm_execute::watch::Watcher::new
 method fsm_execute::watch::Watcher::resolved_count
 method fsm_execute::watch::Watcher::scan
@@ -389,6 +395,12 @@ reexport fsm_execute::run::native_client::NativeRun from claimed
 reexport fsm_execute::run::native_client::NativeRunPhase from claimed
 reexport fsm_execute::run::native_client::NativeRunProgress from claimed
 reexport fsm_execute::run::native_client::NativeShutdown from shutdown
+reexport fsm_execute::service::ExecutorControl from lifecycle
+reexport fsm_execute::service::ExecutorPhase from lifecycle
+reexport fsm_execute::service::OwnedNativeExecutor from lifecycle
+reexport fsm_execute::service::ShutdownMode from lifecycle
+reexport fsm_execute::service::ShutdownReport from lifecycle
+reexport fsm_execute::service::ShutdownRequest from lifecycle
 reexport fsm_execute::service::observe_admitted_with from admitted
 struct fsm_execute::config::Advance
 struct fsm_execute::config::HandlerSpec
@@ -425,6 +437,7 @@ struct fsm_execute::sched::Capped
 struct fsm_execute::sched::Inflight
 struct fsm_execute::sched::Scheduler
 struct fsm_execute::sched::Unstartable
+struct fsm_execute::service::OwnedNativeExecutor
 struct fsm_execute::service::RunConfig
 struct fsm_execute::service::TickOutcome
 struct fsm_execute::watch::AttemptState

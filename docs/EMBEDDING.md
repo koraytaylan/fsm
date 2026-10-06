@@ -2311,3 +2311,21 @@ This operation does not implement endpoint control or independent reporting.
 ### Shared native admission closure and local targets
 
 Obtain a supported native runner's admission control before handing the runner to its worker, retain a clone on the control owner and close it without taking the writer or waiting for worker I/O. Already authorized transitions keep original reservations, and cleanup still requires transport observation plus authenticated settlement/retirement. Borrow local_native_claims to select exact original local closure targets without collecting or re-resolving handlers; these private route-bearing claims are not health output and exclude unclaimed preparations. While draining, use observe_admitted_with rather than an ordinary tick to exclude machine deadlines and new workflow actions; the fence by itself is not the independent shutdown/report driver required by production hosting.
+
+On supported Linux, transfer a healthy durable `Store` and `HandlerTable` to
+`service::OwnedNativeExecutor::new`, or transfer an existing watcher, scheduler
+and native runner with `from_owned_parts`. Clone `control()` before moving the
+driver to its worker. Call `tick(clock, now_ms)` for ordinary caller-driven
+execution; call `poll(clock, now_ms)` for admission-free original completion
+observation. After `control.stop(ShutdownMode::Drain, timeout_ms)` or `Abort`,
+both entries perform shutdown observation without new admission.
+
+`ShutdownRequest::wait` waits independently on metadata until confirmed
+`Stopped` or the original deadline's `Uncertain` report. The host must continue
+driving the worker; a quiet or blocked host is not automatically serviced by
+this library API. Inspect inventory completeness, unclaimed reservations,
+helper retirement and writer release together. `store_mut()` returns `None`
+only after the driver releases its writer. An uncertain report retains
+ownership; dropping the driver does not turn it into a guaranteed stop.
+Provisioned native execution and production stdio/control-endpoint acceptance
+remain separate requirements.

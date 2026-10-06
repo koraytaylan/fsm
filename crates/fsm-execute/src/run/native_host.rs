@@ -5,6 +5,26 @@ use crate::{error::ExecError, sched::Scheduler, watch::Observation};
 use fsm_store::{clock::Clock, store::Store};
 
 impl Runner {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn native_shutdown_inventory(&self) -> (Vec<u64>, usize, bool) {
+        self.native.shutdown_inventory()
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn native_has_completion(&self, claim: &fsm_core::record::execution::Claim) -> bool {
+        self.native.has_completion(claim)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn native_helper_retired(&self, claim: &fsm_core::record::execution::Claim) -> bool {
+        self.native.helper_retired(claim)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn cancel_foreign_native_helpers(&mut self) {
+        self.native.cancel_foreign_helpers();
+    }
+
     pub(crate) fn uses_native_admission(&self) -> bool {
         self.native_admission
     }

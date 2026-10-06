@@ -4028,3 +4028,15 @@ passed under verified 1 GiB/no-swap limits; evidence is retained in
 local-native-admission-fence-stable-gate.log. The provisioned native controls
 and other platform axes remain unexecuted for this source, and production
 shutdown integration remains incomplete; no task or acceptance status is promoted.
+
+Owned native lifecycle driver implementation now takes the original durable
+writer and native execution components, exposes independently waitable cloned
+control, and explicitly polls admission-free original completion plus bounded
+fair claim-bound closure; interruption waits for execution helper reap/EOF and
+keeps authentic completion policy, and Stopped follows actual writer release.
+Focused stable session 97397 passed executor library/downstream writer-control
+tests, stable/MSRV all-target Clippy, public API inventory and source-size checks
+under asserted 1 GiB RAM/zero-swap limits; see OWNED-DRIVER-REVIEW.md and retained
+local-owned-lifecycle-focused-v3.log. Full changed-source stable gate and actual
+installed driver/production stdio/endpoint/CLI/signal controls remain pending;
+no task is promoted and progress remains 3/7.

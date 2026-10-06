@@ -1063,3 +1063,11 @@ shutdown wiring and installed native acceptance remain incomplete.
 ### Shared native admission closure and local targets
 
 Added shared native admission closure and original local shutdown-target iteration, including final authorization checks after route/writer validation and retention of pre-closure publications. Closed fences preserve completion/handoff processing and uncertain preparations; native Drop closes admission only. Independent bounded lifecycle reporting, endpoint control and production stdio shutdown remain incomplete, with installed native acceptance still required. Persisted formats and production runner selection are unchanged.
+
+- Added an opt-in Linux owned native lifecycle driver and independently
+  waitable control: immediate shared admission closure, first-deadline
+  preservation, bounded fair original-claim closure, original completion
+  precedence and writer release before confirmed `Stopped`; a stalled worker
+  reports `Uncertain` without claiming cleanup. Production stdio progress,
+  installed native driver acceptance, local control endpoint and CLI integration
+  remain pending; no persisted format or production default changed.

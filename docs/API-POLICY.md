@@ -1103,3 +1103,10 @@ existing error codes remain unchanged. No portable availability is claimed.
 ### Shared native admission closure and local targets
 
 NativeAdmissionControl, Runner::native_admission_control and Runner::local_native_claims add Linux-only Rust capabilities using existing exec/mode and exec/inflight_deferred refusals, without changing persisted bytes, formats or hash domains. The control is cloneable and Send/Sync; it has no public constructor detached from a runner, and its close/is_closed methods describe admission only. Existing production runner selection remains unchanged.
+
+The Linux `service::OwnedNativeExecutor`, `ExecutorControl`, `ShutdownRequest`,
+`ShutdownReport`, `ExecutorPhase` and `ShutdownMode` surface is additive and
+opt-in. Invalid shutdown timeouts use existing `exec/config`; unsupported or
+unhealthy writer selection uses `exec/mode`, and unproven closure retains
+`exec/inflight_deferred`. Persisted formats, hashes and production defaults
+are unchanged. The explicit polling requirement is part of this API contract.

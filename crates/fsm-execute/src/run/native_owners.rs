@@ -44,6 +44,49 @@ pub(super) struct NativeOwners {
 }
 
 impl NativeOwners {
+    pub(super) fn shutdown_inventory(&self) -> (Vec<u64>, usize, bool) {
+        let helpers_retired =
+            self.admissions.helpers_retired()
+                && self.owners.values().all(|owner| {
+                    owner.execution.progress().helper.is_none_or(|helper| {
+                        helper.reaped && helper.stdout_eof && helper.stderr_eof
+                    })
+                });
+        (
+            self.local_claims().map(Claim::run_id).collect(),
+            self.admissions.len(),
+            helpers_retired,
+        )
+    }
+
+    pub(super) fn has_completion(&self, claim: &Claim) -> bool {
+        self.owners
+            .get(&claim.run_id())
+            .is_some_and(|owner| &owner.claim == claim && owner.execution.completion().is_some())
+    }
+
+    pub(super) fn helper_retired(&self, claim: &Claim) -> bool {
+        self.owners.get(&claim.run_id()).is_some_and(|owner| {
+            &owner.claim == claim
+                && owner
+                    .execution
+                    .progress()
+                    .helper
+                    .is_none_or(|helper| helper.reaped && helper.stdout_eof && helper.stderr_eof)
+        })
+    }
+
+    pub(super) fn cancel_foreign_helpers(&mut self) {
+        for owner in self
+            .owners
+            .values_mut()
+            .filter(|owner| !owner.locally_admitted)
+        {
+            owner.requested = true;
+            let _ = owner.execution.cancel();
+        }
+    }
+
     pub(super) fn admission_control(&self) -> super::NativeAdmissionControl {
         super::NativeAdmissionControl::from_state(self.admission_closed.clone())
     }

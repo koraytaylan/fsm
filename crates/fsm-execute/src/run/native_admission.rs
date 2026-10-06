@@ -261,6 +261,12 @@ impl NativeAdmissions {
         self.pending.is_empty()
     }
 
+    pub(super) fn helpers_retired(&self) -> bool {
+        self.pending
+            .values()
+            .all(|pending| !pending.phase.helper_busy())
+    }
+
     pub(super) fn len(&self) -> usize {
         self.pending.len()
     }

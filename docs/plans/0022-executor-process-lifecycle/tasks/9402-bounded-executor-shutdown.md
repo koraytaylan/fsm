@@ -74,3 +74,15 @@ completed, timed out or remains uncertain.
   handlers cannot consume the MCP server's protocol stdin.
 
 - **Done when:** the public API and native standalone/embedded shutdown tests prove bounded drain and abort with immediate admission closure, correct signal integration and durable uncertainty preservation, without inventing machine events or relying on `Drop`.
+
+Owned native lifecycle driver implementation now takes the original durable
+writer and native execution components, exposes independently waitable cloned
+control, and explicitly polls admission-free original completion plus bounded
+fair claim-bound closure; interruption waits for execution helper reap/EOF and
+keeps authentic completion policy, and Stopped follows actual writer release.
+Focused stable session 97397 passed executor library/downstream writer-control
+tests, stable/MSRV all-target Clippy, public API inventory and source-size checks
+under asserted 1 GiB RAM/zero-swap limits; see OWNED-DRIVER-REVIEW.md and retained
+local-owned-lifecycle-focused-v3.log. Full changed-source stable gate and actual
+installed driver/production stdio/endpoint/CLI/signal controls remain pending;
+no task is promoted and progress remains 3/7.
