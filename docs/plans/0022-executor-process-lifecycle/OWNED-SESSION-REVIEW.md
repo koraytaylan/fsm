@@ -486,3 +486,31 @@ no corresponding capability update. Final renderer wiring, original-deadline
 delivery policy and production bounded-exit acceptance remain incomplete.
 The full stable gate will run on the committed source before acceptance;
 prior native workflow failures remain open and are not bypassed.
+
+### Native workflow fixture launch-path review (2026-10-07)
+
+Source review identifies an additional concrete fixture prerequisite:
+containment/launch.rs explicitly sets DynamicUser=yes and ProtectHome=yes,
+whereas mcp_execute_workflow's approved handler executable is current_exe
+and its explicit resource argument is below the cache fixture under /home.
+Physical-store registration and catalogue publication alone cannot make those
+paths reachable by an admitted production handler under this profile.
+This is source evidence about the launch profile, not a claim that the current
+unregistered first-effect failure reached launch or that a handler ran.
+
+The provisioned workflow harness must use a protected, traversable copy of
+the exact test helper artifact outside protected home paths and a separate
+fixture-owned writable resource directory reachable by changing handler UIDs;
+its operator store remains private to the actual non-root operator.
+Existing runner native cases demonstrate a fixture resource under /dev/shm;
+that precedent is resource access only, not permission to execute an artifact
+there or to make an operator store writable by handler identities.
+Authority catalogue input also needs a root-protected source parent, as
+authority::run checks protected_directory before catalogue publication.
+Register, catalogue, provision-broker and serve use the actual production
+authority interface with a non-root, non-handler operator UID.
+Each scenario needs its own immutable catalogue because approved failure
+arguments differ; all original discovery, ordering, acknowledgement and
+compensation assertions remain required.
+The full stable gate remains live at session 50807 on runtime 7cf0e39;
+this review changes no runtime source and proves no provisioned workflow.
