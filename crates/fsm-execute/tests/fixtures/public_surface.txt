@@ -275,6 +275,7 @@ method fsm_execute::run::Runner::poll
 method fsm_execute::run::Runner::running_effects
 method fsm_execute::run::Runner::scratch_dir
 method fsm_execute::run::Runner::spawn
+method fsm_execute::run::Runner::start_native
 method fsm_execute::run::native_client::NativeCompletion::candidate
 method fsm_execute::run::native_client::NativeCompletion::failure_class
 method fsm_execute::run::native_client::NativeCompletion::handler

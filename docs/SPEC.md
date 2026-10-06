@@ -2531,3 +2531,20 @@ scheduler selection even when the copied journal prefix is identical; no
 claim, handler entry, or settlement is authorized by that refusal. This
 internal route check changes no public signature, persisted bytes, hash
 domain, or published error code, and does not complete fresh native admission.
+
+### Runner handoff for an already published native claim
+
+Additive provisional `Runner::start_native` accepts a genuine eligible original
+claim under a healthy durable writer and a scheduler that already holds its
+local effect reservation. It pins the physical store, installs retained original
+ownership, binds the local reservation, and only then requests one-shot helper
+startup; post-installation failure retains the claim and capacity without an
+automatic replacement request. Shared tick observation pauses at Bound, and
+writer-held application rechecks current eligibility before requesting entry
+once. Read-only entry refusal retains Bound for a later healthy writer; an
+uncertain entry attempt cannot be repeated. Shared cancellation requests native
+transport cancellation and retains ownership rather than creating a legacy
+settlement. Unsupported platforms refuse startup with `exec/mode` and no
+automatic direct-child fallback. Persisted bytes, hash domains, and error codes
+are unchanged; automatic fresh preparation and claim admission are still
+unimplemented, and this handoff does not release production acceptance gates.

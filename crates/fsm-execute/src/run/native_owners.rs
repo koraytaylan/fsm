@@ -18,6 +18,7 @@ struct Owner {
     stopped: Option<Stopped>,
     execution: NativeExecution,
     requested: bool,
+    entry_requested: bool,
     parked_at: Option<u64>,
 }
 
@@ -130,10 +131,53 @@ impl NativeOwners {
                 stopped: stopped.cloned(),
                 execution: NativeExecution::retain_uncertain(claim),
                 requested: false,
+                entry_requested: true,
                 parked_at: None,
             },
         );
         Ok(())
+    }
+
+    pub(super) fn install(
+        &mut self,
+        store: &mut Store,
+        claim: &Claim,
+        scheduler: &mut Scheduler,
+        timeout: Duration,
+    ) -> Result<(), ExecError> {
+        // Only a genuine eligible current durable claim may enter this map.
+        Pipeline::native_launch_hash(store, claim)?;
+        let metadata = std::fs::metadata(&store.data_dir).map_err(|_| deferred())?;
+        let physical = (metadata.dev(), metadata.ino());
+        if self
+            .physical_store
+            .is_some_and(|original| original != physical)
+            || self.owners.contains_key(&claim.run_id())
+        {
+            return Err(deferred());
+        }
+        self.physical_store = Some(physical);
+        self.retain(claim, None)?;
+        let owner = self.owners.get_mut(&claim.run_id()).ok_or_else(deferred)?;
+        // Install retention and disable automatic replacement recovery before
+        // any fallible binding transport startup or scheduler binding check.
+        owner.requested = true;
+        owner.entry_requested = false;
+        if !scheduler.retain_claim(claim) {
+            return Err(deferred());
+        }
+        owner.execution.start_retained(store, timeout)
+    }
+
+    pub(super) fn cancel(&mut self, effect: &str) -> Option<Result<(), ExecError>> {
+        let owner = self.owners.values_mut().find(|owner| {
+            owner.claim.effect().1 == effect && owner.execution.progress().retained
+        })?;
+        owner.entry_requested = true;
+        Some(owner.execution.cancel().map_err(|error| {
+            ExecError::new("exec/inflight_deferred", error)
+                .hint("retain original native ownership until authenticated reconciliation")
+        }))
     }
 
     pub(super) fn ready(&self) -> bool {
@@ -191,7 +235,8 @@ impl NativeOwners {
 
 impl Owner {
     fn ready(&self, seq: u64) -> bool {
-        self.execution.completion().is_some() && self.parked_at != Some(seq)
+        (!self.entry_requested && self.execution.progress().phase == NativeRunPhase::Bound)
+            || (self.execution.completion().is_some() && self.parked_at != Some(seq))
     }
 
     fn apply(
@@ -200,6 +245,21 @@ impl Owner {
         clock: &mut dyn Clock,
         pipeline: &mut Pipeline,
     ) -> Result<(String, bool), ExecError> {
+        if !self.entry_requested && self.execution.progress().phase == NativeRunPhase::Bound {
+            // A read-only or stale writer refusal leaves the bound owner intact;
+            // only a validated entry attempt consumes its one-shot permission.
+            Pipeline::native_launch_hash(store, &self.claim)?;
+            self.entry_requested = true;
+            self.execution.launch_bound(store)?;
+            return Ok((
+                format!(
+                    "native-launched {} run_id={}",
+                    self.claim.effect().1,
+                    self.claim.run_id()
+                ),
+                false,
+            ));
+        }
         let response = self.execution.settle(store, clock)?;
         let disposition = response
             .get("execution")

@@ -547,6 +547,22 @@ pub struct Runner {
 }
 
 impl Runner {
+    /// Retain a published original claim before requesting native binding.
+    ///
+    /// The scheduler must already hold its matching local effect reservation.
+    /// Successful startup waits at Bound until a shared tick has a healthy
+    /// writer; every post-installation refusal retains ownership and capacity.
+    /// Unsupported platforms refuse without a direct-child fallback.
+    pub fn start_native(
+        &mut self,
+        store: &mut fsm_store::store::Store,
+        claim: &fsm_core::record::execution::Claim,
+        scheduler: &mut crate::sched::Scheduler,
+        timeout: std::time::Duration,
+    ) -> Result<(), ExecError> {
+        self.native_start_claim(store, claim, scheduler, timeout)
+    }
+
     /// Create the capture directory this runner owns.
     ///
     /// Created exclusively, never adopted. The temporary directory is world

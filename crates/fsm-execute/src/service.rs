@@ -382,6 +382,16 @@ fn prepare(scheduler: &mut Scheduler, runner: &mut Runner, plan: &mut Plan) -> V
                 }
             }
             Directive::Kill { effect_id, reason } => {
+                if let Some(result) = runner.cancel_native(effect_id) {
+                    plan.lines.push(format!(
+                        "native-stop-requested {} {effect_id}",
+                        kill_word(*reason)
+                    ));
+                    if let Err(error) = result {
+                        plan.lines.push(error_line(&error));
+                    }
+                    continue;
+                }
                 let effect = scheduler.inflight_effect(effect_id).cloned().or_else(|| {
                     plan.observation
                         .pending

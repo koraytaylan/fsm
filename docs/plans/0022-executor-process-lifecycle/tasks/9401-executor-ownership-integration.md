@@ -1198,3 +1198,42 @@ the replacement read-only to verify unchanged records and head. Both public
 entry paths must therefore reject before writer acquisition, independently
 of unresolved claims or a corrupt logical prefix; execution remains pending
 behind the live release gate.
+
+### Runner installation for an already published fresh claim
+
+Added provisional `Runner::start_native`: validate a genuine eligible claim
+under a healthy writer, check/pin physical identity, install the retained
+original owner, mark startup requested, bind its existing scheduler reservation,
+and only then request the one-shot binding helper. Existing same-run owners
+cannot be overwritten or rebound; post-installation startup or reservation
+refusal leaves ownership retained. Shared readiness includes installed Bound
+owners; writer-held application validates eligibility before consuming the
+one-shot entry request. A read-only pre-entry refusal leaves Bound intact.
+Shared kill directives for retained native effects now request native transport
+cancellation without creating a legacy pending settlement or releasing capacity.
+This is the host handoff for an already published claim; automatic fresh
+preparation and claiming in `service::prepare` are still unimplemented.
+
+Review checked insertion-before-startup ordering, duplicate ownership refusal,
+no recovery-helper replacement after uncertain startup, readonly-before-entry
+ordering, cancellation-before-entry permission revocation, and exact consumed
+reservation release after event errors. The new public wrapper lives in the
+main Runner impl so the committed API scanner inventories it; the initial
+private-module placement failed the inventory check and was corrected without
+weakening that gate. Retained initial/corrected logs are
+`local-runner-native-handoff-msrv.log` and
+`local-runner-native-handoff-msrv-corrected.log`. The corrected MSRV memory
+startup refusal, all 16 API inventory tests, and all-target executor Clippy
+passed serially in a verified 1 GiB scope with swap disabled. Genuine
+provisioned fresh Runner installation/entry, readonly contention, cancellation,
+post-claim startup failure and capacity reuse still require actual execution.
+
+Separately, frozen `6ed1dab3efa51acf873355b619fe43dabf5d40ab` passed the
+owner-free identical-prefix replacement regression at MSRV, failed that exact
+control with only the old empty-owner return restored (cargo exit 101), and
+passed again after exact source-byte restoration, followed by all-target
+Clippy. Evidence is `local-6ed1dab-capped-msrv-route-pin.log`. Frozen
+`ac8615b63cb01073008da6d79e3a9b615560d104` full stable release workspace
+tests also finished successfully (session 18239 exit 0), retained as
+`local-ac8615b-capped-stable-release.log`; neither earlier gate validates
+this later Runner handoff, and task 9401 remains in progress.
