@@ -117,3 +117,10 @@ HTTP must route bounded session commands to a retained host whose explicit
 shutdown owns native retirement, preserving session isolation and notification
 ordering. The existing Sessions container owns per-client cancellation and
 subscriptions separately from the Store, matching that required separation.
+
+The reporting prerequisite is now implemented: the additive reporting entry
+retains actual protocol I/O failure, original deadline and cleanup/output facts,
+while the existing entry preserves error-return behavior. Session 32806 passed
+stable/MSRV focused checks and actual failing-reader/writer-release plus exact
+first-control-deadline regressions. This resolves the reporting prerequisite
+identified above, not production stdio/HTTP routing or nonempty acceptance.

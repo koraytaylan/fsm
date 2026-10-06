@@ -327,3 +327,69 @@ fn invalid_owned_session_bounds_preserve_the_driver_and_maximum_is_finite() {
     assert_eq!(report.shutdown.phase, ExecutorPhase::Stopped);
     assert!(report.output_drained);
 }
+
+#[test]
+fn reporting_session_retains_actual_input_failure_and_releases_original_writer() {
+    struct FailedInput;
+    impl io::Read for FailedInput {
+        fn read(&mut self, _bytes: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::other("actual owned input failure"))
+        }
+    }
+    impl io::BufRead for FailedInput {
+        fn fill_buf(&mut self) -> io::Result<&[u8]> {
+            Err(io::Error::other("actual owned input failure"))
+        }
+        fn consume(&mut self, _amount: usize) {}
+    }
+    let directory = Directory::new();
+    let mut driver =
+        OwnedNativeExecutor::new(Store::open(&directory.0).unwrap(), HandlerTable::default())
+            .unwrap();
+    let report = fsm_cli::mcp::serve::serve_owned_native_session_reporting(
+        &mut driver,
+        &mut FixedClock::new(0, 1),
+        || FailedInput,
+        io::sink(),
+        500,
+    )
+    .unwrap();
+    assert_eq!(
+        report.failure.as_ref().unwrap().kind(),
+        io::ErrorKind::Other
+    );
+    assert_eq!(
+        report.failure.as_ref().unwrap().to_string(),
+        "actual owned input failure"
+    );
+    assert_eq!(report.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(report.shutdown.admission_closed);
+    assert!(report.shutdown.writer_released);
+    assert!(report.shutdown.helpers_retired);
+    assert!(report.shutdown.inventory_complete);
+    assert!(report.shutdown.unresolved_run_ids.is_empty());
+    assert!(driver.store_mut().is_none());
+    drop(Store::open(&directory.0).unwrap());
+}
+
+#[test]
+fn reporting_session_reuses_the_actual_first_control_deadline() {
+    let directory = Directory::new();
+    let mut driver =
+        OwnedNativeExecutor::new(Store::open(&directory.0).unwrap(), HandlerTable::default())
+            .unwrap();
+    let request = driver.control().stop(ShutdownMode::Drain, 500).unwrap();
+    let report = fsm_cli::mcp::serve::serve_owned_native_session_reporting(
+        &mut driver,
+        &mut FixedClock::new(0, 1),
+        || Cursor::new(Vec::<u8>::new()),
+        io::sink(),
+        10000,
+    )
+    .unwrap();
+    assert_eq!(report.shutdown_deadline, request.deadline());
+    assert!(report.failure.is_none());
+    assert_eq!(report.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(report.output_drained);
+    drop(Store::open(&directory.0).unwrap());
+}

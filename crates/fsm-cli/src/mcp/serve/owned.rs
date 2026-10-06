@@ -17,6 +17,10 @@ pub struct OwnedSessionReport {
     pub shutdown: ShutdownReport,
     /// Actual successful write/flush of every admitted output frame.
     pub output_drained: bool,
+    /// Original request deadline, reusable for endpoint retirement.
+    pub shutdown_deadline: Instant,
+    /// Initiating protocol failure retained alongside actual cleanup facts.
+    pub failure: Option<io::Error>,
 }
 
 /// Serve an explicitly selected native driver through one journal owner.
@@ -29,6 +33,23 @@ pub struct OwnedSessionReport {
 /// return uncertainty at their first deadline if this worker stalls.
 /// This entry does not select the production CLI backend or install authority.
 pub fn serve_owned_native_session<R: BufRead + 'static>(
+    driver: &mut OwnedNativeExecutor,
+    clock: &mut dyn Clock,
+    input: impl FnOnce() -> R + Send + 'static,
+    output: impl Write + Send + 'static,
+    shutdown_timeout_ms: i64,
+) -> io::Result<OwnedSessionReport> {
+    let mut report =
+        serve_owned_native_session_reporting(driver, clock, input, output, shutdown_timeout_ms)?;
+    match report.failure.take() {
+        Some(error) => Err(error),
+        None => Ok(report),
+    }
+}
+
+/// Retain actual cleanup and the initiating I/O failure in the same result.
+/// Invalid options still refuse before worker startup or admission changes.
+pub fn serve_owned_native_session_reporting<R: BufRead + 'static>(
     driver: &mut OwnedNativeExecutor,
     clock: &mut dyn Clock,
     input: impl FnOnce() -> R + Send + 'static,
@@ -102,12 +123,14 @@ pub fn serve_owned_native_session<R: BufRead + 'static>(
     let output_drained = output_control
         .as_ref()
         .is_some_and(|output| output.drained());
-    match result {
-        Err(error) if explicit_stop && error.kind() == io::ErrorKind::Interrupted => {}
-        other => other?,
-    }
+    let failure = match result {
+        Err(error) if explicit_stop && error.kind() == io::ErrorKind::Interrupted => None,
+        other => other.err(),
+    };
     Ok(OwnedSessionReport {
         shutdown,
         output_drained,
+        shutdown_deadline: request.deadline(),
+        failure,
     })
 }

@@ -24,7 +24,9 @@ use session_store::{SessionLive, SessionRuntime, SessionStore};
 #[cfg(target_os = "linux")]
 mod owned;
 #[cfg(target_os = "linux")]
-pub use owned::{OwnedSessionReport, serve_owned_native_session};
+pub use owned::{
+    OwnedSessionReport, serve_owned_native_session, serve_owned_native_session_reporting,
+};
 const KNOWN_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 const DEFAULT_VERSION: &str = "2025-06-18";
 

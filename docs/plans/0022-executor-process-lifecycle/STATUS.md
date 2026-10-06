@@ -4612,3 +4612,21 @@ This validates the committed portable production standalone composition and
 its empty shutdown/broken-output binary tests; installed native nonempty
 acceptance remains unexecuted, while production embedded stdio and HTTP
 ownership remain incomplete. Task statuses and plan progress remain unchanged.
+
+### Owned-session original deadline and failure evidence — 2026-10-07
+
+Applied the reviewed reporting entry, retaining protocol I/O failure alongside
+actual shutdown/output facts and the original monotonic deadline; the existing
+entry preserves its error-return behavior. Added actual failing reader/writer
+release and first-control-deadline regressions. Focused session 32806 is live
+under asserted 1 GiB RAM and zero swap, retaining pending evidence in
+owned-session-reporting-check.log. Production embedded routing is still
+incomplete; this unit is uncommitted pending checks and statuses unchanged.
+
+Session 32806 terminated with exit zero under asserted 1 GiB RAM and zero
+swap. Stable/MSRV all-target Clippy, all six owned native session tests
+(including actual failing input/writer release and exact first deadline),
+executor/lifecycle/transport/public inventory checks, seven binary stop/output
+tests and 61 CLI library tests passed. Evidence remains in
+owned-session-reporting-check.log. Production embedded routing and installed
+nonempty native acceptance remain incomplete; statuses are unchanged.

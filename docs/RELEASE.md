@@ -1148,3 +1148,11 @@ hint, nesting its original details under `initiating_details` and attaching
 separate observed shutdown, endpoint and output facts. Unavailable output facts
 are null; run IDs and counts are decimal strings, avoiding JSON number precision
 loss. Endpoint removal does not imply native cleanup or successful delivery.
+
+The Linux owned native session reporting entry
+`serve_owned_native_session_reporting` retains the initiating protocol I/O
+failure in `OwnedSessionReport.failure`, alongside actual shutdown/output
+facts and `shutdown_deadline`, the original monotonic control deadline.
+The existing `serve_owned_native_session` entry preserves its error-return
+behavior. Invalid timeout options refuse before worker startup or admission
+changes; this additive entry does not select production embedded execution.
