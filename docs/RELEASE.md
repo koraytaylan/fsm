@@ -971,3 +971,6 @@ Plan 0022 replay now carries original unresolved claim hashes separately from lo
 
 
 Unreleased post-ack persistence work introduces VERSION 12, root/5, snapshot/7 and base/3 for atomic acknowledgement-to-event obligations, with explicit historical root/base verification and no journal rewriting; cold host delivery and installed production acceptance remain separate required gates.
+
+
+Corrected matched-stop inspection racing natural cgroup retirement: a confirmed absent group can reach the existing original-handoff revocation and manager checks, with no weakened closure proof, relaxed deadline or format change; new installed runtime acceptance remains pending.

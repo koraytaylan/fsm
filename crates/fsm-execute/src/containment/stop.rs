@@ -32,11 +32,20 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
     ));
     match fs::symlink_metadata(&group_path) {
         Ok(_) => {
-            if closing::revoke_locked(directory, allocation)
-                .map_err(|error| stage("live domain revocation", error))?
-                != domain
-            {
-                return Err("manager stop live native identity changed".into());
+            match closing::revoke_locked(directory, allocation) {
+                Ok(observed) if observed == domain => {}
+                Ok(_) => return Err("manager stop live native identity changed".into()),
+                Err(error) => {
+                    // The original group can retire between the metadata read
+                    // and live revocation. Absence permits only continuation
+                    // into the complete original-handoff checks below, never
+                    // successful fencing or closure on its own. A surviving,
+                    // replaced or unreadable group retains the original error.
+                    match fs::symlink_metadata(&group_path) {
+                        Err(absent) if absent.kind() == std::io::ErrorKind::NotFound => {}
+                        _ => return Err(stage("live domain revocation", error)),
+                    }
+                }
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}

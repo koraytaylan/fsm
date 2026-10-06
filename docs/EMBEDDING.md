@@ -2204,3 +2204,6 @@ ExecutionState::claim_record_hash borrows the original hash for an exact unresol
 
 
 Durable native acknowledgements with an original outcome event retain an execution_handoffs obligation in the same transaction; successful event delivery retires it atomically. The stored original contract and result supply recovery without current handler lookup or new execution authority. The new StoreState collection is separate from unresolved execution ownership and scheduler capacity, and current caches/bases advance to snapshot/7 and base/3 while older authoritative bases still decode under their original roots.
+
+
+A naturally retired native cgroup can disappear during stop inspection; the backend continues only after confirming absence and still requires the original handoff, matched manager identity and independent closure proof, retaining refusal for surviving or unreadable groups.

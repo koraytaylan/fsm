@@ -1007,3 +1007,6 @@ ExecutionState adds claim_record_hash and attach_claim_record_hash for separatel
 
 
 The unreleased post-ack persistence boundary advances to VERSION 12, fsm.state-root/5 under fsm:state-root:5, snapshot/7 under fsm:snapshot:7 and authoritative base/3; old binaries refuse VERSION 12. Historical root/4 and base/2 verification remain explicit and byte-preserving. StoreState gains execution_handoffs; the additive handoff settlement API retains existing settlement signatures and fingerprints while binding optional handoff material into the same journal acknowledgement. These public Rust additions and the persistent boundary require the corresponding next minor release; installed production acceptance remains gated.
+
+
+The matched-stop retirement-race correction preserves public signatures, error codes, deadlines and persisted formats: disappearance during live revocation permits only the existing fully checked original-handoff path, never inferred closure.

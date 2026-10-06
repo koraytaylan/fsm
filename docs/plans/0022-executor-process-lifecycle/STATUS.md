@@ -3513,3 +3513,21 @@ Logs are retained under the task cache as local-cli-format12-correction-final.lo
 and local-cli-format12-audit-rebuilt.log, alongside the original failed gate.
 Task 9401 remains in progress; full workspace, portable and installed native
 acceptance of VERSION 12 and cold handoff delivery remain incomplete.
+
+### Matched-stop retirement race review — 2026-10-06
+
+Review run 37455127828 at exact source 413d6a4 remains live with both Windows
+jobs running; the four Ubuntu/macOS gates, zero-deps and native MSRV jobs
+are successful, while native stable failed private_exec_status with ENOENT
+during live domain revocation, as retained in its failed authority artifact.
+The correction permits continuation after a failed early live revocation only
+when a fresh metadata lookup confirms the original cgroup is absent; all
+original binding, handoff, manager identity/policy and durable revocation
+checks still run, and independent closure remains necessary.
+Surviving, replaced or unreadable groups preserve the original refusal.
+Stable fsm-execute all-target Clippy and library tests, formatting and source
+size checks passed serially under verified 1 GiB/no-swap limits; the retained
+log is local-matched-stop-retirement-review.log in the task cache.
+This local result does not prove the installed race is corrected, nor
+authorize production defaults: genuine installed native acceptance remains
+required, and the earlier review run will not be superseded while live.
