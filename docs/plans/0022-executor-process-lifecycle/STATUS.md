@@ -4460,3 +4460,21 @@ checks and all 61 CLI library tests; standalone-exclusive-check.log is retained.
 This proves the opt-in host contract on empty native inventory, not production
 selection or installed nonempty cleanup; progress remains 3/7 and task statuses
 remain unchanged.
+
+### Standalone and paired probe full stable gate — 2026-10-06
+
+Session 76940 terminated with exit zero for runtime commit
+ee99a582de8fb4ed3ec727c00d92eea138885ab3; the later commits through
+f525a0c changed documentation only during the run. The script asserted
+MemoryMax=1 GiB and MemorySwapMax=0 before Cargo, and observed swap remained
+zero during live checks. Formatting, source size, debug and release workspace
+tests, workspace all-target Clippy with warnings denied, documentation with
+warnings denied, zero-dependency checks and downstream embedding acceptance
+passed. Evidence is retained in standalone-paired-probes-stable-gate.log under
+the operator cache directory.
+
+The installed native authority cases remain unexecuted here: their compilation
+and ignored workspace status do not prove native acceptance. Ordinary production
+execution still uses legacy selection and does not publish the paired endpoint;
+the original-deadline endpoint cleanup and production owner drafts remain
+unapplied. Plan progress remains 3/7 with task statuses unchanged.
