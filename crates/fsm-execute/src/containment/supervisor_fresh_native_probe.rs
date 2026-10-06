@@ -402,9 +402,9 @@ fn shared_tick_handoff(case: Handoff) {
         let before = writer.records.clone();
         let handoffs = writer.state.execution_handoffs.clone();
         drop(writer);
-        // Release retires the earlier helper; this phase needs a new actual
-        // independent writer rather than reusing its closed stdin transport.
-        holder = WriterHolder::start(path.to_str().unwrap());
+        // The original claim is already settled; hold an actual writer lease
+        // without the earlier helper's active-claim refusal preconditions.
+        holder = WriterHolder::lease_only(path.to_str().unwrap());
         holder.acquire();
         let outcome = tick_reporting(
             &mut watcher,

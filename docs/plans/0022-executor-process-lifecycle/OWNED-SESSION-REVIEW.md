@@ -711,3 +711,25 @@ fixture path. Guarded teardown of the failed run completed and subsequent
 stat found no installed artifact or authority base; no native job remains
 live from that run. A fresh frozen native rerun and later-source host gates
 remain required before acceptance, with statuses unchanged at 3/7.
+
+### Cold post-ack lease helper phase correction
+
+Native probe on frozen 12850e6 terminated with exit 1 after nine passing
+cases; broker cold handoff now starts a new helper but it exits before
+FSM_NATIVE_WRITER_READY (18.82-second outer broker test).
+The existing writer_holder helper verifies an active original claim hash
+and attempted competing-claim refusal; Store::current_execution_claim_hash
+explicitly refuses when that original claim is no longer current.
+The cold post-resume phase has already acknowledged and settled the claim,
+so those active-claim helper preconditions do not apply there.
+That phase now uses the existing writer_lease_only helper, which acquires
+the actual Store writer lease and verifies unchanged records, state and
+journal head on release; active-claim phases keep their stronger original
+helper, and all post-ack contention/handoff/persistence assertions remain.
+This diagnosis is source-supported inference about the suppressed child
+failure, not a recovered child panic message.
+Stable all-target executor Clippy and MSRV compilation pass with format and
+source-size checks (native-post-ack-lease-check.log). Failed native evidence
+remains in local-native-authority-12850e6; guarded matched teardown completed,
+and subsequent stat found no installed artifact or authority base.
+A new frozen native rerun remains required; no task status is promoted.
