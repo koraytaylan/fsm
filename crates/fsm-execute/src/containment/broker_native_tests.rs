@@ -154,6 +154,8 @@ pub(super) fn run() {
         run_case(timeout, Host::Primitive);
     }
     run_case(false, Host::Shared);
+    run_case(false, Host::BoundClosure);
+    run_case(false, Host::BoundClosureMcp);
     run_case(false, Host::Fresh);
     run_case(false, Host::FreshMcp);
     run_case(false, Host::Cold);
@@ -174,12 +176,16 @@ pub(super) fn run() {
 mod host_cases;
 use host_cases::Host;
 
+#[path = "broker_claimed_closure_native_tests.rs"]
+mod claimed_closure_cases;
+
 fn run_case(timeout: bool, host: Host) {
     let table = fixture_table::handler_table(
         timeout,
         matches!(
             host,
             Host::FreshMcp
+                | Host::BoundClosureMcp
                 | Host::ColdMcp
                 | Host::ColdConflictMcp
                 | Host::ColdRejectedMcp
@@ -271,20 +277,7 @@ fn run_case(timeout: bool, host: Host) {
         request(&base, "recover", Value::Num("1".into())).get("ok"),
         Some(&Value::Bool(false))
     );
-    if matches!(host, Host::ColdRejected | Host::ColdRejectedMcp) {
-        fresh_cases::rejected(&mut fixture, &binding, &effect, &successor);
-        return;
-    }
-    if matches!(host, Host::ColdConflict | Host::ColdConflictMcp) {
-        fresh_cases::conflict(&mut fixture, &binding, &effect, &successor);
-        return;
-    }
-    if matches!(host, Host::Cold | Host::ColdMcp) {
-        fresh_cases::cold(&mut fixture, &binding, &effect, &successor);
-        return;
-    }
-    if matches!(host, Host::Fresh | Host::FreshMcp) {
-        fresh_cases::run(&mut fixture, &binding, &effect, &successor);
+    if host_cases::dispatch_fresh(&mut fixture, &binding, &effect, &successor, &host) {
         return;
     }
     let execution = disconnect_cases::complete(&fixture.directory, &binding, timeout, &successor);

@@ -54,7 +54,7 @@ authority=Path(sys.argv[1]).parent
 os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client-watch',authority.parent.name,authority.name.removeprefix('authority-')])
 "#;
 
-const SUPERVISOR: &str = r#"import os,sys
+pub(super) const SUPERVISOR: &str = r#"import os,sys
 os.setgroups([])
 os.setgid(65534)
 os.setuid(65534)

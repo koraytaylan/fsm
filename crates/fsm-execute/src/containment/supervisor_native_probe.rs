@@ -972,3 +972,6 @@ mod fresh_handoff;
 
 #[path = "supervisor_admission_native_probe.rs"]
 mod fresh_admission;
+
+#[path = "supervisor_claimed_closure_probe.rs"]
+mod claimed_closure;

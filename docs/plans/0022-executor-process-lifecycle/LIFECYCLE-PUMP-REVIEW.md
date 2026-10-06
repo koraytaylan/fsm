@@ -155,3 +155,32 @@ is retained. The guard test checks original equality and changed hash/run/domain
 refusal using a literal fixture; it is not an installed broker side-effect test.
 Actual provisioned dispatch refusal/closure and full changed-source acceptance
 remain pending; production selection and task completion flags stay unchanged.
+
+## Provisioned bound closure controls
+
+Session 52849 completed the full stable gate for runtime source 7722839 with
+exit 0; local-7722839-claimed-closure-stable-gate.log retains debug/release,
+workspace all-target Clippy, warning-denied docs, zero-dependency and embedding
+success under verified 1 GiB/no-swap limits. Runtime source stayed frozen.
+
+New process/MCP fixture axes invoke an actual UID-65534 child from the existing
+provisioned broker test. The child installs the genuine journal claim, observes
+binding without an entry tick, sends a deterministically different original
+hash through close-claimed, and requires refusal before closing/tombstone
+publication. It then starts NativeShutdown from a live read-only snapshot and
+requires an authenticated original receipt without launch/entry/handoff
+material or journal consumption. Cold reopen must retain the claim and pending
+effect. The Root wrapper independently verifies original binding/receipt,
+original cgroup absence, allocation counter 2, and survival of the unrelated
+prepared successor before fixture cleanup. Existing named cases remain routed
+through their original functions; dispatch moves to the host-case module to
+keep broker_native_tests below 1,000 lines.
+
+Session 80831 passed formatting/source-size, stable/MSRV all-target executor
+Clippy, 32 library tests, downstream API/public-surface tests and the authority
+guard test, terminal exit 0; local-claimed-closure-controls-check.log is retained.
+The new provisioned axes were compiled but NOT executed: this host lacks the
+protected helper/authority and no successor private push is authorized yet.
+They expand one existing logical case, not the frozen 81-case inventory; no
+older CI verdict proves them. Full changed-source host acceptance remains
+pending, and neither production shutdown nor task 9402 completion is claimed.
