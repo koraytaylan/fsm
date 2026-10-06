@@ -45,3 +45,28 @@ control endpoint, CLI stop and signal integration remain unfinished. Tasks
 9401 and 9402 are not completed and the plan stays 3/7. Full stable host gate
 for this changed source is required next, followed by installed native and
 portable CI review once the exact private upload is authorized.
+
+## Follow-up finding: admission closure is not a stop request
+
+Review of frozen runtime f90871b found ExecutorControl::requested reads only
+the shared admission fence. A host can close that fence before transferring its
+runner into from_owned_parts without issuing any lifecycle request. A successful
+empty poll then drops the writer while request metadata still says Running;
+record_stopped correctly refuses, but the writer was released prematurely.
+This distinction must be fixed before accepting the driver implementation.
+
+The prepared correction checks actual request metadata, preserving direct
+admission closure as its own irreversible safety operation. A downstream
+regression transfers an actually preclosed native runner, polls an empty owned
+Store and requires its writer to remain held until an explicit Abort request.
+Draft code and regression are retained as owned-driver-request-distinction-*.rs.draft
+in the task cache; they have been formatted but not applied or executed while
+full stable session 85037 remains live against frozen f90871b.
+
+The next installed control is also drafted as owned-driver-supervisor-probe,
+owned-driver-root-assertions, owned-driver-host-cases and owned-driver-root-matrix
+cache files. It adds independent process and MCP bound-owner driver axes while
+retaining existing primitive closure/interruption tests, authenticates actual
+Root closure through the real driver, proves writer reopen after Stopped and
+checks exactly two interruption records, unchanged instance/pending state, no
+Ack and exact cold replay. These drafts are not executed native evidence.

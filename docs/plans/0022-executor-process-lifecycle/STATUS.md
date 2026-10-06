@@ -4040,3 +4040,9 @@ under asserted 1 GiB RAM/zero-swap limits; see OWNED-DRIVER-REVIEW.md and retain
 local-owned-lifecycle-focused-v3.log. Full changed-source stable gate and actual
 installed driver/production stdio/endpoint/CLI/signal controls remain pending;
 no task is promoted and progress remains 3/7.
+
+Frozen f90871b full stable session 85037 remains live; driver follow-up review
+found admission closure alone can prematurely release an empty transferred
+writer, with a correction and downstream regression prepared outside the frozen
+source, as recorded in OWNED-DRIVER-REVIEW.md; this finding remains open until
+the gate terminates and changed-source verification passes.
