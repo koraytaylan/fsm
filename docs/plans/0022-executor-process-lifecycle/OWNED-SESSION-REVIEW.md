@@ -514,3 +514,27 @@ arguments differ; all original discovery, ordering, acknowledgement and
 compensation assertions remain required.
 The full stable gate remains live at session 50807 on runtime 7cf0e39;
 this review changes no runtime source and proves no provisioned workflow.
+
+### Original-deadline final pipe delivery feasibility (2026-10-07)
+
+A small independent Linux pipe experiment opened /proc/self/fd/<owned-writer>
+with O_WRONLY|O_NONBLOCK, verified the original handle remained blocking,
+delivered exact multiline diagnostic bytes through the new handle, filled
+the pipe and observed EAGAIN immediately on the next small-frame write.
+The original handle's flags remained unchanged after saturation.
+Host Linux UAPI headers define PIPE_BUF=4096 and O_NONBLOCK=00004000.
+This supports an immediate atomic small-frame attempt in the final caller
+renderer, after native owner return, without taking the stderr worker's lock
+or adding a waiting budget when the original deadline has already expired.
+
+The cache-only native-final-error-output.rs.draft now uses this path for
+frames up to 4096 bytes, checks the opened handle is a FIFO, and waits on
+WouldBlock/Interrupted only while the original deadline still has time.
+Other handle types, failed independent opens and larger frames use a bounded
+diagnostic worker with the same original deadline and no join.
+Formatting passed; this candidate is neither applied nor Cargo compiled
+while stable gate 50807 remains live on runtime 7cf0e39.
+Production tests must establish both healthy final diagnostic preservation
+and exit with stderr still blocked; inherited-handle access failures and
+non-pipe deadline-expired delivery remain explicit limits to review.
+This experiment is not production shutdown or native execution acceptance.
