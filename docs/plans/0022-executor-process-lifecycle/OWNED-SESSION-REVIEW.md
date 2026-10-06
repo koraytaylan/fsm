@@ -396,3 +396,14 @@ stable CLI all-target Clippy and MSRV compilation also pass under verified
 workflow-resource-separation-check.log. No filesystem access is broadened by
 this refactor; provisioned handler identity access, physical-store registration
 and immutable catalogue approval still require native integration and proof.
+
+Broken stderr coverage now also runs an empty-store session that admits
+exactly one pre-initialization tools/list warning and then remains quiet
+with stdin open; no later log enqueue can mask missing asynchronous worker
+failure observation. Both that case and the original pending-action case
+confirm failed exit, physical writer reacquisition, unchanged journal/pending
+state, and removed endpoint. Session 50355 exited 0: all 13 actual production
+control tests, stable CLI all-target Clippy, and MSRV all-target compilation
+pass under verified 1 GiB/zero-swap limits, log
+production-single-warning-failure-check.log. Installed-native execution and
+bounded final-renderer exit remain separate incomplete requirements.
