@@ -55,3 +55,27 @@ axes, with no Drop-based guarantee or PID/absence-based proof substitution.
 This review defines the remaining implementation rather than declaring any
 production capability complete; task 9401 stays in progress, 9402 stays planned
 and plan progress remains 3/7, with plans 20/21/23 still pending in their full scope.
+
+## Existing read-only closure capability
+
+Inspection of run/native_client/shutdown.rs establishes that NativeShutdown::start
+already accepts a verified durable read-only snapshot: it rejects memory and
+poisoned journals, requires the original unresolved claim and verified record
+hash, and checks physical-store/registered authority binding before requesting
+closure. It does not require or acquire the writer lease. Its settlement method
+separately requires the healthy original writer.
+
+The paired implementation can reuse this proved separation, retaining or
+refreshing a verified original snapshot for local closure selection while
+deferring settlement to temporary healthy writer acquisition; it should not
+invent a weaker arbitrary-control target API or relax original binding guards.
+Transport observation must precede writer attempts, and actual original
+completion/helper retirement must still precede interrupted settlement.
+
+The current owned poll couples closure selection to a successful
+observe_admitted_with result and retains one Store; those assumptions must be
+split for paired operation rather than treating that method as writer-independent.
+An unavailable/unverified snapshot still produces conservative uncertainty,
+preserves local claims and reservations and cannot prove native termination.
+This finding narrows the required implementation mechanism without narrowing
+the paired live-actor, writer-contention or production acceptance requirements.
