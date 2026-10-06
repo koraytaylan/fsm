@@ -429,3 +429,13 @@ now runs the full serial stable debug workspace gate, with retained log
 not validate the newer scheduler correction or regression slice. Updated
 native execution, corrected-source release and full matrix acceptance remain
 outstanding; task 9401 remains in progress.
+
+The isolated full stable debug workspace gate at corrected product source
+`f9e02fa` completed with exit zero, with complete log
+`~/.cache/fsm-plan-native-matrix-20261005/local-f9e02fa-stable-debug.log`.
+The same isolated source now runs the serial full release workspace gate,
+logging to `local-f9e02fa-stable-release.log`; no second local build overlaps it.
+The debug pass includes the new portable stopped-owner scheduler fixture but
+does not execute ignored provisioned native discovery/watcher controls.
+Both Windows jobs on the older `7dc91d5` CI run remain live, and its diagnosed
+MSRV lint failures prevent a green-matrix claim.
