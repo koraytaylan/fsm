@@ -72,3 +72,24 @@ all-target Clippy and all 29 library tests under verified 1 GiB/no-swap
 limits, terminal exit 0; local-native-completion-separation.log is retained.
 No persisted bytes change; installed and full changed-source acceptance
 remain pending, and task 9402 is not completed by this extraction.
+
+## Cancellation is not a shutdown closure request
+
+Review at 4663bd3: NativeExecution::cancel delegates to NativeRun::cancel,
+which stores an uncertain error and calls NativeRequest::cancel; that method
+closes helper input and kills the request child, without requesting protected
+domain closure or producing a receipt. NativeOwners::cancel therefore cannot
+by itself implement verified abort or the expiry of drain. Observing helper
+reap/EOF afterward still supplies no closure proof. The new shutdown driver
+must retain the original claim while separately requesting native closure.
+
+The existing broker close action fences and completes an allocation but
+returns Null, and its wire payload names only the allocation. That success
+must not be promoted into claim-matched settlement evidence: receipt recovery
+must independently match the original complete domain, claim and journal hash.
+Bound-before-entry closure also needs the dedicated unlaunched receipt path
+identified in the prelaunch reconciliation review; NativeRun::recover currently
+expects a recorded completion. Preserve existing execute EOF containment, but
+do not describe helper cancellation as a bounded authenticated shutdown API.
+Required tests must distinguish actual protected domain closure from helper
+death, including binding, bound, executing and unavailable-writer phases.
