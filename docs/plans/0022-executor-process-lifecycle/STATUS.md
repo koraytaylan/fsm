@@ -4215,3 +4215,19 @@ surface checks. The initial narrower invocation stopped on formatting before
 tests; formatting was corrected before this successful run. This adds a physical
 identity refusal test, not installed native or production acceptance; statuses
 remain unchanged.
+
+### Standalone integration boundary review — 2026-10-06
+
+STANDALONE-INTEGRATION-REVIEW.md identifies production obligations before
+replacing service::run: retain structured writer-contention outcomes for the
+exclusive three-tick contract, isolate blocked diagnostic output from ownership
+observation, observe stop independently of ordinary scheduling intervals, and
+publish/retire the exact actor endpoint. Current production selection remains
+legacy and this review does not claim integration acceptance.
+
+Full stable paired gate session 82897 is confirmed live at scope
+run-p4109910-i87994532.scope, invocation 0af60b553a6042068b3feaea4e5c5129;
+its log records exact starting HEAD 844a3f1422f5ef0b17a0e8aaf901bd4ffe2ce86e
+and asserted MemoryMax=1G, MemorySwapMax=0. Runtime source is frozen during
+the gate; this follow-up changes review documentation only. Completion and
+changed-source full acceptance remain pending, with task statuses unchanged.
