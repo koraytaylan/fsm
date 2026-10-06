@@ -468,3 +468,58 @@ fn production_embedded_stdio_stops_with_input_open_and_quiet() {
         drop(Store::open(&fixture.data).unwrap());
     }
 }
+
+#[test]
+fn production_embedded_contention_preserves_diagnosis_without_publication() {
+    let fixture = Fixture::new();
+    let writer = Store::open(&fixture.data).unwrap();
+    let records = writer.records.clone();
+    let handlers = fixture.root.join("handlers.json");
+    fs::write(
+        &handlers,
+        br#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator"]}"#,
+    )
+    .unwrap();
+    let input = fixture.root.join("input.jsonl");
+    fs::write(&input, b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n").unwrap();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_fsm"));
+    command
+        .env("HOME", &fixture.root)
+        .arg("--data-dir")
+        .arg(&fixture.data)
+        .args(["serve", "--execute", "--handlers"])
+        .arg(&handlers)
+        .stdin(Stdio::from(fs::File::open(&input).unwrap()))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = bounded(&mut command, || {});
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let reply = json(
+        output
+            .stdout
+            .split(|byte| *byte == b'\n')
+            .find(|line| !line.is_empty())
+            .unwrap(),
+    );
+    let instructions = reply
+        .get("result")
+        .unwrap()
+        .get("instructions")
+        .unwrap()
+        .as_str()
+        .unwrap();
+    assert!(instructions.contains("contended"));
+    assert!(instructions.contains("healthy and busy"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("read-only (writer held elsewhere)"));
+    assert!(!fixture.root.join(".cache/fsm/control").exists());
+    assert!(Store::open(&fixture.data).is_err());
+    assert_eq!(
+        Store::open_read_only(&fixture.data).unwrap().records,
+        records
+    );
+    drop(writer);
+}

@@ -134,3 +134,10 @@ cleanup error precedence to preserve initiating protocol failures; expanded
 session 7711 validates this and existing diagnostic fallback suites. HTTP
 still discards its executor and remains incomplete, and these empty stdio
 controls cannot establish native nonempty execution or autonomous scheduling.
+
+The actual production contention diagnostic regression passed in session 66144:
+initialize/EOF remains usable under a held writer, with truthful healthy/busy
+instructions, no control root or endpoint, unchanged journal records and the
+other writer still excluding acquisition. This resolves the tested production
+contention fallback obligation; unhealthy startup, reopening races and native
+nonempty behavior still require their own evidence.

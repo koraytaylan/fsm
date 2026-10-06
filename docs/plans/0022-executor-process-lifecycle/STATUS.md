@@ -4693,3 +4693,23 @@ production-native-stdio-expanded-check.log. Production stdio routing is ready
 to commit at this tested empty-inventory scope; broader actual production
 diagnostic/error/output cases, full gates and installed nonempty native
 acceptance remain required, with all plan task statuses unchanged.
+
+### Actual production contended stdio diagnosis — 2026-10-07
+
+Added an actual serve --execute binary initialize/EOF regression while the
+independent writer remains held. It requires successful diagnostic startup,
+truthful healthy/busy instructions and read-only startup reporting, no control
+root/publication, unchanged durable records and continued writer exclusion.
+Session 66144 validates this and expanded focused suites under asserted 1 GiB
+RAM and zero swap, retaining pending evidence in
+production-stdio-diagnostic-binary-check.log. This actual production test adds
+coverage beyond borrowed session fallback tests; task statuses remain unchanged.
+
+Session 66144 terminated with exit zero under asserted 1 GiB RAM and zero
+swap. Stable/MSRV all-target Clippy, all nine binary controls (including actual
+production contention diagnosis), six owned session tests, 16 transport tests,
+executor/lifecycle/public inventory checks, 61 CLI library tests and expanded
+diagnostic suites passed. The production contention binary answered initialize
+from its observed healthy prefix, reported busy/read-only, created no endpoint
+and left durable records and the independent writer unchanged. Evidence remains
+in production-stdio-diagnostic-binary-check.log; task statuses are unchanged.
