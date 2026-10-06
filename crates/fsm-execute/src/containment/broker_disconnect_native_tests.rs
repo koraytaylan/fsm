@@ -636,6 +636,28 @@ pub(super) fn discovery_faults(directory: &Path) {
         fs::remove_file(path).unwrap();
     }
     fs::write(&public, &original).unwrap();
+    // Keeping the publication bytes and pathname cannot authorize a different
+    // physical store; keep the original inode alive so it cannot be reused.
+    let store = directory.parent().unwrap().join("operator-store");
+    let saved_store = directory.parent().unwrap().join("fixture-store.saved");
+    let original_store = fs::metadata(&store).unwrap();
+    fs::rename(&store, &saved_store).unwrap();
+    fs::create_dir(&store).unwrap();
+    fs::set_permissions(&store, fs::Permissions::from_mode(0o755)).unwrap();
+    let replacement_store = fs::metadata(&store).unwrap();
+    assert_ne!(
+        (original_store.dev(), original_store.ino()),
+        (replacement_store.dev(), replacement_store.ino())
+    );
+    refuse("native discovery store registration missing");
+    assert_eq!(fs::read(&public).unwrap(), original);
+    fs::remove_dir(&store).unwrap();
+    fs::rename(&saved_store, &store).unwrap();
+    let restored_store = fs::metadata(&store).unwrap();
+    assert_eq!(
+        (original_store.dev(), original_store.ino()),
+        (restored_store.dev(), restored_store.ino())
+    );
     let duplicate = directory.parent().unwrap().join("authority-2");
     fs::DirBuilder::new().create(&duplicate).unwrap();
     fs::set_permissions(&duplicate, fs::Permissions::from_mode(0o755)).unwrap();

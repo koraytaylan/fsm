@@ -686,6 +686,17 @@ stable debug workspace gate at product source `cd70627` is live in session
 `30347`, retaining `local-cd70627-stable-debug.log`. Production Runner routing
 and current native acceptance remain unfinished; task 9401 stays in progress.
 
+Physical-store discovery review added a production-entry refusal control that
+renames the original operator store, creates a different directory at the same
+pathname, and retains the unchanged protected registration bytes; discovery
+must refuse with `native discovery store registration missing` and leave the
+allocation counter unchanged, then the fixture restores and checks the original
+directory identity before subsequent controls. Formatting and diff checks pass;
+compilation and privileged execution of this new control remain pending while
+the existing serial release gate and original CI run are live. This control
+does not exercise concurrent replacement during discovery or complete Runner
+integration, and task 9401 remains in progress.
+
 Current cleanup CI MSRV native job `112069961429` failed; its complete job
 log and artifact are retained under `ci-37401653979/msrv`. The expanded
 `empty_domain_preparation` control passed in 0.14 seconds, but the matrix
