@@ -407,3 +407,19 @@ control tests, stable CLI all-target Clippy, and MSRV all-target compilation
 pass under verified 1 GiB/zero-swap limits, log
 production-single-warning-failure-check.log. Installed-native execution and
 bounded final-renderer exit remain separate incomplete requirements.
+
+### Quiet operator failure guard mutation review (2026-10-07)
+
+Reviewed committed source 7f3e777 by temporarily neutralizing only the
+operator-output broken-state predicate in `serve_session_core`; the actual
+production single-warning case failed after 2.01 seconds with
+`broken stderr did not abort quiet native session` (Cargo exit 101), proving
+that subsequent diagnostic enqueueing is not what makes this case pass.
+The review script restored the original source in its finally block and
+all 13 actual production control tests then passed (exit 0).
+The serial scope asserted MemoryMax=1073741824 and MemorySwapMax=0 before
+Cargo; evidence is retained in the task cache as
+`native-quiet-stderr-mutation.log`, with no residual runtime diff.
+This is empty/unadmitted production coverage, not installed native handler
+execution acceptance; plan 22 remains incomplete and the previously recorded
+full-gate workflow failures remain unresolved.
