@@ -814,6 +814,13 @@ physical store's journal sequence and head hash before and after cleanup.
 These strengthened assertions still require compilation and native execution;
 formatting, file-size and diff checks pass, and no production claim is made.
 
+Strengthened owned cleanup source `9521e41` now passes executor all-target
+MSRV Clippy with exit zero in original session `4185`, retaining
+`local-9521e41-msrv-clippy.log`; stable formatting, oversized-file and
+committed-range diff checks also pass. Its full stable host gates and
+privileged assertions remain pending, so the earlier `482da8f` matrix is
+historical evidence only for this new harness extension.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
