@@ -690,3 +690,24 @@ Stable executor all-target Clippy and MSRV all-target compilation passed
 Task 9401 adopts this fixture path; progress remains 3/7 and the next frozen
 native rerun must execute the previously unreachable bound owner controls.
 Later-source full host and cross-platform acceptance remain pending.
+
+### Single-transfer native rerun and cold writer fixture correction
+
+Stable native inventory on exact ae5877d terminated with exit 1 after the
+same nine passing cases; broker access now reaches the shared cold-handoff
+supervisor and fails at WriterHolder::acquire on input=None. The earlier
+duplicate-transfer assertion does not recur. Per-case evidence is retained
+in local-native-authority-ae5877d/authority.json and logs; this failed aggregate
+is not acceptance of its earlier ordered broker subcontrols.
+Source trace shows holder.release closes its sole stdin and verifies the
+helper exits, but the cold post-resume phase calls acquire on that already
+retired helper. That phase now starts a fresh independent writer process,
+observes its existing readiness barrier and acquires its real Store lease
+before the unchanged writer-unavailable, read-only and persistence assertions.
+No production scheduler, writer guard or claim/handoff semantics changed.
+Stable executor all-target Clippy and MSRV compilation pass, with format and
+source-size checks (native-cold-writer-restart-check.log); task 9401 adopts the
+fixture path. Guarded teardown of the failed run completed and subsequent
+stat found no installed artifact or authority base; no native job remains
+live from that run. A fresh frozen native rerun and later-source host gates
+remain required before acceptance, with statuses unchanged at 3/7.
