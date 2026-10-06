@@ -2050,3 +2050,5 @@ Scheduler observations containing durable owners suppress starts for those origi
 Scheduler capacity now includes observed durable owners and retained local reservations; call `retain_claim` after durable claim admission to deduplicate the matching local run, and retain the reservation until durable settlement, with production routing still under implementation.
 
 On supported Linux, `NativePreparation::for_store` discovers a unique protected authority matching the actual store directory before requesting an empty domain; missing, ambiguous or damaged registration refuses, and preparation still grants no user-code permission or durable claim.
+
+Provisioned namespace directories may contain operator-store siblings; discovery charges those entries but considers only canonical authority registrations.

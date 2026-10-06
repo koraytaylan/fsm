@@ -210,6 +210,11 @@ pub(super) fn discover(store: &Path) -> Result<(String, u64), String> {
                 .file_name()
                 .into_string()
                 .map_err(|_| "native discovery generation encoding invalid")?;
+            // Namespace siblings may be operator stores; charge their inventory
+            // entry without treating them as an authority registration.
+            if !name_generation.starts_with("authority-") {
+                continue;
+            }
             let generation = generation(&name_generation)?;
             let authority = entry.path();
             let before = directory(&authority)?;

@@ -814,3 +814,5 @@ Plan 0022: pure scheduler start selection now respects unresolved original execu
 Plan 0022 scheduler capacity now accounts for durable owners and retained local reservations, deduplicating only bound original run identities; integrated host launch and shutdown remain pending.
 
 Plan 0022 adds bounded protected physical-store route discovery to native preparation; automatic service routing and provisioned discovery fault acceptance remain pending.
+
+Native discovery accommodates operator-store namespace siblings while retaining the shared inventory bound; the native preparation fixture now invokes physical-store discovery instead of supplying its route.
