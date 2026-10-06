@@ -160,6 +160,8 @@ pub(super) fn run() {
     run_case(false, Host::AdmissionMcp);
     run_case(false, Host::AdmissionCancellation);
     run_case(false, Host::AdmissionMcpCancellation);
+    run_case(false, Host::AdmissionCompetition);
+    run_case(false, Host::AdmissionMcpCompetition);
 }
 
 enum Host {
@@ -171,6 +173,8 @@ enum Host {
     AdmissionMcp,
     AdmissionCancellation,
     AdmissionMcpCancellation,
+    AdmissionCompetition,
+    AdmissionMcpCompetition,
 }
 
 fn run_case(timeout: bool, host: Host) {
@@ -178,7 +182,10 @@ fn run_case(timeout: bool, host: Host) {
         timeout,
         matches!(
             host,
-            Host::FreshMcp | Host::AdmissionMcp | Host::AdmissionMcpCancellation
+            Host::FreshMcp
+                | Host::AdmissionMcp
+                | Host::AdmissionMcpCancellation
+                | Host::AdmissionMcpCompetition
         ),
     );
     let mut fixture = Fixture::new_for_operator(table.clone());
@@ -235,6 +242,13 @@ fn run_case(timeout: bool, host: Host) {
         Host::AdmissionCancellation | Host::AdmissionMcpCancellation
     ) {
         fresh_cases::cancellation(&mut fixture, &table);
+        return;
+    }
+    if matches!(
+        host,
+        Host::AdmissionCompetition | Host::AdmissionMcpCompetition
+    ) {
+        fresh_cases::competition(&mut fixture, &table);
         return;
     }
     if matches!(host, Host::Admission | Host::AdmissionMcp) {

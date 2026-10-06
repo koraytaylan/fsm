@@ -101,3 +101,52 @@ pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successo
     disconnect_cases::discard_prepared(&fixture.directory, &successor.to_value());
     fixture.cleanup().unwrap();
 }
+
+pub(super) fn competition(fixture: &mut Fixture, table: &Value) {
+    let competitor = fixture.prepare();
+    assert_eq!(number(&competitor, "allocation").unwrap(), 1);
+    disconnect_cases::permit_operator_store(&fixture.store);
+    disconnect_cases::competing_admission(&fixture.directory, table, &competitor);
+    assert_eq!(number(&fixture.counter(), "last_allocation").unwrap(), 2);
+    for allocation in [1, 2] {
+        for name in ["binding", "launch", "entry", "handoff"] {
+            assert_eq!(
+                fs::symlink_metadata(fixture.directory.join(format!("{name}-{allocation}.json")))
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::NotFound
+            );
+        }
+    }
+    let closed = read_value(&fixture.directory.join("closed-2.json"), true).unwrap();
+    assert_eq!(
+        closed.get("format").and_then(Value::as_str),
+        Some("fsm.native-domain-closed/1")
+    );
+    let loser = NativeDomain::from_value(closed.get("domain").unwrap()).unwrap();
+    assert_eq!(number(&loser.to_value(), "allocation").unwrap(), 2);
+    assert!(
+        !cgroup(&origin(&fixture.directory).unwrap(), 2)
+            .unwrap()
+            .exists()
+    );
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    let claims: Vec<_> = store.state.execution.unresolved().collect();
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].0.domain().to_value(), competitor);
+    assert!(
+        store.state.instances["instance"]
+            .pending
+            .contains(&claims[0].0.effect().1.to_owned())
+    );
+    assert!(
+        !store
+            .state
+            .dedup
+            .contains_key(&fsm_execute::rid::ack_rid(claims[0].0.effect().1))
+    );
+    drop(store);
+    // Fixture teardown is not a journal ownership settlement.
+    disconnect_cases::discard_prepared(&fixture.directory, &competitor);
+    fixture.cleanup().unwrap();
+}

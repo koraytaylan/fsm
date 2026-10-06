@@ -59,9 +59,30 @@ fn writer_cancel_pending() {
     std::io::stdout().flush().unwrap();
     assert_eq!(std::io::stdin().read(&mut byte).unwrap(), 1);
     assert_eq!(byte, [2]);
-    store
-        .cancel_instance("instance", "native-independent-cancel")
+    if let Ok(encoded) = std::env::var("FSM_NATIVE_TEST_COMPETING_DOMAIN") {
+        assert!(encoded.len() <= 8192);
+        let domain = fsm_core::record::execution::NativeDomain::from_value(
+            &parse(encoded.as_bytes(), &JsonLimits::DEFAULT).unwrap(),
+        )
         .unwrap();
+        let table =
+            HandlerTable::parse(&std::env::var("FSM_NATIVE_TEST_HANDLER_TABLE").unwrap()).unwrap();
+        let effect = store.state.instances["instance"].pending[0].clone();
+        Pipeline
+            .claim_native_handler(
+                &mut store,
+                &mut FixedClock::new(1000, 1),
+                &effect,
+                &table.handlers["notify"],
+                &domain,
+                "native-independent-winning-claim",
+            )
+            .unwrap();
+    } else {
+        store
+            .cancel_instance("instance", "native-independent-cancel")
+            .unwrap();
+    }
     assert_eq!(store.records.len(), before + 1);
     let records = store.records.clone();
     emit(format_args!("\nFSM_NATIVE_WRITER_CANCELLED"));
@@ -154,7 +175,8 @@ fn shared_tick_admission() {
     drop(readonly);
 
     let cancelled = std::env::var_os("FSM_NATIVE_TEST_CANCEL_PRECLAIM").is_some();
-    let mut holder = if cancelled {
+    let competing = std::env::var_os("FSM_NATIVE_TEST_COMPETING_DOMAIN").is_some();
+    let mut holder = if cancelled || competing {
         WriterHolder::start_test(
             path.to_str().unwrap(),
             "authority::allocator::native_tests::supervisor_probe::fresh_admission::writer_cancel_pending",
@@ -202,7 +224,7 @@ fn shared_tick_admission() {
     );
     assert_eq!(readonly.records, records);
     drop(readonly);
-    if cancelled {
+    if cancelled || competing {
         holder.input.as_mut().unwrap().write_all(&[2]).unwrap();
         holder.wait_marker(b"FSM_NATIVE_WRITER_CANCELLED");
         wait_until(|| {
@@ -219,11 +241,49 @@ fn shared_tick_admission() {
             assert!(!outcome.writer_unavailable);
             scheduler.inflight_effect(&effect).is_none()
         });
+        if competing {
+            for _ in 0..3 {
+                assert!(holder.child.try_wait().unwrap().is_none());
+                let report = tick_reporting(
+                    &mut watcher,
+                    &mut scheduler,
+                    &mut runner,
+                    &mut pipeline,
+                    path,
+                    &mut clock,
+                    1000,
+                );
+                assert!(!report.writer_unavailable);
+                assert!(scheduler.inflight_effect(&effect).is_none());
+            }
+        }
         absent(authority, &["binding", "launch", "entry", "handoff"]);
         let original = Store::open_read_only(path).unwrap();
         assert_eq!(original.records.len(), records.len() + 1);
         assert_eq!(&original.records[..records.len()], records.as_slice());
-        assert!(original.state.execution.unresolved().next().is_none());
+        if competing {
+            let claim = original
+                .state
+                .execution
+                .claim_for("instance", &effect)
+                .unwrap();
+            let encoded = std::env::var("FSM_NATIVE_TEST_COMPETING_DOMAIN").unwrap();
+            assert_eq!(
+                claim.domain().to_value(),
+                parse(encoded.as_bytes(), &JsonLimits::DEFAULT).unwrap()
+            );
+            assert!(
+                original.state.instances["instance"]
+                    .pending
+                    .contains(&effect)
+            );
+            assert_eq!(
+                original.records.last().unwrap().kind,
+                fsm_core::record::RecordKind::ExecutionClaimed
+            );
+        } else {
+            assert!(original.state.execution.unresolved().next().is_none());
+        }
         assert!(
             !original
                 .state
@@ -238,7 +298,14 @@ fn shared_tick_admission() {
         );
         drop(original);
         holder.release();
-        emit(format_args!("\nFSM_NATIVE_PRECLAIM_CANCELLATION"));
+        emit(format_args!(
+            "\n{}",
+            if competing {
+                "FSM_NATIVE_PRECLAIM_COMPETITION"
+            } else {
+                "FSM_NATIVE_PRECLAIM_CANCELLATION"
+            }
+        ));
         return;
     }
     holder.release();
@@ -479,9 +546,14 @@ fn shared_tick_admission() {
 }
 
 fn absent(authority: &Path, names: &[&str]) {
+    let allocation = if std::env::var_os("FSM_NATIVE_TEST_COMPETING_DOMAIN").is_some() {
+        2
+    } else {
+        1
+    };
     for name in names {
         assert_eq!(
-            std::fs::symlink_metadata(authority.join(format!("{name}-1.json")))
+            std::fs::symlink_metadata(authority.join(format!("{name}-{allocation}.json")))
                 .unwrap_err()
                 .kind(),
             std::io::ErrorKind::NotFound

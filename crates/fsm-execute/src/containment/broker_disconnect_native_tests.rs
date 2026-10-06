@@ -815,7 +815,16 @@ pub(super) fn cancel_admission(directory: &Path, table: &Value) {
     admission_control(directory, table, "cancel");
 }
 
+pub(super) fn competing_admission(directory: &Path, table: &Value, domain: &Value) {
+    // Pass only an actual Root-prepared domain, never invented authority bytes.
+    admission_control_inner(directory, table, "compete", Some(domain));
+}
+
 fn admission_control(directory: &Path, table: &Value, mode: &str) {
+    admission_control_inner(directory, table, mode, None);
+}
+
+fn admission_control_inner(directory: &Path, table: &Value, mode: &str, domain: Option<&Value>) {
     install_supervisor(directory);
     let script = SUPERVISOR.replace(
         "::owned_request",
@@ -826,6 +835,14 @@ fn admission_control(directory: &Path, table: &Value, mode: &str) {
         command.env("FSM_NATIVE_TEST_CANCEL_PRECLAIM", "1");
     } else {
         command.env_remove("FSM_NATIVE_TEST_CANCEL_PRECLAIM");
+    }
+    if let Some(domain) = domain {
+        command.env(
+            "FSM_NATIVE_TEST_COMPETING_DOMAIN",
+            std::str::from_utf8(&canon_bytes(domain)).unwrap(),
+        );
+    } else {
+        command.env_remove("FSM_NATIVE_TEST_COMPETING_DOMAIN");
     }
     let output = command
         .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
@@ -852,6 +869,8 @@ fn admission_control(directory: &Path, table: &Value, mode: &str) {
             .filter(|line| *line
                 == if mode == "cancel" {
                     "FSM_NATIVE_PRECLAIM_CANCELLATION"
+                } else if mode == "compete" {
+                    "FSM_NATIVE_PRECLAIM_COMPETITION"
                 } else {
                     "FSM_NATIVE_FRESH_ADMISSION"
                 })
