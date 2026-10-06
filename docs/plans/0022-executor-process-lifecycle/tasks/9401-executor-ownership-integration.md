@@ -706,7 +706,9 @@ The full stable debug workspace gate is now running at frozen `7bdfcb6`,
 retaining `local-7bdfcb6-stable-debug.log`; privileged assertions remain
 unexecuted by these portable gates.
 Original cleanup CI Ubuntu stable job `112069961690` completed successfully
-at `e501679`; five portable jobs remain live, and that older source cannot
+at `e501679`; macOS MSRV job `112069961689` also completed successfully,
+with its complete log retained as `ci-37401653979/macos-msrv-job.log`;
+four portable jobs remain live, and that older source cannot
 execute the physical replacement control or the later retirement diagnostic.
 
 Physical-store discovery review added a production-entry refusal control that
