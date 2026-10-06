@@ -1084,3 +1084,19 @@ the retained artifact does not prove that this caused the failure; no relaxation
 or repair is inferred. Formatting/diff checks pass; compilation and a new
 provisioned failure/success observation remain pending behind the single live
 local workspace job and existing live CI run.
+
+### Portable CI failure attribution at installed-boundary source
+
+Downloaded nonempty terminal job logs directly for run 37423168150 jobs
+112136848617 (Ubuntu stable), 112136848426 (Ubuntu MSRV),
+112136848527 (macOS stable), 112136848538 (macOS MSRV), and
+112136848654 (Windows MSRV). Each reports exactly the two public-surface
+failures for omitted `NativeExecution::launch_bound` and `start_retained`
+inventory entries; no other failed test summary appears in those five logs.
+Retained files are `ci-37423168150/job-JOBID.log`, respectively
+449654, 449416, 436128, 435747, and 439206 bytes. The source inventory
+correction is committed as `fdd5825`; its focused local check passed, but
+remote corrected-source gates remain pending. Windows stable and the overall
+run were still live at the observation, so no terminal matrix verdict is
+claimed. These portable failures are distinct from the native stable
+matched-stop/manager-retirement failure, which remains unresolved.
