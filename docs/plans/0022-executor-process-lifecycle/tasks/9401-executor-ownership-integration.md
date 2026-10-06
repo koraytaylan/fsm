@@ -690,8 +690,12 @@ The full serial stable release workspace suite at frozen product source
 `1dddd15` completed with exit zero in original session `80644`, with its full
 log retained as `local-1dddd15-stable-release.log`; this predates the physical
 replacement control and does not verify that test or resolve the preserved
-native MSRV failure. The next serial stable workspace all-target Clippy gate
-is running at frozen `7bdfcb6`, retaining `local-7bdfcb6-stable-clippy.log`.
+native MSRV failure. The serial stable workspace all-target Clippy gate at
+frozen `7bdfcb6` completed with exit zero in session `74551`, retaining
+`local-7bdfcb6-stable-clippy.log`; this compiles the replacement control but
+does not execute its privileged assertions. The next serial stable workspace
+documentation gate runs with warnings denied, retaining
+`local-7bdfcb6-stable-doc.log`.
 
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
@@ -699,8 +703,8 @@ pathname, and retains the unchanged protected registration bytes; discovery
 must refuse with `native discovery store registration missing` and leave the
 allocation counter unchanged, then the fixture restores and checks the original
 directory identity before subsequent controls. Formatting and diff checks pass;
-compilation and privileged execution of this new control remain pending while
-the existing serial release gate and original CI run are live. This control
+stable compilation passes, while privileged execution of this new control
+remains pending and the original CI run is still live. This control
 does not exercise concurrent replacement during discovery or complete Runner
 integration, and task 9401 remains in progress.
 
