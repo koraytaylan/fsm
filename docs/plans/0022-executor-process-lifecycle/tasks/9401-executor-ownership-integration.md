@@ -215,3 +215,5 @@ registrations, wrong physical store, wrong operator/boot/socket and replacement
 between observations; native provisioning cases must exercise the production
 entry before accepting automatic routing. This design is not implementation
 or execution evidence, and task 9401 remains In progress.
+
+Discovery contract review confirms that current transport validates the helper but has no protected discovery reader; the existing store proof reader provides the no-follow/nonblocking, opened/path identity, bounded canonical-read pattern to follow. SPEC now fixes the shared inventory and document budgets before implementation; discovery remains unimplemented. Capacity all-targets clippy passed with exit code zero.

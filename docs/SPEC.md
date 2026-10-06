@@ -2439,3 +2439,27 @@ A watcher observation MUST project every unresolved original execution claim and
 The scheduler MUST exclude a pending effect with matching unresolved instance/effect ownership before current handler lookup; root exit, stopped evidence and changed handler selection MUST NOT authorize a successor before durable consumption.
 
 Scheduler capacity MUST count the union of observed unresolved original run identities and retained local handles, including stopped owners and owners absent from pending effects; only a locally retained matching original run identity may deduplicate an observed owner, and missing observation MUST NOT release a local reservation.
+
+### Automatic native route discovery (provisional, plan 0022)
+
+Automatic native hosts MUST discover a unique provisioned authority by matching
+its protected public physical-store device/inode to the actual data directory;
+caller-supplied paths, copied journal bytes and current handler configuration
+MUST NOT select authority. Discovery MUST scan only the fixed
+`/var/lib/fsm-containment` namespace and canonical positive authority-generation
+levels, charging each directory entry to one shared 4096-entry budget before
+retaining its name; the 4097th entry MUST refuse before preparation or claim.
+Namespace names MUST be exactly 32 lowercase hexadecimal characters and
+`authority-<generation>` MUST use a canonical positive u64 decimal generation.
+Protected Root-owned non-symlink directory identities MUST be checked before
+and after traversal. Public store identity and route documents MUST be read
+without following symlinks, from regular Root-owned mode-0444 files, within a
+4096-byte limit plus one-byte overflow detection; closed canonical JSON and
+unchanged opened/path inode, owner, mode and length MUST be required.
+Zero or multiple matching registrations MUST refuse; damaged or offline matching
+registrations MUST NOT be ignored to choose another generation. The unique
+matching route MUST satisfy current broker operator, boot, authority identity,
+epoch and socket identity/access checks before preparation. Discovery MUST NOT
+launch, acquire a writer, claim, reconcile or release capacity. Recovery MUST
+use the original durable claim's route instead of current discovery results.
+These requirements are pending production-host implementation and acceptance.

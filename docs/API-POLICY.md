@@ -848,3 +848,5 @@ The provisional `fsm-execute::watch::Observation` adds `execution_owners`, retai
 Scheduler start selection now excludes matching unresolved durable ownership using the provisional observation field, without changing public signatures, persistence bytes or hash domains.
 
 The provisional Scheduler adds `retain_claim(&Claim) -> bool` to bind a local reservation to its immutable original claim; capacity diagnostics now include durable owners, without persistence or hash changes.
+
+Automatic native route discovery is a private plan-0022 host composition requirement using the existing immutable store-identity and broker-route envelopes; its 4096-entry and 4096-byte limits introduce no new persistence format or hash domain, and implementation remains pending.
