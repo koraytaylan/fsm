@@ -513,10 +513,21 @@ fn an_exhausted_result_keeps_the_last_capture_and_names_the_cause_it_replaced() 
 #[cfg(target_os = "linux")]
 #[test]
 fn failed_journal_scan_still_drains_owned_handler_output() {
+    scan_error_draining(false);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_borrowed_writer_scan_still_drains_without_journaling() {
+    scan_error_draining(true);
+}
+
+#[cfg(target_os = "linux")]
+fn scan_error_draining(borrowed: bool) {
     use fsm_execute::config::HandlerTable;
     use fsm_execute::run::Pipeline;
     use fsm_execute::sched::Scheduler;
-    use fsm_execute::service::tick_reporting;
+    use fsm_execute::service::{tick_reporting, tick_with};
     use fsm_execute::watch::Watcher;
     use fsm_store::clock::FixedClock;
     use std::collections::BTreeSet;
@@ -533,23 +544,39 @@ fn failed_journal_scan_still_drains_owned_handler_output() {
     let mut watcher = Watcher::new(absent_store.clone(), BTreeSet::new());
     let mut pipeline = Pipeline;
     let mut clock = FixedClock::new(0, 1);
+    let mut store = fsm_store::store::Store::open_memory().unwrap();
+    let original_records = store.records.clone();
     let deadline = Instant::now() + Duration::from_secs(10);
     while !marker.exists() {
         assert!(
             Instant::now() < deadline,
             "scan errors stalled capture draining"
         );
-        let outcome = tick_reporting(
-            &mut watcher,
-            &mut scheduler,
-            &mut runner,
-            &mut pipeline,
-            &absent_store,
-            &mut clock,
-            0,
-        );
-        assert!(!outcome.lines.is_empty());
-        assert!(!outcome.writer_unavailable);
+        if borrowed {
+            let lines = tick_with(
+                &mut watcher,
+                &mut scheduler,
+                &mut runner,
+                &mut pipeline,
+                &mut store,
+                &mut clock,
+                0,
+            );
+            assert!(!lines.is_empty());
+            assert_eq!(store.records, original_records);
+        } else {
+            let outcome = tick_reporting(
+                &mut watcher,
+                &mut scheduler,
+                &mut runner,
+                &mut pipeline,
+                &absent_store,
+                &mut clock,
+                0,
+            );
+            assert!(!outcome.lines.is_empty());
+            assert!(!outcome.writer_unavailable);
+        }
         assert!(!absent_store.exists());
         std::thread::sleep(Duration::from_millis(5));
     }
