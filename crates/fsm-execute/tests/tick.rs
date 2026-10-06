@@ -416,6 +416,37 @@ fn an_owner_free_runner_refuses_a_replacement_physical_store() {
             .any(|line| line.contains("exec/inflight_deferred")),
         "{lines:?}"
     );
+    let reporting = fsm_execute::service::tick_reporting(
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut pipeline,
+        directory.path(),
+        &mut clock,
+        1000,
+    );
+    assert!(
+        reporting
+            .lines
+            .iter()
+            .any(|line| line.contains("exec/inflight_deferred")),
+        "{:?}",
+        reporting.lines
+    );
+    assert!(
+        !reporting.writer_unavailable,
+        "physical refusal precedes writer acquisition"
+    );
+    let replacement = Store::open_read_only(directory.path()).unwrap();
+    assert_eq!(replacement.records, records);
+    assert_eq!(
+        (
+            replacement.journal.last_seq,
+            replacement.journal.last_hash.clone()
+        ),
+        head
+    );
+    drop(replacement);
     assert!(fsm_store::snapshot::store_states_eq(&writer.state, &state));
     assert_eq!(writer.records, records);
     assert_eq!(

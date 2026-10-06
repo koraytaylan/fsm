@@ -1190,3 +1190,11 @@ can explain the refusal. Source review, formatting, and diff checks pass;
 execution and sensitivity validation are pending behind the single frozen
 release workspace job, and fresh preparation/claim/entry wiring remains
 incomplete.
+
+The owner-free physical-prefix regression now also calls the standalone
+`tick_reporting` path against the identical-history replacement, requires
+the same ownership refusal without a writer-unavailable result, and reopens
+the replacement read-only to verify unchanged records and head. Both public
+entry paths must therefore reject before writer acquisition, independently
+of unresolved claims or a corrupt logical prefix; execution remains pending
+behind the live release gate.
