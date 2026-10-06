@@ -1,4 +1,4 @@
-//! Standalone diagnostic admission uses the shared bounded output worker.
+//! Operator diagnostic admission uses the shared bounded output worker.
 use crate::mcp::notify::OutputControl;
 use std::io::{self, Write};
 

@@ -1,12 +1,11 @@
 //! Explicit standalone native ownership pump; endpoint publication belongs to the host.
+use crate::mcp::notify::diagnostic_output::DiagnosticOutput;
 use fsm_execute::{
     error::ExecError,
     service::{ExecutorPhase, PairedNativeExecutor, ShutdownMode, ShutdownReport, ShutdownRequest},
 };
 use fsm_store::clock::Clock;
 use std::time::{Duration, Instant};
-mod diagnostic_output;
-use diagnostic_output::DiagnosticOutput;
 
 pub struct StandaloneReport {
     pub shutdown: ShutdownReport,

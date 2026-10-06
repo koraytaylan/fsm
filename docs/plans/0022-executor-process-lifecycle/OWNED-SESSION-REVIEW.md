@@ -201,3 +201,13 @@ workflow-stall-diagnostic-check.log. This establishes a native mode refusal
 at execution, but does not identify the specific authority refusal reason or
 prove installed-native workflow acceptance. Formatting and diff checks pass;
 release and other full-gate stages remain unexecuted for this change.
+
+The existing DiagnosticOutput implementation is now shared under MCP notify
+instead of the standalone module, preserving its original platform bounds,
+queue limits, drop counts, worker ownership, and nonjoining close behavior.
+Session 26006 exited 0: both existing blocked/saturated and malformed-line
+regressions passed, stable CLI all-target Clippy passed, and MSRV CLI
+all-target compilation passed under verified 1 GiB/zero-swap bounds. This is
+a prerequisite refactor only: the native session still synchronously writes
+stderr and requires wiring plus actual blocked-stderr acceptance; the full
+workspace gate and non-Linux platform execution were not repeated here.
