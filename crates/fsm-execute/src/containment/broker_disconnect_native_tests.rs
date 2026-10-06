@@ -776,3 +776,29 @@ pub(super) fn shared_recovery(directory: &Path, binding: &Value, competitor: &Na
     );
     fs::rename(saved, catalogue).unwrap();
 }
+
+pub(super) fn fresh_handoff(directory: &Path, binding: &Value) {
+    let script = SUPERVISOR.replace("::owned_request", "::fresh_handoff::shared_tick_fresh");
+    let output = Command::new("/usr/bin/python3")
+        .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
+        .args(["-c", &script])
+        .arg(directory.join("broker"))
+        .arg(std::str::from_utf8(&canon_bytes(binding)).unwrap())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "fresh Runner handoff: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| *line == "FSM_NATIVE_FRESH_HANDOFF")
+            .count(),
+        1
+    );
+}

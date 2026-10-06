@@ -1237,3 +1237,42 @@ Clippy. Evidence is `local-6ed1dab-capped-msrv-route-pin.log`. Frozen
 tests also finished successfully (session 18239 exit 0), retained as
 `local-ac8615b-capped-stable-release.log`; neither earlier gate validates
 this later Runner handoff, and task 9401 remains in progress.
+
+### Genuine fresh Runner handoff control prepared
+
+The provisioned broker-access fixture now retains its original process, timeout,
+and catalogue-removed shared recovery axes, and adds an independent fresh
+Runner axis before any binding or execution for its genuine published claim.
+The unprivileged operator reserves the actual journal-derived effect with a
+deliberately different current handler, installs the genuine claim through
+`Runner::start_native`, and refuses duplicate startup. An independent writer
+then holds the lease while shared reporting ticks reach Bound: repeated ticks
+and a borrowed read-only tick must preserve records/state/local capacity and
+exact absence of original Root launch, entry, and handoff files. A healthy
+borrowed writer dispatches entry; a second independent writer lets actual
+execution finish while blocking settlement, and read-only application must
+again preserve the original claim and reservation. Genuine writer-held Ack
+with the original event disabled releases the local slot while retaining the
+completion; later resume requires original-contract Ack-before-event delivery,
+repeated-tick idempotence, and deduplicated cold store reopening. The unused
+competing prepared domain is retired by its original route afterward.
+
+Source review checked genuine unbound-claim construction, no earlier execute
+call on the new axis, both independent writer barriers, Root-file absence
+checks that require NotFound, immutable original-contract advancement, and
+preservation of all older fixture axes. MSRV all-target executor Clippy and
+all 27 library tests passed in a verified 1 GiB scope with swap disabled;
+evidence is `local-fresh-runner-control-msrv.log`. This compiles the ignored
+provisioned control but does not execute it; runtime acceptance, cancellation
+and post-claim startup-failure axes, new-entry capacity reuse, automatic fresh
+admission, and sealed post-Ack recovery remain pending.
+
+Run 37425899114 is now terminal failure at exact `a2ad1e0`: both native
+81-case jobs, zero-dependency, and both complete Linux portable gates passed;
+all four macOS/Windows gates failed during compilation on the unused private
+`complete_claim` helper, directly addressed by `ac8615b`. Terminal metadata
+and all six nonempty portable job logs are retained under
+`ci-37425899114`: job 112145359195 (23736 bytes), 112145359207 (23655),
+112145359257 (23313), 112145359315 (23004), 112145359311 (786867), and
+112145359384 (786491). This is not a successful full matrix and does not
+validate the later Runner handoff or fresh control.

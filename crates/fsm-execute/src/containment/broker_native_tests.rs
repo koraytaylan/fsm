@@ -178,11 +178,13 @@ pub(super) fn run() {
         run_case(timeout, Host::Primitive);
     }
     run_case(false, Host::Shared);
+    run_case(false, Host::Fresh);
 }
 
 enum Host {
     Primitive,
     Shared,
+    Fresh,
 }
 
 fn run_case(timeout: bool, host: Host) {
@@ -270,6 +272,26 @@ fn run_case(timeout: bool, host: Host) {
         request(&base, "recover", Value::Num("1".into())).get("ok"),
         Some(&Value::Bool(false))
     );
+    if matches!(host, Host::Fresh) {
+        disconnect_cases::fresh_handoff(&fixture.directory, &binding);
+        assert_eq!(
+            read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
+            binding
+        );
+        let store = Store::open_read_only(&fixture.store).unwrap();
+        assert!(
+            store
+                .state
+                .execution
+                .claim_for("instance", &effect)
+                .is_none()
+        );
+        assert!(store.state.dedup.contains_key(&settlement_request));
+        drop(store);
+        disconnect_cases::discard_prepared(&fixture.directory, &successor.to_value());
+        fixture.cleanup().unwrap();
+        return;
+    }
     let execution = disconnect_cases::complete(&fixture.directory, &binding, timeout, &successor);
     assert_eq!(
         read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),

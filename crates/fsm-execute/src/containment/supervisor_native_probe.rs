@@ -952,3 +952,6 @@ fn shared_tick_recovery() {
     assert!(reopened.state.dedup.contains_key(&ack) && reopened.state.dedup.contains_key(&event));
     emit(format_args!("\nFSM_NATIVE_SHARED_RECOVERY"));
 }
+
+#[path = "supervisor_fresh_native_probe.rs"]
+mod fresh_handoff;
