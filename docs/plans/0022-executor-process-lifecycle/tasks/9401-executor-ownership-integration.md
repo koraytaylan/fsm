@@ -472,3 +472,18 @@ same `sched.rs:245` nonminimal boolean lint corrected in `f9e02fa`, rather than
 a new portability defect. Windows stable job `112041769321` remains live in
 its full release workspace test step after its debug workspace pass; the older
 matrix remains non-green and is not replaced or cancelled.
+
+### Uncertainty-state review and frozen debug gate
+
+Review of committed `34c7ed3` against product `41cfaa1` confirms that the new
+constructor starts no helper, borrows no writer, supplies no proof, and retains
+capacity; existing `settle` still requires verified original completion before
+stop/settlement. The regression also checks that cancellation and successful
+transport retirement cannot promote the missing transport to `Closed`.
+No additional defect was identified in this scoped review; it does not cover
+unfinished Runner composition. All 22 stable executor library tests passed.
+The existing detached review checkout, whose directory name still contains
+`f9e02fa`, has been moved to exact product `41cfaa1` for the serial full stable
+debug workspace gate. Its original live session is `95061` and its retained log
+is `local-41cfaa1-stable-debug.log`; no pass is asserted before completion.
+Windows stable CI job `112041769321` remains live in its release workspace step.
