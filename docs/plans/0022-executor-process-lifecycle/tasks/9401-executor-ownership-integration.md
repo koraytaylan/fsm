@@ -704,9 +704,12 @@ eleven completeness cases and one external execution-ownership case, retaining
 `local-7bdfcb6-stable-zero-deps.log` and `local-7bdfcb6-stable-embed.log`.
 The full stable debug workspace gate at frozen `7bdfcb6` completed with
 exit zero in original session `48863`, retaining
-`local-7bdfcb6-stable-debug.log`. Its full serial release workspace gate is
-now running, retaining `local-7bdfcb6-stable-release.log`; privileged
-assertions remain unexecuted by these portable gates.
+`local-7bdfcb6-stable-debug.log`. Its full serial release workspace gate
+completed with exit zero in original session `61836`, retaining
+`local-7bdfcb6-stable-release.log`; stable formatting, oversized-file and
+committed-range diff checks also pass. All required stable host gates now
+pass at this product source, but privileged assertions remain unexecuted by
+these portable gates, and the original CI run still has live Windows jobs.
 Original cleanup CI Ubuntu stable job `112069961690` completed successfully
 at `e501679`; macOS MSRV job `112069961689` also completed successfully,
 with its complete log retained as `ci-37401653979/macos-msrv-job.log`;
