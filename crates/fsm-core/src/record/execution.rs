@@ -9,9 +9,11 @@ use std::fmt;
 use crate::json::Value;
 
 mod bounded;
+mod handoff;
 mod ownership;
 mod ownership_values;
 
+pub use handoff::AcknowledgedHandoff;
 pub use ownership::{Admission, ExecutionState, PendingEffect, Settlement};
 pub use ownership_values::{Claim, Closure, Stopped, StoppedOutcome};
 

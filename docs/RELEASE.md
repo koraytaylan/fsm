@@ -929,3 +929,27 @@ claim publication, and readonly snapshots are dropped before the standalone
 writer opens. This selected host path is not yet provisioned-runtime accepted;
 default CLI/MCP/service host selection, shutdown, reconciliation and cold
 post-ack recovery remain unfinished, with production acceptance flags false.
+
+
+The additive pure `fsm_core::record::execution::AcknowledgedHandoff` value
+reserves `fsm.execution-handoff/1` candidate material for cold post-ack
+recovery: complete original Claim, lowercase original claim-record digest,
+original handler contract, actual terminal StoppedOutcome, nonzero
+acknowledgement sequence and the unchanged derived acknowledgement/event keys.
+Decoding MUST charge the complete candidate to 128 KiB before copying, bound
+contract and outcome individually to 64 KiB, reject unknown envelope fields,
+match the handler fingerprint under `fsm:handler-contract:1` and the original
+retry policy, and select the original on_ok/on_failed event from the actual
+outcome; interrupted outcomes and absent/malformed event envelopes MUST refuse.
+Omitted and explicit-null result fields MUST remain distinct.
+
+This pure value authenticates neither acknowledgement, native closure nor
+accepted event delivery, and does not replace the execution layer's checked
+full handler parser. Store integration MUST compare its material against the
+actual claim hash/stopped outcome and publish it atomically with acknowledgement,
+then retire it only through a matching actually accepted event. Current
+ExecutionState, journal VERSION 11, state-root/4, snapshots and sealed bases
+do not yet retain this value; their formats and historical hash bytes remain
+unchanged in this additive value-only change. Cold recovery and production
+acceptance remain incomplete, and decoding a candidate grants no execution or
+event permission.

@@ -1,0 +1,72 @@
+{
+  "acknowledgement_request_id": "exec-ack-instance/3/0",
+  "acknowledgement_seq": 6,
+  "claim": {
+    "attempt": 1,
+    "domain": {
+      "allocation": 7,
+      "authority": {
+        "device": 8,
+        "inode": 43
+      },
+      "backend": "linux-systemd/1",
+      "boot": "01234567-89ab-cdef-0123-456789abcdef",
+      "cgroup": {
+        "device": 0,
+        "inode": 42
+      },
+      "generation": 9,
+      "namespace": "0123456789abcdef0123456789abcdef"
+    },
+    "effect_id": "instance/3/0",
+    "handler_fingerprint": "sha256:9d36ca2d1ac12636b6a4f800ed44363e762f688586b5ca3f7899342b45ead17b",
+    "instance_id": "instance",
+    "retry": {
+      "attempts": 3,
+      "backoff_ms": 10,
+      "max_backoff_ms": 40,
+      "on": [
+        "timeout"
+      ]
+    },
+    "run_id": 1
+  },
+  "event_request_id": "exec-ev-instance/3/0-docs_ok",
+  "format": "fsm.execution-handoff/1",
+  "handler_contract": {
+    "arguments": null,
+    "argv": [
+      "/bin/true"
+    ],
+    "effect": "notify",
+    "format": "fsm.handler-contract/1",
+    "kind": "process",
+    "on_failed": {
+      "event": "note_added",
+      "payload": {
+        "text": "original"
+      },
+      "stamps": []
+    },
+    "on_ok": {
+      "event": "docs_ok",
+      "payload": {},
+      "stamps": []
+    },
+    "retry": {
+      "attempts": 3,
+      "backoff_ms": 10,
+      "max_backoff_ms": 40,
+      "on": [
+        "timeout"
+      ]
+    },
+    "timeout_ms": 1000,
+    "tool": null
+  },
+  "original_claim_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "outcome": {
+    "result": null,
+    "status": "ok"
+  }
+}
