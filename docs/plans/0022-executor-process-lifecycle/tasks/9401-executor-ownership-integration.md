@@ -724,3 +724,11 @@ executor library tests and all-target Clippy, retaining
 `local-1dddd15-msrv-lib.log` and `local-1dddd15-msrv-clippy.log`.
 Current CI's six portable jobs remain confirmed live; the native MSRV failure
 and remaining production Runner integration are still unresolved.
+
+Frozen diagnostic source `1dddd15` passed all 23 MSRV executor library tests
+and all-target executor Clippy with exit zero through session `32074`, as
+confirmed from both retained logs. The serial full stable release workspace
+gate now runs at the same clean source, retaining
+`local-1dddd15-stable-release.log`; six original portable CI jobs remain live.
+These checks do not diagnose or replace the preserved native MSRV retirement
+failure, and production Runner integration remains incomplete.
