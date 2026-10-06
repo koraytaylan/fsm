@@ -6,6 +6,16 @@
 //!
 //! Plan 0012 task 5701.
 
+mod output;
+
+pub use output::ProtocolOutput as OutputControl;
+
+#[derive(Clone)]
+enum OutputMode {
+    Direct(Arc<Mutex<Box<dyn Write + Send>>>),
+    Queued(OutputControl),
+}
+
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,7 +28,7 @@ use super::jsonrpc::notification;
 
 /// The protocol stream, and the lock that keeps it one line at a time.
 pub struct Notifier {
-    out: Arc<Mutex<Box<dyn Write + Send>>>,
+    out: OutputMode,
     /// Set once a write fails, so a caller can stop rather than retrying into
     /// a stream that is gone.
     broken: Arc<Mutex<bool>>,
@@ -27,20 +37,37 @@ pub struct Notifier {
 impl Notifier {
     pub fn new(out: Box<dyn Write + Send>) -> Self {
         Self {
-            out: Arc::new(Mutex::new(out)),
+            out: OutputMode::Direct(Arc::new(Mutex::new(out))),
             broken: Arc::new(Mutex::new(false)),
         }
+    }
+
+    /// Enqueue complete frames to a bounded worker that owns the actual writer.
+    ///
+    /// Admission is limited to 256 frames and 8 MiB of retained frame allocation,
+    /// including the in-flight frame; serialization temporaries are separate.
+    /// Queue exhaustion returns WouldBlock without publishing a partial frame.
+    /// The control must be explicitly closed and observed; Drop never drains.
+    pub fn queued(out: Box<dyn Write + Send>) -> std::io::Result<(Self, OutputControl)> {
+        let control = OutputControl::start(out)?;
+        Ok((
+            Self {
+                out: OutputMode::Queued(control.clone()),
+                broken: Arc::new(Mutex::new(false)),
+            },
+            control,
+        ))
     }
 
     /// Another handle onto the same stream and the same lock.
     pub fn clone_handle(&self) -> Self {
         Self {
-            out: Arc::clone(&self.out),
+            out: self.out.clone(),
             broken: Arc::clone(&self.broken),
         }
     }
 
-    /// Write one complete message: bytes, newline, flush, all under the lock.
+    /// Emit one complete message: synchronous write/flush or bounded queue admission.
     ///
     /// The lock scope **is** the correctness argument. A background thread
     /// and the request path share this stream, so a write that released the
@@ -56,14 +83,19 @@ impl Notifier {
         // A poisoned lock means some other thread panicked mid-write, which
         // the panic hook already reports. Taking the stream anyway keeps a
         // server whose protocol state is otherwise fine alive.
-        let mut out = self
-            .out
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let result = out
-            .write_all(&bytes)
-            .and_then(|()| out.write_all(b"\n"))
-            .and_then(|()| out.flush());
+        let result = match &self.out {
+            OutputMode::Direct(out) => {
+                let mut out = out.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                out.write_all(&bytes)
+                    .and_then(|()| out.write_all(b"\n"))
+                    .and_then(|()| out.flush())
+            }
+            OutputMode::Queued(out) => {
+                let mut frame = bytes;
+                frame.push(b'\n');
+                out.enqueue(frame)
+            }
+        };
         if result.is_err() {
             *self
                 .broken
@@ -84,10 +116,11 @@ impl Notifier {
     /// as EOF on its own, and a background producer should stop rather than
     /// unwind.
     pub fn is_broken(&self) -> bool {
-        *self
+        let failed = *self
             .broken
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        failed || matches!(&self.out, OutputMode::Queued(output) if output.is_broken())
     }
 }
 

@@ -1072,3 +1072,8 @@ request fingerprints, root domains or format-version changes. It restricts local
 helper cancellation to locally admitted work; foreign observed ownership returns
 exec/inflight_deferred and remains retained. Production stop controls remain
 unimplemented until their separate proof obligations are met.
+
+
+### Bounded queued protocol output
+
+Notifier::queued and OutputControl add an opt-in Rust output capability without changing persisted formats or existing synchronous Notifier::new behavior; queue acceptance means admission rather than delivery and no production lifecycle guarantee is introduced.

@@ -3868,3 +3868,21 @@ passed under verified 1 GiB/no-swap limits. Later 520deca changed only review
 documentation. The retained log is local-native-provenance-stable-gate.log.
 Native paired-owner/public shutdown runtime acceptance is unexecuted, so task
 9402 remains planned, progress 3/7 and all production acceptance flags false.
+
+### Bounded queued protocol output foundation — 2026-10-06
+
+Notifier::queued provides opt-in atomic frame admission to an owned output
+worker, with explicit OutputControl close/drain/failure observation. Its 256-frame
+and 8 MiB retained-allocation budgets include the actual blocked in-flight
+frame; memory is dropped before its charge is released. Existing synchronous
+construction remains available, and queue acceptance claims no actual delivery.
+The production owned stdio route and native lifecycle driver remain unimplemented.
+
+Session 84533 finished exit 0 with verified 1 GiB/no-swap limits: formatting/size,
+stable and MSRV CLI all-target Clippy, five queue boundary/I/O tests, seven
+existing MCP shutdown tests and two downstream notifier tests passed. The log is
+local-queued-output-check-v2.log. The downstream blocked-writer test reaches the
+public constructor and exact 256-frame/plus-one boundary; clone ordering asserts
+actual canonical bytes. Full stable verification remains pending for this unit.
+No native runtime acceptance is inferred from output tests; plan progress stays
+3/7, task 9401 in progress, task 9402 planned and production acceptance false.

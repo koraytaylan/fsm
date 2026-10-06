@@ -1033,3 +1033,8 @@ Track local native admission provenance through uncertain publication and failed
 binding, and refuse local helper cancellation of foreign observed claims without
 releasing their durable identity; no persisted formats change. This foundation
 does not establish native closure or a bounded production shutdown guarantee.
+
+
+### Bounded queued protocol output
+
+Added opt-in bounded complete-frame notifier output with in-flight allocation accounting, explicit close/drain observation and write-failure preservation; production lifecycle integration remains incomplete.

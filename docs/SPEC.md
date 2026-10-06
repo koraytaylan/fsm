@@ -2728,3 +2728,8 @@ domain, handler fingerprint and retry policy before transferring provenance;
 failed matching MUST retain the admission and its reserved capacity. Repeated
 observation MUST NOT downgrade a locally admitted claim. Provenance authorizes
 no settlement without independently authenticated original closure evidence.
+
+
+### Bounded queued protocol output
+
+Notifier::queued MUST atomically enqueue complete canonical frames, bounded by 256 retained frames and 8 MiB of retained Vec allocation capacity including in-flight writes; serialization temporaries are outside this accounting unit. Budget exhaustion MUST return WouldBlock without partial publication. Close MUST refuse further admission without waiting on the actual writer; drained MUST require successful write/flush of every admitted frame after close. Write failure MUST remain broken and MUST NOT report successful drainage. Drop grants no drainage guarantee.

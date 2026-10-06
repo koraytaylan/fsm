@@ -2277,3 +2277,8 @@ live work. Retain foreign observations to prevent replacement and to recover
 actual authenticated completion, but explicit local stop must address the exact
 incarnation and its local admissions. Preserve an uncertain prepared reservation
 when the observed publication differs from its original route or contract.
+
+
+### Bounded queued protocol output
+
+Use Notifier::queued when protocol emission must remain independent of actual writer blocking; retain its OutputControl, close admission explicitly and observe drained/is_broken under your own deadline without joining a blocked writer. This does not drive native execution or wire the production stdio lifecycle pump.
