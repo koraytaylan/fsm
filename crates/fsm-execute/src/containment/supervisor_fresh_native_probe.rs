@@ -340,6 +340,15 @@ fn shared_tick_fresh() {
         .unwrap();
     assert!(ack_record.seq < event_record.seq);
     let count = writer.records.len();
+    // Resuming re-enters in_review and emits a distinct notify; this check
+    // concerns replay of the original completion, not admission of that work.
+    assert!(
+        writer.state.instances[instance]
+            .pending
+            .iter()
+            .any(|pending| pending != effect)
+    );
+    scheduler = Scheduler::new(HandlerTable::default());
     tick_with(
         &mut watcher,
         &mut scheduler,

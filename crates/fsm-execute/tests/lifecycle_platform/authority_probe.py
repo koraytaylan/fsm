@@ -22,7 +22,12 @@ def build_authority(repo, toolchain, operation):
                selector, target, '--message-format=json']
     if operation == 'test':
         command.append('--no-run')
-    build = subprocess.run(command, cwd=repo, env=dict(os.environ, CARGO_BUILD_JOBS='1'),
+    environment = dict(os.environ, CARGO_BUILD_JOBS='1')
+    if operation == 'build':
+        # Package the exact Cargo artifact without debug sections, preserving
+        # debug assertions and the installer's 64 MiB/digest/identity guards.
+        environment['CARGO_PROFILE_DEV_STRIP'] = 'debuginfo'
+    build = subprocess.run(command, cwd=repo, env=environment,
                            capture_output=True, timeout=180)
     messages = list(map(json.loads, build.stdout.splitlines()))
     if build.returncode != 0:
@@ -96,6 +101,7 @@ def main():
               'rustc': rustc, 'fixture_sha256': hashlib.sha256(executable.read_bytes()).hexdigest(),
               'fixture_target': FIXTURE_TARGET,
               'authority_sha256': authority_digest,
+              'authority_strip': 'debuginfo',
               'scope': 'production-authority-allocation', 'production_allocator': True, 'production_backend': False,
               'cases': rows, 'passed': len(rows) == len(INVENTORY) and all(row['passed'] for row in rows),
               'unrelated_survived_cleanup': survived}
