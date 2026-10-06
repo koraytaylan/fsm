@@ -423,3 +423,19 @@ Cargo; evidence is retained in the task cache as
 This is empty/unadmitted production coverage, not installed native handler
 execution acceptance; plan 22 remains incomplete and the previously recorded
 full-gate workflow failures remain unresolved.
+
+### Workflow failure diagnostic allocation review (2026-10-07)
+
+Review found the stalled-workflow assertion decoded the entire stderr file
+before truncating to 8192 characters; it now reads at most 8192 input bytes
+before lossy UTF-8 decoding, retaining useful diagnostics even when the
+prefix ends within a multibyte character.
+The in-memory regression proves the reader consumed exactly 8192 bytes and
+did not consume the suffix; it creates no filesystem fixture.
+Stable focused regression and CLI all-target Clippy passed in a verified
+1 GiB RAM / zero-swap scope (workflow-bounded-diagnostic-check.log).
+Format and diff checks passed; full workspace gates and native workflow
+execution were not repeated for this test-only diagnostic change, and the
+previous production workflow failures remain open.
+This bounds assertion allocation only and does not establish the cause of
+the previously reported host memory or swap pressure.

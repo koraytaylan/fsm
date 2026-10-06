@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -477,11 +477,7 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
         assert!(
             Instant::now() < deadline,
             "workflow stalled: {instance:?}; executor stderr: {}",
-            fs::read_to_string(&client.errors)
-                .unwrap_or_default()
-                .chars()
-                .take(8192)
-                .collect::<String>()
+            bounded_executor_errors(&client.errors)
         );
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -600,4 +596,29 @@ fn workflow_helper_uses_explicit_arguments_without_operator_environment() {
             }
         );
     }
+}
+
+// Bound bytes before decoding so a stalled executor cannot make the failure
+// assertion allocate its entire diagnostic file.
+fn bounded_executor_errors(path: &Path) -> String {
+    fs::File::open(path)
+        .map(read_diagnostic_prefix)
+        .unwrap_or_default()
+}
+
+fn read_diagnostic_prefix(reader: impl Read) -> String {
+    let mut prefix = Vec::new();
+    let _ = reader.take(8192).read_to_end(&mut prefix);
+    String::from_utf8_lossy(&prefix).into_owned()
+}
+
+#[test]
+fn stalled_workflow_diagnostics_bound_input_bytes_and_tolerate_partial_utf8() {
+    let mut diagnostic = vec![b'x'; 8191];
+    diagnostic.extend_from_slice("éhidden suffix".as_bytes());
+    let mut reader = std::io::Cursor::new(diagnostic);
+    let prefix = read_diagnostic_prefix(&mut reader);
+    assert_eq!(reader.position(), 8192);
+    assert_eq!(prefix, format!("{}�", "x".repeat(8191)));
+    assert!(!prefix.contains("hidden suffix"));
 }
