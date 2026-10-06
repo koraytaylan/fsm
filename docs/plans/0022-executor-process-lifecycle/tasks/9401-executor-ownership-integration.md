@@ -403,3 +403,11 @@ warnings denied, logging to
 `~/.cache/fsm-plan-native-matrix-20261005/current-f9e02fa-stable-doc.log`.
 Neither check executes the new provisioned native assertions or replaces the
 current-source full debug/release and platform gates.
+
+The current product source `f9e02fa` stable documentation gate completed with
+exit zero and `RUSTDOCFLAGS=-D warnings`. Zero-dependency and embed-acceptance
+checks are now running sequentially, retaining separate
+`current-f9e02fa-stable-zero-deps.log` and `current-f9e02fa-stable-embed.log`
+files in the dedicated cache. The new native controls still have compilation
+evidence only, and current-source full workspace and updated platform/native
+matrix obligations remain unexecuted.
