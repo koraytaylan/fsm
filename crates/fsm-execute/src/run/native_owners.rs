@@ -36,10 +36,16 @@ impl NativeOwners {
         observation: &mut Observation,
     ) -> Result<(), ExecError> {
         self.observed_seq = snapshot.journal.last_seq;
-        if self.owners.is_empty() && observation.execution_owners.is_empty() {
-            return Ok(());
+        // Pin the durable route even before the first claim; otherwise a
+        // queued preparation could adopt a replacement physical store.
+        if snapshot.journal.is_memory() {
+            return if self.owners.is_empty() && observation.execution_owners.is_empty() {
+                Ok(())
+            } else {
+                Err(deferred())
+            };
         }
-        if snapshot.journal.is_memory() || snapshot.journal.poisoned {
+        if snapshot.journal.poisoned {
             return Err(deferred());
         }
         let metadata = std::fs::metadata(&snapshot.data_dir).map_err(|_| deferred())?;

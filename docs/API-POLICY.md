@@ -903,3 +903,11 @@ for event reconciliation. Read-only refusal, uncertain closure, and a different
 claim leave the local reservation intact. This internal composition changes no
 public API, persisted bytes, hash domain, or published error code; fresh native
 admission and cold recovery between Ack and event remain incomplete.
+
+Shared Linux tick ownership pins the physical durable store from its first
+verified watcher snapshot, including an empty owner set before the first
+claim. A different directory identity at the same path is refused before
+scheduler selection even when the copied journal prefix is identical; no
+claim, handler entry, or settlement is authorized by that refusal. This
+internal route check changes no public signature, persisted bytes, hash
+domain, or published error code, and does not complete fresh native admission.

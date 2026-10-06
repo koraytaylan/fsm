@@ -1171,3 +1171,22 @@ failure, since the later stop change adds operation context only. The overall
 run remains live with portable failures already observed; the later portable
 helper cfg correction is absent from this source. Production backend, gate
 release, and executable-byte acceptance remain false.
+
+### Physical route pin before the first native claim
+
+Removed the empty-owner early return for durable snapshots so the Linux shared
+host pins its physical store before a fresh admission can be queued. The
+in-memory empty-owner primitive retains its existing behavior; an owned memory
+snapshot and a poisoned durable snapshot still refuse. Existing physical
+identity mismatch checks run before scheduler selection.
+
+Added an owner-free borrowed-tick regression: hold the original writer, run a
+quiet tick, move the original directory to an owned backup, copy its exact
+journal files into a different directory at the same path, verify the logical
+records/head are identical, and require `exec/inflight_deferred` with unchanged
+original state, records, and head; restore the original directory before its
+writer drops. Thus neither logical prefix corruption nor an unresolved claim
+can explain the refusal. Source review, formatting, and diff checks pass;
+execution and sensitivity validation are pending behind the single frozen
+release workspace job, and fresh preparation/claim/entry wiring remains
+incomplete.

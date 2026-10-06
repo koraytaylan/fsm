@@ -336,3 +336,91 @@ fn an_advance_the_state_declines_is_parked_rather_than_asked_every_tick() {
         "the effect itself should still settle: {lines:#?}"
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn an_owner_free_runner_refuses_a_replacement_physical_store() {
+    let directory = TestDirectory::create("native-empty-physical-pin");
+    let mut writer = open_writer(directory.path());
+    let table = HandlerTable::default();
+    let mut watcher = Watcher::with_handlers(directory.path().into(), &table);
+    let mut scheduler = Scheduler::new(table);
+    let mut runner = Runner::new().unwrap();
+    let mut pipeline = Pipeline;
+    let mut clock = FixedClock::new(1000, 1);
+    assert!(
+        tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer,
+            &mut clock,
+            1000,
+        )
+        .is_empty()
+    );
+    assert!(writer.state.execution.unresolved().next().is_none());
+    let state = writer.state.clone();
+    let records = writer.records.clone();
+    let head = (writer.journal.last_seq, writer.journal.last_hash.clone());
+    struct Restore {
+        path: PathBuf,
+        saved: PathBuf,
+    }
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.path).unwrap();
+            fs::rename(&self.saved, &self.path).unwrap();
+        }
+    }
+    let saved = directory.path().with_extension("native-original");
+    assert!(!saved.exists());
+    fs::rename(directory.path(), &saved).unwrap();
+    fs::create_dir(directory.path()).unwrap();
+    let restore = Restore {
+        path: directory.path().into(),
+        saved,
+    };
+    fn copy_fixture(source: &Path, target: &Path) {
+        for entry in fs::read_dir(source).unwrap() {
+            let entry = entry.unwrap();
+            let destination = target.join(entry.file_name());
+            let kind = entry.file_type().unwrap();
+            if kind.is_dir() {
+                fs::create_dir(&destination).unwrap();
+                copy_fixture(&entry.path(), &destination);
+            } else {
+                assert!(kind.is_file(), "fixture contains an unexpected file type");
+                fs::copy(entry.path(), destination).unwrap();
+            }
+        }
+    }
+    copy_fixture(&restore.saved, directory.path());
+    let replacement = Store::open_read_only(directory.path()).unwrap();
+    assert_eq!(replacement.records, records);
+    assert_eq!(replacement.journal.last_hash, head.1);
+    drop(replacement);
+    let lines = tick_with(
+        &mut watcher,
+        &mut scheduler,
+        &mut runner,
+        &mut pipeline,
+        &mut writer,
+        &mut clock,
+        1000,
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("exec/inflight_deferred")),
+        "{lines:?}"
+    );
+    assert!(fsm_store::snapshot::store_states_eq(&writer.state, &state));
+    assert_eq!(writer.records, records);
+    assert_eq!(
+        (writer.journal.last_seq, writer.journal.last_hash.clone()),
+        head
+    );
+    drop(restore);
+}
