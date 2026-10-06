@@ -298,6 +298,7 @@ fn empty_domain_preparation() {
         "binding-2.json.pending",
         "launch-2.json",
         "handoff-2.json.pending",
+        "exec-status-2.json.pending",
     ] {
         let obstacle = fixture.directory.join(name);
         fs::write(&obstacle, b"{}").unwrap();
@@ -305,6 +306,17 @@ fn empty_domain_preparation() {
         assert!(fixture.groups[1].0.exists());
         fs::remove_file(obstacle).unwrap();
     }
+    let child = fixture.groups[1].0.join("fixture-owned-cleanup-child");
+    fs::create_dir(&child).unwrap();
+    let child_identity = identity(&fs::symlink_metadata(&child).unwrap());
+    assert!(super::super::closure::complete(&fixture.directory, 2).is_err());
+    assert!(fixture.groups[1].0.exists() && child.exists());
+    assert_eq!(
+        identity(&fs::symlink_metadata(&child).unwrap()),
+        child_identity
+    );
+    assert!(!fixture.directory.join("closed-2.json").exists());
+    fs::remove_dir(&child).unwrap();
     super::super::closure::complete(&fixture.directory, 2).unwrap();
     super::super::closure::complete(&fixture.directory, 2).unwrap();
     assert!(!fixture.groups[1].0.exists());

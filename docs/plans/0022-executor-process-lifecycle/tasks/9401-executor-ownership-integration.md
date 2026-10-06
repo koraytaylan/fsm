@@ -621,3 +621,10 @@ current CI run `37397745043` predates this change and cannot accept this slice.
 The review checked authority-lock retention, durable revocation before removal,
 pending binding/submission refusal and the absence of execution receipt output.
 Full frozen host gates and provisioned native execution remain outstanding.
+
+Follow-up cleanup review adds direct privileged controls for pending exec-status
+evidence and an actual child cgroup: unbound close must refuse both, preserve
+the child identity and publish no tombstone, then succeed only after removal
+of the test-owned obstacle. The frozen stable debug workspace gate for
+`b5ff5f6` remains live in original session `64176`; these additional controls
+require compilation and provisioned execution at their own committed source.
