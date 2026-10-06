@@ -76,9 +76,41 @@ fn complete(binding: Value) {
         assert_retired_uncertain(&missing);
         assert_eq!(store.records.len(), records);
         assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
+        // Refused startup retains the installed owner and permits no implicit
+        // second bind, even when a healthy writer becomes available afterwards.
+        let mut refused = NativeExecution::retain_uncertain(&claim);
+        let mut snapshot =
+            fsm_store::store::Store::open_read_only(std::path::Path::new(&path)).unwrap();
+        assert_eq!(
+            refused
+                .start_retained(&mut snapshot, Duration::from_secs(30))
+                .unwrap_err()
+                .code,
+            "exec/mode"
+        );
+        drop(snapshot);
+        assert_eq!(
+            refused
+                .start_retained(&mut store, Duration::from_secs(30))
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
+        assert!(refused.progress().retained);
+        assert!(refused.progress().helper.is_none());
+        assert_eq!(store.current_execution_claim_hash(&claim).unwrap(), hash);
         let mut holder = WriterHolder::start(&path);
-        let mut owned =
-            NativeExecution::start(&mut store, &claim, Duration::from_secs(30)).unwrap();
+        let mut owned = NativeExecution::retain_uncertain(&claim);
+        owned
+            .start_retained(&mut store, Duration::from_secs(30))
+            .unwrap();
+        assert_eq!(
+            owned
+                .start_retained(&mut store, Duration::from_secs(30))
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
         assert_eq!(store.records.len(), records);
         assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
         // Send binding before the lease barrier, but never dispatch execute

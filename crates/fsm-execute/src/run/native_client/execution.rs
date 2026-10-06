@@ -30,10 +30,11 @@ pub struct NativeExecution {
     run: Option<NativeRun>,
     completion: Option<NativeCompletion>,
     retained: bool,
+    start_requested: bool,
 }
 
 impl NativeExecution {
-    /// Retain an original durable claim after helper startup fails.
+    /// Retain an original durable claim without requesting helper startup.
     ///
     /// The caller must retain the actual published claim; this constructor
     /// authenticates no ownership, starts no helper and supplies no completion.
@@ -44,6 +45,7 @@ impl NativeExecution {
             run: None,
             completion: None,
             retained: true,
+            start_requested: false,
         }
     }
 
@@ -51,6 +53,25 @@ impl NativeExecution {
     pub fn start(store: &mut Store, claim: &Claim, timeout: Duration) -> Result<Self, ExecError> {
         let run = Pipeline.start_native(store, claim, timeout)?;
         Ok(Self::with_run(claim, run))
+    }
+
+    /// Start once after the host has installed this retained original owner.
+    ///
+    /// Every refusal preserves the claim and capacity, including a refusal
+    /// before transport startup; this object cannot then retry binding or entry.
+    /// Reconciliation must use the original durable identity instead.
+    pub fn start_retained(
+        &mut self,
+        store: &mut Store,
+        timeout: Duration,
+    ) -> Result<(), ExecError> {
+        if self.start_requested || self.run.is_some() || self.completion.is_some() || !self.retained
+        {
+            return Err(unproven());
+        }
+        self.start_requested = true;
+        self.run = Some(Pipeline.start_native(store, &self.claim, timeout)?);
+        Ok(())
     }
 
     /// Recover the current original run from a durable snapshot without launching.
@@ -78,6 +99,7 @@ impl NativeExecution {
             run: None,
             completion: Some(completion),
             retained: true,
+            start_requested: true,
         })
     }
 
@@ -87,6 +109,7 @@ impl NativeExecution {
             run: Some(run),
             completion: None,
             retained: true,
+            start_requested: true,
         }
     }
 
@@ -191,6 +214,7 @@ impl NativeExecution {
 
     /// Request helper cancellation; verified completion, if present, stays retained.
     pub fn cancel(&mut self) -> Result<(), String> {
+        self.start_requested = true;
         match &mut self.run {
             Some(run) if self.completion.is_none() => run.cancel(),
             _ => Ok(()),
@@ -259,5 +283,47 @@ mod tests {
         assert_eq!(progress.phase, NativeRunPhase::Uncertain);
         assert!(progress.retained);
         assert!(progress.helper.is_none());
+    }
+
+    #[test]
+    fn refused_installed_owner_cannot_request_startup_again() {
+        let mut execution = NativeExecution::retain_uncertain(&original_owner());
+        let mut store = Store::open_memory().unwrap();
+        let state = store.state.clone();
+        assert_eq!(
+            execution
+                .start_retained(&mut store, Duration::from_secs(1))
+                .unwrap_err()
+                .code,
+            "exec/mode"
+        );
+        assert_eq!(
+            execution
+                .start_retained(&mut store, Duration::from_secs(1))
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
+        assert!(execution.progress().retained);
+        assert!(execution.progress().helper.is_none());
+        assert!(store.records.is_empty());
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
+    }
+
+    #[test]
+    fn cancellation_before_startup_preserves_owner_without_permitting_entry() {
+        let mut execution = NativeExecution::retain_uncertain(&original_owner());
+        let mut store = Store::open_memory().unwrap();
+        execution.cancel().unwrap();
+        assert_eq!(
+            execution
+                .start_retained(&mut store, Duration::from_secs(1))
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
+        assert!(execution.progress().retained);
+        assert!(execution.progress().helper.is_none());
+        assert!(store.records.is_empty());
     }
 }

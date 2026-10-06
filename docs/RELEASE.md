@@ -829,6 +829,15 @@ constructor alone authenticates no journal ownership. This additive host
 primitive changes no journal, receipt, attestation or hash format and does not
 complete production Runner routing or release its gate.
 
+The provisional owned native client adds one-shot `start_retained`, allowing
+hosts to install the actual durable claim before requesting helper startup and
+keep that owner on failure. The provisioned positive owner probe now exercises
+read-only startup refusal, refusal of a later retry with a healthy writer, and
+successful installed-owner startup followed by duplicate-start refusal; these
+expanded controls require changed-source native execution before acceptance.
+No persistent format or hash changes occur, and fresh shared-tick admission is
+still unfinished.
+
 Prepared-domain cleanup: Root `close` now handles allocations that were prepared but never bound, refusing partial binding/submission records and checking original native identity and manager retirement before tombstone publication, without issuing an execution receipt; the expanded privileged `empty_domain_preparation` control requires provisioned native execution before acceptance.
 
 Original prepared-domain cleanup adds private broker action `discard-prepared`, matching the full retained domain under the authority lock before retirement and echoing it afterward; the expanded privileged preparation control checks wrong-domain refusal before revocation and successful original-domain cold replay, with provisioned execution still required for acceptance.

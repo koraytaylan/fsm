@@ -2478,6 +2478,18 @@ retain capacity, and refuse observation/application as `exec/inflight_deferred`;
 helper retirement alone MUST NOT authorize settlement. The constructor MUST NOT
 be treated as authentication of current durable ownership.
 
+The provisional `NativeExecution::start_retained` method MUST allow a host to
+install original claim ownership before requesting binding. It MUST consume
+its one startup opportunity before writer validation or helper startup, retain
+the original claim and capacity on every refusal, and refuse subsequent startup
+calls on that object with `exec/inflight_deferred`, including after a read-only
+writer refusal or cancellation before startup. Recovery objects and objects with verified completion MUST NOT
+start binding through this method. Actual startup MUST use the existing
+writer-held current-claim/hash and launch-eligibility checks; this method MUST
+NOT claim, settle, release capacity, or fall back to a direct child. Constructing
+another retained object MUST NOT be interpreted as authority to retry an
+uncertain run. Fresh shared-tick admission and reconciliation remain pending.
+
 The Root broker `close` operation MUST support a prepared allocation with no binding: under the authority lock it MUST refuse any binding or launch/handoff/manager submission material, including pending records, durably revoke admission, verify original domain identity and manager retirement, remove only the matching empty domain, and publish the original domain tombstone; it MUST NOT issue an execution closure receipt or authorize journal settlement, and cold retries MUST retain those checks.
 
 The Root broker `discard-prepared` action MUST accept exactly a structurally valid complete NativeDomain, match it to the protected recorded domain under the authority lock before any revocation, refuse binding or submission material, and perform the prepared-only retirement checks; its successful result MUST echo that original domain without issuing execution evidence, and a different original identity MUST refuse without revocation.

@@ -867,6 +867,14 @@ constructor alone authenticates no journal ownership. This additive host
 primitive changes no journal, receipt, attestation or hash format and does not
 complete production Runner routing or release its gate.
 
+The additive provisional `NativeExecution::start_retained(&mut self, &mut Store,
+Duration)` source API permits installing an original owner before requesting
+binding; every invocation consumes that object's startup opportunity, and
+refusal retains ownership without permitting an implicit retry. Existing
+constructors retain their signatures and behavior. This introduces no journal,
+receipt, attestation, request fingerprint, or hash-format change; production
+shared-tick admission and gate acceptance remain pending.
+
 Prepared unbound allocation cleanup now uses the existing Root `close` action and domain tombstone format; it introduces no journal format, public Rust API or execution receipt, and must refuse pending binding or submission material rather than treating it as an unclaimed allocation.
 
 The provisional private broker protocol adds `discard-prepared` with a full NativeDomain payload and matching-domain result for unclaimed host cleanup; this adds no journal format or public Rust API and grants no execution receipt or settlement authority.
