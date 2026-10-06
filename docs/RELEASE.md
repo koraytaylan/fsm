@@ -838,6 +838,15 @@ expanded controls require changed-source native execution before acceptance.
 No persistent format or hash changes occur, and fresh shared-tick admission is
 still unfinished.
 
+Installed-owner binding now waits for an explicit writer-protected
+`launch_bound` call rather than dispatching execution during ordinary polling;
+the actual provisioned owner control requires repeated bound observation and
+read-only dispatch refusal with absent launch/entry/handoff records, then a
+healthy-writer request and duplicate-request refusal before resuming independent
+writer contention. These changed-source controls and compilation remain pending
+memory headroom and native CI; original constructor coverage remains on the
+timeout axis, and no format/hash or production-gate change is claimed.
+
 Prepared-domain cleanup: Root `close` now handles allocations that were prepared but never bound, refusing partial binding/submission records and checking original native identity and manager retirement before tombstone publication, without issuing an execution receipt; the expanded privileged `empty_domain_preparation` control requires provisioned native execution before acceptance.
 
 Original prepared-domain cleanup adds private broker action `discard-prepared`, matching the full retained domain under the authority lock before retirement and echoing it afterward; the expanded privileged preparation control checks wrong-domain refusal before revocation and successful original-domain cold replay, with provisioned execution still required for acceptance.

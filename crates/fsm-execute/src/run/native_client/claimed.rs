@@ -51,6 +51,7 @@ pub struct NativeRun {
     request: NativeRequest,
     phase: Phase,
     error: Option<String>,
+    writer_entry: bool,
 }
 
 impl NativeRun {
@@ -126,6 +127,7 @@ impl NativeRun {
                 Phase::Binding
             },
             error: None,
+            writer_entry: false,
         })
     }
 
@@ -150,18 +152,10 @@ impl NativeRun {
             return Err("native run deadline; claim remains uncertain".into());
         }
         if matches!(self.phase, Phase::Bound) {
-            let remaining = self
-                .deadline
-                .checked_duration_since(Instant::now())
-                .filter(|remaining| !remaining.is_zero())
-                .ok_or("native run deadline; claim remains uncertain")?;
-            self.request = NativeRequest::start(
-                &self.namespace,
-                self.generation,
-                &request("execute", self.allocation.clone()),
-                remaining,
-            )?;
-            self.phase = Phase::Executing;
+            if self.writer_entry {
+                return Ok(None);
+            }
+            self.request_execution()?;
         }
         let response = match self.request.poll()? {
             Some(response) => response,
@@ -189,6 +183,43 @@ impl NativeRun {
             Phase::Bound => Err("native run bound transition invalid".into()),
             Phase::Finished => Err("native run completion already collected".into()),
         }
+    }
+
+    pub(super) fn require_writer_entry(&mut self) {
+        self.writer_entry = true;
+    }
+
+    pub(super) fn launch_bound(&mut self, claim: &Claim, hash: &str) -> Result<(), String> {
+        if !self.writer_entry
+            || self.error.is_some()
+            || !matches!(self.phase, Phase::Bound)
+            || self.claim != *claim
+            || self.journal_claim != hash
+        {
+            return Err("native execution requires the original writer-checked bound owner".into());
+        }
+        let result = self.request_execution();
+        if let Err(error) = &result {
+            self.error = Some(error.clone());
+            let _ = self.request.cancel();
+        }
+        result
+    }
+
+    fn request_execution(&mut self) -> Result<(), String> {
+        let remaining = self
+            .deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or("native run deadline; claim remains uncertain")?;
+        self.phase = Phase::Executing;
+        self.request = NativeRequest::start(
+            &self.namespace,
+            self.generation,
+            &request("execute", self.allocation.clone()),
+            remaining,
+        )?;
+        Ok(())
     }
 
     /// Request helper cancellation while retaining uncertain claim ownership.

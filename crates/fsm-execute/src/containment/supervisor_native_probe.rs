@@ -153,6 +153,52 @@ fn complete(binding: Value) {
                 "competing executor created {name}",
             );
         }
+        if !timeout {
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while owned.progress().phase != NativeRunPhase::Bound {
+                assert!(!owned.observe().unwrap());
+                assert!(Instant::now() < deadline, "installed binding deadline");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            for _ in 0..3 {
+                assert!(!owned.observe().unwrap());
+                assert_eq!(owned.progress().phase, NativeRunPhase::Bound);
+            }
+            let mut snapshot =
+                fsm_store::store::Store::open_read_only(std::path::Path::new(&path)).unwrap();
+            assert_eq!(
+                owned.launch_bound(&mut snapshot).unwrap_err().code,
+                "exec/mode"
+            );
+            assert_eq!(snapshot.records.len(), records);
+            assert!(fsm_store::snapshot::store_states_eq(
+                &snapshot.state,
+                &state
+            ));
+            assert_eq!(owned.progress().phase, NativeRunPhase::Bound);
+            let original = domain.get("allocation").unwrap().as_num().unwrap();
+            for name in ["launch", "entry", "handoff"] {
+                assert_eq!(
+                    std::fs::symlink_metadata(authority.join(format!("{name}-{original}.json")))
+                        .unwrap_err()
+                        .kind(),
+                    std::io::ErrorKind::NotFound
+                );
+            }
+            drop(snapshot);
+            holder.release();
+            let mut writer = fsm_store::store::Store::open(std::path::Path::new(&path)).unwrap();
+            owned.launch_bound(&mut writer).unwrap();
+            assert_eq!(
+                owned.launch_bound(&mut writer).unwrap_err().code,
+                "exec/inflight_deferred"
+            );
+            assert_eq!(writer.records.len(), records);
+            assert!(fsm_store::snapshot::store_states_eq(&writer.state, &state));
+            drop(writer);
+            holder = WriterHolder::start(&path);
+            holder.acquire();
+        }
         (owned, Some(holder))
     };
     loop {

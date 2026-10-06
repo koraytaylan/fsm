@@ -875,6 +875,14 @@ constructors retain their signatures and behavior. This introduces no journal,
 receipt, attestation, request fingerprint, or hash-format change; production
 shared-tick admission and gate acceptance remain pending.
 
+Installed-owner startup now separates binding from execution dispatch:
+`start_retained` pauses at `Bound`, and additive provisional
+`NativeExecution::launch_bound(&mut self, &mut Store)` rechecks current writer
+eligibility before requesting execution. Existing `NativeExecution::start` and
+recovery retain their behavior; no persistent bytes, request fingerprints,
+receipt or attestation format, hash domain or error code changes. These APIs do
+not prove production admission integration or release its gate.
+
 Prepared unbound allocation cleanup now uses the existing Root `close` action and domain tombstone format; it introduces no journal format, public Rust API or execution receipt, and must refuse pending binding or submission material rather than treating it as an unclaimed allocation.
 
 The provisional private broker protocol adds `discard-prepared` with a full NativeDomain payload and matching-domain result for unclaimed host cleanup; this adds no journal format or public Rust API and grants no execution receipt or settlement authority.

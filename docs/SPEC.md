@@ -2490,6 +2490,19 @@ NOT claim, settle, release capacity, or fall back to a direct child. Constructin
 another retained object MUST NOT be interpreted as authority to retry an
 uncertain run. Fresh shared-tick admission and reconciliation remain pending.
 
+For installed-owner startup, observation MUST stop at `Bound` without requesting
+execution, even after repeated polls. `NativeExecution::launch_bound` MUST
+recheck supported healthy durable writer mode, the current original claim/hash,
+enabled admission, absence of stopped evidence and a running instance with the
+original pending effect before requesting execution. A read-only writer MUST
+refuse with `exec/mode` without changing the bound transport or requesting entry.
+The original bound claim/hash MUST also match the retained transport. A requested
+execution or failed execution-helper startup MUST NOT permit another execution
+request; original ownership MUST remain retained. Recovery objects MUST NOT
+request execution through this method. The preexisting primitive constructor
+retains its separate observation-driven behavior; production fresh admission
+MUST use the installed-owner writer boundary and remains unimplemented.
+
 The Root broker `close` operation MUST support a prepared allocation with no binding: under the authority lock it MUST refuse any binding or launch/handoff/manager submission material, including pending records, durably revoke admission, verify original domain identity and manager retirement, remove only the matching empty domain, and publish the original domain tombstone; it MUST NOT issue an execution closure receipt or authorize journal settlement, and cold retries MUST retain those checks.
 
 The Root broker `discard-prepared` action MUST accept exactly a structurally valid complete NativeDomain, match it to the protected recorded domain under the authority lock before any revocation, refuse binding or submission material, and perform the prepared-only retirement checks; its successful result MUST echo that original domain without issuing execution evidence, and a different original identity MUST refuse without revocation.

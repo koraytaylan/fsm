@@ -2072,6 +2072,14 @@ Startup is one-shot even if the first writer was read-only, and a recovery or
 completed object cannot request binding. Do not recreate an object to retry an
 uncertain run. The shared production tick still needs this admission wiring.
 
+Poll an installed owner until its progress reaches `Bound`; further observation
+keeps it bound and does not request execution. After acquiring a healthy writer,
+call `launch_bound` to recheck the original claim/hash, admission and effect
+eligibility. Read-only or unavailable writers leave that bound owner retained.
+Once an execution request has been made, continue observation independently of
+writer access and retain the owner on every refusal; do not request entry again.
+Automatic shared-tick preparation and admission still need integration.
+
 The provisioned Root broker can close an unbound prepared allocation on its original route: it revokes admission and verifies native retirement before publishing a domain tombstone, without issuing claim closure evidence; transport cancellation alone still cannot release a host reservation, and automatic production Runner integration remains unfinished.
 
 Hosts retiring an unclaimed prepared domain should use `discard-prepared` on the retained original route with the full original domain, retain the cleanup helper until reap and EOF, and require the successful echoed domain to match; numeric `close` alone does not convey the caller’s original domain identity, and host cleanup integration remains unfinished.

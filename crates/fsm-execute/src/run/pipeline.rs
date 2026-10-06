@@ -153,6 +153,18 @@ impl Pipeline {
         claim: &fsm_core::record::execution::Claim,
         timeout: std::time::Duration,
     ) -> Result<super::native_client::NativeRun, ExecError> {
+        let hash = Self::native_launch_hash(store, claim)?;
+        super::native_client::NativeRun::start(claim, &hash, timeout).map_err(|error| {
+            ExecError::new("exec/spawn", error)
+                .hint("retain the durable claim and reconcile native closure before retrying")
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn native_launch_hash(
+        store: &Store,
+        claim: &fsm_core::record::execution::Claim,
+    ) -> Result<String, ExecError> {
         if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
             || store.journal.is_memory()
             || store.journal.is_read_only()
@@ -187,10 +199,7 @@ impl Pipeline {
                 "native claim is not eligible for launch",
             ));
         }
-        super::native_client::NativeRun::start(claim, &hash, timeout).map_err(|error| {
-            ExecError::new("exec/spawn", error)
-                .hint("retain the durable claim and reconcile native closure before retrying")
-        })
+        Ok(hash)
     }
 
     /// Recover original completion from a durable snapshot, independently of a writer.

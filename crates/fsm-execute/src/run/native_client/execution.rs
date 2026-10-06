@@ -70,8 +70,21 @@ impl NativeExecution {
             return Err(unproven());
         }
         self.start_requested = true;
-        self.run = Some(Pipeline.start_native(store, &self.claim, timeout)?);
+        let mut run = Pipeline.start_native(store, &self.claim, timeout)?;
+        run.require_writer_entry();
+        self.run = Some(run);
         Ok(())
+    }
+
+    /// Request execution of a bound installed owner after a fresh writer recheck.
+    /// Observation of this startup path never dispatches execution on its own.
+    pub fn launch_bound(&mut self, store: &mut Store) -> Result<(), ExecError> {
+        let run = self.run.as_mut().ok_or_else(unproven)?;
+        let hash = Pipeline::native_launch_hash(store, &self.claim)?;
+        run.launch_bound(&self.claim, &hash).map_err(|error| {
+            ExecError::new("exec/inflight_deferred", error)
+                .hint("retain the original bound owner and reconcile uncertain entry")
+        })
     }
 
     /// Recover the current original run from a durable snapshot without launching.
