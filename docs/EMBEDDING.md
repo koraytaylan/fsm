@@ -1,5 +1,7 @@
 # Embedding fsm as a library
 
+Pipeline::advance_native_settled now checks the completion proof’s physical store binding before settlement replay or an outcome event, even when the checked original contract has no advance; matching request-ledger bytes alone cannot authorize application to a replaced directory.
+
 A failed watcher scan still lets public tick helpers drain bounded owned capture I/O; no outcome is consumed or journaled on that path, and callers must keep ticking while correcting the store failure.
 
 Native exec-status association checks its shared two-second deadline before

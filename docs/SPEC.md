@@ -1918,7 +1918,10 @@ store/sealed_outcome_unavailable refusal rather than reconstruct guessed
 settlement. An unclaimed key returns no response and grants no advance.
 Pipeline::advance_native_settled MUST require a supported healthy durable
 writer, a completion verified for the exact supplied original claim and a
-successful exact Acked settlement replay. Replayed disposition, instance,
+successful exact Acked settlement replay. Before replay or event application it
+MUST recheck the completion proof against the current physical store directory;
+a copied or replaced directory MUST refuse without journal mutation.
+Replayed disposition, instance,
 effect, run, outcome and result MUST agree with the checked original completion
 before any event. Missing evidence MUST refuse as exec/inflight_deferred;
 conflicting or unavailable ledger evidence retains the wrapped store refusal.

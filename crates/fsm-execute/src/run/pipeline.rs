@@ -507,6 +507,10 @@ impl Pipeline {
         {
             return Err(unproven());
         }
+        completion
+            .proof()
+            .check_store(&store.data_dir)
+            .map_err(|error| ExecError::store(&error))?;
         let response = store
             .replay_execution_settlement(
                 claim,

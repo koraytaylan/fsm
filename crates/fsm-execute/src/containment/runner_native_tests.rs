@@ -12,6 +12,10 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+#[path = "runner_advance_native_tests.rs"]
+mod advance;
+use advance::settle_owned;
+
 pub(super) const SERVER: &str = r#"import json,os,subprocess,sys,time
 from pathlib import Path
 base=Path(sys.argv[1])
@@ -898,42 +902,4 @@ fn settle_interrupted(
             .iter()
             .any(|pending| pending == effect)
     );
-}
-
-fn settle_owned(
-    fixture: &Fixture,
-    store: &mut Store,
-    clock: &mut dyn fsm_store::clock::Clock,
-    claim: &fsm_core::record::execution::Claim,
-    expected: &fsm_execute::run::native_client::NativeCompletion,
-) -> Value {
-    use fsm_execute::run::native_client::{NativeCompletion, NativeExecution};
-    let hash = store.current_execution_claim_hash(claim).unwrap();
-    let response = object([
-        ("format", Value::Str("fsm.native-response/1".into())),
-        ("ok", Value::Bool(true)),
-        ("result", runner::recover(&fixture.directory, 1).unwrap()),
-    ]);
-    let completion = NativeCompletion::verify(&response, claim, &hash).unwrap();
-    assert_eq!(completion.candidate(), expected.candidate());
-    let mut host = NativeExecution::from_completion(claim, &hash, completion).unwrap();
-    assert!(host.progress().retained);
-    let settled = host.settle(store, clock).unwrap();
-    assert!(!host.progress().retained);
-    let records = store.records.len();
-    assert_eq!(
-        host.settle(store, clock).unwrap().get("duplicate"),
-        Some(&Value::Bool(true))
-    );
-    assert_eq!(store.records.len(), records);
-    let recovered = NativeCompletion::verify(&response, claim, &hash).unwrap();
-    let mut recovered = NativeExecution::from_completion(claim, &hash, recovered).unwrap();
-    assert!(recovered.progress().retained);
-    assert_eq!(
-        recovered.settle(store, clock).unwrap().get("duplicate"),
-        Some(&Value::Bool(true))
-    );
-    assert!(!recovered.progress().retained);
-    assert_eq!(store.records.len(), records);
-    settled
 }

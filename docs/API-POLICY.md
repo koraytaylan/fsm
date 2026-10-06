@@ -1,5 +1,7 @@
 # API and version policy
 
+Native original-settlement outcome advance now rechecks the protected proof against the writer’s current physical store directory before replay or event application; replaced/copied directories retain the wrapped store/execution_evidence refusal, with no signature, journal format or hash-domain change.
+
 Executor ticks now drain owned output on journal scan refusal while retaining outcomes for later settlement; signatures, journal bytes and hash domains are unchanged, and automatic native production routing remains unfinished.
 
 Native exec-status association checks its shared two-second deadline before
