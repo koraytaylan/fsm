@@ -163,3 +163,25 @@ cannot erase occupied capacity. Production launch still uses the legacy path,
 so this slice does not accept writer-protected native routing or settlement.
 All-targets executor clippy is running serially with retained log
 `~/.cache/fsm-plan-native-matrix-20261005/ownership-projection-clippy.log`.
+
+### Capacity implementation review at `311498f`
+
+Capacity now unions observed `(instance, effect, run_id)` owners with retained
+local reservations; only `retain_claim` matching the local effect and immutable
+original claim supplies a deduplicating run identity. Unbound reservations
+remain distinct, and losing observation retains the local reservation. Global
+and per-instance admission and capped diagnostics use that same union.
+Scheduler and public inventory tests pass, including a remote owner filling a
+one-slot host, matched local/observed overlap allowing the remaining slot, and
+missing observation preserving both local reservations. The original projection
+all-targets clippy completed successfully; capacity clippy is running serially.
+Separate stopped-owner, mismatched-incarnation and per-instance fixtures remain
+required before integrated acceptance, along with full frozen host and CI gates.
+
+Current production service inspection confirms the next composition boundary:
+`tick_reporting` calls `prepare`, including `runner.spawn`, before `Store::open`,
+and clears settled scheduler entries on writer refusal. Native composition must
+split stop/observe from starts, retain preparation and execution in Runner,
+claim/recheck/start binding under the writer, and preserve original completion
+and capacity when settlement cannot obtain the writer. Existing public tick
+entries must share that sequence; the current legacy service remains unaccepted.
