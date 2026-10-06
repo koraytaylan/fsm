@@ -290,8 +290,8 @@ method fsm_execute::run::native_client::NativeExecution::reap
 method fsm_execute::run::native_client::NativeExecution::recover
 method fsm_execute::run::native_client::NativeExecution::settle
 method fsm_execute::run::native_client::NativeExecution::start
-method fsm_execute::run::native_client::NativePreparation::for_store
 method fsm_execute::run::native_client::NativePreparation::cancel
+method fsm_execute::run::native_client::NativePreparation::for_store
 method fsm_execute::run::native_client::NativePreparation::poll
 method fsm_execute::run::native_client::NativePreparation::progress
 method fsm_execute::run::native_client::NativePreparation::reap
