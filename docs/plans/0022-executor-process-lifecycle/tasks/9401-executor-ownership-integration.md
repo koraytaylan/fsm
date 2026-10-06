@@ -1286,3 +1286,20 @@ and retirement unchanged into its own fixture module, retaining the genuine
 binding comparison, consumed-claim/Ack checks, original competing-domain cleanup,
 and fixture cleanup. No execution protocol, published bytes, or assertions are
 relaxed. The frozen earlier workspace test remains live and is not restarted.
+
+### Fresh writer-fixture context correction
+
+Both native jobs in run 37429029062 fail in the new fresh axis because its
+independent writer exits before its barrier, as retained in
+`ci-37429029062/{stable,1.89.0}/authority-provisioned_broker_access.log`.
+Source inspection identifies missing fresh-wrapper setup:
+`writer_holder` requires `FSM_NATIVE_TEST_COMPETING_DOMAIN` to parse a genuine
+different prepared domain and assert that another claim for the original
+effect is refused under its writer; the older primitive/recovery wrappers
+provide that environment, but the new fresh wrapper did not. The corrected
+wrapper passes the actual fixture-created competing domain through to both
+writer subprocesses. No barrier, current-claim check, timeout, competing-claim
+refusal, or readiness assertion is removed or relaxed; actual corrected
+native execution remains required to confirm the failure is resolved.
+The complete earlier-source native matrix is not accepted, and the live
+portable jobs and frozen local workspace job are not restarted or canceled.

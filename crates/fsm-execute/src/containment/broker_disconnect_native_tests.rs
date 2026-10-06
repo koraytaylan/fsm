@@ -777,10 +777,14 @@ pub(super) fn shared_recovery(directory: &Path, binding: &Value, competitor: &Na
     fs::rename(saved, catalogue).unwrap();
 }
 
-pub(super) fn fresh_handoff(directory: &Path, binding: &Value) {
+pub(super) fn fresh_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
     let script = SUPERVISOR.replace("::owned_request", "::fresh_handoff::shared_tick_fresh");
     let output = Command::new("/usr/bin/python3")
         .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
+        .env(
+            "FSM_NATIVE_TEST_COMPETING_DOMAIN",
+            std::str::from_utf8(&canon_bytes(&competitor.to_value())).unwrap(),
+        )
         .args(["-c", &script])
         .arg(directory.join("broker"))
         .arg(std::str::from_utf8(&canon_bytes(binding)).unwrap())

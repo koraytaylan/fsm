@@ -3,7 +3,7 @@
 use super::*;
 
 pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
-    disconnect_cases::fresh_handoff(&fixture.directory, binding);
+    disconnect_cases::fresh_handoff(&fixture.directory, binding, successor);
     assert_eq!(
         read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
         *binding
