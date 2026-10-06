@@ -223,9 +223,13 @@ pub(super) fn execute_cancellable(
     }
     // A naturally retired unit may no longer support the live stop operation;
     // only independent complete-close proof can resolve that uncertainty.
-    let _ = stop::fence(directory, allocation);
-    closure::complete(directory, allocation)
-        .map_err(|error| format!("runner cleanup uncertain: {error}"))?;
+    let stop_result = stop::fence(directory, allocation);
+    closure::complete(directory, allocation).map_err(|error| match stop_result {
+        Ok(()) => format!("runner cleanup uncertain: {error}; matched stop completed"),
+        Err(stop_error) => {
+            format!("runner cleanup uncertain: {error}; matched stop refused: {stop_error}")
+        }
+    })?;
     owned.native_closed = true;
     let receipt = directory.join(format!("closure-{allocation}-{}.json", claim.run_id()));
     VerifiedClosure::read(&receipt).map_err(|error| error.message)?;

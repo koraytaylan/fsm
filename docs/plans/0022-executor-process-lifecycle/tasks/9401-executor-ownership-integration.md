@@ -34,6 +34,8 @@ The stable native job `112121154143` failed before reaching that shared-tick con
 
 # Executor Ownership Integration
 
+Follow-up review found `runner::execute_cancellable` discards the result of `stop::fence` before invoking independent closure verification, hiding whether the recurring retirement timeout follows a matched-stop refusal. The runner now includes that original stop refusal (or successful stop classification) only when closure itself fails; it still always attempts closure, and neither a stop success nor a refusal changes receipt eligibility, deadlines, revocation, or ownership retention. Rust 1.89.0 executor all-target Clippy passed in session `16697`, with log `local-native-stop-diagnostic-msrv-clippy.log`; formatting, file-size and diff checks passed. Full changed-source host gates and provisioned native execution remain pending, and this diagnostic is not a fix for the retirement failure.
+
 Every execution host must claim before launch and replay a durable stopped
 result before considering another run.
 
