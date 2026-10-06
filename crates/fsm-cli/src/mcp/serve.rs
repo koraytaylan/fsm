@@ -206,7 +206,6 @@ pub fn serve_dir_with(
     input: impl BufRead,
     output: impl Write + Send + 'static,
 ) -> std::io::Result<()> {
-    let mut degraded: Option<String> = None;
     let mut contended = false;
     let opened = match &mode {
         // A read-only open takes no lock and creates nothing, which is what
@@ -222,6 +221,18 @@ pub fn serve_dir_with(
             Err(WriterUnavailable::Unhealthy(error)) => Err(*error),
         },
     };
+    serve_opened_with(dir, mode, opened, contended, input, output)
+}
+
+fn serve_opened_with(
+    dir: &std::path::Path,
+    mode: ServeMode,
+    opened: Result<Store, ErrorObj>,
+    contended: bool,
+    input: impl BufRead,
+    output: impl Write + Send + 'static,
+) -> std::io::Result<()> {
+    let mut degraded: Option<String> = None;
     // A store that will not open used to kill the server, which is exactly
     // backwards: diagnosis is the one case where the server must not vanish.
     // The session starts, `initialize` succeeds, the tool list is unchanged,

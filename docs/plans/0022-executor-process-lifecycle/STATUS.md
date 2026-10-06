@@ -4630,3 +4630,20 @@ executor/lifecycle/transport/public inventory checks, seven binary stop/output
 tests and 61 CLI library tests passed. Evidence remains in
 owned-session-reporting-check.log. Production embedded routing and installed
 nonempty native acceptance remain incomplete; statuses are unchanged.
+
+### Production diagnostic startup extraction — 2026-10-07
+
+Extracted session startup over the exact already-opened Store result and
+contention fact, allowing native production routing to preserve diagnostic
+fallback without reopening and accidentally selecting legacy execution after
+a writer race. Borrowed input bounds and existing session behavior are retained.
+Production owned routing is the next dependent change; this extraction is
+uncommitted pending focused validation, with task statuses unchanged.
+
+Session 35853 exited zero under asserted 1 GiB RAM and zero swap, passing
+stable/MSRV all-target Clippy and the focused executor/lifecycle/session/
+transport/CLI/public inventory checks plus 61 CLI library tests; evidence is
+retained in serve-opened-diagnostic-check.log. The dependent production stdio
+composition is syntax-formatted in the task cache, not yet applied or compiled.
+Actual diagnostic fallback coverage and native stdio binary acceptance remain
+required, with task statuses unchanged.
