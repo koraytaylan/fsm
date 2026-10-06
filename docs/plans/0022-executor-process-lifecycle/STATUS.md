@@ -4368,3 +4368,19 @@ checks and all 60 CLI library tests passed; standalone-public-check.log is
 retained. Production command publication/routing, nonempty installed native
 acceptance, full gates and remaining sensitivity controls are still required;
 statuses and 3/7 progress remain unchanged.
+
+### Exclusive standalone contention and cleanup regression — 2026-10-06
+
+Public run_paired now has an actual three-tick contention regression using a due
+machine deadline and an independent held writer. Exclusive failure requests
+abort on the retained actor; its final report confirms actual empty shutdown
+and output delivery while preserving the initiating exec/mode failure, leaving
+the other writer held and journal records unchanged. A finite fallback control
+keeps a broken exclusive predicate from leaving an infinite test worker.
+
+Focused session 72353 exited zero under asserted 1 GiB RAM and zero swap,
+passing stable/MSRV Clippy, lifecycle/session/transport/CLI/public inventory
+checks and all 61 CLI library tests; standalone-exclusive-check.log is retained.
+This proves the opt-in host contract on empty native inventory, not production
+selection or installed nonempty cleanup; progress remains 3/7 and task statuses
+remain unchanged.

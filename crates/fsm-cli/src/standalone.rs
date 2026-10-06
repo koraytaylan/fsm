@@ -285,4 +285,60 @@ mod tests {
         drop(writer);
         std::fs::remove_dir_all(&directory).unwrap();
     }
+
+    #[test]
+    fn exclusive_writer_contention_preserves_failure_after_actual_stop() {
+        let root = std::path::PathBuf::from(std::env::var_os("TMPDIR").expect("task cache"));
+        assert!(!root.starts_with("/tmp"));
+        let directory = root.join(format!(
+            "standalone-exclusive-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let mut writer = Store::open(&directory).unwrap();
+        let definition = fsm_core::json::parse(br#"{"format":"fsm.machine/1","name":"quiet","context":[],"events":[],"effects":[],"states":[{"name":"waiting"},{"name":"done","terminal":true}],"initial":"waiting","transitions":[],"deadlines":[{"name":"due","from":"waiting","after":"dur(1, ms)","to":"done"}]}"#, &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+        let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+        writer
+            .define_machine_on(&mut clock, definition, false, false)
+            .unwrap();
+        writer
+            .create_instance_ctx_on(
+                &mut clock,
+                "quiet",
+                "instance",
+                "create",
+                None,
+                &std::collections::BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        let records = writer.records.clone();
+        let mut driver = PairedNativeExecutor::new(&directory, HandlerTable::default()).unwrap();
+        // Bound a broken exclusive predicate without allowing an infinite test.
+        let control = driver.control();
+        let fallback = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            control.stop(ShutdownMode::Abort, 500).unwrap();
+        });
+        let result = run_paired(
+            &mut driver,
+            &mut fsm_store::clock::FixedClock::new(10000, 1),
+            std::io::sink(),
+            1,
+            true,
+            500,
+        );
+        fallback.join().unwrap();
+        let unchanged = Store::open_read_only(&directory).unwrap().records == records;
+        let still_held = Store::open(&directory).is_err();
+        drop(driver);
+        drop(writer);
+        std::fs::remove_dir_all(&directory).unwrap();
+        let report = result.unwrap();
+        assert_eq!(report.shutdown.phase, ExecutorPhase::Stopped);
+        assert_eq!(report.failure.unwrap().code, "exec/mode");
+        assert!(report.shutdown.writer_released && report.output_drained);
+        assert!(unchanged && still_held);
+    }
 }
