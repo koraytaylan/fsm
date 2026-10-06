@@ -4269,6 +4269,17 @@ the evidence. The regressions therefore detect both behavior changes; full
 stable gates, production integration and installed native acceptance remain
 required with plan/task statuses unchanged.
 
+### Standalone and paired-probe full stable gate started — 2026-10-06
+
+Session 76940 is confirmed live against exact starting HEAD
+ee99a582de8fb4ed3ec727c00d92eea138885ab3 in scope
+run-p7780-i88073918.scope, invocation 8f5b307507444966adcd203aa4522b0c.
+standalone-paired-probes-stable-gate.log records asserted MemoryMax=1G and
+MemorySwapMax=0. Runtime source is frozen while format/size, debug/release
+workspace tests, all-target Clippy, docs, zero dependencies and embedding
+acceptance run serially; this entry changes documentation only and claims no
+completed gate or installed native execution. Task statuses remain unchanged.
+
 ### Standalone integration boundary review — 2026-10-06
 
 STANDALONE-INTEGRATION-REVIEW.md identifies production obligations before
