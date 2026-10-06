@@ -158,3 +158,18 @@ the unrelated 108-byte socket publication refusal. Publication failures now
 retain typed diagnostics. Endpoint removal is not claimed once output
 drainage consumes the first deadline, and nonempty native retirement remains
 unverified.
+
+Full gate 19246 has exposed failures in mcp_execute_workflow after native
+production selection. These tests launch the actual serve --execute binary,
+discover contracts, run seven real child handler operations and assert exact
+acknowledgements plus compensation. Their setup does not register the physical
+store with a protected native authority. The current host lacks installed
+authority, but the test failure's exact diagnostics must still be inspected
+before attributing it to provisioning rather than a lifecycle regression.
+
+These required production domain-semantic cases cannot be replaced by empty
+stop tests, removed, or rerouted silently to legacy execution to regain a green
+gate. They need exact-source provisioned native execution covering the same
+handler order, acknowledgements, preflight refusal and compensation outcomes,
+with unavailable-authority refusal covered separately in the portable suite.
+The live no-fail-fast gate remains authoritative and has not been restarted.

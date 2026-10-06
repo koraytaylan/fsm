@@ -4795,3 +4795,18 @@ tests, all-target Clippy and documentation with warnings denied, zero
 dependencies and downstream embedding acceptance. Installed native nonempty
 acceptance, HTTP ownership and remaining cross-plan requirements stay separate
 and incomplete; no task promotion is inferred from this pending gate.
+
+### Production workflow regression evidence — 2026-10-07
+
+Live full gate 19246 reports all four production mcp_execute_workflow scenario
+tests failed at the bounded workflow-stalled assertion: each remains in
+check_prerequisite at sequence 3 with inst-run/3/0 pending. The handler helper
+test passed. The diagnostics establish failure to execute the first effect,
+not its precise cause; the test client currently discards unmatched notification
+frames and its stall assertion does not include executor diagnostics. Source
+inspection confirms Native session request ticks call actual driver.tick,
+while this host lacks installed authority and test setup does not register
+its physical store. Stronger exact diagnostic evidence and provisioned real
+workflow coverage are still required; no legacy fallback or removed scenarios
+will substitute for them. The no-fail-fast gate continues on unchanged runtime
+and final result remains pending.
