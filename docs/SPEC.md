@@ -2804,3 +2804,37 @@ production stdio progress or install a native authority.
 Closing a transferred runner's admission fence alone MUST NOT count as an
 explicit lifecycle stop request or authorize releasing its owned writer;
 writer release requires actual stop request metadata in addition to quiescence.
+
+### Owned native MCP session composition
+
+On supported Linux, `mcp::serve::serve_owned_native_session` MAY explicitly
+compose an owned native driver with one protocol/journal owner and one clock.
+Its input factory MUST construct the sole reader on its worker; existing
+borrowed session helpers MUST retain their existing bounds. The worker queue
+MUST retain at most one complete frame, in addition to the current consumer
+frame and worker frame, each under the existing 16 MiB wire-byte ceiling;
+oversized-frame markers MUST NOT synthesize an oversized allocation or lose
+the following frame. LF MUST be delivered separately from frame storage.
+
+Quiet-input wakeups MUST only observe admitted work through the original
+driver; they MUST NOT schedule pending effects, retries or machine deadlines.
+Reverse-reply waiting MUST use the same reader and MUST be interruptible by
+independent lifecycle control. Queued output MUST preserve its existing
+256-frame/8 MiB allocation-capacity accounting, including in-flight writes.
+Owned-session feed shutdown MUST request stop without joining a blocked feed;
+detachment MUST NOT be reported as actual retirement.
+
+The owned session MUST validate finite shutdown bounds before starting
+workers or closing admission. EOF and protocol/startup errors MUST initiate
+explicit abort when no earlier request exists; an existing drain/abort request
+MUST preserve its first deadline and escalation. Native cleanup and output
+drain MUST use that original deadline without extending it. Native and journal
+I/O remain worker operations; independent control waiting MUST report
+uncertainty when that worker stalls. `ShutdownReport::timed_out` distinguishes
+elapsed deadline without confirmed native cleanup from other uncertainty.
+
+`OwnedSessionReport::shutdown` describes original native ownership, native
+helper retirement and writer release; `output_drained` MUST only confirm
+actual successful output write/flush, separately. Input/feed detachment MUST
+NOT be advertised as proved I/O-worker retirement. The owned entry MUST NOT
+claim installed native tree acceptance or change production CLI selection.

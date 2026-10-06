@@ -2334,3 +2334,30 @@ A runner whose admission fence was already closed may be transferred with
 `from_owned_parts`; an empty `poll` preserves its writer until the host issues
 an explicit control stop request. Fence closure and lifecycle stop are separate
 operations, even though both prevent further admission.
+
+On supported Linux, an embedder may call
+`mcp::serve::serve_owned_native_session(&mut driver, &mut clock, input_factory,
+output, shutdown_timeout_ms)` with its explicitly selected owned native driver.
+Clone the driver's control before starting the session; control callers need
+no journal handle. The input factory runs on its sole reader worker, so
+`|| std::io::stdin().lock()` can construct the reader there. Existing borrowed
+helpers remain available with their existing bounds. The same protocol owner
+borrows the driver's writer only for dispatch and polls admitted work between
+frames; quiet input cannot start pending effects, retries or machine deadlines.
+
+The owned entry uses bounded queued output and interrupts outer or elicitation
+input waiting on explicit stop. It does not join quiet input or blocked feed
+workers and makes no claim of their retirement. EOF or an I/O/startup error
+initiates abort if there is no earlier request; an existing request keeps its
+original mode escalation and deadline. Healthy EOF waits for admitted output
+delivery within that deadline; blocked output returns `output_drained=false`.
+
+The returned `OwnedSessionReport` separates native cleanup/writer facts from
+protocol delivery. `ShutdownReport::timed_out` means the original deadline
+elapsed without confirmed native cleanup; other uncertain reports need not be
+timeouts. `ShutdownRequest::deadline` lets a host preserve that absolute bound.
+Native or journal I/O may still stall the session worker, while independent
+control waits remain bounded and truthful. The current CLI stdio selector,
+external owner-only endpoint, CLI stop and signal integration remain unfinished;
+this library entry does not establish their installed acceptance or supply a
+paired standalone writer strategy.

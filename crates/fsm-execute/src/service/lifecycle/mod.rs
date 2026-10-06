@@ -72,6 +72,11 @@ impl OwnedNativeExecutor {
         })
     }
 
+    /// Borrow the original handler table used by this driver's scheduler.
+    pub fn handler_table(&self) -> &HandlerTable {
+        self.scheduler.handler_table()
+    }
+
     /// Clone control metadata without borrowing the execution worker.
     pub fn control(&self) -> ExecutorControl {
         self.control.clone()

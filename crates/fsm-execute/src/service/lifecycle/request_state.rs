@@ -76,6 +76,10 @@ impl RequestState {
         }
     }
 
+    pub(super) fn deadline_elapsed(&self, now: Instant) -> bool {
+        !self.stopped && self.deadline.is_some_and(|deadline| now >= deadline)
+    }
+
     pub(super) fn requested(&self) -> bool {
         self.mode.is_some()
     }

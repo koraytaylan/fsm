@@ -1076,3 +1076,11 @@ Added shared native admission closure and original local shutdown-target iterati
   release its writer; an explicit lifecycle request is required, with a
   downstream actual-writer regression and separate provisioned process/MCP
   bound-owner driver controls, whose native execution remains pending here.
+
+- Added an opt-in Linux owned native MCP session composition with one writer
+  owner/clock, bounded single-reader input shared with elicitation, quiet
+  admitted-only observation, queued output, and bounded feed-stop admission;
+  native cleanup and output delivery are reported separately, with explicit
+  timeout facts and first-deadline reuse. Existing borrowed session bounds and
+  production CLI selection remain unchanged; native tree/production endpoint
+  and signal acceptance are pending, and detached I/O is not claimed retired.

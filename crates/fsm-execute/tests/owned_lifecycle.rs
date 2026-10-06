@@ -69,6 +69,7 @@ fn idle_worker_cannot_block_a_control_deadline_or_release_its_writer() {
     let request = executor.control().stop(ShutdownMode::Abort, 1).unwrap();
     let report = request.wait();
     assert_eq!(report.phase, ExecutorPhase::Uncertain);
+    assert!(report.timed_out);
     assert!(!report.writer_released && !report.inventory_complete);
     let Err(error) = Store::open(&directory.0) else {
         panic!("unobserved writer must remain held")

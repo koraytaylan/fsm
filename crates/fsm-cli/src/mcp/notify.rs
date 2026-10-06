@@ -228,6 +228,13 @@ impl FeedHandle {
         }
     }
 
+    /// Close owned-session feed admission without waiting for filesystem I/O.
+    /// Detached completion is not evidence of retirement.
+    pub(crate) fn request_stop_nonblocking(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        self.join.take();
+    }
+
     /// Ask the feed to stop, and wait for it.
     pub fn stop_and_join(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
@@ -293,22 +300,32 @@ impl<'a> SessionIo<'a> {
 
     /// Read one protocol frame under the shared 16 MiB wire-byte ceiling.
     /// Oversized frames are drained without allocating their discarded tail.
-    /// This remains a blocking read and does not bound silent-client waiting.
+    /// Borrowed readers remain blocking; owned readers permit independent stop
+    /// to interrupt silent-client waiting without journal I/O here.
+    // Borrowed readers have no idle variant on other platforms.
+    #[cfg_attr(not(target_os = "linux"), allow(clippy::never_loop))]
     pub fn read_line(&mut self) -> std::io::Result<Option<String>> {
         use super::framing::{LINE_CAP, Line, read_capped_line};
-        match read_capped_line(self.input, LINE_CAP)? {
-            Line::Eof => Ok(None),
-            Line::TooLong => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("protocol line exceeds {LINE_CAP} bytes"),
-            )),
-            Line::Data(bytes) => {
-                let mut line = String::from_utf8(bytes)
-                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-                while line.ends_with('\r') {
-                    line.pop();
+        loop {
+            match read_capped_line(self.input, LINE_CAP)? {
+                #[cfg(target_os = "linux")]
+                Line::Idle => continue,
+                Line::Eof => return Ok(None),
+                Line::TooLong => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("protocol line exceeds {LINE_CAP} bytes"),
+                    ));
                 }
-                Ok(Some(line))
+                Line::Data(bytes) => {
+                    let mut line = String::from_utf8(bytes).map_err(|error| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, error)
+                    })?;
+                    while line.ends_with('\r') {
+                        line.pop();
+                    }
+                    return Ok(Some(line));
+                }
             }
         }
     }

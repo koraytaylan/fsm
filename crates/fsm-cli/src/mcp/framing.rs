@@ -6,6 +6,8 @@ pub(crate) const LINE_CAP: usize = 16 * 1024 * 1024;
 
 pub(crate) enum Line {
     Eof,
+    #[cfg(target_os = "linux")]
+    Idle,
     TooLong,
     Data(Vec<u8>),
 }
@@ -16,7 +18,25 @@ pub(crate) fn read_capped_line(
 ) -> io::Result<Line> {
     let mut bytes = Vec::new();
     loop {
-        let available = input.fill_buf()?;
+        let available = match input.fill_buf() {
+            Ok(available) => available,
+            Err(error) if bytes.is_empty() => {
+                #[cfg(target_os = "linux")]
+                {
+                    match error
+                        .get_ref()
+                        .and_then(|value| value.downcast_ref::<super::owned_input::FrameSignal>())
+                    {
+                        Some(super::owned_input::FrameSignal::Idle) => return Ok(Line::Idle),
+                        Some(super::owned_input::FrameSignal::TooLong) => return Ok(Line::TooLong),
+                        None => return Err(error),
+                    }
+                }
+                #[cfg(not(target_os = "linux"))]
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
         if available.is_empty() {
             return if bytes.is_empty() {
                 Ok(Line::Eof)

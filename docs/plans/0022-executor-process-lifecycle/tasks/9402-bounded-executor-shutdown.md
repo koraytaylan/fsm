@@ -106,3 +106,16 @@ local-owned-driver-request-fix-stable-gate.log. This resolves the local full-gat
 obligation for the writer-release correction and compiled live-bound probes;
 installed native execution, portable CI and production stdio/endpoint/CLI/signal
 integration remain unexecuted or unfinished, and progress stays 3/7.
+
+Opt-in owned native MCP session composition now integrates one writer owner
+and clock, bounded single-reader input shared with elicitation, idle admitted
+observation, queued output and nonjoining owned-feed stop admission; native
+cleanup/writer facts and actual output delivery are separate, with original
+deadline reuse and explicit timeout facts. Focused stable/MSRV session 24844
+passed library/downstream owned and borrowed session, elicitation, lifecycle
+and public API checks; worker-bound mutation session 24100 confirmed an exact
+limit refusal fails when only that guard is disabled and restored tests pass.
+See OWNED-SESSION-REVIEW.md and retained logs. This does not change current CLI
+selection or supply production/installed tree, endpoint, CLI stop, signals or
+paired standalone acceptance; full changed-source stable gate remains pending
+and progress stays 3/7 with no task promotion.

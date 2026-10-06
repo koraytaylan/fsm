@@ -1,0 +1,66 @@
+# Owned native session composition review
+
+Implementation base: 98702f6; reviewed the owned session composition, shared
+protocol loop, bounded input adapter and existing native driver obligations.
+
+The opt-in owned entry has one journal/protocol owner and one caller clock.
+A SessionStore facade lends the original writer only during dispatch; idle
+observation borrows the driver after that writer view ends. Input workers never
+borrow the writer, clock or runner, and controller waiters hold only metadata.
+No Arc/Mutex Store, competing stdin readers or independent injected clocks are
+introduced. The displayed handler contracts come from the driver's actual
+scheduler table, not an independently supplied display table.
+
+The reader is constructed on its worker, keeping existing borrowed API bounds
+and permitting a non-Send reader. One queued frame, one current consumer frame
+and one worker frame are bounded by the existing 16 MiB wire-byte ceiling.
+LF is separate from Vec storage; oversize and idle markers allocate no fake
+frames. Reverse elicitation reads the same stream and retries only idle markers,
+while explicit stop interrupts its wait. A marker is accepted only at a frame
+boundary, preserving ordinary partial-frame and I/O-error behavior.
+
+Idle observation calls the admission-free original driver, never its scheduling
+tick. The quiet-client regression seeds a pending effect and due machine
+deadline, waits until an idle observation completed, then requires exact cold
+records/state after actual stop. Ordinary explicit requests retain the existing
+tick boundary. The owned instructions distinguish admitted completion from
+pending/retry/deadline progression; borrowed instructions remain unchanged.
+
+Output uses the existing 256-frame/8 MiB allocation-capacity budget including
+in-flight writes. Session exit explicitly closes that queue and observes actual
+delivery within the first request deadline; healthy EOF cannot lose a queued
+reply simply because an empty native driver stopped immediately. Held writes
+leave output_drained false. Session-local live guards request bounded feed stop
+without joining held I/O, while borrowed sessions keep their joining behavior.
+Detached input/feed workers are not claimed retired: the native shutdown report
+and output delivery fact have explicitly separate scopes.
+
+Invalid finite bounds refuse before worker construction or fence closure. EOF,
+protocol errors and startup errors abort when no earlier request exists; reuse
+preserves the first deadline and never de-escalates an earlier abort. A public
+original deadline view prevents renewing transport drain bounds. The native
+report distinguishes elapsed timeout from other uncertainty. Native/journal
+operations remain worker-dependent; control waits remain independently bounded
+if those operations stall, and no native ownership is cleared on uncertainty.
+
+Verification: focused session 24844 exited 0 under asserted 1 GiB RAM/zero-swap
+limits with stable/MSRV CLI+executor all-target Clippy, 56 CLI library tests,
+four downstream owned session tests, twelve borrowed serve-mode tests, nine
+elicitation tests, 46 executor library tests, three downstream lifecycle tests
+and sixteen public surface tests; local-owned-stdio-integration-focused-v3.log
+is retained. Earlier final-check session 71228 failed at a missing instruction
+call argument, corrected before that pass. Mutation session 24100 exited 0:
+disabling only the worker wire bound caused the direct queued-frame refusal
+assertion to fail with test exit 101, and restoration passed all three input
+adapter tests; mutation/restoration logs are retained. Thus the outer framing
+guard cannot mask a disabled worker allocation guard.
+
+These held-I/O tests use real blocking reader/writer trait implementations and
+actual durable writer locks, with no invented native completion or closure
+material; their native inventory is empty. Provisioned bound/executing/hung
+native tree tests through this new session entry, actual production binary
+quiet stdin/blocked OS stdout, portable CI, paired standalone writer strategy,
+owner-only exact-incarnation endpoint, CLI stop and signal integration remain
+pending. Current CLI selectors still use their previous route, and this public
+owned entry is opt-in. Full changed-source stable gate is required next; tasks
+9401/9402 are not completed or promoted and plan progress remains 3/7.

@@ -1114,3 +1114,13 @@ are unchanged. The explicit polling requirement is part of this API contract.
 The owned driver distinguishes an explicitly requested lifecycle stop from
 prior admission-fence closure; this corrects premature writer release without
 changing public signatures, error codes or persisted formats.
+
+The unreleased Linux owned composition adds
+`mcp::serve::serve_owned_native_session` and `OwnedSessionReport`, the original
+`OwnedNativeExecutor::handler_table` view, `ShutdownRequest::deadline` and an
+explicit `ShutdownReport::timed_out` fact. Borrowed session signatures remain
+unchanged; only the new input factory is Send, and its reader need not be Send.
+This introduces no new persisted format, hash domain or execution error code.
+Owned session invalid bounds use `io::ErrorKind::InvalidInput` before workers
+start; the native report and protocol delivery flag have separate scopes.
+Portable and installed-native acceptance remain separate from host compilation.

@@ -15,6 +15,8 @@ use std::{
 pub struct ShutdownReport {
     pub phase: ExecutorPhase,
     pub admission_closed: bool,
+    /// The original deadline elapsed without confirmed native cleanup.
+    pub timed_out: bool,
     /// Last observed original local IDs; completeness is explicit below.
     pub unresolved_run_ids: Vec<u64>,
     pub unclaimed_reservations: Option<usize>,
@@ -48,6 +50,7 @@ impl State {
     fn report(&self, now: Instant, admission_closed: bool) -> ShutdownReport {
         ShutdownReport {
             admission_closed,
+            timed_out: self.request.deadline_elapsed(now),
             phase: if self.poisoned {
                 ExecutorPhase::Uncertain
             } else {
@@ -153,6 +156,11 @@ impl ExecutorControl {
 }
 
 impl ShutdownRequest {
+    /// The first monotonic deadline; repeated controls never renew this bound.
+    pub fn deadline(&self) -> Instant {
+        self.deadline
+    }
+
     pub fn poll(&self) -> ShutdownReport {
         self.control.report()
     }
@@ -222,6 +230,7 @@ mod tests {
         let request = control.stop(ShutdownMode::Drain, 10).unwrap();
         let report = request.wait();
         assert_eq!(report.phase, ExecutorPhase::Uncertain);
+        assert!(report.timed_out);
         assert!(report.admission_closed);
         assert!(!report.inventory_complete);
         assert_eq!(report.unclaimed_reservations, None);

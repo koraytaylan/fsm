@@ -19,6 +19,12 @@ use super::tools;
 use super::{cancel, logging, subscribe, watch};
 
 use super::framing::{LINE_CAP, Line, read_capped_line};
+mod session_store;
+use session_store::{SessionLive, SessionRuntime, SessionStore};
+#[cfg(target_os = "linux")]
+mod owned;
+#[cfg(target_os = "linux")]
+pub use owned::{OwnedSessionReport, serve_owned_native_session};
 const KNOWN_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 const DEFAULT_VERSION: &str = "2025-06-18";
 
@@ -488,14 +494,43 @@ pub fn serve_session_with(
 /// it was pointed at would not open.
 #[allow(clippy::too_many_arguments)]
 pub fn serve_session_degraded(
-    mut store: Option<&mut Store>,
+    store: Option<&mut Store>,
     clock: &mut dyn Clock,
-    mut executor: Option<&mut ExecutorLoop>,
+    executor: Option<&mut ExecutorLoop>,
+    refresh: Option<&std::path::Path>,
+    unavailable: Option<Unavailable<'_>>,
+    input: impl BufRead,
+    output: impl Write + Send + 'static,
+) -> std::io::Result<()> {
+    serve_session_core(
+        SessionRuntime {
+            store: SessionStore::Borrowed(store),
+            executor,
+            handlers: None,
+            bounded_shutdown: false,
+        },
+        clock,
+        refresh,
+        unavailable,
+        input,
+        Notifier::new(Box::new(output)),
+    )
+}
+
+fn serve_session_core(
+    runtime: SessionRuntime<'_>,
+    clock: &mut dyn Clock,
     refresh: Option<&std::path::Path>,
     unavailable: Option<Unavailable<'_>>,
     mut input: impl BufRead,
-    output: impl Write + Send + 'static,
+    output: Notifier,
 ) -> std::io::Result<()> {
+    let SessionRuntime {
+        mut store,
+        mut executor,
+        handlers,
+        bounded_shutdown,
+    } = runtime;
     let degraded = unavailable
         .as_ref()
         .filter(|state| !state.contended)
@@ -505,7 +540,6 @@ pub fn serve_session_degraded(
     let detail = unavailable.as_ref().map(|state| state.detail.to_string());
     // One writer for the whole session: the request path and, from `5901`,
     // a background change feed share it through cloned handles.
-    let output = Notifier::new(Box::new(output));
     if std::env::var("FSM_MCP_PANIC").ok().as_deref() == Some("1") {
         install_panic_hook();
         panic!("deliberate serve panic");
@@ -513,22 +547,31 @@ pub fn serve_session_degraded(
     // Derived once: the mode is a property of how this session was started,
     // and an operator reading a transcript should be able to tell which one
     // ran without reading the launch command.
+    let embedded = store.is_embedded(executor.is_some());
+    let admitted_progress = store.observes_admitted();
     let mode_note = mode_note(
         store.as_deref(),
-        executor.is_some(),
+        embedded,
+        admitted_progress,
         degraded.is_some(),
         contended,
     );
     let mut initialized = false;
     let mut initialized_notified = false;
-    let mut live = Live {
-        executor_handlers: executor.as_ref().map(|executor| executor.handlers.clone()),
-        // Both reasons a store can be unavailable travel here, because a
-        // client needs to hear either one; only the *words* differ, and they
-        // differ because the remedies do.
-        degraded: detail,
-        degraded_dir: degraded_dir.map(std::path::Path::to_path_buf),
-        ..Live::default()
+    let mut live = SessionLive {
+        state: Live {
+            executor_handlers: executor
+                .as_ref()
+                .map(|executor| executor.handlers.clone())
+                .or(handlers),
+            // Both reasons a store can be unavailable travel here, because a
+            // client needs to hear either one; only the *words* differ, and they
+            // differ because the remedies do.
+            degraded: detail,
+            degraded_dir: degraded_dir.map(std::path::Path::to_path_buf),
+            ..Live::default()
+        },
+        bounded_shutdown,
     };
     loop {
         // Bound rather than matched in place: the borrow of `input` ends at
@@ -536,12 +579,23 @@ pub fn serve_session_degraded(
         // reader to a `SessionIo`.
         let line = read_capped_line(&mut input, LINE_CAP)?;
         match line {
+            #[cfg(target_os = "linux")]
+            Line::Idle => {
+                drive_executor(
+                    executor.as_deref_mut(),
+                    &mut store,
+                    clock,
+                    &output,
+                    &live,
+                    initialized,
+                    true,
+                );
+            }
             Line::Eof => {
                 // Every send already flushed under the lock, so there is
                 // nothing left buffered to push — and nothing to say: a
                 // goodbye notification after the client closed stdout is a
                 // write to a closed pipe.
-                live.shutdown();
                 return Ok(());
             }
             Line::TooLong => {
@@ -695,11 +749,12 @@ pub fn serve_session_degraded(
                         )?;
                         drive_executor(
                             executor.as_deref_mut(),
-                            store.as_deref_mut(),
+                            &mut store,
                             clock,
                             &output,
                             &live,
                             initialized,
+                            false,
                         );
                     }
                 }
@@ -729,21 +784,19 @@ fn refresh_read_only(store: Option<&mut Store>, refresh: Option<&std::path::Path
 /// line there is a protocol error rather than a log entry.
 fn drive_executor(
     executor: Option<&mut ExecutorLoop>,
-    store: Option<&mut Store>,
+    store: &mut SessionStore<'_>,
     clock: &mut dyn Clock,
     output: &Notifier,
     live: &Live,
     initialized: bool,
+    admitted_only: bool,
 ) {
-    let (Some(executor), Some(store)) = (executor, store) else {
-        return;
+    let lines = if admitted_only {
+        store.observe_admitted(clock)
+    } else {
+        store.tick(executor, clock)
     };
-    // Public session helpers can receive a read-only handle directly,
-    // without going through serve_dir_with's mode selection.
-    if store.journal.is_read_only() {
-        return;
-    }
-    for line in executor.tick(store, clock) {
+    for line in lines {
         // Both audiences, deliberately. An operator reading a terminal must
         // not lose output because a client attached, and a later reader who
         // "cleans up the duplication" would take that away from them.
@@ -776,6 +829,7 @@ fn drive_executor(
 fn mode_note(
     store: Option<&Store>,
     embedded: bool,
+    admitted_progress: bool,
     degraded: bool,
     contended: bool,
 ) -> &'static str {
@@ -785,6 +839,8 @@ fn mode_note(
         "\n\nThis server could not open its store (mode=degraded): every tool that reads or writes instances is refused, and each refusal carries the health, the blast radius, and the remedy. Call store_doctor for the diagnosis; journal_verify and journal_replay also answer, a machine_create with dry_run still validates, and the documentation resources still read."
     } else if store.is_some_and(|store| store.journal.is_read_only()) {
         "\n\nThis server is running read-only (mode=read-only): this connection runs no effects and cannot confirm whether an external executor is running or which handlers it has, so machine_create, instance_create, instance_send, deadline_poll, effect_ack, and instance_cancel are refused here. Read tools work normally, and a machine_create with dry_run still validates. Read fsm://executor for the limits of this connection. If an external executor is running, subscribe to fsm://instance/{id} to watch it advance a workflow."
+    } else if embedded && admitted_progress {
+        "\n\nThis session runs configured effects (mode=embedded): already admitted effects can finish while you are quiet, but pending work, retries and machine deadlines advance only when you send requests. Do not call effect_ack for handled effects. Read fsm://executor for the actual handler contracts and fsm://docs/embedding for setup."
     } else if embedded {
         "\n\nThis server runs the effect executor inline (mode=embedded): a handler table maps each effect name to a host command or MCP tool call, and one tick runs per request you send — so a workflow advances while you are talking to it and pauses when you stop. Effects with configured handlers are executed and acked automatically; do not call effect_ack for handled effects. Read fsm://executor for the actual handler contracts. Keep sending instance_get or ping through completion and failure recovery: subscribing alone does not advance the workflow. Read fsm://docs/embedding for setup."
     } else {

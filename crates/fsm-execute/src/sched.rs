@@ -220,6 +220,11 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn handler_table(&self) -> &HandlerTable {
+        &self.table
+    }
+
     /// Decide against this handler table.
     pub fn new(table: HandlerTable) -> Self {
         Self {
