@@ -529,6 +529,22 @@ fn run_case(timeout: bool) {
         .unwrap();
         let before = store.records.len();
         let ownership = store.state.execution.clone();
+        let prefix = store.journal.last_seq;
+        let observed = fsm_execute::watch::Watcher::new(
+            fixture.store.clone(),
+            std::collections::BTreeSet::new(),
+        )
+        .scan(1000)
+        .unwrap();
+        assert_eq!(observed.to_seq, prefix);
+        assert_eq!(
+            observed.execution_owners,
+            vec![(
+                original_claim.clone(),
+                Some(ownership.stopped_for("instance", &effect).unwrap().clone()),
+            )]
+        );
+        assert_eq!(store.journal.last_seq, prefix);
         let refused = pipeline
             .claim_native(
                 &mut store,
@@ -582,6 +598,25 @@ fn run_case(timeout: bool) {
     assert_eq!(
         reopened.state.execution.claim_for("instance", &effect),
         Some(&original_claim)
+    );
+    let cold =
+        fsm_execute::watch::Watcher::new(fixture.store.clone(), std::collections::BTreeSet::new())
+            .scan(1000)
+            .unwrap();
+    assert_eq!(cold.to_seq, reopened.journal.last_seq);
+    assert_eq!(
+        cold.execution_owners,
+        vec![(
+            original_claim.clone(),
+            Some(
+                reopened
+                    .state
+                    .execution
+                    .stopped_for("instance", &effect)
+                    .unwrap()
+                    .clone()
+            ),
+        )]
     );
     drop(reopened);
     {

@@ -321,3 +321,15 @@ directory iteration order; both calls require an unchanged allocation counter.
 It removes each owned filler explicitly and restores the original publication.
 This load-bearing entry-limit control is written but not yet compiled/native
 executed; the helper-only boundary test and older native artifacts do not prove it.
+
+### Stopped-owner watcher persistence control
+
+The provisioned broker settlement fixture now scans with an empty handler
+selection while the stopped original owner's writer is held, requiring the
+exact claim and stopped outcome from the same prefix with no writer append.
+A fresh scan after reopening must project that same retained owner and outcome.
+The arrangement uses the fixture's actual native completion proof and durable
+stop rather than manufacturing authentication for a portable watcher fixture.
+This control is written but not yet compiled or native executed; prior native
+artifacts cannot establish its new watcher assertions. Shared automatic host
+routing remains incomplete and task 9401 remains in progress.
