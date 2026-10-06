@@ -231,3 +231,5 @@ metadata values and requires their identities/modes unchanged before and after
 final route/registration checks, also repeating the original base identity at
 return. This is a scoped race correction to SPEC's repeated-identity requirement,
 not a new format; native replacement fault execution remains required.
+
+Provisioned discovery controls now invoke the production unprivileged `for_store` entry for writable/symlinked public identity, writable route, torn JSON, exact 4096-byte JSON rejection, 4097-byte overflow rejection and duplicate physical-store registration; each requires its exact error and unchanged allocation counter. The unique positive preparation also uses discovery. These controls are compiled, not yet native executed, and cannot accept automatic host routing.

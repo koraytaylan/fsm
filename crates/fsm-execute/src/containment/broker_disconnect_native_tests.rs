@@ -585,6 +585,24 @@ pub(super) fn discovery_faults(directory: &Path) {
     fs::set_permissions(&public, fs::Permissions::from_mode(0o644)).unwrap();
     refuse("native discovery document is not immutable root publication");
     fs::set_permissions(&public, fs::Permissions::from_mode(0o444)).unwrap();
+    let original = fs::read(&public).unwrap();
+    // Exact read budget reaches JSON validation; plus-one must fail the byte guard.
+    fs::write(&public, vec![b' '; 4096]).unwrap();
+    refuse("native discovery document JSON invalid");
+    fs::write(&public, vec![b' '; 4097]).unwrap();
+    refuse("native discovery document exceeds bound");
+    fs::write(&public, b"{").unwrap();
+    refuse("native discovery document JSON invalid");
+    fs::write(&public, &original).unwrap();
+    let duplicate = directory.parent().unwrap().join("authority-2");
+    fs::DirBuilder::new().create(&duplicate).unwrap();
+    fs::set_permissions(&duplicate, fs::Permissions::from_mode(0o755)).unwrap();
+    let duplicate_identity = duplicate.join("store-identity.json");
+    fs::write(&duplicate_identity, &original).unwrap();
+    fs::set_permissions(&duplicate_identity, fs::Permissions::from_mode(0o444)).unwrap();
+    refuse("native discovery store registration is ambiguous");
+    fs::remove_file(&duplicate_identity).unwrap();
+    fs::remove_dir(&duplicate).unwrap();
     fs::rename(&public, &saved).unwrap();
     symlink(&saved, &public).unwrap();
     refuse("native discovery document is not immutable root publication");
