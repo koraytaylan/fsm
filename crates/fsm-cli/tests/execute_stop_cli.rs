@@ -655,7 +655,7 @@ fn production_stdio_control_remains_responsive_with_actual_blocked_pipe_output()
             .filter_map(Result::ok)
             .any(|entry| {
                 fs::read_to_string(entry.path().join("comm"))
-                    .is_ok_and(|name| name.starts_with("fsm-protocol"))
+                    .is_ok_and(|name| name.starts_with("fsm-protocol-o"))
                     && fs::read_to_string(entry.path().join("wchan"))
                         .is_ok_and(|wait| wait.contains("pipe"))
             });
@@ -720,4 +720,142 @@ fn production_stdio_control_remains_responsive_with_actual_blocked_pipe_output()
     assert_eq!(facts.get("output_drained"), Some(&Value::Bool(false)));
     assert!(owner.0.stdin.is_some() && owner.0.stdout.is_some());
     drop(Store::open(&fixture.data).unwrap());
+}
+
+#[test]
+fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
+    use std::io::{Read, Write};
+    struct Owner(std::process::Child);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let fixture = Fixture::new();
+    let mut store = Store::open(&fixture.data).unwrap();
+    let mut clock = FixedClock::new(1000, 1);
+    store.define_machine_on(&mut clock, json(br#"{"format":"fsm.machine/1","name":"pending","context":[],"events":[{"name":"ok","fields":[]},{"name":"failed","fields":[]}],"effects":[{"name":"action","fields":[]}],"states":[{"name":"waiting","entry":{"emit":[{"effect":"action","args":{}}]}}],"initial":"waiting","transitions":[]}"#), false, false).unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "pending",
+            "instance",
+            "create",
+            None,
+            &std::collections::BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    drop(store);
+    let handlers = fixture.root.join("handlers.json");
+    fs::write(&handlers, br#"{"format":"fsm.handlers/1","handlers":[{"effect":"action","argv":["/bin/true"],"timeout_ms":1000,"on_ok":{"event":"ok"},"on_failed":{"event":"failed"}}]}"#).unwrap();
+    let mut owner = Owner(
+        Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .env("HOME", &fixture.root)
+            .args(["--json", "--data-dir"])
+            .arg(&fixture.data)
+            .args(["serve", "--execute", "--handlers"])
+            .arg(&handlers)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let mut input = owner.0.stdin.take().unwrap();
+    let (release, hold) = std::sync::mpsc::channel::<()>();
+    let feeder = std::thread::spawn(move || {
+        let _ = input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n");
+        for _ in 0..2000 {
+            if input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n").is_err() { return; }
+        }
+        let _ = input.flush();
+        let _ = hold.recv();
+    });
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let blocked = fs::read_dir(format!("/proc/{}/task", owner.0.id()))
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| {
+                fs::read_to_string(entry.path().join("comm"))
+                    .is_ok_and(|name| name.starts_with("fsm-protocol-o"))
+                    && fs::read_to_string(entry.path().join("wchan"))
+                        .is_ok_and(|wait| wait.contains("pipe"))
+            });
+        if blocked {
+            break;
+        }
+        assert!(
+            owner.0.try_wait().unwrap().is_none(),
+            "owner exited before stderr backpressure"
+        );
+        if Instant::now() >= deadline {
+            let _ = owner.0.kill();
+            let _ = owner.0.wait();
+            let mut stderr = Vec::new();
+            owner
+                .0
+                .stderr
+                .take()
+                .unwrap()
+                .take(8192)
+                .read_to_end(&mut stderr)
+                .unwrap();
+            panic!(
+                "actual stderr worker never blocked: {}",
+                String::from_utf8_lossy(&stderr)
+            );
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let root = fixture.root.join(".cache/fsm/control");
+    let mut stop = Command::new(env!("CARGO_BIN_EXE_fsm"));
+    stop.args(["--json", "--data-dir"])
+        .arg(&fixture.data)
+        .args(["execute", "stop", "--control-dir"])
+        .arg(&root)
+        .args(["--mode", "abort", "--timeout-ms", "500"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let stopped = bounded(&mut stop, || {});
+    assert_eq!(
+        stopped.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&stopped.stderr)
+    );
+    let report = json(&stopped.stdout);
+    assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
+    assert_eq!(report.get("writer_released"), Some(&Value::Bool(true)));
+    // The actual stderr reader remains untouched until authenticated cleanup
+    // and physical writer reacquisition have both been independently observed.
+    drop(Store::open(&fixture.data).unwrap());
+    assert!(owner.0.stderr.is_some());
+    // Keep stderr blocked beyond the original finite delivery deadline before
+    // allowing the final operator error renderer to write its separate report.
+    std::thread::sleep(Duration::from_millis(600));
+    let stderr = owner.0.stderr.take().unwrap();
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stderr.take(128 * 1024).read_to_end(&mut bytes).unwrap();
+        bytes
+    });
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let status = loop {
+        if let Some(status) = owner.0.try_wait().unwrap() {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "owner did not exit after stderr release"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    drop(release);
+    feeder.join().unwrap();
+    let stderr = reader.join().unwrap();
+    assert!(!status.success());
+    assert!(String::from_utf8_lossy(&stderr).contains("fsm execute: observed pending action"));
 }

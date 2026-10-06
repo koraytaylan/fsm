@@ -227,3 +227,31 @@ The revised source passes stable/MSRV all-target checks, six owned sessions,
 Actual kernel-blocked stderr with action diagnostics remains required, as
 does the full workspace gate; this does not establish installed native
 nonempty workflow acceptance or complete task 9401.
+
+Actual stderr regression development exposed a proof weakness in the earlier
+stdout test: a `fsm-protocol` name prefix also matched the input worker,
+whose pipe wait does not prove blocked output. The worktree now requires
+`fsm-protocol-o`, and the existing stdout test passes with that stronger
+observation. The new stderr case currently fails to observe a blocked output
+worker, including after switching to effect-observing tools/call requests;
+session 80874 exited 101 with 11 existing cases passing and this new case
+failing. It remains uncommitted pending fixture diagnosis, and stderr
+backpressure acceptance is not established by the initial broad-prefix runs.
+
+The stderr fixture now feeds up to 2000 real effect-observing calls from a
+separate input worker, avoiding test-controller pipe writes while filling
+variable-capacity stderr pipes. It observes specifically fsm-protocol-output
+blocked in a kernel pipe wait, obtains actual authenticated Stopped and
+writer_released=true, and reacquires the physical Store writer before
+opening stderr. Stderr remains blocked beyond the original 500 ms delivery
+deadline; after release the actual process exits unsuccessfully and captured
+bytes contain the real pending-action diagnostic. Session 63222 exited 0:
+all 12 production control tests, stable all-target Clippy, and MSRV all-target
+compilation passed under verified 1 GiB/zero-swap limits, log
+production-stderr-fed-check.log. Earlier insufficient-fill runs are superseded
+for this fixture; the stronger existing stdout observation also passes.
+The final CLI error renderer still writes stderr synchronously after native
+cleanup, so process exit can wait for stderr even though the native owner
+and writer have retired; this test releases that separate renderer and does
+not claim bounded process exit while stderr remains blocked. Full workspace
+and installed-native nonempty execution gates remain incomplete.
