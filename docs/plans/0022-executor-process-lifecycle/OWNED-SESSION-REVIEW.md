@@ -97,3 +97,23 @@ borrowed lock between threads. Actual quiet-input, reverse-reply, blocked-output
 and EOF/error binary tests must exercise this selected production composition.
 This review establishes remaining integration work, not completion of plan 20
 or acceptance of nonempty native execution.
+
+The CLI also sends the same selected mode to http::run_http when --http is
+present. That function currently matches ReadOnly separately and uses a plain
+Store writer for every other mode, discarding the embedded executor. A new
+production mode variant must therefore account for HTTP explicitly rather than
+claiming all serve --execute selection is native after changing stdio alone.
+The ordinary borrowed Embedded API and HTTP session owner need independent
+coverage; a blanket fallback match can silently disable requested execution.
+This existing behavior is an unresolved production scope item, not permission
+to omit HTTP ownership from the completion audit.
+
+Plan 0020 SCOPE.md explicitly requires this HTTP correction and distinguishes
+a transport session ending from the host stopping. Therefore the current
+owned stdio EOF-to-abort composition is appropriate for process-scoped stdio
+only; it must not be reused for each HTTP request or session teardown, which
+would close shared host admission and stop other clients' accepted workflows.
+HTTP must route bounded session commands to a retained host whose explicit
+shutdown owns native retirement, preserving session isolation and notification
+ordering. The existing Sessions container owns per-client cancellation and
+subscriptions separately from the Store, matching that required separation.
