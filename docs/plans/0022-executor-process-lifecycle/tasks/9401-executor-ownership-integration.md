@@ -735,6 +735,17 @@ result or causal explanation for the earlier failure is assumed. The source
 contains product `7bdfcb6`, whose stable host gates pass as recorded above;
 actual production Runner routing and task 9401 remain incomplete.
 
+Current native MSRV job `112081460465` completed successfully at
+`482da8f07a1248f3e3a62cd0b62173e22433761b`; its full artifact is retained as
+`ci-37405315461/msrv`. Independent evidence verification exited zero for all
+81 total cases, clean exact source and `rustc 1.89.0 (29483883e 2025-08-04)`;
+this executes the real physical-store replacement refusal control as part of
+`provisioned_broker_access`. Gate release and executable-byte verification
+remain false. The same matrix passes the previously failing `private_exec_status`
+case, but this does not establish the cause of the preserved prior retirement
+deadline failure or constitute automatic production Runner acceptance; stable
+native and all six portable jobs remain live, and task 9401 remains in progress.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
