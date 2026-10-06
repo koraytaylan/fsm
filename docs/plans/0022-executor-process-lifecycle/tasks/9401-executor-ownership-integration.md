@@ -411,3 +411,21 @@ checks are now running sequentially, retaining separate
 files in the dedicated cache. The new native controls still have compilation
 evidence only, and current-source full workspace and updated platform/native
 matrix obligations remain unexecuted.
+
+### Current acceptance checks and corrected-source workspace gate
+
+Current product source `f9e02fa` zero-dependency and embed-acceptance commands
+both completed with exit zero; embed acceptance includes 11 completeness
+tests and one end-to-end test. Frozen CI `37392851160` macOS stable passed;
+macOS MSRV job `112041769370` failed on the same `sched.rs:245`
+`nonminimal_bool` already corrected in `f9e02fa`, as independently inspected
+in the retained `ci-37392851160/macos-msrv-job.log`. Both Windows jobs remain
+live, and the older matrix is not green.
+
+A detached corrected-source checkout at
+`~/.cache/fsm-plan-native-matrix-20261005/ownership-review-f9e02fa`
+now runs the full serial stable debug workspace gate, with retained log
+`local-f9e02fa-stable-debug.log`. Earlier `7dc91d5` debug/release passes do
+not validate the newer scheduler correction or regression slice. Updated
+native execution, corrected-source release and full matrix acceptance remain
+outstanding; task 9401 remains in progress.
