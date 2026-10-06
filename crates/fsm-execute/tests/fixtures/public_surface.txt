@@ -320,6 +320,7 @@ method fsm_execute::run::native_client::NativeRun::start
 method fsm_execute::run::native_client::NativeShutdown::poll
 method fsm_execute::run::native_client::NativeShutdown::progress
 method fsm_execute::run::native_client::NativeShutdown::reap
+method fsm_execute::run::native_client::NativeShutdown::settle_interrupted
 method fsm_execute::run::native_client::NativeShutdown::start
 method fsm_execute::run::native_io::NativeCapture::finish
 method fsm_execute::run::native_io::NativeCapture::open

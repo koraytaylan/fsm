@@ -13,4 +13,10 @@ fn closure_request_accepts_a_borrowed_snapshot_and_returns_an_opaque_proof() {
         NativeShutdown::poll;
     let _: fn(&mut NativeShutdown) -> Result<bool, String> = NativeShutdown::reap;
     let _: fn(&NativeShutdown) -> NativeHelperProgress = NativeShutdown::progress;
+    let _: fn(
+        &NativeShutdown,
+        &mut Store,
+        &mut dyn fsm_store::clock::Clock,
+    ) -> Result<fsm_core::json::Value, fsm_execute::error::ExecError> =
+        NativeShutdown::settle_interrupted;
 }

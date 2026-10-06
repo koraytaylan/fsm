@@ -172,6 +172,95 @@ fn validate_response(response: &Value) -> Result<(), String> {
     }
 }
 
+impl NativeShutdown {
+    /// Apply authenticated interruption without an outcome event or acknowledgement.
+    ///
+    /// A healthy original writer is required. Existing non-interrupted stopped
+    /// outcomes refuse; callers retain their original completion path instead.
+    /// Exact original replay is the only reconciliation when the claim is absent.
+    /// This method does not discard either helper or release host capacity.
+    pub fn settle_interrupted(
+        &self,
+        store: &mut Store,
+        clock: &mut dyn fsm_store::clock::Clock,
+    ) -> Result<Value, crate::error::ExecError> {
+        use crate::error::ExecError;
+        use fsm_core::record::execution::{Settlement, StoppedOutcome};
+        use fsm_store::store::{ExecutionSettleRequest, ExecutionStopRequest};
+        let deferred = || {
+            ExecError::new(
+                "exec/inflight_deferred",
+                "original authenticated shutdown interruption is not proven",
+            )
+        };
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "shutdown interruption requires a supported healthy durable writer",
+            ));
+        }
+        let proof = self.proof.as_ref().ok_or_else(deferred)?;
+        proof
+            .check_store(&store.data_dir)
+            .map_err(|error| ExecError::store(&error))?;
+        if !proof.matches_claim(&self.claim, &self.journal_claim) {
+            return Err(deferred());
+        }
+        let (instance, effect) = self.claim.effect();
+        let request_id = format!("exec-interrupted-{effect}-{}", self.claim.run_id());
+        if store.state.execution.claim_for(instance, effect) != Some(&self.claim) {
+            return store
+                .replay_execution_settlement(&self.claim, Settlement::Interrupted, &request_id)
+                .map_err(|error| ExecError::store(&error))?
+                .ok_or_else(deferred);
+        }
+        let hash = store
+            .current_execution_claim_hash(&self.claim)
+            .map_err(|error| ExecError::store(&error))?;
+        if hash != self.journal_claim {
+            return Err(deferred());
+        }
+        let outcome = StoppedOutcome::from_value(&Value::Obj(BTreeMap::from([(
+            "status".into(),
+            Value::Str("interrupted".into()),
+        )])))
+        .map_err(|_| deferred())?;
+        match store.state.execution.stopped_for(instance, effect) {
+            Some(stopped) if stopped.outcome().status() != "interrupted" => return Err(deferred()),
+            Some(_) => {}
+            None => {
+                store
+                    .stop_execution_on(
+                        clock,
+                        ExecutionStopRequest {
+                            claim: &self.claim,
+                            proof,
+                            outcome: &outcome,
+                            request_id: &format!("exec-stop-{effect}-{}", self.claim.run_id()),
+                            expected_seq: None,
+                        },
+                    )
+                    .map_err(|error| ExecError::store(&error))?;
+            }
+        }
+        store
+            .settle_execution_on(
+                clock,
+                ExecutionSettleRequest {
+                    claim: &self.claim,
+                    disposition: Settlement::Interrupted,
+                    request_id: &request_id,
+                    expected_seq: None,
+                },
+            )
+            .map_err(|error| ExecError::store(&error))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

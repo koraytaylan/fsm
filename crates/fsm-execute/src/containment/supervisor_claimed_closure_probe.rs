@@ -16,13 +16,90 @@ use fsm_store::store::Store;
 use std::{
     collections::BTreeMap,
     os::unix::fs::MetadataExt,
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
 #[test]
 #[ignore = "invoked only by the provisioned unprivileged claimed closure control"]
 fn bound_claimed_closure() {
+    original_bound_closure();
+    emit(format_args!("\nFSM_NATIVE_BOUND_CLOSURE"));
+}
+
+struct BoundClosure {
+    data_dir: PathBuf,
+    claim: Claim,
+    shutdown: NativeShutdown,
+}
+
+#[test]
+#[ignore = "invoked only by the provisioned unprivileged interrupted closure control"]
+fn bound_claimed_interruption() {
+    let closed = original_bound_closure();
+    let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
+    let mut readonly = Store::open_read_only(&closed.data_dir).unwrap();
+    let count = readonly.records.len();
+    assert_eq!(
+        closed
+            .shutdown
+            .settle_interrupted(&mut readonly, &mut clock)
+            .unwrap_err()
+            .code,
+        "exec/mode"
+    );
+    assert_eq!(readonly.records.len(), count);
+    drop(readonly);
+    let mut writer = Store::open(&closed.data_dir).unwrap();
+    let instance = writer.state.instances[closed.claim.effect().0].clone();
+    let count = writer.records.len();
+    let response = closed
+        .shutdown
+        .settle_interrupted(&mut writer, &mut clock)
+        .unwrap();
+    assert_eq!(
+        response
+            .get("execution")
+            .and_then(|body| body.get("disposition"))
+            .and_then(Value::as_str),
+        Some("interrupted")
+    );
+    assert_eq!(writer.records.len(), count + 2);
+    assert_eq!(
+        writer.records[count].kind,
+        fsm_core::record::RecordKind::ExecutionStopped
+    );
+    assert_eq!(
+        writer.records[count + 1].kind,
+        fsm_core::record::RecordKind::ExecutionSettled
+    );
+    assert_eq!(writer.state.instances[closed.claim.effect().0], instance);
+    assert!(
+        writer
+            .state
+            .execution
+            .claim_for(closed.claim.effect().0, closed.claim.effect().1)
+            .is_none()
+    );
+    let replay = closed
+        .shutdown
+        .settle_interrupted(&mut writer, &mut clock)
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(writer.records.len(), count + 2);
+    drop(writer);
+    let mut cold = Store::open(&closed.data_dir).unwrap();
+    let replay = closed
+        .shutdown
+        .settle_interrupted(&mut cold, &mut clock)
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(cold.records.len(), count + 2);
+    assert_eq!(cold.state.instances[closed.claim.effect().0], instance);
+    emit(format_args!("\nFSM_NATIVE_BOUND_INTERRUPTION"));
+}
+
+fn original_bound_closure() -> BoundClosure {
     assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
     let encoded = std::env::var("FSM_NATIVE_TEST_BINDING").unwrap();
     let binding = parse(encoded.as_bytes(), &JsonLimits::DEFAULT).unwrap();
@@ -176,5 +253,9 @@ fn bound_claimed_closure() {
             .claim_for(claim.effect().0, claim.effect().1),
         Some(&claim)
     );
-    emit(format_args!("\nFSM_NATIVE_BOUND_CLOSURE"));
+    BoundClosure {
+        data_dir: path.to_owned(),
+        claim,
+        shutdown,
+    }
 }

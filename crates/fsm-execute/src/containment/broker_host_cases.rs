@@ -2,6 +2,8 @@ pub(super) enum Host {
     Primitive,
     BoundClosure,
     BoundClosureMcp,
+    BoundInterruption,
+    BoundInterruptionMcp,
     Shared,
     Fresh,
     FreshMcp,
@@ -27,9 +29,20 @@ pub(super) fn dispatch_fresh(
     host: &Host,
 ) -> bool {
     match host {
-        Host::BoundClosure | Host::BoundClosureMcp => {
-            super::claimed_closure_cases::run(fixture, binding, effect, successor)
-        }
+        Host::BoundInterruption | Host::BoundInterruptionMcp => super::claimed_closure_cases::run(
+            fixture,
+            binding,
+            effect,
+            successor,
+            super::claimed_closure_cases::Outcome::Interrupted,
+        ),
+        Host::BoundClosure | Host::BoundClosureMcp => super::claimed_closure_cases::run(
+            fixture,
+            binding,
+            effect,
+            successor,
+            super::claimed_closure_cases::Outcome::Retained,
+        ),
         Host::ColdRejected | Host::ColdRejectedMcp => {
             super::fresh_cases::rejected(fixture, binding, effect, successor)
         }

@@ -1054,3 +1054,12 @@ fsm.native-claim-binding/1 value and checks it before closure. NativeShutdown
 uses this action without changing its Rust signatures, journal VERSION, hash
 domains or receipt formats. Older helpers refuse it with no allocation-only
 fallback; installed acceptance must cover the matched client/helper revision.
+
+### Receipt-only interruption application
+
+The provisional Linux NativeShutdown::settle_interrupted method adds an explicit
+writer-protected application path for retained original closure proof without a
+handler result. It preserves existing interrupted record formats, fingerprints,
+request keys and historical roots; existing non-interrupted stopped results
+refuse rather than change policy. This additive Rust surface grants no production
+control/report guarantee and requires installed acceptance before completion.

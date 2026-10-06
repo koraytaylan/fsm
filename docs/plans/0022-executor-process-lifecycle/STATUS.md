@@ -3774,3 +3774,30 @@ still needs exact destination/payload authorization after automatic rejection.
 Plan progress remains 3/7: ownership integration is in progress, shutdown and
 reconciliation are planned, production selection remains legacy and all
 production acceptance flags stay false. The full plans 20–23 goal is incomplete.
+
+### Receipt-only interrupted settlement foundation — 2026-10-06
+
+NativeShutdown::settle_interrupted applies retained authenticated original
+closure proof through the existing stop and Interrupted transactions under the
+healthy original writer; it preserves pending work and retry counters and emits
+no acknowledgement or outcome event. Review checked physical-store proof,
+original claim/hash, non-interrupted stopped refusal, exact replay after claim
+consumption and conservative refusal when original request keys are pruned.
+Neither owned transport nor local capacity is released by this method.
+
+Focused session 96331 finished exit 0 with verified MemoryMax=1G and
+MemorySwapMax=0: formatting/size, stable and Rust 1.89 executor all-target Clippy,
+32 library tests, downstream API/public-surface checks and original-binding
+refusal passed; local-native-interruption-check-v3.log is retained in the task
+cache. Initial compilation and item-ordering findings were corrected before
+this successful run. Provisioned process/MCP tests now assert read-only refusal,
+exact stopped/settled records, preserved pending state and duplicate replay after
+cold reopen, but compile-only evidence does not prove those native behaviors.
+
+Full stable host verification remains pending for this source. Actual stopped
+success/failure, write failure between stop and settlement, and interrupted
+shutdown in the production driver still need runtime coverage. Ownership scope
+must distinguish locally admitted work from observed claims of other live
+executors before applying shutdown. Progress remains 3/7, task 9401 in progress,
+task 9402 planned and production/native acceptance flags false; plans 20, 21 and
+23 remain planned and private remote publication remains authorization-dependent.

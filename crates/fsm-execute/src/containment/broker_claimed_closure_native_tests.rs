@@ -2,12 +2,31 @@
 
 use super::*;
 
-pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Outcome {
+    Retained,
+    Interrupted,
+}
+
+pub(super) fn run(
+    fixture: &mut Fixture,
+    binding: &Value,
+    effect: &str,
+    successor: &NativeDomain,
+    outcome: Outcome,
+) {
     disconnect_cases::permit_operator_store(&fixture.store);
-    let script = disconnect_cases::SUPERVISOR.replace(
-        "::owned_request",
-        "::claimed_closure::bound_claimed_closure",
-    );
+    let test = if outcome == Outcome::Interrupted {
+        "::claimed_closure::bound_claimed_interruption"
+    } else {
+        "::claimed_closure::bound_claimed_closure"
+    };
+    let marker = if outcome == Outcome::Interrupted {
+        "FSM_NATIVE_BOUND_INTERRUPTION"
+    } else {
+        "FSM_NATIVE_BOUND_CLOSURE"
+    };
+    let script = disconnect_cases::SUPERVISOR.replace("::owned_request", test);
     let output = Command::new("/usr/bin/python3")
         .env(
             "TMPDIR",
@@ -29,7 +48,7 @@ pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successo
     assert_eq!(
         String::from_utf8_lossy(&output.stdout)
             .lines()
-            .filter(|line| *line == "FSM_NATIVE_BOUND_CLOSURE")
+            .filter(|line| *line == marker)
             .count(),
         1
     );
@@ -64,8 +83,26 @@ pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successo
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(
         store.state.execution.claim_for("instance", effect),
-        Some(&claim)
+        if outcome == Outcome::Interrupted {
+            None
+        } else {
+            Some(&claim)
+        }
     );
+    if outcome == Outcome::Interrupted {
+        assert!(
+            store
+                .state
+                .dedup
+                .contains_key(&format!("exec-interrupted-{effect}-{}", claim.run_id()))
+        );
+        assert!(
+            !store
+                .state
+                .dedup
+                .contains_key(&fsm_execute::rid::ack_rid(effect))
+        );
+    }
     assert!(
         store
             .state

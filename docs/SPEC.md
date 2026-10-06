@@ -2696,3 +2696,21 @@ Receipt authentication after closure remains mandatory and cannot substitute
 for validation before the action. Older helpers lacking close-claimed refuse;
 the client MUST NOT fall back to allocation-only closure. No persisted format,
 hash domain or public Rust signature changes in this correction.
+
+### Receipt-only native interruption application
+
+NativeShutdown::settle_interrupted MUST require a healthy original durable
+writer and retained authenticated original closure proof. It MUST recheck the
+proof's physical store, complete original claim/hash and current ownership
+before recording status interrupted with result omitted and consuming through
+the existing Interrupted settlement. Existing non-interrupted stopped outcomes
+MUST refuse without overwrite; an existing interrupted outcome retains its
+original omitted/null/result semantics. Pending effects and their retry counts
+MUST remain intact, and no acknowledgement or machine event may be invented.
+When the effect is already absent, existing Interrupted retry retirement rules
+remain applicable. An absent or replaced current claim permits only exact
+original interrupted transaction replay; missing or pruned original keys MUST
+refuse, never establish reconciliation through absence. Original stop and
+interrupted request-key derivations and persisted formats remain unchanged.
+Application MUST retain both owned transports and cannot alone release local
+capacity or establish a bounded production shutdown report.

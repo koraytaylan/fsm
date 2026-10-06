@@ -2257,3 +2257,14 @@ checks the original full binding and domain before fencing, then the client
 independently authenticates the receipt. A missing binding or old helper
 refuses and retains uncertainty; do not substitute allocation-only close.
 Published-before-binding claims still need separate reconciliation.
+
+### Applying receipt-only interruption
+
+After an authenticated NativeShutdown poll, call settle_interrupted with a
+healthy original writer to record and consume interrupted execution, preserving
+pending work and its retry counters without an outcome event. A previously
+recorded success/failure refuses and must use its original completion path.
+Retain the execution and closure transports until reap/EOF; transaction success
+alone cannot discard a helper or release scheduler capacity. Exact original
+replay is required after consumption, and pruning may cause conservative refusal.
+The production lifecycle driver and bounded report remain unimplemented.

@@ -1017,3 +1017,11 @@ through close-claimed, requiring the authority to match it before fencing or
 closure rather than relying solely on receipt validation afterward. Older
 helpers refuse without fallback; no Rust signature or persisted format changes.
 Installed runtime acceptance remains pending and production defaults unchanged.
+
+### Receipt-only interruption application
+
+Added provisional explicit interrupted settlement from retained authenticated
+closure proof under the original healthy writer, preserving pending effects,
+recorded outcomes and original request keys without a synthetic completion or
+machine event. No persisted format changes; native runtime acceptance and the
+production lifecycle controls remain incomplete.
