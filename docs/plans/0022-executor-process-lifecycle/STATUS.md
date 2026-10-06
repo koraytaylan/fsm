@@ -4294,3 +4294,22 @@ three owned and six paired lifecycle tests, owned session, transport, five CLI
 stop tests and sixteen public surface tests passed; paired-wakeup-check.log is
 retained. Production loop/queue wiring, mutation sensitivity, changed-runtime
 full gates and provisioned acceptance remain required; progress stays 3/7.
+
+### Nested public inventory coverage correction — 2026-10-06
+
+Review found the source inventory's documented one-hop re-export limit omitted
+control and paired-driver members exported through two private modules; previous
+regeneration success did not prove those methods were enumerated. The scanner
+now propagates named re-export members to a fixed point before public-module
+filtering, adding 27 actual lifecycle inventory entries, including paired ticks,
+request wakeup, report fields and shutdown-request methods. Renamed and glob
+re-exports remain explicitly outside member resolution.
+
+Focused session 92965 exited zero with asserted 1 GiB RAM and zero swap,
+passing stable/MSRV Clippy, lifecycle/session/transport/CLI checks and seventeen
+surface tests, including direct actual-member coverage; nested-surface-check-v2.log
+is retained. Initial session 78840 exited 101 on the stale one-hop documentation
+assertion and an expectation for a renamed enum variant outside the scanner's
+stated scope; both expectations were corrected before the successful pass.
+This repairs verification coverage without changing execution runtime or task
+status; progress remains 3/7 and production/installed acceptance remains pending.

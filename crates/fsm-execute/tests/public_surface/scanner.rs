@@ -741,31 +741,46 @@ pub(super) fn public_surface() -> Inventory {
             .or_default()
             .extend(scan.items[before..].iter().cloned());
     }
+    // Resolve named re-export members to a fixed point before filtering public
+    // modules, so private-to-private hops retain their public type members.
+    loop {
+        let mut additions = Vec::new();
+        for (module, target, name) in &scan.reexports {
+            let Some(items) = per_module.get(target) else {
+                continue;
+            };
+            let owned = format!("{target}::{name}");
+            for item in items {
+                let Some((kind, path)) = item.split_once(' ') else {
+                    continue;
+                };
+                if path == owned || path.starts_with(&format!("{owned}::")) {
+                    let tail = path.strip_prefix(target).unwrap();
+                    let exported = format!("{kind} {module}{tail}");
+                    if !per_module
+                        .get(module)
+                        .is_some_and(|items| items.contains(&exported))
+                    {
+                        additions.push((module.clone(), exported));
+                    }
+                }
+            }
+        }
+        if additions.is_empty() {
+            break;
+        }
+        for (module, item) in additions {
+            let items = per_module.entry(module).or_default();
+            if !items.contains(&item) {
+                items.push(item);
+            }
+        }
+    }
     let reachable = reachable_modules(&scan);
     let mut inventory: Vec<String> = Vec::new();
     for (module, items) in &per_module {
         if reachable.contains(module) {
             inventory.extend(items.iter().cloned());
-        }
-    }
-    // A `pub use` naming an item of a private child module makes that item
-    // public under the re-exporting path. Emit its members there, one hop only.
-    for (module, target, name) in &scan.reexports {
-        if reachable.contains(target) || !reachable.contains(module) {
-            continue;
-        }
-        let Some(items) = per_module.get(target) else {
-            continue;
-        };
-        let owned = format!("{target}::{name}");
-        for item in items {
-            let Some((kind, path)) = item.split_once(' ') else {
-                continue;
-            };
-            if path == owned || path.starts_with(&format!("{owned}::")) {
-                let tail = path.strip_prefix(target).unwrap_or(path);
-                inventory.push(format!("{kind} {module}{tail}"));
-            }
         }
     }
     inventory.sort();

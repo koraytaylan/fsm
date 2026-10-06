@@ -30,8 +30,8 @@
 //! * **Re-exports that widen visibility from a private module.** A
 //!   `pub use` is recorded as a `reexport` line naming what it re-exports, and
 //!   where it names an item of a private child module the scanner also emits
-//!   that item's own members under the re-exporting module. It does not follow
-//!   a re-export through more than that one hop, it does not resolve a glob
+//!   that item's own members under the re-exporting module. Named re-exports are followed
+//!   through private module hops to a fixed point; it does not resolve a glob
 //!   (`pub use m::*`), which is recorded as a `reexport` of `*` and nothing
 //!   more, and it does not resolve the members of a **renamed** re-export
 //!   (`pub use m::A as B`) — the `reexport` line records the name a downstream
@@ -395,7 +395,7 @@ fn the_module_doc_states_what_the_scanner_cannot_see() {
     for expected in [
         "Items produced by macro expansion",
         "Re-exports that widen visibility from a private module",
-        "does not follow a re-export through more than that one hop",
+        "through private module hops to a fixed point",
         "are deliberately left alone",
     ] {
         assert!(
@@ -419,4 +419,21 @@ fn the_api_policy_still_calls_this_crate_provisional() {
         row.contains("public_surface"),
         "the fsm-execute row does not say where the enumerated boundary lives: {row}"
     );
+}
+
+#[test]
+fn nested_private_lifecycle_reexports_include_actual_public_members() {
+    let inventory = public_surface();
+    for member in [
+        "struct fsm_execute::service::PairedNativeExecutor",
+        "method fsm_execute::service::PairedNativeExecutor::tick_reporting",
+        "method fsm_execute::service::ExecutorControl::wait_for_request",
+        "field fsm_execute::service::ShutdownReport::writer_released",
+        "method fsm_execute::service::ShutdownRequest::deadline",
+    ] {
+        assert!(
+            inventory.iter().any(|item| item == member),
+            "missing {member}"
+        );
+    }
 }
