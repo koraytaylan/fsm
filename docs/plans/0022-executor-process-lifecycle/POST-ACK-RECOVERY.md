@@ -153,11 +153,12 @@ future-version refusal at VERSION 13. Targeted MSRV checks now pass; full
 stable/portable/native format gates remain pending, and no installed proof
 is inferred from preauthenticated store fixtures.
 
-Cold NativeOwners still discovers unresolved claims only; durable event-only
-recovery must establish the original physical store/namespace binding without
-new execution authority before delivery. That host integration, genuine cold
-process/MCP and sealed acceptance, production defaults, shutdown and complete
-crash/concurrency axes remain necessary before task 9401 can be completed.
+Cold NativeOwners now adopts bounded event-only handoffs separately from
+unresolved claims and checks original physical store, namespace/generation
+and protected authority device/inode before delivery, without new execution
+authority. Genuine installed cold process/MCP and sealed acceptance,
+production defaults, shutdown and complete crash/concurrency axes remain
+necessary before task 9401 can be completed.
 
 ## Cold host implementation review — 2026-10-06
 
@@ -205,3 +206,21 @@ no scheduler claim slot for event-only delivery. Required installed controls
 remain cold process and MCP completion, changed/removed handler tables,
 two-seal restarts, copied/replaced store and authority identities, read-only
 and contended writers, disabled/rejected events, and foreign-key conflicts.
+
+## Applied cold host unit — acceptance pending
+
+The reviewed host design is now implemented in NativeHandoffs, NativeOwners,
+Pipeline and protected discovery. Retained handoffs have both a 4096-entry
+limit and an 8 MiB canonical aggregate limit; adoption refusals remain visible
+without blocking original-writer reconciliation of already retained work.
+A warm completion keeps its original retry path, while cold work uses no
+NativeCompletion or execution capacity. Stable/MSRV all-target Clippy compiles
+the new real installed controls; 28 library tests, native-mode refusal and
+all 12 existing serve_modes regressions pass locally. These are not installed
+cold acceptance results. The provisioned broker matrix now includes cold
+process/MCP axes which discard original host state and tables, retain disabled
+event obligations, reopen across two verified seals, refuse copied stores and
+read-only/contended writers without journal mutation, and assert no extra
+allocation before original accepted-event delivery. Production constructors
+remain legacy until installed acceptance and the other lifecycle obligations
+are proved.

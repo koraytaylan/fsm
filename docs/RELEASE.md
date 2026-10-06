@@ -974,3 +974,6 @@ Unreleased post-ack persistence work introduces VERSION 12, root/5, snapshot/7 a
 
 
 Corrected matched-stop inspection racing natural cgroup retirement: a confirmed absent group can reach the existing original-handoff revocation and manager checks, with no weakened closure proof, relaxed deadline or format change; new installed runtime acceptance remains pending.
+
+
+Added bounded cold native post-ack event recovery through shared tick paths, retaining original contract, result and physical authority identity across cache and sealed restarts; original warm completion retry semantics remain intact, and production native defaults await installed acceptance.

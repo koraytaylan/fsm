@@ -778,7 +778,20 @@ pub(super) fn shared_recovery(directory: &Path, binding: &Value, competitor: &Na
 }
 
 pub(super) fn fresh_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
-    let script = SUPERVISOR.replace("::owned_request", "::fresh_handoff::shared_tick_fresh");
+    handoff_control(directory, binding, competitor, false);
+}
+
+pub(super) fn cold_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
+    handoff_control(directory, binding, competitor, true);
+}
+
+fn handoff_control(directory: &Path, binding: &Value, competitor: &NativeDomain, cold: bool) {
+    let test = if cold {
+        "::fresh_handoff::shared_tick_cold_handoff"
+    } else {
+        "::fresh_handoff::shared_tick_fresh"
+    };
+    let script = SUPERVISOR.replace("::owned_request", test);
     let output = Command::new("/usr/bin/python3")
         .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
         .env(
@@ -801,7 +814,12 @@ pub(super) fn fresh_handoff(directory: &Path, binding: &Value, competitor: &Nati
     assert_eq!(
         String::from_utf8_lossy(&output.stdout)
             .lines()
-            .filter(|line| *line == "FSM_NATIVE_FRESH_HANDOFF")
+            .filter(|line| *line
+                == if cold {
+                    "FSM_NATIVE_COLD_HANDOFF"
+                } else {
+                    "FSM_NATIVE_FRESH_HANDOFF"
+                })
             .count(),
         1
     );

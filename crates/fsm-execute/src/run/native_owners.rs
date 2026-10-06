@@ -25,6 +25,8 @@ struct Owner {
 #[derive(Default)]
 pub(super) struct NativeOwners {
     admissions: super::native_admission::NativeAdmissions,
+    handoffs: super::native_handoffs::NativeHandoffs,
+    prefer_handoff: bool,
     physical_store: Option<(u64, u64)>,
     owners: BTreeMap<u64, Owner>,
     observed_seq: u64,
@@ -44,6 +46,13 @@ impl NativeOwners {
         if snapshot.journal.is_memory() {
             return if self.owners.is_empty()
                 && self.admissions.is_empty()
+                && self.handoffs.is_empty()
+                && snapshot
+                    .state
+                    .execution_handoffs
+                    .outstanding()
+                    .next()
+                    .is_none()
                 && observation.execution_owners.is_empty()
             {
                 Ok(())
@@ -63,6 +72,14 @@ impl NativeOwners {
             return Err(deferred());
         }
         self.physical_store = Some(physical);
+        if let Err(error) = self
+            .handoffs
+            .adopt(snapshot, &self.owners.keys().copied().collect())
+        {
+            // Keep existing work actionable under the original writer: a full
+            // retained set may need exact retirement before adopting more.
+            observation.unresolved.push(error);
+        }
         for (claim, stopped) in &observation.execution_owners {
             self.retain(claim, stopped.as_ref())?;
         }
@@ -195,6 +212,7 @@ impl NativeOwners {
 
     pub(super) fn ready(&self) -> bool {
         self.admissions.ready()
+            || self.handoffs.ready()
             || self
                 .owners
                 .values()
@@ -208,6 +226,19 @@ impl NativeOwners {
         pipeline: &mut Pipeline,
         scheduler: &mut Scheduler,
     ) -> Option<Result<String, ExecError>> {
+        let ownership_ready = self.admissions.ready()
+            || self
+                .owners
+                .values()
+                .any(|owner| owner.ready(store.journal.last_seq));
+        if self.handoffs.ready() && (self.prefer_handoff || !ownership_ready) {
+            if !self.matches_store(store) {
+                return Some(Err(deferred()));
+            }
+            self.prefer_handoff = false;
+            return self.handoffs.apply(store, clock, pipeline);
+        }
+        self.prefer_handoff = true;
         if self.admissions.ready()
             && !self
                 .owners

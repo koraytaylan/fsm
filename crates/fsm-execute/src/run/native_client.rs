@@ -36,14 +36,7 @@ pub(super) fn check_claim_store(
     store: &Path,
     claim: &fsm_core::record::execution::Claim,
 ) -> Result<(), String> {
-    let (namespace, generation) = discovery::discover(store)?;
-    let domain = claim.domain().to_value();
-    if domain.get("namespace").and_then(Value::as_str) != Some(namespace.as_str())
-        || domain.get("generation").and_then(Value::as_num) != Some(generation.to_string().as_str())
-    {
-        return Err("native claim authority does not register this physical store".into());
-    }
-    Ok(())
+    discovery::check_claim(store, claim)
 }
 
 struct Reader {

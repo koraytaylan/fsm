@@ -2633,3 +2633,6 @@ VERSION 12 acknowledgement handoffs: an ExecutionSettled record MAY carry a boun
 
 
 Matched native manager stop MUST tolerate the original cgroup retiring between its initial metadata observation and live revocation only when a fresh no-follow observation proves absence; that observation MUST NOT establish fencing or closure. The operation MUST still validate the complete original handoff and manager identity, durably revoke entry, and independently prove manager retirement before closure publication. Surviving, replaced or unreadable groups MUST preserve refusal.
+
+
+Cold native outcome-event recovery MUST adopt bounded authenticated execution_handoffs separately from execution ownership and capacity; it MUST require the original healthy physical-store writer, protected namespace/generation and authority device/inode, and the original checked handler contract. It MUST NOT prepare, bind, execute or acknowledge again. Only accepted-event fold retirement completes delivery; rejection, ignored responses, conflicting keys, disabled instances and cancellation retain the obligation. Ready event-only and ownership work MUST share bounded fair ticks, with failed event attempts parked until later journal progress; a retained warm original completion keeps its existing retry path.

@@ -590,6 +590,72 @@ impl Pipeline {
         self.advance(store, clock, effect_id, instance_id, advance, seq)
     }
 
+    /// Deliver only an exact durable event obligation; never execute or acknowledge.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn advance_native_handoff(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        handoff: &fsm_core::record::execution::AcknowledgedHandoff,
+    ) -> Result<SettleOutcome, ExecError> {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
+            || store.journal.is_memory()
+            || store.journal.is_read_only()
+            || store.journal.poisoned
+        {
+            return Err(ExecError::new(
+                "exec/mode",
+                "native handoff requires a supported healthy durable writer",
+            ));
+        }
+        let unproven = || {
+            ExecError::new(
+                "exec/inflight_deferred",
+                "original native event handoff is not proven",
+            )
+        };
+        if !store
+            .state
+            .execution_handoffs
+            .outstanding()
+            .any(|original| original == handoff)
+        {
+            return Err(unproven());
+        }
+        super::native_client::check_claim_store(&store.data_dir, handoff.claim())
+            .map_err(|_| unproven())?;
+        let original = handoff.claim().to_value();
+        let fingerprint = original
+            .get("handler_fingerprint")
+            .and_then(Value::as_str)
+            .ok_or_else(unproven)?;
+        let handler = HandlerSpec::from_contract(handoff.handler_contract(), fingerprint)?;
+        let advance = if handoff.outcome().status() == "ok" {
+            handler.on_ok.as_ref()
+        } else {
+            handler.on_failed.as_ref()
+        }
+        .ok_or_else(unproven)?;
+        let (instance, effect) = handoff.claim().effect();
+        if event_rid(effect, &advance.event) != handoff.event_request_id() {
+            return Err(unproven());
+        }
+        let head = store.journal.last_seq;
+        self.advance(store, clock, effect, instance, advance, Some(head))?;
+        // A duplicate rejected/ignored response is not accepted-event proof.
+        // Only the store's verified fold can consume the durable obligation.
+        if store
+            .state
+            .execution_handoffs
+            .outstanding()
+            .any(|original| original == handoff)
+        {
+            Ok(SettleOutcome::AckedNoAdvance)
+        } else {
+            Ok(SettleOutcome::Advanced)
+        }
+    }
+
     /// Poll one due deadline under a derived key.
     ///
     /// A `NotDue` observation is journaled and claims its key, exactly as SPEC

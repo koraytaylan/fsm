@@ -177,6 +177,27 @@ fn route(authority: &Path) -> Result<(), String> {
 }
 
 pub(super) fn discover(store: &Path) -> Result<(String, u64), String> {
+    let (namespace, generation, _) = discover_registered(store)?;
+    Ok((namespace, generation))
+}
+
+/// Match the original authority identity without allocating or launching work.
+pub(super) fn check_claim(
+    store: &Path,
+    claim: &fsm_core::record::execution::Claim,
+) -> Result<(), String> {
+    let (namespace, generation, authority) = discover_registered(store)?;
+    let domain = claim.domain().to_value();
+    if domain.get("namespace").and_then(Value::as_str) != Some(namespace.as_str())
+        || domain.get("generation") != Some(&Value::Num(generation.to_string()))
+        || domain.get("authority") != Some(&authority)
+    {
+        return Err("native claim authority does not register this physical store".into());
+    }
+    Ok(())
+}
+
+fn discover_registered(store: &Path) -> Result<(String, u64, Value), String> {
     if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
         return Err("native discovery platform unsupported".into());
     }
@@ -270,7 +291,7 @@ pub(super) fn discover(store: &Path) -> Result<(String, u64), String> {
     unchanged_directory(&authority, &selected.2)?;
     unchanged_directory(&base.join(&selected.0), &selected.3)?;
     unchanged_directory(base, &base_before)?;
-    Ok((selected.0, selected.1))
+    Ok((selected.0, selected.1, identity(&selected.2)))
 }
 
 #[cfg(test)]

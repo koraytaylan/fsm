@@ -20,6 +20,16 @@ use std::{
 #[test]
 #[ignore = "invoked only as the provisioned unprivileged fresh Runner control"]
 fn shared_tick_fresh() {
+    shared_tick_handoff(false);
+}
+
+#[test]
+#[ignore = "invoked only as the provisioned unprivileged cold handoff control"]
+fn shared_tick_cold_handoff() {
+    shared_tick_handoff(true);
+}
+
+fn shared_tick_handoff(cold_restart: bool) {
     assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
     let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
     let path = std::path::Path::new(&path);
@@ -289,6 +299,26 @@ fn shared_tick_fresh() {
     );
     assert!(writer.state.execution.claim_for(instance, effect).is_none());
     assert!(scheduler.inflight_effect(effect).is_none());
+    assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
+    if cold_restart {
+        drop(runner);
+        drop(writer);
+        // The new host has no completion, scheduler slot or original table.
+        runner = Runner::new().unwrap();
+        scheduler = Scheduler::new(HandlerTable::default());
+        watcher = Watcher::with_handlers(path.into(), &HandlerTable::default());
+        writer = Store::open(path).unwrap();
+        assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
+    }
+    let original_ack = writer
+        .records
+        .iter()
+        .find(|record| {
+            record.body.get("request_id").and_then(Value::as_str)
+                == Some(fsm_execute::rid::ack_rid(effect).as_str())
+        })
+        .unwrap()
+        .clone();
     let settled = writer.records.clone();
     for _ in 0..3 {
         tick_with(
@@ -302,6 +332,38 @@ fn shared_tick_fresh() {
         );
     }
     assert_eq!(writer.records, settled);
+    if cold_restart {
+        let original = writer
+            .state
+            .execution_handoffs
+            .outstanding()
+            .next()
+            .unwrap()
+            .clone();
+        for index in 0..2 {
+            let archive = path.join(format!("cold-handoff-archive-{index}"));
+            std::fs::create_dir(&archive).unwrap();
+            writer
+                .seal_and_archive_on(&mut clock, &archive, None)
+                .unwrap();
+            fsm_store::archive::verify(&archive).unwrap();
+            drop(writer);
+            drop(runner);
+            runner = Runner::new().unwrap();
+            scheduler = Scheduler::new(HandlerTable::default());
+            watcher = Watcher::with_handlers(path.into(), &HandlerTable::default());
+            writer = Store::open(path).unwrap();
+            assert_eq!(
+                writer
+                    .state
+                    .execution_handoffs
+                    .outstanding()
+                    .collect::<Vec<_>>(),
+                vec![&original]
+            );
+            assert_eq!(writer.state.execution.unresolved().count(), 0);
+        }
+    }
     writer
         .send_event(
             instance,
@@ -311,6 +373,66 @@ fn shared_tick_fresh() {
             None,
         )
         .unwrap();
+    if cold_restart {
+        let before = writer.records.clone();
+        let handoffs = writer.state.execution_handoffs.clone();
+        drop(writer);
+        holder.acquire();
+        let outcome = tick_reporting(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            path,
+            &mut clock,
+            1000,
+        );
+        assert!(outcome.writer_unavailable);
+        let mut readonly = Store::open_read_only(path).unwrap();
+        tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut readonly,
+            &mut clock,
+            1000,
+        );
+        assert_eq!(readonly.records, before);
+        assert_eq!(readonly.state.execution_handoffs, handoffs);
+        drop(readonly);
+        holder.release();
+        writer = Store::open(path).unwrap();
+        let copied = copy_store(path);
+        let mut foreign = Store::open(&copied).unwrap();
+        assert_eq!(foreign.records, before);
+        assert_eq!(foreign.state.execution_handoffs, handoffs);
+        let mut foreign_runner = Runner::new().unwrap();
+        let mut foreign_scheduler = Scheduler::new(HandlerTable::default());
+        let mut foreign_watcher = Watcher::with_handlers(copied.clone(), &HandlerTable::default());
+        let lines = tick_with(
+            &mut foreign_watcher,
+            &mut foreign_scheduler,
+            &mut foreign_runner,
+            &mut pipeline,
+            &mut foreign,
+            &mut clock,
+            1000,
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("exec/inflight_deferred")),
+            "{lines:?}"
+        );
+        assert_eq!(foreign.records, before);
+        assert_eq!(foreign.state.execution_handoffs, handoffs);
+        assert_eq!(writer.records, before);
+        assert_eq!(writer.state.execution_handoffs, handoffs);
+        drop(foreign_runner);
+        drop(foreign);
+        std::fs::remove_dir_all(copied).unwrap();
+    }
     let lines = tick_with(
         &mut watcher,
         &mut scheduler,
@@ -320,19 +442,33 @@ fn shared_tick_fresh() {
         &mut clock,
         1000,
     );
-    assert!(
-        lines
-            .iter()
-            .any(|line| line.contains("disposition=acked advance=advanced")),
-        "{lines:?}"
-    );
+    if cold_restart {
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("native-handoff advanced")),
+            "{lines:?}"
+        );
+    } else {
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("disposition=acked advance=advanced")),
+            "{lines:?}"
+        );
+    }
+    assert_eq!(writer.state.execution_handoffs.outstanding().count(), 0);
     let ack = fsm_execute::rid::ack_rid(effect);
     let event = fsm_execute::rid::event_rid(effect, "docs_ok");
-    let ack_record = writer
-        .records
-        .iter()
-        .find(|record| record.body.get("request_id").and_then(Value::as_str) == Some(&ack))
-        .unwrap();
+    let ack_record = if cold_restart {
+        &original_ack
+    } else {
+        writer
+            .records
+            .iter()
+            .find(|record| record.body.get("request_id").and_then(Value::as_str) == Some(&ack))
+            .unwrap()
+    };
     let event_record = writer
         .records
         .iter()
@@ -363,7 +499,14 @@ fn shared_tick_fresh() {
     let cold = Store::open_read_only(path).unwrap();
     assert!(cold.state.dedup.contains_key(&ack) && cold.state.dedup.contains_key(&event));
     assert!(cold.state.execution.claim_for(instance, effect).is_none());
-    emit(format_args!("\nFSM_NATIVE_FRESH_HANDOFF"));
+    emit(format_args!(
+        "\n{}",
+        if cold_restart {
+            "FSM_NATIVE_COLD_HANDOFF"
+        } else {
+            "FSM_NATIVE_FRESH_HANDOFF"
+        }
+    ));
 }
 
 fn copy_store(source: &std::path::Path) -> std::path::PathBuf {

@@ -156,6 +156,8 @@ pub(super) fn run() {
     run_case(false, Host::Shared);
     run_case(false, Host::Fresh);
     run_case(false, Host::FreshMcp);
+    run_case(false, Host::Cold);
+    run_case(false, Host::ColdMcp);
     run_case(false, Host::Admission);
     run_case(false, Host::AdmissionMcp);
     run_case(false, Host::AdmissionCancellation);
@@ -169,6 +171,8 @@ enum Host {
     Shared,
     Fresh,
     FreshMcp,
+    Cold,
+    ColdMcp,
     Admission,
     AdmissionMcp,
     AdmissionCancellation,
@@ -183,6 +187,7 @@ fn run_case(timeout: bool, host: Host) {
         matches!(
             host,
             Host::FreshMcp
+                | Host::ColdMcp
                 | Host::AdmissionMcp
                 | Host::AdmissionMcpCancellation
                 | Host::AdmissionMcpCompetition
@@ -271,6 +276,10 @@ fn run_case(timeout: bool, host: Host) {
         request(&base, "recover", Value::Num("1".into())).get("ok"),
         Some(&Value::Bool(false))
     );
+    if matches!(host, Host::Cold | Host::ColdMcp) {
+        fresh_cases::cold(&mut fixture, &binding, &effect, &successor);
+        return;
+    }
     if matches!(host, Host::Fresh | Host::FreshMcp) {
         fresh_cases::run(&mut fixture, &binding, &effect, &successor);
         return;

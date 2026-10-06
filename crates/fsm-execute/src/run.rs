@@ -31,6 +31,8 @@ mod capture;
 mod mcp_worker;
 #[cfg(target_os = "linux")]
 mod native_admission;
+#[cfg(target_os = "linux")]
+mod native_handoffs;
 mod native_host;
 #[cfg(target_os = "linux")]
 mod native_owners;

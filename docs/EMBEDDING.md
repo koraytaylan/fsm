@@ -2207,3 +2207,6 @@ Durable native acknowledgements with an original outcome event retain an executi
 
 
 A naturally retired native cgroup can disappear during stop inspection; the backend continues only after confirming absence and still requires the original handoff, matched manager identity and independent closure proof, retaining refusal for surviving or unreadable groups.
+
+
+On Linux, the shared tick paths discover durable acknowledged event obligations from the verified snapshot, recover the original checked contract without a current handler table, and apply only under the original healthy writer and protected authority identity. This event-only recovery occupies no execution slot, starts no helper and never acknowledges again; disabled or refused deliveries remain parked until journal progress.

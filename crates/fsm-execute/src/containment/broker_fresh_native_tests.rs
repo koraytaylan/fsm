@@ -78,11 +78,30 @@ pub(super) fn admission(fixture: &mut Fixture, table: &Value) {
 }
 
 pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
-    disconnect_cases::fresh_handoff(&fixture.directory, binding, successor);
+    run_kind(fixture, binding, effect, successor, false);
+}
+
+pub(super) fn cold(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
+    run_kind(fixture, binding, effect, successor, true);
+}
+
+fn run_kind(
+    fixture: &mut Fixture,
+    binding: &Value,
+    effect: &str,
+    successor: &NativeDomain,
+    cold: bool,
+) {
+    if cold {
+        disconnect_cases::cold_handoff(&fixture.directory, binding, successor);
+    } else {
+        disconnect_cases::fresh_handoff(&fixture.directory, binding, successor);
+    }
     assert_eq!(
         read_value(&fixture.directory.join("binding-1.json"), true).unwrap(),
         *binding
     );
+    assert_eq!(number(&fixture.counter(), "last_allocation").unwrap(), 2);
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert!(
         store

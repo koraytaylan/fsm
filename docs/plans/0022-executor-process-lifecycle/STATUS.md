@@ -3570,3 +3570,28 @@ A serial fresh-target continuation for all-target Clippy, warning-denied
 rustdoc, zero-deps and full embed acceptance is live under verified
 MemoryMax=1G/MemorySwapMax=0, with log
 local-cf607de-fresh-check-gate.log in the task cache.
+
+### Cold post-ack host implementation — 2026-10-06
+
+Implemented bounded event-only adoption and original-authority-checked delivery
+in the shared public tick paths, independent of handler tables and execution
+capacity, with exact durable membership, fair selection and parked refusals.
+Warm original completions retain their established retry path. Genuine cold
+process/MCP controls are wired into the provisioned broker matrix and cover
+two seals, removed handler tables, disabled events, copied physical stores,
+read-only/contended writers and unchanged allocation count; they have compiled
+but have not executed in an installed environment at this source.
+Stable/MSRV fsm-execute all-target Clippy, formatting and source-size checks
+passed; stable library 28/28, native-mode 1/1 and existing serve_modes 12/12
+passed serially in a dedicated target under verified 1 GiB/no-swap limits.
+Logs are local-cold-handoff-corrected-review.log,
+local-cold-handoff-msrv-and-embedded-review.log and
+local-cold-handoff-embedded-review.log in the task cache; the mistaken singular
+serve_mode invocation is retained, and the correct serve_modes target passed.
+The preceding committed cf607de implementation completed its stable debug and
+release workspace tests plus fresh-target all-target Clippy, rustdoc,
+zero-deps and embed acceptance; its shared-target Clippy failure remains
+retained separately and is not overwritten by the fresh-target pass.
+Current cold implementation full stable/portable/native acceptance is pending;
+review 37460020929 still has live portable jobs and will not be superseded.
+Task 9401 remains in progress and production constructors remain legacy.

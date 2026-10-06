@@ -1010,3 +1010,6 @@ The unreleased post-ack persistence boundary advances to VERSION 12, fsm.state-r
 
 
 The matched-stop retirement-race correction preserves public signatures, error codes, deadlines and persisted formats: disappearance during live revocation permits only the existing fully checked original-handoff path, never inferred closure.
+
+
+Cold acknowledgement-handoff host recovery is additive and uses the existing VERSION 12/root5/snapshot7/base3 contract without new formats or error codes; original physical store and authority identity checks apply before event delivery, and public production constructors remain unchanged pending installed acceptance.
