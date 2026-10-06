@@ -17,6 +17,8 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use super::super::handoff_cases::Handoff;
+
 // Stable debug test executables can exceed 64 MiB; copying stays bounded.
 const MAX_SUPERVISOR_BINARY: u64 = 128 * 1024 * 1024;
 
@@ -778,34 +780,27 @@ pub(super) fn shared_recovery(directory: &Path, binding: &Value, competitor: &Na
 }
 
 pub(super) fn fresh_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
-    handoff_control(directory, binding, competitor, false, false, false);
+    handoff_control(directory, binding, competitor, Handoff::Warm);
 }
 
 pub(super) fn cold_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
-    handoff_control(directory, binding, competitor, true, false, false);
+    handoff_control(directory, binding, competitor, Handoff::Cold);
 }
 
 pub(super) fn conflicting_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
-    handoff_control(directory, binding, competitor, true, true, false);
+    handoff_control(directory, binding, competitor, Handoff::Conflicting);
 }
 
 pub(super) fn rejected_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
-    handoff_control(directory, binding, competitor, true, false, true);
+    handoff_control(directory, binding, competitor, Handoff::Rejected);
 }
 
-fn handoff_control(
-    directory: &Path,
-    binding: &Value,
-    competitor: &NativeDomain,
-    cold: bool,
-    conflicting: bool,
-    rejected: bool,
-) {
-    let test = if rejected {
+fn handoff_control(directory: &Path, binding: &Value, competitor: &NativeDomain, case: Handoff) {
+    let test = if case == Handoff::Rejected {
         "::fresh_handoff::shared_tick_rejected_handoff"
-    } else if conflicting {
+    } else if case == Handoff::Conflicting {
         "::fresh_handoff::shared_tick_conflicting_handoff"
-    } else if cold {
+    } else if case.cold() {
         "::fresh_handoff::shared_tick_cold_handoff"
     } else {
         "::fresh_handoff::shared_tick_fresh"
@@ -834,11 +829,11 @@ fn handoff_control(
         String::from_utf8_lossy(&output.stdout)
             .lines()
             .filter(|line| *line
-                == if rejected {
+                == if case == Handoff::Rejected {
                     "FSM_NATIVE_REJECTED_HANDOFF"
-                } else if conflicting {
+                } else if case == Handoff::Conflicting {
                     "FSM_NATIVE_CONFLICTING_HANDOFF"
-                } else if cold {
+                } else if case.cold() {
                     "FSM_NATIVE_COLD_HANDOFF"
                 } else {
                     "FSM_NATIVE_FRESH_HANDOFF"

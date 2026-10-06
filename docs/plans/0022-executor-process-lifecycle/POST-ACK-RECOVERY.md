@@ -254,3 +254,18 @@ comment-only correction with no changed executable behavior or disk bytes;
 task 9402 remains planned and its production quiet-stdio control proof is
 still required. Diff checks cover the committed correction; execution gates
 are omitted for this documentation-only unit.
+
+### Named handoff control review — 2026-10-06
+
+Replaced three positional booleans in the root/client/verification helpers
+with shared Warm, Cold, Conflicting and Rejected cases. The shared module is
+loaded once by the native test parent; all prior assertions, child markers,
+request ordering and successful/refused control paths remain unchanged.
+No production behavior or persisted bytes change. Formatting, source-size,
+stable/MSRV all-target executor Clippy and all 28 library tests passed in
+serial verified 1 GiB/no-swap session 73299, terminal exit 0, with
+local-handoff-case-refactor-corrected.log retained in the task cache.
+The initial duplicate-module/private-reexport compile failure remains in
+local-handoff-case-refactor.log; placement was corrected without suppressing
+lints. Full gate f5ba23e predates this refactor and is not claimed as its
+exact-source gate; installed cold controls still require actual execution.

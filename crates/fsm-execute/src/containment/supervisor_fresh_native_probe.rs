@@ -17,31 +17,33 @@ use std::{
     time::{Duration, Instant},
 };
 
+use super::super::handoff_cases::Handoff;
+
 #[test]
 #[ignore = "invoked only as the provisioned unprivileged fresh Runner control"]
 fn shared_tick_fresh() {
-    shared_tick_handoff(false, false, false);
+    shared_tick_handoff(Handoff::Warm);
 }
 
 #[test]
 #[ignore = "invoked only as the provisioned unprivileged cold handoff control"]
 fn shared_tick_cold_handoff() {
-    shared_tick_handoff(true, false, false);
+    shared_tick_handoff(Handoff::Cold);
 }
 
 #[test]
 #[ignore = "invoked only as the provisioned conflicting handoff control"]
 fn shared_tick_conflicting_handoff() {
-    shared_tick_handoff(true, true, false);
+    shared_tick_handoff(Handoff::Conflicting);
 }
 
 #[test]
 #[ignore = "invoked only as the provisioned rejected handoff control"]
 fn shared_tick_rejected_handoff() {
-    shared_tick_handoff(true, false, true);
+    shared_tick_handoff(Handoff::Rejected);
 }
 
-fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
+fn shared_tick_handoff(case: Handoff) {
     assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
     let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
     let path = std::path::Path::new(&path);
@@ -312,7 +314,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
     assert!(writer.state.execution.claim_for(instance, effect).is_none());
     assert!(scheduler.inflight_effect(effect).is_none());
     assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
-    if rejected {
+    if case == Handoff::Rejected {
         let key = fsm_execute::rid::event_rid(effect, "docs_ok");
         let handoffs = writer.state.execution_handoffs.clone();
         let _ = writer.send_event(instance, "docs_ok", Value::Obj(BTreeMap::new()), &key, None);
@@ -323,7 +325,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
         assert!(writer.state.dedup.contains_key(&key));
         assert_eq!(writer.state.execution_handoffs, handoffs);
     }
-    if cold_restart {
+    if case.cold() {
         drop(runner);
         drop(writer);
         // The new host has no completion, scheduler slot or original table.
@@ -355,7 +357,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
         );
     }
     assert_eq!(writer.records, settled);
-    if cold_restart {
+    if case.cold() {
         let original = writer
             .state
             .execution_handoffs
@@ -396,7 +398,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
             None,
         )
         .unwrap();
-    if cold_restart {
+    if case.cold() {
         let before = writer.records.clone();
         let handoffs = writer.state.execution_handoffs.clone();
         drop(writer);
@@ -456,7 +458,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
         drop(foreign);
         std::fs::remove_dir_all(copied).unwrap();
     }
-    if conflicting {
+    if case == Handoff::Conflicting {
         let key = fsm_execute::rid::event_rid(effect, "docs_ok");
         let handoffs = writer.state.execution_handoffs.clone();
         writer
@@ -477,7 +479,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
         );
         assert_eq!(writer.state.execution_handoffs, handoffs);
     }
-    if conflicting || rejected {
+    if case.retained() {
         let handoffs = writer.state.execution_handoffs.clone();
         let before = writer.records.clone();
         let lines = tick_with(
@@ -489,7 +491,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
             &mut clock,
             1000,
         );
-        if conflicting {
+        if case == Handoff::Conflicting {
             assert!(
                 lines
                     .iter()
@@ -524,7 +526,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
         assert_eq!(reopened.state.execution.unresolved().count(), 0);
         emit(format_args!(
             "\n{}",
-            if rejected {
+            if case == Handoff::Rejected {
                 "FSM_NATIVE_REJECTED_HANDOFF"
             } else {
                 "FSM_NATIVE_CONFLICTING_HANDOFF"
@@ -541,7 +543,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
         &mut clock,
         1000,
     );
-    if cold_restart {
+    if case.cold() {
         assert!(
             lines
                 .iter()
@@ -559,7 +561,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
     assert_eq!(writer.state.execution_handoffs.outstanding().count(), 0);
     let ack = fsm_execute::rid::ack_rid(effect);
     let event = fsm_execute::rid::event_rid(effect, "docs_ok");
-    let ack_record = if cold_restart {
+    let ack_record = if case.cold() {
         &original_ack
     } else {
         writer
@@ -600,7 +602,7 @@ fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
     assert!(cold.state.execution.claim_for(instance, effect).is_none());
     emit(format_args!(
         "\n{}",
-        if cold_restart {
+        if case.cold() {
             "FSM_NATIVE_COLD_HANDOFF"
         } else {
             "FSM_NATIVE_FRESH_HANDOFF"

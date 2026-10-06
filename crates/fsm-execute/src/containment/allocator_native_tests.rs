@@ -925,3 +925,6 @@ fn unapproved_claim_is_not_bound(fixture: &mut Fixture) {
     assert!(!fixture.directory.join("binding-2.json").exists());
     assert!(!fixture.directory.join("entry-2.json").exists());
 }
+
+#[path = "handoff_native_cases.rs"]
+mod handoff_cases;

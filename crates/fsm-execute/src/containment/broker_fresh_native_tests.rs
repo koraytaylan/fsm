@@ -1,5 +1,6 @@
 //! Root-side verification and retirement for the fresh Runner fixture axis.
 
+use super::super::handoff_cases::Handoff;
 use super::*;
 
 pub(super) fn cancellation(fixture: &mut Fixture, table: &Value) {
@@ -78,11 +79,11 @@ pub(super) fn admission(fixture: &mut Fixture, table: &Value) {
 }
 
 pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
-    run_kind(fixture, binding, effect, successor, false, false, false);
+    run_kind(fixture, binding, effect, successor, Handoff::Warm);
 }
 
 pub(super) fn cold(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
-    run_kind(fixture, binding, effect, successor, true, false, false);
+    run_kind(fixture, binding, effect, successor, Handoff::Cold);
 }
 
 pub(super) fn conflict(
@@ -91,7 +92,7 @@ pub(super) fn conflict(
     effect: &str,
     successor: &NativeDomain,
 ) {
-    run_kind(fixture, binding, effect, successor, true, true, false);
+    run_kind(fixture, binding, effect, successor, Handoff::Conflicting);
 }
 
 pub(super) fn rejected(
@@ -100,7 +101,7 @@ pub(super) fn rejected(
     effect: &str,
     successor: &NativeDomain,
 ) {
-    run_kind(fixture, binding, effect, successor, true, false, true);
+    run_kind(fixture, binding, effect, successor, Handoff::Rejected);
 }
 
 fn run_kind(
@@ -108,15 +109,13 @@ fn run_kind(
     binding: &Value,
     effect: &str,
     successor: &NativeDomain,
-    cold: bool,
-    conflicting: bool,
-    rejected: bool,
+    case: Handoff,
 ) {
-    if rejected {
+    if case == Handoff::Rejected {
         disconnect_cases::rejected_handoff(&fixture.directory, binding, successor);
-    } else if conflicting {
+    } else if case == Handoff::Conflicting {
         disconnect_cases::conflicting_handoff(&fixture.directory, binding, successor);
-    } else if cold {
+    } else if case.cold() {
         disconnect_cases::cold_handoff(&fixture.directory, binding, successor);
     } else {
         disconnect_cases::fresh_handoff(&fixture.directory, binding, successor);
@@ -140,9 +139,9 @@ fn run_kind(
             .dedup
             .contains_key(&fsm_execute::rid::ack_rid(effect))
     );
-    if conflicting || rejected {
+    if case.retained() {
         assert_eq!(store.state.execution_handoffs.outstanding().count(), 1);
-    } else if cold {
+    } else if case.cold() {
         assert_eq!(store.state.execution_handoffs.outstanding().count(), 0);
     }
     drop(store);
