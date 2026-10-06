@@ -172,4 +172,32 @@ stop tests, removed, or rerouted silently to legacy execution to regain a green
 gate. They need exact-source provisioned native execution covering the same
 handler order, acknowledgements, preflight refusal and compensation outcomes,
 with unavailable-authority refusal covered separately in the portable suite.
-The live no-fail-fast gate remains authoritative and has not been restarted.
+The no-fail-fast gate session 19246 terminated with exit 101 after finishing
+the debug workspace tests; its only failed target was mcp_execute_workflow,
+and the script did not reach release, Clippy, documentation, or later gates.
+
+Further source review found drive_executor still writes each action line
+synchronously to stderr even for the Native SessionStore before queued logging
+notification admission. The stdout pipe regression used empty execution
+inventory, so it does not prove that executor diagnostics cannot block the
+native owner. Native admitted observation and explicit request ticks must use
+bounded diagnostic admission for this operator stream as well, with actual
+drainage/loss tracked independently under the original deadline. The existing
+borrowed APIs may retain their explicit behavior, but production native stderr
+cannot retain this blocking write. Exact real blocked-stderr execution tests
+are required; queued protocol output alone does not cover the operator stream.
+
+The prepared stall-diagnostic test draft includes a bounded 8192-character
+executor stderr prefix in the existing stalled assertion, retaining all
+workflow scenarios and deadlines. It was applied after the full gate
+terminated, and it does not change native authority provisioning.
+
+The applied diagnostic compiled and the exact discovered-handlers workflow
+ran in session 24467 under verified MemoryMax=1 GiB and MemorySwapMax=0,
+terminating with exit 101 after its original 30-second deadline. Captured
+actual executor stderr repeatedly reports `observed pending check_prerequisite
+inst-run/3/0` followed by `error exec/mode`; the bounded prefix is retained in
+workflow-stall-diagnostic-check.log. This establishes a native mode refusal
+at execution, but does not identify the specific authority refusal reason or
+prove installed-native workflow acceptance. Formatting and diff checks pass;
+release and other full-gate stages remain unexecuted for this change.

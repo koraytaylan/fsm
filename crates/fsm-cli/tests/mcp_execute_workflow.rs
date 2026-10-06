@@ -457,7 +457,15 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
             assert_eq!(instance.get("effects_pending"), Some(&value("[]")));
             break;
         }
-        assert!(Instant::now() < deadline, "workflow stalled: {instance:?}");
+        assert!(
+            Instant::now() < deadline,
+            "workflow stalled: {instance:?}; executor stderr: {}",
+            fs::read_to_string(&client.errors)
+                .unwrap_or_default()
+                .chars()
+                .take(8192)
+                .collect::<String>()
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     let history = client.call(
