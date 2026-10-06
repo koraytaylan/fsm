@@ -591,3 +591,12 @@ portable gate, including the previously failing scheduler lint correction;
 this does not replace the preserved older failed matrix. Both macOS jobs
 remain live in release workspace testing, and both Windows jobs remain live.
 Task 9401 remains in progress because production Runner routing is unfinished.
+
+Updated CI macOS stable job `112057639819` completed successfully at frozen
+source `a876df1`, with its full log retained as
+`ci-37397745043/macos-stable-job.log`. Six of the nine matrix jobs now pass;
+macOS MSRV and both Windows jobs remain authoritatively `in_progress` on the
+original run `37397745043`, which has not been restarted. The current-source
+local and provisioned native evidence still proves the primitive/regression
+slice only; production Runner composition remains unfinished and task 9401
+stays in progress.
