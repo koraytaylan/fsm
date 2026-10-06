@@ -142,3 +142,17 @@ focused session 44567 and mutation session 89989, both terminal zero after the
 expected guard-disabled test failures and restored passing tests. Production
 server endpoint publication, installed native trees, signals, paired standalone
 and the new CLI runtime's full gate remain pending; no task promotion occurs.
+
+
+### Complete execute stop stable host gate — 2026-10-06
+
+Session 45893 completed with exit zero against exact CLI runtime
+cd0213b3df7aa6a9dac4afa47c1cfd7b98b124fc under verified
+MemoryMax=1G and MemorySwapMax=0; execute-stop-stable-gate.log is retained.
+Formatting, source size, debug and release workspace tests, all-target
+workspace Clippy, warning-free documentation, zero dependencies and embed
+acceptance all passed. Subsequent bc6aa3b/f3d2086 ownership reviews changed
+only documentation and did not alter the frozen tested runtime.
+This proves the local stable host gate for execute stop, not current native
+server publication, paired actors, installed trees, signals or portable CI.
+Plan progress remains 3/7 with task 9401 in progress and 9402 planned.
