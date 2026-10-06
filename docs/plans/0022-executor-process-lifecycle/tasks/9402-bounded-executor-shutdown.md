@@ -96,3 +96,13 @@ compile (11667) while remaining unexecuted here. Known-defective f90871b full
 gate 85037 was explicitly stopped and confirmed terminal 143 before mutation;
 its partial log is not full acceptance. Corrected-source full stable gate and
 production/installed acceptance remain pending, with progress unchanged at 3/7.
+
+Corrected owned-driver runtime f50d95868f8c0bcac5800aa24dbea5b5f7cf3d36
+passed the full stable host gate in session 47032, confirmed terminal 0: format,
+source size, workspace debug and release tests, workspace all-target Clippy,
+warning-denying workspace documentation, zero-dependency and embed acceptance
+all passed under asserted 1 GiB RAM and zero swap. The complete retained log is
+local-owned-driver-request-fix-stable-gate.log. This resolves the local full-gate
+obligation for the writer-release correction and compiled live-bound probes;
+installed native execution, portable CI and production stdio/endpoint/CLI/signal
+integration remain unexecuted or unfinished, and progress stays 3/7.

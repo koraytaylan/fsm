@@ -107,3 +107,13 @@ do not cover executing/hung trees, independent production stdio progress, local
 owner-only endpoint, CLI stop or signals. The corrected combined source still
 requires its full stable host gate and later exact-source portable/native CI.
 No task is completed or promoted and plan progress remains 3/7.
+
+Corrected owned-driver runtime f50d95868f8c0bcac5800aa24dbea5b5f7cf3d36
+passed the full stable host gate in session 47032, confirmed terminal 0: format,
+source size, workspace debug and release tests, workspace all-target Clippy,
+warning-denying workspace documentation, zero-dependency and embed acceptance
+all passed under asserted 1 GiB RAM and zero swap. The complete retained log is
+local-owned-driver-request-fix-stable-gate.log. This resolves the local full-gate
+obligation for the writer-release correction and compiled live-bound probes;
+installed native execution, portable CI and production stdio/endpoint/CLI/signal
+integration remain unexecuted or unfinished, and progress stays 3/7.
