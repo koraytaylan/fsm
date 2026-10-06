@@ -461,3 +461,14 @@ passed on MSRV 1.89, and MSRV executor all-target Clippy passed with warnings
 denied. Specification, API policy, embedding and release documentation move
 with this additive primitive. This is not integrated production Runner routing;
 full frozen host/platform/native gates remain required for the changed source.
+
+At product source `41cfaa1`, the full MSRV executor library suite passed:
+22 tests, including the new no-transport uncertainty regression and bounded
+capture, worker retirement, discovery and completion-mapping controls.
+This remains narrower than full workspace/platform/native acceptance.
+The frozen older CI Windows MSRV job `112041769526` is now terminal failure;
+its retained `ci-37392851160/windows-msrv-job.log` independently confirms the
+same `sched.rs:245` nonminimal boolean lint corrected in `f9e02fa`, rather than
+a new portability defect. Windows stable job `112041769321` remains live in
+its full release workspace test step after its debug workspace pass; the older
+matrix remains non-green and is not replaced or cancelled.
