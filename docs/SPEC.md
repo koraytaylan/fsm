@@ -2800,3 +2800,7 @@ observation and completed release of the owned writer. Unknown preparation
 ownership MUST remain charged. `Drop` MUST NOT publish guaranteed cleanup.
 This opt-in, explicitly driven library API does not establish independent
 production stdio progress or install a native authority.
+
+Closing a transferred runner's admission fence alone MUST NOT count as an
+explicit lifecycle stop request or authorize releasing its owned writer;
+writer release requires actual stop request metadata in addition to quiescence.

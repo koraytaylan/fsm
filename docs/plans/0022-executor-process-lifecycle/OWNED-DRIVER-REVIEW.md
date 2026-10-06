@@ -70,3 +70,40 @@ retaining existing primitive closure/interruption tests, authenticates actual
 Root closure through the real driver, proves writer reopen after Stopped and
 checks exactly two interruption records, unchanged instance/pending state, no
 Ack and exact cold replay. These drafts are not executed native evidence.
+
+## Applied request distinction and live-bound driver controls
+
+The admission/request distinction is corrected: the driver checks actual
+request metadata before authorizing shutdown writer release. Focused session
+18750 exited 0 with stable/MSRV all-target executor Clippy, 46 library tests,
+three downstream lifecycle tests and sixteen public surface tests. Load-bearing
+mutation session 91927 exited 0: restoring only the old predicate produced
+exit 101 at the new actual writer-retention assertion, and restoration of the
+correction passed all three downstream tests; both mutation/restoration logs
+are retained. These checks ran with asserted 1 GiB RAM and zero swap.
+
+Source-reviewed defective runtime f90871b full stable session 85037 was
+intentionally stopped in its exact owned systemd scope, then confirmed terminal
+143 before source mutation; its retained partial log is not a passing full gate.
+This avoids finishing acceptance of a known defective unit or overlapping jobs.
+
+The new provisioned owned driver control now starts from an actual live bound
+original native owner with no closing/closed/closure/entry artifacts; it does
+not pre-close the domain through a primitive fixture. The driver itself must
+request and authenticate Root closure, settle interruption, retire execution
+and closure helpers, release its original writer and publish Stopped. Cold
+writer reopen must show exactly two original interruption records, unchanged
+instance/pending state, no Ack and exact replay. Independent Root assertions
+require the protected original receipt, absence of every protected entry
+artifact, removal of the original cgroup, and preservation of the successor
+cgroup with allocation counter still two. Both process and MCP bound-owner
+axes are added to the existing provisioned broker matrix; prior primitive
+closure/interruption cases remain present.
+
+Live-bound probe session 11667 exited 0 with stable/MSRV all-target compilation
+and all three downstream lifecycle tests; installed native execution is still
+unexecuted on this host and cannot be inferred from compilation. These controls
+do not cover executing/hung trees, independent production stdio progress, local
+owner-only endpoint, CLI stop or signals. The corrected combined source still
+requires its full stable host gate and later exact-source portable/native CI.
+No task is completed or promoted and plan progress remains 3/7.

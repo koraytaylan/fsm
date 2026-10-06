@@ -4,6 +4,8 @@ pub(super) enum Host {
     BoundClosureMcp,
     BoundInterruption,
     BoundInterruptionMcp,
+    BoundOwnedDriver,
+    BoundOwnedDriverMcp,
     Shared,
     Fresh,
     FreshMcp,
@@ -29,6 +31,13 @@ pub(super) fn dispatch_fresh(
     host: &Host,
 ) -> bool {
     match host {
+        Host::BoundOwnedDriver | Host::BoundOwnedDriverMcp => super::claimed_closure_cases::run(
+            fixture,
+            binding,
+            effect,
+            successor,
+            super::claimed_closure_cases::Outcome::OwnedInterrupted,
+        ),
         Host::BoundInterruption | Host::BoundInterruptionMcp => super::claimed_closure_cases::run(
             fixture,
             binding,

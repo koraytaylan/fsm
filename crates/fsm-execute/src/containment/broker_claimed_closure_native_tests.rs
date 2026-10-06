@@ -6,6 +6,7 @@ use super::*;
 pub(super) enum Outcome {
     Retained,
     Interrupted,
+    OwnedInterrupted,
 }
 
 pub(super) fn run(
@@ -16,15 +17,19 @@ pub(super) fn run(
     outcome: Outcome,
 ) {
     disconnect_cases::permit_operator_store(&fixture.store);
-    let test = if outcome == Outcome::Interrupted {
-        "::claimed_closure::bound_claimed_interruption"
-    } else {
-        "::claimed_closure::bound_claimed_closure"
-    };
-    let marker = if outcome == Outcome::Interrupted {
-        "FSM_NATIVE_BOUND_INTERRUPTION"
-    } else {
-        "FSM_NATIVE_BOUND_CLOSURE"
+    let (test, marker) = match outcome {
+        Outcome::Interrupted => (
+            "::claimed_closure::bound_claimed_interruption",
+            "FSM_NATIVE_BOUND_INTERRUPTION",
+        ),
+        Outcome::OwnedInterrupted => (
+            "::claimed_closure::bound_owned_driver_interruption",
+            "FSM_NATIVE_BOUND_OWNED_DRIVER",
+        ),
+        Outcome::Retained => (
+            "::claimed_closure::bound_claimed_closure",
+            "FSM_NATIVE_BOUND_CLOSURE",
+        ),
     };
     let script = disconnect_cases::SUPERVISOR.replace("::owned_request", test);
     let output = Command::new("/usr/bin/python3")
@@ -66,6 +71,17 @@ pub(super) fn run(
     .unwrap();
     assert!(proof.matches_claim(&claim, text(binding, "journal_claim").unwrap()));
     proof.check_store(&fixture.store).unwrap();
+    if outcome == Outcome::OwnedInterrupted {
+        for name in [
+            "launch",
+            "entry",
+            "handoff",
+            "manager-stopped",
+            "manager-retired",
+        ] {
+            assert!(!fixture.directory.join(format!("{name}-1.json")).exists());
+        }
+    }
     assert!(
         !cgroup(&origin(&fixture.directory).unwrap(), 1)
             .unwrap()
@@ -83,13 +99,13 @@ pub(super) fn run(
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(
         store.state.execution.claim_for("instance", effect),
-        if outcome == Outcome::Interrupted {
+        if outcome != Outcome::Retained {
             None
         } else {
             Some(&claim)
         }
     );
-    if outcome == Outcome::Interrupted {
+    if outcome != Outcome::Retained {
         assert!(
             store
                 .state

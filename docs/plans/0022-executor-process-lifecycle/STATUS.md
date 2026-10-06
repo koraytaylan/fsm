@@ -4046,3 +4046,13 @@ found admission closure alone can prematurely release an empty transferred
 writer, with a correction and downstream regression prepared outside the frozen
 source, as recorded in OWNED-DRIVER-REVIEW.md; this finding remains open until
 the gate terminates and changed-source verification passes.
+
+Owned driver follow-up corrected admission closure versus explicit stop and
+proved the downstream writer-retention regression fails with only the old
+predicate restored (mutation session 91927, terminal 0 after expected test
+exit 101 and successful restored tests). Focused stable/MSRV checks passed
+(session 18750), and actual live-bound process/MCP native driver controls now
+compile (11667) while remaining unexecuted here. Known-defective f90871b full
+gate 85037 was explicitly stopped and confirmed terminal 143 before mutation;
+its partial log is not full acceptance. Corrected-source full stable gate and
+production/installed acceptance remain pending, with progress unchanged at 3/7.

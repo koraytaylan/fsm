@@ -2329,3 +2329,8 @@ only after the driver releases its writer. An uncertain report retains
 ownership; dropping the driver does not turn it into a guaranteed stop.
 Provisioned native execution and production stdio/control-endpoint acceptance
 remain separate requirements.
+
+A runner whose admission fence was already closed may be transferred with
+`from_owned_parts`; an empty `poll` preserves its writer until the host issues
+an explicit control stop request. Fence closure and lifecycle stop are separate
+operations, even though both prevent further admission.

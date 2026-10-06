@@ -144,7 +144,7 @@ impl ExecutorControl {
     }
 
     pub(super) fn requested(&self) -> bool {
-        self.admission.is_closed()
+        self.state().request.requested()
     }
 
     pub(super) fn closure_requested(&self) -> bool {

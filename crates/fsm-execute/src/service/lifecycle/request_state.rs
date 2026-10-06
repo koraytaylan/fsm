@@ -76,6 +76,10 @@ impl RequestState {
         }
     }
 
+    pub(super) fn requested(&self) -> bool {
+        self.mode.is_some()
+    }
+
     pub(super) fn should_close_domains(&self, now: Instant) -> bool {
         self.mode == Some(StopMode::Abort) || self.deadline.is_some_and(|deadline| now >= deadline)
     }

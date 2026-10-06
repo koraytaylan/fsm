@@ -86,3 +86,13 @@ under asserted 1 GiB RAM/zero-swap limits; see OWNED-DRIVER-REVIEW.md and retain
 local-owned-lifecycle-focused-v3.log. Full changed-source stable gate and actual
 installed driver/production stdio/endpoint/CLI/signal controls remain pending;
 no task is promoted and progress remains 3/7.
+
+Owned driver follow-up corrected admission closure versus explicit stop and
+proved the downstream writer-retention regression fails with only the old
+predicate restored (mutation session 91927, terminal 0 after expected test
+exit 101 and successful restored tests). Focused stable/MSRV checks passed
+(session 18750), and actual live-bound process/MCP native driver controls now
+compile (11667) while remaining unexecuted here. Known-defective f90871b full
+gate 85037 was explicitly stopped and confirmed terminal 143 before mutation;
+its partial log is not full acceptance. Corrected-source full stable gate and
+production/installed acceptance remain pending, with progress unchanged at 3/7.

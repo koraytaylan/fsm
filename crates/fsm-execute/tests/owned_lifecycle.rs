@@ -78,3 +78,26 @@ fn idle_worker_cannot_block_a_control_deadline_or_release_its_writer() {
     // Drop releases ordinary resources but cannot publish guaranteed Stopped.
     assert_eq!(request.poll().phase, ExecutorPhase::Uncertain);
 }
+
+#[test]
+fn closing_admission_alone_does_not_request_writer_release() {
+    use fsm_execute::{run::Runner, sched::Scheduler, watch::Watcher};
+    let directory = Directory::new();
+    let store = Store::open(&directory.0).unwrap();
+    let table = HandlerTable::default();
+    let watcher = Watcher::with_handlers(directory.0.clone(), &table);
+    let scheduler = Scheduler::new(table);
+    let runner = Runner::new_native().unwrap();
+    runner.native_admission_control().unwrap().close();
+    let mut executor =
+        OwnedNativeExecutor::from_owned_parts(store, watcher, scheduler, runner).unwrap();
+    let control = executor.control();
+    assert!(control.report().admission_closed);
+    assert_eq!(control.report().phase, ExecutorPhase::Running);
+    assert!(executor.poll(&mut FixedClock::new(0, 1), 0).is_empty());
+    assert!(executor.store_mut().is_some());
+    assert!(!control.report().writer_released);
+    let request = control.stop(ShutdownMode::Abort, 10000).unwrap();
+    assert!(executor.poll(&mut FixedClock::new(0, 1), 0).is_empty());
+    assert_eq!(request.wait().phase, ExecutorPhase::Stopped);
+}

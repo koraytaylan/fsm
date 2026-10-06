@@ -1110,3 +1110,7 @@ opt-in. Invalid shutdown timeouts use existing `exec/config`; unsupported or
 unhealthy writer selection uses `exec/mode`, and unproven closure retains
 `exec/inflight_deferred`. Persisted formats, hashes and production defaults
 are unchanged. The explicit polling requirement is part of this API contract.
+
+The owned driver distinguishes an explicitly requested lifecycle stop from
+prior admission-fence closure; this corrects premature writer release without
+changing public signatures, error codes or persisted formats.

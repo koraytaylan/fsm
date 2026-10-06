@@ -158,6 +158,8 @@ pub(super) fn run() {
     run_case(false, Host::BoundClosureMcp);
     run_case(false, Host::BoundInterruption);
     run_case(false, Host::BoundInterruptionMcp);
+    run_case(false, Host::BoundOwnedDriver);
+    run_case(false, Host::BoundOwnedDriverMcp);
     run_case(false, Host::Fresh);
     run_case(false, Host::FreshMcp);
     run_case(false, Host::Cold);
@@ -189,6 +191,7 @@ fn run_case(timeout: bool, host: Host) {
             Host::FreshMcp
                 | Host::BoundClosureMcp
                 | Host::BoundInterruptionMcp
+                | Host::BoundOwnedDriverMcp
                 | Host::ColdMcp
                 | Host::ColdConflictMcp
                 | Host::ColdRejectedMcp

@@ -1071,3 +1071,8 @@ Added shared native admission closure and original local shutdown-target iterati
   reports `Uncertain` without claiming cleanup. Production stdio progress,
   installed native driver acceptance, local control endpoint and CLI integration
   remain pending; no persisted format or production default changed.
+
+- Corrected the owned native driver so a preclosed admission fence alone cannot
+  release its writer; an explicit lifecycle request is required, with a
+  downstream actual-writer regression and separate provisioned process/MCP
+  bound-owner driver controls, whose native execution remains pending here.
