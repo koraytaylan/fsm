@@ -4079,3 +4079,18 @@ See OWNED-SESSION-REVIEW.md and retained logs. This does not change current CLI
 selection or supply production/installed tree, endpoint, CLI stop, signals or
 paired standalone acceptance; full changed-source stable gate remains pending
 and progress stays 3/7 with no task promotion.
+
+
+### Complete owned-session stable host gate — 2026-10-06
+
+Session 30244 completed with exit 0 against exact runtime
+3157f1cd12efd1d7e60495fe525705c197a8a6f4, under verified
+MemoryMax=1G and MemorySwapMax=0; the retained log is
+local-owned-stdio-integration-stable-gate.log in the dedicated task cache.
+Formatting, source-size checks, debug and release workspace tests,
+all-target workspace Clippy, warning-free workspace documentation,
+zero-dependency tests and embed acceptance all passed.
+This completes the local stable host gate for the opt-in owned session entry;
+current production binary selection, installed native controls, portable CI,
+endpoint/CLI stop, signals and paired standalone acceptance remain unproved.
+Tasks 9401/9402 retain their existing states and plan progress remains 3/7.

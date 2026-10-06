@@ -62,5 +62,9 @@ native tree tests through this new session entry, actual production binary
 quiet stdin/blocked OS stdout, portable CI, paired standalone writer strategy,
 owner-only exact-incarnation endpoint, CLI stop and signal integration remain
 pending. Current CLI selectors still use their previous route, and this public
-owned entry is opt-in. Full changed-source stable gate is required next; tasks
+owned entry is opt-in. Full changed-source stable gate session 30244 subsequently exited 0 at exact
+runtime 3157f1cd12efd1d7e60495fe525705c197a8a6f4 under verified 1 GiB RAM
+and zero swap, covering formatting, source size, debug/release workspace tests,
+all-target Clippy, warning-free documentation, zero dependencies and embed
+acceptance; local-owned-stdio-integration-stable-gate.log is retained, and tasks
 9401/9402 are not completed or promoted and plan progress remains 3/7.
