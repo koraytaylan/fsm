@@ -141,3 +141,25 @@ task remains planned behind task 9303's outstanding acceptance.
 Task 9303 has now completed its frozen local and nine-job CI acceptance at
 `9f1f175`; ownership integration is opened for implementation using the
 projection/capacity design above, with all integrated-host cases still pending.
+
+### Ownership projection implementation review
+
+Scoped source review of `9b32cd9..ea9a17c` confirms that watcher ownership is
+cloned from the same read-only Store before instance filtering and that the
+scheduler checks the full instance/effect pair before current handler lookup.
+The 21 existing watcher tests and public inventory gate pass, the independent
+cancelled-owner regression passes with a held writer and cold reopen, and all
+21 scheduler cases pass including remote ownership and changed handler lookup.
+These results prove projection and start exclusion only; stopped-result scan
+fixtures and capacity cases remain pending, and full frozen host/CI acceptance
+has not yet been rerun for these integration changes.
+
+Review identifies the remaining capacity defect in `Scheduler::has_room_for`
+and `Capped.inflight`: both still count only local entries, and the old comment
+assumes orphan children disappear after restart. The next implementation must
+count observed owners plus retained local handles, deduplicating only a matched
+original run identity; a different incarnation or missing current observation
+cannot erase occupied capacity. Production launch still uses the legacy path,
+so this slice does not accept writer-protected native routing or settlement.
+All-targets executor clippy is running serially with retained log
+`~/.cache/fsm-plan-native-matrix-20261005/ownership-projection-clippy.log`.
