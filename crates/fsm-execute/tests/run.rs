@@ -534,7 +534,8 @@ fn scan_error_draining(borrowed: bool) {
     use std::time::{Duration, Instant};
 
     let mut runner = Runner::new().unwrap();
-    let absent_store = runner.scratch_dir().join("absent-store");
+    let absent_store = runner.scratch_dir().join("invalid-store");
+    fs::write(&absent_store, b"not a directory").unwrap();
     let marker = runner.scratch_dir().join("drained-marker");
     let mut argv = stub_argv("scan-error");
     argv.push(format!("marker:{}", marker.display()));
@@ -577,7 +578,7 @@ fn scan_error_draining(borrowed: bool) {
             assert!(!outcome.lines.is_empty());
             assert!(!outcome.writer_unavailable);
         }
-        assert!(!absent_store.exists());
+        assert_eq!(fs::read(&absent_store).unwrap(), b"not a directory");
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(fs::read(marker).unwrap(), b"drained");
