@@ -796,6 +796,16 @@ gate release and executable-byte verification remain false, the earlier
 native MSRV retirement failure remains preserved without a proven cause,
 and actual production Runner routing and task 9401 remain incomplete.
 
+Owned cleanup coverage now extends `provisioned_broker_access`: a fresh
+unclaimed prepared domain is retired by an unprivileged subprocess through
+`NativePreparedCleanup`, followed by cold original-domain replay through a
+second helper; each success checks actual helper reap and both stream EOFs,
+sticky matched success after cancellation and reap, unchanged allocation
+counter, physical cgroup absence and a domain tombstone without an execution
+receipt. This is new harness code, not yet privileged execution evidence;
+serial MSRV executor all-target Clippy is running with log
+`local-owned-cleanup-msrv-clippy.log`, and task 9401 remains in progress.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery

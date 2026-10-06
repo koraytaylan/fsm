@@ -926,6 +926,28 @@ fn run_case(timeout: bool) {
         identity(&fs::symlink_metadata(&first_socket).unwrap()),
         first_identity
     );
+    let prepared = fixture.prepare();
+    let counter = fs::read(&counter_path).unwrap();
+    disconnect_cases::discard_prepared(&fixture.directory, &prepared);
+    assert_eq!(fs::read(&counter_path).unwrap(), counter);
+    let allocation = number(&prepared, "allocation").unwrap();
+    assert!(
+        !cgroup(&origin(&fixture.directory).unwrap(), allocation)
+            .unwrap()
+            .exists()
+    );
+    assert!(
+        fixture
+            .directory
+            .join(format!("closed-{allocation}.json"))
+            .exists()
+    );
+    assert!(
+        !fixture
+            .directory
+            .join(format!("closure-{allocation}-1.json"))
+            .exists()
+    );
     drop(daemon);
     fixture.cleanup().unwrap();
 }

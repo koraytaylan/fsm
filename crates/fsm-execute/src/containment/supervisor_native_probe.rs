@@ -527,6 +527,34 @@ fn prepare_domain() {
     ));
 }
 
+#[test]
+#[ignore = "invoked only as an unprivileged provisioned cleanup subprocess"]
+fn discard_prepared_domain() {
+    use fsm_core::record::execution::NativeDomain;
+    use fsm_execute::run::native_client::NativePreparedCleanup;
+    use std::os::unix::fs::MetadataExt;
+    assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
+    let encoded = std::env::var("FSM_NATIVE_TEST_BINDING").unwrap();
+    let domain =
+        NativeDomain::from_value(&parse(encoded.as_bytes(), &JsonLimits::DEFAULT).unwrap())
+            .unwrap();
+    // A second fresh helper must replay the original domain retirement.
+    for _ in 0..2 {
+        let mut cleanup = NativePreparedCleanup::start(&domain, Duration::from_secs(3)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while !cleanup.poll().unwrap() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let progress = cleanup.progress();
+        assert!(progress.reaped && progress.stdout_eof && progress.stderr_eof);
+        cleanup.cancel().unwrap();
+        assert!(cleanup.poll().unwrap());
+        assert!(cleanup.reap().unwrap());
+        assert_eq!(cleanup.progress(), progress);
+    }
+}
+
 fn reject_run(claim: &Claim, hash: &str) {
     let mut owned = NativeRun::start(claim, hash, Duration::from_secs(30)).unwrap();
     assert_eq!(owned.progress().phase, NativeRunPhase::Binding);

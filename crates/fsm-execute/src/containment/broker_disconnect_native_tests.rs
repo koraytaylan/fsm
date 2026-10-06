@@ -98,6 +98,23 @@ pub(super) fn prepare(directory: &Path) -> Value {
     parse(domains[0].as_bytes(), &JsonLimits::DEFAULT).unwrap()
 }
 
+pub(super) fn discard_prepared(directory: &Path, domain: &Value) {
+    let script = SUPERVISOR.replace("::owned_request", "::discard_prepared_domain");
+    let output = Command::new("/usr/bin/python3")
+        .args(["-c", &script])
+        .arg(directory.join("broker"))
+        .arg(std::str::from_utf8(&canon_bytes(domain)).unwrap())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "owned prepared cleanup failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 pub(super) fn complete(
     directory: &Path,
     binding: &Value,
