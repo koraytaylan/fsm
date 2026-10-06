@@ -871,16 +871,16 @@ impl Runner {
     }
 }
 
-/// Kill and reap every remaining child, then remove the capture directory.
+/// Best-effort cleanup of legacy direct children and the capture directory.
 ///
-/// No *signalled* shutdown runs this. Not `kill -9`, and not Ctrl-C either,
-/// because Rust's default handler terminates without unwinding: the children
-/// are re-parented and keep running, the capture files stay, and the next
-/// executor **cannot adopt them** — it sees the effect still pending and
-/// starts a fresh run. That is precisely the at-least-once boundary this plan
-/// claims, stated where the code makes it true. There is no pid file and no
-/// adoption protocol; a handler whose work already reached the outside world
-/// is undone by a compensating effect the machine emits, or not at all.
+/// This destructor supplies no bounded shutdown or durable native settlement
+/// guarantee. Default signal termination does not unwind through it, and
+/// legacy direct children can survive their executor without an adoption
+/// protocol. Native ownership follows the separate protected lifecycle and
+/// original durable claim recovery paths; dropping a transport or runner
+/// does not prove native closure, consume a claim or permit a replacement run.
+/// Explicit drain and abort require the lifecycle control protocol rather
+/// than relying on this destructor.
 impl Drop for Runner {
     fn drop(&mut self) {
         for (_, mut running) in std::mem::take(&mut self.children) {

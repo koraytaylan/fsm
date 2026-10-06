@@ -242,3 +242,15 @@ The enum moved to a dedicated test module to keep the broker source below
 1,000 lines. Formatting, source-size and both toolchain all-target Clippy
 checks passed; installed execution and exact-source acceptance remain
 pending, and no new runtime capability or production default is claimed.
+
+### Destructor boundary review — 2026-10-06
+
+Corrected Runner's stale legacy-only destructor documentation: direct-child
+signal survival and missing adoption apply to the legacy children map;
+native claim recovery and retained event handoffs use their separate paths.
+Dropping a native transport still supplies no verified closure or durable
+settlement, and Drop supplies no bounded drain/abort guarantee. This is a
+comment-only correction with no changed executable behavior or disk bytes;
+task 9402 remains planned and its production quiet-stdio control proof is
+still required. Diff checks cover the committed correction; execution gates
+are omitted for this documentation-only unit.
