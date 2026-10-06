@@ -112,6 +112,23 @@ impl NativeHandoffs {
             .find(|handoff| handoff.claim().run_id() == selected);
         match current {
             None => {
+                let material = BTreeMap::from([
+                    ("claim".into(), entry.original.claim().to_value()),
+                    ("disposition".into(), Value::Str("acked".into())),
+                ]);
+                let fingerprint = fsm_core::hashes::request_fp("execution_settled", &material);
+                if !store
+                    .state
+                    .dedup
+                    .get(entry.original.acknowledgement_request_id())
+                    .is_some_and(|slot| {
+                        slot.seq == entry.original.acknowledgement_seq()
+                            && slot.fp.as_deref() == Some(fingerprint.as_str())
+                    })
+                {
+                    entry.parked_at = Some(store.journal.last_seq);
+                    return Some(Err(deferred()));
+                }
                 if let Some(retired) = self.entries.remove(&selected) {
                     self.retained_bytes -= retired.canonical_bytes + 1;
                 }
@@ -145,4 +162,57 @@ fn deferred() -> ExecError {
         "exec/inflight_deferred",
         "original native event handoff remains unresolved",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_prefix_without_the_original_acknowledgement_cannot_retire_a_handoff() {
+        // Retained fixture material is not a native closure or delivery proof.
+        let original = AcknowledgedHandoff::from_value(
+            &fsm_core::json::parse(
+                include_bytes!("../../../fsm-core/tests/fixtures/execution-handoff.json"),
+                &fsm_core::json::JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut snapshot = Store::open_memory().unwrap();
+        snapshot
+            .state
+            .execution_handoffs
+            .install(original.clone())
+            .unwrap();
+        let mut handoffs = NativeHandoffs::default();
+        handoffs.adopt(&snapshot, &BTreeSet::new()).unwrap();
+        let path = std::path::PathBuf::from(
+            std::env::var_os("TMPDIR").expect("dedicated task cache required"),
+        )
+        .join(format!("fsm-handoff-prefix-{}", std::process::id()));
+        std::fs::create_dir(&path).unwrap();
+        let mut replacement = Store::open(&path).unwrap();
+        let records = replacement.records.clone();
+        let retained = handoffs.retained_bytes;
+        assert_eq!(
+            handoffs
+                .apply(
+                    &mut replacement,
+                    &mut fsm_store::clock::FixedClock::new(100, 1),
+                    &mut Pipeline
+                )
+                .unwrap()
+                .unwrap_err()
+                .code,
+            "exec/inflight_deferred"
+        );
+        assert_eq!(handoffs.entries.len(), 1);
+        assert_eq!(handoffs.retained_bytes, retained);
+        assert_eq!(handoffs.entries.values().next().unwrap().original, original);
+        assert_eq!(replacement.records, records);
+        assert!(!handoffs.ready());
+        drop(replacement);
+        std::fs::remove_dir_all(path).unwrap();
+    }
 }

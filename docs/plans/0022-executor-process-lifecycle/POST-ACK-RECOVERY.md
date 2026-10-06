@@ -269,3 +269,22 @@ The initial duplicate-module/private-reexport compile failure remains in
 local-handoff-case-refactor.log; placement was corrected without suppressing
 lints. Full gate f5ba23e predates this refactor and is not claimed as its
 exact-source gate; installed cold controls still require actual execution.
+
+### Original acknowledgement retirement guard — 2026-10-06
+
+Source review found local retirement trusted handoff-set absence without
+checking its original acknowledgement. Retirement now requires the exact
+original acknowledgement slot sequence and claim-bound execution_settled
+request fingerprint. Missing/mismatched evidence parks the unchanged local
+entry and byte accounting without a journal write. Seals carry surviving
+request slot sequences/fingerprints; absence after pruning remains refusal,
+not inferred closure. No execution capacity or new handler entry is involved.
+
+The regression adopts literal preauthenticated handoff fixture material and
+presents a fresh durable prefix without its acknowledgement; it requires
+retained full identity/bytes and unchanged records. It proves host retention,
+not native receipt authentication or installed closure. Serial verified
+1 GiB/no-swap session 65082 passed formatting, source-size, stable/MSRV
+all-target executor Clippy and all 29 library tests, terminal exit 0;
+local-handoff-retirement-check.log is retained. Full changed-source and
+installed acceptance remain pending, with remote push approval outstanding.

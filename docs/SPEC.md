@@ -2643,3 +2643,9 @@ Matched native manager stop MUST tolerate the original cgroup retiring between i
 
 
 Cold native outcome-event recovery MUST adopt bounded authenticated execution_handoffs separately from execution ownership and capacity; it MUST require the original healthy physical-store writer, protected namespace/generation and authority device/inode, and the original checked handler contract. It MUST NOT prepare, bind, execute or acknowledge again. Only accepted-event fold retirement completes delivery; rejection, ignored responses, conflicting keys, disabled instances and cancellation retain the obligation. Ready event-only and ownership work MUST share bounded fair ticks, with failed event attempts parked until later journal progress; a retained warm original completion keeps its existing retry path.
+
+Retiring a locally retained cold handoff after its absence from the current
+healthy writer's verified handoff collection MUST also require the original
+acknowledgement request slot, sequence and execution-settlement fingerprint.
+A missing or changed original acknowledgement MUST park the retained local
+obligation without mutating the journal; absence alone is not reconciliation.

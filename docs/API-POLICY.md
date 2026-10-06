@@ -1024,3 +1024,12 @@ access. These are durable obligations, not live process health or closure
 proof, and disclose no identifiers, commands, native paths or handler results.
 This adds resource metadata without changing journal formats, hashes or
 execution admission; the existing `fsm.executor/1` format remains applicable.
+
+### Original acknowledgement required for local handoff retirement
+
+Cold event-only recovery retains its local obligation when the observed
+writer no longer carries the handoff but lacks the exact original
+acknowledgement sequence and settlement fingerprint. A replacement prefix
+cannot establish reconciliation merely by omitting an obligation. The
+refusal parks without journal mutation and changes no persisted format,
+hash domain, public API or acknowledgement/event request-key derivation.
