@@ -185,3 +185,33 @@ split stop/observe from starts, retain preparation and execution in Runner,
 claim/recheck/start binding under the writer, and preserve original completion
 and capacity when settlement cannot obtain the writer. Existing public tick
 entries must share that sequence; the current legacy service remains unaccepted.
+
+### Automatic route discovery design
+
+The provisioned authority already publishes immutable Root-owned mode-0444
+`store-identity.json` containing physical device/inode, while private
+`store.json` retains its path; discovery must use the public identity only.
+Add a private Linux client discovery module used by Runner for automatic ticks:
+scan only fixed `/var/lib/fsm-containment`, canonical 32-hex namespace names
+and canonical positive `authority-<generation>` names, charging at most 4096
+total entries across both directory levels before retaining another entry.
+Require protected non-symlink Root-owned directory identities before and after
+scanning, bounded no-follow regular public identity reads and canonical closed
+JSON. Match the actual store directory device/inode, never journal bytes or a
+caller-supplied authority path. Zero or multiple matching registrations refuse
+new execution; offline or damaged matching registration cannot be silently
+ignored to select another generation. For the unique match, validate the current
+immutable broker route, boot, operator UID, authority inode and socket identity
+using the existing client access contract, and repeat identity checks before
+preparation. Discovery grants neither claim ownership nor handler entry.
+
+Keep discovery private: public tick signatures remain shared through Runner,
+and the authority continues rechecking physical store and original claim at
+binding. Unsupported/unprovisioned hosts refuse automatic native execution;
+there is no direct-child fallback. Recovery uses each original claim's route,
+not discovery or the current handler table. Required discovery fixtures cover
+exact/plus-one inventory and file bounds, missing/duplicate/torn/symlink/writable
+registrations, wrong physical store, wrong operator/boot/socket and replacement
+between observations; native provisioning cases must exercise the production
+entry before accepting automatic routing. This design is not implementation
+or execution evidence, and task 9401 remains In progress.
