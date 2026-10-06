@@ -499,3 +499,28 @@ fn the_same_observation_and_time_always_produce_the_same_directives() {
     assert_eq!(first, second);
     assert_eq!(first.len(), 4, "two starts, one advance, one poll");
 }
+
+#[test]
+fn a_remote_original_owner_excludes_start_before_current_handler_lookup() {
+    use fsm_core::json::{JsonLimits, parse};
+    use fsm_core::record::execution::Claim;
+    let claim = Claim::from_value(&parse(br#"{
+      "run_id":1,"instance_id":"case-1","effect_id":"case-1/3/0","attempt":1,
+      "handler_fingerprint":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "retry":{"attempts":3,"backoff_ms":10,"max_backoff_ms":40,"on":["timeout"]},
+      "domain":{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}
+    }"#, &JsonLimits::DEFAULT).unwrap()).unwrap();
+    let mut observed = observation_with_pending(vec![effect("case-1/3/0", "assign_reviewer")]);
+    observed.execution_owners.push((claim, None));
+    let mut scheduler = Scheduler::new(table());
+    assert!(scheduler.on_observation(&observed, NOW).is_empty());
+    observed.pending[0].effect_name = "removed-handler".into();
+    assert!(scheduler.on_observation(&observed, NOW).is_empty());
+    assert!(scheduler.unhandled().is_empty());
+    observed.execution_owners.clear();
+    observed.pending[0].effect_name = "assign_reviewer".into();
+    assert!(matches!(
+        scheduler.on_observation(&observed, NOW).as_slice(),
+        [Directive::Start { .. }]
+    ));
+}

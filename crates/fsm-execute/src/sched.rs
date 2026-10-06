@@ -289,6 +289,13 @@ impl Scheduler {
 
         // 1. Start a handler for pending work nobody has claimed or started.
         for effect in &obs.pending {
+            // Ownership survives handler changes, cancellation and root exit.
+            // Only durable consumption can make this effect eligible again.
+            if obs.execution_owners.iter().any(|(claim, _)| {
+                claim.effect() == (effect.instance_id.as_str(), effect.effect_id.as_str())
+            }) {
+                continue;
+            }
             let Some(handler) = self.table.handlers.get(&effect.effect_name) else {
                 // 2. Default-deny: an effect with no handler is a deliberate
                 // stall. The executor refuses to guess what to run.

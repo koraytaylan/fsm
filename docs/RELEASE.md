@@ -808,3 +808,5 @@ This preserves public signatures and journal/hash formats; fresh native,
 portable and frozen host acceptance remains required before production routing.
 
 Plan 0022 ownership integration: watcher observations expose unresolved original claims and stopped results from the current read-only prefix, including cancelled or removed effects; production tick routing and capacity integration remain pending.
+
+Plan 0022: pure scheduler start selection now respects unresolved original execution ownership before looking up the current handler; integrated host capacity and routing remain pending.

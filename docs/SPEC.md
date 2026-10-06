@@ -2435,3 +2435,5 @@ Missing, partial, writable, relocated or mismatched attestations MUST refuse;
 recovery MUST NOT repair them or substitute caller-selected candidate material.
 
 A watcher observation MUST project every unresolved original execution claim and optional stopped result from the same read-only journal prefix as pending effects, before filtering cancelled instances, removed effects or current handlers; observation MUST NOT consume ownership.
+
+The scheduler MUST exclude a pending effect with matching unresolved instance/effect ownership before current handler lookup; root exit, stopped evidence and changed handler selection MUST NOT authorize a successor before durable consumption.
