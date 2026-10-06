@@ -197,14 +197,13 @@ mod tests {
         let (ready, observed) = mpsc::channel();
         let (completed, result) = mpsc::channel();
         let worker = std::thread::spawn(move || {
-            let mut output = DiagnosticOutput::start(std::io::sink()).unwrap();
-            let report = drive(
+            let report = run_paired(
                 &mut driver,
                 &mut ReadyClock {
                     ready: Some(ready),
                     calls: 0,
                 },
-                &mut output,
+                std::io::sink(),
                 2000,
                 false,
                 500,
@@ -227,5 +226,63 @@ mod tests {
         assert!(report.output_drained && still_held);
         assert_eq!(report.dropped_lines, 0);
         assert!(report.failure.is_none());
+    }
+
+    struct UnusedClock;
+    impl Clock for UnusedClock {
+        fn now_ms(&mut self) -> i64 {
+            panic!("invalid options must not drive ownership")
+        }
+    }
+    struct StartupWitness(mpsc::Sender<std::thread::ThreadId>);
+    impl std::io::Write for StartupWitness {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            panic!("invalid options must not write")
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            panic!("invalid options must not flush")
+        }
+    }
+    impl Drop for StartupWitness {
+        fn drop(&mut self) {
+            let _ = self.0.send(std::thread::current().id());
+        }
+    }
+    #[test]
+    fn invalid_public_options_refuse_before_worker_start_or_admission_closure() {
+        let root = std::path::PathBuf::from(std::env::var_os("TMPDIR").expect("task cache"));
+        assert!(!root.starts_with("/tmp"));
+        let directory = root.join(format!(
+            "standalone-invalid-{}-{}",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let writer = Store::open(&directory).unwrap();
+        let mut driver = PairedNativeExecutor::new(&directory, HandlerTable::default()).unwrap();
+        for (interval, timeout) in [(0, 1), (1, 0), (1, fsm_execute::config::MAX_TIMEOUT_MS + 1)] {
+            let (sent, observed) = mpsc::channel();
+            let result = run_paired(
+                &mut driver,
+                &mut UnusedClock,
+                StartupWitness(sent),
+                interval,
+                false,
+                timeout,
+            );
+            let Err(error) = result else {
+                panic!("invalid options accepted")
+            };
+            assert_eq!(error.code, "exec/config");
+            assert_eq!(
+                observed.recv_timeout(Duration::from_millis(100)).unwrap(),
+                std::thread::current().id()
+            );
+            assert!(!driver.control().report().admission_closed);
+            assert_eq!(driver.control().report().phase, ExecutorPhase::Running);
+        }
+        drop(driver);
+        drop(writer);
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 }

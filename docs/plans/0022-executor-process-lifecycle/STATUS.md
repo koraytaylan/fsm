@@ -4351,3 +4351,20 @@ interval while an independent writer remains held. Native inventory is empty.
 The API is opt-in: production command routing/endpoint publication, installed
 nonempty native ownership, full changed-source gates and sensitivity checks
 remain required. Progress remains 3/7 with task statuses unchanged.
+
+### Standalone public-entry regression review — 2026-10-06
+
+The long-interval actual stop regression now invokes public run_paired rather
+than its internal loop, covering real output startup and wrapper close/report
+composition while the independent writer remains held. Added invalid public
+option controls use a clock that refuses observation and a writer whose Drop
+reports the actual thread: zero interval, zero timeout and maximum-plus-one
+timeout return exec/config with the writer dropped on the caller thread, no
+worker startup and admission still open. This tests observable boundary behavior.
+
+Focused session 67123 exited zero under asserted 1 GiB RAM and zero swap:
+stable/MSRV Clippy, executor/lifecycle/session/transport/CLI/public inventory
+checks and all 60 CLI library tests passed; standalone-public-check.log is
+retained. Production command publication/routing, nonempty installed native
+acceptance, full gates and remaining sensitivity controls are still required;
+statuses and 3/7 progress remain unchanged.
