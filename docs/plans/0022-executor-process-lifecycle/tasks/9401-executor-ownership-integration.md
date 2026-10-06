@@ -536,3 +536,12 @@ per-case evidence. This is provisioned native execution for the current
 primitive/regression source, not automatic production Runner acceptance:
 `executable_bytes_verified` and `gate_released` remain false. The MSRV native
 and six portable jobs remain live; the full matrix is not yet green.
+
+The updated MSRV native job also completed successfully at exact corrected
+source `a876df1df10ae977a2e45a5393e590c175652240`. Its retained artifact is
+`ci-37397745043/msrv`; independent verification completed with exit zero and
+verified all 81 cases against `rustc 1.89.0 (29483883e 2025-08-04)` and clean
+source identity. Both current-source native compiler axes now have independently
+verified provisioned evidence. Production routing and executable-byte/gate
+release flags remain incomplete/false; the six portable matrix jobs and isolated
+full debug workspace session `34597` remain live.
