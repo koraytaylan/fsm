@@ -439,3 +439,13 @@ The debug pass includes the new portable stopped-owner scheduler fixture but
 does not execute ignored provisioned native discovery/watcher controls.
 Both Windows jobs on the older `7dc91d5` CI run remain live, and its diagnosed
 MSRV lint failures prevent a green-matrix claim.
+
+The isolated full stable release workspace gate at corrected product source
+`f9e02fa` completed with exit zero, confirmed through its original session
+`17099` and retained `local-f9e02fa-stable-release.log`; the log ends with
+successful workspace doc tests. Both current-source full workspace modes now
+have successful local execution evidence. The existing CI run `37392851160`
+still has both Windows jobs in progress, and its two diagnosed MSRV lint
+failures remain preserved. Updated native execution and the corrected-source
+platform matrix remain outstanding, alongside production Runner integration;
+this local release pass does not complete task 9401.
