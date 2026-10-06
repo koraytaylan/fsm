@@ -763,6 +763,11 @@ Current Ubuntu stable portable job `112081460476` completed successfully at
 including macOS and Ubuntu MSRV in release workspace tests. This platform
 pass does not expand the native primitive evidence into production acceptance.
 
+Current Ubuntu MSRV portable job `112081461039` subsequently completed
+successfully at the same `482da8f` source, with its complete log retained as
+`ci-37405315461/ubuntu-msrv-job.log`; both macOS and both Windows jobs remain
+live, and actual production Runner routing remains unfinished.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
