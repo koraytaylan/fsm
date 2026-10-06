@@ -1126,3 +1126,24 @@ behavior or public inventory. Formatting and diff checks pass; actual portable
 Clippy/docs validation remains pending. Run 37425899114 is live at
 `a2ad1e0211dd1f090b7fd0137fb4ef7403e2e6cf` and predates this correction,
 so it cannot validate it and will not be superseded while live.
+
+### Latest local executor compilation and portable failure evidence
+
+Frozen `ac8615b63cb01073008da6d79e3a9b615560d104` passed MSRV
+executor all-target Clippy with warnings denied, executor library tests, and
+all 16 public-surface tests, serially inside a verified 1 GiB scope with swap
+disabled; output is retained as `local-ac8615b-capped-msrv-executor.log`.
+This compiles the provisioned reservation-control extension and labelled
+matched-stop diagnostic but does not execute the ignored native control.
+The earlier frozen `f2bdeea6a32d210ba79ec1e7866101ed226ec8e6` full
+stable debug workspace run finished successfully (session 15176 exit 0),
+retained as `local-f2bdeea-capped-stable-debug.log`; it predates those later
+changes and does not validate them.
+
+Completed macOS stable job 112145359195 at `a2ad1e0` fails during compilation
+because `complete_claim` is unused in the non-Linux library with warnings denied.
+The retained nonempty log `ci-37425899114-macos-stable.log` verifies this
+failure; the committed `ac8615b` Linux-or-test cfg correction directly removes
+that definition from unsupported non-test library builds while retaining pure
+unit coverage. Corrected native OS gate evidence remains pending, and live
+run 37425899114 will not be canceled or superseded.
