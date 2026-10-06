@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 mod claimed;
 mod completion;
+mod discovery;
 mod execution;
 mod preparation;
 

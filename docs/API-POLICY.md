@@ -850,3 +850,5 @@ Scheduler start selection now excludes matching unresolved durable ownership usi
 The provisional Scheduler adds `retain_claim(&Claim) -> bool` to bind a local reservation to its immutable original claim; capacity diagnostics now include durable owners, without persistence or hash changes.
 
 Automatic native route discovery is a private plan-0022 host composition requirement using the existing immutable store-identity and broker-route envelopes; its 4096-entry and 4096-byte limits introduce no new persistence format or hash domain, and implementation remains pending.
+
+The provisional `NativePreparation::for_store(&Path, Duration)` entry discovers one protected physical-store route before preparation; this adds a source API only and does not change existing authority envelopes or journal/hash formats.
