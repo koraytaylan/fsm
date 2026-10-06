@@ -2621,3 +2621,6 @@ does not itself publish a handoff or consume an event.
 
 
 In-memory journals MUST NOT write automatic or shutdown snapshot caches, including at the 10,000-record boundary; their checkpoint records and state roots retain the ordinary replay semantics.
+
+
+Verified execution replay MUST retain each unresolved claim’s original record hash as separate, bounded replay context, sourced from the verified ExecutionClaimed record or authenticated sealed-base claim index; snapshot caches MUST reconstruct this context from those sources and MUST NOT supply it from mutable cache metadata. Producers MUST replace provisional claim hashes with final published hashes at checkpoint boundaries. This context MUST NOT enter execution logical serialization or historical state roots, avoiding claim-record self-reference, and MUST disappear with settled ownership.

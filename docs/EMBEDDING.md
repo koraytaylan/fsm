@@ -2198,3 +2198,6 @@ does not itself publish a handoff or consume an event.
 
 
 An in-memory Store writes no snapshot cache when it reaches the automatic 10,000-record boundary or shuts down; checkpoint roots remain available in its records for replay verification.
+
+
+ExecutionState::claim_record_hash borrows the original hash for an exact unresolved claim after verified replay; decoding an execution value alone supplies none. Embedders attaching hashes through attach_claim_record_hash must verify the journal record or separately authenticated base claim index first, and replace provisional hashes after final checkpoint publication; the method grants no execution authority. Store reopen reconstructs this context from authenticated sources.

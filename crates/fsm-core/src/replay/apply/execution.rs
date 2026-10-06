@@ -42,7 +42,11 @@ pub(super) fn apply_claimed(state: &mut StoreState, record: &Record) -> Result<(
     let pending = pending(state, instance_id, effect_id, record)?;
     state
         .execution
-        .claim(claim, pending, record.ts)
+        .claim(claim.clone(), pending, record.ts)
+        .map_err(|error| mismatch(record, error.0))?;
+    state
+        .execution
+        .attach_claim_record_hash(&claim, &format!("sha256:{}", record.hash))
         .map_err(|error| mismatch(record, error.0))?;
     claim_request_id(state, record)
 }

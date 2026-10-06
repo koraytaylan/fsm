@@ -965,3 +965,6 @@ does not itself publish a handoff or consume an event.
 
 
 Fixed automatic snapshotting of in-memory stores accidentally writing to their placeholder data directory at 10,000 records; a boundary regression asserts no filesystem entries while checking the final published claim hash and complete replay equality, with no format or hash change.
+
+
+Plan 0022 replay now carries original unresolved claim hashes separately from logical execution bytes, corrects checkpoint projections to the final published record hash, and restores anchors from verified journal prefixes or authenticated base indices on cache/sealed reopen. Settlement removes the context with its owner; independently decoded execution blocks have no anchor. Atomic acknowledgement handoff persistence and cold event delivery remain unimplemented.

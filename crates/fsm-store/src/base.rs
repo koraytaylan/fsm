@@ -850,5 +850,20 @@ pub fn decode(value: &Value, expected: &BaseRoots) -> Result<(StoreState, BaseIn
     if recomputed.index_root != expected.index_root {
         return Err(mismatch("base_index_root"));
     }
+    let claims: Vec<_> = state
+        .execution
+        .unresolved()
+        .map(|(claim, _)| claim.clone())
+        .collect();
+    for claim in claims {
+        let hash = index
+            .execution_claims
+            .get(&claim.run_id())
+            .ok_or_else(|| mismatch("original claim hash is unavailable"))?;
+        state
+            .execution
+            .attach_claim_record_hash(&claim, hash)
+            .map_err(|error| mismatch(&error.to_string()))?;
+    }
     Ok((state, index))
 }

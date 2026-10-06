@@ -40,18 +40,22 @@ sequence before installing it. Missing, contradictory, oversized or foreign
 material must refuse publication/replay rather than creating a guessed event.
 The original hash must come from the verified ExecutionClaimed record or the
 authenticated base execution-claim index, never from hashing Claim metadata.
-Replay therefore needs that verified anchor available while folding settlement.
+Replay now retains that verified anchor as separate unresolved-owner context while folding settlement; independently decoded logical execution values do not supply it.
 It must not put a claim record's own hash inside that record's state root,
 which would introduce a hash self-reference; the existing separately
 authenticated base index supplies the compatibility pattern, and the later
 handoff can commit the already fixed original hash safely.
-`Store::append_execution` first folds a provisional record and later replaces
-only projected `last_hash` with the published record hash; at checkpoint
+`Store::append_execution` first folds a provisional record; at checkpoint
 sequence 10,000, `append_at_with_root` adds root fields that change the actual
-record hash. A future replay-anchor cache must therefore capture/reconcile the
-final published claim hash, not leave a provisional anchor in projected state.
-The independent checkpoint claim/handoff regression verifies the final anchor
-against complete prefix replay and rejects the valid-shaped provisional hash.
+record hash. It now reconciles both projected `last_hash` and the unresolved
+owner anchor with the final published hash. Verified snapshot open reconstructs
+anchors from actual prefix records or authenticated base context, and base
+decode attaches its original claim index only after root validation. Anchors
+remain outside logical execution bytes and historical roots, are bounded by
+the unresolved-owner count, and disappear with settlement. The independent
+checkpoint regression verifies final anchors against complete prefix replay,
+checkpoint-bound and prefix-reproduced cache paths, and rejects a valid-shaped
+provisional handoff hash; atomic handoff publication remains unimplemented.
 An acknowledgement without a declared event creates no handoff; attempted and
 interrupted settlements must never create one.
 

@@ -12,7 +12,9 @@ pub fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
     if a.last_seq != b.last_seq || a.last_hash != b.last_hash {
         return false;
     }
-    if a.execution != b.execution {
+    // Verified claim hashes are replay context, reconstructed from the journal
+    // or authenticated base index rather than trusted from snapshot bytes.
+    if a.execution.to_value() != b.execution.to_value() {
         return false;
     }
     if a.dedup != b.dedup {
@@ -179,7 +181,7 @@ pub(super) fn open_state_impl(
         let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
             continue;
         };
-        let Ok((base, definition_limits)) = snapshot_to_state_for_journal(&v, &recs) else {
+        let Ok((mut base, definition_limits)) = snapshot_to_state_for_journal(&v, &recs) else {
             continue;
         };
         if base.last_seq > journal_last {
@@ -193,6 +195,9 @@ pub(super) fn open_state_impl(
         }
         let bound = snapshot_bound(&base, rec, &recs, definition_limits, sealed_floor);
         if !bound {
+            continue;
+        }
+        if super::claim_hashes::restore(&mut base, &origin, &recs).is_err() {
             continue;
         }
         let snap_seq = base.last_seq;
@@ -222,7 +227,7 @@ pub(super) fn open_state_impl(
         let Ok(v) = parse(&bytes, &JsonLimits::DEFAULT) else {
             continue;
         };
-        let Ok((base, _definition_limits)) = snapshot_to_state_for_journal(&v, &recs) else {
+        let Ok((mut base, _definition_limits)) = snapshot_to_state_for_journal(&v, &recs) else {
             continue;
         };
         if base.last_seq > journal_last {
@@ -232,6 +237,9 @@ pub(super) fn open_state_impl(
             continue;
         };
         if rec.hash != base.last_hash || !snapshot_matches_prefix(&origin, &base, &recs) {
+            continue;
+        }
+        if super::claim_hashes::restore(&mut base, &origin, &recs).is_err() {
             continue;
         }
         let snap_seq = base.last_seq;

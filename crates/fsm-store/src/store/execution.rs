@@ -149,6 +149,20 @@ impl Store {
         let record =
             self.append_at_with_root(kind, Value::Obj(body), clock.commit_reserved_ms(timestamp))?;
         projected.last_hash = record.hash.clone();
+        if kind == RecordKind::ExecutionClaimed {
+            let claim = projected
+                .execution
+                .unresolved()
+                .find(|(claim, _)| claim.run_id() == projected.execution.run_high_water())
+                .map(|(claim, _)| claim.clone())
+                .ok_or_else(|| {
+                    ErrorObj::new("store/execution_stale", "projected claim is unavailable")
+                })?;
+            projected
+                .execution
+                .attach_claim_record_hash(&claim, &format!("sha256:{}", record.hash))
+                .map_err(refusal)?;
+        }
         self.state = projected;
         self.note_record(&record);
         for instance_id in fsm_core::record::instances_touched(&record) {

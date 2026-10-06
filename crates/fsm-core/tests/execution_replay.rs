@@ -176,6 +176,17 @@ fn claimed_stopped_and_atomic_failed_settlement_replay_durable_ownership() {
         100,
     );
     let claimed = fold(initial.clone(), record.clone());
+    let original = format!("sha256:{}", record.hash);
+    let claim = claimed.execution.claim_for("instance", "effect").unwrap();
+    assert_eq!(
+        claimed.execution.claim_record_hash(claim),
+        Some(original.as_str())
+    );
+    let decoded = ExecutionState::from_value(&claimed.execution.to_value()).unwrap();
+    assert_eq!(decoded.claim_record_hash(claim), None);
+    let mut logical_only = claimed.clone();
+    logical_only.execution = decoded;
+    assert_eq!(state_root_at(&claimed, 1), state_root_at(&logical_only, 1));
     assert_eq!(claimed.execution.run_high_water(), 1);
     assert_eq!(claimed.instances, initial.instances);
     let mut without_ownership = claimed.clone();
@@ -211,6 +222,7 @@ fn claimed_stopped_and_atomic_failed_settlement_replay_durable_ownership() {
         100,
     );
     let settled = fold(stopped.clone(), settle_record.clone());
+    assert_eq!(settled.execution.claim_record_hash(claim), None);
     assert_eq!(settled.instances["instance"].pending, ["effect"]);
     assert_eq!(settled.execution.failed_count("instance", "effect"), 1);
     assert!(settled.execution.claim_for("instance", "effect").is_none());

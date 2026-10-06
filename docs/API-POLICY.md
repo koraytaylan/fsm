@@ -1001,3 +1001,6 @@ does not itself publish a handoff or consume an event.
 
 
 Memory-store automatic snapshotting now remains entirely in memory at the 10,000-record boundary, matching shutdown snapshotting; public signatures, journal VERSION 11 and all persisted formats and hashes are unchanged.
+
+
+ExecutionState adds claim_record_hash and attach_claim_record_hash for separately verified replay context; attachment validates an exact current owner and canonical digest but authenticates neither arbitrary caller input nor native authority. Logical serialization and persistent VERSION 11, root/4, snapshot/6 and base/2 bytes remain unchanged; hashes are reconstructed on snapshot/base reopen rather than serialized into execution state.

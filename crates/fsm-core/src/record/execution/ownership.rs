@@ -47,6 +47,8 @@ pub enum Settlement {
 struct Owned {
     claim: Claim,
     stopped: Option<Stopped>,
+    // Replay context, excluded from logical roots to avoid claim self-reference.
+    claim_record_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +135,34 @@ impl ExecutionState {
             .and_then(|(_, owned)| owned.stopped.as_ref())
     }
 
+    /// Borrow the original journal hash for this exact unresolved claim.
+    /// Decoded logical execution values alone carry no verified hash context.
+    pub fn claim_record_hash(&self, claim: &Claim) -> Option<&str> {
+        self.match_owned(claim).ok()?.claim_record_hash.as_deref()
+    }
+
+    /// Attach separately verified journal or sealed-base context to an exact claim.
+    ///
+    /// The caller MUST verify the original record or authenticated base index;
+    /// this shape check does not authenticate caller-supplied hashes or authorize
+    /// execution. Publication projections must replace provisional record hashes
+    /// with final hashes after checkpoint root fields have been added.
+    pub fn attach_claim_record_hash(
+        &mut self,
+        claim: &Claim,
+        hash: &str,
+    ) -> Result<(), ShapeError> {
+        self.match_owned(claim)?;
+        if !digest(hash) {
+            return Err(ShapeError("claim_hash"));
+        }
+        self.claims
+            .get_mut(&claim.key())
+            .ok_or(ShapeError("claim_binding"))?
+            .claim_record_hash = Some(hash.into());
+        Ok(())
+    }
+
     /// Return the durable failed count, independent of native run allocation.
     pub fn failed_count(&self, instance_id: &str, effect_id: &str) -> u32 {
         self.retry
@@ -193,6 +223,7 @@ impl ExecutionState {
             Owned {
                 claim,
                 stopped: None,
+                claim_record_hash: None,
             },
         );
         self.install(next)
@@ -426,7 +457,14 @@ impl ExecutionState {
             };
             if state
                 .claims
-                .insert(claim.key(), Owned { claim, stopped })
+                .insert(
+                    claim.key(),
+                    Owned {
+                        claim,
+                        stopped,
+                        claim_record_hash: None,
+                    },
+                )
                 .is_some()
             {
                 return Err(ShapeError("duplicate_effect"));

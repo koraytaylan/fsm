@@ -88,13 +88,50 @@ fn checkpoint_claim_handoff_matches_only_the_final_published_anchor() {
         .clone();
     let published = store.current_execution_claim_hash(&claim).unwrap();
     assert_eq!(published, format!("sha256:{}", record.hash));
+    assert_eq!(
+        store.state.execution.claim_record_hash(&claim),
+        Some(published.as_str())
+    );
     let folded =
         fsm_core::replay::fold_with(store.records.clone(), &mut fsm_core::replay::NopSink).unwrap();
     assert!(crate::snapshot::store_states_eq(&store.state, &folded));
+    assert_eq!(
+        folded.execution.claim_record_hash(&claim),
+        Some(published.as_str())
+    );
+    // Exercise the authenticated checkpoint fast path with a separately
+    // requested cache; automatic memory-store snapshotting remains disabled.
+    crate::snapshot::write_snapshot(&directory.0, &store.state).unwrap();
+    let (cached, path) = crate::snapshot::open_state(
+        &directory.0,
+        store.records.clone(),
+        &mut fsm_core::replay::NopSink,
+    )
+    .unwrap();
+    assert!(path.used_snapshot);
+    assert_eq!(path.replayed_records, 0);
+    assert_eq!(
+        cached.execution.claim_record_hash(&claim),
+        Some(published.as_str())
+    );
 
     // Preauthenticated fixture evidence exercises journal identity only;
     // no kernel closure or installed host acceptance is inferred.
     stop(&mut store, &claim, "ok", "checkpoint-stop");
+    let unbound = directory.0.join("unbound");
+    crate::snapshot::write_snapshot(&unbound, &store.state).unwrap();
+    let (cached, path) = crate::snapshot::open_state(
+        &unbound,
+        store.records.clone(),
+        &mut fsm_core::replay::NopSink,
+    )
+    .unwrap();
+    assert!(path.used_snapshot);
+    assert_eq!(path.replayed_records, store.records.len());
+    assert_eq!(
+        cached.execution.claim_record_hash(&claim),
+        Some(published.as_str())
+    );
     let sequence = store.journal.last_seq + 1;
     let Value::Obj(fields) = &mut candidate else {
         panic!("literal candidate must be an object");

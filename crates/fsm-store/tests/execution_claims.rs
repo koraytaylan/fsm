@@ -218,6 +218,16 @@ fn cancelled_claim_retains_original_hash_across_two_seals_and_reopen() {
     let (mut store, effect) = populated(&directory);
     allocate(&mut store, &effect, "claim", None).unwrap();
     let original = format!("sha256:{}", store.records.last().unwrap().hash);
+    let claim = store
+        .state
+        .execution
+        .claim_for("instance", &effect)
+        .unwrap()
+        .clone();
+    assert_eq!(
+        store.state.execution.claim_record_hash(&claim),
+        Some(original.as_str())
+    );
     store.cancel_instance("instance", "cancel").unwrap();
     assert_eq!(
         store.state.instances["instance"].status,
@@ -232,6 +242,19 @@ fn cancelled_claim_retains_original_hash_across_two_seals_and_reopen() {
         store = Store::open(&directory.0).unwrap();
         let opened = fsm_store::base::open_from_base(&directory.0, &store.records).unwrap();
         assert_eq!(opened.index.execution_claims.get(&1), Some(&original));
+        assert_eq!(
+            opened.state.execution.claim_record_hash(&claim),
+            Some(original.as_str())
+        );
+        assert_eq!(
+            store.state.execution.claim_record_hash(&claim),
+            Some(original.as_str())
+        );
+        let inspected = Store::open_read_only(&directory.0).unwrap();
+        assert_eq!(
+            inspected.state.execution.claim_record_hash(&claim),
+            Some(original.as_str())
+        );
         assert_eq!(store.state.execution.run_high_water(), 1);
         assert!(
             store

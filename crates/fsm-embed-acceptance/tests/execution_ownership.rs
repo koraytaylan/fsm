@@ -38,6 +38,18 @@ fn external_caller_can_construct_stop_settle_and_restore_execution_ownership() {
     state
         .claim(claim.clone(), PendingEffect::Present, 100)
         .unwrap();
+    let original = format!("sha256:{}", "c".repeat(64));
+    state.attach_claim_record_hash(&claim, &original).unwrap();
+    assert_eq!(state.claim_record_hash(&claim), Some(original.as_str()));
+    assert!(state.attach_claim_record_hash(&claim, "malformed").is_err());
+    let Value::Obj(mut foreign) = claim.to_value() else {
+        panic!("claim metadata must be an object");
+    };
+    foreign.insert("effect_id".into(), Value::Str("another-effect".into()));
+    let foreign = Claim::from_value(&Value::Obj(foreign)).unwrap();
+    assert!(state.attach_claim_record_hash(&foreign, &original).is_err());
+    assert_eq!(state.claim_record_hash(&foreign), None);
+    assert_eq!(state.claim_record_hash(&claim), Some(original.as_str()));
     let closure =
         Closure::new(claim.run_id(), domain, format!("sha256:{}", "b".repeat(64))).unwrap();
     let outcome = StoppedOutcome::from_value(&Value::Obj(BTreeMap::from([(
@@ -47,6 +59,7 @@ fn external_caller_can_construct_stop_settle_and_restore_execution_ownership() {
     .unwrap();
     state.stop(&claim, Stopped::new(closure, outcome)).unwrap();
     let mut restored = ExecutionState::from_value(&state.to_value()).unwrap();
+    assert_eq!(restored.claim_record_hash(&claim), None);
     assert!(restored.stopped_for("instance", "effect").is_some());
     let mut projected = fsm_core::replay::StoreState {
         execution: restored.clone(),
