@@ -28,7 +28,7 @@ fn checkpoint_claim_handoff_matches_only_the_final_published_anchor() {
             }
         })
         .unwrap();
-    // A checkpoint can write a snapshot cache even for a memory journal.
+    // An owned cache path makes any unintended memory-store disk write observable.
     store.data_dir = directory.0.clone();
     while store.journal.last_seq < 9999 {
         store
@@ -68,6 +68,7 @@ fn checkpoint_claim_handoff_matches_only_the_final_published_anchor() {
     assert_eq!(record.seq, 10_000);
     assert_eq!(record.kind, RecordKind::ExecutionClaimed);
     assert!(record.body.get("state_root").is_some());
+    assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 0);
     let mut body = record.body.as_obj().unwrap().clone();
     body.remove("state_root");
     body.remove("state_root_format");

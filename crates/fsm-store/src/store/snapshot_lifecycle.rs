@@ -9,7 +9,10 @@ use super::{ErrorObj, Store};
 impl Store {
     pub fn maybe_snapshot(&self) -> Result<(), ErrorObj> {
         self.ensure_writable()?;
-        if self.journal.last_seq > 0 && self.journal.last_seq.is_multiple_of(10_000) {
+        if !self.journal.is_memory()
+            && self.journal.last_seq > 0
+            && self.journal.last_seq.is_multiple_of(10_000)
+        {
             crate::snapshot::write_snapshot(&self.data_dir, &self.state)?;
         }
         Ok(())

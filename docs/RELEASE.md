@@ -962,3 +962,6 @@ actual acknowledgement key and append sequence; a matching key or fingerprint
 alone MUST NOT pass. The caller must supply verified journal/evidence inputs:
 this pure comparison cannot authenticate arbitrary caller-owned values and
 does not itself publish a handoff or consume an event.
+
+
+Fixed automatic snapshotting of in-memory stores accidentally writing to their placeholder data directory at 10,000 records; a boundary regression asserts no filesystem entries while checking the final published claim hash and complete replay equality, with no format or hash change.

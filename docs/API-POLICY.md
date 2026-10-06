@@ -998,3 +998,6 @@ actual acknowledgement key and append sequence; a matching key or fingerprint
 alone MUST NOT pass. The caller must supply verified journal/evidence inputs:
 this pure comparison cannot authenticate arbitrary caller-owned values and
 does not itself publish a handoff or consume an event.
+
+
+Memory-store automatic snapshotting now remains entirely in memory at the 10,000-record boundary, matching shutdown snapshotting; public signatures, journal VERSION 11 and all persisted formats and hashes are unchanged.
