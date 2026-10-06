@@ -718,11 +718,11 @@ fn refuse_discovery() {
 #[ignore = "invoked only as the unprivileged shared tick native control"]
 fn shared_tick_recovery() {
     use fsm_execute::{
-        config::HandlerTable,
+        config::{HandlerKind, HandlerSpec, HandlerTable, Retry},
         run::{Pipeline, Runner},
-        sched::Scheduler,
+        sched::{Directive, Scheduler},
         service::{tick_reporting, tick_with},
-        watch::Watcher,
+        watch::{Observation, Watcher},
     };
     use fsm_store::{clock::FixedClock, store::Store};
     use std::os::unix::fs::MetadataExt;
@@ -736,7 +736,40 @@ fn shared_tick_recovery() {
     let original = Store::open_read_only(path).unwrap();
     let records = original.records.clone();
     let state = original.state.clone();
+    let pending = fsm_execute::effect::resolve(&original, effect).unwrap();
     drop(original);
+    // Create a local reservation without running its deliberately different
+    // current handler; only the immutable original claim can settle this run.
+    let mut local_table = HandlerTable {
+        max_inflight: 1,
+        ..HandlerTable::default()
+    };
+    local_table.handlers.insert(
+        pending.effect_name.clone(),
+        HandlerSpec {
+            effect: pending.effect_name.clone(),
+            kind: HandlerKind::Process,
+            argv: vec!["/bin/false".into()],
+            timeout_ms: 30000,
+            on_ok: None,
+            on_failed: None,
+            retry: Retry::default(),
+        },
+    );
+    let mut local_scheduler = Scheduler::new(local_table);
+    assert!(matches!(
+        local_scheduler
+            .on_observation(
+                &Observation {
+                    pending: vec![pending.clone()],
+                    ..Observation::default()
+                },
+                1000
+            )
+            .as_slice(),
+        [Directive::Start { .. }]
+    ));
+    assert!(local_scheduler.retain_claim(&claim));
     let table = HandlerTable::default();
     let mut watcher = Watcher::with_handlers(path.into(), &table);
     let mut scheduler = Scheduler::new(table);
@@ -791,6 +824,21 @@ fn shared_tick_recovery() {
         &readonly.state,
         &state
     ));
+    let local_lines = tick_with(
+        &mut watcher,
+        &mut local_scheduler,
+        &mut runner,
+        &mut pipeline,
+        &mut readonly,
+        &mut clock,
+        1000,
+    );
+    assert!(
+        local_lines.iter().any(|line| line.contains("exec/mode")),
+        "{local_lines:?}"
+    );
+    assert_eq!(local_scheduler.inflight_effect(effect), Some(&pending));
+    assert_eq!(readonly.records, records);
     drop(readonly);
     holder.release();
     let mut writer = Store::open(path).unwrap();
@@ -805,7 +853,7 @@ fn shared_tick_recovery() {
         .unwrap();
     let lines = tick_with(
         &mut watcher,
-        &mut scheduler,
+        &mut local_scheduler,
         &mut runner,
         &mut pipeline,
         &mut writer,
@@ -819,6 +867,7 @@ fn shared_tick_recovery() {
         "{lines:?}"
     );
     assert!(writer.state.execution.claim_for(instance, effect).is_none());
+    assert!(local_scheduler.inflight_effect(effect).is_none());
     assert!(
         !writer.state.instances[instance]
             .pending

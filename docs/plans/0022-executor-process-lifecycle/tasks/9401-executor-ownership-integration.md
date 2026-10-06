@@ -1050,3 +1050,23 @@ boundary controls. The run remains live as of this observation; neither this
 partial evidence nor the earlier-source successful MSRV artifact validates
 `f2bdeea` local-reservation composition, full matrix acceptance, fresh
 production admission, or executable-byte installation acceptance.
+
+### Provisioned exact-reservation control prepared
+
+The existing unprivileged shared-tick native probe now additionally constructs
+a pure local scheduler reservation for the real journal-derived effect, binds
+it to the genuine original claim, and uses a deliberately different current
+handler. No synthetic reservation is sent to Root and no substitute handler
+is spawned. The original empty-table contention and read-only refusal controls
+remain; a second borrowed read-only tick must preserve the bound reservation,
+and the genuine writer-held native Ack with disabled event must remove it
+while retaining the original deferred completion. Later empty-table resume
+still requires the original event contract and Ack-before-event ordering.
+
+Source review checked original ownership suppression before handler lookup,
+the unchanged deadline during these ticks, no cancellation from the fixture
+suspend transition, and exact reservation checks on both refusal and consumption.
+Formatting and diff checks pass; compilation and actual provisioned execution
+of this extended control remain pending while the single frozen `f2bdeea` full
+workspace job is live, so this is prepared coverage rather than acceptance
+evidence or proof of fresh native admission.
