@@ -13,12 +13,22 @@ weaken exclusive behavior. Keep the existing public tick convenience API while
 adding an outcome-returning driver entry for the production loop.
 
 The production emit callback is synchronous. Calling it inside the ownership
-loop would let a blocked stderr prevent admitted observation and closure even
+loop would let blocked stdout prevent admitted observation and closure even
 though the independent endpoint can still return an uncertain report. The
 standalone loop needs bounded queued log delivery with actual delivery tracked
 separately from native cleanup and writer release, retaining the first shutdown
 deadline and avoiding a joining Drop guarantee. Saturation must not stop the
 ownership pump; dropped diagnostic lines need an explicit bounded policy.
+
+The current log_line writes plain lines to stdout; log_mode alone writes stderr.
+The existing MCP OutputControl has the needed complete-frame accounting and
+nonjoining close, including in-flight allocation charging, but its start/enqueue
+methods are private to notify and Notifier serializes JSON-RPC values. Share the
+queue internally rather than routing standalone lines through JSON-RPC or
+copying its accounting implementation. Preserve ordinary line bytes and stream
+selection; a multiline diagnostic must be split or explicitly refused before
+queue admission. The Notifier marks any enqueue refusal as broken, so its policy
+cannot stand in for standalone dropped-line handling.
 
 The poll interval is an ordinary scheduling interval, not a bound for shutdown
 responsiveness: endpoint requests must wake or be observed by a bounded admitted
