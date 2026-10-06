@@ -26,10 +26,10 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
             );
         }
     };
-    let runner = Runner::new_native().map_err(|error| io::Error::other(error.message))?;
+    let runner = Runner::new_native().map_err(io::Error::other)?;
     let mut driver =
         OwnedNativeExecutor::from_owned_parts(store, executor.watcher, executor.scheduler, runner)
-            .map_err(|error| io::Error::other(error.message))?;
+            .map_err(io::Error::other)?;
     let root = std::path::PathBuf::from(std::env::var_os("HOME").ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -59,12 +59,9 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
         }
     };
     let removal = endpoint.close_until(report.shutdown_deadline);
-    if let Some(error) = report.failure {
-        return Err(error);
-    }
-    let removed = removal?;
-    let shutdown = report.shutdown;
-    if shutdown.phase == ExecutorPhase::Stopped
+    let removed = removal.as_ref().copied().unwrap_or(false);
+    let shutdown = &report.shutdown;
+    let confirmed = shutdown.phase == ExecutorPhase::Stopped
         && shutdown.admission_closed
         && shutdown.inventory_complete
         && shutdown.helpers_retired
@@ -72,12 +69,78 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
         && shutdown.unresolved_run_ids.is_empty()
         && shutdown.unclaimed_reservations == Some(0)
         && report.output_drained
-        && removed
-    {
-        Ok(())
-    } else {
-        Err(io::Error::other(
-            "native stdio shutdown or endpoint/output retirement remains uncertain",
-        ))
+        && removed;
+    if report.failure.is_none() && confirmed {
+        return Ok(());
     }
+    use fsm_core::json::Value;
+    use std::collections::BTreeMap;
+    let kind = report
+        .failure
+        .as_ref()
+        .map_or(io::ErrorKind::Other, io::Error::kind);
+    let message = report.failure.as_ref().map_or_else(
+        || "native stdio shutdown or endpoint/output retirement remains uncertain".into(),
+        |error| error.to_string(),
+    );
+    let phase = match shutdown.phase {
+        ExecutorPhase::Running => "running",
+        ExecutorPhase::Draining => "draining",
+        ExecutorPhase::Stopping => "stopping",
+        ExecutorPhase::Stopped => "stopped",
+        ExecutorPhase::Uncertain => "uncertain",
+    };
+    let error = fsm_execute::error::ExecError::new("exec/inflight_deferred", message).details(
+        Value::Obj(BTreeMap::from([
+            ("phase".into(), Value::Str(phase.into())),
+            (
+                "admission_closed".into(),
+                Value::Bool(shutdown.admission_closed),
+            ),
+            ("timed_out".into(), Value::Bool(shutdown.timed_out)),
+            (
+                "inventory_complete".into(),
+                Value::Bool(shutdown.inventory_complete),
+            ),
+            (
+                "helpers_retired".into(),
+                Value::Bool(shutdown.helpers_retired),
+            ),
+            (
+                "writer_released".into(),
+                Value::Bool(shutdown.writer_released),
+            ),
+            (
+                "unresolved_run_ids".into(),
+                Value::Arr(
+                    shutdown
+                        .unresolved_run_ids
+                        .iter()
+                        .map(|id| Value::Str(id.to_string()))
+                        .collect(),
+                ),
+            ),
+            (
+                "unclaimed_reservations".into(),
+                shutdown
+                    .unclaimed_reservations
+                    .map_or(Value::Null, |count| Value::Str(count.to_string())),
+            ),
+            ("endpoint_removed".into(), Value::Bool(removed)),
+            (
+                "endpoint_cleanup_error".into(),
+                removal
+                    .err()
+                    .map_or(Value::Null, |error| Value::Str(error.to_string())),
+            ),
+            ("output_drained".into(), Value::Bool(report.output_drained)),
+            (
+                "initiating_io_kind".into(),
+                report.failure.as_ref().map_or(Value::Null, |error| {
+                    Value::Str(format!("{:?}", error.kind()))
+                }),
+            ),
+        ])),
+    );
+    Err(io::Error::new(kind, error))
 }

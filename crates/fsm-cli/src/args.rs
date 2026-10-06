@@ -139,7 +139,10 @@ fn serve_run(ctx: &mut Ctx, args: &Args) -> u8 {
     }
     match crate::mcp::serve::run_with_mode(&ctx.data_dir, mode) {
         Ok(()) => 0,
-        Err(_) => 1,
+        Err(error) => error
+            .get_ref()
+            .and_then(|error| error.downcast_ref::<fsm_execute::error::ExecError>())
+            .map_or(1, |error| crate::cli::execute::report(ctx, error)),
     }
 }
 

@@ -523,3 +523,71 @@ fn production_embedded_contention_preserves_diagnosis_without_publication() {
     );
     drop(writer);
 }
+
+#[test]
+fn production_stdio_input_failure_reports_original_error_and_actual_cleanup() {
+    let fixture = Fixture::new();
+    drop(Store::open(&fixture.data).unwrap());
+    let handlers = fixture.root.join("handlers.json");
+    fs::write(
+        &handlers,
+        br#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator"]}"#,
+    )
+    .unwrap();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_fsm"));
+    command
+        .env("HOME", &fixture.root)
+        .args(["--json", "--data-dir"])
+        .arg(&fixture.data)
+        .args(["serve", "--execute", "--handlers"])
+        .arg(&handlers)
+        // The actual OS reader refuses a directory descriptor with EISDIR.
+        .stdin(Stdio::from(fs::File::open(&fixture.root).unwrap()))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = bounded(&mut command, || {});
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let error = json(&output.stderr);
+    assert_eq!(
+        error.get("code").and_then(Value::as_str),
+        Some("exec/inflight_deferred")
+    );
+    let details = error.get("details").unwrap();
+    assert_eq!(
+        details.get("initiating_io_kind").and_then(Value::as_str),
+        Some("IsADirectory")
+    );
+    assert_eq!(
+        details.get("phase").and_then(Value::as_str),
+        Some("stopped")
+    );
+    for field in [
+        "admission_closed",
+        "inventory_complete",
+        "helpers_retired",
+        "writer_released",
+        "endpoint_removed",
+        "output_drained",
+    ] {
+        assert_eq!(details.get(field), Some(&Value::Bool(true)), "{field}");
+    }
+    assert_eq!(details.get("unresolved_run_ids"), Some(&Value::Arr(vec![])));
+    assert_eq!(details.get("endpoint_cleanup_error"), Some(&Value::Null));
+    assert_eq!(
+        details
+            .get("unclaimed_reservations")
+            .and_then(Value::as_str),
+        Some("0")
+    );
+    assert!(
+        !fs::read_dir(fixture.root.join(".cache/fsm/control"))
+            .unwrap()
+            .any(|entry| entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("c-"))
+    );
+    drop(Store::open(&fixture.data).unwrap());
+}

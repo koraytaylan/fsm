@@ -410,7 +410,7 @@ fn poll_interval(args: &Args) -> Result<u64, ErrorObj> {
 ///
 /// A malformed table is caller misuse and exits 2 like every other argument
 /// fault; anything else follows the shared exit-code table.
-fn report(ctx: &Ctx, error: &ExecError) -> u8 {
+pub(crate) fn report(ctx: &Ctx, error: &ExecError) -> u8 {
     let mut rendered = ErrorObj::new(error.code, error.message.clone());
     if let Some(hint) = &error.hint {
         rendered = rendered.hint(hint.clone());

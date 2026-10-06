@@ -141,3 +141,10 @@ instructions, no control root or endpoint, unchanged journal records and the
 other writer still excluding acquisition. This resolves the tested production
 contention fallback obligation; unhealthy startup, reopening races and native
 nonempty behavior still require their own evidence.
+
+Production native stdio now carries typed executor errors to the CLI renderer
+and attaches actual native, endpoint and output facts to post-session failure.
+The real directory stdin descriptor regression passed in session 80616,
+retaining the OS IsADirectory kind while confirming empty cleanup and writer
+reacquisition. This evidence covers actual production input failure, not
+blocked output, native nonempty retirement or HTTP execution.

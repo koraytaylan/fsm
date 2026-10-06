@@ -1166,3 +1166,9 @@ prefix without publication or reopening into execution. Borrowed session APIs
 retain their bounds and explicit backend selection. Unsupported production
 embedded stdio refuses; HTTP ownership remains incomplete. This routing change
 does not establish installed native or autonomous plan 20 acceptance.
+
+Production native stdio failures expose the initiating I/O message and kind
+with separate actual shutdown, endpoint removal/error and output drainage
+facts in the existing exec/inflight_deferred error frame. Typed native startup
+errors retain their executor code. Cleanup refusal does not replace an
+initiating protocol failure or imply confirmed native retirement.

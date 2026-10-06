@@ -4713,3 +4713,31 @@ diagnostic suites passed. The production contention binary answered initialize
 from its observed healthy prefix, reported busy/read-only, created no endpoint
 and left durable records and the independent writer unchanged. Evidence remains
 in production-stdio-diagnostic-binary-check.log; task statuses are unchanged.
+
+### Production stdio error facts — 2026-10-07
+
+Typed native startup errors now retain executor codes through the existing CLI
+renderer, and post-session failures attach actual shutdown inventory/writer/
+helper facts separately from endpoint cleanup and output drainage. Initiating
+I/O message/kind survives cleanup refusal. Session 83041 validates this under
+asserted 1 GiB RAM and zero swap, retaining pending evidence in
+production-stdio-error-facts-check.log; actual failure-path binary reporting
+acceptance remains required and this unit is uncommitted. Statuses unchanged.
+
+Initial session 83041 exited 101 at redundant-closure Clippy lints; corrected
+them and session 50369 exited zero with the expanded focused suites under
+asserted 1 GiB RAM and zero swap. Added actual production stdin failure by
+passing a directory descriptor: the OS reader must report EISDIR, with preserved
+initiating kind and separate actual empty shutdown/endpoint/output facts.
+The following validation run covers this new binary control; acceptance is
+pending and no task status is promoted.
+
+Session 80616 terminated with exit zero under asserted 1 GiB RAM and zero
+swap. Stable/MSRV all-target Clippy, all ten actual binary controls, six owned
+session tests, 16 transport tests, executor/lifecycle/public inventory suites,
+61 CLI library tests and expanded diagnostic suites passed. The real directory
+stdin descriptor produced IsADirectory, retained in the operator error frame
+while actual empty shutdown, endpoint removal and output drainage all confirmed;
+the original writer was available again after process exit. Evidence remains
+in production-stdio-input-failure-check.log. Installed nonempty and other
+production output/error acceptance remain outstanding; statuses unchanged.
