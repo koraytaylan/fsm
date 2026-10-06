@@ -757,6 +757,12 @@ executable-byte verification remain false; six portable jobs are still live.
 These regression and primitive passes neither diagnose the prior MSRV failure
 nor complete actual production Runner routing or task 9401.
 
+Current Ubuntu stable portable job `112081460476` completed successfully at
+`482da8f`, with its complete log retained as
+`ci-37405315461/ubuntu-stable-job.log`; five portable jobs remain live,
+including macOS and Ubuntu MSRV in release workspace tests. This platform
+pass does not expand the native primitive evidence into production acceptance.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
