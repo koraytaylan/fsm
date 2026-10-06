@@ -385,3 +385,14 @@ slice's gates or unfinished production routing. With available RAM approximately
 MSRV executor all-target Clippy against current product source `f9e02fa`;
 its log is `~/.cache/fsm-plan-native-matrix-20261005/current-f9e02fa-msrv-execute-clippy.log`.
 The full local host gate and updated native/portable matrix remain required.
+
+MSRV executor all-target Clippy at current product source `f9e02fa` completed
+with exit zero, compiling the added native discovery and watcher fixtures
+without executing their ignored provisioned controls. The targeted MSRV
+scheduler suite also completed with exit zero: all 24 tests passed, including
+stopped-owner capacity retention. Its retained log is
+`~/.cache/fsm-plan-native-matrix-20261005/current-f9e02fa-msrv-sched.log`.
+Stable workspace all-target Clippy is the next serial gate, with log
+`~/.cache/fsm-plan-native-matrix-20261005/current-f9e02fa-stable-workspace-clippy.log`.
+The older CI run still has four macOS/Windows jobs live; its known Ubuntu
+MSRV failure is preserved rather than replaced with these narrower local passes.
