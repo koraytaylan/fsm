@@ -719,7 +719,11 @@ macOS stable job `112069961623` also completed successfully, with its
 complete log retained as `ci-37401653979/macos-stable-job.log`;
 Windows stable job `112069961603` subsequently completed successfully,
 with its complete log retained as `ci-37401653979/windows-stable-job.log`;
-only Windows MSRV job `112069961710` remains live, and that older source cannot
+Windows MSRV job `112069961710` completed successfully, with its complete
+log retained as `ci-37401653979/windows-msrv-job.log` and terminal run metadata
+as `ci-37401653979/final-run.json`. Original run `37401653979` is now terminal:
+all six portable jobs, zero-dependency and stable native pass, but native
+MSRV failed as preserved below, so the overall matrix is a failure. That older source cannot
 execute the physical replacement control or the later retirement diagnostic.
 
 Physical-store discovery review added a production-entry refusal control that
