@@ -695,3 +695,14 @@ at `exec_status_native_tests.rs:276`. This is a native acceptance failure,
 not a successful matrix or verified full artifact; its cause remains under
 investigation and no deadline was relaxed. Stable native and six portable
 jobs remain live on the original run, as does frozen debug session `30347`.
+
+Current cleanup stable native job `112069961667` completed successfully at
+`e501679509e361cada521b59d5fbbb1c40e121fc`; its full artifact is retained as
+`ci-37401653979/stable`. Independent verification completed with exit zero
+for all 81 cases, clean source identity and
+`rustc 1.99.0 (b940084d7 2026-09-28)`. Gate release and executable-byte
+verification remain false, and this primitive/regression pass does not complete
+automatic Runner acceptance or replace the preserved MSRV failure. Source
+review locates that failure in the existing bound completed-submission closure
+loop, which waits for manager retirement and physical absence under a two-second
+deadline; available evidence does not yet establish why MSRV exceeded it.
