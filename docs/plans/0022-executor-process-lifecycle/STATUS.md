@@ -4546,3 +4546,13 @@ removed its incarnation while the other actor's writer remained held.
 This accepts the tested empty-inventory production composition only; installed
 nonempty proof, broader production/signal/output cases and full gates remain
 required, with progress still 3/7 and task statuses unchanged.
+
+### Production final failure facts — 2026-10-06
+
+Final production errors now preserve initiating code/message/hint and nest
+original details while exposing actual shutdown inventory, writer/helper facts,
+endpoint removal/error and output delivery/loss separately. Unavailable output
+facts remain null; IDs/counts use lossless decimal strings. Session 81891 exited zero
+under asserted 1 GiB RAM and zero swap: stable/MSRV all-target Clippy, executor/
+lifecycle/session/transport/public inventory suites, six stop binary tests and
+61 CLI library tests passed, with evidence in production-owner-facts-check.log; task statuses and 3/7 progress are unchanged.

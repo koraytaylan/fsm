@@ -2462,3 +2462,9 @@ native execution refuses without a legacy fallback. Final success requires
 authenticated empty shutdown, endpoint removal and complete diagnostic delivery.
 This source integration remains pending production acceptance; embedded MCP
 and the low-level service host have not yet changed selection.
+
+Production standalone final errors preserve the initiating code, message and
+hint, nesting its original details under `initiating_details` and attaching
+separate observed shutdown, endpoint and output facts. Unavailable output facts
+are null; run IDs and counts are decimal strings, avoiding JSON number precision
+loss. Endpoint removal does not imply native cleanup or successful delivery.

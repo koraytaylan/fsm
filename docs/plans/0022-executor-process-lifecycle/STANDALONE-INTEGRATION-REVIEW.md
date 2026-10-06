@@ -92,5 +92,7 @@ This regression covers actual empty inventory with a separate held writer and
 a 60-second scheduling interval, for both drain and abort. It cannot establish
 nonempty native closure, executing MCP behavior, two live admitted owners,
 blocked production output, signal recovery or failure/full-disk acceptance.
-The final uncertain error currently lacks structured endpoint/output facts;
-those facts must be exposed before operator reconciliation acceptance.
+The final error now attaches structured endpoint/output facts alongside
+shutdown inventory, retaining original initiating details; session 81891 passed
+focused stable/MSRV checks; actual failure-path reporting acceptance remains
+required beyond the successful stop regressions.

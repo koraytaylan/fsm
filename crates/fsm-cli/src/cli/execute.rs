@@ -440,22 +440,10 @@ fn run_owned(ctx: &Ctx, args: &Args, table: HandlerTable, interval: u64, exclusi
         args.flags.get("control-dir").map(String::as_str),
     ) {
         Err(error) => report(ctx, &error),
-        Ok(outcome) => {
-            if let Some(error) = owner::final_failure(&outcome) {
-                return report(ctx, error);
-            }
-            if owner::fully_confirmed(&outcome) {
-                0
-            } else {
-                report(
-                    ctx,
-                    &ExecError::new(
-                        "exec/inflight_deferred",
-                        "executor shutdown or transport delivery remains uncertain",
-                    ),
-                )
-            }
-        }
+        Ok(outcome) => match owner::final_error(&outcome) {
+            Some(error) => report(ctx, &error),
+            None => 0,
+        },
     }
 }
 

@@ -129,3 +129,93 @@ pub(super) fn fully_confirmed(report: &ProductionReport) -> bool {
             .as_ref()
             .is_ok_and(|execution| execution.output_drained && execution.dropped_lines == 0)
 }
+
+/// Preserve the initiating failure while attaching distinct observed facts.
+pub(super) fn final_error(report: &ProductionReport) -> Option<ExecError> {
+    use fsm_core::json::Value;
+    use fsm_execute::service::ExecutorPhase;
+    use std::collections::BTreeMap;
+    if fully_confirmed(report) {
+        return None;
+    }
+    let mut error = final_failure(report).cloned().unwrap_or_else(|| {
+        ExecError::new(
+            "exec/inflight_deferred",
+            "executor shutdown or transport delivery remains uncertain",
+        )
+    });
+    let execution = report.execution.as_ref().ok();
+    let phase = match report.shutdown.phase {
+        ExecutorPhase::Running => "running",
+        ExecutorPhase::Draining => "draining",
+        ExecutorPhase::Stopping => "stopping",
+        ExecutorPhase::Stopped => "stopped",
+        ExecutorPhase::Uncertain => "uncertain",
+    };
+    error.details = Some(Value::Obj(BTreeMap::from([
+        (
+            "initiating_details".into(),
+            error.details.take().unwrap_or(Value::Null),
+        ),
+        ("phase".into(), Value::Str(phase.into())),
+        (
+            "admission_closed".into(),
+            Value::Bool(report.shutdown.admission_closed),
+        ),
+        ("timed_out".into(), Value::Bool(report.shutdown.timed_out)),
+        (
+            "inventory_complete".into(),
+            Value::Bool(report.shutdown.inventory_complete),
+        ),
+        (
+            "helpers_retired".into(),
+            Value::Bool(report.shutdown.helpers_retired),
+        ),
+        (
+            "writer_released".into(),
+            Value::Bool(report.shutdown.writer_released),
+        ),
+        (
+            "unresolved_run_ids".into(),
+            Value::Arr(
+                report
+                    .shutdown
+                    .unresolved_run_ids
+                    .iter()
+                    .map(|id| Value::Str(id.to_string()))
+                    .collect(),
+            ),
+        ),
+        (
+            "unclaimed_reservations".into(),
+            report
+                .shutdown
+                .unclaimed_reservations
+                .map_or(Value::Null, |count| Value::Str(count.to_string())),
+        ),
+        (
+            "endpoint_removed".into(),
+            Value::Bool(report.endpoint_removed),
+        ),
+        (
+            "endpoint_cleanup_error".into(),
+            report
+                .endpoint_cleanup_error
+                .as_ref()
+                .map_or(Value::Null, |error| Value::Str(error.clone())),
+        ),
+        (
+            "output_drained".into(),
+            execution.map_or(Value::Null, |execution| {
+                Value::Bool(execution.output_drained)
+            }),
+        ),
+        (
+            "dropped_lines".into(),
+            execution.map_or(Value::Null, |execution| {
+                Value::Str(execution.dropped_lines.to_string())
+            }),
+        ),
+    ])));
+    Some(error)
+}
