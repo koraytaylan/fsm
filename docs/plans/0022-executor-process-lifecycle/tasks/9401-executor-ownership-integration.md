@@ -744,7 +744,18 @@ this executes the real physical-store replacement refusal control as part of
 remain false. The same matrix passes the previously failing `private_exec_status`
 case, but this does not establish the cause of the preserved prior retirement
 deadline failure or constitute automatic production Runner acceptance; stable
-native and all six portable jobs remain live, and task 9401 remains in progress.
+native and all six portable jobs remained live at that observation, and task
+9401 remains in progress.
+
+Current stable native job `112081460634` subsequently completed successfully
+at the same exact `482da8f` source; its full artifact is retained as
+`ci-37405315461/stable`. Independent evidence verification exited zero for
+all 81 total cases with clean source and
+`rustc 1.99.0 (b940084d7 2026-09-28)`. Both native axes now execute and pass
+the real physical-store replacement control, while gate release and
+executable-byte verification remain false; six portable jobs are still live.
+These regression and primitive passes neither diagnose the prior MSRV failure
+nor complete actual production Runner routing or task 9401.
 
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
