@@ -1147,3 +1147,27 @@ failure; the committed `ac8615b` Linux-or-test cfg correction directly removes
 that definition from unsupported non-test library builds while retaining pure
 unit coverage. Corrected native OS gate evidence remains pending, and live
 run 37425899114 will not be canceled or superseded.
+
+### Exact local reservation control executed at both native toolchains
+
+Run 37425899114 native MSRV job 112145359124 and native stable job
+112145359133 both succeeded at exact source
+`a2ad1e0211dd1f090b7fd0137fb4ef7403e2e6cf`. Independent artifact verification
+confirmed 81 cases each with actual Rust 1.89.0 and 1.99.0, respectively;
+output is retained as `ci-37425899114/1.89.0-verification.log` and
+`stable-verification.log`, alongside the corresponding artifacts.
+The verified `provisioned_broker_access` case invokes the shared host axis in
+`broker_native_tests::run`, which invokes the unprivileged
+`shared_tick_recovery` probe: its new local original-claim reservation survives
+read-only settlement refusal and is removed after the genuine Ack while the
+original event remains deferred. Subsequent empty-table resume still checks
+original-contract Ack-before-event delivery and duplicate-free reopening.
+This is real authenticated consumption through the shared borrowed tick, not
+a fresh production-admission or new handler-entry capacity-reuse acceptance.
+
+Both native runs also pass the previously failing private exec-status case;
+that does not diagnose or prove repair of the earlier ENOENT/manager-deadline
+failure, since the later stop change adds operation context only. The overall
+run remains live with portable failures already observed; the later portable
+helper cfg correction is absent from this source. Production backend, gate
+release, and executable-byte acceptance remain false.
