@@ -602,3 +602,40 @@ fn a_different_incarnation_cannot_deduplicate_or_replace_the_local_claim() {
     assert!(scheduler.on_observation(&observed, NOW).is_empty());
     assert_eq!(scheduler.capped().unwrap().inflight, 2);
 }
+
+#[test]
+fn a_stopped_owner_keeps_capacity_until_durable_settlement() {
+    use fsm_core::json::{JsonLimits, parse};
+    use fsm_core::record::execution::{Closure, Stopped, StoppedOutcome};
+
+    let claim = original_owner();
+    // Structural observation only: this fixture does not authenticate native closure.
+    let closure = Closure::new(
+        claim.run_id(),
+        claim.domain().clone(),
+        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+    )
+    .unwrap();
+    let outcome = StoppedOutcome::from_value(
+        &parse(br#"{"status":"ok","result":null}"#, &JsonLimits::DEFAULT).unwrap(),
+    )
+    .unwrap();
+    let mut handlers = table();
+    handlers.max_inflight = 1;
+    let mut scheduler = Scheduler::new(handlers);
+    let mut observed = Observation {
+        execution_owners: vec![(claim, Some(Stopped::new(closure, outcome)))],
+        pending: vec![effect("case-2/3/0", "assign_reviewer")],
+        ..Observation::default()
+    };
+    assert!(scheduler.on_observation(&observed, NOW).is_empty());
+    assert_eq!(scheduler.capped().unwrap().inflight, 1);
+    assert_eq!(scheduler.capped().unwrap().deferred, 1);
+
+    // A later settled prefix removes ownership; a stopped result alone cannot.
+    observed.execution_owners.clear();
+    assert!(matches!(
+        scheduler.on_observation(&observed, NOW).as_slice(),
+        [Directive::Start { effect, .. }] if effect.instance_id == "case-2"
+    ));
+}

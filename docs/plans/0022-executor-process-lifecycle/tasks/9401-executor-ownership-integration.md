@@ -282,3 +282,20 @@ and primitive-only scope. Zero dependencies also passes; the six portable
 jobs and isolated local debug workspace gate remain active. Native directory
 replacement and full inventory-bound production controls are still outstanding,
 as are shared production routing, settlement and host crash acceptance.
+
+### Frozen debug gate and stopped-owner capacity fixture
+
+The isolated stable debug workspace gate at exact `7dc91d5` completed with
+exit zero; its retained log is
+`~/.cache/fsm-plan-native-matrix-20261005/local-7dc91d5-stable-debug.log`.
+The same frozen source's serial release workspace gate is now running;
+six portable CI jobs remain active while both native jobs and zero dependencies
+have passed. These results do not accept the unfinished shared Runner routing.
+
+A separate scheduler regression now supplies a structurally valid stopped
+owner with an immutable successful outcome, requires global capacity to remain
+occupied, and permits the deferred unrelated start only after a later observed
+prefix removes the owner. It asserts scheduling behavior rather than native
+proof authentication or persistence. This new fixture is not part of the
+frozen `7dc91d5` gates and remains unexecuted until the serial release gate
+finishes; the stopped-owner watcher persistence fixture remains outstanding.
