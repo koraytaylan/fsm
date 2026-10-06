@@ -13,6 +13,8 @@ touches:
   - crates/fsm-execute/src/run/pipeline.rs
   - crates/fsm-execute/src/lib.rs
   - crates/fsm-execute/tests/execution_ownership.rs
+  - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_authority_retirement.py
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - crates/fsm-cli/src/cli/execute.rs
   - crates/fsm-cli/src/mcp/serve.rs

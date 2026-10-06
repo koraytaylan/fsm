@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 import subprocess
 import sys
@@ -43,6 +44,22 @@ def build_authority(repo, toolchain, operation):
     return Path(artifacts[0]).resolve()
 
 
+
+def authority_state_is_clear():
+    # A surviving namespace may retain a live or uncertain original domain;
+    # keep the exact installed authority available instead of erasing access.
+    base = Path('/var/lib/fsm-containment')
+    try:
+        metadata = base.lstat()
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+            return False
+        return next(base.iterdir(), None) is None
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
@@ -58,6 +75,7 @@ def main():
     executable = build_authority(repo, args.toolchain, 'test')
     authority = build_authority(repo, args.toolchain, 'build')
     authority_digest = hashlib.sha256(authority.read_bytes()).hexdigest()
+    assert authority_state_is_clear(), 'exclusive native fixture requires clear authority state'
     installer = ['sudo', '-n', sys.executable, str(Path(__file__).with_name('authority_install.py'))]
     rows = []
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -93,6 +111,12 @@ def main():
             if unrelated is not None:
                 unrelated.wait(timeout=5)
         finally:
+            if not authority_state_is_clear():
+                retention = dict(installed, source_commit=commit,
+                                 reason='native authority state remains unresolved')
+                args.report.with_name('authority-retained.json').write_text(
+                    json.dumps(retention, indent=2) + '\n')
+                raise RuntimeError('retained exact installed authority for unresolved native state')
             subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                             '--inode', str(installed['inode']), '--sha256', authority_digest],
                            check=True, timeout=10)

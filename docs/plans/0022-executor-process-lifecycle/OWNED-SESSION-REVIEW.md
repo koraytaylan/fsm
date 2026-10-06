@@ -595,3 +595,33 @@ No root subprocess or native service was invoked by these checks, and they
 provide harness wiring evidence only, not native closure or installed
 acceptance. The candidate remains unapplied while full stable gate 50807
 continues on frozen runtime 7cf0e39; its release workflow failures are recurring.
+
+### Diagnostic framing full stable gate terminal verdict (2026-10-07)
+
+Session 50807 terminated with exit 1 on frozen runtime 7cf0e39; subsequent
+commits during the gate changed documentation only. Format, source size,
+workspace all-target Clippy, warning-free documentation, zero dependencies
+and downstream embedding acceptance passed. Debug and release workspace
+tests each failed only mcp_execute_workflow's four original production
+scenarios at their first pending effect; its three other tests passed.
+The gate reports GATE_FAILED_STAGES=2 and is failed, not accepted;
+diagnostic-framing-full-stable-gate.log retains all stage results.
+
+### Permanent authority retirement guard implementation (2026-10-07)
+
+After the gate became terminal, applied the reviewed probe guard with
+lstat-based directory/root-owner/nonwritable checks, conservative inspection
+refusal, initial-state admission refusal and matched authority retention
+whenever a namespace survives. Retention records exact installed identity
+and digest plus source commit before reporting refusal.
+Five permanent unittest cases cover eight state classifications, both main
+teardown outcomes, preexisting-state installation refusal and native timeout
+with original exception context preserved. All subprocesses are mocked: these
+prove harness safety wiring, not native containment acceptance.
+Neutralizing only retirement, then only preflight, fails the permanent tests
+(exit 1 each); finally restoration passes all five (exit 0), with evidence in
+authority-retirement-permanent-mutations.log. Format and source-size checks
+passed; no Rust runtime or public capability changed in this harness unit.
+The by-hand coordinator adds these two harness paths to task 9401's mutation
+footprint; statuses and the 3/7 roll-up remain unchanged. Exact-source local
+provisioned execution is the next acceptance step and is still unexecuted.

@@ -29,10 +29,15 @@ they do not describe currently running work.
   human and JSON rendering bytes while retaining protocol framing checks and
   shared queue accounting; focused stable tests/Clippy and MSRV compilation
   pass, but final CLI renderer wiring remains synchronous and incomplete.
-- Full stable gate session 50807 is currently live on frozen runtime 7cf0e39
-  in a verified 1 GiB RAM / zero-swap scope;
-  diagnostic-framing-full-stable-gate.log retains its pending evidence.
-  No task completion or acceptance is inferred from a running gate.
+- Full stable gate session 50807 terminated with exit 1 on runtime 7cf0e39:
+  debug/release failed only the four production workflow scenarios; all six
+  other gate stages passed, with evidence in
+  diagnostic-framing-full-stable-gate.log; this gate is not accepted.
+- The authority probe now retains its exact installed artifact when native
+  state survives or cannot be inspected; permanent mocked wiring tests and
+  both guard mutations pass after restoration, with no native acceptance yet.
+  Read-only host preflight confirms noninteractive root access and a writable
+  cgroup mount; owned local provisioned execution is prepared next.
 
 Detailed review and limits are in [OWNED-SESSION-REVIEW.md](OWNED-SESSION-REVIEW.md).
 
