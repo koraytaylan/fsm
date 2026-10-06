@@ -1070,3 +1070,17 @@ Formatting and diff checks pass; compilation and actual provisioned execution
 of this extended control remain pending while the single frozen `f2bdeea` full
 workspace job is live, so this is prepared coverage rather than acceptance
 evidence or proof of fresh native admission.
+
+### Matched-stop operation diagnosis
+
+The stable artifact at `730b429` reports ENOENT inside matched stop, without
+identifying the operation. Source review found distinct fallible authority,
+original binding/handoff, live-domain revocation, manager query/stop/reset, and
+publication operations, so the diagnostic now preserves their error while
+adding an identifier-free operation label. No check, deadline, fallback fencing,
+or independent closure attempt changes. The live-domain lookup has a possible
+natural-exit race between its initial metadata observation and revocation, but
+the retained artifact does not prove that this caused the failure; no relaxation
+or repair is inferred. Formatting/diff checks pass; compilation and a new
+provisioned failure/success observation remain pending behind the single live
+local workspace job and existing live CI run.

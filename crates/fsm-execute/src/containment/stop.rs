@@ -19,9 +19,10 @@ pub(super) fn fence(directory: &Path, allocation: u64) -> Result<(), String> {
 }
 
 pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
-    super::protected_directory(directory)?;
-    let _lock = super::authority_lock(directory)?;
-    let domain = closing::recorded_domain(directory, allocation)?;
+    super::protected_directory(directory).map_err(|error| stage("authority directory", error))?;
+    let _lock = super::authority_lock(directory).map_err(|error| stage("authority lock", error))?;
+    let domain = closing::recorded_domain(directory, allocation)
+        .map_err(|error| stage("recorded domain", error))?;
     // A live original resource can always have admission revoked, even when
     // damaged handoff material prevents a matched manager operation or proof.
     let group_path = Path::new("/sys/fs/cgroup/system.slice").join(format!(
@@ -31,7 +32,10 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
     ));
     match fs::symlink_metadata(&group_path) {
         Ok(_) => {
-            if closing::revoke_locked(directory, allocation)? != domain {
+            if closing::revoke_locked(directory, allocation)
+                .map_err(|error| stage("live domain revocation", error))?
+                != domain
+            {
                 return Err("manager stop live native identity changed".into());
             }
         }
@@ -44,8 +48,10 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(io(error)),
     }
-    let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
-    let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)?;
+    let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)
+        .map_err(|error| stage("original binding", error))?;
+    let handoff = read_value(&directory.join(format!("handoff-{allocation}.json")), true)
+        .map_err(|error| stage("original handoff", error))?;
     closed(&handoff, &["format", "binding", "gate"])?;
     if text(&handoff, "format")? != "fsm.native-launch-handoff/1"
         || handoff.get("binding") != Some(&binding)
@@ -110,7 +116,8 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
         "RemainAfterExit",
         "CollectMode",
     ];
-    let properties = manager::properties_before(&unit, &keys, deadline)?;
+    let properties = manager::properties_before(&unit, &keys, deadline)
+        .map_err(|error| stage("original manager properties", error))?;
     for (key, expected) in [
         ("InvocationID", invocation),
         ("DynamicUser", "yes"),
@@ -138,10 +145,18 @@ pub(super) fn request(directory: &Path, allocation: u64) -> Result<(), String> {
             _ => return Err("manager stop empty control group is uncertain".into()),
         }
     }
-    if closing::revoke_after_handoff(directory, allocation)? != domain {
+    if closing::revoke_after_handoff(directory, allocation)
+        .map_err(|error| stage("handoff revocation", error))?
+        != domain
+    {
         return Err("manager stop native identity changed".into());
     }
-    manager::stop(&unit, deadline)?;
-    manager::reset_original_failed(&unit, pid, invocation, deadline)?;
-    publish_once(&completed, &material)
+    manager::stop(&unit, deadline).map_err(|error| stage("matched manager stop", error))?;
+    manager::reset_original_failed(&unit, pid, invocation, deadline)
+        .map_err(|error| stage("original failed-unit retirement", error))?;
+    publish_once(&completed, &material).map_err(|error| stage("stop completion publication", error))
+}
+
+fn stage(operation: &str, error: String) -> String {
+    format!("manager stop {operation}: {error}")
 }
