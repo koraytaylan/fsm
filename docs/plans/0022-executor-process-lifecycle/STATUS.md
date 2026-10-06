@@ -4200,3 +4200,18 @@ observation preserves journal records and due instance state.
 These tests use empty native inventories: installed nonempty native closure,
 two live native executors, production selection/publication, signals and full
 changed-source gates remain required. Progress stays 3/7; task states are unchanged.
+
+### Paired physical replacement regression — 2026-10-06
+
+The actual directory replacement test requests abort against an empty actor,
+replaces its original store with a different healthy directory, and observes
+Uncertain with incomplete inventory; restoring the original inode permits a
+later poll to reach Stopped. PAIRED-LIFECYCLE-REVIEW.md records the ownership,
+writer-release and physical-prefix review, including remaining race limits.
+Focused session 67012 exited zero under asserted 1 GiB RAM and zero swap,
+passing formatting/size, stable and MSRV all-target executor/CLI Clippy, executor
+library, owned/paired lifecycle, owned session, transport, CLI stop and public
+surface checks. The initial narrower invocation stopped on formatting before
+tests; formatting was corrected before this successful run. This adds a physical
+identity refusal test, not installed native or production acceptance; statuses
+remain unchanged.

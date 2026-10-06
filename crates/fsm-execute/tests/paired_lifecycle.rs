@@ -92,6 +92,32 @@ fn idle_paired_observation_preserves_due_machine_deadlines_and_journal() {
     assert_eq!(cold.records, records);
     assert_eq!(cold.state.instances, state.instances);
 }
+#[test]
+fn replaced_physical_store_cannot_confirm_empty_actor_shutdown() {
+    let directory = Directory::new();
+    drop(Store::open(&directory.0).unwrap());
+    let mut driver = PairedNativeExecutor::new(&directory.0, HandlerTable::default()).unwrap();
+    let original = directory.0.with_extension("original");
+    std::fs::rename(&directory.0, &original).unwrap();
+    std::fs::create_dir(&directory.0).unwrap();
+    drop(Store::open(&directory.0).unwrap());
+    let request = driver.control().stop(ShutdownMode::Abort, 50).unwrap();
+    let lines = driver.poll(&mut FixedClock::new(0, 1), 0);
+    let report = request.wait();
+    // Restore the original inode before assertions, including regression failures.
+    std::fs::remove_dir_all(&directory.0).unwrap();
+    std::fs::rename(&original, &directory.0).unwrap();
+    assert_eq!(report.phase, ExecutorPhase::Uncertain);
+    assert!(!report.inventory_complete);
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("exec/inflight_deferred"))
+    );
+    driver.poll(&mut FixedClock::new(0, 1), 0);
+    assert_eq!(driver.control().report().phase, ExecutorPhase::Stopped);
+}
+
 struct HeldClock {
     ready: Option<mpsc::Sender<()>>,
     release: mpsc::Receiver<()>,
