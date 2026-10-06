@@ -4784,3 +4784,14 @@ Input-failure diagnostics also pass in the full suite after compact fixtures.
 Evidence remains in production-stdio-fixed-check.log; this accepts tested
 empty native shutdown under blocked output, not nonempty proof or plan 20
 autonomy. Task statuses remain unchanged.
+
+### Production native stdio full stable gate — 2026-10-07
+
+Session 19246 is running the full stable gate on runtime 9cfc90b under asserted
+1 GiB RAM and zero swap, with pending evidence retained in
+production-native-stdio-stable-gate.log. Runtime stays frozen until this handle
+is terminal. The gate covers formatting, source size, debug/release workspace
+tests, all-target Clippy and documentation with warnings denied, zero
+dependencies and downstream embedding acceptance. Installed native nonempty
+acceptance, HTTP ownership and remaining cross-plan requirements stay separate
+and incomplete; no task promotion is inferred from this pending gate.
