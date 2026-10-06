@@ -1,0 +1,291 @@
+diff --git a/crates/fsm-cli/src/mcp/serve.rs b/crates/fsm-cli/src/mcp/serve.rs
+index 5bca861..6acc4a2 100644
+--- a/crates/fsm-cli/src/mcp/serve.rs
++++ b/crates/fsm-cli/src/mcp/serve.rs
+@@ -148,7 +148,7 @@ impl ExecutorLoop {
+             handlers: super::executor::handlers(&table),
+             watcher: fsm_execute::watch::Watcher::with_handlers(data_dir.to_path_buf(), &table),
+             scheduler: fsm_execute::sched::Scheduler::new(table),
+-            runner: fsm_execute::run::Runner::new()?,
++            runner: fsm_execute::run::Runner::new_native()?,
+             pipeline: fsm_execute::run::Pipeline,
+         })
+     }
+diff --git a/crates/fsm-execute/src/service.rs b/crates/fsm-execute/src/service.rs
+index b3acca9..138f3c1 100644
+--- a/crates/fsm-execute/src/service.rs
++++ b/crates/fsm-execute/src/service.rs
+@@ -186,7 +186,7 @@ pub fn run(
+ ) -> Result<(), ExecError> {
+     let mut watcher = Watcher::with_handlers(config.data_dir.to_path_buf(), &config.table);
+     let mut scheduler = Scheduler::new(config.table);
+-    let mut runner = Runner::new()?;
++    let mut runner = Runner::new_native()?;
+     let mut pipeline = Pipeline;
+     let interval = std::time::Duration::from_millis(config.poll_interval_ms);
+     let mut blocked_ticks = 0;
+diff --git a/docs/API-POLICY.md b/docs/API-POLICY.md
+index e68f147..0b253b5 100644
+--- a/docs/API-POLICY.md
++++ b/docs/API-POLICY.md
+@@ -965,3 +965,17 @@ claim publication, and readonly snapshots are dropped before the standalone
+ writer opens. This selected host path is not yet provisioned-runtime accepted;
+ default CLI/MCP/service host selection, shutdown, reconciliation and cold
+ post-ack recovery remain unfinished, with production acceptance flags false.
++
++
++Production standalone `service::run` (including `fsm execute`) and the
++embedded MCP `ExecutorLoop` now construct `Runner::new_native`, so fresh
++handler work uses the same retained preparation, writer-held claim and
++explicit Bound-entry sequence as native-selected public ticks; unavailable
++or unsupported native authority refuses work with `exec/mode`, without direct
++process/MCP startup or synthetic acknowledgement. Public low-level callers
++can still explicitly choose the legacy `Runner::new` primitive; production
++host constructors do not make that selection. This source routing change is
++provisional and does not establish production acceptance: exact-source native
++standalone/embedded tests, prior domain-semantic regressions, cold post-ack
++recovery, bounded shutdown and reconciliation remain required, and all
++production acceptance flags remain false.
+diff --git a/docs/EMBEDDING.md b/docs/EMBEDDING.md
+index 1865cba..4476473 100644
+--- a/docs/EMBEDDING.md
++++ b/docs/EMBEDDING.md
+@@ -2162,3 +2162,17 @@ claim publication, and readonly snapshots are dropped before the standalone
+ writer opens. This selected host path is not yet provisioned-runtime accepted;
+ default CLI/MCP/service host selection, shutdown, reconciliation and cold
+ post-ack recovery remain unfinished, with production acceptance flags false.
++
++
++Production standalone `service::run` (including `fsm execute`) and the
++embedded MCP `ExecutorLoop` now construct `Runner::new_native`, so fresh
++handler work uses the same retained preparation, writer-held claim and
++explicit Bound-entry sequence as native-selected public ticks; unavailable
++or unsupported native authority refuses work with `exec/mode`, without direct
++process/MCP startup or synthetic acknowledgement. Public low-level callers
++can still explicitly choose the legacy `Runner::new` primitive; production
++host constructors do not make that selection. This source routing change is
++provisional and does not establish production acceptance: exact-source native
++standalone/embedded tests, prior domain-semantic regressions, cold post-ack
++recovery, bounded shutdown and reconciliation remain required, and all
++production acceptance flags remain false.
+diff --git a/docs/RELEASE.md b/docs/RELEASE.md
+index f21e2a7..6e41e37 100644
+--- a/docs/RELEASE.md
++++ b/docs/RELEASE.md
+@@ -929,3 +929,17 @@ claim publication, and readonly snapshots are dropped before the standalone
+ writer opens. This selected host path is not yet provisioned-runtime accepted;
+ default CLI/MCP/service host selection, shutdown, reconciliation and cold
+ post-ack recovery remain unfinished, with production acceptance flags false.
++
++
++Production standalone `service::run` (including `fsm execute`) and the
++embedded MCP `ExecutorLoop` now construct `Runner::new_native`, so fresh
++handler work uses the same retained preparation, writer-held claim and
++explicit Bound-entry sequence as native-selected public ticks; unavailable
++or unsupported native authority refuses work with `exec/mode`, without direct
++process/MCP startup or synthetic acknowledgement. Public low-level callers
++can still explicitly choose the legacy `Runner::new` primitive; production
++host constructors do not make that selection. This source routing change is
++provisional and does not establish production acceptance: exact-source native
++standalone/embedded tests, prior domain-semantic regressions, cold post-ack
++recovery, bounded shutdown and reconciliation remain required, and all
++production acceptance flags remain false.
+diff --git a/docs/SPEC.md b/docs/SPEC.md
+index a86cba7..2cc5443 100644
+--- a/docs/SPEC.md
++++ b/docs/SPEC.md
+@@ -2585,3 +2585,17 @@ claim publication, and readonly snapshots are dropped before the standalone
+ writer opens. This selected host path is not yet provisioned-runtime accepted;
+ default CLI/MCP/service host selection, shutdown, reconciliation and cold
+ post-ack recovery remain unfinished, with production acceptance flags false.
++
++
++Production standalone `service::run` (including `fsm execute`) and the
++embedded MCP `ExecutorLoop` now construct `Runner::new_native`, so fresh
++handler work uses the same retained preparation, writer-held claim and
++explicit Bound-entry sequence as native-selected public ticks; unavailable
++or unsupported native authority refuses work with `exec/mode`, without direct
++process/MCP startup or synthetic acknowledgement. Public low-level callers
++can still explicitly choose the legacy `Runner::new` primitive; production
++host constructors do not make that selection. This source routing change is
++provisional and does not establish production acceptance: exact-source native
++standalone/embedded tests, prior domain-semantic regressions, cold post-ack
++recovery, bounded shutdown and reconciliation remain required, and all
++production acceptance flags remain false.
+--- /dev/null
++++ b/crates/fsm-cli/tests/executor_native_selection.rs
+@@ -0,0 +1,174 @@
++//! Production embedded construction refuses unregistered native execution.
++
++use fsm_cli::mcp::serve::{ExecutorLoop, serve_session_with};
++use fsm_core::json::{JsonLimits, Value, parse};
++use fsm_execute::config::HandlerTable;
++use fsm_store::{clock::FixedClock, store::Store};
++use std::collections::BTreeMap;
++use std::io::{BufRead, BufReader, Cursor, Write};
++use std::path::PathBuf;
++use std::process::{Command, Stdio};
++use std::sync::{Arc, Mutex, mpsc};
++use std::time::Duration;
++
++#[derive(Clone)]
++struct Output(Arc<Mutex<Vec<u8>>>);
++
++impl Write for Output {
++    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++        self.0.lock().unwrap().extend_from_slice(bytes);
++        Ok(bytes.len())
++    }
++
++    fn flush(&mut self) -> std::io::Result<()> {
++        Ok(())
++    }
++}
++
++struct Directory(PathBuf);
++
++impl Drop for Directory {
++    fn drop(&mut self) {
++        let _ = std::fs::remove_dir_all(&self.0);
++    }
++}
++
++#[test]
++fn production_hosts_refuse_process_and_mcp_without_native_registration() {
++    for kind in ["process", "mcp"] {
++        let directory = (0..)
++            .find_map(|sequence| {
++                let path = std::env::temp_dir().join(format!(
++                    "fsm-native-embedded-refusal-{}-{kind}-{sequence}",
++                    std::process::id()
++                ));
++                match std::fs::create_dir(&path) {
++                    Ok(()) => Some(Directory(path)),
++                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => None,
++                    Err(error) => panic!("create native refusal fixture: {error}"),
++                }
++            })
++            .unwrap();
++        let mut store = Store::open(&directory.0).unwrap();
++        let mut clock = FixedClock::new(1000, 1);
++        store
++            .define_machine_on(
++                &mut clock,
++                parse(
++                    include_bytes!("../../fsm-core/tests/fixtures/machines/case_review.json"),
++                    &JsonLimits::DEFAULT,
++                )
++                .unwrap(),
++                false,
++                false,
++            )
++            .unwrap();
++        store
++            .create_instance_ctx_on(
++                &mut clock,
++                "case_review",
++                "instance",
++                "create",
++                None,
++                &BTreeMap::new(),
++                &[],
++            )
++            .unwrap();
++        store
++            .send_event_stamp_on(
++                &mut clock,
++                "instance",
++                "docs_ok",
++                &mut Value::Obj(BTreeMap::new()),
++                "send",
++                None,
++                &[],
++            )
++            .unwrap();
++        let state = store.state.clone();
++        let records = store.records.clone();
++        let mut declaration = BTreeMap::from([
++            ("effect".into(), Value::Str("notify".into())),
++            ("kind".into(), Value::Str(kind.into())),
++            (
++                "argv".into(),
++                Value::Arr(vec![
++                    Value::Str(env!("CARGO_BIN_EXE_fsm").into()),
++                    Value::Str("--help".into()),
++                ]),
++            ),
++            ("timeout_ms".into(), Value::Num("1000".into())),
++        ]);
++        if kind == "mcp" {
++            declaration.insert("tool".into(), Value::Str("notify".into()));
++            declaration.insert("arguments".into(), Value::Obj(BTreeMap::new()));
++        }
++        let table = Value::Obj(BTreeMap::from([
++            ("format".into(), Value::Str("fsm.handlers/1".into())),
++            ("handlers".into(), Value::Arr(vec![Value::Obj(declaration)])),
++        ]));
++        let encoded_table = fsm_core::canon::canon_bytes(&table);
++        let table = HandlerTable::parse(std::str::from_utf8(&encoded_table).unwrap()).unwrap();
++        let mut executor = ExecutorLoop::new(&directory.0, table).unwrap();
++        let output = Output(Arc::new(Mutex::new(Vec::new())));
++        serve_session_with(
++            Some(&mut store),
++            &mut clock,
++            Some(&mut executor),
++            None,
++            Cursor::new(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"native-refusal\",\"version\":\"1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\n"),
++            output.clone(),
++        )
++        .unwrap();
++        let encoded = output.0.lock().unwrap().clone();
++        assert!(String::from_utf8(encoded).unwrap().contains("exec/mode"));
++        assert_eq!(store.records, records);
++        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
++        assert!(store.state.execution.unresolved().next().is_none());
++        drop(executor);
++        drop(store);
++
++        let handlers = directory.0.join("handlers.json");
++        std::fs::write(&handlers, &encoded_table).unwrap();
++        let mut child = Command::new(env!("CARGO_BIN_EXE_fsm"))
++            .arg("--data-dir")
++            .arg(&directory.0)
++            .args(["execute", "--handlers"])
++            .arg(&handlers)
++            .args(["--poll-interval-ms", "10"])
++            .stdin(Stdio::null())
++            .stdout(Stdio::piped())
++            .stderr(Stdio::null())
++            .spawn()
++            .unwrap();
++        let stdout = child.stdout.take().unwrap();
++        let (send, receive) = mpsc::channel();
++        let reader = std::thread::spawn(move || {
++            let mut input = BufReader::new(stdout);
++            for _ in 0..16 {
++                let mut line = String::new();
++                let result = input.read_line(&mut line);
++                if !matches!(result, Ok(count) if count > 0)
++                    || line.contains("exec/mode")
++                    || line.starts_with("started ")
++                {
++                    let _ = send.send((result, line));
++                    return;
++                }
++            }
++        });
++        let response = receive.recv_timeout(Duration::from_secs(10));
++        // This cleanup follows a refusal with no admitted native work; it is
++        // not proof of the planned shutdown protocol for an active executor.
++        let _ = child.kill();
++        child.wait().unwrap();
++        reader.join().unwrap();
++        let (read, line) = response.expect("standalone native refusal deadline");
++        assert!(read.unwrap() > 0);
++        assert!(line.contains("exec/mode"), "{line}");
++        let current = Store::open_read_only(&directory.0).unwrap();
++        assert_eq!(current.records, records);
++        assert!(fsm_store::snapshot::store_states_eq(&current.state, &state));
++        assert!(current.state.execution.unresolved().next().is_none());
++    }
++}
