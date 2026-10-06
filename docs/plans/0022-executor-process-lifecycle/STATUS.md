@@ -3683,3 +3683,20 @@ Full changed-source host and portable gates remain pending; earlier gates
 are not attributed to this additive resource change. Task 9401 remains in
 progress, downstream lifecycle tasks remain incomplete, and the rejected
 remote push still awaits exact authorization.
+
+### Complete durable discovery stable gate — 2026-10-06
+
+Serial session 78310 completed with exit 0 at exact committed source
+f8c38f920e92da1b19fcff5c5581b41f29fb9011. Formatting, source-size checks,
+full debug and release workspace suites, all-target workspace Clippy,
+warning-denied rustdoc, zero-dependency checks and full embed acceptance
+passed. Before Cargo the scope verified 1 GiB RAM and zero swap; observed
+memory counters showed zero swap and no OOM events. The retained log is
+local-f8c38f9-ownership-discovery-stable-gate.log in the task cache.
+This includes the named handoff test refactor and new discovery metadata,
+but ignored provisioned native controls remain unexecuted locally.
+No portable/installed acceptance is inferred from this local stable gate.
+The successor remote push remains pending exact approval following its
+automatic rejection; production selectors and all production acceptance
+flags remain unchanged, task 9401 stays in progress, and the full plans
+20–23 objective is not complete.
