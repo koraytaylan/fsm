@@ -1025,3 +1025,11 @@ closure proof under the original healthy writer, preserving pending effects,
 recorded outcomes and original request keys without a synthetic completion or
 machine event. No persisted format changes; native runtime acceptance and the
 production lifecycle controls remain incomplete.
+
+
+### Local native admission provenance
+
+Track local native admission provenance through uncertain publication and failed
+binding, and refuse local helper cancellation of foreign observed claims without
+releasing their durable identity; no persisted formats change. This foundation
+does not establish native closure or a bounded production shutdown guarantee.

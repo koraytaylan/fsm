@@ -2268,3 +2268,12 @@ Retain the execution and closure transports until reap/EOF; transaction success
 alone cannot discard a helper or release scheduler capacity. Exact original
 replay is required after consumption, and pruning may cause conservative refusal.
 The production lifecycle driver and bounded report remain unimplemented.
+
+
+### Local native admission provenance
+
+Recovering original claims does not mean the recovering executor admitted their
+live work. Retain foreign observations to prevent replacement and to recover
+actual authenticated completion, but explicit local stop must address the exact
+incarnation and its local admissions. Preserve an uncertain prepared reservation
+when the observed publication differs from its original route or contract.

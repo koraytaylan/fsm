@@ -1063,3 +1063,12 @@ handler result. It preserves existing interrupted record formats, fingerprints,
 request keys and historical roots; existing non-interrupted stopped results
 refuse rather than change policy. This additive Rust surface grants no production
 control/report guarantee and requires installed acceptance before completion.
+
+
+### Local native admission provenance
+
+This private runner distinction introduces no public types, persisted records,
+request fingerprints, root domains or format-version changes. It restricts local
+helper cancellation to locally admitted work; foreign observed ownership returns
+exec/inflight_deferred and remains retained. Production stop controls remain
+unimplemented until their separate proof obligations are met.

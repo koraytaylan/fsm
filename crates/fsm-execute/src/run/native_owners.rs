@@ -15,6 +15,7 @@ const RECOVERY_TIMEOUT: Duration = Duration::from_secs(3);
 
 struct Owner {
     claim: Claim,
+    locally_admitted: bool,
     stopped: Option<Stopped>,
     execution: NativeExecution,
     requested: bool,
@@ -82,6 +83,21 @@ impl NativeOwners {
         }
         for (claim, stopped) in &observation.execution_owners {
             self.retain(claim, stopped.as_ref())?;
+        }
+        // Transfer genuine local publication from the verified snapshot even
+        // when an observation omitted it, before refresh removes its reservation.
+        for claim in self.admissions.local_publications(snapshot) {
+            self.retain(
+                &claim,
+                snapshot
+                    .state
+                    .execution
+                    .stopped_for(claim.effect().0, claim.effect().1),
+            )?;
+            self.owners
+                .get_mut(&claim.run_id())
+                .ok_or_else(deferred)?
+                .locally_admitted = true;
         }
         self.admissions.refresh(snapshot, scheduler);
         if self.admissions.uncertain() {
@@ -154,6 +170,7 @@ impl NativeOwners {
             claim.run_id(),
             Owner {
                 claim: claim.clone(),
+                locally_admitted: false,
                 stopped: stopped.cloned(),
                 execution: NativeExecution::retain_uncertain(claim),
                 requested: false,
@@ -188,6 +205,7 @@ impl NativeOwners {
         let owner = self.owners.get_mut(&claim.run_id()).ok_or_else(deferred)?;
         // Install retention and disable automatic replacement recovery before
         // any fallible binding transport startup or scheduler binding check.
+        owner.locally_admitted = true;
         owner.requested = true;
         owner.entry_requested = false;
         if !scheduler.retain_claim(claim) {
@@ -203,6 +221,9 @@ impl NativeOwners {
         let owner = self.owners.values_mut().find(|owner| {
             owner.claim.effect().1 == effect && owner.execution.progress().retained
         })?;
+        if !owner.locally_admitted {
+            return Some(Err(deferred()));
+        }
         owner.entry_requested = true;
         Some(owner.execution.cancel().map_err(|error| {
             ExecError::new("exec/inflight_deferred", error)
@@ -277,6 +298,11 @@ impl NativeOwners {
                     owner.requested = true;
                 }
                 scheduler.retain_claim(&claim);
+            }
+            let owner = self.owners.get_mut(&claim.run_id()).ok_or_else(deferred);
+            match owner {
+                Ok(owner) if owner.claim == claim => owner.locally_admitted = true,
+                _ => return Some(Err(deferred())),
             }
             self.admissions.transferred(&claim);
             return Some(result.map(|()| {
@@ -462,4 +488,51 @@ fn deferred() -> ExecError {
         "exec/inflight_deferred",
         "original native ownership requires reconciliation",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runner_cancellation_refuses_observed_foreign_ownership() {
+        // An observed metadata fixture supplies no native closure authority.
+        let fixture = fsm_core::json::parse(
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../fsm-core/tests/fixtures/execution-handoff.json"
+            )),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let claim = Claim::from_value(fixture.get("claim").unwrap()).unwrap();
+        let mut runner = super::super::Runner::new().unwrap();
+        runner.native.retain(&claim, None).unwrap();
+        let error = runner.cancel_native(claim.effect().1).unwrap().unwrap_err();
+        assert_eq!(error.code, "exec/inflight_deferred");
+        assert_eq!(
+            error.message,
+            "original native ownership requires reconciliation"
+        );
+        let owner = runner.native.owners.get(&claim.run_id()).unwrap();
+        assert_eq!(owner.claim, claim);
+        assert!(!owner.locally_admitted);
+        assert!(!owner.requested);
+        assert!(owner.execution.progress().retained);
+        // Explicitly local retention still permits helper cancellation without
+        // claiming protected domain closure or releasing the durable identity.
+        runner
+            .native
+            .owners
+            .get_mut(&claim.run_id())
+            .unwrap()
+            .locally_admitted = true;
+        runner.cancel_native(claim.effect().1).unwrap().unwrap();
+        assert!(
+            runner.native.owners[&claim.run_id()]
+                .execution
+                .progress()
+                .retained
+        );
+    }
 }

@@ -2714,3 +2714,17 @@ refuse, never establish reconciliation through absence. Original stop and
 interrupted request-key derivations and persisted formats remain unchanged.
 Application MUST retain both owned transports and cannot alone release local
 capacity or establish a bounded production shutdown report.
+
+
+### Local native admission provenance
+
+An executor incarnation MUST distinguish its own admissions from journal claims
+retained only through observation or recovery. An observed claim alone MUST NOT
+authorize that incarnation to request active cancellation or protected closure.
+Local publication responsibility MUST survive failed binding and uncertain
+claim append. When a prepared admission observes its publication after append
+uncertainty, it MUST match the original instance/effect, complete prepared native
+domain, handler fingerprint and retry policy before transferring provenance;
+failed matching MUST retain the admission and its reserved capacity. Repeated
+observation MUST NOT downgrade a locally admitted claim. Provenance authorizes
+no settlement without independently authenticated original closure evidence.

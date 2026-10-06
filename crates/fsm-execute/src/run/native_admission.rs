@@ -173,19 +173,37 @@ impl NativeAdmissions {
         }
     }
 
+    pub(super) fn local_publications(&self, snapshot: &Store) -> Vec<Claim> {
+        self.pending
+            .values()
+            .filter_map(|pending| {
+                let claim = snapshot
+                    .state
+                    .execution
+                    .claim_for(&pending.effect.instance_id, &pending.effect.effect_id)?;
+                self.matches_local_publication(claim).then(|| claim.clone())
+            })
+            .collect()
+    }
+
+    pub(super) fn matches_local_publication(&self, claim: &Claim) -> bool {
+        self.pending
+            .get(claim.effect().1)
+            .is_some_and(|pending| pending.matches_publication(claim))
+    }
+
     pub(super) fn refresh(&mut self, snapshot: &Store, scheduler: &mut Scheduler) {
         let mut transferred = Vec::new();
         for (effect, pending) in &mut self.pending {
             // An append may have become durable before reporting failure;
             // adopt the genuine observed claim, never discard its domain.
             if matches!(pending.phase, Phase::ClaimUncertain(_)) {
-                let domain = pending.phase.original_domain();
                 if let Some(claim) = snapshot
                     .state
                     .execution
                     .claim_for(&pending.effect.instance_id, effect)
                 {
-                    if Some(claim.domain()) == domain && scheduler.retain_claim(claim) {
+                    if pending.matches_publication(claim) && scheduler.retain_claim(claim) {
                         transferred.push(effect.clone());
                     }
                 }
@@ -291,18 +309,26 @@ impl NativeAdmissions {
     }
 }
 
-impl Phase {
-    fn helper_busy(&self) -> bool {
-        let progress = match self {
-            Self::Preparing(preparation) | Self::UncertainPreparation(preparation) => {
-                preparation.progress().helper
-            }
-            Self::Cleaning(_, cleanup) | Self::UncertainCleanup(_, cleanup) => cleanup.progress(),
-            _ => return false,
-        };
-        !progress.reaped || !progress.stdout_eof || !progress.stderr_eof
+impl Pending {
+    fn matches_publication(&self, claim: &Claim) -> bool {
+        let (instance, effect) = claim.effect();
+        self.effect.instance_id == instance
+            && self.effect.effect_id == effect
+            && matches!(&self.phase, Phase::ClaimUncertain(_))
+            && self.phase.original_domain() == Some(claim.domain())
+            && self
+                .handler
+                .checked_contract()
+                .is_ok_and(|(fingerprint, contract)| {
+                    let original = claim.to_value();
+                    original.get("handler_fingerprint")
+                        == Some(&fsm_core::json::Value::Str(fingerprint))
+                        && original.get("retry") == contract.get("retry")
+                })
     }
+}
 
+impl Phase {
     fn original_domain(&self) -> Option<&NativeDomain> {
         match self {
             Self::Prepared(domain)
@@ -312,6 +338,17 @@ impl Phase {
             | Self::ClaimUncertain(domain) => Some(domain),
             _ => None,
         }
+    }
+
+    fn helper_busy(&self) -> bool {
+        let progress = match self {
+            Self::Preparing(preparation) | Self::UncertainPreparation(preparation) => {
+                preparation.progress().helper
+            }
+            Self::Cleaning(_, cleanup) | Self::UncertainCleanup(_, cleanup) => cleanup.progress(),
+            _ => return false,
+        };
+        !progress.reaped || !progress.stdout_eof || !progress.stderr_eof
     }
 }
 
@@ -432,5 +469,61 @@ mod tests {
                 )
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn local_publication_requires_original_phase_domain_and_contract() {
+        // Metadata here exercises provenance classification, never closure authority.
+        let fixture = fsm_core::json::parse(
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../fsm-core/tests/fixtures/execution-handoff.json"
+            )),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let domain =
+            NativeDomain::from_value(fixture.get("claim").unwrap().get("domain").unwrap()).unwrap();
+        let (mut admissions, _, effect) = reservation(Phase::ClaimUncertain(domain.clone()));
+        let pending = admissions.pending.get_mut(&effect.effect_id).unwrap();
+        let (fingerprint, contract) = pending.handler.checked_contract().unwrap();
+        let mut fields = fixture.get("claim").unwrap().as_obj().unwrap().clone();
+        fields.insert(
+            "instance_id".into(),
+            fsm_core::json::Value::Str(effect.instance_id),
+        );
+        fields.insert(
+            "effect_id".into(),
+            fsm_core::json::Value::Str(effect.effect_id.clone()),
+        );
+        fields.insert(
+            "handler_fingerprint".into(),
+            fsm_core::json::Value::Str(fingerprint),
+        );
+        fields.insert("retry".into(), contract.get("retry").unwrap().clone());
+        let claim = Claim::from_value(&fsm_core::json::Value::Obj(fields.clone())).unwrap();
+        assert!(admissions.matches_local_publication(&claim));
+        let mut different_domain = domain.to_value().as_obj().unwrap().clone();
+        different_domain.insert("allocation".into(), fsm_core::json::Value::Num("8".into()));
+        fields.insert(
+            "domain".into(),
+            fsm_core::json::Value::Obj(different_domain),
+        );
+        let other_domain = Claim::from_value(&fsm_core::json::Value::Obj(fields.clone())).unwrap();
+        assert!(!admissions.matches_local_publication(&other_domain));
+        fields.insert("domain".into(), domain.to_value());
+        fields.insert(
+            "handler_fingerprint".into(),
+            fixture
+                .get("claim")
+                .unwrap()
+                .get("handler_fingerprint")
+                .unwrap()
+                .clone(),
+        );
+        let other = Claim::from_value(&fsm_core::json::Value::Obj(fields)).unwrap();
+        assert!(!admissions.matches_local_publication(&other));
+        admissions.pending.get_mut(&effect.effect_id).unwrap().phase = Phase::Prepared(domain);
+        assert!(!admissions.matches_local_publication(&claim));
     }
 }

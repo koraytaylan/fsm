@@ -3823,3 +3823,24 @@ printed the earlier HEAD ef3e4a8, as recorded above. Later 4a09824 changed only
 review documentation. The retained log is local-native-interruption-stable-gate.log.
 Provisioned interruption axes remain compiled but unexecuted; production
 selection remains legacy, task 9402 planned and all native acceptance flags false.
+
+### Local admission provenance implementation — 2026-10-06
+
+Owners now preserve local publication provenance independently of helper phase;
+observed claims cannot request local helper cancellation. Verified snapshot
+publications transfer from ClaimUncertain before reservation removal, matching
+instance/effect, original domain, handler fingerprint and retry policy. Failed
+matching retains the reservation; repeated observation preserves local origin.
+Successful publication also marks an already-retained matching owner local.
+
+Review corrected domain-only refresh, omitted-observation transfer and
+already-retained publication paths before verification. Session 57311 completed
+exit 0 with verified 1 GiB/no-swap limits: formatting/size, stable and MSRV
+all-target executor Clippy, 34 library tests, downstream API inventory and the
+original binding guard passed; local-native-provenance-check-v2.log is retained.
+The first check exposed an unused retained-domain accessor; it was restored and
+used rather than discarding uncertainty metadata. Classification fixtures prove
+no native closure, and paired live executor and actual append-failure transfer
+coverage remain pending. Full stable verification remains pending for this unit.
+Plan count stays 3/7, task 9401 in progress and task 9402 planned; production
+selection and all native acceptance flags remain unchanged.
