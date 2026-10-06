@@ -558,3 +558,22 @@ fresh Cargo artifacts and task-cache TMPDIR, preserve native unresolved
 ownership on failure and record every terminal probe result before cleanup.
 No installer or native probe was run during this preflight, and the current
 full stable gate continues alone with runtime unchanged and zero swap.
+
+### Native probe authority retirement review (2026-10-07)
+
+Before local provisioned execution, review found authority_probe.py always
+invokes installer removal in its finally block, whereas native Fixture::Drop
+ignores cleanup failure and deliberately retains a namespace when a domain
+is changed, populated or unknown. A failed/timed-out probe can therefore
+remove its exact installed authority while unresolved native state remains.
+The unmodified harness must not be used for the upcoming local acceptance.
+
+Cache-only authority-probe-retirement-guard.py.draft requires initially clear
+authority state, refuses artifact removal if any namespace survives or state
+cannot be inspected, and records exact retained installed device/inode/digest
+and source commit for subsequent matched recovery. It changes no native
+closure predicate and never removes or force-clears a retained domain.
+Python AST syntax validation passed; source is unapplied and unexecuted while
+full stable gate 50807 remains live on runtime 7cf0e39 with zero swap.
+Meaningful guard tests and terminal local native execution remain required
+before accepting the harness change or promoting any lifecycle task.
