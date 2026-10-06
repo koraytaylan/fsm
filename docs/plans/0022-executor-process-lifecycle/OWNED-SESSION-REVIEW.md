@@ -294,3 +294,24 @@ this is a prerequisite explanation, not proof that every observed exec/mode
 comes from discovery. The workflow fixture remains unregistered and all four
 production workflow failures remain unresolved. Documentation-only diff
 checks pass; runtime gates were not rerun for this prose correction.
+
+Native workflow fixture compatibility review found a second concrete
+prerequisite beyond physical-store registration: workflow_handler reads
+FSM_WORKFLOW_DIRECTORY and FSM_WORKFLOW_FAILURES from inherited environment,
+while production containment launch uses env_clear and only LANG/LC_ALL,
+and entry executes the approved argv without reinjecting the operator
+environment. A registered fixture must pass directory and failure inputs
+through explicit approved arguments, arrange actual handler identity access
+to its resource files and executable, and preserve all original discovery,
+acknowledgement, failure and compensation assertions. No weaker legacy
+execution route or fabricated native receipts satisfy this acceptance.
+Runtime source remains frozen at db058013b9133f0c344abce8debf06912a9dcbe3
+while full stable gate session 86747 remains live; its later stages are
+configured to run even when known workflow failures recur.
+
+The cache-only workflow-explicit-handler-arguments.rs.draft removes those
+operator environment dependencies and carries the same fixture inputs in
+approved argv, preserving resource/run placeholders and all four scenarios;
+rustfmt syntax formatting passed, but it is unapplied and not Cargo-compiled
+while the frozen full gate remains live. Registration, handler identity
+access, and installed-native acceptance still need implementation and proof.
