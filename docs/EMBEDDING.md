@@ -2453,3 +2453,12 @@ when that deadline has expired, without starting another waiting budget;
 its boolean confirms actual endpoint removal separately from native shutdown,
 writer release and response delivery. Deadlines beyond the finite executor
 bound are refused before transport admission changes.
+
+Ordinary `fsm execute` now retains a paired native owner and publishes its
+private incarnation endpoint at `--control-dir` or `$HOME/.cache/fsm/control`.
+It uses bounded diagnostic delivery, independent admitted observation and the
+original shutdown deadline for endpoint retirement; unavailable or unsupported
+native execution refuses without a legacy fallback. Final success requires
+authenticated empty shutdown, endpoint removal and complete diagnostic delivery.
+This source integration remains pending production acceptance; embedded MCP
+and the low-level service host have not yet changed selection.

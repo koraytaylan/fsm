@@ -4491,3 +4491,58 @@ and zero swap, with evidence in original-deadline-check.log: stable/MSRV
 all-target Clippy, executor/lifecycle/session/CLI/public inventory checks, all
 16 transport tests and all 61 CLI library tests passed. Production composition remains
 pending, with task statuses unchanged and progress still 3/7.
+
+### Production standalone owner composition — 2026-10-06
+
+Ordinary execute now routes through the retained paired native owner and private
+endpoint publication, with explicit control-dir support, bounded diagnostic
+delivery, original-deadline retirement and no legacy fallback on unsupported
+platforms. Check/list-dead branches still precede publication. The caller keeps
+initiating failures and requires actual shutdown plus endpoint/output facts
+for success. Focused session 41242 exited zero under asserted 1 GiB RAM and zero
+swap; production-owner-check.log retains stable/MSRV Clippy and focused
+lifecycle, transport, CLI, inventory and 61 CLI library test evidence. This integration
+needs actual binary and installed nonempty native acceptance; embedded MCP
+and low-level service still use legacy selection. Progress remains 3/7 and
+all task statuses remain unchanged.
+
+The actual production binary regression now starts ordinary execute with a
+60-second scheduling interval while a separate Store writer remains held,
+discovers its real endpoint, and invokes the actual stop binary for drain and
+abort. It requires authenticated Stopped/writer facts, successful owner exit,
+incarnation directory removal and continued exclusion by the other writer.
+A scoped child guard kills/reaps only the test's owner on failure. Session
+58275 exited 101 before publication; diagnostic rerun 90120 also exited 101
+and identified an invalid empty handler table in the test fixture. The fixture
+now declares a valid manual effect, preserving empty runtime inventory without
+relaxing production table validation. Session 56671 is validating the corrected
+fixture under the same memory/no-swap limits;
+production-owner-binary-check-v3.log retains pending evidence.
+
+Corrected-fixture session 56671 exited 101 and exposed the predicted accepted
+response/endpoint retirement race: the stop client received EOF before its
+authenticated report. Transport shutdown now drops its listener immediately
+and retires already accepted responses only within their original request
+deadlines; it neither accepts more work nor grants another caller wait budget.
+Session 19955 is validating this fix; production-owner-binary-check-v4.log
+retains pending evidence. Production integration remains uncommitted and
+unaccepted until actual binary and remaining native acceptance pass.
+
+Session 19955 exited 101: the response retirement loop preserved unresolved
+long drains and prevented two existing explicit transport-close tests from
+confirming removal. Revised retirement keeps only already buffered responses
+or available terminal reports, each still capped by its original request
+deadline and wire deadline; unresolved requests cannot delay forced transport
+close. Session 9201 is checking this correction, with pending evidence in
+production-owner-binary-check-v5.log. No validation or native acceptance is
+inferred from these failed runs.
+
+Session 9201 terminated with exit zero under asserted 1 GiB RAM and zero
+swap. Stable/MSRV all-target Clippy, all 16 transport tests, all six actual
+stop binary tests (including production owner drain/abort), executor/lifecycle/
+session/public inventory checks and all 61 CLI library tests passed. The real
+production owner returned its accepted stop report, exited successfully and
+removed its incarnation while the other actor's writer remained held.
+This accepts the tested empty-inventory production composition only; installed
+nonempty proof, broader production/signal/output cases and full gates remain
+required, with progress still 3/7 and task statuses unchanged.

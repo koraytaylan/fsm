@@ -158,5 +158,28 @@ pub(super) fn run(
         });
         std::thread::sleep(Duration::from_millis(1));
     }
-    // Dropping the listener and bounded connections precedes endpoint cleanup.
+    // Stop accepting immediately, but retire already accepted responses within
+    // their original request budgets; owner close must not race their first write.
+    drop(listener);
+    while !connections.is_empty() {
+        let report = control.report();
+        connections.retain_mut(|connection| {
+            (connection.output.is_some()
+                || matches!(
+                    report.phase,
+                    ExecutorPhase::Stopped | ExecutorPhase::Uncertain
+                ))
+                && connection
+                    .request
+                    .as_ref()
+                    .is_some_and(|request| Instant::now() < request.deadline())
+                && connection
+                    .poll(&control, &identity, Some(&report))
+                    .unwrap_or(false)
+        });
+        if !connections.is_empty() {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    // Bounded connections retire before endpoint cleanup.
 }

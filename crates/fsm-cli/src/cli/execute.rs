@@ -11,6 +11,11 @@
 //! decisions, the runner still owns the child, and a timeout is still enforced
 //! by killing that child — which is what ends the worker.
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+mod owner;
 mod stop;
 
 use std::collections::BTreeMap;
@@ -21,10 +26,8 @@ use fsm_execute::config::HandlerTable;
 use fsm_execute::contract::{CheckStatus, Limits, analyze_contract};
 use fsm_execute::dead::{self, DeadLetter};
 use fsm_execute::error::ExecError;
-use fsm_execute::service;
 
 use crate::args::{Args, CmdSpec, Ctx, read_input_from};
-use crate::clock::SystemClock;
 use crate::mcp::serve::{ExecutorLoop, ServeMode};
 use crate::render::{emit_error, emit_success};
 use crate::store::ErrorObj;
@@ -39,6 +42,7 @@ pub static SPECS: &[CmdSpec] = &[
         flags: &[
             "handlers",
             "poll-interval-ms",
+            "control-dir",
             "since",
             "machine-file",
             "machine",
@@ -191,22 +195,7 @@ fn execute(ctx: &mut Ctx, args: &Args) -> u8 {
     // The mode goes to stderr, outside the tick stream, so no golden depends
     // on it and a changed default cannot invalidate one.
     log_mode(mode, &ctx.data_dir);
-    let mut clock = SystemClock;
-    let mut emit = |line: &str| log_line(line);
-    let config = service::RunConfig {
-        data_dir: &ctx.data_dir,
-        table,
-        poll_interval_ms,
-        contention: if exclusive {
-            service::Contention::Fail
-        } else {
-            service::Contention::Retry
-        },
-    };
-    match service::run(config, &mut clock, &mut emit) {
-        Ok(()) => 0,
-        Err(error) => report(ctx, &error),
-    }
+    run_owned(ctx, args, table, poll_interval_ms, exclusive)
 }
 
 /// File checks do not even inspect data_dir; stored checks never acquire a writer.
@@ -438,7 +427,54 @@ fn log_mode(mode: &str, data_dir: &std::path::Path) {
     eprintln!("fsm execute: mode={mode} data_dir={}", data_dir.display());
 }
 
-#[allow(clippy::print_stdout)]
-fn log_line(line: &str) {
-    println!("{line}");
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn run_owned(ctx: &Ctx, args: &Args, table: HandlerTable, interval: u64, exclusive: bool) -> u8 {
+    match owner::run(
+        &ctx.data_dir,
+        table,
+        interval,
+        exclusive,
+        args.flags.get("control-dir").map(String::as_str),
+    ) {
+        Err(error) => report(ctx, &error),
+        Ok(outcome) => {
+            if let Some(error) = owner::final_failure(&outcome) {
+                return report(ctx, error);
+            }
+            if owner::fully_confirmed(&outcome) {
+                0
+            } else {
+                report(
+                    ctx,
+                    &ExecError::new(
+                        "exec/inflight_deferred",
+                        "executor shutdown or transport delivery remains uncertain",
+                    ),
+                )
+            }
+        }
+    }
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+fn run_owned(
+    ctx: &Ctx,
+    _args: &Args,
+    _table: HandlerTable,
+    _interval: u64,
+    _exclusive: bool,
+) -> u8 {
+    report(
+        ctx,
+        &ExecError::new(
+            "exec/mode",
+            "native standalone execution is unsupported on this platform",
+        ),
+    )
 }

@@ -70,6 +70,27 @@ race the accepted stop response; native cleanup, endpoint removal and response
 delivery require distinct observations. Production acceptance must exercise
 generous and expired budgets and that response/retirement race.
 
-The implementation and actual expired/replaced-file and excessive-deadline
-transport tests are currently cached drafts, uncompiled and unapplied while
-full stable gate 76940 verifies frozen runtime; this review is not acceptance.
+The deadline API and actual expired/replaced-file and excessive-deadline
+transport tests are committed as ba5cc95 after focused stable/MSRV checks.
+The subsequent production owner composition is now applied for ordinary execute;
+focused session 41242 passed stable/MSRV compilation and the existing
+focused suites, before the actual binary regression was added. Embedded MCP and low-level service selection
+remain legacy. Actual binary stop/exit/endpoint retirement, blocked output,
+nonempty native closure and signal acceptance remain required; source routing
+and compilation alone cannot satisfy those obligations.
+
+The actual binary regression exposed a response retirement race after correcting
+an invalid empty operator table fixture: native Stopped became visible and the
+owner closed the endpoint before the accepted client received its report.
+Retirement now stops accepts first and preserves available terminal responses
+within their original request and bounded wire deadlines. Unresolved long
+drains are discarded on forced transport close, preserving the existing finite
+close contract; the first attempted retirement loop failed two transport checks
+by retaining those requests. Session 9201 validates the revised behavior.
+
+This regression covers actual empty inventory with a separate held writer and
+a 60-second scheduling interval, for both drain and abort. It cannot establish
+nonempty native closure, executing MCP behavior, two live admitted owners,
+blocked production output, signal recovery or failure/full-disk acceptance.
+The final uncertain error currently lacks structured endpoint/output facts;
+those facts must be exposed before operator reconciliation acceptance.

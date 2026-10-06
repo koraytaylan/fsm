@@ -185,3 +185,90 @@ fn invalid_stop_arguments_refuse_before_closing_admission() {
     }
     assert!(endpoint.close(1000).unwrap());
 }
+
+#[test]
+fn production_binary_stops_and_removes_endpoint_while_another_writer_is_held() {
+    struct Owner(std::process::Child);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    for mode in ["drain", "abort"] {
+        let fixture = Fixture::new();
+        let writer = Store::open(&fixture.data).unwrap();
+        let handlers = fixture.root.join("handlers.json");
+        fs::write(
+            &handlers,
+            br#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator"]}"#,
+        )
+        .unwrap();
+        let diagnostic = fixture.root.join("owner-stderr");
+        let mut owner = Owner(
+            Command::new(env!("CARGO_BIN_EXE_fsm"))
+                .arg("--data-dir")
+                .arg(&fixture.data)
+                .args(["execute", "--handlers"])
+                .arg(&handlers)
+                .arg("--control-dir")
+                .arg(&fixture.root)
+                .args(["--poll-interval-ms", "60000"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::from(fs::File::create(&diagnostic).unwrap()))
+                .spawn()
+                .unwrap(),
+        );
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let directory = loop {
+            if let Some(path) = fs::read_dir(&fixture.root)
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| {
+                    path.file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .starts_with("c-")
+                        && path.join("identity").exists()
+                })
+            {
+                break path;
+            }
+            assert!(
+                owner.0.try_wait().unwrap().is_none(),
+                "production owner exited before publication: {}",
+                fs::read_to_string(&diagnostic).unwrap()
+            );
+            assert!(
+                Instant::now() < deadline,
+                "production owner did not publish"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        let output = bounded(&mut fixture.command(mode, "1000"), || {});
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = json(&output.stdout);
+        assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
+        assert_eq!(report.get("writer_released"), Some(&Value::Bool(true)));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = owner.0.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "production owner did not exit after stop"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        assert!(status.success());
+        assert!(!directory.exists());
+        assert!(Store::open(&fixture.data).is_err());
+        drop(writer);
+    }
+}
