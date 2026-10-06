@@ -294,6 +294,14 @@ fn empty_domain_preparation() {
     assert!(fixture.groups[1].0.exists());
     assert!(!fixture.directory.join("closed-1.json").exists());
     drop(lock);
+    let mut wrong_domain = second.as_obj().unwrap().clone();
+    wrong_domain.insert("cgroup".into(), domain.get("cgroup").unwrap().clone());
+    assert!(
+        super::super::closure::discard_prepared(&fixture.directory, &Value::Obj(wrong_domain))
+            .is_err()
+    );
+    assert!(fixture.groups[1].0.exists());
+    assert!(!fixture.directory.join("closing-2.json").exists());
     for name in [
         "binding-2.json.pending",
         "launch-2.json",
@@ -317,8 +325,14 @@ fn empty_domain_preparation() {
     );
     assert!(!fixture.directory.join("closed-2.json").exists());
     fs::remove_dir(&child).unwrap();
-    super::super::closure::complete(&fixture.directory, 2).unwrap();
-    super::super::closure::complete(&fixture.directory, 2).unwrap();
+    assert_eq!(
+        super::super::closure::discard_prepared(&fixture.directory, &second).unwrap(),
+        second
+    );
+    assert_eq!(
+        super::super::closure::discard_prepared(&fixture.directory, &second).unwrap(),
+        second
+    );
     assert!(!fixture.groups[1].0.exists());
     assert_eq!(
         read_value(&fixture.directory.join("closed-2.json"), true).unwrap(),

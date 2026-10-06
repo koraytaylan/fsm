@@ -19,6 +19,21 @@ mod unlaunched;
 #[path = "closure_prepared.rs"]
 mod prepared;
 
+/// Retire only the caller's complete original unbound domain, never a successor.
+pub(super) fn discard_prepared(directory: &Path, domain: &Value) -> Result<Value, String> {
+    let original = fsm_core::record::execution::NativeDomain::from_value(domain)
+        .map_err(|error| error.to_string())?
+        .to_value();
+    protected_directory(directory)?;
+    let _lock = authority_lock(directory)?;
+    let allocation = number(&original, "allocation")?;
+    if closing::recorded_domain(directory, allocation)? != original {
+        return Err("prepared cleanup original domain differs".into());
+    }
+    prepared::complete(directory, allocation, &original)?;
+    Ok(original)
+}
+
 pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> {
     protected_directory(directory)?;
     let _lock = authority_lock(directory)?;

@@ -322,6 +322,9 @@ fn validate_request(value: &Value) -> Result<(), String> {
         .ok_or("native request payload missing")?;
     match value.get("action").and_then(Value::as_str) {
         Some("prepare") if payload == &Value::Null => Ok(()),
+        Some("discard-prepared") => fsm_core::record::execution::NativeDomain::from_value(payload)
+            .map(|_| ())
+            .map_err(|error| error.to_string()),
         Some("bind") => {
             let binding = payload.as_obj().ok_or("native binding is not an object")?;
             if binding.len() == 3

@@ -864,3 +864,5 @@ primitive changes no journal, receipt, attestation or hash format and does not
 complete production Runner routing or release its gate.
 
 Prepared unbound allocation cleanup now uses the existing Root `close` action and domain tombstone format; it introduces no journal format, public Rust API or execution receipt, and must refuse pending binding or submission material rather than treating it as an unclaimed allocation.
+
+The provisional private broker protocol adds `discard-prepared` with a full NativeDomain payload and matching-domain result for unclaimed host cleanup; this adds no journal format or public Rust API and grants no execution receipt or settlement authority.

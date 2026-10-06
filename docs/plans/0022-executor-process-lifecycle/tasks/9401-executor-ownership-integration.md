@@ -628,3 +628,5 @@ the child identity and publish no tombstone, then succeed only after removal
 of the test-owned obstacle. The frozen stable debug workspace gate for
 `b5ff5f6` remains live in original session `64176`; these additional controls
 require compilation and provisioned execution at their own committed source.
+
+Follow-up host cleanup review identified that a numeric `close` request alone cannot convey the retained original domain identity; private broker action `discard-prepared` now validates and matches the full domain under the authority lock before revocation and echoes it after prepared-only retirement, with a privileged wrong-cgroup-identity refusal control and cold original-domain replay controls, while typed host cleanup and production Runner routing remain outstanding.

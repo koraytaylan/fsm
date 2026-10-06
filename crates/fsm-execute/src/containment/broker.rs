@@ -102,6 +102,7 @@ fn session(
         }
         let result = match action {
             "prepare" => allocator::prepare(&directory),
+            "discard-prepared" => closure::discard_prepared(&directory, payload),
             "bind" => bind(&directory, payload).map(|_| Value::Null),
             "recover" => runner::recover(&directory, broker_frame::allocation(payload)?),
             "observe" => observation::read(&directory, broker_frame::allocation(payload)?),

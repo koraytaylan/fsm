@@ -52,6 +52,9 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
     let payload = value.get("payload").ok_or("broker payload missing")?;
     match text(value, "action")? {
         "prepare" if payload == &Value::Null => Ok(()),
+        "discard-prepared" => fsm_core::record::execution::NativeDomain::from_value(payload)
+            .map(|_| ())
+            .map_err(|error| error.to_string()),
         "bind" => closed(payload, &["format", "claim", "journal_claim"]),
         "execute" | "close" | "observe" | "recover" => allocation(payload).map(|_| ()),
         _ => Err("broker action or payload outside policy".into()),
@@ -110,6 +113,20 @@ mod tests {
             ("payload", Value::Null),
         ]);
         assert!(validate(&request).is_ok());
+        for payload in [
+            Value::Null,
+            Value::Num("1".into()),
+            Value::Obj(Default::default()),
+        ] {
+            assert!(
+                validate(&object([
+                    ("format", Value::Str("fsm.native-request/1".into())),
+                    ("action", Value::Str("discard-prepared".into())),
+                    ("payload", payload),
+                ]))
+                .is_err()
+            );
+        }
         for raw in ["0", "01", "-1", "1.0", "18446744073709551616"] {
             assert!(allocation(&Value::Num(raw.into())).is_err());
         }
