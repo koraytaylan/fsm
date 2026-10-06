@@ -702,9 +702,11 @@ native execution. Serial stable zero-dependency and embedding acceptance
 gates completed with exit zero at the same source: one zero-dependency case,
 eleven completeness cases and one external execution-ownership case, retaining
 `local-7bdfcb6-stable-zero-deps.log` and `local-7bdfcb6-stable-embed.log`.
-The full stable debug workspace gate is now running at frozen `7bdfcb6`,
-retaining `local-7bdfcb6-stable-debug.log`; privileged assertions remain
-unexecuted by these portable gates.
+The full stable debug workspace gate at frozen `7bdfcb6` completed with
+exit zero in original session `48863`, retaining
+`local-7bdfcb6-stable-debug.log`. Its full serial release workspace gate is
+now running, retaining `local-7bdfcb6-stable-release.log`; privileged
+assertions remain unexecuted by these portable gates.
 Original cleanup CI Ubuntu stable job `112069961690` completed successfully
 at `e501679`; macOS MSRV job `112069961689` also completed successfully,
 with its complete log retained as `ci-37401653979/macos-msrv-job.log`;
