@@ -185,16 +185,18 @@ pub(super) fn run() {
     }
     run_case(false, Host::Shared);
     run_case(false, Host::Fresh);
+    run_case(false, Host::FreshMcp);
 }
 
 enum Host {
     Primitive,
     Shared,
     Fresh,
+    FreshMcp,
 }
 
 fn run_case(timeout: bool, host: Host) {
-    let table = fixture_table::handler_table(timeout);
+    let table = fixture_table::handler_table(timeout, matches!(host, Host::FreshMcp));
     let mut fixture = Fixture::new_for_operator(table);
     for uid in [0, 61184, 65519, u32::MAX] {
         assert!(broker_endpoint::provision(&fixture.directory, uid).is_err());
@@ -260,7 +262,7 @@ fn run_case(timeout: bool, host: Host) {
         request(&base, "recover", Value::Num("1".into())).get("ok"),
         Some(&Value::Bool(false))
     );
-    if matches!(host, Host::Fresh) {
+    if matches!(host, Host::Fresh | Host::FreshMcp) {
         fresh_cases::run(&mut fixture, &binding, &effect, &successor);
         return;
     }

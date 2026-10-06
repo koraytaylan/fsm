@@ -1313,3 +1313,20 @@ axis receives the same original parsed table and timeout argv mutation; this
 structural change does not alter handler fingerprints, requests, assertions,
 or persisted bytes. Formatting, diff, and oversized-file checks pass; full
 compilation remains queued behind the live frozen workspace gate.
+
+### Fresh MCP handoff coverage prepared
+
+Added a separate original MCP handler axis to the genuine fresh Runner
+fixture, retaining every existing process, timeout, and recovered-host axis.
+Its enrolled Python stdio server follows the already exercised native protocol
+conventions, validates the exact original tool name and argument object, and
+refuses a second tool call before returning a bounded successful structured
+result. The original MCP contract passes through the same genuine unbound
+claim, retained Runner installation, duplicate-start refusal, two independent
+writer barriers, pre-entry Root-file absence, read-only refusals, disabled
+Ack/event release, original-event resume, and cold dedup assertions while
+the current scheduler still deliberately declares a different process handler.
+No process-only substitute is used for this MCP axis; compilation and actual
+provisioned runtime execution are pending behind the live earlier-source gates.
+Formatting, diff, and oversized-file checks pass, with all Rust files still
+below the required ceiling; task 9401 remains in progress.
