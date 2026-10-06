@@ -148,3 +148,13 @@ The real directory stdin descriptor regression passed in session 80616,
 retaining the OS IsADirectory kind while confirming empty cleanup and writer
 reacquisition. This evidence covers actual production input failure, not
 blocked output, native nonempty retirement or HTTP execution.
+
+Actual production blocked stdout now passes: the test observes the named
+output worker waiting in a kernel pipe operation before requesting abort,
+then receives actual Stopped/writer release and bounded owner exit with
+output_drained=false, leaving both pipe handles open. Three full binary
+repetitions passed in session 44223 after compact fixture paths corrected
+the unrelated 108-byte socket publication refusal. Publication failures now
+retain typed diagnostics. Endpoint removal is not claimed once output
+drainage consumes the first deadline, and nonempty native retirement remains
+unverified.

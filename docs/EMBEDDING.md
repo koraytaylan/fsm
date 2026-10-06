@@ -2492,3 +2492,6 @@ with separate actual shutdown, endpoint removal/error and output drainage
 facts in the existing exec/inflight_deferred error frame. Typed native startup
 errors retain their executor code. Cleanup refusal does not replace an
 initiating protocol failure or imply confirmed native retirement.
+
+Native stdio endpoint publication refusal is reported through the executor
+error frame; a startup transport refusal does not confirm native cleanup.

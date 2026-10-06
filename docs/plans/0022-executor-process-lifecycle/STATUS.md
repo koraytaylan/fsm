@@ -4741,3 +4741,46 @@ while actual empty shutdown, endpoint removal and output drainage all confirmed;
 the original writer was available again after process exit. Evidence remains
 in production-stdio-input-failure-check.log. Installed nonempty and other
 production output/error acceptance remain outstanding; statuses unchanged.
+
+### Actual blocked production stdout — 2026-10-07
+
+Added a real serve --execute pipe regression: initialize and eight tools/list
+requests fill output while the reader stays open and unread. The test observes
+the owned fsm-protocol output thread blocked in a kernel pipe wait via only
+the test child's proc task entries before issuing actual abort control. It
+requires authenticated empty Stopped/writer release, bounded owner exit with
+output_drained=false, and successful writer reacquisition while stdin/stdout
+remain open. Endpoint cleanup is not asserted after the consumed first budget.
+Session 70576 validates it under asserted 1 GiB RAM and zero swap, retaining
+pending evidence in production-stdio-blocked-output-check.log; statuses remain
+unchanged and this test is uncommitted pending results.
+
+Session 70576 exited 101: the actual blocked output control passed, but the
+previous input failure binary exited one with empty stderr. No acceptance is
+inferred from that failed run. Added an explicit missing-diagnostic assertion
+and started serial reproduction session 48001 (exact input case, then repeated
+full binary suite) under asserted 1 GiB RAM and zero swap;
+production-stdio-error-reproduction.log retains pending evidence. The blocked
+output test remains uncommitted while this intermittent failure is investigated.
+
+Reproduction session 48001 exited 101: isolated input failure passed, but the
+full suite failed after its fixture counter reached two digits. Path inspection
+shows the six-digit PID fixture at sequence 0 has a 107-byte socket pathname;
+sequence 10 has 108 bytes, exceeding the Unix socket limit. Compact hexadecimal
+fixture names preserve cache-only operation and full test behavior. Native
+stdio publication refusal now retains a typed executor error so the operator
+receives the startup transport diagnostic rather than silent exit. Session
+44223 validates expanded suites and repeated serial full binary controls under
+asserted 1 GiB RAM and zero swap; production-stdio-fixed-check.log retains
+pending evidence. No native cleanup is inferred from startup refusal.
+
+Session 44223 terminated with exit zero under asserted 1 GiB RAM and zero
+swap. Stable/MSRV all-target Clippy, expanded focused/diagnostic suites and
+all eleven actual binary controls passed, including three additional serial
+full-binary repetitions after the socket-path correction. The actual kernel
+pipe wait is observed before abort; Stopped/writer release remains responsive
+and owner exits one with output_drained=false while the pipes remain open.
+Input-failure diagnostics also pass in the full suite after compact fixtures.
+Evidence remains in production-stdio-fixed-check.log; this accepts tested
+empty native shutdown under blocked output, not nonempty proof or plan 20
+autonomy. Task statuses remain unchanged.

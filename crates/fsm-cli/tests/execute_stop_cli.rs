@@ -28,7 +28,7 @@ impl Fixture {
         let cache = PathBuf::from(std::env::var_os("TMPDIR").expect("explicit task cache"));
         assert!(!cache.starts_with("/tmp"));
         let root = cache.join(format!(
-            "sc{}-{}",
+            "s{:x}-{:x}",
             std::process::id(),
             SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
@@ -108,6 +108,11 @@ fn stop_binary_reports_original_deadline_uncertainty_without_acquiring_writer() 
     let output = bounded(&mut fixture.command("abort", "1000"), || {});
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
+    assert!(
+        !output.stderr.is_empty(),
+        "production input error exited without a diagnostic: status={:?}",
+        output.status
+    );
     let error = json(&output.stderr);
     assert_eq!(
         error.get("code").and_then(Value::as_str),
@@ -129,6 +134,11 @@ fn missing_endpoint_does_not_create_data_or_confirm_admission() {
     let fixture = Fixture::new();
     let output = bounded(&mut fixture.command("abort", "1000"), || {});
     assert_eq!(output.status.code(), Some(1));
+    assert!(
+        !output.stderr.is_empty(),
+        "production input error exited without a diagnostic: status={:?}",
+        output.status
+    );
     let error = json(&output.stderr);
     assert_eq!(
         error.get("code").and_then(Value::as_str),
@@ -548,6 +558,11 @@ fn production_stdio_input_failure_reports_original_error_and_actual_cleanup() {
     let output = bounded(&mut command, || {});
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
+    assert!(
+        !output.stderr.is_empty(),
+        "production input error exited without a diagnostic: status={:?}",
+        output.status
+    );
     let error = json(&output.stderr);
     assert_eq!(
         error.get("code").and_then(Value::as_str),
@@ -589,5 +604,120 @@ fn production_stdio_input_failure_reports_original_error_and_actual_cleanup() {
                 .to_string_lossy()
                 .starts_with("c-"))
     );
+    drop(Store::open(&fixture.data).unwrap());
+}
+
+#[test]
+fn production_stdio_control_remains_responsive_with_actual_blocked_pipe_output() {
+    use std::io::Write;
+    struct Owner(std::process::Child);
+    impl Drop for Owner {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let fixture = Fixture::new();
+    drop(Store::open(&fixture.data).unwrap());
+    let handlers = fixture.root.join("handlers.json");
+    fs::write(
+        &handlers,
+        br#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator"]}"#,
+    )
+    .unwrap();
+    let mut owner = Owner(
+        Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .env("HOME", &fixture.root)
+            .args(["--json", "--data-dir"])
+            .arg(&fixture.data)
+            .args(["serve", "--execute", "--handlers"])
+            .arg(&handlers)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let input = owner.0.stdin.as_mut().unwrap();
+    input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").unwrap();
+    for id in 2..10 {
+        writeln!(
+            input,
+            "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/list\"}}"
+        )
+        .unwrap();
+    }
+    input.flush().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let blocked = fs::read_dir(format!("/proc/{}/task", owner.0.id()))
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| {
+                fs::read_to_string(entry.path().join("comm"))
+                    .is_ok_and(|name| name.starts_with("fsm-protocol"))
+                    && fs::read_to_string(entry.path().join("wchan"))
+                        .is_ok_and(|wait| wait.contains("pipe"))
+            });
+        if blocked {
+            break;
+        }
+        assert!(
+            owner.0.try_wait().unwrap().is_none(),
+            "owner exited before blocked output observation"
+        );
+        assert!(
+            Instant::now() < deadline,
+            "actual output worker did not block on its pipe"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let root = fixture.root.join(".cache/fsm/control");
+    let mut stop = Command::new(env!("CARGO_BIN_EXE_fsm"));
+    stop.args(["--json", "--data-dir"])
+        .arg(&fixture.data)
+        .args(["execute", "stop", "--control-dir"])
+        .arg(&root)
+        .args(["--mode", "abort", "--timeout-ms", "500"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = bounded(&mut stop, || {});
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = json(&output.stdout);
+    assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
+    assert_eq!(report.get("writer_released"), Some(&Value::Bool(true)));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let status = loop {
+        if let Some(status) = owner.0.try_wait().unwrap() {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "blocked output suspended owner exit"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    assert_eq!(status.code(), Some(1));
+    // Read only stderr after exit; leave the actual stdout reader untouched.
+    use std::io::Read;
+    let mut stderr = Vec::new();
+    owner
+        .0
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_end(&mut stderr)
+        .unwrap();
+    let error = json(&stderr);
+    let facts = error.get("details").unwrap();
+    assert_eq!(facts.get("phase").and_then(Value::as_str), Some("stopped"));
+    assert_eq!(facts.get("writer_released"), Some(&Value::Bool(true)));
+    assert_eq!(facts.get("output_drained"), Some(&Value::Bool(false)));
+    assert!(owner.0.stdin.is_some() && owner.0.stdout.is_some());
     drop(Store::open(&fixture.data).unwrap());
 }

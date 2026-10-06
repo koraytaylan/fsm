@@ -41,7 +41,13 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
         .recursive(true)
         .mode(0o700)
         .create(&root)?;
-    let endpoint = crate::local_control::LocalControlEndpoint::publish(&root, &mut driver)?;
+    let endpoint = crate::local_control::LocalControlEndpoint::publish(&root, &mut driver)
+        .map_err(|error| {
+            io::Error::other(fsm_execute::error::ExecError::new(
+                "exec/inflight_deferred",
+                format!("native stdio publication failed: {error}"),
+            ))
+        })?;
     let result = super::serve_owned_native_session_reporting(
         &mut driver,
         &mut crate::clock::SystemClock,
