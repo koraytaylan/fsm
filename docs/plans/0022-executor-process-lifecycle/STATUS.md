@@ -4280,6 +4280,18 @@ workspace tests, all-target Clippy, docs, zero dependencies and embedding
 acceptance run serially; this entry changes documentation only and claims no
 completed gate or installed native execution. Task statuses remain unchanged.
 
+### Production endpoint deadline composition review — 2026-10-06
+
+STANDALONE-INTEGRATION-REVIEW.md now records original-deadline endpoint
+retirement, output-drain budget exhaustion and accepted-response retirement
+races. Cached startup composition validates before publication and retains
+execution result, actual control facts and endpoint cleanup/error facts
+separately; startup failure drives explicit abort without losing its initiating
+error. Absolute-deadline endpoint and actual replacement/excessive-bound tests
+are drafted but unapplied/uncompiled. Full gate 76940 remains confirmed live
+with frozen runtime and zero swap; this documentation changes no task status
+or acceptance claim, and production/native obligations remain outstanding.
+
 ### Standalone integration boundary review — 2026-10-06
 
 STANDALONE-INTEGRATION-REVIEW.md identifies production obligations before

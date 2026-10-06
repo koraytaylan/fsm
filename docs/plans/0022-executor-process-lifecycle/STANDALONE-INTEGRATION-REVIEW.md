@@ -54,3 +54,22 @@ callback. Actual SIGTERM/SIGKILL production acceptance must test that policy,
 separately from independently woken explicit drain/abort control.
 This review identifies integration obligations and does not claim they are
 implemented or promote either ownership or shutdown tasks.
+
+Endpoint retirement must reuse the original shutdown deadline: a fresh close
+timeout after output drainage extends the caller's budget. The cached design
+adds an absolute-deadline close and retains the original deadline in the actual
+standalone result; an expired close still stops transport admission but does
+not promise filesystem removal. Cleanup error/removal facts must remain separate
+from both initiating execution errors and authenticated native shutdown facts.
+
+Output drainage can consume that original budget before endpoint removal starts.
+Do not hide unconfirmed endpoint cleanup behind a successful native Stopped
+report or perform synchronous filesystem deletion on the ownership thread.
+Conversely, immediately closing the endpoint when Stopped becomes visible can
+race the accepted stop response; native cleanup, endpoint removal and response
+delivery require distinct observations. Production acceptance must exercise
+generous and expired budgets and that response/retirement race.
+
+The implementation and actual expired/replaced-file and excessive-deadline
+transport tests are currently cached drafts, uncompiled and unapplied while
+full stable gate 76940 verifies frozen runtime; this review is not acceptance.
