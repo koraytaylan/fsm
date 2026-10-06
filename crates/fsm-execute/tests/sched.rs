@@ -502,14 +502,7 @@ fn the_same_observation_and_time_always_produce_the_same_directives() {
 
 #[test]
 fn a_remote_original_owner_excludes_start_before_current_handler_lookup() {
-    use fsm_core::json::{JsonLimits, parse};
-    use fsm_core::record::execution::Claim;
-    let claim = Claim::from_value(&parse(br#"{
-      "run_id":1,"instance_id":"case-1","effect_id":"case-1/3/0","attempt":1,
-      "handler_fingerprint":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "retry":{"attempts":3,"backoff_ms":10,"max_backoff_ms":40,"on":["timeout"]},
-      "domain":{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}
-    }"#, &JsonLimits::DEFAULT).unwrap()).unwrap();
+    let claim = original_owner();
     let mut observed = observation_with_pending(vec![effect("case-1/3/0", "assign_reviewer")]);
     observed.execution_owners.push((claim.clone(), None));
     let mut scheduler = Scheduler::new(table());
@@ -549,4 +542,63 @@ fn a_remote_original_owner_excludes_start_before_current_handler_lookup() {
         scheduler.on_observation(&observed, NOW).as_slice(),
         [Directive::Start { .. }]
     ));
+}
+
+fn original_owner() -> fsm_core::record::execution::Claim {
+    use fsm_core::json::{JsonLimits, parse};
+    use fsm_core::record::execution::Claim;
+    Claim::from_value(&parse(br#"{
+      "run_id":1,"instance_id":"case-1","effect_id":"case-1/3/0","attempt":1,
+      "handler_fingerprint":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "retry":{"attempts":3,"backoff_ms":10,"max_backoff_ms":40,"on":["timeout"]},
+      "domain":{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}
+    }"#, &JsonLimits::DEFAULT).unwrap()).unwrap()
+}
+
+#[test]
+fn remote_ownership_occupies_its_instance_even_without_pending_work() {
+    let mut handlers = table();
+    handlers.max_inflight = 3;
+    handlers.max_inflight_per_instance = 1;
+    let mut scheduler = Scheduler::new(handlers);
+    let observed = Observation {
+        execution_owners: vec![(original_owner(), None)],
+        pending: vec![
+            effect("case-1/4/0", "assign_reviewer"),
+            effect("case-2/4/0", "assign_reviewer"),
+        ],
+        ..Observation::default()
+    };
+    let directives = scheduler.on_observation(&observed, NOW);
+    assert!(
+        matches!(directives.as_slice(), [Directive::Start { effect, .. }] if effect.instance_id == "case-2")
+    );
+    assert_eq!(scheduler.capped().unwrap().inflight, 2);
+    assert_eq!(scheduler.capped().unwrap().deferred, 1);
+}
+
+#[test]
+fn a_different_incarnation_cannot_deduplicate_or_replace_the_local_claim() {
+    use fsm_core::record::execution::Claim;
+    let original = original_owner();
+    let mut changed = original.to_value();
+    let Value::Obj(fields) = &mut changed else {
+        unreachable!()
+    };
+    fields.insert("run_id".into(), Value::Num("2".into()));
+    let successor = Claim::from_value(&changed).unwrap();
+    let mut handlers = table();
+    handlers.max_inflight = 2;
+    let mut scheduler = Scheduler::new(handlers);
+    let local = observation_with_pending(vec![effect("case-1/3/0", "assign_reviewer")]);
+    assert_eq!(scheduler.on_observation(&local, NOW).len(), 1);
+    assert!(scheduler.retain_claim(&original));
+    assert!(!scheduler.retain_claim(&successor));
+    let observed = Observation {
+        execution_owners: vec![(successor, None)],
+        pending: vec![effect("case-2/3/0", "assign_reviewer")],
+        ..Observation::default()
+    };
+    assert!(scheduler.on_observation(&observed, NOW).is_empty());
+    assert_eq!(scheduler.capped().unwrap().inflight, 2);
 }
