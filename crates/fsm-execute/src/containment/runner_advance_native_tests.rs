@@ -66,6 +66,22 @@ fn replaced_store_refuses_advance(
     claim: &fsm_core::record::execution::Claim,
     completion: &fsm_execute::run::native_client::NativeCompletion,
 ) {
+    assert_eq!(store.data_dir, fixture.store);
+    completion.proof().check_store(&store.data_dir).unwrap();
+    let replay = store
+        .replay_execution_settlement(
+            claim,
+            fsm_core::record::execution::Settlement::Acked,
+            &fsm_execute::rid::ack_rid(claim.effect().1),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        replay
+            .get("execution")
+            .and_then(|body| body.get("disposition")),
+        Some(&Value::Str("acked".into()))
+    );
     let original = fs::metadata(&fixture.store).unwrap();
     let saved = fixture.store.with_extension("advance-saved");
     assert!(!saved.exists());
