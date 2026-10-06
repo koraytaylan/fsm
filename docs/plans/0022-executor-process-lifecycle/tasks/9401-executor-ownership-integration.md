@@ -1100,3 +1100,18 @@ remote corrected-source gates remain pending. Windows stable and the overall
 run were still live at the observation, so no terminal matrix verdict is
 claimed. These portable failures are distinct from the native stable
 matched-stop/manager-retirement failure, which remains unresolved.
+
+### Terminal installed-boundary CI verdict
+
+Run 37423168150 is terminal failure at exact
+`730b429c32b2bbd1980dfd23bd82ec39b135b7ab`: native MSRV and zero-dependency
+jobs succeeded, native stable failed, and all six portable jobs failed.
+The final Windows stable log (job 112136848529, 440044 bytes) confirms the
+same two missing inventory failures, completing attribution across all six
+portable jobs. Terminal metadata is retained as
+`ci-37423168150/final-run.json`; the native stable job log is retained as
+`job-112136848497.log` (20661 bytes), alongside its detailed artifact failure
+logs. No successful full matrix is claimed. The earlier live frozen `f2bdeea`
+local full debug gate still does not cover the subsequent provisioned probe
+extension or operation-labelled stop diagnostic; these committed changes
+require their own new-source validation.
