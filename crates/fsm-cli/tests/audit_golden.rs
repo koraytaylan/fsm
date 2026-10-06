@@ -190,6 +190,10 @@ fn audit_session(dir: &Scratch) -> String {
     sink.text()
 }
 
+// The VERSION 12 replay root was independently derived with Python SHA-256:
+// first reproduce root/4 from CASE, seq 4, the open instance with seen=1,
+// and create-1/push-0/push-1 at seqs 2/3/4, then add empty handoffs and
+// frame the same material with fsm:state-root:5 plus a newline.
 fn fixture() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/audit/session.expected")

@@ -46,6 +46,10 @@ fn reseal_snapshot(o: &mut BTreeMap<String, Value>) {
         .unwrap_or_default();
     let root_material = Value::Obj(BTreeMap::from([
         ("execution".into(), o.get("execution").unwrap().clone()),
+        (
+            "execution_handoffs".into(),
+            o.get("execution_handoffs").unwrap().clone(),
+        ),
         ("seq".into(), o.get("seq").unwrap().clone()),
         ("machines".into(), o.get("machines").unwrap().clone()),
         ("instances".into(), o.get("instances").unwrap().clone()),

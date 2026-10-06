@@ -3492,3 +3492,24 @@ The store/fold now installs a bounded original handoff in the same acknowledgeme
 Targeted verified 1 GiB/zero-swap MSRV scopes passed workspace all-target Clippy, seven handoff value cases, three bounded ledger/accepted-event cases, five execution replay cases, three historical format goldens, all 26 store execution unit/crash cases, 18 base cases including explicit base/2 preservation, all 14 durable claim cases, the external store refusal test, snapshot/6 skip and independently derived snapshot/7 golden, eight composition migration cases, all 16 VERSION migration cases and two external core ownership/handoff API cases. Initial failures were the misplaced store reference in the core-only downstream target, stale current-format hostile snapshot domains, an independently derived snapshot self-hash missing its empty slot, and the now-current VERSION 12 future-refusal vector; corrections preserve the original semantic refusals and use no system-temp fallback. All logs from local-atomic-handoff-format-msrv.log through local-atomic-handoff-migration-completion-msrv.log are retained, with formatting/source-size/diff checks passing; full stable and new portable/native format acceptance remain pending.
 
 The already committed replay-anchor checkpoint was pushed only after its complete stable gate and the prior nine-job review were terminal; new live CI 37455127828 is pinned to 413d6a480e650299efddda03942264f7c5f88c86 and excludes this later format unit. No superseding push is authorized while it remains live. Cold event-only recovery still needs original physical-store/namespace binding and actual process/MCP acceptance before production constructor routing can be reconsidered; the earlier rejected candidate remains unapplied. Task 9401 remains in progress, merged_as remains empty, and production/gate/executable-byte acceptance flags stay false.
+
+### VERSION 12 CLI fixture review — 2026-10-06
+
+The frozen d7cfa63 stable workspace debug gate failed five assertions across
+three CLI targets: old VERSION 11 transcript expectations and snapshot root
+material missing execution_handoffs; release, lint, documentation and later
+gates did not run, and this is not a full stable acceptance verdict.
+The scope recorded memory.swap.current=0 and no OOM kills.
+The audit root was independently derived with Python standard-library SHA-256,
+first reproducing historical root/4, then adding the empty handoff collection
+and using domain fsm:state-root:5; the resulting root is
+sha256:517f6e5ee124ea219f98ce797a6e9ab745844ac869696b68ccd38aab90aec585.
+The corrected adversarial snapshot fixtures preserve all original divergence
+assertions. Serial stable checks under verified MemoryMax=1G/MemorySwapMax=0
+passed all 3 cli_golden, 77 review_regressions and 7 audit_golden tests.
+The first audit retry reused a binary whose manifest directory named the frozen
+checkout; rebuilding the source target made it read the current fixtures.
+Logs are retained under the task cache as local-cli-format12-correction-final.log
+and local-cli-format12-audit-rebuilt.log, alongside the original failed gate.
+Task 9401 remains in progress; full workspace, portable and installed native
+acceptance of VERSION 12 and cold handoff delivery remain incomplete.
