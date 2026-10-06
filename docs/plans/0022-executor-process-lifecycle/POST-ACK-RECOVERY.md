@@ -158,3 +158,50 @@ recovery must establish the original physical store/namespace binding without
 new execution authority before delivery. That host integration, genuine cold
 process/MCP and sealed acceptance, production defaults, shutdown and complete
 crash/concurrency axes remain necessary before task 9401 can be completed.
+
+## Cold host implementation review — 2026-10-06
+
+Source inspection identifies the integration points for the remaining work;
+this section records the proposed implementation, not completed capability.
+`service::plan` obtains one verified read-only snapshot and invokes
+`Runner::recover_native_owners` before scheduler observation; both public tick
+paths share it. `settle_phase` invokes `apply_native` under the actual writer.
+Handoff adoption and event application belong at these same points.
+
+Discovery currently verifies the root-protected store registration against the
+physical directory device/inode, pins the selected authority directory while
+checking the broker route, and then returns only namespace/generation.
+`check_claim_store` consequently omits the original authority device/inode.
+The retained claim domain already contains this identity, and
+`containment::closing::recorded_domain` checks it against the authority
+metadata. Discovery should retain that verified identity internally and check
+it together with namespace/generation before cold delivery; a recreated
+same-path authority must not acquire the original event permission.
+This lookup must remain read-only and make no prepare/bind/execute request.
+
+The host should retain bounded event-only entries keyed by original run ID,
+separate from NativeExecution owners and admission capacity, with an original
+handoff value and last attempted journal sequence. Adoption copies only the
+verified snapshot collection and validates the original contract using
+HandlerSpec::from_contract and the claim fingerprint. Missing observations
+cannot alone erase a retained entry; under the healthy original writer, exact
+current durable collection membership decides whether it remains actionable.
+A changed original value is a refusal rather than replacement permission.
+
+The writer path should recheck physical identity and protected authority,
+require exact durable handoff membership, recover the original on_ok/on_failed
+advance from the contract and actual outcome, and send under the recorded
+derived event key without acknowledging again. It must not fabricate a
+NativeCompletion, reconstruct a closure receipt, look up the current handler
+table, or launch a helper. Acceptance is established by the resulting durable
+collection retirement, not merely a successful send response: ignored,
+rejected and conflicting-key results must preserve and park the obligation.
+Disabled or cancelled instances likewise retain it without burning the key.
+
+Apply at most one ready native work item per tick and alternate ready owner
+and handoff work so neither can starve; rotate handoff selection by original
+run ID, retry parked entries only after observed journal progress, and retire
+no scheduler claim slot for event-only delivery. Required installed controls
+remain cold process and MCP completion, changed/removed handler tables,
+two-seal restarts, copied/replaced store and authority identities, read-only
+and contended writers, disabled/rejected events, and foreign-key conflicts.
