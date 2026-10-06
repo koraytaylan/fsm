@@ -3700,3 +3700,19 @@ The successor remote push remains pending exact approval following its
 automatic rejection; production selectors and all production acceptance
 flags remain unchanged, task 9401 stays in progress, and the full plans
 20–23 objective is not complete.
+
+### Complete retirement-guard stable gate — 2026-10-06
+
+Serial session 71611 completed with exit 0 at exact code source
+1d79e255c7508417249d2c59e4c517c9f5ef7bcd. Formatting, source-size checks,
+full debug/release workspace suites, workspace all-target Clippy,
+warning-denied rustdoc, zero-dependencies and full embed acceptance passed.
+The task scope verified MemoryMax=1G/MemorySwapMax=0 before Cargo; observed
+scope counters showed zero swap use and no OOM events. The retained log is
+local-1d79e25-retirement-stable-gate.log in the task cache.
+This validates local stable behavior including retained original-ack refusal,
+not provisioned cold host controls, native closure or actual production
+routing. Installed/portable acceptance remains pending exact authorization
+for the successor push following its automatic approval rejection.
+Task 9401 stays in progress and production defaults remain legacy; shutdown,
+reconciliation and the complete plans 20–23 objective remain incomplete.
