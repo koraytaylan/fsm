@@ -96,3 +96,11 @@ The final error now attaches structured endpoint/output facts alongside
 shutdown inventory, retaining original initiating details; session 81891 passed
 focused stable/MSRV checks; actual failure-path reporting acceptance remains
 required beyond the successful stop regressions.
+
+The actual broken-stdout regression passed in session 70890 after adding a due
+machine deadline that produces writer-contention diagnostics. Closing the
+real pipe reader causes output failure; the production error retains the
+initiating failure alongside actual empty shutdown and separate removal/output
+facts, with successful endpoint cleanup and the independent writer still held.
+The initial empty fixture emitted no diagnostic and therefore did not test this
+failure. This acceptance remains distinct from a blocked OS output pipe.

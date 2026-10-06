@@ -272,3 +272,110 @@ fn production_binary_stops_and_removes_endpoint_while_another_writer_is_held() {
         drop(writer);
     }
 }
+
+#[test]
+fn production_broken_stdout_preserves_failure_and_separate_cleanup_facts() {
+    let fixture = Fixture::new();
+    let mut writer = Store::open(&fixture.data).unwrap();
+    let definition = fsm_core::json::parse(br#"{"format":"fsm.machine/1","name":"quiet","context":[],"events":[],"effects":[],"states":[{"name":"waiting"},{"name":"done","terminal":true}],"initial":"waiting","transitions":[],"deadlines":[{"name":"due","from":"waiting","after":"dur(1, ms)","to":"done"}]}"#, &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+    let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+    writer
+        .define_machine_on(&mut clock, definition, false, false)
+        .unwrap();
+    writer
+        .create_instance_ctx_on(
+            &mut clock,
+            "quiet",
+            "instance",
+            "create",
+            None,
+            &std::collections::BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let handlers = fixture.root.join("handlers.json");
+    fs::write(
+        &handlers,
+        br#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator"]}"#,
+    )
+    .unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(["--json", "--data-dir"])
+        .arg(&fixture.data)
+        .args(["execute", "--handlers"])
+        .arg(&handlers)
+        .arg("--control-dir")
+        .arg(&fixture.root)
+        .args(["--poll-interval-ms", "1"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Close the actual pipe reader; writer-contention diagnostics hit BrokenPipe.
+    drop(child.stdout.take());
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("broken stdout suspended the production owner");
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let output = child.wait_with_output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let error = json(
+        stderr
+            .lines()
+            .find(|line| line.starts_with('{'))
+            .unwrap()
+            .as_bytes(),
+    );
+    assert_eq!(
+        error.get("code").and_then(Value::as_str),
+        Some("exec/inflight_deferred")
+    );
+    let details = error.get("details").unwrap();
+    assert_eq!(
+        details.get("phase").and_then(Value::as_str),
+        Some("stopped")
+    );
+    for field in [
+        "admission_closed",
+        "inventory_complete",
+        "helpers_retired",
+        "writer_released",
+        "endpoint_removed",
+    ] {
+        assert_eq!(details.get(field), Some(&Value::Bool(true)), "{field}");
+    }
+    assert_eq!(details.get("unresolved_run_ids"), Some(&Value::Arr(vec![])));
+    assert_eq!(
+        details
+            .get("unclaimed_reservations")
+            .and_then(Value::as_str),
+        Some("0")
+    );
+    assert_eq!(details.get("initiating_details"), Some(&Value::Null));
+    assert_eq!(details.get("endpoint_cleanup_error"), Some(&Value::Null));
+    assert!(details.get("output_drained").is_some());
+    assert!(
+        details
+            .get("dropped_lines")
+            .and_then(Value::as_str)
+            .is_some()
+    );
+    assert!(!fs::read_dir(&fixture.root).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("c-")
+    }));
+    assert!(Store::open(&fixture.data).is_err());
+    drop(writer);
+}

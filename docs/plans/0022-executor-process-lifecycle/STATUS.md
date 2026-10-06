@@ -4556,3 +4556,32 @@ facts remain null; IDs/counts use lossless decimal strings. Session 81891 exited
 under asserted 1 GiB RAM and zero swap: stable/MSRV all-target Clippy, executor/
 lifecycle/session/transport/public inventory suites, six stop binary tests and
 61 CLI library tests passed, with evidence in production-owner-facts-check.log; task statuses and 3/7 progress are unchanged.
+
+### Actual production output failure reporting — 2026-10-06
+
+Added an actual ordinary execute binary regression that closes its stdout pipe
+reader while an independent writer remains held, forcing diagnostic BrokenPipe.
+It requires bounded process exit with the initiating exec/inflight_deferred
+error, actual Stopped/admission/inventory/helper/writer facts, no unresolved
+IDs/reservations, separate endpoint and output facts, incarnation removal and
+continued writer exclusion. Session 27304 validates it under asserted 1 GiB
+RAM and zero swap; production-broken-output-check.log retains pending evidence.
+This tests empty inventory and broken output, not blocked output or installed
+nonempty native closure; task statuses and progress remain unchanged.
+
+Session 27304 exited 101 because the empty fixture scheduled no writes and
+therefore emitted no diagnostic to the closed pipe; this did not establish
+blocked ownership. Added a real due machine deadline so writer contention
+produces an actual diagnostic without starting a handler or native claim.
+Session 70890 validates the corrected fixture, retaining pending evidence in
+production-broken-output-check-v2.log under the same no-swap limits.
+
+Session 70890 exited zero under asserted 1 GiB RAM and zero swap. Stable/MSRV
+all-target Clippy, executor/lifecycle/session/transport/public inventory checks,
+all seven actual stop/output binary tests and all 61 CLI library tests passed.
+The actual broken stdout owner exits one while reporting Stopped with complete
+empty inventory, closed admission, retired helpers and released own writer;
+its endpoint is removed and the independent writer remains held. This proves
+the tested broken-output failure path with a due machine deadline, not blocked
+output or installed nonempty native closure. Progress and task statuses remain
+unchanged.
