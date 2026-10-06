@@ -360,3 +360,13 @@ verified 1 GiB/zero-swap limits; workflow-explicit-arguments-check.log retains
 the evidence. All original production scenarios and deadlines remain present;
 this helper proof does not establish authority registration, native handler
 entry, or success/compensation workflow acceptance.
+
+The cleared-environment helper regression now launches all seven real
+operations in three independent sequences: success, partial perform_work
+failure, and restore failure. It verifies exact 0/7 subprocess exit codes,
+ordered call history, complete versus partial external work, and actual
+active/suspended resource phase after restoration. The scoped serial command
+exited 0 with the regression, stable CLI all-target Clippy, and MSRV
+all-target compilation passing; workflow-helper-compensation-check.log
+retains results. This strengthens only fixture argv/environment compatibility;
+no native entry or original production workflow acceptance is claimed.

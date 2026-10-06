@@ -540,40 +540,57 @@ fn cleanup_failures_are_explicit_after_success_or_partial_work() {
 
 #[test]
 fn workflow_helper_uses_explicit_arguments_without_operator_environment() {
-    let directory = Directory::new();
-    fs::write(directory.0.join("phase"), "active").unwrap();
-    let output = Command::new(std::env::current_exe().unwrap())
-        .env_clear()
-        .env(
-            "TMPDIR",
-            std::env::var_os("TMPDIR").expect("explicit task cache"),
-        )
-        .args([
-            "workflow_handler",
-            "--exact",
-            "--nocapture",
-            "handler-operation=check_prerequisite",
-            "handler-run=run-1",
-            "handler-failures=",
-        ])
-        .arg(format!(
-            "handler-directory={}",
-            directory.0.to_str().unwrap()
-        ))
-        .arg(format!("handler-resource={RESOURCE}"))
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        fs::read_to_string(directory.0.join("calls")).unwrap(),
-        "check_prerequisite\n"
-    );
-    assert_eq!(
-        fs::read_to_string(directory.0.join("phase")).unwrap(),
-        "active"
-    );
+    for failure in ["", "perform_work", "restore"] {
+        let directory = Directory::new();
+        fs::write(directory.0.join("phase"), "active").unwrap();
+        for operation in OPERATIONS {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .env_clear()
+                .env(
+                    "TMPDIR",
+                    std::env::var_os("TMPDIR").expect("explicit task cache"),
+                )
+                .args([
+                    "workflow_handler",
+                    "--exact",
+                    "--nocapture",
+                    "handler-run=run-1",
+                ])
+                .arg(format!("handler-operation={operation}"))
+                .arg(format!("handler-failures={failure}"))
+                .arg(format!(
+                    "handler-directory={}",
+                    directory.0.to_str().unwrap()
+                ))
+                .arg(format!("handler-resource={RESOURCE}"))
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(if operation == failure { 7 } else { 0 }),
+                "operation={operation}, failure={failure}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(directory.0.join("calls")).unwrap(),
+            format!("{}\n", OPERATIONS.join("\n"))
+        );
+        assert_eq!(
+            fs::read_to_string(directory.0.join("work")).unwrap(),
+            if failure == "perform_work" {
+                "first"
+            } else {
+                "first,second"
+            }
+        );
+        assert_eq!(
+            fs::read_to_string(directory.0.join("phase")).unwrap(),
+            if failure == "restore" {
+                "suspended"
+            } else {
+                "active"
+            }
+        );
+    }
 }
