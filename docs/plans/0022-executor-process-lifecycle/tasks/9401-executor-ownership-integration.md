@@ -487,3 +487,17 @@ The existing detached review checkout, whose directory name still contains
 debug workspace gate. Its original live session is `95061` and its retained log
 is `local-41cfaa1-stable-debug.log`; no pass is asserted before completion.
 Windows stable CI job `112041769321` remains live in its release workspace step.
+
+### Older frozen matrix terminal result
+
+CI run `37392851160` at exact source
+`7dc91d5ac99257d55a3b9bb6bf946d374a72576d` is now completed with conclusion
+failure. Windows stable job `112041769321` passed its full debug/release,
+all-target lint, documentation and decimal-regeneration steps; its retained
+log is `ci-37392851160/windows-stable-job.log`. Final run metadata is retained
+as `ci-37392851160/final-run.json`. Both native legs and zero-dependencies,
+Ubuntu stable, macOS stable and Windows stable passed; all three portable MSRV
+legs failed on the independently inspected scheduler boolean lint corrected in
+`f9e02fa`. The failed matrix is preserved, not described as green, and a new
+current-source matrix remains required. Current-source isolated debug session
+`95061` remains live; its result is not yet accepted.
