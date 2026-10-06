@@ -8,7 +8,15 @@ use crate::{error::ExecError, sched::Scheduler, watch::Observation};
 use fsm_core::record::execution::{Claim, Stopped};
 use fsm_store::clock::Clock;
 use fsm_store::store::Store;
-use std::{collections::BTreeMap, os::unix::fs::MetadataExt, time::Duration};
+use std::{
+    collections::BTreeMap,
+    os::unix::fs::MetadataExt,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 const MAX_OWNERS: usize = 4096;
 const RECOVERY_TIMEOUT: Duration = Duration::from_secs(3);
@@ -25,6 +33,7 @@ struct Owner {
 
 #[derive(Default)]
 pub(super) struct NativeOwners {
+    admission_closed: Arc<AtomicBool>,
     admissions: super::native_admission::NativeAdmissions,
     handoffs: super::native_handoffs::NativeHandoffs,
     prefer_handoff: bool,
@@ -35,6 +44,21 @@ pub(super) struct NativeOwners {
 }
 
 impl NativeOwners {
+    pub(super) fn admission_control(&self) -> super::NativeAdmissionControl {
+        super::NativeAdmissionControl::from_state(self.admission_closed.clone())
+    }
+
+    pub(super) fn admission_is_closed(&self) -> bool {
+        self.admission_closed.load(Ordering::Acquire)
+    }
+
+    pub(super) fn local_claims(&self) -> impl Iterator<Item = &Claim> {
+        self.owners
+            .values()
+            .filter(|owner| owner.locally_admitted && owner.execution.progress().retained)
+            .map(|owner| &owner.claim)
+    }
+
     pub(super) fn adopt(
         &mut self,
         snapshot: &Store,
@@ -188,6 +212,8 @@ impl NativeOwners {
         scheduler: &mut Scheduler,
         timeout: Duration,
     ) -> Result<(), ExecError> {
+        // A publication authorized before closure must still retain and bind
+        // its original claim; the closed fence separately forbids handler entry.
         // Only a genuine eligible current durable claim may enter this map.
         Pipeline::native_launch_hash(store, claim)?;
         super::native_client::check_claim_store(&store.data_dir, claim).map_err(|_| deferred())?;
@@ -232,6 +258,13 @@ impl NativeOwners {
     }
 
     pub(super) fn ready(&self) -> bool {
+        if self.admission_is_closed() {
+            return self.handoffs.ready()
+                || self
+                    .owners
+                    .values()
+                    .any(|owner| owner.settlement_ready(self.observed_seq));
+        }
         self.admissions.ready()
             || self.handoffs.ready()
             || self
@@ -247,6 +280,9 @@ impl NativeOwners {
         pipeline: &mut Pipeline,
         scheduler: &mut Scheduler,
     ) -> Option<Result<String, ExecError>> {
+        if self.admission_is_closed() {
+            return self.apply_completed(store, clock, pipeline, scheduler);
+        }
         let ownership_ready = self.admissions.ready()
             || self
                 .owners
@@ -268,6 +304,9 @@ impl NativeOwners {
         {
             if !self.matches_store(store) || self.owners.len() >= MAX_OWNERS {
                 return Some(Err(deferred()));
+            }
+            if self.admission_is_closed() {
+                return self.apply_completed(store, clock, pipeline, scheduler);
             }
             let request = match self.admissions.take_ready(store)? {
                 Ok(request) => request,
@@ -330,7 +369,7 @@ impl NativeOwners {
         }
         self.cursor = *selected;
         let owner = self.owners.get_mut(selected)?;
-        let result = owner.apply(store, clock, pipeline);
+        let result = owner.apply(store, clock, pipeline, &self.admission_closed);
         // Settlement releases durable ownership before optional event delivery;
         // a later event error must not keep the consumed local slot occupied.
         if !owner.execution.progress().retained {
@@ -441,6 +480,9 @@ impl NativeOwners {
     }
 
     pub(super) fn observe(&mut self) {
+        if self.admission_is_closed() {
+            self.admissions.close_admission();
+        }
         self.admissions.observe();
         for owner in self.owners.values_mut() {
             if owner.execution.progress().phase == NativeRunPhase::Uncertain {
@@ -465,7 +507,8 @@ impl NativeOwners {
         handler: &crate::config::HandlerSpec,
         scheduler: &mut Scheduler,
     ) -> Result<(), ExecError> {
-        if !self.matches_store(snapshot)
+        if self.admission_is_closed()
+            || !self.matches_store(snapshot)
             || self.owners.len() + self.admissions.len() >= MAX_OWNERS
             || self
                 .owners
@@ -474,7 +517,8 @@ impl NativeOwners {
         {
             return Err(deferred());
         }
-        self.admissions.queue(snapshot, effect, handler, scheduler)
+        self.admissions
+            .queue(snapshot, effect, handler, scheduler, &self.admission_closed)
     }
 
     pub(super) fn release_preparations(&mut self, scheduler: &mut Scheduler) {
@@ -482,7 +526,9 @@ impl NativeOwners {
     }
 
     pub(super) fn start_preparations(&mut self) {
-        self.admissions.start_queued();
+        if !self.admission_is_closed() {
+            self.admissions.start_queued(&self.admission_closed);
+        }
     }
 }
 
@@ -504,13 +550,21 @@ impl Owner {
         store: &mut Store,
         clock: &mut dyn Clock,
         pipeline: &mut Pipeline,
+        admission_closed: &AtomicBool,
     ) -> Result<(String, bool), ExecError> {
         if self.entry_ready() {
             // A read-only or stale writer refusal leaves the bound owner intact;
             // only a validated entry attempt consumes its one-shot permission.
-            Pipeline::native_launch_hash(store, &self.claim)?;
-            self.entry_requested = true;
-            self.execution.launch_bound(store)?;
+            let entry_requested = &mut self.entry_requested;
+            if !self.execution.launch_bound_checked(store, || {
+                if admission_closed.load(Ordering::Acquire) {
+                    return false;
+                }
+                *entry_requested = true;
+                true
+            })? {
+                return Err(deferred());
+            }
             return Ok((
                 format!(
                     "native-launched {} run_id={}",
@@ -586,6 +640,42 @@ fn deferred() -> ExecError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_target_iteration_filters_foreign_metadata_and_orders_original_runs() {
+        // Classifier fixtures supply no allocation, launch or closure authority.
+        let fixture = fsm_core::json::parse(
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../fsm-core/tests/fixtures/execution-handoff.json"
+            )),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let mut owners = NativeOwners::default();
+        for (run, local) in [(9, true), (5, false), (2, true)] {
+            let fsm_core::json::Value::Obj(mut value) = fixture.get("claim").unwrap().clone()
+            else {
+                unreachable!()
+            };
+            value.insert("run_id".into(), fsm_core::json::Value::Num(run.to_string()));
+            let claim = Claim::from_value(&fsm_core::json::Value::Obj(value)).unwrap();
+            owners.retain(&claim, None).unwrap();
+            owners.owners.get_mut(&run).unwrap().locally_admitted = local;
+        }
+        assert_eq!(
+            owners.local_claims().map(Claim::run_id).collect::<Vec<_>>(),
+            vec![2, 9]
+        );
+        assert_eq!(owners.owners.len(), 3);
+        assert!(!owners.owners[&5].locally_admitted);
+        assert!(
+            owners
+                .owners
+                .values()
+                .all(|owner| owner.execution.progress().retained)
+        );
+    }
 
     #[test]
     fn runner_cancellation_refuses_observed_foreign_ownership() {

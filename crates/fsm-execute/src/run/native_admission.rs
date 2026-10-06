@@ -4,7 +4,11 @@ use super::native_client::{NativePreparation, NativePreparedCleanup};
 use crate::{config::HandlerSpec, effect::PendingEffect, error::ExecError, sched::Scheduler};
 use fsm_core::record::execution::{Admission, Claim, NativeDomain};
 use fsm_store::store::Store;
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
+};
 
 const TRANSPORT_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_PREPARATIONS: usize = 4096;
@@ -44,12 +48,22 @@ pub(super) struct AdmissionRequest {
 }
 
 impl NativeAdmissions {
+    pub(super) fn close_admission(&mut self) {
+        for pending in self.pending.values_mut() {
+            pending.cancelled = true;
+            if matches!(pending.phase, Phase::Queued) {
+                pending.phase = Phase::Closed;
+            }
+        }
+    }
+
     pub(super) fn queue(
         &mut self,
         snapshot: &Store,
         effect: &PendingEffect,
         handler: &HandlerSpec,
         scheduler: &mut Scheduler,
+        admission_closed: &AtomicBool,
     ) -> Result<(), ExecError> {
         if snapshot.journal.is_memory()
             || snapshot.journal.poisoned
@@ -78,7 +92,8 @@ impl NativeAdmissions {
                     "native physical-store authority is unavailable",
                 )
             })?;
-        if !scheduler.retain_native_preparation(effect) {
+        if admission_closed.load(Ordering::Acquire) || !scheduler.retain_native_preparation(effect)
+        {
             return Err(deferred());
         }
         self.pending.insert(
@@ -111,7 +126,7 @@ impl NativeAdmissions {
         Some(Ok(()))
     }
 
-    pub(super) fn start_queued(&mut self) {
+    pub(super) fn start_queued(&mut self, admission_closed: &AtomicBool) {
         if self
             .pending
             .values()
@@ -124,6 +139,9 @@ impl NativeAdmissions {
             .values_mut()
             .find(|pending| !pending.cancelled && matches!(pending.phase, Phase::Queued))
         {
+            if admission_closed.load(Ordering::Acquire) {
+                return;
+            }
             pending.phase = match NativePreparation::start(
                 &pending.namespace,
                 pending.generation,
@@ -439,6 +457,29 @@ mod tests {
             pending: BTreeMap::from([(effect.effect_id.clone(), pending)]),
         };
         (admissions, scheduler, effect)
+    }
+
+    #[test]
+    fn closed_fence_refuses_queued_dispatch_and_retains_unknown_allocation() {
+        let fence = AtomicBool::new(true);
+        let (mut queued, mut scheduler, effect) = reservation(Phase::Queued);
+        queued.start_queued(&fence);
+        assert!(matches!(
+            queued.pending[&effect.effect_id].phase,
+            Phase::Queued
+        ));
+        queued.close_admission();
+        assert!(queued.pending[&effect.effect_id].cancelled);
+        queued.release_closed(&mut scheduler);
+        assert!(queued.is_empty());
+        assert!(scheduler.inflight_effect(&effect.effect_id).is_none());
+        let (mut unknown, mut scheduler, effect) = reservation(Phase::UnknownAllocation);
+        unknown.close_admission();
+        unknown.observe();
+        unknown.release_closed(&mut scheduler);
+        assert!(unknown.uncertain());
+        assert!(unknown.pending[&effect.effect_id].cancelled);
+        assert_eq!(scheduler.inflight_effect(&effect.effect_id), Some(&effect));
     }
 
     #[test]

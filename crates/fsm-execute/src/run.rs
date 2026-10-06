@@ -32,11 +32,15 @@ mod mcp_worker;
 #[cfg(target_os = "linux")]
 mod native_admission;
 #[cfg(target_os = "linux")]
+mod native_admission_control;
+#[cfg(target_os = "linux")]
 mod native_handoffs;
 mod native_host;
 #[cfg(target_os = "linux")]
 mod native_owners;
 mod pipeline;
+#[cfg(target_os = "linux")]
+pub use native_admission_control::NativeAdmissionControl;
 
 use mcp_worker::McpWorker;
 mod stream;
@@ -577,6 +581,28 @@ impl Runner {
         self.native_start_claim(store, claim, scheduler, timeout)
     }
 
+    /// Obtain this native runner's independent admission-closure control.
+    /// It does not report cleanup completion or native domain closure.
+    #[cfg(target_os = "linux")]
+    pub fn native_admission_control(&self) -> Result<NativeAdmissionControl, ExecError> {
+        if !self.native_admission || !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+            return Err(ExecError::new(
+                "exec/mode",
+                "admission control requires a supported native runner",
+            ));
+        }
+        Ok(self.native.admission_control())
+    }
+
+    /// Borrow original locally admitted claims whose execution remains retained.
+    /// Observed foreign claims and already consumed completion owners are excluded.
+    /// This does not enumerate unclaimed preparations or prove native liveness.
+    /// Claims contain original private route material and are not health output.
+    #[cfg(target_os = "linux")]
+    pub fn local_native_claims(&self) -> impl Iterator<Item = &fsm_core::record::execution::Claim> {
+        self.native.local_claims()
+    }
+
     /// Retire an original local interrupted run after both helpers and settlement.
     /// No claim is consumed here; missing/pruned original settlement refuses.
     #[cfg(target_os = "linux")]
@@ -896,6 +922,8 @@ impl Runner {
 /// than relying on this destructor.
 impl Drop for Runner {
     fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
+        self.native.admission_control().close();
         for (_, mut running) in std::mem::take(&mut self.children) {
             let _ = running.child_mut().kill();
             let _ = running.child_mut().wait();

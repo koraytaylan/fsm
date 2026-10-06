@@ -2766,3 +2766,8 @@ keep its original settlement/event policy. It MUST NOT append a record, launch
 work, consume pending effects, clear unrelated reservations or infer closure
 from helper death. A false result means helper retirement remains incomplete.
 The caller retains NativeShutdown independently until its helper is retired.
+
+
+### Shared native admission closure and local targets
+
+On supported Linux native runners, NativeAdmissionControl::close MUST irreversibly close that original runner's shared admission fence without waiting for journal or native I/O; clones MUST share closure and MUST NOT affect a successor runner. Queuing, allocator dispatch, claim publication and bound entry MUST check the fence at their authorization boundaries, after preceding route/writer validation where applicable. A transition authorized before closure MUST retain its original reservation and any published claim; original binding may finish but a separately closed entry fence MUST forbid handler entry. Owner observation MUST cancel never-requested queues and request cleanup for delivered preparations while retaining unknown allocation and uncertain publication. Original completion and event-handoff application remain eligible. Closure alone MUST NOT assert native termination, writer release, completed shutdown or a bounded report. Native runner Drop closes this local fence only and grants no native cleanup guarantee. Runner::local_native_claims MUST borrow original locally admitted execution-retained claims in run-ID order, excluding foreign observation and already consumed completion owners; it MUST NOT claim to enumerate unclaimed preparations or prove liveness.

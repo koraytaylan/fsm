@@ -253,6 +253,8 @@ method fsm_execute::mcp_client::ProtocolFault::as_str
 method fsm_execute::run::BoundedBytes::empty
 method fsm_execute::run::BoundedBytes::to_json_string
 method fsm_execute::run::KillReason::code
+method fsm_execute::run::NativeAdmissionControl::close
+method fsm_execute::run::NativeAdmissionControl::is_closed
 method fsm_execute::run::Pipeline::advance_native_settled
 method fsm_execute::run::Pipeline::advance_only
 method fsm_execute::run::Pipeline::attempt
@@ -271,6 +273,8 @@ method fsm_execute::run::RunOutcome::failure_class
 method fsm_execute::run::RunOutcome::succeeded
 method fsm_execute::run::Runner::finished_effects
 method fsm_execute::run::Runner::kill
+method fsm_execute::run::Runner::local_native_claims
+method fsm_execute::run::Runner::native_admission_control
 method fsm_execute::run::Runner::new
 method fsm_execute::run::Runner::new_native
 method fsm_execute::run::Runner::poll
@@ -371,6 +375,7 @@ reexport fsm_execute::contract::Limits from report
 reexport fsm_execute::contract::Report from report
 reexport fsm_execute::contract::analyze_contract from outcomes
 reexport fsm_execute::contract::analyze_effects from effects
+reexport fsm_execute::run::NativeAdmissionControl from native_admission_control
 reexport fsm_execute::run::Pipeline from pipeline
 reexport fsm_execute::run::SettleOutcome from pipeline
 reexport fsm_execute::run::native_client::NativeCompletion from completion
@@ -400,6 +405,7 @@ struct fsm_execute::error::ExecError
 struct fsm_execute::run::BoundedBytes
 struct fsm_execute::run::Exhaustion
 struct fsm_execute::run::McpCall
+struct fsm_execute::run::NativeAdmissionControl
 struct fsm_execute::run::Pipeline
 struct fsm_execute::run::Runner
 struct fsm_execute::run::native_client::NativeCompletion

@@ -2306,3 +2306,8 @@ observation against the original healthy writer. Ok(false) retains capacity;
 errors preserve ownership. Ok(true) releases only that original local owner.
 Already retained success/failure completion follows its original pipeline.
 This operation does not implement endpoint control or independent reporting.
+
+
+### Shared native admission closure and local targets
+
+Obtain a supported native runner's admission control before handing the runner to its worker, retain a clone on the control owner and close it without taking the writer or waiting for worker I/O. Already authorized transitions keep original reservations, and cleanup still requires transport observation plus authenticated settlement/retirement. Borrow local_native_claims to select exact original local closure targets without collecting or re-resolving handlers; these private route-bearing claims are not health output and exclude unclaimed preparations. While draining, use observe_admitted_with rather than an ordinary tick to exclude machine deadlines and new workflow actions; the fence by itself is not the independent shutdown/report driver required by production hosting.

@@ -1098,3 +1098,8 @@ service::observe_admitted_with is an additive Rust API for original native compl
 Add the Linux-only Runner::retire_native_interrupted method using
 the existing Linux NativeShutdown type; persisted bytes, hash domains and
 existing error codes remain unchanged. No portable availability is claimed.
+
+
+### Shared native admission closure and local targets
+
+NativeAdmissionControl, Runner::native_admission_control and Runner::local_native_claims add Linux-only Rust capabilities using existing exec/mode and exec/inflight_deferred refusals, without changing persisted bytes, formats or hash domains. The control is cloneable and Send/Sync; it has no public constructor detached from a runner, and its close/is_closed methods describe admission only. Existing production runner selection remains unchanged.

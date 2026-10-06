@@ -79,12 +79,26 @@ impl NativeExecution {
     /// Request execution of a bound installed owner after a fresh writer recheck.
     /// Observation of this startup path never dispatches execution on its own.
     pub fn launch_bound(&mut self, store: &mut Store) -> Result<(), ExecError> {
+        self.launch_bound_checked(store, || true).map(|_| ())
+    }
+
+    // The final host authorization runs after writer validation, before dispatch.
+    // A refused fence does not consume the owner's one-shot entry permission.
+    pub(crate) fn launch_bound_checked(
+        &mut self,
+        store: &mut Store,
+        authorize: impl FnOnce() -> bool,
+    ) -> Result<bool, ExecError> {
         let run = self.run.as_mut().ok_or_else(unproven)?;
         let hash = Pipeline::native_launch_hash(store, &self.claim)?;
+        if !authorize() {
+            return Ok(false);
+        }
         run.launch_bound(&self.claim, &hash).map_err(|error| {
             ExecError::new("exec/inflight_deferred", error)
                 .hint("retain the original bound owner and reconcile uncertain entry")
-        })
+        })?;
+        Ok(true)
     }
 
     /// Recover the current original run from a durable snapshot without launching.

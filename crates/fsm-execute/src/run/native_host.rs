@@ -60,7 +60,15 @@ impl Runner {
         timeout: std::time::Duration,
     ) -> Result<(), ExecError> {
         #[cfg(target_os = "linux")]
-        return self.native.install(store, claim, scheduler, timeout);
+        {
+            if self.native.admission_is_closed() {
+                return Err(ExecError::new(
+                    "exec/inflight_deferred",
+                    "native admission is closed",
+                ));
+            }
+            self.native.install(store, claim, scheduler, timeout)
+        }
         #[cfg(not(target_os = "linux"))]
         {
             let _ = (store, claim, scheduler, timeout);

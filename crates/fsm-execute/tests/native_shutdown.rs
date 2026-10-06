@@ -39,3 +39,36 @@ fn interrupted_retirement_uses_original_runner_claim_and_separate_closure_transp
         &mut Scheduler,
     ) -> Result<bool, ExecError> = Runner::retire_native_interrupted;
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn downstream_host_can_borrow_original_local_shutdown_targets() {
+    let runner = fsm_execute::run::Runner::new_native().unwrap();
+    let original: Option<&fsm_core::record::execution::Claim> = runner.local_native_claims().next();
+    assert!(original.is_none());
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+#[test]
+fn downstream_admission_control_is_shared_and_bound_to_one_runner() {
+    use fsm_execute::run::{NativeAdmissionControl, Runner};
+    fn require_send_sync<T: Send + Sync>() {}
+    require_send_sync::<NativeAdmissionControl>();
+    let runner = Runner::new_native().unwrap();
+    let control = runner.native_admission_control().unwrap();
+    assert!(!control.is_closed());
+    drop(runner);
+    assert!(control.is_closed());
+    let successor = Runner::new_native().unwrap();
+    let successor_control = successor.native_admission_control().unwrap();
+    control.close();
+    assert!(!successor_control.is_closed());
+    let legacy = Runner::new().unwrap();
+    let Err(error) = legacy.native_admission_control() else {
+        panic!("legacy control must refuse")
+    };
+    assert_eq!(error.code, "exec/mode");
+}

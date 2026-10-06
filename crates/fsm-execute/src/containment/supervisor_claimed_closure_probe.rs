@@ -39,6 +39,14 @@ struct BoundClosure {
 #[ignore = "invoked only by the provisioned unprivileged interrupted closure control"]
 fn bound_claimed_interruption() {
     let mut closed = original_bound_closure();
+    assert_eq!(
+        closed
+            .runner
+            .local_native_claims()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![closed.claim.clone()]
+    );
     let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
     let mut readonly = Store::open_read_only(&closed.data_dir).unwrap();
     let count = readonly.records.len();
@@ -117,6 +125,7 @@ fn bound_claimed_interruption() {
     )
     .unwrap();
     assert_eq!(writer.records.len(), count);
+    assert!(foreign_runner.local_native_claims().next().is_none());
     let response = closed
         .shutdown
         .settle_interrupted(&mut writer, &mut clock)
@@ -184,6 +193,7 @@ fn bound_claimed_interruption() {
             .inflight_effect(closed.claim.effect().1)
             .is_none()
     );
+    assert!(closed.runner.local_native_claims().next().is_none());
     assert_eq!(writer.records.len(), count + 2);
     assert_eq!(writer.state.instances[closed.claim.effect().0], instance);
     // A repeated stale retirement cannot infer success from the absent claim
@@ -298,7 +308,21 @@ fn original_bound_closure() -> BoundClosure {
     assert!(runner.finished_effects().is_empty());
     let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
     let mut pipeline = Pipeline;
+    let admission = runner.native_admission_control().unwrap();
+    admission.clone().close();
+    assert!(admission.is_closed());
     for _ in 0..3 {
+        fsm_execute::service::tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer,
+            &mut clock,
+            1000,
+        );
+        assert_eq!(writer.records, records);
+        assert!(!authority.join(format!("launch-{allocation}.json")).exists());
         fsm_execute::service::observe_admitted_with(
             &mut watcher,
             &mut scheduler,

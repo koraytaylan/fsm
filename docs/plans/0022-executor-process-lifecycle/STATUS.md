@@ -3991,3 +3991,29 @@ passed under verified 1 GiB/no-swap limits; evidence is retained in
 local-interrupted-retirement-stable-gate.log. Installed authority controls and
 other platform axes remain unexecuted for this source; all task and production
 acceptance statuses remain unchanged.
+
+### Shared native admission fence and local targets — 2026-10-06
+
+NativeAdmissionControl now closes one original native runner's shared fence
+without waiting for its worker, writer or native I/O. Authorization checks
+cover queue reservation, preparation dispatch, publication and bound entry;
+already authorized publication retains and binds its original claim while a
+closed entry fence forbids launch. Owned observation cancels never-requested
+queues and cleans delivered preparations without discarding unknown allocation
+or uncertain publication. Completion/handoff application remains eligible.
+Runner::local_native_claims borrows only original local execution-retained
+claims in run-ID order; it excludes foreign observation and consumed owners,
+and does not enumerate unclaimed preparations or assert native liveness.
+
+Focused session 10946 completed exit 0 under verified 1 GiB/no-swap limits:
+formatting/size, stable/MSRV execute all-target Clippy, 39 library tests, four
+downstream API tests, all 16 surface tests and the binding guard passed;
+local-native-admission-fence-check-v2.log is retained. The first run found a
+needless return, corrected before the passing run. Tests cover a held worker,
+independent successor handles, queue/unknown-allocation retention and metadata
+provenance ordering; none constructs native closure evidence. The provisioned
+probe now closes the fence on an actual bound owner and checks public ticks
+cannot publish a launch artifact or mutate the journal, but remains compiled
+and unexecuted locally. Full stable verification is pending. This closes
+admission only: independent bounded reports, endpoint control and production
+stdio shutdown remain incomplete, and no task or acceptance flag is promoted.

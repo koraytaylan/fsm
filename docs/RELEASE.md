@@ -1058,3 +1058,8 @@ Added exact original interrupted-run retirement after authenticated
 settlement and retirement of both native transports, preserving pending work
 and refusing foreign ownership or missing/pruned ledger evidence; production
 shutdown wiring and installed native acceptance remain incomplete.
+
+
+### Shared native admission closure and local targets
+
+Added shared native admission closure and original local shutdown-target iteration, including final authorization checks after route/writer validation and retention of pre-closure publications. Closed fences preserve completion/handoff processing and uncertain preparations; native Drop closes admission only. Independent bounded lifecycle reporting, endpoint control and production stdio shutdown remain incomplete, with installed native acceptance still required. Persisted formats and production runner selection are unchanged.
