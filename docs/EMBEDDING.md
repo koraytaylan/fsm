@@ -2389,4 +2389,20 @@ per process, including workers detached by transport timeout.
 Endpoint close(timeout_ms) returns true only after exact captured file cleanup;
 false leaves cleanup unconfirmed and preserves replacements. Drop only requests
 listener admission closure. Keep the endpoint handle until serving finishes.
-This API is opt-in and does not yet wire execute stop or current CLI selectors.
+This API is opt-in and does not change current CLI executor selectors.
+
+
+The operator command is `fsm execute stop --data-dir <dir> --mode drain|abort
+--timeout-ms <n>`, with `--control-dir <root>` when the explicit host publisher
+uses a root other than HOME/.cache/fsm/control. The command reads discovery
+without opening the writer and never creates a missing data directory or root.
+It requires mode and finite timeout explicitly. Stopped is a stdout report and
+exit zero; actual uncertainty is an exec/inflight_deferred stderr error with
+the original report in details and exit one. A missing/failed response instead
+has null admission_closed, writer_released and native_cleanup_confirmed facts.
+Invalid arguments exit two, and unsupported platforms refuse exec/mode.
+Client transport has the validated deadline; normal CLI rendering is synchronous.
+The command can control explicitly published library hosts while the current
+serve/execute production selectors still use their previous route and publish
+no native owned endpoint; installed production and signal acceptance remain
+pending, and stop never claims all ownership in the directory was terminated.

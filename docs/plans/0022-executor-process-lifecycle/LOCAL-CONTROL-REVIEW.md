@@ -97,3 +97,13 @@ log is local-control-check-final-v3.log. The expanded refusal test also covers
 stale physical device and inode. Mutation session 61319 repeated all five
 expected downstream failures against this final source and passed restored
 tests; local-control-mutations-final.log records the terminal passing run.
+
+
+Full local control endpoint stable host gate session 47222 completed with exit
+zero against exact runtime 9d2439f21e5a3f1d8f51a7f3cbfaddaf8f4bcae6, under
+verified MemoryMax=1G and MemorySwapMax=0; retained
+local-control-endpoint-stable-gate.log covers formatting, source size, debug
+and release workspace tests, all-target Clippy, warning-free documentation,
+zero dependencies and embed acceptance. The documentation-only afb7f2b
+review did not change that frozen runtime. Portable/installed native and
+production selector acceptance remain unproved; task states remain unchanged.

@@ -4110,3 +4110,27 @@ These opt-in library APIs do not wire execute stop, change current production
 selection, prove installed native trees or provide paired standalone/signal
 acceptance; the full changed-source stable host gate is still required.
 Task 9401 remains in progress, 9402 remains planned, and progress remains 3/7.
+
+
+Full local control endpoint stable host gate session 47222 completed with exit
+zero against exact runtime 9d2439f21e5a3f1d8f51a7f3cbfaddaf8f4bcae6, under
+verified MemoryMax=1G and MemorySwapMax=0; retained
+local-control-endpoint-stable-gate.log covers formatting, source size, debug
+and release workspace tests, all-target Clippy, warning-free documentation,
+zero dependencies and embed acceptance. The documentation-only afb7f2b
+review did not change that frozen runtime. Portable/installed native and
+production selector acceptance remain unproved; task states remain unchanged.
+
+
+### Operator execute stop implementation — 2026-10-06
+
+Added the production-dispatched stop command using private actual-driver endpoint
+control without opening the journal writer; its output preserves actual stopped,
+actual uncertain and unknown transport facts separately. CLI-STOP-REVIEW.md
+records the design, four real-binary tests, exact timeout boundaries, stable/MSRV
+checks, nine argument tests, 77 regressions and two load-bearing guard mutations
+followed by restored passing tests (sessions 44567 and 89989, terminal zero).
+The command can control explicit library publishers; current production executor
+selectors do not publish the native owned endpoint. Full changed-source stable
+gate, native tree/production publication, signals, paired standalone and portable
+acceptance remain pending, and plan progress/task states remain unchanged at 3/7.

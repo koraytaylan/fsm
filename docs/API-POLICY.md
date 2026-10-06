@@ -1134,3 +1134,11 @@ journal formats or authenticated native closure evidence; no persisted store
 format, hash, executor error code or production selector changes. Transport
 failures use standard io errors and retain unknown admission/cleanup facts;
 saturation may evict responses while preserving accepted lifecycle requests.
+
+
+The unreleased `execute stop` CLI path is additive and uses existing args,
+exec/mode and exec/inflight_deferred errors: stopped emits the actual report
+with exit zero, uncertain emits existing error details with exit one and
+transport failure preserves null unknown facts. Optional --control-dir chooses
+an explicit publisher root; no handler loading, journal format, hash domain,
+production backend selection or native installed acceptance changes.

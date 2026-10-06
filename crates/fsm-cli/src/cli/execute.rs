@@ -11,6 +11,8 @@
 //! decisions, the runner still owns the child, and a timeout is still enforced
 //! by killing that child — which is what ends the worker.
 
+mod stop;
+
 use std::collections::BTreeMap;
 
 use fsm_core::json::{JsonLimits, Value, parse};
@@ -30,20 +32,30 @@ use crate::store::ErrorObj;
 /// Milliseconds between ticks when the operator does not say.
 const DEFAULT_POLL_INTERVAL_MS: u64 = 250;
 
-pub static SPECS: &[CmdSpec] = &[CmdSpec {
-    path: &["execute"],
-    positionals: &[],
-    flags: &[
-        "handlers",
-        "poll-interval-ms",
-        "since",
-        "machine-file",
-        "machine",
-    ],
-    switches: &["check", "exclusive", "list-dead"],
-    help: "Run the effect executor against a data dir",
-    run: execute,
-}];
+pub static SPECS: &[CmdSpec] = &[
+    CmdSpec {
+        path: &["execute"],
+        positionals: &[],
+        flags: &[
+            "handlers",
+            "poll-interval-ms",
+            "since",
+            "machine-file",
+            "machine",
+        ],
+        switches: &["check", "exclusive", "list-dead"],
+        help: "Run the effect executor against a data dir",
+        run: execute,
+    },
+    CmdSpec {
+        path: &["execute", "stop"],
+        positionals: &[],
+        flags: &["mode", "timeout-ms", "control-dir"],
+        switches: &[],
+        help: "Stop an exact owned executor through its private control endpoint",
+        run: stop::execute_stop,
+    },
+];
 
 /// Resolve `fsm serve`'s mode from its switches.
 ///

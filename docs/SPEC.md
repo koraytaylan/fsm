@@ -2874,5 +2874,27 @@ Explicit endpoint close MUST validate finite bounds before stopping transport
 admission, wait only to that bound and confirm cleanup only after removing its
 exact captured inode identities. Replacement files MUST remain untouched.
 Drop MUST NOT claim native shutdown, cleanup or response-delivery guarantees.
-This opt-in transport does not implement CLI stop or change production backend
-selection, and requires the host to drive the owned executor independently.
+This opt-in publisher does not change production backend selection and requires
+the host to drive the owned executor independently.
+
+
+### Operator local executor stop
+
+`fsm execute stop --data-dir <dir> --mode drain|abort --timeout-ms <n>` MUST
+use the proved local control client and MUST NOT load handlers, open Store,
+acquire a journal writer or create a missing data directory. Mode and finite
+timeout MUST be validated before transmission. The lookup root MUST default to
+HOME/.cache/fsm/control, with optional --control-dir for a different explicit
+publisher root; discovery MUST remain read-only and ambiguity MUST refuse.
+
+A validated actual Stopped report MUST be emitted on stdout with exit zero.
+An actual Uncertain report MUST be retained in existing exec/inflight_deferred
+error details on stderr with exit one. Transport failure MUST use that existing
+error with admission_closed, writer_released and native_cleanup_confirmed
+explicitly null, not false or true. Invalid arguments MUST use the existing
+args error and exit two; unsupported platforms MUST refuse with exec/mode.
+The finite client bound covers discovery/connect/transport; ordinary CLI output
+rendering remains synchronous. This command targets only the exact publisher
+incarnation and MUST NOT claim all durable data-directory ownership is closed.
+It MUST NOT activate native production selection or fabricate an endpoint for
+an executor that has not published one.

@@ -1062,14 +1062,14 @@ shutdown wiring and installed native acceptance remain incomplete.
 
 ### Shared native admission closure and local targets
 
-Added shared native admission closure and original local shutdown-target iteration, including final authorization checks after route/writer validation and retention of pre-closure publications. Closed fences preserve completion/handoff processing and uncertain preparations; native Drop closes admission only. Independent bounded lifecycle reporting, endpoint control and production stdio shutdown remain incomplete, with installed native acceptance still required. Persisted formats and production runner selection are unchanged.
+Added shared native admission closure and original local shutdown-target iteration, including final authorization checks after route/writer validation and retention of pre-closure publications. Closed fences preserve completion/handoff processing and uncertain preparations; native Drop closes admission only. The shared fence alone does not establish lifecycle reporting or production stdio shutdown; later opt-in lifecycle and endpoint APIs compose it, with installed production acceptance still required. Persisted formats and production runner selection are unchanged.
 
 - Added an opt-in Linux owned native lifecycle driver and independently
   waitable control: immediate shared admission closure, first-deadline
   preservation, bounded fair original-claim closure, original completion
   precedence and writer release before confirmed `Stopped`; a stalled worker
   reports `Uncertain` without claiming cleanup. Production stdio progress,
-  installed native driver acceptance, local control endpoint and CLI integration
+  installed native driver acceptance and production endpoint publication
   remain pending; no persisted format or production default changed.
 
 - Corrected the owned native driver so a preclosed admission fence alone cannot
@@ -1091,5 +1091,12 @@ Added shared native admission closure and original local shutdown-target iterati
   discovery, bounded nonblocking connections and independent metadata responses;
   waiting drains cannot occupy abort parser workers, and cleanup preserves
   replaced files. Transport uncertainty never confirms native closure or writer
-  release; CLI/default selection and installed production acceptance remain
+  release; default selection and installed production acceptance remain
   pending, with no journal format or hash changes.
+
+
+- Added `execute stop` with explicit drain/abort, finite timeout and private
+  control-root discovery, using the actual owned endpoint without taking the
+  journal writer; confirmed stopped reports exit zero, uncertainty exits one
+  with preserved native report or null unknown transport facts. Current executor
+  defaults and production endpoint publication remain unchanged and unproved.

@@ -131,3 +131,14 @@ tests plus five guard mutation failures followed by restored passing tests.
 The new transport still needs its full stable gate; CLI stop, production
 publication, signals and installed/paired native acceptance remain unfinished,
 so this task stays planned and plan progress remains 3/7.
+
+
+Endpoint runtime 9d2439f passed the full stable host gate in session 47222,
+confirmed terminal zero; local-control-endpoint-stable-gate.log is retained.
+The execute stop command now reaches that endpoint through the real production
+argument dispatcher, validates finite bounds and emits actual report or unknown
+transport facts without acquiring the journal writer. CLI-STOP-REVIEW.md records
+focused session 44567 and mutation session 89989, both terminal zero after the
+expected guard-disabled test failures and restored passing tests. Production
+server endpoint publication, installed native trees, signals, paired standalone
+and the new CLI runtime's full gate remain pending; no task promotion occurs.

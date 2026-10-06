@@ -49,3 +49,36 @@ writer strategy; those acceptance requirements remain pending.
 
 Implementation and code-facing docs must land together after the current gate;
 task 9401 remains in progress, 9402 stays planned and plan progress stays 3/7.
+
+
+## Implemented stop command follow-up
+
+The actual production argument dispatcher now registers execute stop separately
+from execute, validates explicit drain/abort and finite timeout before any
+transmission, and uses private exact-incarnation discovery without opening Store.
+The operator can choose --control-dir for an explicit library publisher; the
+default is HOME/.cache/fsm/control, which this read-only command does not create.
+Stopped reports use stdout/exit zero; uncertainty uses the existing
+exec/inflight_deferred stderr error with the actual report in details, and
+transport failure preserves null unknown facts rather than claiming admission
+closure or native cleanup. Unsupported platforms use the existing exec/mode.
+Current executor selectors and production publication remain unchanged.
+
+Focused session 44567 exited zero under asserted MemoryMax=1G/MemorySwapMax=0,
+passing stable/MSRV all-target CLI Clippy, four real-binary tests (including
+both modes, exact maximum and maximum-plus-one), twelve transport tests, nine
+argument tests and 77 review regressions; execute-stop-check-v3.log is retained.
+The initial script named a nonexistent registry test target after its other
+checks passed; it was corrected to the actual review_regressions suite.
+Mutation session 89989 exited zero: disabling mode refusal or allowing the
+exact maximum-plus-one caused the production-binary guard test to fail with
+exit 101, and restored source passed all four binary tests; retained logs are
+execute-stop-mutation-mode.log, execute-stop-mutation-maximum.log and
+execute-stop-mutations-restored.log.
+
+These tests control a real library-published endpoint with empty native inventory
+and an actual durable writer, including a held-writer uncertainty response;
+they do not prove native tree/production server publication, signals or paired
+standalone ownership. Full changed-source stable gate and portable/installed
+acceptance remain required; task 9401 stays in progress, 9402 stays planned and
+plan progress stays 3/7.
