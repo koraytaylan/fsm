@@ -773,6 +773,12 @@ successfully at `482da8f`, with its complete log retained as
 `ci-37405315461/macos-msrv-job.log`; macOS stable and both Windows jobs
 remain live, so the current portable matrix is not yet terminal.
 
+Current macOS stable portable job `112081460646` subsequently completed
+successfully at `482da8f`, with its complete log retained as
+`ci-37405315461/macos-stable-job.log`; only Windows MSRV `112081460668`
+and stable `112081460715` remain live, both in debug workspace tests.
+Production Runner routing and the remaining plans are still unfinished.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
