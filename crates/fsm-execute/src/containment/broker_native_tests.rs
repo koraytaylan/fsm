@@ -249,6 +249,7 @@ fn run_case(timeout: bool) {
     assert!(String::from_utf8_lossy(&refused.stderr).contains("outside policy"));
     assert_eq!(fs::read(&counter_path).unwrap(), counter);
     let prepared = disconnect_cases::prepare(&fixture.directory);
+    disconnect_cases::discovery_faults(&fixture.directory);
     let domain = NativeDomain::from_value(&prepared).unwrap();
     assert_eq!(number(&domain.to_value(), "allocation").unwrap(), 1);
     let group = cgroup(&origin(&fixture.directory).unwrap(), 1).unwrap();

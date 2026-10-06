@@ -559,3 +559,39 @@ pub(super) fn run() {
         fixture.cleanup().unwrap();
     }
 }
+
+pub(super) fn discovery_faults(directory: &Path) {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let counter = fs::read(directory.join("counter.json")).unwrap();
+    let public = directory.join("store-identity.json");
+    let saved = directory.join("fixture-discovery-identity.saved");
+    let refuse = |expected: &str| {
+        let script = SUPERVISOR.replace("::owned_request", "::refuse_discovery");
+        let output = Command::new("/usr/bin/python3")
+            .args(["-c", &script])
+            .arg(directory.join("broker"))
+            .env("FSM_NATIVE_TEST_DISCOVERY_ERROR", expected)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+        assert!(
+            output.status.success(),
+            "discovery refusal failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fs::read(directory.join("counter.json")).unwrap(), counter);
+    };
+    fs::set_permissions(&public, fs::Permissions::from_mode(0o644)).unwrap();
+    refuse("native discovery document is not immutable root publication");
+    fs::set_permissions(&public, fs::Permissions::from_mode(0o444)).unwrap();
+    fs::rename(&public, &saved).unwrap();
+    symlink(&saved, &public).unwrap();
+    refuse("native discovery document is not immutable root publication");
+    fs::remove_file(&public).unwrap();
+    fs::rename(&saved, &public).unwrap();
+    let route = directory.join("broker/route.json");
+    fs::set_permissions(&route, fs::Permissions::from_mode(0o644)).unwrap();
+    refuse("native discovery document is not immutable root publication");
+    fs::set_permissions(&route, fs::Permissions::from_mode(0o444)).unwrap();
+}

@@ -588,3 +588,17 @@ fn emit(message: std::fmt::Arguments<'_>) {
     use std::io::Write;
     writeln!(std::io::stdout().lock(), "{message}").unwrap();
 }
+
+#[test]
+#[ignore = "invoked only as an unprivileged provisioned discovery subprocess"]
+fn refuse_discovery() {
+    use fsm_execute::run::native_client::NativePreparation;
+    let store = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
+    let expected = std::env::var("FSM_NATIVE_TEST_DISCOVERY_ERROR").unwrap();
+    let result = NativePreparation::for_store(std::path::Path::new(&store), Duration::from_secs(3));
+    let error = match result {
+        Err(error) => error,
+        Ok(_) => panic!("faulted discovery started preparation"),
+    };
+    assert_eq!(error, expected);
+}
