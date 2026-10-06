@@ -80,6 +80,29 @@ preserves local claims and reservations and cannot prove native termination.
 This finding narrows the required implementation mechanism without narrowing
 the paired live-actor, writer-contention or production acceptance requirements.
 
+## Paired draft review and transient writer facts
+
+The dedicated-cache paired-native-executor.rs.draft retains actual native
+components and a verified reader prefix, uses the extracted closure pump before
+temporary writer acquisition, and leaves scheduling to explicit tick calls.
+It is rustfmt-parsed only, unapplied and uncompiled while gate 65333 is live.
+
+Review found that publishing writer_released=true between ticks and leaving
+that fact untouched during the next writer attempt could falsely confirm release
+while that tick blocks in journaling. The draft now publishes release unconfirmed
+before ordinary tick I/O and before the admitted settlement writer attempt,
+then publishes release only after the actual temporary writer has dropped.
+Initial no-writer facts are explicit, and a stopped driver returns before
+recovering new helpers; neither fix claims native cleanup without real inventory.
+
+Prepared paired-lifecycle-tests.rs.draft exercises actual writer contention:
+empty drain/abort completes while another actor still holds its writer,
+idle observation preserves a due machine deadline and the exact journal,
+and a clock held inside a real temporary writer keeps release unconfirmed
+during a finite stop before the worker is released and the writer reopens.
+These tests remain uncompiled and unexecuted; their native inventories are empty
+and they do not replace the required installed two-live-native-actor acceptance.
+
 
 ### Shared closure pump extraction — 2026-10-06
 
