@@ -224,3 +224,21 @@ read-only/contended writers without journal mutation, and assert no extra
 allocation before original accepted-event delivery. Production constructors
 remain legacy until installed acceptance and the other lifecycle obligations
 are proved.
+
+### Retention control review — 2026-10-06
+
+The provisioned broker case now separately drives process/MCP conflicts and
+rejected-original-key recovery using actual journal records rather than
+metadata-only fixtures. The conflict case requires an accepted foreign
+EventApplied under the original derived key and request_id_conflict on
+original delivery; the rejection case requires EventRejected before cold
+restart and a parked/refused delivery afterward. Both assert full handoff
+equality, no repeated-tick append, zero unresolved execution claims and
+cold-reopen retention. Two seals and physical-copy/read-only/contention
+controls run before the final original-writer refusal. The root wrapper
+requires each dedicated child marker and checks the unchanged original
+binding and allocation count. Existing successful controls remain intact.
+The enum moved to a dedicated test module to keep the broker source below
+1,000 lines. Formatting, source-size and both toolchain all-target Clippy
+checks passed; installed execution and exact-source acceptance remain
+pending, and no new runtime capability or production default is claimed.

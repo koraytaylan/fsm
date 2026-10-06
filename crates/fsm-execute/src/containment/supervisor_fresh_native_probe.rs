@@ -20,16 +20,28 @@ use std::{
 #[test]
 #[ignore = "invoked only as the provisioned unprivileged fresh Runner control"]
 fn shared_tick_fresh() {
-    shared_tick_handoff(false);
+    shared_tick_handoff(false, false, false);
 }
 
 #[test]
 #[ignore = "invoked only as the provisioned unprivileged cold handoff control"]
 fn shared_tick_cold_handoff() {
-    shared_tick_handoff(true);
+    shared_tick_handoff(true, false, false);
 }
 
-fn shared_tick_handoff(cold_restart: bool) {
+#[test]
+#[ignore = "invoked only as the provisioned conflicting handoff control"]
+fn shared_tick_conflicting_handoff() {
+    shared_tick_handoff(true, true, false);
+}
+
+#[test]
+#[ignore = "invoked only as the provisioned rejected handoff control"]
+fn shared_tick_rejected_handoff() {
+    shared_tick_handoff(true, false, true);
+}
+
+fn shared_tick_handoff(cold_restart: bool, conflicting: bool, rejected: bool) {
     assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
     let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
     let path = std::path::Path::new(&path);
@@ -300,6 +312,17 @@ fn shared_tick_handoff(cold_restart: bool) {
     assert!(writer.state.execution.claim_for(instance, effect).is_none());
     assert!(scheduler.inflight_effect(effect).is_none());
     assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
+    if rejected {
+        let key = fsm_execute::rid::event_rid(effect, "docs_ok");
+        let handoffs = writer.state.execution_handoffs.clone();
+        let _ = writer.send_event(instance, "docs_ok", Value::Obj(BTreeMap::new()), &key, None);
+        assert_eq!(
+            writer.records.last().unwrap().kind,
+            fsm_core::record::RecordKind::EventRejected
+        );
+        assert!(writer.state.dedup.contains_key(&key));
+        assert_eq!(writer.state.execution_handoffs, handoffs);
+    }
     if cold_restart {
         drop(runner);
         drop(writer);
@@ -432,6 +455,82 @@ fn shared_tick_handoff(cold_restart: bool) {
         drop(foreign_runner);
         drop(foreign);
         std::fs::remove_dir_all(copied).unwrap();
+    }
+    if conflicting {
+        let key = fsm_execute::rid::event_rid(effect, "docs_ok");
+        let handoffs = writer.state.execution_handoffs.clone();
+        writer
+            .send_event(
+                instance,
+                "note_added",
+                Value::Obj(BTreeMap::from([(
+                    "text".into(),
+                    Value::Str("foreign".into()),
+                )])),
+                &key,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            writer.records.last().unwrap().kind,
+            fsm_core::record::RecordKind::EventApplied
+        );
+        assert_eq!(writer.state.execution_handoffs, handoffs);
+    }
+    if conflicting || rejected {
+        let handoffs = writer.state.execution_handoffs.clone();
+        let before = writer.records.clone();
+        let lines = tick_with(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &mut writer,
+            &mut clock,
+            1000,
+        );
+        if conflicting {
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.contains("req/request_id_conflict")),
+                "{lines:?}"
+            );
+        } else {
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.contains("native-handoff parked")
+                        || line.contains("error exec/store")),
+                "{lines:?}"
+            );
+        }
+        for _ in 0..3 {
+            tick_with(
+                &mut watcher,
+                &mut scheduler,
+                &mut runner,
+                &mut pipeline,
+                &mut writer,
+                &mut clock,
+                1000,
+            );
+        }
+        assert_eq!(writer.records, before);
+        assert_eq!(writer.state.execution_handoffs, handoffs);
+        drop(writer);
+        let reopened = Store::open_read_only(path).unwrap();
+        assert_eq!(reopened.state.execution_handoffs, handoffs);
+        assert_eq!(reopened.state.execution.unresolved().count(), 0);
+        emit(format_args!(
+            "\n{}",
+            if rejected {
+                "FSM_NATIVE_REJECTED_HANDOFF"
+            } else {
+                "FSM_NATIVE_CONFLICTING_HANDOFF"
+            }
+        ));
+        return;
     }
     let lines = tick_with(
         &mut watcher,

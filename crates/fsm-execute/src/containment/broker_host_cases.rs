@@ -1,0 +1,18 @@
+pub(super) enum Host {
+    Primitive,
+    Shared,
+    Fresh,
+    FreshMcp,
+    Cold,
+    ColdMcp,
+    ColdConflict,
+    ColdConflictMcp,
+    ColdRejected,
+    ColdRejectedMcp,
+    Admission,
+    AdmissionMcp,
+    AdmissionCancellation,
+    AdmissionMcpCancellation,
+    AdmissionCompetition,
+    AdmissionMcpCompetition,
+}

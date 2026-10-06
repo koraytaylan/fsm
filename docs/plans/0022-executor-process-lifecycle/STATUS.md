@@ -3612,3 +3612,22 @@ verify both 81-case results at exact source 665a71b.
 Additional genuine conflicting-key and rejected-original-key controls are
 prepared only in the task cache and are not included in this passed gate.
 Production constructors remain legacy and task 9401 remains in progress.
+
+### Rejected and conflicting cold handoff controls — 2026-10-06
+
+Added genuine process and MCP controls to the provisioned broker matrix:
+an accepted foreign event burns the original derived event key, and an
+actual EventRejected record burns the original key before cold restart.
+Both controls retain the exact outstanding handoff through two seals,
+physical-copy/read-only/contention refusals, healthy-writer delivery refusal,
+repeated parked ticks and a final cold read-only reopen; original execution
+ownership stays resolved and the allocation counter remains unchanged.
+The successful warm and cold handoff assertions remain in place.
+Formatting, source-size checks and stable/MSRV fsm-execute all-target Clippy
+passed serially under verified 1 GiB/no-swap limits, with terminal exit 0
+in local-cold-handoff-retention-controls-review.log in the task cache.
+These new controls have compiled but have not executed in the installed
+native environment; they are absent from the earlier 665a71b artifacts.
+Review 37460020929 is still live in both Windows jobs, so its review branch
+has not been superseded; all seven completed jobs passed.
+Task 9401 remains in progress and production constructors remain legacy.

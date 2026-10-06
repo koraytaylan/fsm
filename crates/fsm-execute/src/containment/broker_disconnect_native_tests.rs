@@ -778,15 +778,34 @@ pub(super) fn shared_recovery(directory: &Path, binding: &Value, competitor: &Na
 }
 
 pub(super) fn fresh_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
-    handoff_control(directory, binding, competitor, false);
+    handoff_control(directory, binding, competitor, false, false, false);
 }
 
 pub(super) fn cold_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
-    handoff_control(directory, binding, competitor, true);
+    handoff_control(directory, binding, competitor, true, false, false);
 }
 
-fn handoff_control(directory: &Path, binding: &Value, competitor: &NativeDomain, cold: bool) {
-    let test = if cold {
+pub(super) fn conflicting_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
+    handoff_control(directory, binding, competitor, true, true, false);
+}
+
+pub(super) fn rejected_handoff(directory: &Path, binding: &Value, competitor: &NativeDomain) {
+    handoff_control(directory, binding, competitor, true, false, true);
+}
+
+fn handoff_control(
+    directory: &Path,
+    binding: &Value,
+    competitor: &NativeDomain,
+    cold: bool,
+    conflicting: bool,
+    rejected: bool,
+) {
+    let test = if rejected {
+        "::fresh_handoff::shared_tick_rejected_handoff"
+    } else if conflicting {
+        "::fresh_handoff::shared_tick_conflicting_handoff"
+    } else if cold {
         "::fresh_handoff::shared_tick_cold_handoff"
     } else {
         "::fresh_handoff::shared_tick_fresh"
@@ -815,7 +834,11 @@ fn handoff_control(directory: &Path, binding: &Value, competitor: &NativeDomain,
         String::from_utf8_lossy(&output.stdout)
             .lines()
             .filter(|line| *line
-                == if cold {
+                == if rejected {
+                    "FSM_NATIVE_REJECTED_HANDOFF"
+                } else if conflicting {
+                    "FSM_NATIVE_CONFLICTING_HANDOFF"
+                } else if cold {
                     "FSM_NATIVE_COLD_HANDOFF"
                 } else {
                     "FSM_NATIVE_FRESH_HANDOFF"

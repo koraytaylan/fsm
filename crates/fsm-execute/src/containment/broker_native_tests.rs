@@ -158,6 +158,10 @@ pub(super) fn run() {
     run_case(false, Host::FreshMcp);
     run_case(false, Host::Cold);
     run_case(false, Host::ColdMcp);
+    run_case(false, Host::ColdConflict);
+    run_case(false, Host::ColdConflictMcp);
+    run_case(false, Host::ColdRejected);
+    run_case(false, Host::ColdRejectedMcp);
     run_case(false, Host::Admission);
     run_case(false, Host::AdmissionMcp);
     run_case(false, Host::AdmissionCancellation);
@@ -166,20 +170,9 @@ pub(super) fn run() {
     run_case(false, Host::AdmissionMcpCompetition);
 }
 
-enum Host {
-    Primitive,
-    Shared,
-    Fresh,
-    FreshMcp,
-    Cold,
-    ColdMcp,
-    Admission,
-    AdmissionMcp,
-    AdmissionCancellation,
-    AdmissionMcpCancellation,
-    AdmissionCompetition,
-    AdmissionMcpCompetition,
-}
+#[path = "broker_host_cases.rs"]
+mod host_cases;
+use host_cases::Host;
 
 fn run_case(timeout: bool, host: Host) {
     let table = fixture_table::handler_table(
@@ -188,6 +181,8 @@ fn run_case(timeout: bool, host: Host) {
             host,
             Host::FreshMcp
                 | Host::ColdMcp
+                | Host::ColdConflictMcp
+                | Host::ColdRejectedMcp
                 | Host::AdmissionMcp
                 | Host::AdmissionMcpCancellation
                 | Host::AdmissionMcpCompetition
@@ -276,6 +271,14 @@ fn run_case(timeout: bool, host: Host) {
         request(&base, "recover", Value::Num("1".into())).get("ok"),
         Some(&Value::Bool(false))
     );
+    if matches!(host, Host::ColdRejected | Host::ColdRejectedMcp) {
+        fresh_cases::rejected(&mut fixture, &binding, &effect, &successor);
+        return;
+    }
+    if matches!(host, Host::ColdConflict | Host::ColdConflictMcp) {
+        fresh_cases::conflict(&mut fixture, &binding, &effect, &successor);
+        return;
+    }
     if matches!(host, Host::Cold | Host::ColdMcp) {
         fresh_cases::cold(&mut fixture, &binding, &effect, &successor);
         return;

@@ -78,11 +78,29 @@ pub(super) fn admission(fixture: &mut Fixture, table: &Value) {
 }
 
 pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
-    run_kind(fixture, binding, effect, successor, false);
+    run_kind(fixture, binding, effect, successor, false, false, false);
 }
 
 pub(super) fn cold(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {
-    run_kind(fixture, binding, effect, successor, true);
+    run_kind(fixture, binding, effect, successor, true, false, false);
+}
+
+pub(super) fn conflict(
+    fixture: &mut Fixture,
+    binding: &Value,
+    effect: &str,
+    successor: &NativeDomain,
+) {
+    run_kind(fixture, binding, effect, successor, true, true, false);
+}
+
+pub(super) fn rejected(
+    fixture: &mut Fixture,
+    binding: &Value,
+    effect: &str,
+    successor: &NativeDomain,
+) {
+    run_kind(fixture, binding, effect, successor, true, false, true);
 }
 
 fn run_kind(
@@ -91,8 +109,14 @@ fn run_kind(
     effect: &str,
     successor: &NativeDomain,
     cold: bool,
+    conflicting: bool,
+    rejected: bool,
 ) {
-    if cold {
+    if rejected {
+        disconnect_cases::rejected_handoff(&fixture.directory, binding, successor);
+    } else if conflicting {
+        disconnect_cases::conflicting_handoff(&fixture.directory, binding, successor);
+    } else if cold {
         disconnect_cases::cold_handoff(&fixture.directory, binding, successor);
     } else {
         disconnect_cases::fresh_handoff(&fixture.directory, binding, successor);
@@ -116,6 +140,11 @@ fn run_kind(
             .dedup
             .contains_key(&fsm_execute::rid::ack_rid(effect))
     );
+    if conflicting || rejected {
+        assert_eq!(store.state.execution_handoffs.outstanding().count(), 1);
+    } else if cold {
+        assert_eq!(store.state.execution_handoffs.outstanding().count(), 0);
+    }
     drop(store);
     disconnect_cases::discard_prepared(&fixture.directory, &successor.to_value());
     fixture.cleanup().unwrap();
