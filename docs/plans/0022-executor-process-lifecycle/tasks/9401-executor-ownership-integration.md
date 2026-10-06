@@ -265,3 +265,20 @@ unsupported hosts cannot start preparation/user code. Native host crash, held
 writer and changed-contract controls remain mandatory before task acceptance.
 CI `37392851160` currently has zero dependencies passing and the other eight
 jobs running; the isolated frozen local debug gate remains active.
+
+### Frozen native discovery execution
+
+CI `37392851160` native stable job `112041769656` and MSRV job `112041769155`
+completed successfully at exact `7dc91d5ac99257d55a3b9bb6bf946d374a72576d`.
+Downloaded artifacts in `~/.cache/fsm-plan-native-matrix-20261005/ci-37392851160/`
+were independently verified against the frozen inventory, report/log integrity,
+clean source and compiler identities: 81 cases each at rustc stable
+`1.99.0 (b940084d7 2026-09-28)` and MSRV `1.89.0 (29483883e 2025-08-04)`.
+The updated provisioned broker/preparation cases include production store
+route discovery and exact refusal/no-allocation controls described above.
+This inventory count covers the whole native matrix, not 81 discovery cases.
+Verification preserves `executable_bytes_verified:false`, `gate_released:false`
+and primitive-only scope. Zero dependencies also passes; the six portable
+jobs and isolated local debug workspace gate remain active. Native directory
+replacement and full inventory-bound production controls are still outstanding,
+as are shared production routing, settlement and host crash acceptance.
