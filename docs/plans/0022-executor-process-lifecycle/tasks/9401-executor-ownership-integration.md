@@ -513,3 +513,16 @@ one-line generated fixture was copied to the active worktree, and that detached
 checkout was restored to its frozen source. The corrected committed source
 still requires the full frozen workspace and matrix gates; the narrow surface
 pass does not replace the failed workspace result.
+
+### Corrected frozen gate and updated matrix
+
+The clean detached checkout now freezes exact corrected product source
+`a876df1df10ae977a2e45a5393e590c175652240`. Its full serial stable debug
+workspace gate is live in session `34597`, retaining
+`local-a876df1-stable-debug.log`; the prior failed `41cfaa1` log remains intact.
+Formatting, oversized-file and complete `7dc91d5..a876df1` diff checks passed.
+After preserving the terminal older matrix, the authorized review branch alone
+was advanced to `a876df1`; CI run `37397745043` is queued at that exact source.
+It must execute the newer native discovery inventory/binding and stopped-owner
+watcher controls, as well as corrected portable gates, before acceptance.
+No production-routing, native-execution or green-matrix claim is made now.
