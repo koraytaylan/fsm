@@ -583,3 +583,11 @@ execution-ownership test). Together with formatting, size, range, debug,
 release and all-target lint checks, this completes the required local stable
 host gate for this frozen primitive/regression source. Five portable CI legs
 remain live; production Runner routing and task 9401 remain incomplete.
+
+Updated CI Ubuntu MSRV job `112057639718` completed successfully at frozen
+source `a876df1`, with its full log retained as
+`ci-37397745043/ubuntu-msrv-job.log`. Both Ubuntu compiler axes now pass the
+portable gate, including the previously failing scheduler lint correction;
+this does not replace the preserved older failed matrix. Both macOS jobs
+remain live in release workspace testing, and both Windows jobs remain live.
+Task 9401 remains in progress because production Runner routing is unfinished.
