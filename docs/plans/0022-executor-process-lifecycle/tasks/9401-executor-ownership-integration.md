@@ -360,3 +360,16 @@ that earlier source's six portable CI jobs also remain live. The frozen
 debug success and earlier native artifacts cannot validate the newer tests.
 This review does not accept shared Runner routing, startup recovery, shutdown,
 reconciliation or any unfinished requirement of plans 20–23.
+
+### MSRV review finding and correction
+
+Frozen CI `37392851160` Ubuntu stable passed; Ubuntu MSRV job `112041769543`
+passed debug and release workspace tests but failed all-target Clippy at
+`sched.rs:245` for `nonminimal_bool` in `retain_claim`. The directly downloaded
+completed job log is retained at
+`~/.cache/fsm-plan-native-matrix-20261005/ci-37392851160/ubuntu-msrv-job.log`.
+The correction uses the equivalent `Option::is_none_or` predicate to reject
+missing or mismatching local reservations without suppressing the lint or
+changing ownership semantics. This invalidates acceptance of the affected
+scheduler source until both compiler gates are rerun; no complete portable
+matrix success is claimed. The isolated older-source release gate remains live.

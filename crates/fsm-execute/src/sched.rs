@@ -242,10 +242,10 @@ impl Scheduler {
     /// Returns false if the effect is not local or has another original claim.
     pub fn retain_claim(&mut self, claim: &Claim) -> bool {
         let (instance_id, effect_id) = claim.effect();
-        if !self
+        if self
             .inflight
             .get(effect_id)
-            .is_some_and(|local| local.effect.instance_id == instance_id)
+            .is_none_or(|local| local.effect.instance_id != instance_id)
             || self
                 .local_claims
                 .get(effect_id)
