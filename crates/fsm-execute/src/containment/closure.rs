@@ -16,10 +16,16 @@ use std::time::{Duration, Instant};
 #[path = "closure_unlaunched.rs"]
 mod unlaunched;
 
+#[path = "closure_prepared.rs"]
+mod prepared;
+
 pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> {
     protected_directory(directory)?;
     let _lock = authority_lock(directory)?;
     let domain = closing::recorded_domain(directory, allocation)?;
+    if absent(&directory.join(format!("binding-{allocation}.json")))? {
+        return prepared::complete(directory, allocation, &domain);
+    }
     let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
     closed(&binding, &["format", "claim", "journal_claim"])?;
     if text(&binding, "format")? != "fsm.native-claim-binding/1" {

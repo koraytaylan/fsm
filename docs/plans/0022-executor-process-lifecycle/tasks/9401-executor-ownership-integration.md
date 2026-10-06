@@ -610,3 +610,14 @@ helper cancellation/reaping grants no domain closure; the remaining production
 host must retain an original-route prepared-domain cleanup operation before
 releasing its local reservation. No automatic Runner routing has been added,
 so task 9401 and the overall plans remain incomplete.
+
+Production cleanup review found that Root `close` previously always read a binding, so a delivered unclaimed allocation could not be retired through the planned host path; the unbound branch now refuses binding/submission and pending material, retains the authority lock through revocation and native retirement, and publishes only a domain tombstone with no execution receipt, with an expanded `empty_domain_preparation` privileged control for refusal, retirement and cold replay, whose provisioned execution remains required before acceptance.
+
+The cleanup slice passes formatting and diff checks, all 22 portable MSRV
+executor library tests, and MSRV all-target executor Clippy; retained logs are
+`local-prepared-cleanup-msrv.log` and `local-prepared-cleanup-msrv-clippy.log`.
+These checks compile the expanded privileged control but do not execute it;
+current CI run `37397745043` predates this change and cannot accept this slice.
+The review checked authority-lock retention, durable revocation before removal,
+pending binding/submission refusal and the absence of execution receipt output.
+Full frozen host gates and provisioned native execution remain outstanding.

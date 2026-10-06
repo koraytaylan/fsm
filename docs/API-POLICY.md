@@ -862,3 +862,5 @@ observation/application refuse without verified original reconciliation; this
 constructor alone authenticates no journal ownership. This additive host
 primitive changes no journal, receipt, attestation or hash format and does not
 complete production Runner routing or release its gate.
+
+Prepared unbound allocation cleanup now uses the existing Root `close` action and domain tombstone format; it introduces no journal format, public Rust API or execution receipt, and must refuse pending binding or submission material rather than treating it as an unclaimed allocation.

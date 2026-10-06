@@ -294,6 +294,34 @@ fn empty_domain_preparation() {
     assert!(fixture.groups[1].0.exists());
     assert!(!fixture.directory.join("closed-1.json").exists());
     drop(lock);
+    for name in [
+        "binding-2.json.pending",
+        "launch-2.json",
+        "handoff-2.json.pending",
+    ] {
+        let obstacle = fixture.directory.join(name);
+        fs::write(&obstacle, b"{}").unwrap();
+        assert!(super::super::closure::complete(&fixture.directory, 2).is_err());
+        assert!(fixture.groups[1].0.exists());
+        fs::remove_file(obstacle).unwrap();
+    }
+    super::super::closure::complete(&fixture.directory, 2).unwrap();
+    super::super::closure::complete(&fixture.directory, 2).unwrap();
+    assert!(!fixture.groups[1].0.exists());
+    assert_eq!(
+        read_value(&fixture.directory.join("closed-2.json"), true).unwrap(),
+        object([
+            ("format", Value::Str("fsm.native-domain-closed/1".into())),
+            ("domain", second),
+        ])
+    );
+    assert!(fs::read_dir(&fixture.directory).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("closure-2-")
+    }));
     fixture.cleanup().unwrap();
 }
 

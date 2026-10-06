@@ -2060,3 +2060,5 @@ observation/application refuse without verified original reconciliation; this
 constructor alone authenticates no journal ownership. This additive host
 primitive changes no journal, receipt, attestation or hash format and does not
 complete production Runner routing or release its gate.
+
+The provisioned Root broker can close an unbound prepared allocation on its original route: it revokes admission and verifies native retirement before publishing a domain tombstone, without issuing claim closure evidence; transport cancellation alone still cannot release a host reservation, and automatic production Runner integration remains unfinished.

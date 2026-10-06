@@ -824,3 +824,5 @@ observation/application refuse without verified original reconciliation; this
 constructor alone authenticates no journal ownership. This additive host
 primitive changes no journal, receipt, attestation or hash format and does not
 complete production Runner routing or release its gate.
+
+Prepared-domain cleanup: Root `close` now handles allocations that were prepared but never bound, refusing partial binding/submission records and checking original native identity and manager retirement before tombstone publication, without issuing an execution receipt; the expanded privileged `empty_domain_preparation` control requires provisioned native execution before acceptance.

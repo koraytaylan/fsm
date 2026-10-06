@@ -2472,3 +2472,5 @@ completion. Without transport or verified completion it MUST report `Uncertain`,
 retain capacity, and refuse observation/application as `exec/inflight_deferred`;
 helper retirement alone MUST NOT authorize settlement. The constructor MUST NOT
 be treated as authentication of current durable ownership.
+
+The Root broker `close` operation MUST support a prepared allocation with no binding: under the authority lock it MUST refuse any binding or launch/handoff/manager submission material, including pending records, durably revoke admission, verify original domain identity and manager retirement, remove only the matching empty domain, and publish the original domain tombstone; it MUST NOT issue an execution closure receipt or authorize journal settlement, and cold retries MUST retain those checks.
