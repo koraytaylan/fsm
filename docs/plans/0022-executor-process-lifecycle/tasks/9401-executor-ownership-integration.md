@@ -674,3 +674,14 @@ The explicit public surface suite also passed all 16 tests through session
 its retained log is `local-cd70627-msrv-surface.log`. These checks compile
 the privileged controls but do not execute them, and neither these checks nor
 the older source CI run complete production host integration or task 9401.
+
+Original matrix `37397745043` completed successfully at exact source `a876df1`:
+all nine jobs now pass, including Windows stable `112057639632`, whose full
+log and final run metadata are retained under `ci-37397745043`. Its native
+artifacts were already independently verified, but its source predates prepared
+cleanup and cannot accept that change. The authorized review branch now points
+to `e501679509e361cada521b59d5fbbb1c40e121fc`, with new CI run `37401653979`
+confirmed queued for the current cleanup source. The serial isolated full
+stable debug workspace gate at product source `cd70627` is live in session
+`30347`, retaining `local-cd70627-stable-debug.log`. Production Runner routing
+and current native acceptance remain unfinished; task 9401 stays in progress.
