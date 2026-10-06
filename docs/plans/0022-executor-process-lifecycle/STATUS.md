@@ -4,6 +4,40 @@ The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this
 file; task frontmatter is authoritative and the integration coordinator owns
 lifecycle updates.
 
+## Current integration checkpoint — 2026-10-07
+
+Task frontmatter and roll-up remain unchanged: 3/7 complete, ownership
+integration in progress, bounded shutdown and reconciliation planned.
+Historical live-handle notes below are retained as contemporaneous evidence;
+they do not describe currently running work.
+
+- Production standalone and ordinary embedded stdio select native owners;
+  borrowed embedding helpers and HTTP ownership remain incomplete.
+- Full stable gate session 86747 on db058013 completed with exit 1: debug and
+  release workspace tests failed the four production workflow scenarios at
+  their first pending effect; formatting, size, Clippy, documentation, zero
+  dependencies and embedding acceptance passed.
+- Workflow helper arguments now explicitly carry resource inputs and failure
+  selection without operator environment; resource files are isolated from
+  store/configuration, and stall diagnostics read at most 8192 input bytes.
+  Registered physical-store authority, immutable catalogue, handler identity
+  access and installed native workflow acceptance still require completion.
+- Native operator output uses a bounded worker; all 13 actual production
+  control tests pass, including blocked stderr and quiet broken stderr, and
+  single-warning guard mutation fails then passes after restoration.
+- Runtime 7cf0e39 adds separate internal diagnostic framing preserving actual
+  human and JSON rendering bytes while retaining protocol framing checks and
+  shared queue accounting; focused stable tests/Clippy and MSRV compilation
+  pass, but final CLI renderer wiring remains synchronous and incomplete.
+- Full stable gate session 50807 is currently live on frozen runtime 7cf0e39
+  in a verified 1 GiB RAM / zero-swap scope;
+  diagnostic-framing-full-stable-gate.log retains its pending evidence.
+  No task completion or acceptance is inferred from a running gate.
+
+Detailed review and limits are in [OWNED-SESSION-REVIEW.md](OWNED-SESSION-REVIEW.md).
+
+## Historical execution evidence
+
 - **Status:** Registered by hand; native prerequisite complete;
   durable execution persistence and contained runner complete; ownership integration started.
 - **Goal:** prevent a successor from overlapping a surviving local handler
