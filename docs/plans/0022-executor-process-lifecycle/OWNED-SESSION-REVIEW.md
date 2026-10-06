@@ -339,3 +339,24 @@ and proceeds to release workspace verification, currently live under the
 same 1 GiB/zero-swap scope; release, Clippy, docs, zero-dependency, and embed
 results remain unproven until their authoritative stage exits are recorded.
 No acceptance flag or task status is promoted by this partial result.
+
+Full stable gate 86747 terminated with exit 1 after all eight stages at
+frozen runtime db058013b9133f0c344abce8debf06912a9dcbe3. Debug and release
+workspace tests each exit 101 with only mcp_execute_workflow failing its
+four scenarios; format, source-size, workspace all-target Clippy, denied-warning
+docs, zero-dependency, and embed acceptance stages all exit 0. The overall
+gate is failed, not accepted; native-stderr-full-stable-gate.log retains every
+stage. After authoritative termination, the explicit-handler-arguments
+workflow draft is applied, with a real helper subprocess test clearing
+inherited operator environment; registration and native acceptance remain
+incomplete, and the previous gate does not validate this later test change.
+
+Applied explicit handler arguments pass session 99338, exit 0: the real
+helper subprocess executes check_prerequisite with inherited workflow
+environment cleared, preserves the literal resource/run arguments, and
+writes the expected call while leaving the resource phase active. Stable
+CLI all-target Clippy and MSRV all-target compilation also pass under
+verified 1 GiB/zero-swap limits; workflow-explicit-arguments-check.log retains
+the evidence. All original production scenarios and deadlines remain present;
+this helper proof does not establish authority registration, native handler
+entry, or success/compensation workflow acceptance.

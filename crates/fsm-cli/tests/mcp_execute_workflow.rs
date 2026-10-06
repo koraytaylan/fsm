@@ -84,7 +84,12 @@ fn workflow_handler() {
     };
     assert!(arguments.contains(&format!("handler-resource={RESOURCE}")));
     assert!(arguments.contains(&"handler-run=run-1".to_owned()));
-    let directory = PathBuf::from(std::env::var_os("FSM_WORKFLOW_DIRECTORY").unwrap());
+    let directory = PathBuf::from(
+        arguments
+            .iter()
+            .find_map(|argument| argument.strip_prefix("handler-directory="))
+            .expect("explicit workflow directory argument"),
+    );
     let mut calls = OpenOptions::new()
         .create(true)
         .append(true)
@@ -92,8 +97,10 @@ fn workflow_handler() {
         .unwrap();
     writeln!(calls, "{operation}").unwrap();
     let phase = directory.join("phase");
-    let failed = std::env::var("FSM_WORKFLOW_FAILURES")
-        .unwrap()
+    let failed = arguments
+        .iter()
+        .find_map(|argument| argument.strip_prefix("handler-failures="))
+        .expect("explicit workflow failure argument")
         .split(',')
         .any(|failure| failure == operation);
     match operation {
@@ -118,7 +125,7 @@ fn workflow_handler() {
     std::process::exit(if failed { 7 } else { 0 });
 }
 
-fn write_handlers(directory: &Path) {
+fn write_handlers(directory: &Path, failures: &str) {
     let executable = std::env::current_exe().unwrap();
     let handlers = OPERATIONS
         .iter()
@@ -135,6 +142,11 @@ fn write_handlers(directory: &Path) {
                         string(&format!("handler-operation={operation}")),
                         string("handler-resource={resource}"),
                         string("handler-run={run}"),
+                        string(&format!(
+                            "handler-directory={}",
+                            directory.to_str().unwrap()
+                        )),
+                        string(&format!("handler-failures={failures}")),
                     ]),
                 ),
                 ("timeout_ms", Value::Num("30000".into())),
@@ -169,15 +181,13 @@ struct Client {
 }
 
 impl Client {
-    fn start(directory: &Path, failures: &str) -> Self {
+    fn start(directory: &Path) -> Self {
         let errors = directory.join("stderr");
         let mut process = Command::new(env!("CARGO_BIN_EXE_fsm"))
             .arg("--data-dir")
             .arg(directory.join("store"))
             .args(["serve", "--execute", "--handlers"])
             .arg(directory.join("handlers.json"))
-            .env("FSM_WORKFLOW_DIRECTORY", directory)
-            .env("FSM_WORKFLOW_FAILURES", failures)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(fs::File::create(&errors).unwrap())
@@ -433,8 +443,8 @@ fn machine(handlers: &BTreeMap<String, Value>) -> Value {
 fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: &str) {
     let directory = Directory::new();
     fs::write(directory.0.join("phase"), "active").unwrap();
-    write_handlers(&directory.0);
-    let mut client = Client::start(&directory.0, failures);
+    write_handlers(&directory.0, failures);
+    let mut client = Client::start(&directory.0);
     let handlers = client.discover_handlers();
     client.call("machine_create", object([("spec", machine(&handlers))]));
     client.call(
@@ -526,4 +536,44 @@ fn cleanup_failures_are_explicit_after_success_or_partial_work() {
     for failures in ["restore", "perform_work,restore"] {
         run_scenario(failures, "cleanup_failed", &OPERATIONS, "suspended");
     }
+}
+
+#[test]
+fn workflow_helper_uses_explicit_arguments_without_operator_environment() {
+    let directory = Directory::new();
+    fs::write(directory.0.join("phase"), "active").unwrap();
+    let output = Command::new(std::env::current_exe().unwrap())
+        .env_clear()
+        .env(
+            "TMPDIR",
+            std::env::var_os("TMPDIR").expect("explicit task cache"),
+        )
+        .args([
+            "workflow_handler",
+            "--exact",
+            "--nocapture",
+            "handler-operation=check_prerequisite",
+            "handler-run=run-1",
+            "handler-failures=",
+        ])
+        .arg(format!(
+            "handler-directory={}",
+            directory.0.to_str().unwrap()
+        ))
+        .arg(format!("handler-resource={RESOURCE}"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(directory.0.join("calls")).unwrap(),
+        "check_prerequisite\n"
+    );
+    assert_eq!(
+        fs::read_to_string(directory.0.join("phase")).unwrap(),
+        "active"
+    );
 }
