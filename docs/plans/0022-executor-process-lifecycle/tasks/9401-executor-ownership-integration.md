@@ -333,3 +333,30 @@ stop rather than manufacturing authentication for a portable watcher fixture.
 This control is written but not yet compiled or native executed; prior native
 artifacts cannot establish its new watcher assertions. Shared automatic host
 routing remains incomplete and task 9401 remains in progress.
+
+### Regression slice review: `6328198..b177c37`
+
+Reviewed the stopped scheduler ownership, discovery bindings/inventory and
+native stopped watcher assertions against their production entry points.
+The inventory arrangement computes the same shared base-plus-namespace entry
+accounting as discovery, creates each filler exclusively, and makes the target
+registration nonmatching so the exact-limit call proves complete traversal
+without asking the allocator for a domain. The plus-one call requires the
+inventory-specific refusal regardless of enumeration order; neutralizing that
+guard would instead yield missing registration and fail the assertion.
+Binding faults restore original immutable publication bytes between controls
+and each verifies unchanged allocation state. The watcher assertions occur
+after authenticated durable stop, before settlement, under the live writer
+and then a fresh read-only open; they do not construct a fake native proof.
+The portable scheduler fixture only asserts that stopped ownership occupies
+capacity and does not claim authentication or writer persistence.
+
+No additional defect was identified in this scoped review. Stable formatting,
+the repository file-size check and the complete committed diff check each
+returned exit zero independently at `b177c37`. Compilation, scheduler test
+execution and provisioned native execution of this regression slice remain
+pending while frozen `7dc91d5` release session `74445` is confirmed live;
+that earlier source's six portable CI jobs also remain live. The frozen
+debug success and earlier native artifacts cannot validate the newer tests.
+This review does not accept shared Runner routing, startup recovery, shutdown,
+reconciliation or any unfinished requirement of plans 20–23.
