@@ -714,3 +714,13 @@ identifiers, extending the deadline or relaxing closure checks. This supports
 distinguishing a still-loaded manager unit/job from residual-domain retirement
 on a future provisioned failure; compilation and native validation of the
 diagnostic remain pending behind live frozen debug session `30347`.
+
+The isolated full stable debug workspace gate at owned-cleanup source `cd70627`
+completed with exit zero through original session `30347`; its retained log
+`local-cd70627-stable-debug.log` ends with successful workspace doc tests.
+This gate predates the retirement diagnostic revision. The clean frozen
+checkout now validates exact diagnostic source `1dddd15` with serial MSRV
+executor library tests and all-target Clippy, retaining
+`local-1dddd15-msrv-lib.log` and `local-1dddd15-msrv-clippy.log`.
+Current CI's six portable jobs remain confirmed live; the native MSRV failure
+and remaining production Runner integration are still unresolved.
