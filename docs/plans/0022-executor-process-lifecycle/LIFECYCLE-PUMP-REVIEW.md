@@ -58,3 +58,17 @@ excluding the admissions queue from NativeOwners::apply is insufficient:
 lifecycle-only operation must separately exclude bound entry while still
 allowing original verified terminal settlement. Shutdown cancellation must
 explicitly close original bound domains rather than mark them completed.
+
+## Native entry/completion separation
+
+Owner readiness now distinguishes entry_ready from settlement_ready, and
+apply delegates its unchanged completion transaction to apply_completion
+after its existing bound-entry branch. The completion method has no entry
+or preparation path. This is a behavior-preserving private refactor needed
+by the future lifecycle-only driver; ordinary apply still admits entry and
+must not be used by that pump. No lifecycle control or bounded shutdown is
+claimed. Session 50800 passed formatting/source-size, stable/MSRV executor
+all-target Clippy and all 29 library tests under verified 1 GiB/no-swap
+limits, terminal exit 0; local-native-completion-separation.log is retained.
+No persisted bytes change; installed and full changed-source acceptance
+remain pending, and task 9402 is not completed by this extraction.

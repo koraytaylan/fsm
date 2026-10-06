@@ -369,8 +369,15 @@ impl NativeOwners {
 
 impl Owner {
     fn ready(&self, seq: u64) -> bool {
-        (!self.entry_requested && self.execution.progress().phase == NativeRunPhase::Bound)
-            || (self.execution.completion().is_some() && self.parked_at != Some(seq))
+        self.entry_ready() || self.settlement_ready(seq)
+    }
+
+    fn entry_ready(&self) -> bool {
+        !self.entry_requested && self.execution.progress().phase == NativeRunPhase::Bound
+    }
+
+    fn settlement_ready(&self, seq: u64) -> bool {
+        self.execution.completion().is_some() && self.parked_at != Some(seq)
     }
 
     fn apply(
@@ -379,7 +386,7 @@ impl Owner {
         clock: &mut dyn Clock,
         pipeline: &mut Pipeline,
     ) -> Result<(String, bool), ExecError> {
-        if !self.entry_requested && self.execution.progress().phase == NativeRunPhase::Bound {
+        if self.entry_ready() {
             // A read-only or stale writer refusal leaves the bound owner intact;
             // only a validated entry attempt consumes its one-shot permission.
             Pipeline::native_launch_hash(store, &self.claim)?;
@@ -394,6 +401,16 @@ impl Owner {
                 false,
             ));
         }
+        self.apply_completion(store, clock, pipeline)
+    }
+
+    // Completion application cannot launch a bound owner or an admission.
+    fn apply_completion(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        pipeline: &mut Pipeline,
+    ) -> Result<(String, bool), ExecError> {
         let response = self.execution.settle(store, clock)?;
         let disposition = response
             .get("execution")
