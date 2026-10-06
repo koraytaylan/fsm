@@ -327,3 +327,15 @@ process exit with the stderr reader still closed, and explicit treatment of
 a final frame that cannot be confirmed before an expired deadline; current
 healthy-error delivery tests cannot be weakened silently to accept absent
 diagnostics. This remains an incomplete bounded-exit requirement.
+
+Full stable gate session 86747 at frozen runtime commit
+db058013b9133f0c344abce8debf06912a9dcbe3 completed its debug workspace
+stage with exit 101: the only failed target is mcp_execute_workflow, whose
+four original scenarios again stall at the pending handler with exec/mode
+diagnostics. The actual 12 production control tests pass, including both
+output-worker-specific pipe regressions. Format and source-size stages
+passed. Unlike the earlier fail-fast script, this gate records every stage
+and proceeds to release workspace verification, currently live under the
+same 1 GiB/zero-swap scope; release, Clippy, docs, zero-dependency, and embed
+results remain unproven until their authoritative stage exits are recorded.
+No acceptance flag or task status is promoted by this partial result.
