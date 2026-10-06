@@ -555,3 +555,13 @@ occupied, the same frozen checkout now runs the serial full stable release
 workspace gate in session `49657`, retaining `local-a876df1-stable-release.log`.
 No overlapping local build was started; six portable CI legs remain live,
 and production Runner integration remains incomplete.
+
+The isolated full stable release workspace gate at corrected source `a876df1`
+completed with exit zero through original session `49657`; its retained log
+`local-a876df1-stable-release.log` ends with successful workspace doc tests.
+Both full workspace modes now pass locally at this source. The serial full
+stable workspace all-target Clippy gate is live in session `62881`, retaining
+`local-a876df1-stable-clippy.log`; documentation, explicit zero-dependency and
+embed acceptance checks at the same frozen source remain required afterward.
+The six portable CI jobs remain live, and production Runner integration is
+still unfinished; these gate passes do not complete task 9401.
