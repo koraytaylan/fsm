@@ -2445,3 +2445,11 @@ and broken output requests abort without blocking ownership. Output close/drain
 uses the original shutdown deadline and never joins a blocked writer. The host
 must publish and close the exact actor endpoint explicitly; production command
 routing and installed nonempty native acceptance remain pending.
+
+The Linux standalone shutdown report exposes `shutdown_deadline`, the original
+monotonic request deadline, for transport retirement.
+`LocalControlEndpoint::close_until(deadline)` stops transport admission even
+when that deadline has expired, without starting another waiting budget;
+its boolean confirms actual endpoint removal separately from native shutdown,
+writer release and response delivery. Deadlines beyond the finite executor
+bound are refused before transport admission changes.

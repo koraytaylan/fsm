@@ -121,6 +121,22 @@ impl LocalControlEndpoint {
     /// native shutdown, journal writer release or outstanding response delivery.
     pub fn close(&self, timeout_ms: i64) -> io::Result<bool> {
         let deadline = Instant::now() + finite_timeout(timeout_ms)?;
+        self.close_until(deadline)
+    }
+
+    /// Close transport under an existing monotonic deadline, including expiry.
+    /// Past deadlines stop admission but never start a fresh waiting budget.
+    pub fn close_until(&self, deadline: Instant) -> io::Result<bool> {
+        if deadline
+            .checked_duration_since(Instant::now())
+            .is_some_and(|remaining| {
+                remaining > Duration::from_millis(fsm_execute::config::MAX_TIMEOUT_MS as u64)
+            })
+        {
+            return Err(invalid(
+                "endpoint cleanup deadline exceeds finite executor bound",
+            ));
+        }
         self.stop.store(true, Ordering::Release);
         while !self.cleaned.load(Ordering::Acquire) && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(1));

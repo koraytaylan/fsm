@@ -376,3 +376,36 @@ fn paired_publication_refuses_stopped_actor_without_new_incarnation() {
     assert!(Store::open(&fixture.data).is_err());
     drop(writer);
 }
+
+#[test]
+fn expired_cleanup_deadline_stops_transport_without_waiting_for_removal() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    let identity = endpoint.directory().join("identity");
+    fs::rename(&identity, endpoint.directory().join("original-identity")).unwrap();
+    fs::write(&identity, b"replacement").unwrap();
+    let begin = Instant::now();
+    let removed = endpoint.close_until(begin).unwrap();
+    let elapsed = begin.elapsed();
+    // Actual replacement-preserving cleanup cannot confirm complete removal.
+    assert!(!removed);
+    assert!(elapsed < Duration::from_millis(100));
+    wait_for(|| !endpoint.directory().join("s").exists());
+    assert_eq!(fs::read(&identity).unwrap(), b"replacement");
+    assert!(driver.store_mut().is_some());
+}
+
+#[test]
+fn excessive_cleanup_deadline_refuses_before_closing_transport() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    let future =
+        Instant::now() + Duration::from_millis(fsm_execute::config::MAX_TIMEOUT_MS as u64 + 1000);
+    assert!(endpoint.close_until(future).is_err());
+    let _request = send(&endpoint, &request(&endpoint, "drain", 1000), 0);
+    wait_for(|| driver.control().report().phase == ExecutorPhase::Draining);
+    assert!(endpoint.close(1000).unwrap());
+    assert!(driver.store_mut().is_some());
+}

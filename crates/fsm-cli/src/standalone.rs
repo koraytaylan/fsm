@@ -10,6 +10,8 @@ use diagnostic_output::DiagnosticOutput;
 
 pub struct StandaloneReport {
     pub shutdown: ShutdownReport,
+    /// Original monotonic request deadline, reusable for transport cleanup.
+    pub shutdown_deadline: Instant,
     pub output_drained: bool,
     pub dropped_lines: u64,
     pub failure: Option<ExecError>,
@@ -149,6 +151,7 @@ fn finish(
     }
     StandaloneReport {
         shutdown,
+        shutdown_deadline: request.deadline(),
         output_drained: output.drained(),
         dropped_lines: output.dropped(),
         failure,

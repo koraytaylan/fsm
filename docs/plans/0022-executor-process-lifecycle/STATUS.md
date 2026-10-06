@@ -4478,3 +4478,16 @@ and ignored workspace status do not prove native acceptance. Ordinary production
 execution still uses legacy selection and does not publish the paired endpoint;
 the original-deadline endpoint cleanup and production owner drafts remain
 unapplied. Plan progress remains 3/7 with task statuses unchanged.
+
+### Original-deadline transport integration — 2026-10-06
+
+Applied the reviewed endpoint cleanup draft: standalone reports retain the
+actual original request deadline, and endpoint close_until accepts its expiry
+without creating another wait budget. Added downstream tests for expired
+cleanup with replacement identity preservation and excessive deadline refusal
+without closing admission. The four capability documents describe the separate
+endpoint removal fact. Focused session 86677 exited zero under asserted 1 GiB RAM
+and zero swap, with evidence in original-deadline-check.log: stable/MSRV
+all-target Clippy, executor/lifecycle/session/CLI/public inventory checks, all
+16 transport tests and all 61 CLI library tests passed. Production composition remains
+pending, with task statuses unchanged and progress still 3/7.
