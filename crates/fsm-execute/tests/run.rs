@@ -59,6 +59,15 @@ fn stub_handler() {
             let _ = stderr.flush();
             std::process::exit(0);
         }
+        "scan-error" => {
+            let marker = std::env::args()
+                .find_map(|arg| arg.strip_prefix("marker:").map(str::to_owned))
+                .expect("scan-error stub marker");
+            stderr.write_all(&vec![b'x'; 4 * 1024 * 1024]).unwrap();
+            stderr.flush().unwrap();
+            fs::write(marker, b"drained").unwrap();
+            std::process::exit(0);
+        }
         "binary" => {
             let _ = stderr.write_all(&binary_stream());
             let _ = stderr.flush();
@@ -499,4 +508,51 @@ fn an_exhausted_result_keeps_the_last_capture_and_names_the_cause_it_replaced() 
         exhausted.get("class").and_then(Value::as_str),
         Some("nonzero_exit")
     );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_journal_scan_still_drains_owned_handler_output() {
+    use fsm_execute::config::HandlerTable;
+    use fsm_execute::run::Pipeline;
+    use fsm_execute::sched::Scheduler;
+    use fsm_execute::service::tick_reporting;
+    use fsm_execute::watch::Watcher;
+    use fsm_store::clock::FixedClock;
+    use std::collections::BTreeSet;
+    use std::time::{Duration, Instant};
+
+    let mut runner = Runner::new().unwrap();
+    let absent_store = runner.scratch_dir().join("absent-store");
+    let marker = runner.scratch_dir().join("drained-marker");
+    let mut argv = stub_argv("scan-error");
+    argv.push(format!("marker:{}", marker.display()));
+    runner.spawn("scan/0/0".into(), &argv, None).unwrap();
+    let table = HandlerTable::parse(include_str!("fixtures/handlers/valid_min.json")).unwrap();
+    let mut scheduler = Scheduler::new(table);
+    let mut watcher = Watcher::new(absent_store.clone(), BTreeSet::new());
+    let mut pipeline = Pipeline;
+    let mut clock = FixedClock::new(0, 1);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !marker.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "scan errors stalled capture draining"
+        );
+        let outcome = tick_reporting(
+            &mut watcher,
+            &mut scheduler,
+            &mut runner,
+            &mut pipeline,
+            &absent_store,
+            &mut clock,
+            0,
+        );
+        assert!(!outcome.lines.is_empty());
+        assert!(!outcome.writer_unavailable);
+        assert!(!absent_store.exists());
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(fs::read(marker).unwrap(), b"drained");
+    assert!(wait_for_outcome(&mut runner, "scan/0/0").succeeded());
 }

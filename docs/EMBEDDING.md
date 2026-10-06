@@ -1,5 +1,7 @@
 # Embedding fsm as a library
 
+A failed watcher scan still lets public tick helpers drain bounded owned capture I/O; no outcome is consumed or journaled on that path, and callers must keep ticking while correcting the store failure.
+
 Native exec-status association checks its shared two-second deadline before
 every accept and hello-read retry, including interrupted I/O; expiry refuses
 association without granting entry or releasing the original claim.

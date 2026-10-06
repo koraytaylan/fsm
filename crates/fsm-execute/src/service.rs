@@ -51,7 +51,12 @@ pub fn tick_with(
 ) -> Vec<String> {
     let mut plan = match plan(watcher, scheduler, now_ms) {
         Ok(plan) => plan,
-        Err(lines) => return lines,
+        Err(lines) => {
+            // Failed journal observation must not stall owned capture transport.
+            // Readiness stays in the runner until a later healthy settlement.
+            runner.finished_effects();
+            return lines;
+        }
     };
     let settles = prepare(scheduler, runner, &mut plan);
     let finished = runner.finished_effects();
@@ -108,6 +113,8 @@ pub fn tick_reporting(
     let mut plan = match plan(watcher, scheduler, now_ms) {
         Ok(plan) => plan,
         Err(lines) => {
+            // Continue bounded owned I/O even when the store cannot be scanned.
+            runner.finished_effects();
             return TickOutcome {
                 lines,
                 writer_unavailable: false,

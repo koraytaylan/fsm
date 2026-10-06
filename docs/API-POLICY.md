@@ -1,5 +1,7 @@
 # API and version policy
 
+Executor ticks now drain owned output on journal scan refusal while retaining outcomes for later settlement; signatures, journal bytes and hash domains are unchanged, and automatic native production routing remains unfinished.
+
 Native exec-status association checks its shared two-second deadline before
 every accept and hello-read retry, including interrupted I/O; expiry refuses
 association without granting entry or releasing the original claim.

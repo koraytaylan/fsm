@@ -1,5 +1,7 @@
 # Releasing
 
+Executor tick scan failures no longer stall owned output draining; a Linux regression uses a 4 MiB writer and an independent completion marker, with validation pending after the existing frozen-source release gate.
+
 Native exec-status association checks its shared two-second deadline before
 every accept and hello-read retry, including interrupted I/O; expiry refuses
 association without granting entry or releasing the original claim.

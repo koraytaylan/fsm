@@ -1,5 +1,7 @@
 # fsm — normative specification
 
+Public executor ticks MUST continue bounded owned transport observation when journal scanning fails, without collecting outcomes for settlement, opening a writer, or releasing retained execution state; this does not supply missing timeout or native-host reconciliation.
+
 This document is the source of truth for `fsm`. Implementers MUST treat the
 keywords MUST / NEVER as binding. Golden fixtures derive from this prose, never
 from observed implementation behavior — a golden that disagrees with SPEC.md is
