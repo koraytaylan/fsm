@@ -68,3 +68,32 @@ and zero swap, covering formatting, source size, debug/release workspace tests,
 all-target Clippy, warning-free documentation, zero dependencies and embed
 acceptance; local-owned-stdio-integration-stable-gate.log is retained, and tasks
 9401/9402 are not completed or promoted and plan progress remains 3/7.
+
+### Production embedded boundary review — 2026-10-06
+
+At runtime 113cc3f, ordinary standalone execute retains a native paired owner,
+but serve_mode still constructs ExecutorLoop with Runner::new. run_with_mode
+then locks stdin on the caller and invokes the borrowed serve_dir_with path.
+Replacing only the runner leaves quiet stdin able to suspend native observation
+and does not publish a control endpoint; production integration must use the
+owned input factory and owned native session composition together.
+
+The borrowed serve_dir_with fallback opens a diagnostic/read-only session when
+the writer is unavailable or unhealthy, disabling its executor. Production
+embedded routing must explicitly retain the intended diagnostic behavior while
+never presenting a disabled executor as a published, owned native actor; only
+a verified durable writer may construct the owned driver. Endpoint publication
+must bind that actual driver, and startup refusal must not fall back to legacy
+handler execution. Existing borrowed embedding APIs cannot acquire a Send or
+static input requirement merely to simplify CLI routing.
+
+OwnedSessionReport currently omits the original shutdown deadline and returns
+an I/O error after actual cleanup without exposing its separate report. The
+production wrapper needs the same original-deadline retirement and preserved
+initiating-error facts as standalone ownership; output drainage and native
+cleanup cannot silently gain separate timeout budgets. The session's sole
+reader factory must construct stdin.lock inside its worker, rather than move a
+borrowed lock between threads. Actual quiet-input, reverse-reply, blocked-output
+and EOF/error binary tests must exercise this selected production composition.
+This review establishes remaining integration work, not completion of plan 20
+or acceptance of nonempty native execution.

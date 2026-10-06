@@ -4585,3 +4585,14 @@ its endpoint is removed and the independent writer remains held. This proves
 the tested broken-output failure path with a due machine deadline, not blocked
 output or installed nonempty native closure. Progress and task statuses remain
 unchanged.
+
+### Production standalone full stable gate — 2026-10-06
+
+Session 45529 is running the full stable gate against runtime commit 113cc3f
+under asserted 1 GiB RAM and zero swap;
+production-standalone-stable-gate.log retains pending evidence. Runtime stays
+frozen until this handle is terminal. The gate covers formatting, source size,
+debug/release workspace tests, all-target Clippy, documentation with warnings
+denied, zero dependencies and downstream embedding acceptance. Installed
+native acceptance remains separate and unexecuted here; no task promotion
+or full-suite success is inferred while this run is live.
