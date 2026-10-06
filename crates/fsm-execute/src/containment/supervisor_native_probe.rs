@@ -100,10 +100,15 @@ fn complete(binding: Value) {
         assert!(refused.progress().helper.is_none());
         assert_eq!(store.current_execution_claim_hash(&claim).unwrap(), hash);
         let mut holder = WriterHolder::start(&path);
-        let mut owned = NativeExecution::retain_uncertain(&claim);
-        owned
-            .start_retained(&mut store, Duration::from_secs(30))
-            .unwrap();
+        let mut owned = if timeout {
+            NativeExecution::start(&mut store, &claim, Duration::from_secs(30)).unwrap()
+        } else {
+            let mut installed = NativeExecution::retain_uncertain(&claim);
+            installed
+                .start_retained(&mut store, Duration::from_secs(30))
+                .unwrap();
+            installed
+        };
         assert_eq!(
             owned
                 .start_retained(&mut store, Duration::from_secs(30))
