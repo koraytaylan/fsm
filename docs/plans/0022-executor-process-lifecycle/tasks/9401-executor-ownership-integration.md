@@ -666,3 +666,11 @@ MSRV executor library tests and all-target Clippy in session `35214`, retaining
 surface inventory validation remains required afterward. The original Windows
 stable job is still live, and current native cleanup acceptance and automatic
 production Runner routing remain unfinished.
+
+Frozen owned-cleanup source `cd70627` passed all 23 MSRV executor library
+tests and all-target executor Clippy through original session `35214`.
+The explicit public surface suite also passed all 16 tests through session
+`60573`, confirming the committed API inventory without regeneration;
+its retained log is `local-cd70627-msrv-surface.log`. These checks compile
+the privileged controls but do not execute them, and neither these checks nor
+the older source CI run complete production host integration or task 9401.
