@@ -4148,3 +4148,26 @@ only documentation and did not alter the frozen tested runtime.
 This proves the local stable host gate for execute stop, not current native
 server publication, paired actors, installed trees, signals or portable CI.
 Plan progress remains 3/7 with task 9401 in progress and 9402 planned.
+
+
+### Shared closure pump extraction — 2026-10-06
+
+Extracted the original claim-bound closure map/cursor into the private lifecycle
+Closures component, shared by the current owned driver and the upcoming paired
+writer strategy. Start still requires a verified original snapshot; transport
+polling/reaping is separate from optional healthy-writer settlement. The current
+owned driver passes its same original writer, retaining exact behavior, four
+helper/attempt bounds, fair cursor, authentic completion priority, actual helper
+retirement and original claim matching; writer release still precedes Stopped.
+No public API, journal bytes, hashes, error codes or production selectors change.
+
+Focused session 70929 exited zero under asserted 1 GiB RAM and zero swap,
+passing stable/MSRV CLI/executor all-target Clippy, 46 executor library tests,
+three downstream owned lifecycle tests, sixteen public surface tests, four owned
+session tests, twelve transport tests and four real stop binary tests; retained
+closure-pump-refactor-check-v2.log records the run. Initial session 92984 failed
+at the moved error_line namespace, corrected before the successful pass.
+This is the required shared implementation extraction, not a completed paired
+driver or installed no-writer native control. Full changed-source stable gate
+and remaining paired/production/native/signal acceptance are still required;
+plan progress remains 3/7 and task states remain unchanged.
