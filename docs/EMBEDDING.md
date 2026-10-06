@@ -2052,3 +2052,11 @@ Scheduler capacity now includes observed durable owners and retained local reser
 On supported Linux, `NativePreparation::for_store` discovers a unique protected authority matching the actual store directory before requesting an empty domain; missing, ambiguous or damaged registration refuses, and preparation still grants no user-code permission or durable claim.
 
 Provisioned namespace directories may contain operator-store siblings; discovery charges those entries but considers only canonical authority registrations.
+
+The provisional `NativeExecution::retain_uncertain` retains an original durable
+claim after helper startup failure without starting transport or accepting a
+completion. Its progress remains `Uncertain`, capacity remains retained, and
+observation/application refuse without verified original reconciliation; this
+constructor alone authenticates no journal ownership. This additive host
+primitive changes no journal, receipt, attestation or hash format and does not
+complete production Runner routing or release its gate.

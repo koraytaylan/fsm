@@ -13,7 +13,7 @@ use std::time::Duration;
 /// Identifier-free native host observations; transport retirement is not closure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NativeExecutionProgress {
-    /// Transport phase, or Closed for an adopted verified completion.
+    /// Transport phase, Closed for verified completion, or Uncertain without transport.
     pub phase: NativeRunPhase,
     /// Actual observations for an owned helper, when present.
     pub helper: Option<NativeHelperProgress>,
@@ -33,6 +33,20 @@ pub struct NativeExecution {
 }
 
 impl NativeExecution {
+    /// Retain an original durable claim after helper startup fails.
+    ///
+    /// The caller must retain the actual published claim; this constructor
+    /// authenticates no ownership, starts no helper and supplies no completion.
+    /// Observation and settlement remain deferred until original reconciliation.
+    pub fn retain_uncertain(claim: &Claim) -> Self {
+        Self {
+            claim: claim.clone(),
+            run: None,
+            completion: None,
+            retained: true,
+        }
+    }
+
     /// Adopt current durable ownership and start binding under a healthy writer.
     pub fn start(store: &mut Store, claim: &Claim, timeout: Duration) -> Result<Self, ExecError> {
         let run = Pipeline.start_native(store, claim, timeout)?;
@@ -195,7 +209,16 @@ impl NativeExecution {
     pub fn progress(&self) -> NativeExecutionProgress {
         let run = self.run.as_ref().map(NativeRun::progress);
         NativeExecutionProgress {
-            phase: run.map_or(NativeRunPhase::Closed, |run| run.phase),
+            phase: run.map_or_else(
+                || {
+                    if self.completion.is_some() {
+                        NativeRunPhase::Closed
+                    } else {
+                        NativeRunPhase::Uncertain
+                    }
+                },
+                |run| run.phase,
+            ),
             helper: run.map(|run| run.helper),
             retained: self.retained,
         }
@@ -207,4 +230,34 @@ fn unproven() -> ExecError {
         "exec/inflight_deferred",
         "matching original native completion or durable settlement is not proven",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn original_owner() -> fsm_core::record::execution::Claim {
+        use fsm_core::json::{JsonLimits, parse};
+        use fsm_core::record::execution::Claim;
+        Claim::from_value(&parse(br#"{
+      "run_id":1,"instance_id":"case-1","effect_id":"case-1/3/0","attempt":1,
+      "handler_fingerprint":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "retry":{"attempts":3,"backoff_ms":10,"max_backoff_ms":40,"on":["timeout"]},
+      "domain":{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}
+    }"#, &JsonLimits::DEFAULT).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn missing_transport_cannot_become_verified_completion() {
+        let mut execution = NativeExecution::retain_uncertain(&original_owner());
+        assert!(execution.observe().is_err());
+        execution.cancel().unwrap();
+        assert!(execution.reap().unwrap());
+        assert!(execution.observe().is_err());
+        assert!(execution.completion().is_none());
+        let progress = execution.progress();
+        assert_eq!(progress.phase, NativeRunPhase::Uncertain);
+        assert!(progress.retained);
+        assert!(progress.helper.is_none());
+    }
 }

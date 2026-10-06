@@ -816,3 +816,11 @@ Plan 0022 scheduler capacity now accounts for durable owners and retained local 
 Plan 0022 adds bounded protected physical-store route discovery to native preparation; automatic service routing and provisioned discovery fault acceptance remain pending.
 
 Native discovery accommodates operator-store namespace siblings while retaining the shared inventory bound; the native preparation fixture now invokes physical-store discovery instead of supplying its route.
+
+The provisional `NativeExecution::retain_uncertain` retains an original durable
+claim after helper startup failure without starting transport or accepting a
+completion. Its progress remains `Uncertain`, capacity remains retained, and
+observation/application refuse without verified original reconciliation; this
+constructor alone authenticates no journal ownership. This additive host
+primitive changes no journal, receipt, attestation or hash format and does not
+complete production Runner routing or release its gate.

@@ -2465,3 +2465,10 @@ use the original durable claim's route instead of current discovery results.
 These requirements are pending production-host implementation and acceptance.
 
 Native discovery MUST charge non-authority siblings within a namespace to the shared inventory budget and ignore them as registration candidates; an `authority-`-prefixed name with noncanonical generation MUST refuse, rather than being silently ignored.
+
+An owned native host state constructed through `NativeExecution::retain_uncertain`
+MUST retain the supplied original claim without starting helpers or synthesizing
+completion. Without transport or verified completion it MUST report `Uncertain`,
+retain capacity, and refuse observation/application as `exec/inflight_deferred`;
+helper retirement alone MUST NOT authorize settlement. The constructor MUST NOT
+be treated as authentication of current durable ownership.

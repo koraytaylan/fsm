@@ -854,3 +854,11 @@ Automatic native route discovery is a private plan-0022 host composition require
 The provisional `NativePreparation::for_store(&Path, Duration)` entry discovers one protected physical-store route before preparation; this adds a source API only and does not change existing authority envelopes or journal/hash formats.
 
 Discovery now permits charged non-authority namespace siblings such as the operator store, preserving protected authority selection and existing envelopes; no format or hash changes occur.
+
+The provisional `NativeExecution::retain_uncertain` retains an original durable
+claim after helper startup failure without starting transport or accepting a
+completion. Its progress remains `Uncertain`, capacity remains retained, and
+observation/application refuse without verified original reconciliation; this
+constructor alone authenticates no journal ownership. This additive host
+primitive changes no journal, receipt, attestation or hash format and does not
+complete production Runner routing or release its gate.

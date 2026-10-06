@@ -449,3 +449,15 @@ still has both Windows jobs in progress, and its two diagnosed MSRV lint
 failures remain preserved. Updated native execution and the corrected-source
 platform matrix remain outstanding, alongside production Runner integration;
 this local release pass does not complete task 9401.
+
+### Post-claim startup failure ownership state
+
+`NativeExecution::retain_uncertain` now preserves an original durable claim when
+helper startup fails, with no helper, completion or inferred authentication.
+Progress explicitly reports `Uncertain`; cancellation and successful helper
+retirement cannot convert that state to closure or release retained capacity.
+The structural regression `missing_transport_cannot_become_verified_completion`
+passed on MSRV 1.89, and MSRV executor all-target Clippy passed with warnings
+denied. Specification, API policy, embedding and release documentation move
+with this additive primitive. This is not integrated production Runner routing;
+full frozen host/platform/native gates remain required for the changed source.
