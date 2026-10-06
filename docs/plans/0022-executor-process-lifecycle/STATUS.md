@@ -3857,3 +3857,14 @@ documentation and does not invalidate that runtime freeze. Output/retirement
 drafts remain cache-only and untested, and no production control or acceptance
 flag is promoted. Formatting and diff checks apply to this documentation unit;
 its code gates are represented by the still-running frozen runtime gate.
+
+### Complete provenance stable gate — 2026-10-06
+
+Session 3366 completed exit 0 for runtime source
+450beb8aae00fe0b22c3e01c1d1197d452da9cc9, unchanged throughout verification.
+Formatting/size, debug/release workspace tests, workspace all-target Clippy,
+warning-denied documentation, zero dependencies and full embedding acceptance
+passed under verified 1 GiB/no-swap limits. Later 520deca changed only review
+documentation. The retained log is local-native-provenance-stable-gate.log.
+Native paired-owner/public shutdown runtime acceptance is unexecuted, so task
+9402 remains planned, progress 3/7 and all production acceptance flags false.
