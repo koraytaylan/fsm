@@ -255,3 +255,17 @@ cleanup, so process exit can wait for stderr even though the native owner
 and writer have retired; this test releases that separate renderer and does
 not claim bounded process exit while stderr remains blocked. Full workspace
 and installed-native nonempty execution gates remain incomplete.
+
+Follow-up review identified the synchronous pre-initialization request
+warning in serve_session_core as another native owner stderr path. It now
+uses the existing bounded operator queue for owned sessions, preserving
+borrowed behavior. The actual pipe regression deliberately omits the
+initialized notification and verifies captured warning and action lines
+after authenticated stop and writer reacquisition while stderr was held.
+Expanded checks in session 36725 exited 0 under verified 1 GiB/zero-swap
+limits: stable/MSRV all-target checks, 12 actual production control tests,
+six owned sessions, 16 transport cases, and 61 CLI units pass, with diagnostic
+startup regressions also passing; log native-stdio-warning-output-check.log.
+Full workspace and native platform acceptance gates were not run here. Final process error
+rendering and opt-in panic-hook stderr remain separate boundaries requiring
+review, and installed-native workflow acceptance is still unproven.

@@ -746,10 +746,16 @@ fn serve_session_core(
                     }
                     Ok(Incoming::Request { id, method, params }) => {
                         if initialized && !initialized_notified && method != "initialize" {
-                            let _ = writeln!(
-                                std::io::stderr(),
-                                "fsm warn: {method} before notifications/initialized"
-                            );
+                            let warning =
+                                format!("fsm warn: {method} before notifications/initialized");
+                            #[cfg(target_os = "linux")]
+                            if let Some(diagnostics) = diagnostics.as_deref_mut() {
+                                diagnostics.enqueue(&warning)?;
+                            } else {
+                                let _ = writeln!(std::io::stderr(), "{warning}");
+                            }
+                            #[cfg(not(target_os = "linux"))]
+                            let _ = writeln!(std::io::stderr(), "{warning}");
                         }
                         refresh_read_only(store.as_deref_mut(), refresh);
                         // A client can cancel request 7 while the server is

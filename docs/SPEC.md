@@ -2993,3 +2993,5 @@ Native stdio endpoint publication refusal is reported through the executor
 error frame; a startup transport refusal does not confirm native cleanup.
 
 The Linux owned native MCP session MUST admit operator action diagnostics through a bounded independent writer worker, with the same finite queue and line limits as standalone diagnostics; stderr write/flush MUST NOT execute on the native owner. Shutdown MUST close both output queues and use the original stop deadline for delivery; `operator_output_drained` reports actual operator write/flush completion and `operator_lines_dropped` counts rejected diagnostic lines, independently of native cleanup and protocol delivery. Diagnostic loss MUST NOT imply execution loss or verified containment closure.
+
+Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.

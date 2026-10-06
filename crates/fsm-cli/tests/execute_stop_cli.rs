@@ -766,7 +766,7 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
     let mut input = owner.0.stdin.take().unwrap();
     let (release, hold) = std::sync::mpsc::channel::<()>();
     let feeder = std::thread::spawn(move || {
-        let _ = input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n");
+        let _ = input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n");
         for _ in 0..2000 {
             if input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n").is_err() { return; }
         }
@@ -857,5 +857,9 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
     feeder.join().unwrap();
     let stderr = reader.join().unwrap();
     assert!(!status.success());
+    assert!(
+        String::from_utf8_lossy(&stderr)
+            .contains("fsm warn: tools/call before notifications/initialized")
+    );
     assert!(String::from_utf8_lossy(&stderr).contains("fsm execute: observed pending action"));
 }

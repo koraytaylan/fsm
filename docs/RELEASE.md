@@ -1177,3 +1177,5 @@ Native stdio endpoint publication refusal is reported through the executor
 error frame; a startup transport refusal does not confirm native cleanup.
 
 Owned native MCP action diagnostics now use the shared bounded operator output worker instead of writing stderr on the journal owner; `OwnedSessionReport` separates operator drainage and rejected diagnostic lines from protocol delivery and native cleanup, and production success requires confirmed delivery without diagnostic loss under the original deadline.
+
+Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.
