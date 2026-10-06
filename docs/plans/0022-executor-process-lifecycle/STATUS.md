@@ -3911,6 +3911,17 @@ chunked-input tests, nine elicitation tests, six skeleton tests and two queued
 output tests passed. The retained log is local-bounded-input-check.log. The
 chunked reader traps unbounded read_line/read_until calls, reaching both actual
 public paths; exact limit, plus-one and next-frame behavior are asserted.
-Full stable verification remains pending for this unit. Native driver/control
+Full stable verification was subsequently completed as recorded below. Native driver/control
 integration is still incomplete, so progress stays 3/7, task 9402 planned and
 production acceptance false; no output/input tests substitute for native proof.
+
+### Complete bounded-input stable gate — 2026-10-06
+
+Session 63003 completed with exit 0 at exact runtime source
+568638d67d4ad96d8cda0967d94fe82e1f7ed8be; the runtime source remained unchanged
+throughout verification. Formatting/size, debug/release workspace suites,
+all-target workspace Clippy, warning-denied documentation, zero dependencies
+and full embedding acceptance passed under verified 1 GiB/no-swap limits.
+The retained evidence is local-bounded-input-stable-gate.log. Installed native
+controls and other platform axes remain unexecuted for this source; production
+integration and all existing task/acceptance statuses remain unchanged.
