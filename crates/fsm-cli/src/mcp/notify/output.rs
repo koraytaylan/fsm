@@ -70,6 +70,13 @@ impl ProtocolOutput {
                 "output frame differs",
             ));
         }
+        self.enqueue_diagnostic(frame)
+    }
+
+    // Operator diagnostics preserve rendered bytes, including human multiline
+    // errors; they share the protocol queue's retained/in-flight accounting.
+    // Only enqueue above accepts a protocol frame and validates its framing.
+    pub(crate) fn enqueue_diagnostic(&self, frame: Vec<u8>) -> io::Result<()> {
         let (lock, wake) = &*self.0;
         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
         if state.closed {
@@ -136,6 +143,79 @@ mod tests {
         bytes.extend_from_slice(b"{}\n");
         assert_eq!(bytes.capacity(), capacity);
         bytes
+    }
+
+    struct CapturedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for CapturedWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn diagnostic_delivery_preserves_actual_human_and_json_error_rendering() {
+        for json in [false, true] {
+            let error = crate::store::ErrorObj::new("exec/inflight_deferred", "cleanup uncertain")
+                .hint("inspect the original owner before retrying");
+            let mut rendered = Vec::new();
+            crate::render::write_error(json, false, &error, &mut rendered);
+            if !json {
+                assert_eq!(
+                    parked_queue().enqueue(rendered.clone()).unwrap_err().kind(),
+                    io::ErrorKind::InvalidInput
+                );
+            }
+            let captured = Arc::new(Mutex::new(Vec::new()));
+            let output = ProtocolOutput::start(CapturedWriter(captured.clone())).unwrap();
+            output.enqueue_diagnostic(rendered.clone()).unwrap();
+            output.close();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !output.drained() && Instant::now() < deadline {
+                std::thread::yield_now();
+            }
+            assert!(output.drained());
+            assert_eq!(*captured.lock().unwrap(), rendered);
+        }
+    }
+
+    #[test]
+    fn diagnostic_frames_share_allocation_and_frame_ceilings() {
+        let output = parked_queue();
+        output
+            .enqueue_diagnostic(frame(MAX_ALLOCATION_BYTES))
+            .unwrap();
+        assert_eq!(
+            output.enqueue_diagnostic(frame(3)).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        assert_eq!(
+            output.0.0.lock().unwrap().charged_bytes,
+            MAX_ALLOCATION_BYTES
+        );
+        let oversized = parked_queue();
+        assert_eq!(
+            oversized
+                .enqueue_diagnostic(frame(MAX_ALLOCATION_BYTES + 1))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::WouldBlock
+        );
+        assert_eq!(oversized.0.0.lock().unwrap().charged_bytes, 0);
+        let empty = parked_queue();
+        for _ in 0..MAX_FRAMES {
+            empty.enqueue_diagnostic(Vec::new()).unwrap();
+        }
+        assert_eq!(
+            empty.enqueue_diagnostic(Vec::new()).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+        assert_eq!(empty.0.0.lock().unwrap().charged_frames, MAX_FRAMES);
     }
 
     #[test]

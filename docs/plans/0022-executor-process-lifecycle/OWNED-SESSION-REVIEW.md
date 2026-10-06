@@ -465,3 +465,24 @@ Original-deadline expiry still requires an explicit delivery policy and
 actual production tests, and no final-renderer implementation is accepted.
 No runtime source changed; documentation diff checks passed, and full Cargo
 gates were not repeated for this review-only update.
+
+### Separate bounded diagnostic framing implementation (2026-10-07)
+
+The shared output worker now has a crate-private diagnostic enqueue path
+preserving arbitrary rendered bytes, including multiline human errors;
+protocol enqueue still performs its original single-line newline validation
+before using the same retained/in-flight accounting and worker.
+Existing production operator-line admission uses the diagnostic path while
+retaining its 64 KiB line ceiling, malformed-line refusal and loss counting.
+Real worker tests preserve actual render::write_error human and JSON bytes,
+prove protocol enqueue still rejects the human frame, and exercise diagnostic
+allocation limit/plus-one and frame limit/plus-one (including empty frames).
+Stable notify unit tests and all 13 actual production control tests passed;
+CLI all-target Clippy and MSRV all-target compilation passed in a verified
+1 GiB / zero-swap serial scope (diagnostic-framing-check.log).
+Formatting and source-size checks passed. This internal transport change
+alters no public capability or rendering contract; four public guides need
+no corresponding capability update. Final renderer wiring, original-deadline
+delivery policy and production bounded-exit acceptance remain incomplete.
+The full stable gate will run on the committed source before acceptance;
+prior native workflow failures remain open and are not bypassed.

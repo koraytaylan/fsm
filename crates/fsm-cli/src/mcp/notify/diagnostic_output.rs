@@ -25,7 +25,7 @@ impl DiagnosticOutput {
         let mut frame = Vec::with_capacity(line.len() + 1);
         frame.extend_from_slice(line.as_bytes());
         frame.push(b'\n');
-        match self.control.enqueue(frame) {
+        match self.control.enqueue_diagnostic(frame) {
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 self.dropped = self.dropped.saturating_add(1);
                 Ok(())
