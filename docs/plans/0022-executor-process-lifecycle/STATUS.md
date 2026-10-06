@@ -3801,3 +3801,13 @@ must distinguish locally admitted work from observed claims of other live
 executors before applying shutdown. Progress remains 3/7, task 9401 in progress,
 task 9402 planned and production/native acceptance flags false; plans 20, 21 and
 23 remain planned and private remote publication remains authorization-dependent.
+
+### Shutdown ownership transfer review — 2026-10-06
+
+SHUTDOWN-OWNERSHIP-REVIEW.md records the observed/local boundary and the
+ClaimUncertain refresh transfer that must preserve local provenance before
+removing an admission. The full stable gate is live as session 4737 with runtime
+source unchanged; it began before commit 7571fd7 while that exact runtime diff
+was already present, so its initial printed HEAD ef3e4a8 is not the tested runtime
+revision. Documentation-only review additions do not change that runtime.
+No terminal gate verdict or installed shutdown acceptance is claimed here.
