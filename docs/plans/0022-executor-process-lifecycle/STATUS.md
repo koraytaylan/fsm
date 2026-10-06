@@ -3550,3 +3550,23 @@ Cold host implementation and controls exist only as unapplied task-cache
 drafts, and production constructors remain unchanged.
 A successor review may now test the committed VERSION 12 and race fixes
 without cancelling any job from this terminal review.
+
+### VERSION 12 and retirement correction review — 2026-10-06
+
+Successor run 37460020929 at exact source
+665a71b39b403ec9ce03846619a194e7f85804c0 remains live in portable
+gates; both completed native stable/MSRV jobs passed. Both retained
+artifacts independently verify all 81 frozen cases with source identity
+and compiler identity checked, gate_released=false and
+executable_bytes_verified=false. Stable is rustc 1.99.0
+(b940084d7 2026-09-28); MSRV is rustc 1.89.0
+(29483883e 2025-08-04). This does not erase the prior native failure
+or prove the newly drafted cold controls, which are unapplied.
+The local cf607de gate passed full debug and release workspace suites,
+then failed all-target Clippy when the shared target exposed older core
+metadata lacking the source-present handoff APIs. The failure is retained
+in local-cf607de-stable-host-gate.log; no complete host verdict is claimed.
+A serial fresh-target continuation for all-target Clippy, warning-denied
+rustdoc, zero-deps and full embed acceptance is live under verified
+MemoryMax=1G/MemorySwapMax=0, with log
+local-cf607de-fresh-check-gate.log in the task cache.
