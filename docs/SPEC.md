@@ -2437,3 +2437,5 @@ recovery MUST NOT repair them or substitute caller-selected candidate material.
 A watcher observation MUST project every unresolved original execution claim and optional stopped result from the same read-only journal prefix as pending effects, before filtering cancelled instances, removed effects or current handlers; observation MUST NOT consume ownership.
 
 The scheduler MUST exclude a pending effect with matching unresolved instance/effect ownership before current handler lookup; root exit, stopped evidence and changed handler selection MUST NOT authorize a successor before durable consumption.
+
+Scheduler capacity MUST count the union of observed unresolved original run identities and retained local handles, including stopped owners and owners absent from pending effects; only a locally retained matching original run identity may deduplicate an observed owner, and missing observation MUST NOT release a local reservation.

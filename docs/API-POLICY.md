@@ -846,3 +846,5 @@ portable and frozen host acceptance remains required before production routing.
 The provisional `fsm-execute::watch::Observation` adds `execution_owners`, retaining original `Claim` and optional `Stopped` values; this source-level provisional API addition changes no journal bytes or hash domains and does not accept automatic production routing.
 
 Scheduler start selection now excludes matching unresolved durable ownership using the provisional observation field, without changing public signatures, persistence bytes or hash domains.
+
+The provisional Scheduler adds `retain_claim(&Claim) -> bool` to bind a local reservation to its immutable original claim; capacity diagnostics now include durable owners, without persistence or hash changes.

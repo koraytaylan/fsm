@@ -42,6 +42,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use fsm_core::json::Value;
+use fsm_core::record::execution::Claim;
 
 use crate::config::{Advance, HandlerSpec, HandlerTable, substitute};
 use crate::effect::PendingEffect;
@@ -202,6 +203,7 @@ pub struct Capped {
 pub struct Scheduler {
     table: HandlerTable,
     inflight: BTreeMap<String, Inflight>,
+    local_claims: BTreeMap<String, Claim>,
     issued_polls: BTreeSet<(String, String, i64)>,
     unhandled: Vec<String>,
     reported_unhandled: BTreeSet<String>,
@@ -223,6 +225,7 @@ impl Scheduler {
         Self {
             table,
             inflight: BTreeMap::new(),
+            local_claims: BTreeMap::new(),
             issued_polls: BTreeSet::new(),
             unhandled: Vec::new(),
             reported_unhandled: BTreeSet::new(),
@@ -235,24 +238,54 @@ impl Scheduler {
         }
     }
 
-    /// Whether a slot is free for one more run on this instance.
-    ///
-    /// Counted from the process-local in-flight map rather than from the
-    /// journal, and that is the whole point: a cap on concurrency is a
-    /// statement about what *this* process is running now. A fresh scheduler
-    /// after a restart correctly starts up to the cap again — the orphaned
-    /// children of the previous process are gone, and their effects are still
-    /// pending precisely because nothing acked them.
-    fn has_room_for(&self, instance_id: &str) -> bool {
-        if self.inflight.len() >= self.table.max_inflight as usize {
+    /// Bind a retained local handle to its immutable original durable claim.
+    /// Returns false if the effect is not local or has another original claim.
+    pub fn retain_claim(&mut self, claim: &Claim) -> bool {
+        let (instance_id, effect_id) = claim.effect();
+        if !self
+            .inflight
+            .get(effect_id)
+            .is_some_and(|local| local.effect.instance_id == instance_id)
+            || self
+                .local_claims
+                .get(effect_id)
+                .is_some_and(|original| original != claim)
+        {
             return false;
         }
-        let on_instance = self
-            .inflight
-            .values()
-            .filter(|inflight| inflight.effect.instance_id == instance_id)
-            .count();
-        on_instance < self.table.max_inflight_per_instance as usize
+        self.local_claims.insert(effect_id.into(), claim.clone());
+        true
+    }
+
+    fn occupied(&self, obs: &Observation) -> BTreeSet<(String, String, Option<u64>)> {
+        let mut owners: BTreeSet<_> = obs
+            .execution_owners
+            .iter()
+            .map(|(claim, _)| {
+                let (instance, effect) = claim.effect();
+                (instance.into(), effect.into(), Some(claim.run_id()))
+            })
+            .collect();
+        for local in self.inflight.values() {
+            owners.insert((
+                local.effect.instance_id.clone(),
+                local.effect.effect_id.clone(),
+                self.local_claims
+                    .get(&local.effect.effect_id)
+                    .map(Claim::run_id),
+            ));
+        }
+        owners
+    }
+
+    fn has_room_for(&self, instance_id: &str, obs: &Observation) -> bool {
+        let occupied = self.occupied(obs);
+        occupied.len() < self.table.max_inflight as usize
+            && occupied
+                .iter()
+                .filter(|(instance, _, _)| instance == instance_id)
+                .count()
+                < self.table.max_inflight_per_instance as usize
     }
 
     /// The handler for an effect name, for the driver that has to settle a run.
@@ -436,7 +469,7 @@ impl Scheduler {
 
         let mut capped = 0usize;
         for candidate in candidates {
-            if !self.has_room_for(&candidate.effect.instance_id) {
+            if !self.has_room_for(&candidate.effect.instance_id, obs) {
                 // `continue`, never `break`: an instance already at its
                 // per-instance cap is skipped at every position, and the slot
                 // it could not use goes to the next instance in the round
@@ -464,7 +497,7 @@ impl Scheduler {
         // failure an operator cannot diagnose. Said once per tick.
         self.capped = (capped > 0).then_some(Capped {
             deferred: capped,
-            inflight: self.inflight.len(),
+            inflight: self.occupied(obs).len(),
         });
 
         // 3. Resume an advance whose ack is journaled but whose event is not.
@@ -665,6 +698,7 @@ impl Scheduler {
     /// which is the one way this loop can wedge itself.
     pub fn complete(&mut self, effect_id: &str) {
         self.inflight.remove(effect_id);
+        self.local_claims.remove(effect_id);
     }
 }
 

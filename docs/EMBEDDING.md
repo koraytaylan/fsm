@@ -2046,3 +2046,5 @@ portable and frozen host acceptance remains required before production routing.
 Executor watcher observations now include `execution_owners` from the same read-only prefix as pending effects, including owners whose effect or handler has disappeared; embedders must preserve these owners until durable settlement, and integrated native tick routing remains under implementation.
 
 Scheduler observations containing durable owners suppress starts for those original instance/effect pairs before handler lookup; capacity accounting and native production launch composition remain under implementation.
+
+Scheduler capacity now includes observed durable owners and retained local reservations; call `retain_claim` after durable claim admission to deduplicate the matching local run, and retain the reservation until durable settlement, with production routing still under implementation.

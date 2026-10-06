@@ -511,12 +511,38 @@ fn a_remote_original_owner_excludes_start_before_current_handler_lookup() {
       "domain":{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}
     }"#, &JsonLimits::DEFAULT).unwrap()).unwrap();
     let mut observed = observation_with_pending(vec![effect("case-1/3/0", "assign_reviewer")]);
-    observed.execution_owners.push((claim, None));
+    observed.execution_owners.push((claim.clone(), None));
     let mut scheduler = Scheduler::new(table());
     assert!(scheduler.on_observation(&observed, NOW).is_empty());
     observed.pending[0].effect_name = "removed-handler".into();
     assert!(scheduler.on_observation(&observed, NOW).is_empty());
     assert!(scheduler.unhandled().is_empty());
+    let mut capped_table = table();
+    capped_table.max_inflight = 1;
+    let mut remote = Scheduler::new(capped_table);
+    let other = effect("case-2/3/0", "assign_reviewer");
+    let remote_observation = Observation {
+        pending: vec![other],
+        execution_owners: vec![(claim.clone(), None)],
+        ..Observation::default()
+    };
+    assert!(remote.on_observation(&remote_observation, NOW).is_empty());
+    assert_eq!(remote.capped().unwrap().inflight, 1);
+
+    let mut overlap_table = table();
+    overlap_table.max_inflight = 2;
+    overlap_table.max_inflight_per_instance = 2;
+    let mut local = Scheduler::new(overlap_table);
+    let own = observation_with_pending(vec![effect("case-1/3/0", "assign_reviewer")]);
+    assert_eq!(local.on_observation(&own, NOW).len(), 1);
+    assert!(local.retain_claim(&claim));
+    // Bound local ownership and its observed original run occupy one slot.
+    assert_eq!(local.on_observation(&remote_observation, NOW).len(), 1);
+    // Losing observation does not discard either retained local reservation.
+    let third = observation_with_pending(vec![effect("case-3/3/0", "assign_reviewer")]);
+    assert!(local.on_observation(&third, NOW).is_empty());
+    assert_eq!(local.capped().unwrap().inflight, 2);
+
     observed.execution_owners.clear();
     observed.pending[0].effect_name = "assign_reviewer".into();
     assert!(matches!(

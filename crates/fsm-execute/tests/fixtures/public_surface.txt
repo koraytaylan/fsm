@@ -322,6 +322,7 @@ method fsm_execute::sched::Scheduler::new
 method fsm_execute::sched::Scheduler::on_observation
 method fsm_execute::sched::Scheduler::park_advance
 method fsm_execute::sched::Scheduler::poll_issued
+method fsm_execute::sched::Scheduler::retain_claim
 method fsm_execute::sched::Scheduler::stalled
 method fsm_execute::sched::Scheduler::unhandled
 method fsm_execute::sched::Scheduler::unstartable
