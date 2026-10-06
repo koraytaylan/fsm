@@ -577,3 +577,21 @@ Python AST syntax validation passed; source is unapplied and unexecuted while
 full stable gate 50807 remains live on runtime 7cf0e39 with zero swap.
 Meaningful guard tests and terminal local native execution remain required
 before accepting the harness change or promoting any lifecycle task.
+
+### Authority retirement candidate wiring checks (2026-10-07)
+
+Cache-only authority-retirement-candidate-check.py exercises absent and empty
+state, retained namespaces, permission refusal, symlink and foreign ownership,
+then drives the candidate's actual main teardown with subprocesses mocked.
+Retained state refuses installer removal and records exact device/inode/digest
+and source commit; clear state invokes matched removal exactly once.
+An initial harness failure returned bytes for subprocess.check_output(text=True);
+correcting that mock contract yields all checks passing (exit 0), with evidence
+in authority-retirement-candidate-final-check.log.
+Neutralizing only the main retirement guard then fails with
+`unresolved state did not refuse authority removal` (exit 1); finally restoration
+returns all checks to passing, with mutation and restored logs retained.
+No root subprocess or native service was invoked by these checks, and they
+provide harness wiring evidence only, not native closure or installed
+acceptance. The candidate remains unapplied while full stable gate 50807
+continues on frozen runtime 7cf0e39; its release workflow failures are recurring.
