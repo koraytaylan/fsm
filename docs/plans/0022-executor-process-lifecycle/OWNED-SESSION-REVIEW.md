@@ -653,3 +653,25 @@ Stable executor all-target Clippy and MSRV all-target compilation passed
 (native-sleep-image-identity-check.log); format and source-size checks passed.
 A frozen native rerun and later-source full host gate remain pending; no native
 handler-entry or ownership integration acceptance follows from compilation.
+
+### Corrected local authority run terminal verdict (2026-10-07)
+
+Stable probe on clean exact 15d9f94f18fc52a24902c1f3d625d80419aaf03c
+terminated with exit 1 after nine passing inventory cases: the five initial
+cases plus enrolled gate authorization (19.93 seconds), private exec status,
+native capture bounds and genuine claim binding. This supplies actual native
+coverage beyond compilation and confirms the physical-image observation fix
+in its production authority fixture; it is not ordinary CLI workflow acceptance.
+Provisioned broker access failed after 7.30 seconds in
+broker_disconnect_native_tests::permit_operator_store: it asserted every
+visited fixture path remained root-owned, but observed UID 65534, the exact
+configured operator identity. The recursive helper itself transfers fixture
+ownership to 65534, so its repeat-use and newly operator-created path behavior
+need review before rerunning the broker ownership controls. No production
+ownership or permission guard is relaxed by this diagnosis.
+Evidence remains in local-native-authority-15d9f94/authority.json and per-case
+logs; report passed=false, backend=false and gate unreleased remain explicit.
+The unrelated probe process survived every executed case; guarded matched
+artifact teardown completed, and subsequent stat found the installed artifact
+and authority base absent. That absence alone is not native closure evidence.
+No intensive process remains live from this terminal probe.
