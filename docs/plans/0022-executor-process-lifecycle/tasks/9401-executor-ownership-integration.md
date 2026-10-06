@@ -630,3 +630,14 @@ of the test-owned obstacle. The frozen stable debug workspace gate for
 require compilation and provisioned execution at their own committed source.
 
 Follow-up host cleanup review identified that a numeric `close` request alone cannot convey the retained original domain identity; private broker action `discard-prepared` now validates and matches the full domain under the authority lock before revocation and echoes it after prepared-only retirement, with a privileged wrong-cgroup-identity refusal control and cold original-domain replay controls, while typed host cleanup and production Runner routing remain outstanding.
+
+The isolated full stable debug workspace gate at frozen `b5ff5f6` completed
+with exit zero through original session `64176`; its retained log
+`local-b5ff5f6-stable-debug.log` ends with successful workspace doc tests.
+This accepts that debug gate only and predates the later refusal controls and
+original-domain protocol. The clean frozen checkout now checks exact source
+`34d00da` with serial MSRV executor library tests followed by all-target Clippy
+in session `85425`, retaining `local-34d00da-msrv-lib.log` and
+`local-34d00da-msrv-clippy.log`; no overlapping local build was started.
+Both original Windows CI jobs remain live, with MSRV advanced to Clippy;
+their source `a876df1` predates all prepared cleanup changes.
