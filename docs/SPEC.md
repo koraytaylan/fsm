@@ -2922,3 +2922,10 @@ publish_paired from that actual driver's pinned physical identity and control;
 a replaced directory or already stopped publisher MUST refuse. These opt-in
 APIs MUST NOT claim installed two-live-native-actor acceptance or activate the
 current production selector. Drop remains outside the shutdown guarantee.
+
+The opt-in paired native driver exposes `tick_reporting`, preserving the structured
+writer-unavailable fact from its explicit scheduling tick; `tick` remains the
+line-only convenience entry. `ExecutorControl::wait_for_request` validates a
+finite timeout before waiting on independent metadata, wakes for an explicit
+request and returns false on an idle timeout; it closes no admission, renews no
+shutdown deadline and publishes no cleanup or writer-release fact.

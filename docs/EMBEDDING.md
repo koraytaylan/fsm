@@ -2426,3 +2426,10 @@ release another actor's held writer. publish_paired(root, &driver) exposes the
 actual pinned actor to execute stop through the existing private transport.
 These APIs are opt-in; production service/serve integration and installed
 paired live-native-actor acceptance remain pending, with no Drop guarantee.
+
+Hosts driving `PairedNativeExecutor` can use `tick_reporting` to retain actual
+writer-contention outcomes without parsing diagnostic lines. Between ordinary
+ticks, use finite `control.wait_for_request(timeout_ms)` waits and admitted
+`poll` observations; a true wait result proves request arrival only, and cleanup
+must still be driven and read from the original control report. Idle wait expiry
+does not close admission or request shutdown.

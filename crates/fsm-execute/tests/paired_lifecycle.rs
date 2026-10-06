@@ -161,3 +161,41 @@ fn held_temporary_writer_cannot_be_reported_released_during_stop() {
     assert_eq!(control.report().phase, ExecutorPhase::Stopped);
     drop(Store::open(&directory.0).unwrap());
 }
+
+#[test]
+fn explicit_tick_reports_actual_writer_contention_without_parsing_lines() {
+    let directory = Directory::new();
+    let writer = fixture(&directory);
+    let records = writer.records.clone();
+    let mut driver = PairedNativeExecutor::new(&directory.0, HandlerTable::default()).unwrap();
+    for _ in 0..3 {
+        let outcome = driver.tick_reporting(&mut FixedClock::new(10000, 1), 10000);
+        assert!(outcome.writer_unavailable);
+        assert!(driver.control().report().writer_released);
+    }
+    assert_eq!(writer.records, records);
+    drop(writer);
+    let outcome = driver.tick_reporting(&mut FixedClock::new(10000, 1), 10000);
+    assert!(!outcome.writer_unavailable);
+    let cold = Store::open_read_only(&directory.0).unwrap();
+    assert!(cold.records.len() > records.len());
+}
+
+#[test]
+fn stopped_paired_tick_does_not_report_unattempted_writer_contention() {
+    let directory = Directory::new();
+    let writer = Store::open(&directory.0).unwrap();
+    let mut driver = PairedNativeExecutor::new(&directory.0, HandlerTable::default()).unwrap();
+    let request = driver.control().stop(ShutdownMode::Abort, 1000).unwrap();
+    let outcome = driver.tick_reporting(&mut FixedClock::new(0, 1), 0);
+    assert!(!outcome.writer_unavailable);
+    assert_eq!(request.wait().phase, ExecutorPhase::Stopped);
+    assert!(Store::open(&directory.0).is_err());
+    assert!(
+        driver
+            .tick_reporting(&mut FixedClock::new(0, 1), 0)
+            .lines
+            .is_empty()
+    );
+    drop(writer);
+}

@@ -1150,3 +1150,8 @@ tick and poll; LocalControlEndpoint::publish_paired adds the actual paired
 actor publisher. The actor uses verified read-only prefixes and temporary
 healthy writer leases, preserving existing native closure/settlement guards.
 No journal format, hash domain, error code or production selector changes.
+
+The provisional native lifecycle surface adds
+`PairedNativeExecutor::tick_reporting` and `ExecutorControl::wait_for_request`:
+structured writer availability and finite request notification respectively;
+these expose no native completion setter or new persistent format.

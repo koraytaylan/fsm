@@ -4276,3 +4276,21 @@ This completes local stable host verification of that runtime, not installed
 nonempty native closure, two live actors, production selection/publication or
 current portable CI. The reviewed cached drafts can now be applied and checked
 as a separate runtime unit; task statuses and 3/7 progress remain unchanged.
+
+### Structured paired ticks and request wakeup implemented — 2026-10-06
+
+Applied the reviewed tick_reporting and wait_for_request APIs with normative,
+API, embedding and release documentation and regenerated public inventory.
+Actual contention tests hold an independent writer across three explicit ticks,
+verify structured writer_unavailable, then release it and prove journaled
+deadline progress resumes; stopped ticks make no unattempted contention claim.
+Control tests cover request notification, unchanged original deadline,
+incomplete cleanup facts, idle timeout and invalid bounds without admission
+closure. No completion-publication authority is exposed.
+
+Focused session 67502 exited zero under asserted MemoryMax=1G and zero swap:
+format/size, stable/MSRV all-target executor/CLI Clippy, 48 executor library,
+three owned and six paired lifecycle tests, owned session, transport, five CLI
+stop tests and sixteen public surface tests passed; paired-wakeup-check.log is
+retained. Production loop/queue wiring, mutation sensitivity, changed-runtime
+full gates and provisioned acceptance remain required; progress stays 3/7.

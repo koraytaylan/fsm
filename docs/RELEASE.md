@@ -1108,3 +1108,8 @@ Added shared native admission closure and original local shutdown-target iterati
   settlement; paired endpoint publication binds its pinned physical directory.
   Current production selectors and installed two-live-native-actor acceptance
   remain pending, and no persisted format or hash changes.
+
+The opt-in paired lifecycle driver now retains structured writer availability
+through `tick_reporting`, and native control adds finite explicit-request wakeup
+through `wait_for_request`; existing line-only ticks remain available, and
+production routing and installed acceptance remain pending.

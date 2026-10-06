@@ -87,14 +87,29 @@ impl PairedNativeExecutor {
 
     /// Only explicit ticks may schedule new pending work/retries/deadlines.
     pub fn tick(&mut self, clock: &mut dyn Clock, now_ms: i64) -> Vec<String> {
+        self.tick_reporting(clock, now_ms).lines
+    }
+
+    /// Explicit scheduling tick with structured writer availability for hosts.
+    pub fn tick_reporting(
+        &mut self,
+        clock: &mut dyn Clock,
+        now_ms: i64,
+    ) -> super::super::TickOutcome {
         if self.control.requested() {
-            return self.poll(clock, now_ms);
+            return super::super::TickOutcome {
+                lines: self.poll(clock, now_ms),
+                writer_unavailable: false,
+            };
         }
         if let Err(error) = self.check_physical() {
-            return vec![super::super::error_line(&error)];
+            return super::super::TickOutcome {
+                lines: vec![super::super::error_line(&error)],
+                writer_unavailable: false,
+            };
         }
         self.publish_writer(false, false);
-        let mut lines = super::super::tick_reporting(
+        let mut outcome = super::super::tick_reporting(
             &mut self.watcher,
             &mut self.scheduler,
             &mut self.runner,
@@ -102,15 +117,14 @@ impl PairedNativeExecutor {
             &self.directory,
             clock,
             now_ms,
-        )
-        .lines;
+        );
         if self.control.requested() {
-            lines.extend(self.poll(clock, now_ms));
+            outcome.lines.extend(self.poll(clock, now_ms));
         } else {
-            let complete = self.refresh(now_ms, &mut lines);
+            let complete = self.refresh(now_ms, &mut outcome.lines);
             self.publish(complete);
         }
-        lines
+        outcome
     }
 
     /// Observe/close admitted local work before considering temporary writer I/O.

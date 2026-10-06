@@ -115,6 +115,35 @@ impl ExecutorControl {
         })
     }
 
+    /// Wait for an explicit stop request, without native or journal I/O.
+    /// A true result proves only request arrival; cleanup still needs report().
+    pub fn wait_for_request(&self, timeout_ms: i64) -> Result<bool, ExecError> {
+        let deadline = RequestState::validate_deadline(Instant::now(), timeout_ms)?;
+        let mut state = self.state();
+        loop {
+            if state.request.requested() {
+                return Ok(true);
+            }
+            if state.poisoned {
+                return Err(ExecError::new(
+                    "exec/inflight_deferred",
+                    "control metadata poisoned",
+                ));
+            }
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return Ok(false);
+            };
+            state = match self.shared.1.wait_timeout(state, remaining) {
+                Ok((state, _)) => state,
+                Err(error) => {
+                    let (mut state, _) = error.into_inner();
+                    state.poisoned = true;
+                    state
+                }
+            };
+        }
+    }
+
     pub fn report(&self) -> ShutdownReport {
         self.state()
             .report(Instant::now(), self.admission.is_closed())
@@ -201,6 +230,39 @@ mod tests {
     use super::*;
     use crate::run::Runner;
     use std::sync::mpsc;
+
+    #[test]
+    fn request_wait_wakes_without_publishing_cleanup_or_renewing_deadline() {
+        let runner = Runner::new_native().unwrap();
+        let control = ExecutorControl::new(runner.native_admission_control().unwrap());
+        let waiter = control.clone();
+        let (sent, received) = mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            sent.send(waiter.wait_for_request(1000)).unwrap();
+        });
+        let request = control.stop(ShutdownMode::Drain, 1000).unwrap();
+        let observed = received.recv_timeout(std::time::Duration::from_millis(500));
+        // The worker's finite wait ends even when a wakeup regression fails.
+        thread.join().unwrap();
+        assert!(observed.unwrap().unwrap());
+        assert!(control.wait_for_request(1).unwrap());
+        assert_eq!(control.report().phase, ExecutorPhase::Draining);
+        assert!(!control.report().inventory_complete);
+        assert_eq!(
+            request.deadline(),
+            control.stop(ShutdownMode::Abort, 10000).unwrap().deadline()
+        );
+    }
+
+    #[test]
+    fn idle_request_wait_times_out_without_closing_admission() {
+        let runner = Runner::new_native().unwrap();
+        let control = ExecutorControl::new(runner.native_admission_control().unwrap());
+        assert!(!control.wait_for_request(1).unwrap());
+        assert!(control.wait_for_request(0).is_err());
+        assert!(!control.report().admission_closed);
+        assert_eq!(control.report().phase, ExecutorPhase::Running);
+    }
 
     #[test]
     fn invalid_stop_does_not_close_the_actual_runner_fence() {
