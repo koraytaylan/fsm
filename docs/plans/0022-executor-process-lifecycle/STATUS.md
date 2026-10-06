@@ -3631,3 +3631,31 @@ native environment; they are absent from the earlier 665a71b artifacts.
 Review 37460020929 is still live in both Windows jobs, so its review branch
 has not been superseded; all seven completed jobs passed.
 Task 9401 remains in progress and production constructors remain legacy.
+
+### Complete retention-control gate and terminal prior review — 2026-10-06
+
+Local stable gate session 49845 completed with exit 0 at exact source
+f5ba23e25bb47d9e79ce2c99432b1db76b5b4577: formatting, source-size,
+full debug/release workspace tests, all-target workspace Clippy,
+warning-denied rustdoc, zero-dependencies and full embed acceptance passed.
+The scope verified MemoryMax=1G/MemorySwapMax=0 before Cargo; observed scope
+counters showed zero swap use and no OOM events during execution.
+The retained log is local-f5ba23e-retention-controls-stable-gate.log in the
+dedicated task cache. Installed execution of the new cold controls remains
+pending; ignored provisioned controls compiling is not runtime acceptance.
+
+Prior review 37460020929 is terminal success at exact source
+665a71b39b403ec9ce03846619a194e7f85804c0: all nine native/portable/zero-deps
+jobs passed, with final-run.json and nine nonempty completed job logs
+retained under ci-37460020929 in the task cache. Both native artifacts have
+separate independent 81-case verification results; executable-byte and
+production gate acceptance remain false. This proves the earlier source,
+not the later cold-host implementation or retention controls.
+
+Automatic approval review rejected the successor review-branch push because
+it did not recognize explicit authorization for the private repository
+payload and destination; exact approval was requested and remains pending.
+No push workaround was attempted. Local work continues independently.
+Task 9401 remains in progress; production defaults remain legacy, and bounded
+shutdown, reconciliation and full lifecycle crash/concurrency proof remain
+incomplete.
