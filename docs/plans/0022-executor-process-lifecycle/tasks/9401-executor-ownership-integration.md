@@ -545,3 +545,13 @@ source identity. Both current-source native compiler axes now have independently
 verified provisioned evidence. Production routing and executable-byte/gate
 release flags remain incomplete/false; the six portable matrix jobs and isolated
 full debug workspace session `34597` remain live.
+
+The isolated full stable debug workspace gate at corrected source `a876df1`
+completed with exit zero through original session `34597`; its full retained
+log `local-a876df1-stable-debug.log` ends with successful workspace doc tests.
+This includes the corrected public surface inventory and the current portable
+ownership regressions. With 64 GiB available RAM and 2.1 GiB of 15 GiB swap
+occupied, the same frozen checkout now runs the serial full stable release
+workspace gate in session `49657`, retaining `local-a876df1-stable-release.log`.
+No overlapping local build was started; six portable CI legs remain live,
+and production Runner integration remains incomplete.
