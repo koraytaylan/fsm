@@ -373,3 +373,15 @@ missing or mismatching local reservations without suppressing the lint or
 changing ownership semantics. This invalidates acceptance of the affected
 scheduler source until both compiler gates are rerun; no complete portable
 matrix success is claimed. The isolated older-source release gate remains live.
+
+### Frozen release completion and correction verification
+
+The isolated stable release workspace gate at exact `7dc91d5` completed
+with exit zero; its full retained log is
+`~/.cache/fsm-plan-native-matrix-20261005/local-7dc91d5-stable-release.log`.
+This closes that earlier source's local release wait, not the newer regression
+slice's gates or unfinished production routing. With available RAM approximately
+64 GiB and swap approximately 2.1 GiB of 15 GiB, the next serial check is
+MSRV executor all-target Clippy against current product source `f9e02fa`;
+its log is `~/.cache/fsm-plan-native-matrix-20261005/current-f9e02fa-msrv-execute-clippy.log`.
+The full local host gate and updated native/portable matrix remain required.
