@@ -1303,3 +1303,13 @@ refusal, or readiness assertion is removed or relaxed; actual corrected
 native execution remains required to confirm the failure is resolved.
 The complete earlier-source native matrix is not accepted, and the live
 portable jobs and frozen local workspace job are not restarted or canceled.
+
+### Native fixture handler-table extraction
+
+Moved the original process/timeout handler table construction unchanged into
+a dedicated checked-material fixture module, leaving room for the required
+fresh MCP axis without re-exceeding the source-size ceiling. Every existing
+axis receives the same original parsed table and timeout argv mutation; this
+structural change does not alter handler fingerprints, requests, assertions,
+or persisted bytes. Formatting, diff, and oversized-file checks pass; full
+compilation remains queued behind the live frozen workspace gate.
