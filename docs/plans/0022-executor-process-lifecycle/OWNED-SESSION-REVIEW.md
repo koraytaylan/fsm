@@ -675,3 +675,18 @@ The unrelated probe process survived every executed case; guarded matched
 artifact teardown completed, and subsequent stat found the installed artifact
 and authority base absent. That absence alone is not native closure evidence.
 No intensive process remains live from this terminal probe.
+
+### Broker claimed-closure fixture single-transfer correction
+
+Trace confirms broker_native_tests::run_case calls the strict root-only
+permit_operator_store before dispatch_fresh enters every bound claimed-closure
+axis; claimed_closure_cases::run then attempted the same transfer again.
+Removed only that duplicate transfer and instead assert the already-transferred
+store is a directory owned by UID/GID 65534 with private mode 0700.
+The recursive root-only transfer helper and all native claim/closure/writer
+assertions remain unchanged; no foreign owner is admitted or chmodded.
+Stable executor all-target Clippy and MSRV all-target compilation passed
+(native-single-store-transfer-check.log), with format and source-size checks.
+Task 9401 adopts this fixture path; progress remains 3/7 and the next frozen
+native rerun must execute the previously unreachable bound owner controls.
+Later-source full host and cross-platform acceptance remain pending.

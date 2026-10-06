@@ -17,7 +17,13 @@ pub(super) fn run(
     successor: &NativeDomain,
     outcome: Outcome,
 ) {
-    disconnect_cases::permit_operator_store(&fixture.store);
+    // The dispatching broker fixture already transferred this store; a second
+    // root-only transfer would reject its deliberately unprivileged owner.
+    let operator_store = fs::symlink_metadata(&fixture.store).unwrap();
+    assert!(operator_store.is_dir());
+    assert_eq!(operator_store.uid(), 65534);
+    assert_eq!(operator_store.gid(), 65534);
+    assert_eq!(operator_store.mode() & 0o777, 0o700);
     let (test, marker) = match outcome {
         Outcome::Interrupted => (
             "::claimed_closure::bound_claimed_interruption",

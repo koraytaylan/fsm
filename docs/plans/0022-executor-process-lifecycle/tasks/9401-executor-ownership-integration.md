@@ -14,6 +14,7 @@ touches:
   - crates/fsm-execute/src/lib.rs
   - crates/fsm-execute/tests/execution_ownership.rs
   - crates/fsm-execute/src/containment/enrollment_native_tests.rs
+  - crates/fsm-execute/src/containment/broker_claimed_closure_native_tests.rs
   - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/test_authority_retirement.py
   - crates/fsm-execute/tests/fixtures/public_surface.txt
