@@ -380,11 +380,11 @@ Plan 0022's claim-era value types are available under
 and `RetryPolicy` provide validated constructors and pure JSON conversion.
 Retry eligibility uses caller-supplied logical time and saturating arithmetic.
 Constructing a native identity does not authenticate a supervisor or prove
-closure. The store uses VERSION 11, root/4, snapshot/6 and base/2; historical
+closure. The store uses VERSION 12, root/5, snapshot/7 and base/3; historical
 VERSION 1–10 stores migrate without rewriting records and remain quarantined
 for execution until native verified quiescence is provided. Snapshot/5 caches
 are discarded; authoritative base/1 files remain readable under root/3.
-Sealed base/2 carries original unresolved claim hashes under a separate
+Sealed base/2 and base/3 carry original unresolved claim hashes under a separate
 `fsm.base-execution-claims/1` root, preserving closure binding after sealing.
 Pending effects with historical unclassified attempts refuse a new claim
 instead of resetting their failed counts; resolve those legacy effects with
@@ -2201,3 +2201,6 @@ An in-memory Store writes no snapshot cache when it reaches the automatic 10,000
 
 
 ExecutionState::claim_record_hash borrows the original hash for an exact unresolved claim after verified replay; decoding an execution value alone supplies none. Embedders attaching hashes through attach_claim_record_hash must verify the journal record or separately authenticated base claim index first, and replace provisional hashes after final checkpoint publication; the method grants no execution authority. Store reopen reconstructs this context from authenticated sources.
+
+
+Durable native acknowledgements with an original outcome event retain an execution_handoffs obligation in the same transaction; successful event delivery retires it atomically. The stored original contract and result supply recovery without current handler lookup or new execution authority. The new StoreState collection is separate from unresolved execution ownership and scheduler capacity, and current caches/bases advance to snapshot/7 and base/3 while older authoritative bases still decode under their original roots.

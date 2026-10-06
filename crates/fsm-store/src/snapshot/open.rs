@@ -17,6 +17,9 @@ pub fn store_states_eq(a: &StoreState, b: &StoreState) -> bool {
     if a.execution.to_value() != b.execution.to_value() {
         return false;
     }
+    if a.execution_handoffs != b.execution_handoffs {
+        return false;
+    }
     if a.dedup != b.dedup {
         return false;
     }

@@ -67,7 +67,7 @@ pub use open::{
 };
 
 /// On-disk base format tag.
-pub const BASE_FORMAT: &str = "fsm.base/2";
+pub const BASE_FORMAT: &str = "fsm.base/3";
 
 /// Which definition ceiling the sealed machines were admitted under.
 ///
@@ -404,6 +404,10 @@ pub fn encode(state: &StoreState, index: &BaseIndex, definition_limits: Definiti
         ("dedup".into(), Value::Obj(dedup)),
         ("execution".into(), state.execution.to_value()),
         (
+            "execution_handoffs".into(),
+            state.execution_handoffs.to_value(),
+        ),
+        (
             "execution_claims".into(),
             execution_claims::to_value(&index.execution_claims),
         ),
@@ -580,18 +584,27 @@ fn signals_from(
 /// repair: the records this file replaced are not in this directory.
 pub fn decode(value: &Value, expected: &BaseRoots) -> Result<(StoreState, BaseIndex), ErrorObj> {
     let object = value.as_obj().ok_or_else(|| unreadable("not an object"))?;
+    let handoff_era = object.get("format").and_then(Value::as_str) == Some(BASE_FORMAT);
     let historical = match object.get("format").and_then(Value::as_str) {
         Some("fsm.base/1") => true,
+        Some("fsm.base/2") => false,
         Some(BASE_FORMAT) => false,
         _ => return Err(unreadable("unsupported base format")),
     };
     let root_format = if historical {
         fsm_core::replay::STATE_ROOT_FORMAT_V3
+    } else if !handoff_era {
+        fsm_core::replay::STATE_ROOT_FORMAT_V4
     } else {
         STATE_ROOT_FORMAT
     };
     if object.get("state_root_format").and_then(Value::as_str) != Some(root_format) {
         return Err(unreadable("state_root_format disagrees with base format"));
+    }
+    if !handoff_era && object.contains_key("execution_handoffs") {
+        return Err(unreadable(
+            "historical base cannot carry acknowledged handoffs",
+        ));
     }
     if historical
         && [
@@ -636,6 +649,24 @@ pub fn decode(value: &Value, expected: &BaseRoots) -> Result<(StoreState, BaseIn
                 .ok_or_else(|| unreadable("missing execution block"))?,
         )
         .map_err(|error| unreadable(error.to_string()))?;
+    }
+    if handoff_era {
+        state.execution_handoffs = fsm_core::record::execution::HandoffState::from_value(
+            object
+                .get("execution_handoffs")
+                .ok_or_else(|| unreadable("missing execution_handoffs"))?,
+        )
+        .map_err(|error| unreadable(error.to_string()))?;
+        if state.execution_handoffs.outstanding().any(|handoff| {
+            handoff.claim().run_id() > state.execution.run_high_water()
+                || handoff.acknowledgement_seq() > seq
+                || state
+                    .execution
+                    .claim_for(handoff.claim().effect().0, handoff.claim().effect().1)
+                    .is_some()
+        }) {
+            return Err(mismatch("handoff contradicts ownership or head"));
+        }
     }
 
     for (id, definition) in required_object(object, "machines")? {
@@ -827,6 +858,8 @@ pub fn decode(value: &Value, expected: &BaseRoots) -> Result<(StoreState, BaseIn
     let mut recomputed = base_roots(&state, &index);
     if historical {
         recomputed.state_root = fsm_core::replay::state_root_at_v3(&state, state.last_seq);
+    } else if !handoff_era {
+        recomputed.state_root = fsm_core::replay::state_root_at_v4(&state, state.last_seq);
     }
     if required_string(object, "base_state_root")? != recomputed.state_root {
         return Err(mismatch(

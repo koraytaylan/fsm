@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use fsm_core::hashes::{STATE_FORMAT, request_fp, state_hash};
 use fsm_core::json::Value;
 use fsm_core::record::execution::{
-    Claim, NativeDomain, PendingEffect, RetryPolicy, Settlement, ShapeError, Stopped,
-    StoppedOutcome,
+    AcknowledgedHandoff, Claim, NativeDomain, PendingEffect, RetryPolicy, Settlement, ShapeError,
+    Stopped, StoppedOutcome,
 };
 use fsm_core::record::{Record, RecordKind, seal};
 use fsm_core::replay::{NopSink, fold_from};
@@ -414,6 +414,26 @@ impl Store {
         clock: &mut dyn Clock,
         request: ExecutionSettleRequest<'_>,
     ) -> Result<Value, ErrorObj> {
+        self.settle_execution_inner(clock, request, None)
+    }
+
+    /// Retain a matching original event obligation in the acknowledgement record.
+    /// The caller supplies a checked original contract, never a current-table substitute.
+    pub fn settle_execution_with_handoff_on(
+        &mut self,
+        clock: &mut dyn Clock,
+        request: ExecutionSettleRequest<'_>,
+        handoff: &AcknowledgedHandoff,
+    ) -> Result<Value, ErrorObj> {
+        self.settle_execution_inner(clock, request, Some(handoff))
+    }
+
+    fn settle_execution_inner(
+        &mut self,
+        clock: &mut dyn Clock,
+        request: ExecutionSettleRequest<'_>,
+        handoff: Option<&AcknowledgedHandoff>,
+    ) -> Result<Value, ErrorObj> {
         let disposition = match request.disposition {
             Settlement::Acked => "acked",
             Settlement::Attempted => "attempted",
@@ -426,9 +446,54 @@ impl Store {
         if let Some(replay) =
             self.execution_request(request.request_id, "execution_settled", &material)?
         {
-            return replay;
+            let value = replay?;
+            if let Some(handoff) = handoff
+                && value
+                    .get("execution")
+                    .and_then(|execution| execution.get("handoff"))
+                    != Some(&handoff.to_value())
+            {
+                return Err(ErrorObj::new(
+                    "store/execution_evidence",
+                    "original acknowledgement handoff differs",
+                ));
+            }
+            return Ok(value);
         }
         self.execution_precondition(request.expected_seq)?;
+        if let Some(handoff) = handoff {
+            let (instance_id, effect_id) = request.claim.effect();
+            let stopped = self
+                .state
+                .execution
+                .stopped_for(instance_id, effect_id)
+                .ok_or_else(|| {
+                    ErrorObj::new(
+                        "store/execution_owned",
+                        "original stopped owner is unavailable",
+                    )
+                })?;
+            let hash = self.current_execution_claim_hash(request.claim)?;
+            let sequence = self.journal.last_seq.checked_add(1).ok_or_else(|| {
+                ErrorObj::new("store/execution_exhausted", "journal sequence exhausted")
+            })?;
+            if request.disposition != Settlement::Acked
+                || !handoff.matches_acknowledgement(
+                    request.claim,
+                    stopped,
+                    &hash,
+                    request.request_id,
+                    sequence,
+                )
+            {
+                return Err(ErrorObj::new(
+                    "store/execution_evidence",
+                    "handoff does not match original acknowledgement",
+                ));
+            }
+            let mut obligations = self.state.execution_handoffs.clone();
+            obligations.install(handoff.clone()).map_err(refusal)?;
+        }
         let timestamp = clock.reserve_ms();
         let mut execution = self.state.execution.clone();
         let stopped = execution
@@ -441,6 +506,9 @@ impl Store {
             .map_err(refusal)?;
         let (instance_id, effect_id) = request.claim.effect();
         material.remove("claim");
+        if let Some(handoff) = handoff {
+            material.insert("handoff".into(), handoff.to_value());
+        }
         material.insert("instance_id".into(), Value::Str(instance_id.into()));
         material.insert("effect_id".into(), Value::Str(effect_id.into()));
         material.insert(

@@ -1,14 +1,17 @@
 # Post-ack recovery implementation review
 
-Status: implementation prerequisite reviewed; not implemented or accepted.
+Status: atomic store/fold persistence implemented with targeted MSRV proof;
+full host/native acceptance and cold host delivery remain unfinished.
 This review preserves task 9401's full production and crash-recovery scope.
 
 ## Observed gap
 
 `ExecutionState::settle(Acked)` removes the original claim and retry ledger.
-`apply_settled` validates the recorded result against the original stopped
-result and applies acknowledgement semantics in that same record, but retains
-no outcome-event handoff. `NativeOwners::Owner` retains the checked original
+`apply_settled` now validates optional original handoff material against the
+verified claim anchor, stopped result and actual acknowledgement identity,
+and installs it in that same transaction. Native completion settlement
+forwards its checked original event contract; acknowledgements without
+a declared event, attempts and interruptions create no handoff. `NativeOwners::Owner` retains the checked original
 handler and completion only in memory; its disabled-event parking survives
 ordinary ticks, not executor death. A new host adopts unresolved claims only.
 
@@ -55,7 +58,7 @@ remain outside logical execution bytes and historical roots, are bounded by
 the unresolved-owner count, and disappear with settlement. The independent
 checkpoint regression verifies final anchors against complete prefix replay,
 checkpoint-bound and prefix-reproduced cache paths, and rejects a valid-shaped
-provisional handoff hash; atomic handoff publication remains unimplemented.
+provisional handoff hash. Atomic publication now uses that verified context.
 An acknowledgement without a declared event creates no handoff; attempted and
 interrupted settlements must never create one.
 
@@ -76,11 +79,12 @@ with conservative refusal when full and bounded identifier-only health output.
 
 ## Format and compatibility review
 
-The current persistent boundary is VERSION 11, state-root/4 and base/2.
+The historical claim-era boundary is VERSION 11, state-root/4 and base/2;
+current writers now use VERSION 12, state-root/5, snapshot/7 and base/3.
 Adding the collection to `ExecutionState::to_value` without a new root domain
 would silently change historical root/4 bytes, including empty execution
-blocks; this approach is rejected. Implementation must introduce VERSION 12,
-state-root/5 and a base format that authenticates the complete handoff block,
+blocks; this approach is rejected. The implementation introduces VERSION 12,
+state-root/5 and base/3 to authenticate the complete handoff block,
 while preserving byte-identical historical root/4 material and decoding prior
 execution/base shapes through explicit historical paths.
 
@@ -117,3 +121,40 @@ writer contention and copied physical stores must preserve the obligation.
 Zero-dependency, embedding, full portable gates and installed exact-source
 native evidence remain cumulative requirements, not substitutes for these
 crash and sealed-history cases.
+
+## Store implementation review verdict (2026-10-06)
+
+The bounded StoreState execution_handoffs collection is separate from ownership
+and scheduler capacity, sorted by original run and bounded to 4096 entries /
+8 MiB. Store publication validates exact original claim hash, stopped result,
+request key and next sequence before append; the pure fold validates them
+again before the atomic acknowledgement. An actual accepted event retires
+only an exact original instance/key/event/send fingerprint and stamped payload.
+Both live note_record and replay apply that transition, preventing checkpoint
+roots or live state from retaining an already accepted obligation.
+
+Base/3 and snapshot/7 carry obligations after their consumed claims disappear;
+explicit base/1 and base/2 decoding retains original root/3 and root/4 bytes
+and refuses inserted handoff blocks. The new empty-collection goldens were
+derived with Python SHA-256 from independently verified historical root
+material; the snapshot self-hash uses its specified empty hash slot. Actual
+store regressions prove cache/cold/two-seal retention, exact-event retirement,
+foreign-key and foreign-anchor refusal, torn ack/event repair, and real
+write/rotation/fsync failures retaining the stopped owner until reopen.
+
+Initial validation found an external core-only acceptance test incorrectly
+referencing the store crate, stale snapshot hash domains in hostile fixtures,
+an independent snapshot derivation missing the empty hash slot, and a future
+VERSION 12 refusal vector made current by this bump. These were corrected by
+placing the store visibility/refusal proof in its external integration target,
+using the declared current domain without weakening semantic assertions,
+independently verifying the historical empty-slot recipe, and retaining the
+future-version refusal at VERSION 13. Targeted MSRV checks now pass; full
+stable/portable/native format gates remain pending, and no installed proof
+is inferred from preauthenticated store fixtures.
+
+Cold NativeOwners still discovers unresolved claims only; durable event-only
+recovery must establish the original physical store/namespace binding without
+new execution authority before delivery. That host integration, genuine cold
+process/MCP and sealed acceptance, production defaults, shutdown and complete
+crash/concurrency axes remain necessary before task 9401 can be completed.

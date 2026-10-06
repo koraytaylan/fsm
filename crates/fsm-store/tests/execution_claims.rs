@@ -605,7 +605,7 @@ fn claim_at_the_root_checkpoint_survives_bound_snapshot_and_cold_replay() {
     assert_eq!(record.seq, 10_000);
     assert_eq!(
         record.body.get("state_root_format").and_then(Value::as_str),
-        Some("fsm.state-root/4")
+        Some("fsm.state-root/5")
     );
     assert_eq!(
         record.body.get("state_root").and_then(Value::as_str),
@@ -780,7 +780,7 @@ fn production_claim_metadata_accepts_exact_canonical_limit_before_reopen() {
     snapshot.insert("execution".into(), Value::Obj(execution));
     snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
     let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-        "fsm:snapshot:6",
+        fsm_store::snapshot::SNAPSHOT_DOMAIN,
         &Value::Obj(snapshot.clone()),
     ));
     snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));

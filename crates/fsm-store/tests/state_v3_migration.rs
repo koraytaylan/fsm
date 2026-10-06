@@ -255,7 +255,7 @@ fn an_older_snapshot_is_ignored_and_the_state_re_derived() {
         state_root_at(&reopened.state, reopened.state.last_seq),
         expected_root
     );
-    assert_eq!(SNAPSHOT_FORMAT, "fsm.snapshot/6");
+    assert_eq!(SNAPSHOT_FORMAT, "fsm.snapshot/7");
 }
 
 #[test]

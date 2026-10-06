@@ -138,13 +138,15 @@ fn root_format_ok(kind: RecordKind, body: &Value) -> bool {
             | RecordKind::ExecutionStopped
             | RecordKind::ExecutionSettled
             | RecordKind::ExecutionEnabled
-    ) && format.as_str() != Some("fsm.state-root/4")
-    {
+    ) && !matches!(
+        format.as_str(),
+        Some("fsm.state-root/4" | "fsm.state-root/5")
+    ) {
         return false;
     }
     if !matches!(
         format.as_str(),
-        Some("fsm.state-root/3" | "fsm.state-root/4")
+        Some("fsm.state-root/3" | "fsm.state-root/4" | "fsm.state-root/5")
     ) {
         return false;
     }
@@ -408,6 +410,10 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
             execution_identity_ok(body)
                 && execution_request_ok(body)
                 && disposition_ok
+                && body.get("handoff").is_none_or(|value| {
+                    body.get("disposition").and_then(Value::as_str) == Some("acked")
+                        && execution::AcknowledgedHandoff::from_value(value).is_ok()
+                })
                 && is_state_hash(body.get("state_hash"))
                 && body.get("state_format").and_then(Value::as_str)
                     == Some(crate::hashes::STATE_FORMAT)
@@ -419,9 +425,10 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
         }
         RecordKind::StateCheckpoint => is_state_hash(body.get("state_root")),
         RecordKind::JournalSealed => {
-            let execution_index_ok = if body.get("state_root_format").and_then(Value::as_str)
-                == Some("fsm.state-root/4")
-            {
+            let execution_index_ok = if matches!(
+                body.get("state_root_format").and_then(Value::as_str),
+                Some("fsm.state-root/4" | "fsm.state-root/5")
+            ) {
                 body.get("base_execution_claim_format")
                     .and_then(Value::as_str)
                     == Some("fsm.base-execution-claims/1")
@@ -443,7 +450,7 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
                     == Some(crate::hashes::BASE_INDEX_FORMAT)
                 && matches!(
                     body.get("state_root_format").and_then(Value::as_str),
-                    Some("fsm.state-root/3" | "fsm.state-root/4")
+                    Some("fsm.state-root/3" | "fsm.state-root/4" | "fsm.state-root/5")
                 )
                 && sealed_join_ok(body, seq, prev)
         }
@@ -457,7 +464,7 @@ pub(super) fn body_ok(kind: RecordKind, body: &Value, seq: u64, prev: &str) -> b
         || body.get("state_format").is_none()
         || matches!(
             body.get("state_root_format").and_then(Value::as_str),
-            Some("fsm.state-root/3" | "fsm.state-root/4")
+            Some("fsm.state-root/3" | "fsm.state-root/4" | "fsm.state-root/5")
         );
     shape_ok && state_format_ok(body, current_only) && root_format_ok(kind, body) && current_root_ok
 }

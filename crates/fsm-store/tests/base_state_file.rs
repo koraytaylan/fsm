@@ -84,6 +84,7 @@ fn base_state() -> StoreState {
         last_seq: 40_000,
         last_hash: "a".repeat(64),
         execution: StoreState::default().execution,
+        execution_handoffs: Default::default(),
     }
 }
 
@@ -125,7 +126,7 @@ fn encoded() -> Value {
 }
 
 fn fixture_path() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/base_v2.json")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/base_v3.json")
 }
 
 /// Replace one value inside the encoded base, leaving everything else alone.
@@ -500,5 +501,34 @@ fn historical_base_v1_keeps_its_roots_and_opens_quarantined() {
     assert_eq!(state.execution.run_high_water(), 0);
     let mut mixed = value.as_obj().unwrap().clone();
     mixed.insert("execution".into(), state.execution.to_value());
+    assert!(decode(&Value::Obj(mixed), &roots).is_err());
+}
+
+#[test]
+fn historical_base_v2_keeps_original_root_bytes_and_cannot_invent_handoffs() {
+    let value = parse(
+        include_bytes!("fixtures/base_v2.json"),
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let text = |field| value.get(field).unwrap().as_str().unwrap().to_owned();
+    let roots = BaseRoots {
+        execution_claim_root: Some(text("base_execution_claim_root")),
+        state_root: text("base_state_root"),
+        dedup_fp_root: text("base_dedup_fp_root"),
+        index_root: text("base_index_root"),
+    };
+    let (state, _) = decode(&value, &roots).unwrap();
+    assert_eq!(
+        fsm_core::replay::state_root_at_v4(&state, state.last_seq),
+        roots.state_root
+    );
+    assert_ne!(
+        fsm_core::replay::state_root_at(&state, state.last_seq),
+        roots.state_root
+    );
+    assert_eq!(state.execution_handoffs.outstanding().count(), 0);
+    let mut mixed = value.as_obj().unwrap().clone();
+    mixed.insert("execution_handoffs".into(), Value::Arr(Vec::new()));
     assert!(decode(&Value::Obj(mixed), &roots).is_err());
 }

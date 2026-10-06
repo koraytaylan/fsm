@@ -1,4 +1,4 @@
-//! VERSION 11 migration preserves the original VERSION 10 migration fixtures.
+//! VERSION 12 migration preserves the original VERSION 10 migration fixtures.
 //! Each supported prior marker retains its historical bytes and quarantine.
 //!
 //! Plan 0017 task 8003. A store that can hold a seal is a store an older build
@@ -195,6 +195,11 @@ fn a_version_10_store_migrates_without_enabling_execution() {
 }
 
 #[test]
+fn a_version_11_store_migrates_without_rewriting_old_acknowledgements() {
+    migrates("11");
+}
+
+#[test]
 fn a_current_store_with_no_seal_and_no_base_opens_normally() {
     // The common case after this plan, and the one a reader will assume needs
     // a base file: the version moved on first write, and nothing was archived.
@@ -213,13 +218,13 @@ fn a_current_store_with_no_seal_and_no_base_opens_normally() {
 }
 
 #[test]
-fn a_version_12_store_is_refused_and_nothing_is_written() {
+fn a_version_13_store_is_refused_and_nothing_is_written() {
     let directory = TestDirectory::create("future");
-    lay_out(&directory, "12");
+    lay_out(&directory, "13");
     assert_eq!(
         detect_store_format(directory.path()),
         DetectedStoreFormat::Incompatible {
-            found: "12".to_string()
+            found: "13".to_string()
         }
     );
     let before: Vec<_> = fs::read_dir(directory.path().join("journal"))
@@ -232,7 +237,7 @@ fn a_version_12_store_is_refused_and_nothing_is_written() {
         Err(error) => error,
     };
     assert_eq!(error.code, "store/version_mismatch");
-    assert_eq!(stamped_version(&directory), "12", "a refusal restamped");
+    assert_eq!(stamped_version(&directory), "13", "a refusal restamped");
     let after: Vec<_> = fs::read_dir(directory.path().join("journal"))
         .expect("the journal directory is listable")
         .filter_map(Result::ok)

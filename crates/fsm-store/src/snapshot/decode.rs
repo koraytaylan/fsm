@@ -61,6 +61,24 @@ pub(super) fn snapshot_to_state_with_definition_limits(
             .ok_or_else(|| ErrorObj::new("io/read", "snapshot missing execution"))?,
     )
     .map_err(|error| ErrorObj::new("io/read", error.to_string()))?;
+    st.execution_handoffs = fsm_core::record::execution::HandoffState::from_value(
+        obj.get("execution_handoffs")
+            .ok_or_else(|| ErrorObj::new("io/read", "snapshot missing execution_handoffs"))?,
+    )
+    .map_err(|error| ErrorObj::new("io/read", error.to_string()))?;
+    if st.execution_handoffs.outstanding().any(|handoff| {
+        handoff.claim().run_id() > st.execution.run_high_water()
+            || handoff.acknowledgement_seq() > seq
+            || st
+                .execution
+                .claim_for(handoff.claim().effect().0, handoff.claim().effect().1)
+                .is_some()
+    }) {
+        return Err(ErrorObj::new(
+            "io/read",
+            "snapshot handoff contradicts ownership or head",
+        ));
+    }
     for (id, def) in req_obj(obj, "machines")? {
         let compiled = match definition_limits {
             SnapshotDefinitionLimits::Current => compile_accepted(def),

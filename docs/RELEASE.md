@@ -968,3 +968,6 @@ Fixed automatic snapshotting of in-memory stores accidentally writing to their p
 
 
 Plan 0022 replay now carries original unresolved claim hashes separately from logical execution bytes, corrects checkpoint projections to the final published record hash, and restores anchors from verified journal prefixes or authenticated base indices on cache/sealed reopen. Settlement removes the context with its owner; independently decoded execution blocks have no anchor. Atomic acknowledgement handoff persistence and cold event delivery remain unimplemented.
+
+
+Unreleased post-ack persistence work introduces VERSION 12, root/5, snapshot/7 and base/3 for atomic acknowledgement-to-event obligations, with explicit historical root/base verification and no journal rewriting; cold host delivery and installed production acceptance remain separate required gates.

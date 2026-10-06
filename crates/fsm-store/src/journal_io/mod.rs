@@ -53,7 +53,8 @@ const ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 // composition records and `fsm.state/3`. VERSION 10 adds the `journal_sealed`
 // record and the `fsm.base/1` state file a sealed store opens from. VERSION 11
 // adds durable execution ownership and quarantined historical admission; new
-// writers use root/4, snapshot/6 and authoritative base/2.
+// writers use root/4, snapshot/6 and authoritative base/2. VERSION 12 adds
+// atomic acknowledged event obligations and root/5, snapshot/7 and base/3.
 //
 // Every earlier version (and a journal with no VERSION marker) is best-effort
 // migrated on open by folding the complete journal with snapshot caches
@@ -65,7 +66,7 @@ const ROTATE_BYTES: u64 = 64 * 1024 * 1024;
 // no base file, so migrating it is a stamp — which is exactly why it is said
 // here rather than left as an empty arm somebody later fills in.
 /// Current marker written to a store's `VERSION` file.
-pub const STORE_VERSION: &str = "11";
+pub const STORE_VERSION: &str = "12";
 
 /// On-disk store format as detected before opening. Public because store
 /// diagnostics (`fsm store status`, `fsm store repair`) report it.
@@ -143,7 +144,7 @@ fn has_journal_segments(dir: &Path) -> Result<bool, String> {
 fn is_migratable_version(v: &str) -> bool {
     matches!(
         v,
-        "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10"
+        "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11"
     )
 }
 

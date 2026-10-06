@@ -10,10 +10,12 @@ use crate::json::Value;
 
 mod bounded;
 mod handoff;
+mod handoff_state;
 mod ownership;
 mod ownership_values;
 
 pub use handoff::AcknowledgedHandoff;
+pub use handoff_state::HandoffState;
 pub use ownership::{Admission, ExecutionState, PendingEffect, Settlement};
 pub use ownership_values::{Claim, Closure, Stopped, StoppedOutcome};
 

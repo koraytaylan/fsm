@@ -16,11 +16,11 @@ silently.
 | `fsm.journal/1` | Journal record envelopes |
 | `fsm.state/3` | Instance state identity hash payloads |
 | `fsm.state/2` | Instance state identity before composition; still verified where a record declares it |
-| `fsm.state-root/4` | Current complete logical store roots, including execution admission and ownership |
+| `fsm.state-root/5` | Current complete logical store roots, including execution admission and ownership |
 | `fsm.state-root/3` | Historical complete store roots; verified where historical records declare them |
-| `fsm.snapshot/6` | Current disposable snapshot caches, including execution state |
+| `fsm.snapshot/7` | Current disposable snapshot caches, including execution state |
 | `fsm.snapshot/5` | Historical disposable snapshot caches |
-| `fsm.base/2` | Current authoritative sealed base, including execution state |
+| `fsm.base/3` | Current authoritative sealed base, including execution state |
 | `fsm.base/1` | Historical authoritative sealed base; opens with quarantined execution admission |
 | `fsm.base-dedup/1` | Request-fingerprint root a seal commits over the keys its base carries |
 | `fsm.base-index/1` | Record-derived index root over tags, parent links and sequences |
@@ -704,7 +704,7 @@ because a deadline poll visits no event guard.
 
 | Kind | Body fields |
 |---|---|
-| `genesis` | `format`, `created_ts`, `limits`, and `execution_admission: "enabled"` for new VERSION 11 stores |
+| `genesis` | `format`, `created_ts`, `limits`, and `execution_admission: "enabled"` for new VERSION 12 stores |
 | `machine_defined` | `machine_id`, `def` |
 | `instance_created` | `instance_id`, `machine_id`, `request_id`, `state_hash`, `state_format`, `configuration`, `overrides`, optional `microsteps` |
 | `event_applied` | `instance_id`, `event`, `payload`, `request_id`, `state_hash`, `state_format`, `exited`, `entered`, `source_state`, optional `microsteps` |
@@ -781,15 +781,15 @@ be corrected and retried under the same `request_id`. An oversized journal
 record encountered while opening is authoritative input and is therefore a
 fatal `io/read`, never a torn-tail repair candidate.
 
-On-disk store `VERSION` is `11`. Opening a `VERSION` `1` through `10` directory,
+On-disk store `VERSION` is `12`. Opening a `VERSION` `1` through `11` directory,
 or a journal with no `VERSION` marker, MUST attempt a best-effort migration:
 ignore snapshot caches entirely, fold the complete journal using each record's
-format discriminator, and on success stamp `VERSION` `11`. Interior journal
+format discriminator, and on success stamp `VERSION` `12`. Interior journal
 records MUST NOT be rewritten. If classify is not `Ok` (including a migratable
 marker whose journal is missing) or fold fails, refuse with that health and
 leave `VERSION` unchanged — a migratable directory is never re-created over. A
 successful `repair --truncate-torn-tail` on a migratable store folds the
-complete retained journal and likewise stamps `VERSION` `11`. Any unsupported
+complete retained journal and likewise stamps `VERSION` `12`. Any unsupported
 `VERSION` value is `store/version_mismatch`, refused and never silently
 reinterpreted.
 
@@ -1239,16 +1239,19 @@ These match `crates/fsm-core/src/limits.rs`.
 |---|---|
 | `fsm.machine/1` | Machine definition documents |
 | `fsm.journal/1` | Journal record envelopes |
-| `fsm.snapshot/6` | Current disposable snapshot caches including bounded execution ownership |
+| `fsm.snapshot/7` | Current disposable snapshot caches including bounded execution ownership and acknowledgement handoffs |
+| `fsm.snapshot/6` | Historical disposable claim-era caches; skipped, never reinterpreted |
 | `fsm.snapshot/5` | Historical disposable caches; skipped by the claim-era reader |
 | `fsm.snapshot/1` through `fsm.snapshot/3` | Skipped, never reinterpreted; the journal is folded instead |
 | `fsm.state/3` | Current instance state identity hash payload |
 | `fsm.state/2` | Instance state identity before composition; verified where a record declares it |
 | `fsm.state/1` | Historical single-leaf state identity hash payload |
-| `fsm.state-root/4` | Current complete logical store root payload including execution ownership |
+| `fsm.state-root/5` | Current complete logical store root payload including execution ownership and acknowledgement handoffs |
+| `fsm.state-root/4` | Historical claim-era root payload, verified under its original domain |
 | `fsm.state-root/3` | Historical complete logical store root payload, verified under its original domain |
 | `fsm.state-root/2` | Historical single-leaf logical store root payload |
-| `fsm.base/2` | Current authoritative sealed base, including execution ownership and original unresolved claim hashes; required, never a cache |
+| `fsm.base/3` | Current authoritative sealed base, including ownership, original unresolved claim hashes and acknowledgement handoffs; required, never a cache |
+| `fsm.base/2` | Historical authoritative claim-era base; validated under its original root/4 domain |
 | `fsm.base/1` | Historical authoritative sealed base; retained under its original root format. A missing base refuses the open |
 | `fsm.base-dedup/1` | Payload of the request-fingerprint root a seal commits over the dedup entries its base carries |
 | `fsm.base-index/1` | Payload of the root a seal commits over the record-derived indexes its base carries: per-instance tags, parent slot, creation sequence and last sequence, and each machine's first definition sequence |
@@ -1259,9 +1262,9 @@ These match `crates/fsm-core/src/limits.rs`.
 The following sealed-store rules describe the formats introduced with
 historical store `VERSION` `10`, including base/1 and state-root/3. Their
 historical bytes and hash domains remain authoritative when reading those
-formats. Current writers use VERSION 11 and the claim-era base/2 and
-state-root/4 contract below; current migration folds supported VERSION 1–10
-prefixes and stamps 11. The historical `9`-to-`10` step converted nothing:
+formats. Current writers use VERSION 12 and the post-ack base/3 and
+state-root/5 contract below; current migration folds supported VERSION 1–11
+prefixes and stamps 12. The historical `9`-to-`10` step converted nothing:
 a pre-`10` store had no seal record and no base state file.
 
 **A `VERSION` `10` store is not readable by 0.2.x, sealed or not.** The version stamp moves on first write regardless of whether anything was ever archived, so an unsealed 0.3.0 store is refused by an older build exactly as a sealed one is.
@@ -2334,16 +2337,16 @@ and the ack-before-outcome-event recovery order MUST remain unchanged.
 
 The execution state block contains admission/quarantine state, the run
 high-water mark, unresolved claims including stopped results, and retained
-retry ledgers. It MUST be authenticated by `fsm.state-root/4` with hash domain
-`fsm:state-root:4`, snapshot `fsm.snapshot/6` / `fsm:snapshot:6`, and sealed
-base `fsm.base/2`. The root is separate from instance `fsm.state/3` hashes.
+retry ledgers. Current state MUST be authenticated by `fsm.state-root/5` with hash domain
+`fsm:state-root:5`, snapshot `fsm.snapshot/7` / `fsm:snapshot:7`, and sealed
+base `fsm.base/3`, including the separate bounded `execution_handoffs` block. The root is separate from instance `fsm.state/3` hashes.
 Historical roots and records MUST still verify under their recorded format;
-the existing root/3 and base/1 functions and bytes MUST NOT be reinterpreted.
+the existing root/3, root/4, base/1 and base/2 functions and bytes MUST NOT be reinterpreted.
 Old snapshots are disposable caches; old bases are authoritative and require
 explicit validated decoding. Archives, archive verification and repeated seals
 MUST retain ownership, policies and the high-water mark.
 
-A base/2 additionally carries `execution_claims`, a closed JSON object mapping
+A base/2 or base/3 additionally carries `execution_claims`, a closed JSON object mapping
 canonical positive decimal run IDs to the canonical `sha256:` hash of each
 original claim record unresolved at the cut. Its keys MUST match exactly the
 base execution block's unresolved claims, including stopped claims; it has at
@@ -2624,3 +2627,6 @@ In-memory journals MUST NOT write automatic or shutdown snapshot caches, includi
 
 
 Verified execution replay MUST retain each unresolved claim’s original record hash as separate, bounded replay context, sourced from the verified ExecutionClaimed record or authenticated sealed-base claim index; snapshot caches MUST reconstruct this context from those sources and MUST NOT supply it from mutable cache metadata. Producers MUST replace provisional claim hashes with final published hashes at checkpoint boundaries. This context MUST NOT enter execution logical serialization or historical state roots, avoiding claim-record self-reference, and MUST disappear with settled ownership.
+
+
+VERSION 12 acknowledgement handoffs: an ExecutionSettled record MAY carry a bounded execution-handoff/1 only for disposition acked, matching its exact original owner, verified original claim hash, stopped outcome and acknowledgement identity. Replay MUST install the handoff atomically with acknowledgement and MUST remove it only in an accepted EventApplied transition matching its original instance, derived event key, original send fingerprint and payload including timestamp stamps; rejection, cancellation and missing observations MUST retain it. Each handoff is at most 128 KiB and the ordered collection at most 4096 entries and 8 MiB. New state-root/5 commits execution_handoffs separately, leaving historical root/4 bytes unchanged; snapshot/7 and base/3 carry the collection. Explicit historical base/1 and base/2 decoders retain their original root/3 and root/4 domains with empty handoffs. VERSION 1–11 migration never invents obligations for old acknowledgements or rewrites records.

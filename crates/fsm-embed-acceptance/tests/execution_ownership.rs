@@ -77,3 +77,31 @@ fn external_caller_can_construct_stop_settle_and_restore_execution_ownership() {
     assert!(restored.claim_for("instance", "effect").is_none());
     assert_eq!(restored.next_run_id().unwrap(), 2);
 }
+
+#[test]
+fn external_handoff_api_preserves_original_material_without_publication_authority() {
+    use fsm_core::record::execution::{AcknowledgedHandoff, HandoffState};
+    let literal = fsm_core::json::parse(
+        include_bytes!("../../fsm-core/tests/fixtures/execution-handoff.json"),
+        &fsm_core::json::JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let original = AcknowledgedHandoff::from_value(&literal).unwrap();
+    let candidate = AcknowledgedHandoff::new(
+        original.claim(),
+        original.original_claim_hash(),
+        original.handler_contract(),
+        original.outcome(),
+        original.acknowledgement_request_id(),
+        original.acknowledgement_seq(),
+    )
+    .unwrap();
+    assert_eq!(candidate, original);
+    let mut obligations = HandoffState::default();
+    obligations.install(candidate).unwrap();
+    let state = fsm_core::replay::StoreState {
+        execution_handoffs: HandoffState::from_value(&obligations.to_value()).unwrap(),
+        ..Default::default()
+    };
+    assert_eq!(state.execution_handoffs.outstanding().count(), 1);
+}

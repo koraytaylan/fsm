@@ -87,6 +87,7 @@ pub(super) fn apply(
         RecordKind::ExecutionEnabled => execution::apply_enabled(st, rec),
     };
     applied?;
+    st.execution_handoffs.accept_event_record(rec);
     st.retain_pending_execution();
     if let Some(root) = rec.body.get("state_root") {
         let want = root.as_str().ok_or(ReplayError::FieldMismatch {
@@ -95,6 +96,7 @@ pub(super) fn apply(
         })?;
         let found = match rec.body.get("state_root_format").and_then(Value::as_str) {
             Some(STATE_ROOT_FORMAT) => state_root_at(st, rec.seq),
+            Some(super::STATE_ROOT_FORMAT_V4) => super::state_root_at_v4(st, rec.seq),
             Some(super::STATE_ROOT_FORMAT_V3) => state_root_at_v3(st, rec.seq),
             None => legacy_state_root_at(st, rec.seq),
             Some(_) => {

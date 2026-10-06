@@ -14,6 +14,9 @@ mod append_durability;
 #[path = "execution_handoff_anchor_tests.rs"]
 mod handoff_anchor;
 
+#[path = "execution_handoff_tests.rs"]
+mod handoff_persistence;
+
 fn json(bytes: &[u8]) -> Value {
     parse(bytes, &JsonLimits::DEFAULT).unwrap()
 }
@@ -520,7 +523,7 @@ fn exact_outcome_budget_survives_stop_snapshot_and_base_without_releasing_owners
     snapshot.insert("execution".into(), Value::Obj(execution.clone()));
     snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
     let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-        "fsm:snapshot:6",
+        crate::snapshot::SNAPSHOT_DOMAIN,
         &Value::Obj(snapshot.clone()),
     ));
     snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));
@@ -657,7 +660,7 @@ fn production_claim_entry_ceiling_preserves_the_counter_and_request_slot() {
     snapshot.insert("execution".into(), Value::Obj(execution.clone()));
     snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
     let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-        "fsm:snapshot:6",
+        crate::snapshot::SNAPSHOT_DOMAIN,
         &Value::Obj(snapshot.clone()),
     ));
     snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));
@@ -830,7 +833,7 @@ fn production_stop_charges_the_complete_eight_mib_execution_block() {
     snapshot.insert("execution".into(), Value::Obj(execution.clone()));
     snapshot.insert("snapshot_hash".into(), Value::Str(String::new()));
     let hash = fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
-        "fsm:snapshot:6",
+        crate::snapshot::SNAPSHOT_DOMAIN,
         &Value::Obj(snapshot.clone()),
     ));
     snapshot.insert("snapshot_hash".into(), Value::Str(format!("sha256:{hash}")));

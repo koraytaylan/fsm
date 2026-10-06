@@ -334,7 +334,37 @@ impl Pipeline {
             }
             Settlement::Interrupted => format!("exec-interrupted-{effect_id}-{}", claim.run_id()),
         };
-        self.settle_stopped(store, clock, claim, disposition, &request_id)
+        let advance = if completion.stopped_outcome().status() == "ok" {
+            completion.handler().on_ok.as_ref()
+        } else {
+            completion.handler().on_failed.as_ref()
+        };
+        if disposition == Settlement::Acked && advance.is_some() {
+            let sequence = store.journal.last_seq.checked_add(1).ok_or_else(unproven)?;
+            let handoff = fsm_core::record::execution::AcknowledgedHandoff::new(
+                claim,
+                &hash,
+                &completion.handler().contract_value(),
+                completion.stopped_outcome(),
+                &request_id,
+                sequence,
+            )
+            .map_err(|_| unproven())?;
+            store
+                .settle_execution_with_handoff_on(
+                    clock,
+                    fsm_store::store::ExecutionSettleRequest {
+                        claim,
+                        disposition,
+                        request_id: &request_id,
+                        expected_seq: None,
+                    },
+                    &handoff,
+                )
+                .map_err(|error| ExecError::store(&error))
+        } else {
+            self.settle_stopped(store, clock, claim, disposition, &request_id)
+        }
     }
 
     /// Persist verified native completion while retaining claim ownership.

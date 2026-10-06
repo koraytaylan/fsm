@@ -18,7 +18,7 @@ const MAX_HANDOFF: usize = 128 * 1024;
 /// it authenticates neither a journal acknowledgement nor native closure.
 /// A store must match this material against actual ownership and stopped
 /// evidence in the atomic acknowledgement transition before retaining it.
-/// Current store formats do not yet publish or carry these values.
+/// Publication requires matching the actual atomic acknowledgement inputs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcknowledgedHandoff {
     claim: Claim,
@@ -31,6 +31,50 @@ pub struct AcknowledgedHandoff {
 }
 
 impl AcknowledgedHandoff {
+    /// Build bounded original material with its event key derived from the contract.
+    /// The caller must still verify publication inputs and the full handler contract.
+    pub fn new(
+        claim: &Claim,
+        original_claim_hash: &str,
+        handler_contract: &Value,
+        outcome: &StoppedOutcome,
+        acknowledgement_request_id: &str,
+        acknowledgement_seq: u64,
+    ) -> Result<Self, ShapeError> {
+        size(handler_contract, MAX_OUTCOME)?;
+        if !digest(original_claim_hash) || acknowledgement_request_id.len() > 4096 {
+            return Err(ShapeError("handoff_request"));
+        }
+        let event = handler_contract
+            .get(if outcome.status() == "ok" {
+                "on_ok"
+            } else {
+                "on_failed"
+            })
+            .and_then(|advance| advance.get("event"))
+            .and_then(Value::as_str)
+            .ok_or(ShapeError("handoff_event"))?;
+        Self::from_value(&object([
+            ("format", Value::Str("fsm.execution-handoff/1".into())),
+            ("claim", claim.to_value()),
+            (
+                "original_claim_hash",
+                Value::Str(original_claim_hash.into()),
+            ),
+            ("handler_contract", handler_contract.clone()),
+            ("outcome", outcome.to_value()),
+            (
+                "acknowledgement_request_id",
+                Value::Str(acknowledgement_request_id.into()),
+            ),
+            ("acknowledgement_seq", number(acknowledgement_seq)),
+            (
+                "event_request_id",
+                Value::Str(format!("exec-ev-{}-{event}", claim.effect_id)),
+            ),
+        ]))
+    }
+
     /// Compare every binding against the actual acknowledgement inputs.
     ///
     /// The store must supply its original claim, authenticated stopped result,

@@ -75,11 +75,13 @@ fn claims_budget_exhaustion(body: &Value) -> bool {
         == Some("internal/budget")
 }
 
-pub const STATE_ROOT_FORMAT: &str = "fsm.state-root/4";
+pub const STATE_ROOT_FORMAT: &str = "fsm.state-root/5";
+/// Historical claim-era root format, without acknowledged event obligations.
+pub const STATE_ROOT_FORMAT_V4: &str = "fsm.state-root/4";
 /// Historical root format, verified without execution state.
 pub const STATE_ROOT_FORMAT_V3: &str = "fsm.state-root/3";
 /// Hash domain paired with [`STATE_ROOT_FORMAT`].
-pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:4";
+pub const STATE_ROOT_DOMAIN: &str = "fsm:state-root:5";
 
 /// Hash the complete logical store state at `seq` without the journal hash.
 ///
@@ -91,8 +93,21 @@ pub fn state_root_at(st: &StoreState, seq: u64) -> String {
     let mut material = state_root_material(st, seq);
     if let Value::Obj(fields) = &mut material {
         fields.insert("execution".into(), st.execution.to_value());
+        fields.insert(
+            "execution_handoffs".into(),
+            st.execution_handoffs.to_value(),
+        );
     }
     root_digest(STATE_ROOT_DOMAIN, &material)
+}
+
+/// Verify historical root/4 bytes without inventing acknowledged handoffs.
+pub fn state_root_at_v4(st: &StoreState, seq: u64) -> String {
+    let mut material = state_root_material(st, seq);
+    if let Value::Obj(fields) = &mut material {
+        fields.insert("execution".into(), st.execution.to_value());
+    }
+    root_digest("fsm:state-root:4", &material)
 }
 
 /// Verify historical root/3 bytes without reinterpreting execution ownership.
@@ -293,6 +308,8 @@ pub struct StoreState {
     pub last_hash: String,
     /// Authenticated execution admission, ownership and durable retry ledgers.
     pub execution: crate::record::execution::ExecutionState,
+    /// Authenticated original acknowledgement-to-event obligations.
+    pub execution_handoffs: crate::record::execution::HandoffState,
 }
 
 impl StoreState {
@@ -320,6 +337,7 @@ impl Default for StoreState {
             execution: crate::record::execution::ExecutionState::new(
                 crate::record::execution::Admission::Quarantined,
             ),
+            execution_handoffs: crate::record::execution::HandoffState::default(),
         }
     }
 }

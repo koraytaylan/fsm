@@ -86,6 +86,7 @@ fn store_state(root_material: &Value) -> StoreState {
         last_seq: 7,
         last_hash: "a".repeat(64),
         execution: StoreState::default().execution,
+        execution_handoffs: Default::default(),
     }
 }
 

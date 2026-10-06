@@ -354,7 +354,7 @@ The unreleased execution block codec bounds nesting to 63 JSON containers,
 reserving one container for persistence; scalar values do not consume depth.
 This corrects the preparatory bounds without changing an existing disk format.
 
-Unreleased claim-era persistence uses VERSION 11, state-root/4, snapshot/6 and
+The historical claim-era boundary uses VERSION 11, state-root/4, snapshot/6 and
 base/2, with explicit historical root/3 and authoritative base/1 decoding.
 The public store execution request structs, opaque proof readers and mutators
 are usable Rust APIs; native authority publication and runner integration
@@ -606,11 +606,11 @@ The versioned formats are independent of the crate version:
 | Format | Current | Where |
 |---|---|---|
 | machine definition | `fsm.machine/1` | spec JSON |
-| journal | `fsm.journal/1`, store `VERSION` 11 | `<data_dir>` |
-| snapshot | `fsm.snapshot/6` | `<data_dir>/snapshots` |
+| journal | `fsm.journal/1`, store `VERSION` 12 | `<data_dir>` |
+| snapshot | `fsm.snapshot/7` | `<data_dir>/snapshots` |
 | state hash | `fsm.state/3` (records written before composition carry `fsm.state/2` and verify under it) | state-bearing records and views |
-| state root | `fsm.state-root/4` (historical root/3 remains verified under its original domain) | checkpoints, snapshots, and the sealed base |
-| base state | `fsm.base/2`, companion roots under `fsm.base-dedup/1`, `fsm.base-index/1` and `fsm.base-execution-claims/1` | `<data_dir>/journal/BASE` |
+| state root | `fsm.state-root/5` (historical roots/3 and /4 remains verified under its original domain) | checkpoints, snapshots, and the sealed base |
+| base state | `fsm.base/3`, companion roots under `fsm.base-dedup/1`, `fsm.base-index/1` and `fsm.base-execution-claims/1` | `<data_dir>/journal/BASE` |
 | archive manifest | `fsm.archive/1` | the operator's archive directory |
 
 Adding a `supersedes` block to a definition produces a **new** machine and
@@ -1004,3 +1004,6 @@ Memory-store automatic snapshotting now remains entirely in memory at the 10,000
 
 
 ExecutionState adds claim_record_hash and attach_claim_record_hash for separately verified replay context; attachment validates an exact current owner and canonical digest but authenticates neither arbitrary caller input nor native authority. Logical serialization and persistent VERSION 11, root/4, snapshot/6 and base/2 bytes remain unchanged; hashes are reconstructed on snapshot/base reopen rather than serialized into execution state.
+
+
+The unreleased post-ack persistence boundary advances to VERSION 12, fsm.state-root/5 under fsm:state-root:5, snapshot/7 under fsm:snapshot:7 and authoritative base/3; old binaries refuse VERSION 12. Historical root/4 and base/2 verification remain explicit and byte-preserving. StoreState gains execution_handoffs; the additive handoff settlement API retains existing settlement signatures and fingerprints while binding optional handoff material into the same journal acknowledgement. These public Rust additions and the persistent boundary require the corresponding next minor release; installed production acceptance remains gated.

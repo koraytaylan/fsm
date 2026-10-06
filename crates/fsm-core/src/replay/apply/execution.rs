@@ -2,7 +2,8 @@
 
 use crate::json::Value;
 use crate::record::execution::{
-    Admission, Claim, Closure, ExecutionState, PendingEffect, Settlement, Stopped, StoppedOutcome,
+    AcknowledgedHandoff, Admission, Claim, Closure, ExecutionState, PendingEffect, Settlement,
+    Stopped, StoppedOutcome,
 };
 use crate::record::{Record, RecordKind};
 
@@ -32,6 +33,7 @@ pub(super) fn apply_genesis(state: &mut StoreState, record: &Record) -> Result<(
         return Err(mismatch(record, "genesis"));
     }
     state.execution = ExecutionState::new(admission);
+    state.execution_handoffs = Default::default();
     Ok(())
 }
 
@@ -137,6 +139,33 @@ pub(super) fn apply_settled(state: &mut StoreState, record: &Record) -> Result<(
     };
     let (instance_id, effect_id) = claim.effect();
     let observed = pending(state, instance_id, effect_id, record)?;
+    let handoff = record
+        .body
+        .get("handoff")
+        .map(AcknowledgedHandoff::from_value)
+        .transpose()
+        .map_err(|_| mismatch(record, "handoff"))?;
+    if let Some(handoff) = &handoff {
+        let stopped = state
+            .execution
+            .stopped_for(instance_id, effect_id)
+            .ok_or_else(|| mismatch(record, "not_stopped"))?;
+        let hash = state
+            .execution
+            .claim_record_hash(&claim)
+            .ok_or_else(|| mismatch(record, "claim_hash"))?;
+        if disposition != Settlement::Acked
+            || !handoff.matches_acknowledgement(
+                &claim,
+                stopped,
+                hash,
+                field(record, "request_id")?,
+                record.seq,
+            )
+        {
+            return Err(mismatch(record, "handoff"));
+        }
+    }
     let stopped = state
         .execution
         .settle(&claim, disposition, observed, record.ts)
@@ -173,7 +202,14 @@ pub(super) fn apply_settled(state: &mut StoreState, record: &Record) -> Result<(
     match disposition {
         Settlement::Acked => {
             derived.kind = RecordKind::EffectAcked;
-            apply_effect_acked(state, &derived)
+            apply_effect_acked(state, &derived)?;
+            if let Some(handoff) = handoff {
+                state
+                    .execution_handoffs
+                    .install(handoff)
+                    .map_err(|error| mismatch(record, error.0))?;
+            }
+            Ok(())
         }
         Settlement::Attempted => {
             if record.body.get("attempt") != claim.to_value().get("attempt") {
