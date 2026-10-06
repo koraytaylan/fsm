@@ -3,9 +3,33 @@
 use super::*;
 use fsm_core::record::execution::AcknowledgedHandoff;
 
+struct Directory(std::path::PathBuf);
+impl Drop for Directory {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn checkpoint_claim_handoff_matches_only_the_final_published_anchor() {
     let (mut store, effect) = pending();
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .expect("home cache root required");
+    let cache = std::path::PathBuf::from(home).join(".cache/fsm-handoff-checkpoint-tests");
+    std::fs::create_dir_all(&cache).unwrap();
+    let directory = (0..)
+        .find_map(|sequence| {
+            let path = cache.join(format!("checkpoint-{}-{sequence}", std::process::id()));
+            match std::fs::create_dir(&path) {
+                Ok(()) => Some(Directory(path)),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => None,
+                Err(error) => panic!("create checkpoint fixture directory: {error}"),
+            }
+        })
+        .unwrap();
+    // A checkpoint can write a snapshot cache even for a memory journal.
+    store.data_dir = directory.0.clone();
     while store.journal.last_seq < 9999 {
         store
             .annotate(
