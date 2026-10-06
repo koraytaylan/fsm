@@ -806,6 +806,14 @@ receipt. This is new harness code, not yet privileged execution evidence;
 serial MSRV executor all-target Clippy is running with log
 `local-owned-cleanup-msrv-clippy.log`, and task 9401 remains in progress.
 
+The initial owned cleanup harness compiles on MSRV with all-target Clippy
+exit zero in session `30746`. Post-compilation review strengthened the
+Root-side assertions to match the complete original-domain tombstone, reject
+every execution-receipt filename for that allocation, and compare the
+physical store's journal sequence and head hash before and after cleanup.
+These strengthened assertions still require compilation and native execution;
+formatting, file-size and diff checks pass, and no production claim is made.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery

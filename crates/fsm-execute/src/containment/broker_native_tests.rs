@@ -928,26 +928,42 @@ fn run_case(timeout: bool) {
     );
     let prepared = fixture.prepare();
     let counter = fs::read(&counter_path).unwrap();
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    let journal = (store.journal.last_seq, store.journal.last_hash.clone());
+    drop(store);
     disconnect_cases::discard_prepared(&fixture.directory, &prepared);
     assert_eq!(fs::read(&counter_path).unwrap(), counter);
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(
+        (store.journal.last_seq, store.journal.last_hash.clone()),
+        journal
+    );
+    drop(store);
     let allocation = number(&prepared, "allocation").unwrap();
     assert!(
         !cgroup(&origin(&fixture.directory).unwrap(), allocation)
             .unwrap()
             .exists()
     );
-    assert!(
-        fixture
-            .directory
-            .join(format!("closed-{allocation}.json"))
-            .exists()
+    assert_eq!(
+        read_value(
+            &fixture.directory.join(format!("closed-{allocation}.json")),
+            true
+        )
+        .unwrap(),
+        object([
+            ("format", Value::Str("fsm.native-domain-closed/1".into())),
+            ("domain", prepared),
+        ])
     );
-    assert!(
-        !fixture
-            .directory
-            .join(format!("closure-{allocation}-1.json"))
-            .exists()
-    );
+    let prefix = format!("closure-{allocation}-");
+    assert!(fs::read_dir(&fixture.directory).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(&prefix)
+    }));
     drop(daemon);
     fixture.cleanup().unwrap();
 }
