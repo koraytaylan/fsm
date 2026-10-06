@@ -2230,3 +2230,21 @@ acknowledgement sequence and settlement fingerprint. A replacement prefix
 cannot establish reconciliation merely by omitting an obligation. The
 refusal parks without journal mutation and changes no persisted format,
 hash domain, public API or acknowledgement/event request-key derivation.
+
+
+### Provisional claim-bound native closure requests
+
+On Linux, NativeShutdown::start(&snapshot, &claim, timeout) requests closure
+without taking a writer lease. Keep the original execution transport owned
+separately; poll the shutdown request and reap both helpers independently.
+A successful poll returns an opaque receipt checked against the original
+claim, journal hash and physical store, with no captured handler result.
+Missing evidence or timeout preserves unresolved ownership. Do not turn a
+successful broker response or helper death into a synthetic completion.
+Apply interrupted settlement only under a healthy original writer with the
+existing store proof checks, preserving pending effects and emitting no
+machine event. This primitive does not implement public drain/abort controls,
+independent stdio progress or report deadlines; filesystem observation belongs
+on the lifecycle owner, separate from bounded control response handling.
+Published claims whose binding never completed still require a separate
+reconciliation path and cannot settle from prepared-domain retirement.

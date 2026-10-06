@@ -106,3 +106,25 @@ documentation-only cancellation review a3e018d was committed during execution.
 These host checks prove neither installed shutdown nor production native
 selection. The cache-only shutdown request draft is outside this tested source
 and remains unintegrated, uncompiled and unaccepted; task 9402 stays planned.
+
+## Provisional claim-bound closure request implementation
+
+NativeShutdown now requests the existing protected broker close operation
+from a verified durable snapshot without acquiring the writer. It preserves
+the execution transport separately, checks the original physical registration
+and authority, shares one monotonic deadline, and returns opaque proof only
+after original claim/hash/physical-store receipt authentication. A null broker
+reply, helper death or EOF alone never becomes proof. No journal mutation,
+binding, entry, event delivery or capacity release occurs in this primitive.
+
+Session 55144 terminated exit 0 under verified 1 GiB/no-swap limits:
+format/source-size, stable/MSRV executor all-target Clippy, 32 library tests,
+the downstream public API test and all 16 public-surface tests passed;
+local-native-shutdown-check.log is retained. Negative tests cover memory-store
+refusal without dispatch/mutation, zero deadline before claim lookup/dispatch,
+and malformed broker replies. These do not prove actual native closure.
+Full changed-source stable and installed positive/negative runtime acceptance
+remain pending. The primitive is not yet wired to production or any lifecycle
+control: published-before-binding claims, all stop/admission phases, bounded
+reports and independent stdio progress remain required, so task 9402 stays
+planned and all production acceptance flags remain false.

@@ -1033,3 +1033,15 @@ acknowledgement sequence and settlement fingerprint. A replacement prefix
 cannot establish reconciliation merely by omitting an obligation. The
 refusal parks without journal mutation and changes no persisted format,
 hash domain, public API or acknowledgement/event request-key derivation.
+
+
+### Provisional native closure request
+
+The additive Linux NativeShutdown API starts an independent original-claim
+closure request from a verified durable snapshot, including a read-only one,
+and returns only an authenticated opaque VerifiedClosure. This widens the
+provisional Rust executor surface without changing journal VERSION, hash
+domains, receipt formats or existing signatures. It supplies no completion
+result and grants no settlement, admission or production control guarantee.
+Installed native proof and complete bounded lifecycle integration remain
+required; no production selection or acceptance flag changes here.

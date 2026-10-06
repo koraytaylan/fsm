@@ -17,12 +17,14 @@ mod discovery;
 mod execution;
 mod preparation;
 mod prepared_cleanup;
+mod shutdown;
 
 pub use claimed::{NativeRun, NativeRunPhase, NativeRunProgress};
 pub use completion::NativeCompletion;
 pub use execution::{NativeExecution, NativeExecutionProgress};
 pub use preparation::{NativePreparation, NativePreparationPhase, NativePreparationProgress};
 pub use prepared_cleanup::NativePreparedCleanup;
+pub use shutdown::NativeShutdown;
 
 const HELPER: &str = "/usr/libexec/fsm-containment-authority";
 const RESPONSE_LIMIT: usize = 65540;

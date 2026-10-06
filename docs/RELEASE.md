@@ -997,3 +997,14 @@ acknowledgement sequence and settlement fingerprint. A replacement prefix
 cannot establish reconciliation merely by omitting an obligation. The
 refusal parks without journal mutation and changes no persisted format,
 hash domain, public API or acknowledgement/event request-key derivation.
+
+
+### Provisional native closure request
+
+Added a Linux NativeShutdown primitive that requests original-claim native
+closure from a verified durable snapshot without acquiring the writer, keeps
+execution transport separate, and authenticates an immutable original receipt
+before returning opaque proof. It preserves ownership on uncertainty and
+changes no persisted format or production default. Full installed acceptance,
+all admission phases and the bounded production shutdown controls remain
+unfinished; the primitive alone does not complete task 9402.

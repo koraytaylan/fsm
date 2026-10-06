@@ -2649,3 +2649,35 @@ healthy writer's verified handoff collection MUST also require the original
 acknowledgement request slot, sequence and execution-settlement fingerprint.
 A missing or changed original acknowledgement MUST park the retained local
 obligation without mutating the journal; absence alone is not reconciliation.
+
+
+### Claim-bound native closure request
+
+The provisional Linux native client NativeShutdown MUST request closure only
+for an exact unresolved claim from a verified durable store prefix and its
+original journal claim-record hash, after matching the protected registration
+to the original physical store and full authority identity. Read-only snapshots
+are permitted: closure requests acquire no journal writer and MUST NOT append,
+bind, execute, acknowledge, deliver events or release scheduler capacity.
+
+The request MUST retain an independent helper transport and MUST NOT replace
+or discard a still-owned execution transport. A successful broker close reply,
+helper retirement or EOF MUST NOT establish domain closure. Polling may return
+VerifiedClosure only after reading the immutable protected receipt from the
+original authority-generation directory, matching the complete original domain,
+run and journal hash, and checking the receipt's registered physical store.
+Malformed replies, missing receipts, authority changes and deadline expiry MUST
+remain uncertain and preserve durable ownership. A single checked monotonic
+deadline MUST cover discovery, helper startup and receipt verification; discovery
+elapsed time MUST NOT restart that deadline. This transport deadline does not
+promise that filesystem operations or a control report cannot block: the public
+bounded lifecycle driver still requires independent report/admission control.
+
+This primitive supplies no original handler result and MUST NOT fabricate a
+NativeCompletion. The caller may apply only existing authenticated interrupted
+settlement under a healthy original writer, preserving pending effects and
+sending no machine event. A published claim without a completed native binding
+may have no claim-matched receipt; successful retirement of its prepared domain
+MUST NOT consume that claim. Production shutdown must implement all admission
+phases, local control authentication, report deadlines and quiet/blocked stdio
+progress separately before task 9402 can complete.
