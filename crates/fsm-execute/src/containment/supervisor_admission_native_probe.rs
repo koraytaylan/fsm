@@ -44,6 +44,33 @@ fn writer_lease_only() {
 }
 
 #[test]
+#[ignore = "invoked only as an independent unprivileged cancelling writer"]
+fn writer_cancel_pending() {
+    assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
+    let mut byte = [0];
+    emit(format_args!("\nFSM_NATIVE_WRITER_WAITING"));
+    std::io::stdout().flush().unwrap();
+    assert_eq!(std::io::stdin().read(&mut byte).unwrap(), 1);
+    assert_eq!(byte, [1]);
+    let path = std::env::var("FSM_NATIVE_TEST_STORE").unwrap();
+    let mut store = Store::open(Path::new(&path)).unwrap();
+    let before = store.records.len();
+    emit(format_args!("\nFSM_NATIVE_WRITER_READY"));
+    std::io::stdout().flush().unwrap();
+    assert_eq!(std::io::stdin().read(&mut byte).unwrap(), 1);
+    assert_eq!(byte, [2]);
+    store
+        .cancel_instance("instance", "native-independent-cancel")
+        .unwrap();
+    assert_eq!(store.records.len(), before + 1);
+    let records = store.records.clone();
+    emit(format_args!("\nFSM_NATIVE_WRITER_CANCELLED"));
+    std::io::stdout().flush().unwrap();
+    assert_eq!(std::io::stdin().read(&mut byte).unwrap(), 0);
+    assert_eq!(store.records, records);
+}
+
+#[test]
 #[ignore = "invoked only as the provisioned unprivileged native admission control"]
 fn shared_tick_admission() {
     assert_eq!(std::fs::metadata("/proc/self").unwrap().uid(), 65534);
@@ -125,7 +152,15 @@ fn shared_tick_admission() {
     );
     drop(readonly);
 
-    let mut holder = WriterHolder::lease_only(path.to_str().unwrap());
+    let cancelled = std::env::var_os("FSM_NATIVE_TEST_CANCEL_PRECLAIM").is_some();
+    let mut holder = if cancelled {
+        WriterHolder::start_test(
+            path.to_str().unwrap(),
+            "authority::allocator::native_tests::supervisor_probe::fresh_admission::writer_cancel_pending",
+        )
+    } else {
+        WriterHolder::lease_only(path.to_str().unwrap())
+    };
     holder.acquire();
     wait_until(|| {
         assert!(holder.child.try_wait().unwrap().is_none());
@@ -166,6 +201,45 @@ fn shared_tick_admission() {
     );
     assert_eq!(readonly.records, records);
     drop(readonly);
+    if cancelled {
+        holder.input.as_mut().unwrap().write_all(&[2]).unwrap();
+        holder.wait_marker(b"FSM_NATIVE_WRITER_CANCELLED");
+        wait_until(|| {
+            assert!(holder.child.try_wait().unwrap().is_none());
+            let outcome = tick_reporting(
+                &mut watcher,
+                &mut scheduler,
+                &mut runner,
+                &mut pipeline,
+                path,
+                &mut clock,
+                1000,
+            );
+            assert!(!outcome.writer_unavailable);
+            scheduler.inflight_effect(&effect).is_none()
+        });
+        absent(authority, &["binding", "launch", "entry", "handoff"]);
+        let original = Store::open_read_only(path).unwrap();
+        assert_eq!(original.records.len(), records.len() + 1);
+        assert_eq!(&original.records[..records.len()], records.as_slice());
+        assert!(original.state.execution.unresolved().next().is_none());
+        assert!(
+            !original
+                .state
+                .dedup
+                .contains_key(&fsm_execute::rid::ack_rid(&effect))
+        );
+        assert!(
+            !original
+                .state
+                .dedup
+                .contains_key(&fsm_execute::rid::event_rid(&effect, "docs_ok"))
+        );
+        drop(original);
+        holder.release();
+        emit(format_args!("\nFSM_NATIVE_PRECLAIM_CANCELLATION"));
+        return;
+    }
     holder.release();
 
     let mut writer = Store::open(path).unwrap();

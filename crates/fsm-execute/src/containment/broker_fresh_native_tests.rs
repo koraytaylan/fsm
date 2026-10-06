@@ -2,6 +2,33 @@
 
 use super::*;
 
+pub(super) fn cancellation(fixture: &mut Fixture, table: &Value) {
+    disconnect_cases::permit_operator_store(&fixture.store);
+    disconnect_cases::cancel_admission(&fixture.directory, table);
+    assert_eq!(number(&fixture.counter(), "last_allocation").unwrap(), 1);
+    for name in ["binding", "launch", "entry", "handoff"] {
+        assert_eq!(
+            fs::symlink_metadata(fixture.directory.join(format!("{name}-1.json")))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+    let closed = read_value(&fixture.directory.join("closed-1.json"), true).unwrap();
+    assert_eq!(
+        closed.get("format").and_then(Value::as_str),
+        Some("fsm.native-domain-closed/1")
+    );
+    let domain = NativeDomain::from_value(closed.get("domain").unwrap()).unwrap();
+    assert_eq!(number(&domain.to_value(), "allocation").unwrap(), 1);
+    assert!(
+        !cgroup(&origin(&fixture.directory).unwrap(), 1)
+            .unwrap()
+            .exists()
+    );
+    fixture.cleanup().unwrap();
+}
+
 pub(super) fn admission(fixture: &mut Fixture, table: &Value) {
     disconnect_cases::permit_operator_store(&fixture.store);
     disconnect_cases::fresh_admission(&fixture.directory, table);

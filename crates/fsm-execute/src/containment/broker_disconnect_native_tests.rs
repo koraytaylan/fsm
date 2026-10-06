@@ -808,12 +808,26 @@ pub(super) fn fresh_handoff(directory: &Path, binding: &Value, competitor: &Nati
 }
 
 pub(super) fn fresh_admission(directory: &Path, table: &Value) {
+    admission_control(directory, table, "execute");
+}
+
+pub(super) fn cancel_admission(directory: &Path, table: &Value) {
+    admission_control(directory, table, "cancel");
+}
+
+fn admission_control(directory: &Path, table: &Value, mode: &str) {
     install_supervisor(directory);
     let script = SUPERVISOR.replace(
         "::owned_request",
         "::fresh_admission::shared_tick_admission",
     );
-    let output = Command::new("/usr/bin/python3")
+    let mut command = Command::new("/usr/bin/python3");
+    if mode == "cancel" {
+        command.env("FSM_NATIVE_TEST_CANCEL_PRECLAIM", "1");
+    } else {
+        command.env_remove("FSM_NATIVE_TEST_CANCEL_PRECLAIM");
+    }
+    let output = command
         .env("TMPDIR", directory.parent().unwrap().join("operator-store"))
         .env(
             "FSM_NATIVE_TEST_HANDLER_TABLE",
@@ -835,7 +849,12 @@ pub(super) fn fresh_admission(directory: &Path, table: &Value) {
     assert_eq!(
         String::from_utf8_lossy(&output.stdout)
             .lines()
-            .filter(|line| *line == "FSM_NATIVE_FRESH_ADMISSION")
+            .filter(|line| *line
+                == if mode == "cancel" {
+                    "FSM_NATIVE_PRECLAIM_CANCELLATION"
+                } else {
+                    "FSM_NATIVE_FRESH_ADMISSION"
+                })
             .count(),
         1
     );

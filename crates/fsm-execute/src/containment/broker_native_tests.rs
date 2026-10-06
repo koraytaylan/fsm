@@ -188,6 +188,7 @@ pub(super) fn run() {
     run_case(false, Host::FreshMcp);
     run_case(false, Host::Admission);
     run_case(false, Host::AdmissionMcp);
+    run_case(false, Host::AdmissionCancellation);
 }
 
 enum Host {
@@ -197,6 +198,7 @@ enum Host {
     FreshMcp,
     Admission,
     AdmissionMcp,
+    AdmissionCancellation,
 }
 
 fn run_case(timeout: bool, host: Host) {
@@ -251,6 +253,10 @@ fn run_case(timeout: bool, host: Host) {
     assert!(!refused.status.success());
     assert!(String::from_utf8_lossy(&refused.stderr).contains("outside policy"));
     assert_eq!(fs::read(&counter_path).unwrap(), counter);
+    if matches!(host, Host::AdmissionCancellation) {
+        fresh_cases::cancellation(&mut fixture, &table);
+        return;
+    }
     if matches!(host, Host::Admission | Host::AdmissionMcp) {
         fresh_cases::admission(&mut fixture, &table);
         return;
