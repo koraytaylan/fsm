@@ -641,3 +641,15 @@ in session `85425`, retaining `local-34d00da-msrv-lib.log` and
 `local-34d00da-msrv-clippy.log`; no overlapping local build was started.
 Both original Windows CI jobs remain live, with MSRV advanced to Clippy;
 their source `a876df1` predates all prepared cleanup changes.
+
+Exact frozen cleanup source `34d00da` passed all 22 MSRV executor library tests
+and all-target executor Clippy with exit zero through session `85425`, as
+confirmed from both retained logs. This compiles the new original-domain action
+and expanded privileged refusal controls without claiming their execution.
+The serial full stable debug workspace gate now runs at that same clean source
+in session `68063`, retaining `local-34d00da-stable-debug.log`.
+Original-source Windows MSRV CI job `112057639687` also completed successfully,
+with its full log retained as `ci-37397745043/windows-msrv-job.log`; eight of
+nine original matrix jobs now pass and Windows stable remains live in release
+testing. Current cleanup provisioned validation and production host integration
+remain outstanding, and task 9401 stays in progress.
