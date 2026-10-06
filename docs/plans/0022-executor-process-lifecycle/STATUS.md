@@ -4326,3 +4326,28 @@ matches the committed runtime after restoration; paired-wakeup-mutations.log
 retains the expected failures and successful restored checks. This proves these
 two regression assertions are sensitive, not production or installed acceptance;
 plan progress and task statuses remain unchanged.
+
+### Opt-in standalone native host pump — 2026-10-06
+
+Implemented fsm_cli::standalone::run_paired around the actual paired driver:
+explicit ordinary ticks preserve structured exclusive contention, admitted
+polling and request wakeup remain independent of long scheduling intervals,
+and initiating errors are retained while bounded abort cleanup is driven.
+StandaloneReport separates shutdown, actual output drainage, diagnostic loss
+and initiating failure. The internal log adapter reuses the existing complete
+frame worker and its in-flight allocation accounting; saturated/oversized or
+multiline lines are counted, broken output requests abort, and close/drain uses
+the first request deadline without joining a blocked worker. Review additionally
+closed queue admission on wrapper error exits before final verification.
+
+Focused sessions 59166 and corrected-source 77915 exited zero with asserted
+MemoryMax=1G and zero swap. Final standalone-owner-check-v2.log records stable
+and MSRV Clippy, executor/lifecycle/session/transport/CLI/public-surface suites
+and 59 CLI library tests. New actual tests cover blocked-output saturation and
+bounded close with loss counting, malformed/oversized diagnostic refusal, and
+an explicit stop after a second owner observation during a two-second ordinary
+interval while an independent writer remains held. Native inventory is empty.
+
+The API is opt-in: production command routing/endpoint publication, installed
+nonempty native ownership, full changed-source gates and sensitivity checks
+remain required. Progress remains 3/7 with task statuses unchanged.

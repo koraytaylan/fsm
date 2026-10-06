@@ -1113,3 +1113,15 @@ The opt-in paired lifecycle driver now retains structured writer availability
 through `tick_reporting`, and native control adds finite explicit-request wakeup
 through `wait_for_request`; existing line-only ticks remain available, and
 production routing and installed acceptance remain pending.
+
+The Linux opt-in `fsm_cli::standalone::run_paired` drives an actual paired
+native owner with independently queued diagnostic stdout supplied by the host;
+ordinary ticks follow the configured interval while admitted polling and explicit
+request notification remain independent of it. Its `StandaloneReport` separates
+shutdown facts, successful output drainage, dropped diagnostic line count and
+initiating failure. Logs share the existing 256-frame/8 MiB allocation budget;
+oversized (over 64 KiB), multiline or saturated lines are counted as dropped,
+and broken output requests abort without blocking ownership. Output close/drain
+uses the original shutdown deadline and never joins a blocked writer. The host
+must publish and close the exact actor endpoint explicitly; production command
+routing and installed nonempty native acceptance remain pending.

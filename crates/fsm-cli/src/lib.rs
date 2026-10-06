@@ -22,3 +22,9 @@ pub mod render;
 pub mod http;
 
 pub use fsm_store::{clock, journal_io, snapshot, store};
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+pub mod standalone;

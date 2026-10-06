@@ -21,7 +21,7 @@ struct State {
 pub struct ProtocolOutput(Arc<(Mutex<State>, Condvar)>);
 
 impl ProtocolOutput {
-    pub(super) fn start(mut writer: impl Write + Send + 'static) -> io::Result<Self> {
+    pub(crate) fn start(mut writer: impl Write + Send + 'static) -> io::Result<Self> {
         let shared = Arc::new((Mutex::new(State::default()), Condvar::new()));
         let worker = shared.clone();
         std::thread::Builder::new()
@@ -63,7 +63,7 @@ impl ProtocolOutput {
     // Caller supplies one canonical protocol frame including its final newline.
     // Accounting measures retained Vec allocation capacity, including the frame
     // currently in write_all; serialization temporaries are outside this budget.
-    pub(super) fn enqueue(&self, frame: Vec<u8>) -> io::Result<()> {
+    pub(crate) fn enqueue(&self, frame: Vec<u8>) -> io::Result<()> {
         if frame.last() != Some(&b'\n') || frame[..frame.len() - 1].contains(&b'\n') {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
