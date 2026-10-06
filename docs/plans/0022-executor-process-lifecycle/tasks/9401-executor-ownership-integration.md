@@ -694,8 +694,10 @@ native MSRV failure. The serial stable workspace all-target Clippy gate at
 frozen `7bdfcb6` completed with exit zero in session `74551`, retaining
 `local-7bdfcb6-stable-clippy.log`; this compiles the replacement control but
 does not execute its privileged assertions. The next serial stable workspace
-documentation gate runs with warnings denied, retaining
-`local-7bdfcb6-stable-doc.log`.
+documentation gate completed with warnings denied and exit zero in session
+`25649`, retaining `local-7bdfcb6-stable-doc.log`. Serial executor all-target
+MSRV Clippy is now running, retaining `local-7bdfcb6-msrv-clippy.log`; neither
+compilation gate proves privileged native execution.
 
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
