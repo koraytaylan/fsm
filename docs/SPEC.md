@@ -2733,3 +2733,17 @@ no settlement without independently authenticated original closure evidence.
 ### Bounded queued protocol output
 
 Notifier::queued MUST atomically enqueue complete canonical frames, bounded by 256 retained frames and 8 MiB of retained Vec allocation capacity including in-flight writes; serialization temporaries are outside this accounting unit. Budget exhaustion MUST return WouldBlock without partial publication. Close MUST refuse further admission without waiting on the actual writer; drained MUST require successful write/flush of every admitted frame after close. Write failure MUST remain broken and MUST NOT report successful drainage. Drop grants no drainage guarantee.
+
+
+### Shared bounded protocol input
+
+Both ordinary MCP stdio frames and SessionIo reverse-protocol replies MUST
+limit retained payload to 16 MiB of wire bytes excluding the final LF. Exact
+limit frames MUST remain accepted; limit-plus-one frames MUST refuse. Oversized
+frame drainage MUST use bounded borrowed input chunks without accumulating the
+discarded tail, and MUST consume only that frame so a later frame remains intact.
+Elicitation reads MUST report oversized or invalid UTF-8 input as InvalidData,
+which request_and_await maps to the existing io/read error. Ordinary serve MUST
+retain its existing parse-error response for an oversized frame. Read failures
+during drainage MUST propagate rather than claim successful resynchronization.
+This blocking framing primitive establishes no silent-client or cleanup deadline.

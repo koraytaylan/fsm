@@ -2282,3 +2282,12 @@ when the observed publication differs from its original route or contract.
 ### Bounded queued protocol output
 
 Use Notifier::queued when protocol emission must remain independent of actual writer blocking; retain its OutputControl, close admission explicitly and observe drained/is_broken under your own deadline without joining a blocked writer. This does not drive native execution or wire the production stdio lifecycle pump.
+
+
+### Shared bounded protocol input
+
+SessionIo::read_line accepts up to 16 MiB excluding LF and returns InvalidData
+for an oversized reply after discarding that frame without retaining its tail;
+later frames stay readable. It still blocks on silent input or unfinished
+oversized-frame drainage, so independent lifecycle/control handling must not
+wait for it. The owned production lifecycle route remains unimplemented.

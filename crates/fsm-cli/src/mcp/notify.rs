@@ -291,19 +291,25 @@ impl<'a> SessionIo<'a> {
         self.notifier
     }
 
-    /// The next line the client sent, or `None` at end of input.
-    ///
-    /// The caller is mid-request when it reads this, so it must be prepared
-    /// for a line that is not the response it is waiting for.
+    /// Read one protocol frame under the shared 16 MiB wire-byte ceiling.
+    /// Oversized frames are drained without allocating their discarded tail.
+    /// This remains a blocking read and does not bound silent-client waiting.
     pub fn read_line(&mut self) -> std::io::Result<Option<String>> {
-        let mut line = String::new();
-        let read = self.input.read_line(&mut line)?;
-        if read == 0 {
-            return Ok(None);
+        use super::framing::{LINE_CAP, Line, read_capped_line};
+        match read_capped_line(self.input, LINE_CAP)? {
+            Line::Eof => Ok(None),
+            Line::TooLong => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("protocol line exceeds {LINE_CAP} bytes"),
+            )),
+            Line::Data(bytes) => {
+                let mut line = String::from_utf8(bytes)
+                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+                while line.ends_with('\r') {
+                    line.pop();
+                }
+                Ok(Some(line))
+            }
         }
-        while line.ends_with('\n') || line.ends_with('\r') {
-            line.pop();
-        }
-        Ok(Some(line))
     }
 }

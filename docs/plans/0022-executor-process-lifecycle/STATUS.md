@@ -3896,3 +3896,21 @@ warning-denied docs, zero dependencies and full embedding acceptance passed
 under verified 1 GiB/no-swap limits; local-queued-output-stable-gate.log is
 retained. Production queue/lifecycle integration and native shutdown acceptance
 remain unimplemented/unexecuted; no plan task or acceptance flag is promoted.
+
+### Shared bounded protocol input correction — 2026-10-06
+
+Ordinary serve framing and SessionIo reverse replies now share the 16 MiB
+wire-byte limit excluding LF. Oversized tails drain through borrowed chunks
+without allocating a remainder, preserve the next frame and propagate original
+read errors. SessionIo refuses oversized replies with InvalidData through the
+existing io/read path; this remains blocking input and grants no silence bound.
+
+Session 14248 completed exit 0 with verified 1 GiB/no-swap limits: formatting/size,
+stable and MSRV CLI all-target Clippy, four framing tests, two public-entry
+chunked-input tests, nine elicitation tests, six skeleton tests and two queued
+output tests passed. The retained log is local-bounded-input-check.log. The
+chunked reader traps unbounded read_line/read_until calls, reaching both actual
+public paths; exact limit, plus-one and next-frame behavior are asserted.
+Full stable verification remains pending for this unit. Native driver/control
+integration is still incomplete, so progress stays 3/7, task 9402 planned and
+production acceptance false; no output/input tests substitute for native proof.

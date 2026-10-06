@@ -18,17 +18,11 @@ use super::notify::{FeedHandle, Notifier};
 use super::tools;
 use super::{cancel, logging, subscribe, watch};
 
-const LINE_CAP: usize = 16 * 1024 * 1024;
+use super::framing::{LINE_CAP, Line, read_capped_line};
 const KNOWN_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 const DEFAULT_VERSION: &str = "2025-06-18";
 
 static HOOK: AtomicBool = AtomicBool::new(false);
-
-enum Line {
-    Eof,
-    Data(Vec<u8>),
-    TooLong,
-}
 
 pub fn negotiate(client: Option<&str>) -> &'static str {
     match client {
@@ -859,37 +853,4 @@ pub(crate) fn fsm_ping_result() -> Value {
 /// the protocol stream.
 pub(crate) fn send_line(out: &Notifier, v: &Value) -> std::io::Result<()> {
     out.send(v)
-}
-
-fn read_capped_line(input: &mut impl BufRead, cap: usize) -> std::io::Result<Line> {
-    let mut buf = Vec::new();
-    loop {
-        let available = input.fill_buf()?;
-        if available.is_empty() {
-            return if buf.is_empty() {
-                Ok(Line::Eof)
-            } else {
-                Ok(Line::Data(buf))
-            };
-        }
-        if let Some(pos) = available.iter().position(|&b| b == b'\n') {
-            if buf.len() + pos > cap {
-                input.consume(pos + 1);
-                return Ok(Line::TooLong);
-            }
-            buf.extend_from_slice(&available[..pos]);
-            input.consume(pos + 1);
-            return Ok(Line::Data(buf));
-        }
-        if buf.len() + available.len() > cap {
-            let n = available.len();
-            input.consume(n);
-            let mut rest = Vec::new();
-            let _ = input.read_until(b'\n', &mut rest);
-            return Ok(Line::TooLong);
-        }
-        buf.extend_from_slice(available);
-        let n = available.len();
-        input.consume(n);
-    }
 }

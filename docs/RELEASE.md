@@ -1038,3 +1038,10 @@ does not establish native closure or a bounded production shutdown guarantee.
 ### Bounded queued protocol output
 
 Added opt-in bounded complete-frame notifier output with in-flight allocation accounting, explicit close/drain observation and write-failure preservation; production lifecycle integration remains incomplete.
+
+
+### Shared bounded protocol input
+
+Bound reverse-protocol reads and remove oversized stdio-frame tail accumulation
+using shared framing; preserve ordinary parse errors, exact-cap acceptance and
+next-frame synchronization. Native lifecycle deadlines remain a separate gate.

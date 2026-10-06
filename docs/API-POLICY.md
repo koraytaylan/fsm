@@ -1077,3 +1077,12 @@ unimplemented until their separate proof obligations are met.
 ### Bounded queued protocol output
 
 Notifier::queued and OutputControl add an opt-in Rust output capability without changing persisted formats or existing synchronous Notifier::new behavior; queue acceptance means admission rather than delivery and no production lifecycle guarantee is introduced.
+
+
+### Shared bounded protocol input
+
+The shared private framing implementation introduces no Rust signatures,
+persisted formats or new error codes. It enforces the existing ordinary frame
+ceiling while closing the unbounded discarded-tail and reverse-read gaps;
+SessionIo now refuses oversized replies through the existing I/O error path.
+This correction must be documented as a resource-limit behavior change.
