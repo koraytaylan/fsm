@@ -303,6 +303,8 @@ mod tests {
         let mut execution = NativeExecution::retain_uncertain(&original_owner());
         let mut store = Store::open_memory().unwrap();
         let state = store.state.clone();
+        let records = store.records.clone();
+        let head = store.journal.last_hash.clone();
         assert_eq!(
             execution
                 .start_retained(&mut store, Duration::from_secs(1))
@@ -319,7 +321,8 @@ mod tests {
         );
         assert!(execution.progress().retained);
         assert!(execution.progress().helper.is_none());
-        assert!(store.records.is_empty());
+        assert_eq!(store.records, records);
+        assert_eq!(store.journal.last_hash, head);
         assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
     }
 
@@ -327,6 +330,9 @@ mod tests {
     fn cancellation_before_startup_preserves_owner_without_permitting_entry() {
         let mut execution = NativeExecution::retain_uncertain(&original_owner());
         let mut store = Store::open_memory().unwrap();
+        let records = store.records.clone();
+        let state = store.state.clone();
+        let head = store.journal.last_hash.clone();
         execution.cancel().unwrap();
         assert_eq!(
             execution
@@ -337,6 +343,8 @@ mod tests {
         );
         assert!(execution.progress().retained);
         assert!(execution.progress().helper.is_none());
-        assert!(store.records.is_empty());
+        assert_eq!(store.records, records);
+        assert_eq!(store.journal.last_hash, head);
+        assert!(fsm_store::snapshot::store_states_eq(&store.state, &state));
     }
 }
