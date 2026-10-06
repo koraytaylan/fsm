@@ -3980,3 +3980,14 @@ modules; the public wrapper now lives beside Runner::start_native and the
 private implementation stays in native_host. Full stable verification remains
 pending; task 9402, production lifecycle integration and installed acceptance
 remain incomplete, with progress and acceptance flags unchanged.
+
+### Complete interrupted-retirement stable gate — 2026-10-06
+
+Session 3951 completed exit 0 at exact runtime source
+14fbc1791229da5bea29ef508165352bc5216f72, unchanged throughout verification.
+Formatting/size, debug/release workspace suites, all-target workspace Clippy,
+warning-denied documentation, zero dependencies and full embedding acceptance
+passed under verified 1 GiB/no-swap limits; evidence is retained in
+local-interrupted-retirement-stable-gate.log. Installed authority controls and
+other platform axes remain unexecuted for this source; all task and production
+acceptance statuses remain unchanged.
