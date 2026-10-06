@@ -3811,3 +3811,15 @@ source unchanged; it began before commit 7571fd7 while that exact runtime diff
 was already present, so its initial printed HEAD ef3e4a8 is not the tested runtime
 revision. Documentation-only review additions do not change that runtime.
 No terminal gate verdict or installed shutdown acceptance is claimed here.
+
+### Full interrupted-settlement stable gate — 2026-10-06
+
+Session 4737 completed exit 0: formatting/source size, debug and release
+workspace suites, workspace all-target Clippy, warning-denied documentation,
+zero dependencies and full embedding acceptance passed under verified 1 GiB
+memory and zero-swap limits. Runtime source stayed identical to commit 7571fd7;
+the gate began before that commit with its complete runtime diff present and
+printed the earlier HEAD ef3e4a8, as recorded above. Later 4a09824 changed only
+review documentation. The retained log is local-native-interruption-stable-gate.log.
+Provisioned interruption axes remain compiled but unexecuted; production
+selection remains legacy, task 9402 planned and all native acceptance flags false.
