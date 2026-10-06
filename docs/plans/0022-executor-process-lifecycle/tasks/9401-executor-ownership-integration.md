@@ -685,3 +685,13 @@ confirmed queued for the current cleanup source. The serial isolated full
 stable debug workspace gate at product source `cd70627` is live in session
 `30347`, retaining `local-cd70627-stable-debug.log`. Production Runner routing
 and current native acceptance remain unfinished; task 9401 stays in progress.
+
+Current cleanup CI MSRV native job `112069961429` failed; its complete job
+log and artifact are retained under `ci-37401653979/msrv`. The expanded
+`empty_domain_preparation` control passed in 0.14 seconds, but the matrix
+stopped at `private_exec_status`, where the `/bin/sh` MCP fixture refused
+completion with `runner cleanup uncertain: closure native retirement deadline`
+at `exec_status_native_tests.rs:276`. This is a native acceptance failure,
+not a successful matrix or verified full artifact; its cause remains under
+investigation and no deadline was relaxed. Stable native and six portable
+jobs remain live on the original run, as does frozen debug session `30347`.
