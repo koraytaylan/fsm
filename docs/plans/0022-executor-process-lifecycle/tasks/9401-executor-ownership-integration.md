@@ -821,6 +821,14 @@ committed-range diff checks also pass. Its full stable host gates and
 privileged assertions remain pending, so the earlier `482da8f` matrix is
 historical evidence only for this new harness extension.
 
+The authorized review branch now points to
+`8f179410da81c761425a4bdc9396089145a1804e`; CI run `37409097908` is confirmed
+live across all nine jobs, including native MSRV `112093256818` and stable
+`112093256861` for the owned cleanup extension. The frozen full stable debug
+workspace gate at product source `9521e41` is live in original session `54765`,
+retaining `local-9521e41-stable-debug.log`. No native result, full host gate
+completion or production Runner acceptance is claimed yet.
+
 Physical-store discovery review added a production-entry refusal control that
 renames the original operator store, creates a different directory at the same
 pathname, and retains the unchanged protected registration bytes; discovery
