@@ -600,3 +600,13 @@ original run `37397745043`, which has not been restarted. The current-source
 local and provisioned native evidence still proves the primitive/regression
 slice only; production Runner composition remains unfinished and task 9401
 stays in progress.
+
+Updated CI macOS MSRV job `112057639818` also completed successfully at frozen
+source `a876df1`; its complete log is retained as
+`ci-37397745043/macos-msrv-job.log`. Seven of nine matrix jobs now pass, with
+both Windows jobs still confirmed live on the original run. Review of the
+preparation lifecycle confirms that delivered domains grant no admission and
+helper cancellation/reaping grants no domain closure; the remaining production
+host must retain an original-route prepared-domain cleanup operation before
+releasing its local reservation. No automatic Runner routing has been added,
+so task 9401 and the overall plans remain incomplete.
