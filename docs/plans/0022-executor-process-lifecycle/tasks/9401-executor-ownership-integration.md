@@ -219,3 +219,15 @@ or execution evidence, and task 9401 remains In progress.
 Discovery contract review confirms that current transport validates the helper but has no protected discovery reader; the existing store proof reader provides the no-follow/nonblocking, opened/path identity, bounded canonical-read pattern to follow. SPEC now fixes the shared inventory and document budgets before implementation; discovery remains unimplemented. Capacity all-targets clippy passed with exit code zero.
 
 Discovery `5158d81` implements the protected scan and exposes native preparation by physical store; two inventory/name boundary tests pass and initial executor clippy passes. The filtered boundary invocation ran zero public inventory tests; an explicit unfiltered run found fixture ordering stale, corrected separately with all 16 inventory checks then passing. Provisioned protected-file, ambiguity, access and replacement controls remain unexecuted, so discovery and production host routing remain unaccepted.
+
+### Discovery replacement review
+
+Review of `5158d81..b94e1da` found that discovery revalidated protected directory
+properties after selecting a physical-store registration, but did not retain
+the selected authority and namespace's original inodes across final route
+validation. A replacement Root-published directory could therefore be accepted
+as the selected original. The correction retains both original directory
+metadata values and requires their identities/modes unchanged before and after
+final route/registration checks, also repeating the original base identity at
+return. This is a scoped race correction to SPEC's repeated-identity requirement,
+not a new format; native replacement fault execution remains required.

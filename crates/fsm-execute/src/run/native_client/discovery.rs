@@ -235,7 +235,12 @@ pub(super) fn discover(store: &Path) -> Result<(String, u64), String> {
                 if selected.is_some() {
                     return Err("native discovery store registration is ambiguous".into());
                 }
-                selected = Some((name.clone(), generation));
+                selected = Some((
+                    name.clone(),
+                    generation,
+                    before.clone(),
+                    namespace_before.clone(),
+                ));
             }
             unchanged_directory(&authority, &before)?;
         }
@@ -246,6 +251,8 @@ pub(super) fn discover(store: &Path) -> Result<(String, u64), String> {
     let authority = base
         .join(&selected.0)
         .join(format!("authority-{}", selected.1));
+    unchanged_directory(&authority, &selected.2)?;
+    unchanged_directory(&base.join(&selected.0), &selected.3)?;
     route(&authority)?;
     let registration = document(&authority.join("store-identity.json"))?;
     closed(&registration, &["format", "identity"])?;
@@ -260,7 +267,10 @@ pub(super) fn discover(store: &Path) -> Result<(String, u64), String> {
     if identity(&fs::symlink_metadata(store).map_err(super::message)?) != identity(&store_before) {
         return Err("native discovery physical store changed".into());
     }
-    Ok(selected)
+    unchanged_directory(&authority, &selected.2)?;
+    unchanged_directory(&base.join(&selected.0), &selected.3)?;
+    unchanged_directory(base, &base_before)?;
+    Ok((selected.0, selected.1))
 }
 
 #[cfg(test)]
