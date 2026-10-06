@@ -396,3 +396,10 @@ Stable workspace all-target Clippy is the next serial gate, with log
 `~/.cache/fsm-plan-native-matrix-20261005/current-f9e02fa-stable-workspace-clippy.log`.
 The older CI run still has four macOS/Windows jobs live; its known Ubuntu
 MSRV failure is preserved rather than replaced with these narrower local passes.
+
+Stable workspace all-target Clippy at current product source `f9e02fa` also
+completed with exit zero. The serial documentation gate is now running with
+warnings denied, logging to
+`~/.cache/fsm-plan-native-matrix-20261005/current-f9e02fa-stable-doc.log`.
+Neither check executes the new provisioned native assertions or replaces the
+current-source full debug/release and platform gates.
