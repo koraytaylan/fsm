@@ -4233,6 +4233,29 @@ paired-publisher-check.log is retained. Production publication/routing,
 nonempty native acceptance and full changed-runtime gates remain unfinished;
 plan progress stays 3/7 and task states are unchanged.
 
+### Provisioned paired no-writer closure probes wired — 2026-10-06
+
+Added process and MCP bound-owner cases to the actual provisioned broker suite.
+The unprivileged paired driver requests abort while its independent original
+writer is held, retains an uncertain charged claim with no journal mutation,
+and continues closure polling during a finite handshake pause. Before allowing
+writer release, the root parent reads the protected original receipt, matches
+full claim/hash and physical store, proves original domain absence, verifies
+successor allocation 2 survives, and independently proves the writer is held.
+After release, the child requires exact stopped/settled records with unchanged
+pending instance and no acknowledgement. Handshake files carry no authority;
+the parent owns/reaps its subprocess on proof failure.
+
+Focused session 15690 exited zero with asserted 1 GiB RAM and zero swap:
+stable/MSRV all-target Clippy compiled the provisioned authority/test source,
+and executor/lifecycle/session/transport/CLI/public inventory checks passed;
+paired-native-probe-check-v2.log is retained. Initial session 8654 exited 101
+on a collapsible-condition lint, fixed before the successful run. These native
+cases are wired and compile-checked but unexecuted here; receipt/domain facts
+are assertions awaiting provisioned execution, not achieved acceptance, and
+the surviving successor fixture is not a second live executor. Progress stays
+3/7 with production/native/full-gate obligations and task states unchanged.
+
 ### Standalone integration boundary review — 2026-10-06
 
 STANDALONE-INTEGRATION-REVIEW.md identifies production obligations before

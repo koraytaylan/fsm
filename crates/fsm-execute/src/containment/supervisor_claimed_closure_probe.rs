@@ -589,3 +589,82 @@ fn original_bound_closure() -> BoundClosure {
         scheduler,
     }
 }
+
+#[test]
+#[ignore = "provisioned original bound native owner; paired writer contention"]
+fn bound_paired_driver_writer_contention() {
+    use fsm_execute::service::{ExecutorPhase, PairedNativeExecutor, ShutdownMode};
+    let (writer, claim, runner, scheduler) = live_bound_driver_owner();
+    let data_dir = writer.data_dir.clone();
+    let count = writer.records.len();
+    let instance = writer.state.instances[claim.effect().0].clone();
+    let reader = Store::open_read_only(&data_dir).unwrap();
+    let watcher = Watcher::with_handlers(data_dir.clone(), &HandlerTable::default());
+    let mut driver =
+        PairedNativeExecutor::from_owned_parts(reader, watcher, scheduler, runner).unwrap();
+    let request = driver.control().stop(ShutdownMode::Abort, 250).unwrap();
+    let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while Instant::now() < deadline {
+        driver.poll(&mut clock, 2000);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let report = request.wait();
+    assert_eq!(report.phase, ExecutorPhase::Uncertain);
+    assert!(report.admission_closed && report.writer_released);
+    assert!(report.unresolved_run_ids.contains(&claim.run_id()));
+    assert_eq!(writer.records.len(), count);
+    assert!(Store::open(&data_dir).is_err());
+    // A provisioned parent supplies a dedicated operator-writable handshake
+    // directory and checks the protected receipt/domain while this lease remains
+    // held; the resume marker is synchronization, never closure authority.
+    let handshake = PathBuf::from(std::env::var("FSM_PAIRED_PROOF_HANDSHAKE").unwrap());
+    std::fs::write(handshake.join("writer-held"), b"ready").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !handshake.join("root-proof-checked").exists() {
+        assert!(
+            Instant::now() < deadline,
+            "parent did not verify original root closure before writer release"
+        );
+        driver.poll(&mut clock, 2000);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(Store::open(&data_dir).is_err());
+    drop(writer);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        driver.poll(&mut clock, 2000);
+        if driver.control().report().phase == ExecutorPhase::Stopped {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "paired owner did not retire after writer release"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let cold = Store::open(&data_dir).unwrap();
+    assert_eq!(cold.records.len(), count + 2);
+    assert_eq!(
+        cold.records[count].kind,
+        fsm_core::record::RecordKind::ExecutionStopped
+    );
+    assert_eq!(
+        cold.records[count + 1].kind,
+        fsm_core::record::RecordKind::ExecutionSettled
+    );
+    assert_eq!(cold.state.instances[claim.effect().0], instance);
+    assert!(
+        cold.state
+            .execution
+            .claim_for(claim.effect().0, claim.effect().1)
+            .is_none()
+    );
+    assert!(
+        !cold
+            .state
+            .dedup
+            .contains_key(&fsm_execute::rid::ack_rid(claim.effect().1))
+    );
+    emit(format_args!("\nFSM_NATIVE_BOUND_PAIRED_DRIVER"));
+}
