@@ -284,6 +284,7 @@ method fsm_execute::run::native_client::NativeCompletion::verify
 method fsm_execute::run::native_client::NativeExecution::cancel
 method fsm_execute::run::native_client::NativeExecution::completion
 method fsm_execute::run::native_client::NativeExecution::from_completion
+method fsm_execute::run::native_client::NativeExecution::launch_bound
 method fsm_execute::run::native_client::NativeExecution::observe
 method fsm_execute::run::native_client::NativeExecution::progress
 method fsm_execute::run::native_client::NativeExecution::reap
@@ -291,6 +292,7 @@ method fsm_execute::run::native_client::NativeExecution::recover
 method fsm_execute::run::native_client::NativeExecution::retain_uncertain
 method fsm_execute::run::native_client::NativeExecution::settle
 method fsm_execute::run::native_client::NativeExecution::start
+method fsm_execute::run::native_client::NativeExecution::start_retained
 method fsm_execute::run::native_client::NativePreparation::cancel
 method fsm_execute::run::native_client::NativePreparation::for_store
 method fsm_execute::run::native_client::NativePreparation::poll

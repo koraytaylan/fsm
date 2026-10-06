@@ -1002,3 +1002,16 @@ Sealed post-ack recovery review at product `0432aa0`: `store/idempotency.rs::loo
 Complete required stable host acceptance passes at frozen clean recovered-application source `0432aa09ddf766ef47e0e6a00179ad70ee9261e0`: full debug and release workspace suites (release original session `27946`, exit 0), workspace all-target Clippy with warnings denied (`3700`, exit 0), warnings-denied documentation (`75127`, exit 0), zero-dependency tests, embedding acceptance, formatting, Rust source size and diff checks. Complete logs `local-0432aa0-stable-release.log`, `local-0432aa0-stable-clippy.log`, `local-0432aa0-stable-doc.log`, `local-0432aa0-zero-deps.log`, and `local-0432aa0-embed-acceptance.log` are retained under the dedicated task cache; embedding/zero-dependency test results and clean checkout identity were independently read. All intensive gates ran serially with one worker/thread and healthy memory checks. Provisioned execution of the new shared-tick control is still required, and native new-run admission plus authenticated post-ack sealed recovery, shutdown and reconciliation remain unfinished; no production gate or task completion is claimed.
 
 Earlier native-advance guard review CI `37413459427` is terminal success at exact clean source `3ed993126ddfa0ebd2029d82a6af806ce0b366d0`: all nine jobs passed, including Windows stable `112106804065` and Windows MSRV `112106804263`; exact terminal metadata and all six nonempty portable job logs are retained in `ci-37413459427/final-run.json` and platform/compiler logs, complementing both independently verified 81-case native artifacts. This final verdict predates initial owner recovery and recovered-application product `0432aa0`; changed-source local host acceptance for that product is complete, but its expanded provisioned shared-tick control still needs exact-source native CI verification, and the production integration task remains unfinished.
+
+### Public API inventory review correction
+
+The frozen `e8df2cf` stable debug workspace run finished with two failures in
+`public_surface`: the inventory omitted the intentionally documented
+`NativeExecution::start_retained` and `NativeExecution::launch_bound` methods.
+All other workspace targets passed in that run; this is not a successful full
+workspace gate. The correction adds exactly those two inventory entries, with
+no implementation or fixture-scanner changes. The focused stable public-surface
+check passed all 16 tests in a verified temporary scope with `MemoryMax=1G` and
+`MemorySwapMax=0`; evidence is retained in the task cache as
+`local-public-surface-corrected.log`. A full corrected workspace gate remains
+required, and task 9401 remains in progress.
