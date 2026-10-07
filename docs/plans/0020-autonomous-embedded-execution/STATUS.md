@@ -351,3 +351,22 @@ Worker/filter predecessor `7165ef9` passes stable/MSRV executor unit (76),
 lifecycle/public API, CLI/stdio/MCP and both-crate all-target Clippy in terminal
 session 87416; two additional transferred-helper/post-publication fatal-hook
 cases are added and await verification, without releasing a task prerequisite.
+
+### Working stdio path — verified reservation correction
+
+Terminal evidence in TRANSPORT-WORKER-REVIEW resolves the historical pending
+proof-reader, additional unwind and completion-entry capacity checkpoints;
+none constitutes installed Root-handler acceptance or final review.
+The next working-path correction prevents execution startup from reserving a
+second slot while its binding transport retains the first, so all 128 occupied
+slots no longer refuse an already-bound attempt solely for extra capacity.
+Actual predecessor retirement gates reuse; late selection of worker mode for
+an unreserved standalone predecessor still dispatches startup off the caller.
+
+Frozen `acf0f57` passes stable/MSRV executor unit tests (82), both-crate
+all-target Clippy, formatting/file-size checks, three isolated intended guard
+failures and all 60 restored native tests; session 75717 is terminal with exit 0.
+These fixtures use actual child retirement and startup refusal without Root
+closure or installed helper mutation. Complete derived-completion accounting,
+real-handler stdio execution/settlement acceptance, and milestone-wide gates
+remain open; tasks 8901/8902 remain in progress and completion remains 0/7.

@@ -242,3 +242,22 @@ retirement and a refused execution-start fixture, supplying no Root closure.
 A held-child fixture refuses successor startup before actual retirement.
 Runtime and isolated guard-sensitivity verification remain pending; tasks
 8901/8902 remain in progress and derived-completion accounting is still open.
+
+The reservation predecessor `7f9bdbe` passed stable/MSRV executor unit tests
+(81), both-crate all-target Clippy, formatting/file-size checks and the two
+isolated reuse/retirement failures, followed by 59 restored native tests;
+session 28573 exited 0 with `NATIVE_ATTEMPT_RESERVATION_PASSED` and terminal
+log SHA-256 `e86dc7ab51bbf0cb3ba53ebd1997cf8168ebda73a3fb9581c65adde962683a4a`.
+
+Review then preserved current worker selection when the bound predecessor has
+no reservation, acquiring its first slot before successor dispatch; standalone
+mode remains synchronous. Frozen `acf0f57246d8d529563129df970955811e374945`
+passed all 82 executor unit tests and both-crate all-target Clippy on stable
+and MSRV plus formatting/file-size checks. Three separate neutralizations
+(reuse, predecessor retirement, late worker selection) each failed its intended
+single fixture; restoring the source passed all 60 native tests and left the
+frozen worktree clean. Original session 75717 exited 0 with
+`NATIVE_ATTEMPT_SELECTION_PASSED`; terminal log SHA-256 is
+`44b6d184bafd5ee4c546b7326d5408cfbe61b7a162ccaa33ec0d3a61bbde5fb8`.
+These are focused attempt-path checks under the original serial 1 GiB/zero-swap
+scope, not full stdio/native acceptance or final-review host gates.
