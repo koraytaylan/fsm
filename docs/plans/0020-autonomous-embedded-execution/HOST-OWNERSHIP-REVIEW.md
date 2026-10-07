@@ -748,3 +748,18 @@ without releasing the original owner or fabricating a completion. Execution
 and sensitivity are pending; focused stable/MSRV checks (session 17943) wait
 for the original full-gate process 50136 to retire before starting Cargo.
 The live frozen gate remains on `3314aaa`, so it does not cover this new test.
+
+Frozen source `3314aaa` has now passed the complete stable workspace debug
+gate, following formatting and source-size checks, including all 13 real
+production stop cases and the two original publication fixtures. Session
+63257 remains live and has started release workspace compilation; release,
+workspace Clippy, documentation, zero-dependency and downstream embedding
+stages are not yet proven. Kernel readback of the actual gate scope verifies
+`memory.max=1073741824`, `memory.swap.max=0` and `memory.swap.current=0`;
+the queued focused scope likewise uses zero swap. The new initialization
+fixture at `c378ad0` and its three isolated sensitivity variants remain
+queued behind the original gate/focused processes (sessions 17943/14081),
+so this debug pass does not cover them or complete a task or plan.
+Read-only installed-helper metadata currently reports mode 0711, owner
+nobody, device 2306 and inode 94765497; this is not a protected Root helper
+or evidence of native acceptance, and no helper mutation was attempted.
