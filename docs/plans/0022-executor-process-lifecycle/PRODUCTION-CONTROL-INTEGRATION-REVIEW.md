@@ -146,3 +146,13 @@ The existing inline borrowed emitter and absence of a stop handle are still
 shutdown gaps; borrowed MCP/HTTP constructors remain legacy and task 9401
 stays in progress, plan 0022 3/7. No claim of completed ownership integration
 or native acceptance is made.
+
+Terminal sensitivity session 22776 exited zero against f88cd99: changing only
+service::run selection to Runner::new makes its public-entry refusal test fail
+with exit 101; the controller restores exact source bytes in finally, reruns
+the original test successfully on stable and MSRV, and verifies clean tracked
+source. This proves the production service selector is exercised by the test,
+not merely the native factory. The scope verified one GiB/zero swap before
+compilation; public-service-selection-sensitivity.log SHA-256 is 2f12a67ade6f1ec4ab2838570bfd60dc8dcd5a4c9417902995c7aa5f3edf81a3.
+It proves unavailable-authority refusal wiring, not actual provisioned loop
+execution, bounded output/shutdown, or completion of ownership integration.
