@@ -509,3 +509,28 @@ long diagnostics, publication ordering, versioned discovery and transport
 activation remain concrete next steps; metadata/preparation-growth and output
 guard sensitivity remain required before final acceptance. No task is complete
 and no dependency is released.
+
+### Owned response waits and adapter unwind checkpoint
+
+Implementation commits `9ba4b09` and `fafc28f` retain the original native
+owner and session while the protocol adapter reads cancellation, ping and EOF,
+defers ordinary requests under eight-frame/16 MiB capacity limits, and catches
+adapter unwinds before requesting original-control shutdown.
+
+The serial milestone log `hosted-input-wait-corrected-check.log` has SHA-256
+`6a4f8636d74411c61a1cea86226e6b3cf53a8de7738c51ff100df9a6604fc96f`.
+Stable ran 123 CLI library tests successfully before the adapter-panic fixture
+was added; MSRV 1.89.0 ran all 124 successfully, including that fixture.
+CLI all-target Clippy passed on both toolchains, but the source changed
+between stages, so this is preliminary integration evidence rather than an
+exact-HEAD gate; the standalone stable adapter-panic check remains queued.
+Each Cargo stage waited for independent Cargo work to retire, checked memory
+thresholds, and asserted actual 1 GiB memory and zero-swap cgroup limits.
+
+The ninth deferred frame case reaches hosted method handling while the original
+owner is held, observes the busy response before dispatch, preserves the first
+deferred request, and verifies the reopened journal contains only the original
+creation. The capacity limit case is helper evidence; production byte-limit
+wiring and guard-neutralization evidence are still required. No task is done,
+no scheduling dependency is released, production stdio is not yet activated,
+and native platform and complete egress acceptance remain outstanding.
