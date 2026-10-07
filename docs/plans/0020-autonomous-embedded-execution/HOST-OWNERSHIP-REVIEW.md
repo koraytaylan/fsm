@@ -53,3 +53,20 @@ No autonomous discovery record, supported CLI-library API, journal/hash change,
 new public error code or production busy mapping is introduced. The full
 changed-source stable host gate and native CI are pending; task completion
 requires the complete 8901 inventory and later cross-plan lifecycle evidence.
+
+## Frozen initial-owner gate — 2026-10-07
+
+Session 45445 is terminal exit zero at
+`b817071829d1cf79f77122a93ac6784bb211ddca`; all eight stable host stages
+pass, including full workspace debug/release tests, all-target Clippy and
+warning-free docs, zero-dependency and embedding checks. All seven new host
+cases occur twice as passing tests in the workspace log. The wrapper verifies
+exact HEAD and a clean tracked worktree after every stage and at termination;
+independent post-terminal readback agrees. Log
+`execution-host-owner-full-stable-gate.log` under the task cache has SHA-256
+`13660141645039ecb648cd9e03359bf5308efe9e443243d9d90fa4e1f48aa3be`.
+The frozen `31c579d..b817071` range passes diff checks, and mailbox source
+matches the sensitivity-restored hash above. Kernel readback of the live gate
+PID 2228170 confirmed 1 GiB RAM, zero swap usage and no OOM kills; serial workers
+and cache-only artifacts were used. This local primitive gate does not complete
+task 8901, implement transport autonomy or replace platform CI/native acceptance.

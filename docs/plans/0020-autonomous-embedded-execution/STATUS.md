@@ -50,3 +50,12 @@ control and interaction/diagnostic separation remain unfinished; transports do
 not construct this owner yet, and bounded egress and autonomous scheduling are
 not established. Full changed-source stable host gate and platform CI remain
 pending, merged_as stays empty, and completion remains 0/7.
+
+### Complete initial-owner stable host gate — 2026-10-07
+
+Frozen b817071 passes all eight stable host stages in terminal session 45445,
+with all seven private host cases passing in debug and release. Exact-source,
+clean-worktree, log-hash and no-swap kernel readbacks are recorded in
+HOST-OWNERSHIP-REVIEW.md. This evidence-only update does not repeat unchanged
+code gates; cancellation, executor state, interaction and transport integration
+remain unfinished, and task 8901 stays in progress at 0/7 tasks complete.
