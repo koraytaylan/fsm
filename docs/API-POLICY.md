@@ -1352,22 +1352,24 @@ state. This is a finite transport admission policy; no error-code registry or
 persistence format changes. Legacy Mailbox::post closes on failed admission;
 production HTTP uses explicit admission results and returns overload to callers.
 
-The staged private MCP execution-host owner introduces no supported public Rust
-API or wire capability: existing transports do not construct it yet. Its owned
-command boundary preserves ordinary Store journal formats, hashes, idempotency
-and injected clocks while bounding retained pending/in-flight command admission.
-The reserved stop control rejects queued work without dispatch. Production
-transport busy mapping, executor scheduling, interaction and egress
-remain integration obligations; this private step does not advertise autonomous
-progress or extend the closed fsm.executor/1 discovery record.
+The private MCP execution-host owner introduces no supported public Rust API.
+Production Linux embedded stdio constructs its native owner; HTTP and borrowed
+helpers retain their separately specified contracts. Its owned command boundary
+preserves ordinary Store journal formats, hashes, idempotency and injected clocks
+while bounding retained pending/in-flight command admission. The reserved stop
+control rejects queued work without dispatch, and hosted RPC admission uses the
+existing server-busy code `-32004` before Store dispatch. Autonomous transport
+discovery uses the separately classified `fsm.executor/2` wire format; ownership
+and admission do not extend the closed `fsm.executor/1` record.
 
 Private host cancellation now has reserved, charged per-admitted-request control
 metadata and preserves response suppression before dispatch, original session
 generation/RPC identity and unclaimed journal keys. Coarse-loop dispatch always
 retains its existing cancellation flag, including calls without progress tokens;
 this corrects the existing cancellation behavior without adding an error code,
-wire capability, journal/hash format or supported Rust API. Executor state,
-interactive continuations, bounded egress and transport routing remain pending.
+wire capability, journal/hash format or supported Rust API. Native executor
+ownership, interactive continuations, bounded egress and transport routing have
+separate contracts and acceptance inventories.
 
 The staged private Linux native command owner now retains the existing
 OwnedNativeExecutor and drives its decision passes independently of client
