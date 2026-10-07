@@ -4902,3 +4902,17 @@ stable all-target CLI Clippy pass, and removing only the fallback deadline
 guard fails both blocked controls before restored tests pass. The detailed
 review records scope and retained evidence; no task is promoted, and full
 changed-source gates plus actual standalone/nonempty acceptance remain pending.
+
+### Final-error full stable gate verdict — 2026-10-07
+
+Frozen 35e8736 full stable gate session 68528 is terminal exit one with
+GATE_FAILED_STAGES=2. Formatting, size, workspace all-target Clippy,
+warning-denying documentation, zero dependencies and downstream embedding
+acceptance pass; debug/release workspace tests fail only mcp_execute_workflow,
+whose four scenarios stall at the first pending check_prerequisite effect.
+All thirteen production stop controls and four final-renderer process tests
+pass in the full gate. The complete log is
+native-final-error-full-stable-gate.log under the task cache; the scope
+asserted MemoryMax=1 GiB and MemorySwapMax=0, with observed swap usage zero.
+This failed aggregate does not release ownership integration or any dependent
+task, and source is no longer frozen by that terminal run.
