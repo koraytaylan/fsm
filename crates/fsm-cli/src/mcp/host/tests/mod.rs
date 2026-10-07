@@ -713,7 +713,7 @@ fn execution_host_cancel_during_a_coarse_loop_works_without_progress_metadata() 
     }
     let scratch = Scratch::new();
     let original = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let (owner, handle) = acceptance_owner::new(
+    let (owner, handle) = Owner::new(
         seeded(&scratch.0),
         CancelOnObservation {
             session: std::sync::Arc::clone(&original),
