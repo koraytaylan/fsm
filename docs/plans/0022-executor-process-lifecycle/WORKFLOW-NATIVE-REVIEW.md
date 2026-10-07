@@ -111,3 +111,14 @@ and the authorized unsandboxed rerun passed. These mocked controls do not prove
 native execution. Fresh frozen-source native stable/MSRV runs and the full host
 gate remain required after this classification; hosted CI remains unexecuted.
 Task 9401 remains in progress and plan completion stays 3/7.
+
+Frozen 594425b7c3cad104710095b2f0b2c3f0551dee46 subsequently passed the actual
+privileged workflow producer on stable and MSRV in serial session 44303,
+terminal exit zero; local-native-workflow-594425b-stable and
+local-native-workflow-594425b-msrv independently verify clean exact source,
+four executed groups/nine scenarios, every unique original verified-case marker,
+zero timeout and matching complete log SHA-256, with no retained authority.
+This verifies --ignored executes the original scenarios rather than skipping
+them. The controller's cgroup asserted 1073741824-byte memory.max and zero
+memory.swap.max; separate root-manager units remain outside that scope.
+The full host gate and hosted CI are still required and unexecuted here.
