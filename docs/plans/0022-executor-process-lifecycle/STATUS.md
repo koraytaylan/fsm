@@ -49,6 +49,10 @@ Actual stable systemd (six cases) and identity (ten cases) now pass at a8b11e9;
 the broker run exposed restrictive-umask memory-control read permissions,
 repaired in the private prototype with all ten broker cases passing on the
 working tree; frozen rerun, remaining suites and broader gates stay pending.
+Frozen 8895f99 subsequently passes all systemd/identity/broker/window cases;
+signal exposed a lease-client diagnostic targeting its root-owned namespace,
+repaired to use the existing writable work directory with both signal cases
+passing on the working tree; frozen complete rerun and broader gates stay open.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

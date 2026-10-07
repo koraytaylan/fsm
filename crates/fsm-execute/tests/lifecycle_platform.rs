@@ -39,7 +39,12 @@ fn native_fixture() {
     if std::env::var_os("FSM_NATIVE_FIXTURE_MEMORY_GUARD").is_some()
         || std::env::var_os("FSM_LIFECYCLE_PROBE_CONTAINED").is_some()
     {
-        verify_native_memory_limits(&directory);
+        let observation_directory = if mode.starts_with("identity-lease-client:") {
+            directory.join("work")
+        } else {
+            directory.clone()
+        };
+        verify_native_memory_limits(&observation_directory);
     }
     if mode == "identity-publication" {
         #[cfg(target_os = "linux")]

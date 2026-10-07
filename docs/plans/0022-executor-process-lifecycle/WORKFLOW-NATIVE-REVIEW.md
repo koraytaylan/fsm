@@ -1321,3 +1321,25 @@ log SHA-256 is
 5960da7dee2768abc0ae671476cbf87fe77fbd4280e2baba6538022d550c6d8b.
 All evidence remains in the explicit task cache; scopes verify one GiB/zero
 swap, the retained authority helper is unchanged, and broader gates stay open.
+
+### Frozen feasibility rerun and lease-client diagnostic repair
+
+Terminal session 71167 at clean 8895f99171e6392ce33b9ed2a0804a9f32ddc4aa
+passes systemd/identity/broker/window inventories (6/10/10/11 cases), then
+stops on signal's two missing lease-client-ready barriers; restart/facility/
+evidence were not executed. Reports in local-feasibility-memory-frozen-stable
+have SHA-256, respectively:
+8783dea36db80252de42d646e3efd21399ec496168d7e00a376d28feb91d9d85,
+1fa5a4e8664b29314022bfc09dc198e7ebc804a3fd017ae448d2f845a73d87a0,
+c3d7dcea643b3a3a8f8126fb852fd122efb7a3f5b9dbf98a4e8efa174f07a40a,
+dca8e05b1296aeb2739b53e0b96d34d036471216da66625575eb42dec8ab8c11;
+failed signal report SHA-256 is
+67d6a5c3b151af19cb10c307dcdecb860dd712e11478ce4ba4f7819213607a75.
+The unprivileged lease-client fixture receives the root-owned namespace as its
+directory; its preflight diagnostic must use the existing writable work
+directory instead. Kernel assertions still precede all lease-client effects.
+Terminal session 98932 passes stable/MSRV target Clippy, formatting and both
+actual signal cases with this working-tree repair. The preliminary report
+local-feasibility-memory-signal-repair.json records source_dirty=true and has
+SHA-256 630e41d4adfe456c253d418a3e062d69f3bdd678f96b79beb536458daea3cfd6.
+File-size/diff checks pass; frozen complete rerun and broader gates remain open.
