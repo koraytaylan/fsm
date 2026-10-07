@@ -3083,6 +3083,15 @@ may omit simultaneous additional failures. These messages do not authorize
 retry, launch, closure or settlement and leave original claims, reservations,
 helpers, deadlines and public/wire/persistent formats unchanged.
 
+A native transport worker MUST NOT finish solely because a later reap observes
+helper exit and both EOFs after its preceding response poll returned pending.
+It MUST retain that original transport and decode its response, or publish an
+explicit refusal, before finishing; delivery still requires actual worker join.
+A joined transport worker without a published response MUST refuse as uncertain
+rather than remain pending. Neither case grants native closure or claim release,
+retries an execute action, or renews the original absolute deadline; public APIs
+and persistent formats are unchanged.
+
 Binding validation MUST tolerate contention of its protected authority lock
 before any binding, entry authorization or manager submission mutation: only
 `authority busy` during acquisition may be retried, within one two-second

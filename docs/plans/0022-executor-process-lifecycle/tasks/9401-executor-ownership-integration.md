@@ -7,6 +7,8 @@ depends_on:
   - contained-handler-runner
 gated: false
 touches:
+  - crates/fsm-execute/src/run/native_client/worker.rs
+  - crates/fsm-execute/src/run/native_client/worker/tests.rs
   - crates/fsm-execute/src/containment/authority.rs
   - crates/fsm-execute/src/containment/allocator_native_tests.rs
   - crates/fsm-execute/src/containment/binding_contention_native_tests.rs

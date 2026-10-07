@@ -8,6 +8,83 @@ use std::{collections::BTreeMap, io::Write, sync::mpsc, time::Instant};
 mod startup;
 
 #[test]
+fn native_worker_decodes_response_when_retirement_arrives_after_pending_poll() {
+    let budget = Arc::new(Budget::default());
+    let _scope = Scope::enter(Some(&budget));
+    for valid in [true, false] {
+        let ticket = reserve_current().unwrap().unwrap();
+        let (inline, gate, mut output) = held_transport();
+        if valid {
+            frame(&mut output, &response());
+        } else {
+            output.write_all(b"invalid original response").unwrap();
+        }
+        drop(output);
+        let mut gate = Some(gate);
+        let worker = Worker::start_with_probes(
+            inline,
+            Arc::clone(&ticket),
+            move |request| {
+                if let Some(mut gate) = gate.take() {
+                    // The real child remains held until the original poll is
+                    // pending, then its actual exit/EOF reaches the later reap.
+                    gate.write_all(b"release\n").unwrap();
+                    let until = Instant::now() + Duration::from_secs(2);
+                    while !request.reap().unwrap() {
+                        assert!(Instant::now() < until);
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    assert!(!request.collected);
+                }
+            },
+            || {},
+        )
+        .unwrap_or_else(|_| panic!("worker startup failed"));
+        let mut request = NativeRequest {
+            inline: None,
+            worker: Some(worker),
+            ticket: Some(ticket),
+        };
+        let result = receive(&mut request);
+        if valid {
+            assert_eq!(result.unwrap(), response());
+        } else {
+            assert!(result.unwrap_err().contains("response"));
+        }
+        assert!(request.reap().unwrap());
+        assert!(request.progress().stdout_eof && request.progress().stderr_eof);
+        assert_eq!(budget.reserved(), 1);
+        drop(request);
+        assert_eq!(budget.reserved(), 0);
+    }
+}
+
+#[test]
+fn native_worker_joined_without_a_response_refuses_instead_of_waiting() {
+    let budget = Arc::new(Budget::default());
+    let _scope = Scope::enter(Some(&budget));
+    let worker = Worker {
+        shared: Arc::new(Shared::default()),
+        thread: Some(std::thread::spawn(|| {})),
+        joined: false,
+        collected: false,
+    };
+    let mut request = NativeRequest {
+        inline: None,
+        worker: Some(worker),
+        ticket: reserve_current().unwrap(),
+    };
+    assert_eq!(
+        receive(&mut request).unwrap_err(),
+        "native transport worker ended without a response; ownership remains uncertain"
+    );
+    assert!(!request.progress().is_retired());
+    assert_eq!(budget.reserved(), 1);
+    drop(request);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
 fn native_successor_refuses_startup_before_original_helper_retirement() {
     let budget = Arc::new(Budget::default());
     let _scope = Scope::enter(Some(&budget));

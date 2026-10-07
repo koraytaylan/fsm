@@ -157,6 +157,15 @@ impl Worker {
         ticket: Arc<Ticket>,
         after_retirement: impl FnOnce() + Send + 'static,
     ) -> Result<Self, Box<InlineRequest>> {
+        Self::start_with_probes(request, ticket, |_| {}, after_retirement)
+    }
+
+    fn start_with_probes(
+        request: InlineRequest,
+        ticket: Arc<Ticket>,
+        after_pending: impl FnMut(&mut InlineRequest) + Send + 'static,
+        after_retirement: impl FnOnce() + Send + 'static,
+    ) -> Result<Self, Box<InlineRequest>> {
         // Retain the original request if OS thread creation fails; dropping a
         // failed spawn closure must not drop/reap its helper on the owner.
         let original = Arc::new(Mutex::new(Some(request)));
@@ -173,7 +182,7 @@ impl Worker {
                     .unwrap_or_else(|error| error.into_inner())
                     .take()
                     .expect("original helper transferred once");
-                run(request, &published);
+                run_after_pending(request, &published, after_pending);
                 after_retirement();
             });
         match thread {
@@ -233,7 +242,13 @@ impl Worker {
                 self.collected = true;
                 Err(error)
             }
-            None => Ok(None),
+            None => {
+                self.collected = true;
+                Err(
+                    "native transport worker ended without a response; ownership remains uncertain"
+                        .into(),
+                )
+            }
         }
     }
 
@@ -266,7 +281,17 @@ impl Drop for Worker {
     }
 }
 
-fn run(mut request: InlineRequest, shared: &Shared) {
+fn run(request: InlineRequest, shared: &Shared) {
+    run_after_pending(request, shared, |_| {});
+}
+
+// A fixture may release its real helper after a pending poll; production does
+// nothing here and keeps the same original request and absolute deadline.
+fn run_after_pending(
+    mut request: InlineRequest,
+    shared: &Shared,
+    mut after_pending: impl FnMut(&mut InlineRequest),
+) {
     let mut response = None;
     loop {
         if shared.cancelled.load(Ordering::Acquire) {
@@ -285,6 +310,9 @@ fn run(mut request: InlineRequest, shared: &Shared) {
                 Err(error) => response = Some(Err(error)),
             }
         }
+        if response.is_none() {
+            after_pending(&mut request);
+        }
         let retired = request.reap().unwrap_or(false);
         let progress = request.progress();
         shared.progress.store(
@@ -293,7 +321,9 @@ fn run(mut request: InlineRequest, shared: &Shared) {
                 | (u8::from(progress.stderr_eof) << 2),
             Ordering::Release,
         );
-        if retired {
+        // Reap can observe exit/EOF after poll returned pending; decode on the
+        // next original poll before retiring this worker (SPEC transport rule).
+        if retired && response.is_some() {
             *shared
                 .response
                 .lock()
