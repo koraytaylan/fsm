@@ -38,9 +38,12 @@ they do not describe currently running work.
   both guard mutations pass after restoration, with no native acceptance yet.
   Read-only host preflight confirms noninteractive root access and a writable
   cgroup mount; local stable authority execution on 15d9f94 passed nine cases
-  including enrolled entry, private exec status and capture bounds, then failed
-  the broker fixture's root-owner assertion on configured operator UID 65534;
-  the native inventory and ordinary production workflows remain unaccepted.
+  including enrolled entry, private exec status and capture bounds; later
+  broker fixture corrections preserve strict guards and actual writer leases.
+  The latest run hit the old 30-second outer broker budget; matched retained
+  artifact cleanup completed, and the harness now records partial timeout
+  evidence with a finite 90-second expanded-case budget.
+  The native inventory and ordinary production workflows remain unaccepted.
 
 Detailed review and limits are in [OWNED-SESSION-REVIEW.md](OWNED-SESSION-REVIEW.md).
 

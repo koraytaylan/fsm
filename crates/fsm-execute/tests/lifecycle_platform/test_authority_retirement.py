@@ -52,6 +52,9 @@ class AuthorityRetirementTests(unittest.TestCase):
     def test_native_timeout_retains_exact_authority_for_unknown_state(self):
         self.check_main_teardown(retained=True, timeout=True)
 
+    def test_native_timeout_records_failed_case_and_partial_output_after_clear_teardown(self):
+        self.check_main_teardown(retained=False, timeout=True)
+
     def check_main_teardown(self, retained, initially_clear=True, timeout=False):
         report = MagicMock()
         artifact = MagicMock()
@@ -72,7 +75,8 @@ class AuthorityRetirementTests(unittest.TestCase):
         def run(command, **_options):
             if '--exact' in command:
                 if timeout:
-                    raise probe.subprocess.TimeoutExpired(command, 30)
+                    raise probe.subprocess.TimeoutExpired(command, 30, output=b'partial stdout',
+                                                          stderr=b'partial stderr')
                 name = command[command.index('--exact') + 1]
                 return SimpleNamespace(returncode=0, stderr=b'',
                                        stdout=('test ' + name + ' ... ok').encode())
@@ -98,15 +102,33 @@ class AuthorityRetirementTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'retained exact installed authority') as failure:
                     probe.main()
                 if timeout:
-                    self.assertIsInstance(failure.exception.__context__, probe.subprocess.TimeoutExpired)
+                    self.assertIsInstance(failure.exception.__cause__, probe.subprocess.TimeoutExpired)
                 self.assertFalse(any('remove' in call.args[0] for call in calls.call_args_list))
                 record = json.loads(report.with_name.return_value.write_text.call_args.args[0])
                 for name, value in installed.items():
                     self.assertEqual(record[name], value)
                 self.assertEqual(record['source_commit'], 'a' * 40)
+                self.assertFalse(record['passed'])
+                if timeout:
+                    self.assertTrue(record['cases'][0]['timed_out'])
+                    self.assertIsNone(record['cases'][0]['exit_code'])
             else:
-                self.assertEqual(probe.main(), 0)
+                self.assertEqual(probe.main(), 1 if timeout else 0)
                 self.assertEqual(sum('remove' in call.args[0] for call in calls.call_args_list), 1)
+                record = json.loads(report.write_text.call_args.args[0])
+                if timeout:
+                    self.assertFalse(record['passed'])
+                    self.assertTrue(record['cases'][0]['timed_out'])
+                    self.assertIsNone(record['cases'][0]['exit_code'])
+                else:
+                    broker = next(call for call in calls.call_args_list
+                                  if any(str(value).endswith('::provisioned_broker_access')
+                                         for value in call.args[0]))
+                    self.assertEqual(broker.kwargs['timeout'], 90)
+                    self.assertEqual(calls.call_args_list[0].kwargs['timeout'], 30)
+            if timeout:
+                report.with_name.return_value.write_bytes.assert_called_once_with(
+                    b'partial stdoutpartial stderr')
 
 
 if __name__ == '__main__':

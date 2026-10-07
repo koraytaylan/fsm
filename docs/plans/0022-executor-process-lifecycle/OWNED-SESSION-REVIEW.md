@@ -733,3 +733,32 @@ source-size checks (native-post-ack-lease-check.log). Failed native evidence
 remains in local-native-authority-12850e6; guarded matched teardown completed,
 and subsequent stat found no installed artifact or authority base.
 A new frozen native rerun remains required; no task status is promoted.
+
+### Expanded broker inventory timeout and matched retained-artifact recovery
+
+Frozen 4c06eeb probe terminated with exit 1 when expanded broker access
+exceeded the harness's 30-second outer budget; nine earlier case logs remain.
+No broker case log or aggregate verdict was produced by the old timeout path.
+The retirement guard conservatively retained exact artifact device 2306,
+inode 94765497 and digest 9b533b14aa5678603d5e6b407e5aad5e10140ce810319ac2b31d92cf5ed11659
+while a namespace remained, recording authority-retained.json.
+Subsequent host checks found the authority base and production-profile
+cgroups gone, with no live fixture/helper processes; an older identity-probe
+cgroup was distinguished by its different naming profile and left alone,
+and the remaining old failed production unit had MainPID=ControlPID=0 and
+an empty ControlGroup. The owned installer then verified original identity,
+root ownership/mode and digest before removing only the retained artifact.
+This documents matched fixture cleanup, not native closure inferred from
+namespace absence or acceptance of the timed-out broker case.
+
+The harness now budgets expanded broker access at 90 seconds, matching other
+long native cases, without changing any inner writer/closure deadlines or
+removing assertions. Timeout paths retain partial stdout/stderr, record a
+failed row with timed_out=true, unknown exit_code=null and timeout_seconds,
+and include partial rows in retained-artifact evidence with passed=false.
+The original TimeoutExpired is retained as the explicit exception cause.
+Six permanent mocked tests pass, including clear and unresolved teardown
+after timeout; changing only broker access back to 30 seconds fails the wiring
+test, and finally restoration passes (authority-broker-timeout-mutation.log
+and authority-broker-timeout-restored.log). No native subprocess is invoked
+by these tests; actual expanded inventory rerun remains required.

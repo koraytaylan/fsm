@@ -82,17 +82,24 @@ def main():
     installed = json.loads(subprocess.check_output(
         [*installer, 'install', '--source', str(authority), '--sha256', authority_digest], timeout=10))
     unrelated = None
+    native_timeout = None
     try:
         unrelated = subprocess.Popen(['/usr/bin/sleep', '300'])
         for case in INVENTORY:
             name = 'authority::allocator::native_tests::' + case
-            result = subprocess.run(['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
-                                     'FSM_NATIVE_FIXTURE_DEVICE=' + str(installed['device']),
-                                     'FSM_NATIVE_FIXTURE_INODE=' + str(installed['inode']),
-                                     'FSM_NATIVE_FIXTURE_SHA256=' + authority_digest,
-                                     str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never'],
-                                    cwd=repo, capture_output=True,
-                                    timeout=90 if case in ('provisioned_broker_disconnect', 'private_exec_status', 'native_capture_bounds') else 30)
+            command = ['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
+                       'FSM_NATIVE_FIXTURE_DEVICE=' + str(installed['device']),
+                       'FSM_NATIVE_FIXTURE_INODE=' + str(installed['inode']),
+                       'FSM_NATIVE_FIXTURE_SHA256=' + authority_digest,
+                       str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never']
+            # Broker access covers the expanded sequential owner/paired axes.
+            timeout = 90 if case in ('provisioned_broker_access', 'provisioned_broker_disconnect',
+                                    'private_exec_status', 'native_capture_bounds') else 30
+            try:
+                result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
+            except subprocess.TimeoutExpired as error:
+                native_timeout = error
+                result = subprocess.CompletedProcess(command, None, error.stdout or b'', error.stderr or b'')
             diagnostics = result.stdout + result.stderr
             assert len(diagnostics) <= 1024 * 1024, 'authority diagnostics exceed bound'
             log = args.report.with_name('authority-' + case + '.log')
@@ -100,7 +107,9 @@ def main():
             alive = unrelated.poll() is None
             passed = result.returncode == 0 and ('test ' + name + ' ... ok').encode() in diagnostics and alive
             rows.append({'case': case, 'passed': passed, 'log_sha256': hashlib.sha256(diagnostics).hexdigest(),
-                         'unrelated_survived_cleanup': alive})
+                         'unrelated_survived_cleanup': alive,
+                         'timed_out': native_timeout is not None, 'exit_code': result.returncode,
+                         'timeout_seconds': timeout})
             if not passed:
                 break
     finally:
@@ -113,10 +122,11 @@ def main():
         finally:
             if not authority_state_is_clear():
                 retention = dict(installed, source_commit=commit,
-                                 reason='native authority state remains unresolved')
+                                 reason='native authority state remains unresolved',
+                                 passed=False, gate_released=False, cases=rows)
                 args.report.with_name('authority-retained.json').write_text(
                     json.dumps(retention, indent=2) + '\n')
-                raise RuntimeError('retained exact installed authority for unresolved native state')
+                raise RuntimeError('retained exact installed authority for unresolved native state') from native_timeout
             subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                             '--inode', str(installed['inode']), '--sha256', authority_digest],
                            check=True, timeout=10)
