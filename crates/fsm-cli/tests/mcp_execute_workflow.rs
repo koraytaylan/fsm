@@ -256,19 +256,31 @@ struct Client {
     errors: PathBuf,
 }
 
+#[derive(Clone, Copy)]
+enum ExecutionMode {
+    Embedded,
+    Standalone,
+}
+
 impl Client {
     fn start(fixture: &Directory) -> Self {
+        Self::start_mode(fixture, ExecutionMode::Embedded)
+    }
+
+    fn start_mode(fixture: &Directory, mode: ExecutionMode) -> Self {
         let directory = &fixture.0;
         let errors = directory.join("stderr");
         let mut command = Command::new(fixture.executable());
         if let Some(entry) = &fixture.1 {
             command.env("HOME", text(entry, "home"));
         }
+        command.arg("--data-dir").arg(fixture.store()).arg("serve");
+        if matches!(mode, ExecutionMode::Embedded) {
+            command
+                .args(["--execute", "--handlers"])
+                .arg(directory.join("handlers.json"));
+        }
         let mut process = command
-            .arg("--data-dir")
-            .arg(fixture.store())
-            .args(["serve", "--execute", "--handlers"])
-            .arg(directory.join("handlers.json"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(fs::File::create(&errors).unwrap())
@@ -300,7 +312,9 @@ impl Client {
             "initialize",
             value(r#"{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"workflow-test","version":"1"}}"#),
         );
-        assert!(text(&initialized, "instructions").contains("fsm://executor"));
+        if matches!(mode, ExecutionMode::Embedded) {
+            assert!(text(&initialized, "instructions").contains("fsm://executor"));
+        }
         writeln!(
             client.input,
             "{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}}"
@@ -522,6 +536,24 @@ fn machine(handlers: &BTreeMap<String, Value>) -> Value {
 }
 
 fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: &str) {
+    run_scenario_mode(
+        failures,
+        terminal,
+        expected_calls,
+        phase,
+        ExecutionMode::Embedded,
+    );
+}
+
+fn run_scenario_mode(
+    failures: &str,
+    terminal: &str,
+    expected_calls: &[&str],
+    phase: &str,
+    mode: ExecutionMode,
+) {
+    #[cfg(not(target_os = "linux"))]
+    assert!(matches!(mode, ExecutionMode::Embedded));
     let directory = Directory::new();
     fs::write(directory.resource().join("phase"), "active").unwrap();
     write_handlers(&directory.0, &directory.resource(), failures);
@@ -532,6 +564,16 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
         "instance_create",
         value(r#"{"machine":"discovered_workflow","request_id":"run"}"#),
     );
+    #[cfg(target_os = "linux")]
+    let mut first_owner = if matches!(mode, ExecutionMode::Standalone) {
+        // Discovery precedes any pending effect; retire that host before the
+        // observer and the first standalone owner enter the actual race.
+        drop(client);
+        client = Client::start_mode(&directory, ExecutionMode::Standalone);
+        Some(workflow_race::start(&directory, "first"))
+    } else {
+        None
+    };
     client.call(
         "instance_send",
         value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
@@ -570,6 +612,10 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
     #[cfg(target_os = "linux")]
     if let Some(competitor) = &mut competitor {
         competitor.stop(&directory);
+    }
+    #[cfg(target_os = "linux")]
+    if let Some(first_owner) = &mut first_owner {
+        first_owner.stop(&directory);
     }
     let history = client.call(
         "instance_history",
@@ -758,4 +804,17 @@ fn stalled_workflow_diagnostics_bound_input_bytes_and_tolerate_partial_utf8() {
 #[ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md"]
 fn standalone_and_embedded_exclude_a_live_handler_tree() {
     run_scenario("race", "succeeded", &OPERATIONS, "active");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md"]
+fn two_standalone_executors_exclude_a_live_handler_tree() {
+    run_scenario_mode(
+        "race",
+        "succeeded",
+        &OPERATIONS,
+        "active",
+        ExecutionMode::Standalone,
+    );
 }

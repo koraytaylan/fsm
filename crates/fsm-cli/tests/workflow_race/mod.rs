@@ -1,4 +1,4 @@
-//! Actual standalone competition while an embedded handler tree remains live.
+//! Actual standalone competition while the original handler tree remains live.
 use super::*;
 use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
@@ -32,6 +32,7 @@ pub(super) fn hold_tree(directory: &Path) {
 pub(super) struct Competitor {
     child: Child,
     root: PathBuf,
+    errors: PathBuf,
 }
 impl Drop for Competitor {
     fn drop(&mut self) {
@@ -69,7 +70,7 @@ impl Competitor {
         );
         let report = stopped.join().unwrap().unwrap_or_else(|error| {
             panic!("standalone drain transport: {error}; actual last inventory: {last:?}; final stderr: {}",
-                bounded_executor_errors(&directory.0.join("race-stderr")));
+                bounded_executor_errors(&self.errors));
         });
         assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -82,6 +83,39 @@ impl Competitor {
         }
         assert!(self.child.wait().unwrap().success());
     }
+}
+
+pub(super) fn start(directory: &Directory, label: &str) -> Competitor {
+    let entry = directory.1.as_ref().unwrap();
+    let root = PathBuf::from(text(entry, "home")).join(format!("{label}-control"));
+    let output = directory.0.join(format!("{label}-stdout"));
+    let errors = directory.0.join(format!("{label}-stderr"));
+    let child = Command::new(directory.executable())
+        .env("HOME", text(entry, "home"))
+        .arg("--json")
+        .arg("--data-dir")
+        .arg(directory.store())
+        .args(["execute", "--handlers"])
+        .arg(directory.0.join("handlers.json"))
+        .args(["--poll-interval-ms", "5", "--control-dir"])
+        .arg(&root)
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&output).unwrap())
+        .stderr(fs::File::create(&errors).unwrap())
+        .spawn()
+        .unwrap();
+    let mut competitor = Competitor {
+        child,
+        root,
+        errors: errors.clone(),
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !fs::read_to_string(&errors).unwrap().contains("mode=paired") {
+        assert!(competitor.child.try_wait().unwrap().is_none());
+        assert!(Instant::now() < deadline, "standalone did not initialize");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    competitor
 }
 
 pub(super) fn contend(directory: &Directory, client: &mut Client) -> Competitor {
@@ -106,36 +140,12 @@ pub(super) fn contend(directory: &Directory, client: &mut Client) -> Competitor 
         }
         assert!(
             Instant::now() < deadline,
-            "embedded handler tree did not enter"
+            "original handler tree did not enter"
         );
         client.call("instance_get", value(r#"{"instance_id":"inst-run"}"#));
         std::thread::sleep(Duration::from_millis(10));
     };
-    let entry = directory.1.as_ref().unwrap();
-    let root = PathBuf::from(text(entry, "home")).join("race-control");
-    let output = directory.0.join("race-stdout");
-    let errors = directory.0.join("race-stderr");
-    let child = Command::new(directory.executable())
-        .env("HOME", text(entry, "home"))
-        .arg("--json")
-        .arg("--data-dir")
-        .arg(directory.store())
-        .args(["execute", "--handlers"])
-        .arg(directory.0.join("handlers.json"))
-        .args(["--poll-interval-ms", "5", "--control-dir"])
-        .arg(&root)
-        .stdin(Stdio::null())
-        .stdout(fs::File::create(&output).unwrap())
-        .stderr(fs::File::create(&errors).unwrap())
-        .spawn()
-        .unwrap();
-    let mut competitor = Competitor { child, root };
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while !fs::read_to_string(&errors).unwrap().contains("mode=paired") {
-        assert!(competitor.child.try_wait().unwrap().is_none());
-        assert!(Instant::now() < deadline, "standalone did not initialize");
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    let mut competitor = start(directory, "race");
     // A waiting foreign owner has no Start directive and is deliberately quiet.
     // Observe kernel reads across an interval after startup instead of requiring
     // a launch-oriented diagnostic that would misclassify correct exclusion.

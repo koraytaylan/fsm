@@ -15,6 +15,7 @@ CASES = (
     ('failures_after_suspension_restore_the_resource', 2),
     ('cleanup_failures_are_explicit_after_success_or_partial_work', 2),
     ('standalone_and_embedded_exclude_a_live_handler_tree', 1),
+    ('two_standalone_executors_exclude_a_live_handler_tree', 1),
 )
 
 

@@ -869,3 +869,22 @@ Two earlier controller prechecks refused ambiguous replacement patterns before
 changing source; their logs remain retained. This proves the tested retry and
 deadline assertions are load-bearing, not complete concurrency integration or
 other native verifier sensitivity; task 9401 remains in progress.
+
+## Two standalone owners: fixture implementation
+
+A sixth provisioned workflow group now exercises two actual standalone
+executors against the same original physical store, expanding the producer
+inventory from ten to eleven scenarios without dropping an existing group.
+Handler discovery occurs with no pending effects; that embedded discovery host
+is then retired before a plain MCP observer and the first standalone owner
+start. The observer sends begin, the first standalone's real handler publishes
+the parent/descendant marker, and a second standalone starts during that live
+tree. Existing exact live-process identities, original single claim/unresolved
+owner, unchanged external calls and journal checks remain in the race interval;
+both standalone owners must subsequently confirm Drain/Stopped and exit zero.
+The original full workflow history, seven acknowledged settlements, resource
+state, root native closures, unused-domain and kernel memory receipt assertions
+remain required. Control roots and diagnostic files are distinct per owner.
+Stable/MSRV all-target executor/CLI Clippy and existing admission/cleanup controls
+passed in terminal session 60447; actual eleven-scenario execution is pending.
+No production capability changed and task 9401 remains in progress.

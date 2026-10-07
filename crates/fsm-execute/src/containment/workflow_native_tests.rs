@@ -317,6 +317,10 @@ pub(super) fn run() {
             "standalone_and_embedded_exclude_a_live_handler_tree",
             vec!["race"],
         ),
+        (
+            "two_standalone_executors_exclude_a_live_handler_tree",
+            vec!["race"],
+        ),
     ]
     .into_iter()
     .enumerate()
