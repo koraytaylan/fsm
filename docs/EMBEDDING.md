@@ -1,5 +1,7 @@
 # Embedding fsm as a library
 
+Instance event and deadline applications invalidate subscribed instance resources; list-changed notifications indicate listing membership changes from machine definition, instance creation or invocation, rather than each transition.
+
 Owned stdio continues processing initialization notifications and emitting bounded initialization warnings while waiting for owner replies, without repeating warnings on deferred dispatch; broken stderr allows return after owner retirement while operator drainage remains false.
 
 Pipeline::advance_native_settled now checks the completion proof’s physical store binding before settlement replay or an outcome event, even when the checked original contract has no advance; matching request-ledger bytes alone cannot authorize application to a replaced directory.

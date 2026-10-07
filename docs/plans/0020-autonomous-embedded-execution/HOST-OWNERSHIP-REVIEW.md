@@ -774,3 +774,24 @@ advance must defer until that scope releases. It then requires response
 before instance update, actual completed state, durable request identity and
 verified reopened journal. Runtime and phase-specific guard sensitivity
 remain pending; this adds no new public test API or fabricated completion.
+
+Frozen `3314aaa` full stable session 63257 terminated with exit 0 and all
+eight required stages passed: formatting, file size, complete workspace
+debug/release, workspace all-target Clippy, warning-denying documentation,
+zero dependencies and downstream embedding. Terminal log SHA-256 is
+`ac13dea7d3bedae5173bbe814dfd76ec10c80b7ba400a2ed32e07d15578a7ca1`.
+It predates the two newer test fixtures. Their first queued compilation
+failed on an explicit move of borrowed I/O; the next failed on private Live
+struct update, and a subsequent runtime fixture selected instance_send
+instead of instance_elicit. The corrected fixture then exposed its own
+wrong expectation of a list-changed notification for EventApplied. The
+existing membership contract is now explicit in SPEC before correcting
+that expectation, retaining response order, watermark, completed state,
+request identity and verified prefix assertions. No production feed code
+changed. Initialization sensitivity session 14081 stopped on its failed
+prerequisite before any mutation, and phase session 45771 failed compilation.
+Corrected session 56765 terminates with exit 0: stable/MSRV each pass all
+128 CLI library tests and all-target CLI Clippy, including both new cases.
+Its terminal log SHA-256 is `730e16d7c60908d059802ae2b3a87f4b22e531bbe70af4a2771e02b29483f36f`.
+New-source full acceptance, initialization/publication sensitivity and
+installed native acceptance remain open; no task or dependency is released.

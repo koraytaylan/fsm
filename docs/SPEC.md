@@ -3351,3 +3351,10 @@ Elicitation MUST acquire its application publication guard only after the
 client has answered, so unanswered questions do not suppress autonomous
 updates. Scoped guards MUST retire on response completion, cancellation,
 disconnect or unwind, without undoing committed idempotent results.
+
+Hosted change-feed listing invalidation MUST remain membership based:
+`MachineDefined`, `InstanceCreated` and `InstanceInvoked` may produce one
+coalesced `notifications/resources/list_changed` per observed batch; an
+`EventApplied` or `DeadlineApplied` alone MUST NOT produce that notification.
+Application to an existing instance still invalidates its subscribed resource
+URI after the original application response publication scope releases.

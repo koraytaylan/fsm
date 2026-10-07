@@ -1,5 +1,7 @@
 # Releasing
 
+Clarify the existing membership-based hosted change feed and correct the elicitation publication fixture to require its single instance invalidation after response admission, retaining durable completed-state and verified-journal checks.
+
 Owned stdio fixes initialization warning and notification handling during owner-response waits and avoids waiting for impossible broken-stderr drainage after original-owner retirement; production stderr lifecycle regressions provide the focused acceptance cases, with broader changed-source acceptance pending.
 
 The provisional native original-outcome advance checks physical store identity before replay or event application; a protected native control replaces the original directory inode after durable Acked settlement and asserts refusal with unchanged journal/state, restoring the original directory before subsequent fixture work, while changed-source compilation and native acceptance remain pending.

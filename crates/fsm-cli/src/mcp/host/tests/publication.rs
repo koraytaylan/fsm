@@ -209,35 +209,35 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
     let caller = std::thread::spawn(move || {
         let mut input = OwnedInput::start(move || BufReader::new(server), || false).unwrap();
         let mut pending = crate::mcp::notify::pending_input::PendingInput::default();
-        let io = RefCell::new(SessionIo::with_owned_wait(
-            &adapter_output,
-            &mut input,
-            &mut pending,
-        ));
-        let reply = handle_request_hosted(
-            &adapter_output,
-            &session,
-            &path,
-            &mut FixedClock::new(2000, 0),
-            &mut true,
-            &mut Live {
-                client_elicitation: true,
-                ..Live::default()
-            },
-            value("4"),
-            "tools/call",
-            Some(value(
-                r#"{"name":"instance_send","arguments":{"instance_id":"inst-question","event":"decide","request_id":"question-publication"}}"#,
-            )),
-            "elicitation publication case",
-            Some(&io),
-            None,
-        );
-        response_queued.send(()).unwrap();
-        resume.recv_timeout(Duration::from_secs(5)).unwrap();
-        // The original request's I/O scope survives real response admission.
-        drop(io);
-        reply
+        {
+            let io = RefCell::new(SessionIo::with_owned_wait(
+                &adapter_output,
+                &mut input,
+                &mut pending,
+            ));
+            let mut live = Live::default();
+            live.client_elicitation = true;
+            let reply = handle_request_hosted(
+                &adapter_output,
+                &session,
+                &path,
+                &mut FixedClock::new(2000, 0),
+                &mut true,
+                &mut live,
+                value("4"),
+                "tools/call",
+                Some(value(
+                    r#"{"name":"instance_elicit","arguments":{"instance_id":"inst-question","event":"decide","request_id":"question-publication"}}"#,
+                )),
+                "elicitation publication case",
+                Some(&io),
+                None,
+            );
+            response_queued.send(()).unwrap();
+            resume.recv_timeout(Duration::from_secs(5)).unwrap();
+            // The original request's I/O scope survives real response admission.
+            reply
+        }
     });
     let Next::Command(prepared) = owner
         .mailbox
@@ -311,7 +311,8 @@ fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defer
     assert_eq!(committed, before + 2);
     assert_eq!(deferred, 0);
     assert_eq!(held_watermark, waiting_watermark);
-    assert_eq!(published, 2);
+    // SPEC: EventApplied changes the subscribed instance, not listing membership.
+    assert_eq!(published, 1);
     assert!(output.drained());
     let frames: Vec<_> = sink.text().lines().map(value).collect();
     let response = frames

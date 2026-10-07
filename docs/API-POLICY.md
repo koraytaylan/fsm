@@ -1,5 +1,7 @@
 # API and version policy
 
+The hosted publication contract now explicitly preserves existing membership-based resource-list invalidation: an event application invalidates subscribed instance resources without a list-changed notification by itself; this clarification changes no wire behavior, API, format or hash domain.
+
 Owned stdio initialization warnings and notifications now retain their session semantics during owner-response waits; broken stderr permits return after original-owner retirement without claiming delivery, with no public API, error-code, format or hash-domain change.
 
 Native original-settlement outcome advance now rechecks the protected proof against the writer’s current physical store directory before replay or event application; replaced/copied directories retain the wrapped store/execution_evidence refusal, with no signature, journal format or hash-domain change.
