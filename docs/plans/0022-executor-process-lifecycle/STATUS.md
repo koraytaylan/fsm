@@ -28,6 +28,8 @@ Frozen 3da1a31a..5a826175 passes genuine standalone death after verified native 
 
 The retained helper is root-owned in the host namespace with its expected digest and 0711 permissions; the restricted sandbox maps host root to nobody. No ownership repair is required, and failed-run artifacts remain preserved.
 
+Frozen 8d5b705e..ad0ac436 passes actual SIGKILL of an independent public Pipeline caller after its durable stopped append while holding the writer, then exact stopped-state recovery, claim exclusion until single-consumption settlement and original event delivery without another allocation on stable/MSRV; review digest `85117ec9330d163ab8c0e8a3f674a38c60a931c3205e15c81a4d064e44b1dde8`. Lifecycle tests, all-target executor Clippy, the genuine enrolled native case, formatting and size checks pass. This proves the public Pipeline cut, not every standalone/embedded/public-tick host at every boundary; remaining claim and post-settlement process cuts and full CI keep 9401 in progress.
+
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cdcc311f66d08ae7b640731ed4a159d2aaf25863b59dd833afca7a99b3e9a9c9`.
