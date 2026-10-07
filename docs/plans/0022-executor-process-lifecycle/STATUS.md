@@ -4867,3 +4867,17 @@ OWNED-SESSION-REVIEW.md records the scope and remaining proof obligations.
 The reports explicitly keep production_backend=false and gate_released=false;
 this is not full native-matrix or ordinary CLI workflow acceptance. Plan
 progress remains 3/7 and task 9401 remains in progress.
+
+### Full current Linux native matrices — 2026-10-07
+
+Frozen b7967cc18c482cd55e6bc4e0d94a64447dbad88d passed all 81 native cases
+on stable Rust 1.98.1 (session 28542) and MSRV 1.89.0 (session 92719), both
+terminal exit zero, including the expected failed neutralized-final-kill
+control. All nine suite report hashes were independently verified against
+each matrix summary. Retained evidence is local-native-matrix-b7967cc-stable
+and local-native-matrix-b7967cc-msrv in the task cache. Serial controller/build
+scopes asserted MemoryMax=1 GiB and MemorySwapMax=0; observed stable controller
+MemorySwapCurrent was zero, without extending that claim to root-manager units.
+Both summaries retain gate_released=false. Ordinary production nonempty CLI
+workflow acceptance, later-source full host gates, native macOS/Windows axes
+and remaining integration requirements remain incomplete; progress stays 3/7.
