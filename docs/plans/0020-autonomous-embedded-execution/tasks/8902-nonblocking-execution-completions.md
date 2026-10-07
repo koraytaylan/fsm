@@ -18,7 +18,7 @@ touches:
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Nonblocking Execution Completions
@@ -69,3 +69,11 @@ owner from answering another eligible request.
   remain green; a journal reopened after interrupted settlement verifies.
 
 - **Done when:** real process and MCP fixtures pass the low-level `async_completion` and private CLI `execution_host` inventories without handler waits on the store owner, while existing executor recovery and public-surface gates pass under the stable host gate.
+
+Implementation checkpoint: owned stdio now selects original raw transport
+worker polling with reserved count/byte capacity and join-gated retirement;
+standalone defaults remain synchronous. Real held-child tests cover polling,
+cancellation, response storage and original worker retirement, pending runtime
+verification. Helper spawn, receipt verification, durable completion storage,
+installed-handler responsiveness and lifecycle fault acceptance remain open;
+no prerequisite is released and merged_as remains empty.

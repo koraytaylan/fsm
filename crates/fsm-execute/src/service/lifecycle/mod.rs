@@ -31,6 +31,7 @@ pub struct OwnedNativeExecutor {
     store: Option<Store>,
     control: ExecutorControl,
     closures: Closures,
+    workers: Option<std::sync::Arc<crate::run::native_client::worker::Budget>>,
 }
 
 impl OwnedNativeExecutor {
@@ -63,6 +64,7 @@ impl OwnedNativeExecutor {
             store: Some(store),
             control: ExecutorControl::new(admission),
             closures: Closures::default(),
+            workers: None,
         })
     }
 
@@ -84,6 +86,16 @@ impl OwnedNativeExecutor {
         self.runner.native_ready()
     }
 
+    /// Select original transport worker polling for this owned driver.
+    ///
+    /// Standalone defaults remain synchronous; this does not offload startup,
+    /// receipt verification or journal settlement, nor grant native closure.
+    pub fn enable_worker_polling(&mut self) {
+        self.workers.get_or_insert_with(|| {
+            std::sync::Arc::new(crate::run::native_client::worker::Budget::default())
+        });
+    }
+
     /// Access the owned journal until confirmed shutdown releases it.
     pub fn store_mut(&mut self) -> Option<&mut Store> {
         self.store.as_mut()
@@ -91,6 +103,7 @@ impl OwnedNativeExecutor {
 
     /// Run an explicit ordinary tick, or admission-free shutdown after stop.
     pub fn tick(&mut self, clock: &mut dyn Clock, now_ms: i64) -> Vec<String> {
+        let _workers = crate::run::native_client::worker::Scope::enter(self.workers.as_ref());
         if self.control.requested() {
             return self.poll(clock, now_ms);
         }
@@ -111,6 +124,7 @@ impl OwnedNativeExecutor {
     /// Observe original completions and bounded closure work without admission.
     /// No pending effects, retries or machine deadlines are scheduled here.
     pub fn poll(&mut self, clock: &mut dyn Clock, now_ms: i64) -> Vec<String> {
+        let _workers = crate::run::native_client::worker::Scope::enter(self.workers.as_ref());
         let Some(store) = self.store.as_mut() else {
             return Vec::new();
         };

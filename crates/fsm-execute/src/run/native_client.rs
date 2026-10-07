@@ -11,6 +11,8 @@ use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+pub(crate) mod worker;
+
 mod claimed;
 mod completion;
 mod discovery;
@@ -119,7 +121,7 @@ pub struct NativeHelperProgress {
 }
 
 /// One owned helper request; claim and closure verification belong to its host.
-pub struct NativeRequest {
+struct InlineRequest {
     child: Child,
     input: Option<UnixStream>,
     pending: Vec<u8>,
@@ -130,6 +132,96 @@ pub struct NativeRequest {
     deadline: Instant,
     error: Option<String>,
     collected: bool,
+}
+
+/// One original transport, with explicitly selected owned worker polling.
+pub struct NativeRequest {
+    inline: Option<InlineRequest>,
+    worker: Option<worker::Worker>,
+    ticket: Option<std::sync::Arc<worker::Ticket>>,
+}
+
+impl NativeRequest {
+    /// Start the fixed helper, preserving synchronous standalone construction.
+    pub fn start(
+        namespace: &str,
+        generation: u64,
+        request: &Value,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        let prepared = PreparedRequest::prepare(namespace, generation, request, timeout)?;
+        let ticket = worker::reserve_current()?;
+        let inline = InlineRequest::start_prepared(prepared)?;
+        Ok(Self {
+            inline: Some(inline),
+            worker: None,
+            ticket,
+        })
+    }
+
+    fn ensure_worker(&mut self) -> Result<(), String> {
+        if self.worker.is_some() {
+            return Ok(());
+        }
+        if self.ticket.is_none() {
+            self.ticket = worker::reserve_current()?;
+        }
+        let Some(ticket) = self.ticket.as_ref() else {
+            return Ok(());
+        };
+        let inline = self
+            .inline
+            .take()
+            .expect("original inline transport retained");
+        match worker::Worker::start(inline, std::sync::Arc::clone(ticket)) {
+            Ok(worker) => {
+                self.worker = Some(worker);
+                Ok(())
+            }
+            Err(inline) => {
+                self.inline = Some(*inline);
+                Err("native transport worker unavailable; original helper retained".into())
+            }
+        }
+    }
+
+    /// Poll the original transport; worker mode never performs helper I/O here.
+    pub fn poll(&mut self) -> Result<Option<Value>, String> {
+        self.ensure_worker()?;
+        match self.worker.as_mut() {
+            Some(worker) => worker.poll(),
+            None => self.inline.as_mut().expect("original transport").poll(),
+        }
+    }
+
+    /// Request original helper cancellation without granting domain closure.
+    pub fn cancel(&mut self) -> Result<(), String> {
+        self.ensure_worker()?;
+        match self.worker.as_mut() {
+            Some(worker) => {
+                worker.cancel();
+                Ok(())
+            }
+            None => self.inline.as_mut().expect("original transport").cancel(),
+        }
+    }
+
+    /// Read actual cached helper observations, with worker retirement explicit.
+    pub fn progress(&self) -> NativeHelperProgress {
+        match self.worker.as_ref() {
+            Some(worker) => worker.progress(),
+            None => self.inline.as_ref().expect("original transport").progress(),
+        }
+    }
+
+    /// Observe actual helper retirement; worker mode joins only a finished worker.
+    pub fn reap(&mut self) -> Result<bool, String> {
+        self.ensure_worker()?;
+        match self.worker.as_mut() {
+            Some(worker) => Ok(worker.reap()),
+            None => self.inline.as_mut().expect("original transport").reap(),
+        }
+    }
 }
 
 /// Immutable bounded startup material; no store, sockets or child ownership.
@@ -176,19 +268,7 @@ impl PreparedRequest {
     }
 }
 
-impl NativeRequest {
-    /// Start the fixed provisioned helper with one bounded request and deadline.
-    pub fn start(
-        namespace: &str,
-        generation: u64,
-        request: &Value,
-        timeout: Duration,
-    ) -> Result<Self, String> {
-        Self::start_prepared(PreparedRequest::prepare(
-            namespace, generation, request, timeout,
-        )?)
-    }
-
+impl InlineRequest {
     fn start_prepared(prepared: PreparedRequest) -> Result<Self, String> {
         let PreparedRequest {
             namespace,
@@ -233,7 +313,7 @@ impl NativeRequest {
     }
 
     /// Poll bounded I/O; return a response only after successful reap and EOF.
-    pub fn poll(&mut self) -> Result<Option<Value>, String> {
+    fn poll(&mut self) -> Result<Option<Value>, String> {
         if let Some(error) = &self.error {
             return Err(error.clone());
         }
@@ -287,7 +367,7 @@ impl NativeRequest {
     }
 
     /// Request helper death; this never proves handler or native domain closure.
-    pub fn cancel(&mut self) -> Result<(), String> {
+    fn cancel(&mut self) -> Result<(), String> {
         self.error
             .get_or_insert_with(|| "native client cancelled; claim remains uncertain".into());
         self.input.take();
@@ -301,7 +381,7 @@ impl NativeRequest {
     }
 
     /// Read the last observed cleanup facts without polling, I/O or claim release.
-    pub fn progress(&self) -> NativeHelperProgress {
+    fn progress(&self) -> NativeHelperProgress {
         NativeHelperProgress {
             reaped: self.status.is_some(),
             stdout_eof: self.stdout.eof,
@@ -310,7 +390,7 @@ impl NativeRequest {
     }
 
     /// Observe actual process reap and both stream EOFs without releasing claims.
-    pub fn reap(&mut self) -> Result<bool, String> {
+    fn reap(&mut self) -> Result<bool, String> {
         let stdout = self.stdout.drain();
         let stderr = self.stderr.drain();
         let process = if self.status.is_none() {
@@ -337,7 +417,7 @@ impl NativeRequest {
     }
 }
 
-impl Drop for NativeRequest {
+impl Drop for InlineRequest {
     fn drop(&mut self) {
         let _ = self.cancel();
         let deadline = Instant::now() + Duration::from_secs(1);

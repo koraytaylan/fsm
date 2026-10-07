@@ -46,7 +46,7 @@ pub(in crate::mcp) struct NativeOwner<C> {
 
 impl<C: Clock> NativeOwner<C> {
     pub(in crate::mcp) fn new(
-        driver: OwnedNativeExecutor,
+        mut driver: OwnedNativeExecutor,
         clock: C,
         diagnostics: DiagnosticOutput,
         interval: Duration,
@@ -61,6 +61,7 @@ impl<C: Clock> NativeOwner<C> {
                 "native host interval or shutdown timeout outside finite bounds",
             ));
         }
+        driver.enable_worker_polling();
         let mailbox = Arc::new(Mailbox::default());
         let handle = Handle {
             mailbox: Arc::clone(&mailbox),

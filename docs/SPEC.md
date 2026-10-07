@@ -3344,6 +3344,22 @@ a retained preparation, bound entry or original outcome ready, stdio MUST
 schedule its next ordinary owner decision without waiting for the configured
 timer, while preserving application-command service between decision passes.
 
+The opt-in owned native driver's worker polling mode MUST retain the original
+transport request on its worker, perform its socket polling, reap and final
+transport drop there, and expose only bounded response/error and actual helper
+observations to the owner. A transport MUST NOT report retirement before its
+original worker is joined and its actual reap and both EOFs are observed.
+The pool MUST reserve one of 128 transport slots and a fixed 16 MiB transport
+charge before helper startup; the charge MUST remain until both owner handle
+and worker retire. Already-running transferred helpers MUST reserve before
+worker adoption and MUST retain their original process, streams and deadline,
+without a new helper startup. Parsed response storage MUST be preflighted at 2 MiB using
+Value storage, String/array capacities and a conservative 4096 bytes per object
+entry. Refusal MUST retain uncertain native ownership and MUST NOT settle a
+different attempt. Synchronous standalone construction and polling remain
+unchanged. This mode does not yet move helper startup or receipt verification
+off the owner or establish durable-completion storage accounting.
+
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is
 permanently broken; it MUST retain the initiating failure and actual output

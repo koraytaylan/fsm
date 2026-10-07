@@ -4,7 +4,7 @@ The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this
 file; task frontmatter is authoritative and registration and integration
 evidence are coordinator-owned.
 
-- **Status:** Registered by hand; execution-host-ownership is in progress;
+- **Status:** Registered by hand; execution-host-ownership and nonblocking-execution-completions are in progress;
   private Store ownership, bounded admission and reserved cancellation are
   implemented; a private native owner now retains executor state and drives
   quiet decision passes; initial Linux production stdio wiring is implemented
@@ -293,3 +293,16 @@ ordinary decision for retained readiness. Real installed-handler completion,
 held-handler responsiveness, transport worker isolation, eight-completion
 fairness, long diagnostics and HTTP remain unfinished; the working stdio
 path remains the priority, with 0/7 tasks complete and no dependency release.
+
+### Original raw transport worker polling — implementation pending verification
+
+Task 8902 starts with actual owned-stdio selection of worker polling: raw
+transport socket exchange, reap and final drop move with the original request;
+new helper startup reserves a pool slot and transport charge first, transferred
+helpers reserve before adoption, and response/retirement requires actual worker
+join plus reap and both EOFs. Four actual held-child/storage/capacity fixtures
+are added without a public test-access API. Compilation and runtime checks
+remain pending; startup, receipt verification, durable-completion accounting,
+real process/MCP responsiveness and worker panic/failure cases are unfinished.
+Task 8901 remains in progress, no prerequisite is released, and completion
+remains 0/7; native helper fixtures do not imply installed-authority acceptance.

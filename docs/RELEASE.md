@@ -1,5 +1,16 @@
 # Releasing
 
+OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
+selects it while standalone defaults remain synchronous. Original raw helper
+requests move to reserved worker polling for socket exchange, reap and final
+transport drop; responses require actual worker join plus helper reap and both
+EOFs. Each of 128 pool slots reserves 16 MiB before helper startup and retains
+that charge until owner handle and worker retire, with a 2 MiB parsed-response
+storage preflight. Startup and receipt verification still run on the owner,
+and durable-completion storage and worker panic acceptance remain pending.
+This additive provisional API is inventoried; no wire or journal format,
+core semantics, dependency or MSRV changes are introduced.
+
 OwnedNativeExecutor adds has_ready_native_work, a read-only retained-local
 readiness query performing no I/O, logical clock sampling or ownership change;
 it grants no completion or closure authority. Linux owned stdio uses readiness

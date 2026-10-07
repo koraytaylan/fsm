@@ -361,6 +361,7 @@ method fsm_execute::service::ExecutorControl::report
 method fsm_execute::service::ExecutorControl::stop
 method fsm_execute::service::ExecutorControl::wait_for_request
 method fsm_execute::service::OwnedNativeExecutor::control
+method fsm_execute::service::OwnedNativeExecutor::enable_worker_polling
 method fsm_execute::service::OwnedNativeExecutor::from_owned_parts
 method fsm_execute::service::OwnedNativeExecutor::handler_table
 method fsm_execute::service::OwnedNativeExecutor::has_ready_native_work

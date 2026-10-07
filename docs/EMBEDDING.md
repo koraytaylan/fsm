@@ -2805,3 +2805,14 @@ scheduler timer expires, servicing application commands between decisions.
 The provisional executor public-surface inventory records this additive method;
 this has no journal, wire-format, core, dependency or MSRV consequence. Real
 preparation, bound-entry and completion wake acceptance remains pending.
+
+OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
+selects it while standalone defaults remain synchronous. Original raw helper
+requests move to reserved worker polling for socket exchange, reap and final
+transport drop; responses require actual worker join plus helper reap and both
+EOFs. Each of 128 pool slots reserves 16 MiB before helper startup and retains
+that charge until owner handle and worker retire, with a 2 MiB parsed-response
+storage preflight. Startup and receipt verification still run on the owner,
+and durable-completion storage and worker panic acceptance remain pending.
+This additive provisional API is inventoried; no wire or journal format,
+core semantics, dependency or MSRV changes are introduced.
