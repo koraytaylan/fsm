@@ -2601,3 +2601,10 @@ host selection change, not completion of bounded shutdown or recovery.
 Its borrowed emitter still executes inline and this loop has no stop handle;
 callers requiring independent control should use the owned/paired lifecycle
 drivers, and full service-loop shutdown integration remains unfinished.
+
+Exclusive public service loops now probe and release the writer when native
+admission leaves a tick without a write attempt, so a held writer still
+produces its store diagnosis and the existing three-blocked-tick exec/mode
+refusal; paired loops keep their existing writer-on-demand behavior. The probe
+claims no execution ownership and changes no journal/hash format, error code,
+public signature or shutdown deadline; complete bounded shutdown remains open.

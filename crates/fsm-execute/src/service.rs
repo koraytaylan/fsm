@@ -205,7 +205,7 @@ pub fn run(
         // same instant, while the store's own mutators go on consuming clock
         // ticks as they journal.
         let now_ms = clock.now_ms();
-        let outcome = tick_reporting(
+        let mut outcome = tick_reporting(
             &mut watcher,
             &mut scheduler,
             &mut runner,
@@ -214,6 +214,17 @@ pub fn run(
             clock,
             now_ms,
         );
+        // Native admission can refuse before a tick has journal writes, but
+        // exclusive mode still promises to detect a competing writer.
+        if config.contention == Contention::Fail && !outcome.writer_unavailable {
+            match Store::open(config.data_dir) {
+                Ok(writer) => drop(writer),
+                Err(error) => {
+                    outcome.writer_unavailable = true;
+                    outcome.lines.push(error_line(&ExecError::store(&error)));
+                }
+            }
+        }
         for line in &outcome.lines {
             emit(line);
         }

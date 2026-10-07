@@ -216,3 +216,17 @@ unwind after settlement is not proof of bounded loop shutdown or interruption
 recovery. Current complete native matrix, renewed host gate, borrowed MCP/HTTP
 integration and broader lifecycle requirements remain incomplete, task 9401
 in progress and plan 0022 3/7.
+
+Review of the remaining borrowed MCP caller exposed an existing public-loop
+regression after native selection: unavailable authority yields no admitted
+write, so tick_reporting no longer necessarily tries the writer and exclusive
+mode could retry forever beside a held writer. Exclusive service loops now
+probe/release the writer when the tick did not report writer unavailability,
+retain the store diagnosis and existing three-blocked-tick exec/mode refusal;
+paired loops retain writer-on-demand behavior. The actual existing production
+control an_exclusive_loop_stops_the_moment_it_is_actually_blocked passes on
+stable/MSRV in terminal session 39468 (0.06/0.07 seconds), with both CLI and
+executor all-target Clippy passing under verified one GiB/zero-swap limits.
+Formatting, file-size and diff checks pass. This repairs exclusive contention
+detection, not bounded interruption/cleanup of already admitted native work;
+renewed full host gate and borrowed MCP selection remain pending.
