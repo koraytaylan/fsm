@@ -336,6 +336,27 @@ must precede a new producer, and separate root-manager test services need
 explicit memory and swap limits before further native execution.
 Task 9401 remains in progress and plan 0022 remains 3/7.
 
+The residual 67f61c0 MSRV staging, HOME/resource and runtime drop-in were
+archived under retained-fixture-complete before identity-matched retirement;
+socket identities were recorded separately after a first copy attempt refused
+socket contents without deleting anything. Exact staged digests, original
+HOME/resource/drop-in identities and configuration bytes, no surviving staged
+process, and already-retired original namespace/cgroups were checked before
+removing the matched installation; no production closure verdict was created.
+
+Failed workflow supervision now archives the last at most 65,536 bytes of each
+of five original observer/owner stdout/stderr files before Fixture Drop can
+retire their store. Sources use no-follow/nonblocking opens and must be regular
+files; missing optional owners are skipped, and exclusive root-mode-0600
+staging copies and their directory are synchronized. At most 327,680 bytes
+per fixture are copied, with streaming memory rather than unbounded log reads.
+This changes test diagnostics only, not production ownership or acceptance.
+Stable/MSRV executor/CLI all-target Clippy and existing admission/cleanup
+controls passed in terminal session 93178; the initial authority constant path
+compile failure and corrected outcome remain in workflow-failure-diagnostics
+check logs. Actual failure-path preservation and a complete MSRV producer
+remain pending; the existing recurring second-launch stall is unresolved.
+
 
 ## Retained a1ba97c fixture archival and matched teardown
 

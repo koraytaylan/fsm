@@ -6,6 +6,9 @@ use std::process::{Command, Stdio};
 #[path = "workflow_memory_limits.rs"]
 mod memory_limits;
 
+#[path = "workflow_failure_diagnostics.rs"]
+mod failure_diagnostics;
+
 fn workflow_broker(directory: &Path, store: &Path) -> super::broker_cases::Daemon {
     super::broker_cases::disconnect_cases::permit_operator_store(store);
     super::super::super::broker_endpoint::provision(directory, 65534).unwrap();
@@ -426,6 +429,11 @@ pub(super) fn run() {
             .read_to_end(&mut output)
             .unwrap();
         assert!(output.len() <= 65536);
+        if !status.success() {
+            for fixture in &fixtures {
+                failure_diagnostics::archive(fixture, &staging);
+            }
+        }
         assert!(
             status.success(),
             "ordinary native workflow {case}: {}",
