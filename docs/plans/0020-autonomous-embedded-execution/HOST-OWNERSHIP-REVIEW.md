@@ -558,3 +558,18 @@ and the original writer reopens. The standalone stable adapter unwind case
 also passed. Broader compatibility, MSRV production, full scenario coverage
 and the frozen full gate remain outstanding; this is one working path, not
 completion of any task or native-installed authority acceptance.
+
+The corrected production milestone ran against committed source `bd36328`
+without further Rust changes and terminated successfully (session 40507,
+exit 0). On stable and MSRV 1.89.0, all 124 CLI library cases passed, the
+actual-binary autonomous stdio case passed, and compatibility suites passed:
+embedded_read_only (4), mcp_affordance_golden (5), mcp_executor (3), and
+serve_modes (12), followed by CLI all-target Clippy with denied warnings.
+The terminal log `production-owned-stdio-corrected-check.log` has SHA-256
+`2f93279030feb9a35ab37673486ca0300bf6cce6de67128961caad9b31a6e91c`.
+Each Cargo stage asserted actual 1 GiB memory and zero-swap limits, checked
+available-memory/swap thresholds and waited for independent Cargo retirement.
+This milestone proves one production path on both host toolchains; the frozen
+workspace debug/release/docs/full gate, remaining success/retry/compensation/
+recovery/notification scenarios and native platform axes are still required.
+Task statuses and all unreleased dependencies remain unchanged.
