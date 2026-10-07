@@ -346,3 +346,27 @@ workspace Clippy, warning-denied documentation and the two explicit acceptance
 commands remain pending. Continue the original job and mutable log without
 restarting or resetting its source; no full-gate or installed native result
 is inferred from these four completed stages.
+
+### Terminal stable transport milestone
+
+Original session 37722 is terminal with exit 0 at exact clean frozen
+`55efd81a06713ef6abd4dcda2741ee3ffa1d9b15`, ending with
+`NATIVE_TRANSPORT_MILESTONE_HOST_GATE_PASSED`. All eight CONTRIBUTING commands
+passed: stable formatting, file-size checks, complete debug and release
+workspace tests/doctests, workspace all-target Clippy with warnings denied,
+workspace documentation with RUSTDOCFLAGS=-D warnings, explicit CLI zero-deps,
+and explicit embed acceptance. The complete review range
+`1c529f6..55efd81a` also passes diff checks.
+Terminal `native-transport-milestone-check.log` SHA-256 is
+`25d14a0c27a031752c45e67ecd3cf65d3cc96d0f6480cca2ff03d6c49420a704`.
+
+This supersedes the preceding continuing-job checkpoints: no stage remains
+pending for that exact source and no replacement job is required. The job used
+serial Cargo/test workers in actual 1 GiB/zero-swap scopes and the task cache.
+Focused MSRV transport checks remain separate evidence; this full gate is a
+Linux stable host result, with native macOS/Windows, installed Root-handler
+success and live-client acceptance unexecuted. Ignored native fixtures supply
+no native acceptance. Complete retained completion/handoff storage accounting,
+real-handler stdio execution/settlement, HTTP integration and the remaining
+plan tasks are still open; this is a verified transport checkpoint, not final
+review or task completion.

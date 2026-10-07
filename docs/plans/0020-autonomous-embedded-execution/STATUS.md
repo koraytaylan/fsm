@@ -433,3 +433,20 @@ workspace Clippy. Four host-gate commands are passed and four remain pending:
 Clippy, warning-denied documentation, explicit zero-dependency and embed
 acceptance commands. No full-gate, native acceptance or task completion is
 claimed; preserve the original session and frozen source.
+
+### Stable transport milestone — all host gates passed
+
+Session 37722 is now terminal with exit 0 and
+`NATIVE_TRANSPORT_MILESTONE_HOST_GATE_PASSED` on exact clean frozen `55efd81a`.
+All eight CONTRIBUTING stable host checks pass, including full debug/release
+workspace suites, all-target workspace Clippy, warning-denied documentation
+and explicit zero-dependency/embed acceptance; review-range diff checks pass
+as well. Terminal evidence and its log hash are in TRANSPORT-WORKER-REVIEW.
+This resolves all preceding pending stages for that frozen transport source.
+
+The next working-path obligation remains complete bounded retention through
+completion settlement and event delivery, followed by real-handler stdio
+acceptance; installed Root-handler success and native macOS/Windows/live-client
+axes remain unexecuted. HTTP and other plan obligations remain open, with
+tasks 8901/8902 still in progress and completion unchanged at 0/7; no
+prerequisite is released by this local host milestone.
