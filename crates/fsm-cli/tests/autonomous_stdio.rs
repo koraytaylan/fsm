@@ -35,7 +35,12 @@ fn production_stdio_publishes_v2_and_advances_deadline_without_observation_reque
     store.define_machine_on(&mut FixedClock::new(1000, 0), value(r#"{"format":"fsm.machine/1","name":"quiet_deadline","context":[],"events":[],"effects":[],"states":[{"name":"waiting"},{"name":"done","terminal":true}],"initial":"waiting","transitions":[],"deadlines":[{"name":"due","from":"waiting","after":"dur(500, ms)","to":"done"}]}"#), false, false).unwrap();
     drop(store);
     let handlers = directory.join("handlers.json");
-    std::fs::write(&handlers, r#"{"format":"fsm.handlers/1","handlers":[]}"#).unwrap();
+    std::fs::write(
+        &handlers,
+        r#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator_review"]}"#,
+    )
+    .unwrap();
+    let diagnostics = directory.join("server.stderr");
     let child = Command::new(env!("CARGO_BIN_EXE_fsm"))
         .arg("--data-dir")
         .arg(&directory)
@@ -43,7 +48,7 @@ fn production_stdio_publishes_v2_and_advances_deadline_without_observation_reque
         .arg(&handlers)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(std::fs::File::create(&diagnostics).unwrap()))
         .spawn()
         .unwrap();
     let mut fixture = Fixture { child, directory };
@@ -70,7 +75,12 @@ fn production_stdio_publishes_v2_and_advances_deadline_without_observation_reque
     let mut discovery = None;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
-        let response = value(&replies.recv_timeout(remaining).unwrap());
+        let response = value(&replies.recv_timeout(remaining).unwrap_or_else(|error| {
+            panic!(
+                "production response missing: {error}; stderr: {}",
+                std::fs::read_to_string(&diagnostics).unwrap()
+            );
+        }));
         if response.get("id") == Some(&value("2")) {
             discovery = Some(value(
                 response

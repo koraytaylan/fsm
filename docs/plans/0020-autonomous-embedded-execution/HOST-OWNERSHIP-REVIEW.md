@@ -540,3 +540,21 @@ independently from SPEC and attempts the oversized frame on an empty hosted
 queue, asserting zero retained bytes and no sink publication; this closes the
 review defect where queue capacity could mask an ineffective encoded-frame
 guard, but execution and guard-neutralization proof remain pending.
+
+### Production stdio first working path
+
+`dd6446c` selects the owned host in the actual Linux CLI and publishes
+`fsm.executor/2`/`autonomous` only through its hosted executor resource;
+borrowed and HTTP discovery retain v1. Matching guidance and instruction
+goldens are integrated without releasing any scheduling dependency.
+Stable CLI library verification passed all 124 cases on this production
+source. The first real-binary case then failed because its empty handler table
+was refused before startup, as required by the established config contract.
+The fixture now declares a manual effect, retains startup stderr for actionable
+failures, and passes on stable: actual discovery is v2/autonomous, creation
+returns, stdin remains open with no further protocol traffic, read-only store
+inspection observes the deadline reaching completed, EOF exits successfully,
+and the original writer reopens. The standalone stable adapter unwind case
+also passed. Broader compatibility, MSRV production, full scenario coverage
+and the frozen full gate remain outstanding; this is one working path, not
+completion of any task or native-installed authority acceptance.

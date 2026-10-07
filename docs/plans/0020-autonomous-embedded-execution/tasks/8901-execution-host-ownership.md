@@ -105,5 +105,7 @@ embedding guidance and affected instruction goldens follow the observed
 progress field; HTTP and borrowed helpers retain their legacy contract.
 A real-binary fixture leaves stdin open after creation and observes deadline
 completion solely through read-only inspection, then checks EOF writer release.
-Execution of this production fixture remains pending; task 9001 stays planned
+The stable real-binary fixture passes after correcting its invalid empty handler
+table to a declared manual-effect table; broader verification remains pending
+and task 9001 stays planned
 until its scheduling dependency and full scenario inventory are accepted.

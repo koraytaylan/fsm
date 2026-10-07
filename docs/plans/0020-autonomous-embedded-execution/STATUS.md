@@ -8,7 +8,8 @@ evidence are coordinator-owned.
   private Store ownership, bounded admission and reserved cancellation are
   implemented; a private native owner now retains executor state and drives
   quiet decision passes; initial Linux production stdio wiring is implemented
-  with v2 discovery, while actual-binary acceptance and HTTP remain outstanding.
+  with v2 discovery and a passing stable real-binary quiet-deadline/EOF path;
+  complete scenario acceptance, MSRV production and HTTP remain outstanding.
 - **Goal:** accepted embedded workflows advance without client polling,
   with one writer and responsive, bounded stdio and HTTP sessions.
 - **Root cause:** stdio runs an executor tick only after requests and HTTP
@@ -29,7 +30,7 @@ evidence are coordinator-owned.
   No task has a landing OID or completed acceptance inventory; final
   integration still requires plan 0022's supervised lifecycle behavior.
 - **Exceptions:** none recorded.
-- **Outcome:** production stdio integration is implemented but unverified;
+- **Outcome:** the initial production stdio quiet-deadline/EOF path passes on stable;
   no task or full autonomous acceptance is claimed.
 
 Registration makes the dependency-free ungated ownership task ready; it does
