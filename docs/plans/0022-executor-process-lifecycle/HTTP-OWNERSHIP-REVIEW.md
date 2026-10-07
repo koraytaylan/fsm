@@ -171,3 +171,20 @@ lock or implement host scheduling. No public API, journal bytes, or advertised
 capability changes. Stable CLI all-target Clippy and all nine schema plus nine
 tool elicitation tests passed in terminal session 54486 under asserted 1 GiB
 RAM and zero swap; the full changed-source host gate remains pending.
+
+### Complete elicitation-boundary host gate — 2026-10-07
+
+Session 49406 is terminal exit zero at frozen source
+`d27575705db3828b915e1cb98e57d8c75c56b0b6`: all eight required stable
+host stages pass (formatting, file size, workspace debug/release tests, all-target
+Clippy, warning-free workspace docs, zero dependencies and embedding). The
+wrapper checks the exact HEAD and clean tracked worktree after each stage and
+at termination; independent post-terminal readback agrees. The retained log
+`host-elicitation-boundary-full-stable-gate.log` under the dedicated task cache
+has SHA-256 `ec071d624fde07d63a929a51e36ec69757ff90069c464042d6fda403e5feb8cb`.
+Kernel limits were asserted before Cargo: 1 GiB RAM and zero swap, one build
+worker and one test thread; live kernel readback recorded zero swap and no OOM
+kills. Strict review comparison against 79b8f00 confirms identical moved state
+and function bodies after explicit visibility, documentation and signature
+format normalization. This proves the local refactor gate, not HTTP ownership,
+autonomous scheduling, platform CI or complete native lifecycle acceptance.
