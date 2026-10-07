@@ -23,9 +23,9 @@ One row per plan. Task status is authored in each plan's `tasks/*.md` frontmatte
 | 0017 | Journal Lifecycle | ✅ Complete | 16/16 | An operator seals a prefix of the journal into an immutable archive and detaches it, so disk and open cost track the retention window instead of the store's lifetime — cutting at a segment boundary the pin allows, carrying request fingerprints and the record-derived indexes under two new additive domains so no historical root moves, and refusing any cut that would weaken idempotency rather than degrading it. | [status](0017-journal-lifecycle/STATUS.md) |
 | 0018 | Machine Cases | ✅ Complete | 7/7 | A machine's expected behaviour is committed beside it and falsified by a change, run by a pure scripted runner that sends, polls, and acknowledges without opening a store — and a definition that declares `supersedes` is checked against the cases of the machine it replaces, reported as a delta rather than gated. | [status](0018-machine-cases/STATUS.md) |
 | 0019 | Consolidation | ✅ Complete | 4/4 | The committed gate widens to `--all-targets` and passes there, the workspace's one performance signal becomes a guard with a measured ceiling, and `fsm-execute`'s provisional surface is enumerated so an addition is a decision. Lands before 0017. | [status](0019-consolidation/STATUS.md) |
-| 0020 | Autonomous Embedded Execution | In progress | 0/7 | Registered by hand at 41f9350; owner/admission/cancellation pass the full stable gate; owned byte-stream stdio milestone 3ff97a7 passes the eight-stage full stable gate, including quiet progress, EOF/control shutdown and writer release during blocked output; follow-up independent adapter retirement passes 27 stable/MSRV cases and three guard-removal/restoration checks; initial Linux production stdio v2 discovery and quiet-deadline/EOF path, selected compatibility and CLI all-target Clippy pass on stable/MSRV; broader scenarios, HTTP and full acceptance remain outstanding. | [status](0020-autonomous-embedded-execution/STATUS.md) |
+| 0020 | Autonomous Embedded Execution | In progress | 1/7 | Registered by hand at 41f9350; execution-host ownership lands at `26c68220` against its frozen inventory, with all six stable/MSRV portable gates, both verified 82-case native matrices and twelve production workflow scenarios per toolchain passing. Completion fairness, scheduling, channels, stdio/HTTP acceptance and final lifecycle integration remain incomplete. | [status](0020-autonomous-embedded-execution/STATUS.md) |
 | 0021 | Executor Contract Preflight | Unregistered | 0/6 | Bounded effect analysis and manual policy landed independently in `f0a489a` with reviewed Linux gates; outcome validation landed independently in `aa6fc90` with reviewed MSRV/Linux gates; CLI checks landed independently in `04dbb17` with seven reviewed MSRV/stable tests; shared execution admission and MCP checks remain incomplete. | [status](0021-executor-contract-preflight/STATUS.md) |
-| 0022 | Executor Process Lifecycle | In progress | 3/7 | By-hand Phase R binds `8e3a8bb`; native feasibility lands at `399ed6e` and durable execution persistence at `cf3f600`, with full frozen host gates, all six portable legs and both verified 70-case native matrices passing. The contained runner lands at `9f1f175` with full frozen local gates, all nine CI jobs and both verified 81-case native matrices passing; ownership integration is In progress, with production host routing, shutdown and recovery incomplete. | [status](0022-executor-process-lifecycle/STATUS.md) |
+| 0022 | Executor Process Lifecycle | In progress | 3/7 | By-hand Phase R binds `8e3a8bb`; feasibility, durable claims and the contained runner land at `399ed6e`, `cf3f600` and `9f1f175`. Frozen `26c68220` passes all nine CI jobs, both verified 82-case native matrices and twelve production workflow scenarios per toolchain; ownership crash recovery, full shutdown and reconciliation remain incomplete. | [status](0022-executor-process-lifecycle/STATUS.md) |
 | 0023 | Operational Acceptance | Unregistered | 0/7 | Evidence reporter verified on its exact commit; portable fixtures landed in `7c8c49c` and passed the full Linux consumer-install suite. Independent observer landed in `9903ef3` with 13 reviewed fault/ledger tests; traced external fixtures landed in `20c67d5` with nine subprocess tests; independent MCP fixture in `fb4291f` adds seven reviewed tests (45 harness tests total). Integrated executor, sustained native and live-model evidence remain incomplete. | [status](0023-operational-acceptance/STATUS.md) |
 
 ## Review follow-up: plans 0020–0023
@@ -56,12 +56,8 @@ live-model task requires real host access and human-reviewed transcripts;
 missing evidence is never a passed skip. Neither gate prevents authoring
 these plans, and neither is represented here as already resolved.
 
-Plan 0020 now has a verified private stdio question path that leaves the writer
-free during the client wait and revalidates settlement; focused stable/MSRV
-and compatibility evidence is recorded in its ownership review, while progress,
-egress and production activation remain open and completion stays 0/7.
-
-Plan 0020's private stdio composition now passes 118 CLI library cases and
-all-target Clippy on stable/MSRV with bounded output, one sampled native-pass
-timestamp and final progress forwarding; real-binary activation and full
-remaining plan acceptance stay open, with task completion still 0/7.
+Plan 0020 task 8901 is complete at `26c68220` against its original command-owner
+inventory; its independent frozen review has task-cache digest
+`24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`.
+The provisioned ownership path does not complete plan 0022's remaining crash
+and shutdown matrices or promote sibling transport and scheduling tasks.

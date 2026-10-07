@@ -14,7 +14,9 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 3/7 tasks completed.
 
-Native lifecycle acceptance remains incomplete; the retained helper is root-owned in the host namespace with its expected digest and 0711 permissions, while the restricted sandbox maps host root to nobody. No ownership repair is required. Preserve failed-run artifacts and execute genuine native ownership/shutdown acceptance in the host namespace under task 9401 before promoting downstream integration; platform acceptance remains incomplete.
+Frozen 26c68220 passes all six portable gates and both independently verified 82-case native matrices, plus twelve production workflow scenarios per toolchain, including competing live-tree exclusion and final drain; the frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. This establishes the production ownership path used by 8901, not completion of 9401's launch/settlement crash matrix or 9402's full shutdown inventory. Those remaining lifecycle requirements continue to gate final transport integration.
+
+The retained helper is root-owned in the host namespace with its expected digest and 0711 permissions; the restricted sandbox maps host root to nobody. No ownership repair is required, and failed-run artifacts remain preserved.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:

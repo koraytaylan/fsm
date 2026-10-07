@@ -36,8 +36,8 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "26c682203df56c498132ab3881b48bd04cdbb46f"
 ---
 # Execution Host Ownership
 
@@ -82,5 +82,13 @@ request queue has explicit count and byte bounds.
 
 Acceptance is frozen at the steps, tests and Done when criterion above; sibling
 scheduling, channel and transport tasks retain their own acceptance inventories.
+The frozen landing passed all six stable/MSRV portable CI gates and both native
+jobs; thirteen named ownership cases passed in Linux debug/release and twelve
+applicable cases passed in each macOS/Windows profile. Native evidence includes
+both verified 82-case matrices and twelve production workflow scenarios per
+toolchain, including competing owners and final drain. The independent review
+is retained outside the repository under digest
+`24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`.
+
 Historical integration checkpoints are archived outside the repository by digest:
 `0b8e7256a62ea4a6408844397ba59539c97b28ceb6a7f2985a088241c391788e`.

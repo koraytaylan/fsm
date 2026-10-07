@@ -4,7 +4,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 | Task | Status | Landing OID |
 |---|---|---|
-| [execution-host-ownership](tasks/8901-execution-host-ownership.md) | in_progress | — |
+| [execution-host-ownership](tasks/8901-execution-host-ownership.md) | done | 26c682203df56c498132ab3881b48bd04cdbb46f |
 | [nonblocking-execution-completions](tasks/8902-nonblocking-execution-completions.md) | in_progress | — |
 | [autonomous-host-scheduling](tasks/8903-autonomous-host-scheduling.md) | planned | — |
 | [bounded-session-channels](tasks/8904-bounded-session-channels.md) | planned | — |
@@ -12,9 +12,9 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [autonomous-http-transport](tasks/9002-autonomous-http-transport.md) | planned | — |
 | [autonomous-execution-contract](tasks/9003-autonomous-execution-contract.md) | planned | — |
 
-Progress: 0/7 tasks completed.
+Progress: 1/7 tasks completed.
 
-Frozen 55efd81a passed the eight-stage stable Linux host gate; later focused stable/MSRV stdio checks passed at c83bbb59, but provisioned handler acceptance and the 8901 ownership inventory remain incomplete. Freeze 8901 at its written acceptance inventory: sibling scheduling and channel work does not complete or expand it. Prioritize the 0022 host-namespace native acceptance and shutdown prerequisite before further 0020 implementation.
+Frozen 26c68220 closes 8901's written ownership inventory: all six stable/MSRV portable gates and both native jobs pass, with named debug/release ownership cases, verified 82-case containment matrices and twelve production workflow scenarios per toolchain. The independent frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. Completion covers the owned command boundary; sibling completion, scheduling, channel and transport inventories remain separate. Plan 0022's remaining crash-recovery and full shutdown requirements still gate final transport integration.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
