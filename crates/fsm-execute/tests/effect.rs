@@ -538,7 +538,7 @@ fn migrated_pending_effect_retains_its_original_emitting_definition_on_reopen() 
     fields.insert(
         "supersedes".into(),
         definition(&format!(
-            r#"{{"machine":"{}","states":{{"intake":"intake","closed":"closed"}},"context":{{"case_id":"ctx.case_id"}}}}"#,
+            r#"{{"machine":"{}","states":{{"intake":"intake","closed":"intake"}},"context":{{"case_id":"ctx.case_id"}}}}"#,
             digest_of(&original_identity).unwrap()
         )),
     );
