@@ -30,11 +30,13 @@ pub fn analyze_contract(
     analyze_resolved(
         root,
         &|identity| {
-            catalogue.get(identity).or_else(|| {
+            if identity.contains("@sha256:") {
                 catalogue
                     .values()
                     .find(|machine| machine.machine_id == identity)
-            })
+            } else {
+                catalogue.get(identity)
+            }
         },
         table,
         limits,
