@@ -147,9 +147,10 @@ fn a_direct_read_only_session_cannot_run_an_executor() {
 }
 
 #[test]
-fn the_same_handler_starts_when_the_session_owns_a_writer() {
+fn a_writer_session_refuses_execution_without_native_authority() {
     let directory = Scratch::new();
     let mut store = seeded(&directory.0);
+    let records = store.records.clone();
     let mut executor = executor(&directory.0);
     let sink = SharedSink::new();
     serve_session_with(
@@ -161,7 +162,15 @@ fn the_same_handler_starts_when_the_session_owns_a_writer() {
         sink.writer(),
     )
     .unwrap();
-    assert!(sink.text().contains("spawned handler"), "{}", sink.text());
+    // Successful borrowed execution requires the real provisioned authority;
+    // mcp_execute_workflow exercises that path with all seven handler effects.
+    let stream = sink.text();
+    assert!(stream.contains("observed pending"), "{stream}");
+    assert!(stream.contains("exec/mode"), "{stream}");
+    assert!(!stream.contains("spawned handler"), "{stream}");
+    assert_eq!(store.records, records);
+    assert_eq!(store.state.instances["instance"].pending.len(), 1);
+    assert_eq!(store.state.execution.unresolved().count(), 0);
 }
 
 /// Perform an external write only after initialize has been answered, before

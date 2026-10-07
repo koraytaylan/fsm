@@ -1113,3 +1113,30 @@ execution, guard sensitivity and renewed full host gate remain pending; the
 held-writer assertion alone is a snapshot, while the fresh journal read proves
 durable immutability, and neither identifies which layered guard refused work.
 Task 9401 remains in progress and plan 0022 3/7.
+
+## Actual borrowed read-only proof and host-gate finding at 43b7031
+
+Stable session 20399 and MSRV session 98668 both exited zero with all seven
+groups/twelve scenarios at clean frozen 43b7031cc9b1b2f536eaa8f2da126d4a774ec4b4.
+Independent report and complete-log checks verify exact source, all scenario
+markers, root exit zero, no timeout and no retained authority/staging fields.
+The borrowed case proves the new read-only journal/handler assertions followed
+by the original seven successful writable effects, including exact native
+allocation counts and original closure/memory receipts. Cache evidence is
+local-native-workflow-readonly-stable and local-native-workflow-readonly-msrv;
+stable log SHA-256 is c3598d2155a989dc4dd269f645f27acb9ba1056e6a4425dfb6dafda1ab862430
+and MSRV log SHA-256 is bbecd3bf8077780aa431b2769b81de872da60b1924c4d3e99eabe556802aef7f.
+The MSRV controller sampled memory.current=95989760 and memory.swap.current=0.
+
+Full stable gate session 91078 found the legacy positive expectation in
+embedded_read_only::the_same_handler_starts_when_the_session_owns_a_writer:
+the actual native constructor correctly reports exec/mode without authority.
+After preserving the failing log, its exact scope invocation was stopped;
+terminal exit 143 means the remaining gate stages were not completed and no
+aggregate acceptance is claimed. The ordinary test now requires pending-work
+observation, exec/mode, unchanged journal, retained effect, no unresolved claim
+and no legacy spawn. Actual provisioned positive execution remains above.
+All four embedded_read_only tests and CLI all-target Clippy pass on stable/MSRV
+in terminal session 98800, with verified one GiB/zero-swap bounds; formatting
+and file-size checks pass. Renewed full gate, selector sensitivity, HTTP hosting,
+bounded borrowed stop and complete recovery/crash matrix remain pending.

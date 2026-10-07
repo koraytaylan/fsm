@@ -10,18 +10,18 @@ Task frontmatter and roll-up remain unchanged: 3/7 complete, task 9401
 ownership integration in progress, bounded shutdown and reconciliation planned.
 Historical live-handle notes below describe earlier observations only.
 
-The borrowed provisioned workflow now includes a read-only public session with
-a genuine pending effect and held original writer, followed by the unchanged
-seven-effect writable workflow; both toolchain compilation checks pass, while
-actual execution of this new control remains pending, as recorded in
-WORKFLOW-NATIVE-REVIEW.md, with no task promotion.
+Frozen 43b7031 passes all twelve provisioned workflow scenarios on stable/MSRV,
+including the borrowed read-only public session with a genuine pending effect
+and held original writer, followed by all seven successful writable effects.
+The full stable gate found an outdated unprovisioned legacy-spawn expectation
+and was stopped by its exact scope identity (terminal 143); the corrected
+native-refusal test and all four read-only controls now pass on both toolchains,
+with all-target CLI Clippy, while renewed full host acceptance remains pending.
+WORKFLOW-NATIVE-REVIEW.md records exact evidence; there is no task promotion.
 
-The latest clean MSRV native rerun at 0593350 passed all eleven scenarios,
-including both ownership races, after bounded preparation/refusal diagnostics
-were added; the earlier intermittent uncertain-preparation failure remains
-unexplained because this passing run supplies no failure reason, and current
-stable verification plus broader ownership/crash proof remain pending
-(see WORKFLOW-NATIVE-REVIEW.md for exact evidence).
+The earlier intermittent uncertain-preparation failure remains unexplained:
+later passing native runs supply no failure reason, and broader ownership,
+shutdown and crash proof remain incomplete.
 
 - Production standalone and ordinary embedded stdio select native owners;
   low-level service::run selects native shared-tick admission, with actual
