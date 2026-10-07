@@ -595,13 +595,13 @@ fn an_exclusive_loop_stops_the_moment_it_is_actually_blocked() {
 }
 
 #[test]
-#[cfg(not(target_os = "linux"))]
+#[cfg_attr(target_os = "linux", ignore = "Linux supports native containment")]
 fn unsupported_native_modes_refuse_without_running_handlers_or_changing_the_journal() {
     let directory = TestDirectory::create("unsupported-native");
     seeded(&directory);
     let mut writer = open_writer(directory.path());
     writer
-        .send_event_on(
+        .send_event_stamp_on(
             &mut FixedClock::new(2_000, 1),
             "order-1",
             "submit",
