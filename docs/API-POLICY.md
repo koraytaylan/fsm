@@ -115,6 +115,11 @@ frozen acceptance remain pending under the unreleased provisional boundary.
 NativeCompletion now additionally authenticates the full bounded successful
 response using separate immutable Root-issued result attestation; a matching
 closure receipt alone cannot authenticate candidate output or its failure class.
+Automatic host recovery waits for the protected completed response's final
+publication before consuming its one read-only recovery request; Root stages
+and fsyncs that existing mode-0600 response before publishing its name atomically.
+Presence grants no launch, closure or settlement authority, and requested failed
+recovery remains uncertain without a replacement request or renewed deadline.
 After proving closure, Root publishes `result-<allocation>-<run_id>.json` as a
 bounded canonical Root-owned 0444 object with exactly `format` (the private
 `fsm.native-result-attestation/1` tag), `domain`, `run_id`, `journal_claim` and

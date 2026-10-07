@@ -15,6 +15,9 @@ touches:
   - crates/fsm-execute/src/run/native_client/worker.rs
   - crates/fsm-execute/src/run/native_client/worker/tests.rs
   - crates/fsm-execute/src/containment/authority.rs
+  - crates/fsm-execute/src/containment/completion_record.rs
+  - crates/fsm-execute/src/run/native_client.rs
+  - crates/fsm-execute/src/run/native_client/discovery.rs
   - crates/fsm-execute/src/containment/allocator_native_tests.rs
   - crates/fsm-execute/src/containment/binding_contention_native_tests.rs
   - crates/fsm-execute/src/containment/closure_prepared.rs

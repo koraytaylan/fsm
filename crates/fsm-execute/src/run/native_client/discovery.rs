@@ -197,6 +197,51 @@ pub(super) fn check_claim(
     Ok(())
 }
 
+/// Final-name presence only schedules read-only verification; it proves no outcome.
+pub(super) fn completion_published(
+    store: &Path,
+    claim: &fsm_core::record::execution::Claim,
+) -> Result<bool, String> {
+    let domain = claim.domain().to_value();
+    let name = domain
+        .get("namespace")
+        .and_then(Value::as_str)
+        .ok_or("native completion namespace missing")?;
+    if !namespace(name) {
+        return Err("native completion namespace invalid".into());
+    }
+    let authority = Path::new(BASE)
+        .join(name)
+        .join(format!("authority-{}", number(&domain, "generation")?));
+    let path = authority.join(format!(
+        "completed-{}-{}.json",
+        number(&domain, "allocation")?,
+        claim.run_id()
+    ));
+    let before = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(super::message(error)),
+    };
+    if !before.is_file()
+        || before.uid() != 0
+        || before.mode() & 0o7777 != 0o600
+        || !(1..=65536).contains(&before.len())
+    {
+        return Err("native completed publication is not protected and bounded".into());
+    }
+    check_claim(store, claim)?;
+    let original = directory(&authority)?;
+    if domain.get("authority") != Some(&identity(&original)) {
+        return Err("native completion original authority differs".into());
+    }
+    if snapshot(&fs::symlink_metadata(&path).map_err(super::message)?) != snapshot(&before) {
+        return Err("native completed publication changed".into());
+    }
+    unchanged_directory(&authority, &original)?;
+    Ok(true)
+}
+
 fn discover_registered(store: &Path) -> Result<(String, u64, Value), String> {
     if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
         return Err("native discovery platform unsupported".into());

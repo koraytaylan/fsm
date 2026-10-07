@@ -1,15 +1,16 @@
 //! Protected durable completed results, never permission to launch or settle.
 
 use super::super::{
-    authority_path, closed, identity, io, number, object, protected_directory,
-    publish_once_bounded, read_value, read_value_bounded, text,
+    authority_path, closed, identity, io, number, object, protected_directory, read_value,
+    read_value_bounded, text,
 };
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
 use fsm_core::record::execution::Claim;
 use fsm_execute::run::native_client::NativeCompletion;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::io::Write;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 const LIMIT: u64 = 65536;
@@ -58,15 +59,32 @@ pub(super) fn publish(directory: &Path, claim: &Claim, result: &Value) -> Result
         .sync_all()
         .map_err(io)?;
     NativeCompletion::verify(&response, claim, journal_claim)?;
-    publish_once_bounded(
+    publish_completed(
         &directory.join(format!(
             "completed-{}-{}.json",
             number(&claim.domain().to_value(), "allocation")?,
             claim.run_id()
         )),
-        &response,
-        LIMIT,
+        &bytes,
     )
+}
+
+fn publish_completed(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    assert!(bytes.len() as u64 <= LIMIT);
+    let pending = path.with_extension("json.pending");
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&pending)
+        .map_err(io)?;
+    file.write_all(bytes).map_err(io)?;
+    file.sync_all().map_err(io)?;
+    fs::hard_link(&pending, path).map_err(io)?;
+    let parent = path.parent().ok_or("completed response parent missing")?;
+    fs::File::open(parent).map_err(io)?.sync_all().map_err(io)?;
+    fs::remove_file(pending).map_err(io)?;
+    fs::File::open(parent).map_err(io)?.sync_all().map_err(io)
 }
 
 pub(super) fn recover(directory: &Path, allocation: u64) -> Result<Value, String> {

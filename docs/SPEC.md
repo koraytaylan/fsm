@@ -1931,6 +1931,14 @@ or uncertain. Pipeline::recover_native MUST require a supported durable,
 unpoisoned store snapshot and its exact current owned claim/hash; read-only
 snapshots are permitted and launch eligibility MUST NOT gate observation.
 Neither recovery API writes a stopped result or consumes ownership.
+Automatic host recovery MUST retain the original claim while its protected
+completed response is absent, without consuming its one recovery request.
+Root MUST stage, fsync and atomically publish the complete mode-0600 response
+before its final name can trigger that request. Presence is only a readiness
+hint: original store/authority identity, checked contract, result attestation,
+closure, helper retirement and writer-held settlement checks remain mandatory.
+Missing, torn or refused evidence MUST NOT trigger binding, execution, deadline
+renewal or ownership clearance; a requested failed recovery remains uncertain.
 NativePreparation MUST request only prepare and return one parsed NativeDomain
 matching its original namespace/generation after successful helper retirement
 and both stream EOF within the original deadline. Its identifier-free Preparing,

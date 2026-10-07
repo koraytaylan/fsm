@@ -213,6 +213,16 @@ impl NativeOwners {
                 if snapshot.state.execution.claim_for(instance, effect) != Some(&owner.claim) {
                     continue;
                 }
+                // A still-running predecessor has no completed publication yet.
+                // Keep its one recovery request available for later evidence.
+                match super::native_client::completion_published(&snapshot.data_dir, &owner.claim) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(_) => {
+                        observation.unresolved.push(deferred());
+                        continue;
+                    }
+                }
                 owner.requested = true;
                 if let Ok(execution) =
                     NativeExecution::recover(snapshot, &owner.claim, RECOVERY_TIMEOUT)

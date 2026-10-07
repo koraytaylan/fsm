@@ -80,6 +80,13 @@ pub(super) fn check_claim_store(
     discovery::check_claim(store, claim)
 }
 
+pub(super) fn completion_published(
+    store: &Path,
+    claim: &fsm_core::record::execution::Claim,
+) -> Result<bool, String> {
+    discovery::completion_published(store, claim)
+}
+
 struct Reader {
     stream: UnixStream,
     bytes: Vec<u8>,
