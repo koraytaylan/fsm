@@ -5,6 +5,8 @@ pub use paired::PairedNativeExecutor;
 
 mod closures;
 mod control;
+#[cfg(all(test, target_os = "linux"))]
+mod tests;
 use closures::Closures;
 pub use control::{ExecutorControl, ExecutorPhase, ShutdownMode, ShutdownReport, ShutdownRequest};
 

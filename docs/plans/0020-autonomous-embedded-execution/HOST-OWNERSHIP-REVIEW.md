@@ -862,3 +862,12 @@ Terminal log `publication-phase-sensitivity-check.log` SHA-256:
 shutdown-phase guards. These gates do not cover later `753a579` observation or
 `82c0fc9` readiness scheduling changes, which retain their own focused review
 and pending real-handler acceptance obligations.
+
+The retained-readiness unit candidate also adopts caller-owned handoff
+metadata into the original runner, observes readiness with the store path
+temporarily unavailable, then restores the original directory before an
+owner decision. Missing original durable acknowledgement must return
+exec/inflight_deferred, park readiness, preserve every journal record and
+permit an unchanged reopen. This is a refusal/query fixture, not native
+closure, successful handoff delivery or installed-handler acceptance; its
+compilation/runtime check remains pending.
