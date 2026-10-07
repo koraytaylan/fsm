@@ -1586,3 +1586,5 @@ Fixed warm native owners remaining retained after another host delivered their o
 Native execution refusal diagnostics now distinguish original binding validation, manager launch and enrolled entry authorization without exposing handler arguments or changing refusal, recovery or deadline policy.
 
 Corrected warm completion delivery to preserve its existing verified physical-writer authorization while sharing accepted-event fold retirement checks with cold recovery; cold operator-route validation remains mandatory for cold adoption.
+
+Fixed native retry scheduling after recovered timeout settlement: watcher observations now count native attempted settlements and preserve their original timestamps instead of reusing a consumed attempt key and leaving the pending effect stalled.

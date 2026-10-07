@@ -1643,3 +1643,5 @@ Shared service native preparation now performs pending-contract refusal before q
 Warm native completion reconciliation now recognizes another host's accepted original event through the exact replayed acknowledgement and verified handoff retirement; this fixes retained-owner drain without changing public signatures, error codes, persisted formats or hash domains, and historical acknowledgements without handoffs retain their existing path.
 
 Verified warm completion delivery preserves the established closure-bound physical-writer policy; sharing accepted-event retirement checks with cold delivery does not add cold-discovery operator routing to this existing API, and introduces no signature, format, hash or error-code change.
+
+Watcher retry observations now include native attempted settlements alongside legacy attempt records, preserving original attempt numbers and journal timestamps across recovery; this corrects retry scheduling without changing public signatures, record formats, hash domains, error codes or immutable retry policy.

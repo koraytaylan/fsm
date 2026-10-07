@@ -521,7 +521,10 @@ pub struct AttemptState {
 fn attempt_state(store: &Store) -> BTreeMap<String, AttemptState> {
     let mut out: BTreeMap<String, AttemptState> = BTreeMap::new();
     for record in &store.records {
-        if record.kind != RecordKind::EffectAttempted {
+        let failed_attempt = record.kind == RecordKind::EffectAttempted
+            || (record.kind == RecordKind::ExecutionSettled
+                && record.body.get("disposition").and_then(Value::as_str) == Some("attempted"));
+        if !failed_attempt {
             continue;
         }
         let Some(effect_id) = record.body.get("effect_id").and_then(Value::as_str) else {
