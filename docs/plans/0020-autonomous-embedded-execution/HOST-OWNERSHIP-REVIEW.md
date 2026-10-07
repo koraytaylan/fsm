@@ -658,3 +658,12 @@ commit-boundary pause, native-pass/elicitation phase coverage and guard
 neutralization proof remain pending; this is not complete 8904 acceptance.
 The live panic-hook check began before this source addition, so its stages
 must be attributed individually rather than treated as one frozen-source gate.
+
+The native publication fixture now pauses after the original driver tick
+returns, with the production no-op observer retaining the same scope. It
+reads the actual durable deadline record while the pass is held, requires
+feed deferral with unchanged watermark, releases the pass and requires one
+actual instance notification plus a verified reopened journal. The hook only
+pauses; it does not construct a replacement executor, result or journal record.
+This adds deterministic post-commit native-phase coverage; execution and guard
+neutralization still remain pending, as does fault injection before fsync.

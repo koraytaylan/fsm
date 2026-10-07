@@ -171,12 +171,23 @@ impl<C: Clock> NativeOwner<C> {
 
     /// SPEC: one logical sample supplies every operation in this decision pass.
     pub(super) fn decision_pass(&mut self) -> Vec<String> {
+        self.decision_pass_after_commit(|| {})
+    }
+
+    // Tests pause only after the original driver returns, preserving the real
+    // journal operation and publication scope used by production's no-op hook.
+    pub(super) fn decision_pass_after_commit(
+        &mut self,
+        after_commit: impl FnOnce(),
+    ) -> Vec<String> {
         let _publication = self
             .publication
             .as_ref()
             .and_then(crate::mcp::notify::Notifier::publication_guard);
         let now_ms = self.clock.now_ms();
-        self.driver.tick(&mut FixedClock::new(now_ms, 0), now_ms)
+        let lines = self.driver.tick(&mut FixedClock::new(now_ms, 0), now_ms);
+        after_commit();
+        lines
     }
 }
 

@@ -82,3 +82,85 @@ fn execution_host_session_channels_response_scope_defers_feed_without_advancing_
     );
     assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, committed);
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn execution_host_session_channels_native_pass_holds_feed_until_deadline_commit_returns() {
+    use crate::mcp::{host::native::NativeOwner, notify::diagnostic_output::DiagnosticOutput};
+    use fsm_execute::{config::HandlerTable, service::OwnedNativeExecutor};
+    use std::{collections::BTreeMap, sync::mpsc};
+    let scratch = Scratch::new();
+    let mut store = Store::open(&scratch.0).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    store
+        .define_machine_on(&mut clock, value(super::interaction::CASE), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "question_case",
+            "publication-native",
+            "publication-native",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let before = store.journal.last_seq;
+    let driver = OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap();
+    let sink = SharedSink::new();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
+    let mut watched = Subscriptions::default();
+    watched.subscribe("fsm://instance/publication-native");
+    let mut feed = Feed::new(&scratch.0, watched, notifier.clone_handle(), before);
+    let (entered, observed) = mpsc::channel();
+    let (release, resume) = mpsc::channel();
+    let (owner, handle) = NativeOwner::new(
+        driver,
+        FixedClock::new(1001, 0),
+        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        Duration::from_millis(50),
+        10000,
+    )
+    .unwrap();
+    let mut owner = owner.with_publication(&notifier);
+    let worker = std::thread::spawn(move || {
+        let lines = owner.decision_pass_after_commit(move || {
+            entered.send(()).unwrap();
+            resume.recv_timeout(Duration::from_secs(5)).unwrap();
+        });
+        (owner, lines)
+    });
+    observed.recv_timeout(Duration::from_secs(5)).unwrap();
+    let guarded = notifier.publication_pending();
+    let deferred = feed.poll_once();
+    let committed_before_publication =
+        Store::open_read_only(&scratch.0).unwrap().journal.last_seq == before + 1;
+    release.send(()).unwrap();
+    let (owner, lines) = worker.join().unwrap();
+    let released = !notifier.publication_pending();
+    let published = feed.poll_once();
+    handle.stop();
+    let exit = owner.run();
+    output.close();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !output.drained() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(guarded && released && committed_before_publication);
+    assert_eq!(deferred, 0);
+    assert_eq!(published, 1);
+    assert!(exit.shutdown.writer_released && output.drained());
+    assert!(
+        !lines.iter().any(|line| line.starts_with("error ")),
+        "{lines:?}"
+    );
+    assert_eq!(
+        Store::open(&scratch.0).unwrap().journal.last_seq,
+        before + 1
+    );
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}
