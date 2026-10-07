@@ -80,3 +80,14 @@ release documentation; no dependency/manifest owner changes are introduced.
 Full changed-source host gates and production transport integration are pending;
 executor state, interaction/diagnostic separation, scheduling and egress remain
 unimplemented, with task 8901 still in progress and completion unchanged at 0/7.
+
+### Cancellation gate and working-path milestone — 2026-10-07
+
+All eight stable host stages pass on frozen 93af841 in terminal session 18040;
+HOST-OWNERSHIP-REVIEW.md records the independent terminal and log-hash checks.
+The next integration milestone is an autonomous stdio path through the existing
+native lifecycle driver, with quiet-input progress, held-handler responsiveness
+and verified shutdown as end-to-end evidence; broader checks follow meaningful
+integration milestones. HTTP and plans 0021–0023 remain in scope; task 8901
+stays in progress, merged_as stays empty, and completion remains 0/7.
+This evidence-only change omits unchanged code gates and uses diff checks.

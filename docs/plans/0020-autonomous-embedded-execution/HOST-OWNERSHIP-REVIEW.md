@@ -119,3 +119,24 @@ task cache; all runs assert 1 GiB RAM/zero swap and use serial workers. The
 full changed-source stable host gate, platform CI, executor-state integration,
 interactive/diagnostic separation and production routing remain outstanding;
 no task completion or autonomous discovery capability is claimed.
+
+## Complete cancellation stable host gate — 2026-10-07
+
+Frozen `93af8416af59349a17a06ae613e1adc64171691c` passes all eight
+CONTRIBUTING stable host stages in terminal session 18040 (exit 0), including
+workspace debug/release tests, all-target Clippy, warning-denying Rustdoc,
+zero-dependency and embed acceptance. Independent terminal log readback confirms
+eight zero stage exits and GATE_FAILED_STAGES=0; tracked sources remain clean
+and HEAD matches the frozen revision. Cache log
+execution-host-cancellation-full-stable-gate.log has SHA-256
+`77f301a23d8fd93403d6ff95cf7798e413bd9fec90582615e4d8e6246afe94ae`.
+The wrapper asserts actual kernel 1 GiB RAM/zero-swap limits and serial workers.
+Native platform CI and complete transport/lifecycle acceptance remain open.
+
+Following the user's integration direction, the next milestone is one complete
+autonomous stdio path using the existing native lifecycle driver, bounded owner
+commands and independent scheduling; acceptance must demonstrate quiet-input
+execution, a responsive request while a handler is held, and verified shutdown.
+Focused checks accompany development, with broader gates at meaningful
+integration milestones; no private primitive is treated as shipped autonomy.
+HTTP integration and the remaining plans stay in scope.
