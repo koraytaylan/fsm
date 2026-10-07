@@ -570,14 +570,31 @@ fn run_scenario_mode(
         // observer and the first standalone owner enter the actual race.
         drop(client);
         client = Client::start_mode(&directory, ExecutionMode::Standalone);
+        client.call(
+            "instance_send",
+            value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
+        );
+        drop(client);
+        // The plain observer must enter read-only mode; retaining a writer
+        // for its whole session would prevent either executor from claiming.
+        let writer = fsm_store::store::Store::open(&directory.store()).unwrap();
+        client = Client::start_mode(&directory, ExecutionMode::Standalone);
+        assert!(
+            fs::read_to_string(&client.errors)
+                .unwrap()
+                .contains("mode=read-only")
+        );
+        drop(writer);
         Some(workflow_race::start(&directory, "first"))
     } else {
         None
     };
-    client.call(
-        "instance_send",
-        value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
-    );
+    if matches!(mode, ExecutionMode::Embedded) {
+        client.call(
+            "instance_send",
+            value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
+        );
+    }
     #[cfg(target_os = "linux")]
     let mut competitor =
         (failures == "race").then(|| workflow_race::contend(&directory, &mut client));

@@ -888,3 +888,16 @@ remain required. Control roots and diagnostic files are distinct per owner.
 Stable/MSRV all-target executor/CLI Clippy and existing admission/cleanup controls
 passed in terminal session 60447; actual eleven-scenario execution is pending.
 No production capability changed and task 9401 remains in progress.
+
+The first 52f1cb5 stable producer (terminal session 20089, exit one) passed
+all original ten scenarios but failed the new standalone pair before handler
+entry: the plain MCP observer entered writer mode and held the physical writer,
+while first-stdout showed native-preparing check_prerequisite. The exact report
+and workflow log remain in local-native-workflow-52f1cb5-stable, with the matched
+authority/staging retained for protected archival and teardown; no native race
+success is claimed. The fixture correction sends begin through the plain command
+host before retiring it, starts the replacement observer while a test-owned
+writer is held, explicitly checks read-only startup, then releases that writer
+before starting the first standalone owner. This preserves the actual two-owner
+race and avoids introducing a third embedded executor. Compilation and native
+rerun of this correction remain pending behind guarded retained-fixture cleanup.
