@@ -225,7 +225,7 @@ fn workflow_handler() {
     std::process::exit(if failed { 7 } else { 0 });
 }
 
-fn write_handlers(directory: &Path, resource: &Path, failures: &str) {
+fn write_handlers(directory: &Path, resource: &Path, failures: &str, native: bool) {
     let executable = std::env::current_exe().unwrap();
     let handlers = OPERATIONS
         .iter()
@@ -234,17 +234,23 @@ fn write_handlers(directory: &Path, resource: &Path, failures: &str) {
                 ("effect", string(operation)),
                 (
                     "argv",
-                    Value::Arr(vec![
-                        string(executable.to_str().unwrap()),
-                        string("workflow_handler"),
-                        string("--exact"),
-                        string("--nocapture"),
-                        string(&format!("handler-operation={operation}")),
-                        string("handler-resource={resource}"),
-                        string("handler-run={run}"),
-                        string(&format!("handler-directory={}", resource.to_str().unwrap())),
-                        string(&format!("handler-failures={failures}")),
-                    ]),
+                    Value::Arr({
+                        let mut arguments = vec![
+                            string(executable.to_str().unwrap()),
+                            string("workflow_handler"),
+                            string("--exact"),
+                            string("--nocapture"),
+                            string(&format!("handler-operation={operation}")),
+                            string("handler-resource={resource}"),
+                            string("handler-run={run}"),
+                            string(&format!("handler-directory={}", resource.to_str().unwrap())),
+                            string(&format!("handler-failures={failures}")),
+                        ];
+                        if native {
+                            arguments.push(string("handler-memory-limits=1073741824,0"));
+                        }
+                        arguments
+                    }),
                 ),
                 ("timeout_ms", Value::Num("30000".into())),
                 (
@@ -545,7 +551,12 @@ fn machine(handlers: &BTreeMap<String, Value>) -> Value {
 fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: &str) {
     let directory = Directory::new();
     fs::write(directory.resource().join("phase"), "active").unwrap();
-    write_handlers(&directory.0, &directory.resource(), failures);
+    write_handlers(
+        &directory.0,
+        &directory.resource(),
+        failures,
+        directory.1.is_some(),
+    );
     let mut client = Client::start(&directory);
     let handlers = client.discover_handlers();
     client.call("machine_create", object([("spec", machine(&handlers))]));

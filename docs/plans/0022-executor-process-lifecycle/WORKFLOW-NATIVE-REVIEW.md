@@ -387,3 +387,27 @@ one-GiB/zero-swap scope. Actual native limit assertions and phase-inventory race
 diagnosis remain unexecuted at this source, as do complete changed-source host,
 MSRV native and hosted platform acceptance. Plan 0022 remains 3/7 and task 9401
 in progress; these compilation/helper results do not promote native acceptance.
+
+
+## Native limit catalogue mismatch and correction
+
+Frozen f096d504c86123c4c83ef45e7885c4a3e2894787 stable producer session 95516
+terminated with exit one (native test exit 101): the first workflow stalled
+before native launch, so none of the ten scenarios or kernel-limit assertions
+passed. Protected records contain original allocation/claim but no launch or
+entry; querying its original service finds no loaded unit/drop-ins. This is not
+evidence that systemd applied or rejected the new limits. The root approved
+catalogue included the new memory-check argument while the operator-generated
+catalogue omitted it, changing the handler fingerprint and preventing approved
+launch; the operator now includes the same argument only for validated native
+fixtures, preserving ordinary helper contracts.
+
+Corrected session 38491 passes stable/MSRV executor/CLI all-target Clippy,
+formatting/file size and the three ordinary helper tests with five explicit
+native skips; workflow-memory-limits-catalogue-check.log retains the asserted
+controller limits. Actual native acceptance remains pending. The failed stage
+/usr/libexec/fsm-workflow-fe3a0ea1f47dc50a7280b03e41745ffc and namespace
+69a130488c43ca430f4053bb05cf1c05 remain retained, including their identity-tracked
+runtime drop-in; archival and matched retirement must include that drop-in
+before any fresh producer. The failed report/log remain in
+local-native-workflow-f096d50-stable and task 9401 stays in progress.
