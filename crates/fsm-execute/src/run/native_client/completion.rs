@@ -431,6 +431,39 @@ mod tests {
         Claim::from_value(&parse(format!(r#"{{"run_id":1,"instance_id":"instance","effect_id":"effect","attempt":1,"handler_fingerprint":"{}","retry":{{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}},"domain":{{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{{"device":0,"inode":42}},"authority":{{"device":8,"inode":43}},"generation":9}}}}"#, handler().fingerprint()).as_bytes(), &JsonLimits::DEFAULT).unwrap()).unwrap()
     }
 
+    #[test]
+    fn completion_refusal_preserves_bounded_reason_without_reading_receipt() {
+        let claim = claim();
+        let hash = format!("sha256:{}", "b".repeat(64));
+        let prefix = "native completion refused: ";
+        let boundary = "a".repeat(1024 - prefix.len());
+        for (reason, expected) in [
+            ("authority\nbusy".into(), "authority busy".into()),
+            (boundary.clone(), boundary.clone()),
+            (boundary.clone() + "b", boundary.clone()),
+            (boundary.clone() + "é", boundary),
+        ] {
+            let mut fields = BTreeMap::from([
+                ("format".into(), Value::Str("fsm.native-response/1".into())),
+                ("ok".into(), Value::Bool(false)),
+                ("result".into(), Value::Str(reason)),
+            ]);
+            assert_eq!(
+                NativeCompletion::verify(&Value::Obj(fields.clone()), &claim, &hash)
+                    .err()
+                    .unwrap(),
+                prefix.to_owned() + &expected
+            );
+            fields.insert("extra".into(), Value::Null);
+            assert_eq!(
+                NativeCompletion::verify(&Value::Obj(fields), &claim, &hash)
+                    .err()
+                    .unwrap(),
+                "native completion fields differ"
+            );
+        }
+    }
+
     fn response(claim: &Claim, hash: &str) -> Value {
         Value::Obj(BTreeMap::from([
             ("format".into(), Value::Str("fsm.native-response/1".into())),

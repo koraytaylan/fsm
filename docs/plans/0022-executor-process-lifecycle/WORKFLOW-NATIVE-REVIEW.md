@@ -1027,3 +1027,13 @@ evidence remains in local-native-workflow-diagnostics-stable. Together with
 the preceding MSRV result this proves both eleven-scenario executions, while
 intermittent failure diagnosis, complete host gate and broader task 9401
 requirements remain open; plan status is unchanged.
+
+Preparation decode and public NativeCompletion::verify now have named refusal
+controls reaching the production decoder, preserving exact sanitized reasons
+while refusing domain/completion delivery; they cover the exact 1024-byte
+boundary, ASCII limit-plus-one, a multibyte overflow and extra-field envelope
+refusal. Both controls and executor all-target Clippy passed on stable/MSRV
+in terminal session 5706 under verified one GiB/zero-swap limits; formatting,
+file-size and tracked diff checks pass. These controls prove decoder wiring,
+not owner diagnostic delivery, real broker failure reproduction or guard
+sensitivity; those broader proofs remain open.

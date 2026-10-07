@@ -155,6 +155,34 @@ mod tests {
     use fsm_core::json::{JsonLimits, parse};
 
     #[test]
+    fn preparation_refusal_preserves_bounded_reason_without_delivering_domain() {
+        let namespace = "0123456789abcdef0123456789abcdef";
+        let prefix = "native preparation refused: ";
+        let boundary = "a".repeat(1024 - prefix.len());
+        for (reason, expected) in [
+            ("authority\nbusy".into(), "authority busy".into()),
+            (boundary.clone(), boundary.clone()),
+            (boundary.clone() + "b", boundary.clone()),
+            (boundary.clone() + "é", boundary),
+        ] {
+            let mut fields = BTreeMap::from([
+                ("format".into(), Value::Str("fsm.native-response/1".into())),
+                ("ok".into(), Value::Bool(false)),
+                ("result".into(), Value::Str(reason)),
+            ]);
+            assert_eq!(
+                decode(&Value::Obj(fields.clone()), namespace, 9).unwrap_err(),
+                prefix.to_owned() + &expected
+            );
+            fields.insert("extra".into(), Value::Null);
+            assert_eq!(
+                decode(&Value::Obj(fields), namespace, 9).unwrap_err(),
+                "native preparation refused or response differs"
+            );
+        }
+    }
+
+    #[test]
     fn prepared_metadata_requires_successful_original_route() {
         let namespace = "0123456789abcdef0123456789abcdef";
         let domain = parse(br#"{"backend":"linux-systemd/1","namespace":"0123456789abcdef0123456789abcdef","allocation":7,"boot":"01234567-89ab-cdef-0123-456789abcdef","cgroup":{"device":0,"inode":42},"authority":{"device":8,"inode":43},"generation":9}"#, &JsonLimits::DEFAULT).unwrap();
