@@ -642,3 +642,48 @@ The original failed 7d6b0fb stage/namespace and its second durable claim remain
 retained, requiring original evidence-based reconciliation and guarded archival
 before a new producer. Plan 0022 is still 3/7 and task 9401 remains in progress;
 full race and changed-source host/native/platform acceptance are unproven.
+
+
+## Original prelaunch reconciliation and actual authority contention
+
+Before retiring the failed 7d6b0fb fixture, its original installed authority was
+verified against protected device/inode/digest, original binding and cgroup
+identity, absence of live original staged/authority processes, zero population
+and no launch/handoff/entry. Namespace evidence was archived before invoking
+only complete-close for allocation two through that original authority. It
+returned success and produced a closure receipt matching the complete domain,
+run ID and original journal-claim hash; receipt/revocation/closed bytes are
+archived under original-prelaunch-reconciliation. Journal ownership remained
+retained until test archival, with no manufactured settlement or race verdict.
+The remaining original fixture and runtime configuration were then fully
+archived before identity-matched teardown and installation removal.
+
+Frozen df6ad430109991435cfec3790f079eae429ee983 producer session 36915 ended
+with exit one (native test 101), accepting all nine original scenarios before
+the race's mandatory stopped assertion failed. Actual last observation again
+reports exactly one uncertain_cleanup reservation with complete inventory,
+retired helpers, released writer and no unresolved local claims. The log digest
+matches the frozen report. Normal lifecycle lines are on race-stdout, rather
+than race-stderr: protected extraction identifies the actual bounded line
+`native-prepared-cleanup-uncertain prepared cleanup refused: authority busy`.
+It also records an execution uncertainty with generic unsuccessful broker
+completion, which does not identify its root refusal. This proves the cleanup
+diagnostic is wired through actual paired production polling; a root refusal
+reason is now observed rather than inferred from a missing closure marker.
+
+Prepared discard now retries only authority busy before any native mutation,
+charging contention and original retirement to one existing two-second cleanup
+budget instead of immediately stranding a known unbound domain. All original
+identity, no-submission, revocation, manager and population guards remain;
+other failures and exhaustion retain uncertainty, with no host deadline renewal.
+Terminal session 94815 passes stable/MSRV executor/CLI all-target Clippy,
+formatting/file size, seven admission/control tests and prepared-cleanup refusal
+control on both toolchains; native-cleanup-contention-check.log records verified
+controller limits. Actual corrected-root contention/sensitivity, full race,
+current-source complete host/native and platform acceptance remain pending.
+
+The failed stage /usr/libexec/fsm-workflow-c3a117d0f4bc31f2fcc3a8d5bcb62e99 and
+namespace 14d8d0b46fee501c283d2e736bf0be75 with original runtime configuration
+remain retained for guarded archive/teardown; report/log are in
+local-native-workflow-df6ad43-stable. Task 9401 remains in progress, plan 0022
+3/7, and plans 20–23 remain incomplete.

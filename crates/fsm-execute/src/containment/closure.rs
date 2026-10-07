@@ -21,16 +21,30 @@ mod prepared;
 
 /// Retire only the caller's complete original unbound domain, never a successor.
 pub(super) fn discard_prepared(directory: &Path, domain: &Value) -> Result<Value, String> {
+    let deadline = Instant::now() + Duration::from_secs(2);
     let original = fsm_core::record::execution::NativeDomain::from_value(domain)
         .map_err(|error| error.to_string())?
         .to_value();
     protected_directory(directory)?;
-    let _lock = authority_lock(directory)?;
+    let _lock = loop {
+        if Instant::now() >= deadline {
+            return Err("prepared cleanup authority deadline".into());
+        }
+        match authority_lock(directory) {
+            Ok(lock) => break lock,
+            // This refusal precedes any revocation or native mutation, so
+            // contention may consume the existing cleanup budget safely.
+            Err(error) if error == "authority busy" => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => return Err(error),
+        }
+    };
     let allocation = number(&original, "allocation")?;
     if closing::recorded_domain(directory, allocation)? != original {
         return Err("prepared cleanup original domain differs".into());
     }
-    prepared::complete(directory, allocation, &original)?;
+    prepared::complete(directory, allocation, &original, deadline)?;
     Ok(original)
 }
 
@@ -39,7 +53,12 @@ pub(super) fn complete(directory: &Path, allocation: u64) -> Result<(), String> 
     let _lock = authority_lock(directory)?;
     let domain = closing::recorded_domain(directory, allocation)?;
     if absent(&directory.join(format!("binding-{allocation}.json")))? {
-        return prepared::complete(directory, allocation, &domain);
+        return prepared::complete(
+            directory,
+            allocation,
+            &domain,
+            Instant::now() + Duration::from_secs(2),
+        );
     }
     let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
     closed(&binding, &["format", "claim", "journal_claim"])?;

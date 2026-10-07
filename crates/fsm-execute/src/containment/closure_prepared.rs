@@ -3,7 +3,12 @@
 use super::*;
 
 /// The caller retains the authority lock; absent binding is never a receipt.
-pub(super) fn complete(directory: &Path, allocation: u64, domain: &Value) -> Result<(), String> {
+pub(super) fn complete(
+    directory: &Path,
+    allocation: u64,
+    domain: &Value,
+    deadline: Instant,
+) -> Result<(), String> {
     no_submission(directory, allocation)?;
     let unit = format!(
         "fsm-containment-{}-{}-{allocation}.service",
@@ -27,7 +32,6 @@ pub(super) fn complete(directory: &Path, allocation: u64, domain: &Value) -> Res
         return Err("prepared revocation domain differs".into());
     }
     sync(&closing_path)?;
-    let deadline = Instant::now() + Duration::from_secs(2);
     if !manager::retired(&unit, deadline)? {
         return Err("prepared manager still owns unit or job".into());
     }

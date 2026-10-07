@@ -2571,3 +2571,12 @@ line (2048 bytes total), drains one per lifecycle poll with cleanup first, and
 may omit simultaneous additional failures. These messages do not authorize
 retry, launch, closure or settlement and leave original claims, reservations,
 helpers, deadlines and public/wire/persistent formats unchanged.
+
+Prepared-domain discard MUST retain the complete original domain while the
+protected authority lock is contended: only the `authority busy` refusal before
+revocation/native mutation may be retried, and acquisition plus retirement share
+a single two-second cleanup budget established at request entry. Other refusals
+remain uncertain immediately; exhaustion never releases capacity or proves
+closure. Original prepared identity, no-submission, durable revocation, manager
+retirement and empty-cgroup checks still govern success. The host transport and
+shutdown deadlines are unchanged, with no new public or persistent format.
