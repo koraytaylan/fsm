@@ -18,7 +18,7 @@ loader.exec_module(probe)
 
 
 class Retirement(unittest.TestCase):
-    def exercise(self, name, clear=True, stages=False, timeout=False, missing=False, initial=True):
+    def exercise(self, name, clear=True, stages=False, timeout=False, missing=False, initial=True, export_error=False):
         directory = CACHE / 'workflow-producer-mocked-checks'
         directory.mkdir(exist_ok=True)
         artifact = directory / 'mock-artifact'
@@ -47,6 +47,8 @@ class Retirement(unittest.TestCase):
             patch.object(probe, 'build_cli', return_value=artifact),
             patch.object(probe.authority, 'authority_state_is_clear', side_effect=state),
             patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/retained-stage')} if stages else set()]),
+            patch.object(probe.workflow_failure_export, 'export', return_value=[],
+                         side_effect=OSError('original diagnostic unavailable') if export_error else None) as exported,
             patch.object(probe.subprocess, 'check_output', side_effect=check_output) as checked,
             patch.object(probe.subprocess, 'run', side_effect=[native, subprocess.CompletedProcess([], 0)]) as run,
         ):
@@ -75,6 +77,13 @@ class Retirement(unittest.TestCase):
                 self.assertEqual(report.with_suffix('.log').read_bytes(), output + b'partial')
             if not clear or stages:
                 self.assertEqual(evidence['retained_authority'], installed)
+                exported.assert_called_once()
+                if export_error:
+                    self.assertIn('original diagnostic unavailable', evidence['failure_export_error'])
+                else:
+                    self.assertEqual(evidence['failure_exports'], [])
+            else:
+                exported.assert_not_called()
 
     def test_clear_success_removes_only_installed_identity(self):
         self.exercise('clear-success')
@@ -96,6 +105,9 @@ class Retirement(unittest.TestCase):
 
     def test_initial_uncertainty_prevents_install(self):
         self.exercise('initial-refusal', initial=False)
+
+    def test_export_failure_cannot_remove_retained_authority_or_mask_native_timeout(self):
+        self.exercise('export-failure', clear=False, stages=True, timeout=True, export_error=True)
 
 
 if __name__ == '__main__':

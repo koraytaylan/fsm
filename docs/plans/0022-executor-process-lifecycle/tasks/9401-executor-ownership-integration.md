@@ -36,6 +36,9 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py
   - crates/fsm-execute/tests/lifecycle_platform/test_authority_retirement.py
   - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/workflow_failure_export.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_workflow_failure_export.py
+  - crates/fsm-execute/src/containment/workflow_failure_diagnostics.rs
   - crates/fsm-execute/tests/lifecycle_platform/test_workflow_producer.py
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - crates/fsm-cli/src/cli/execute.rs

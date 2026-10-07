@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import authority_probe as authority
+import workflow_failure_export
 
 CASES = (
     ('discovered_handlers_complete_the_workflow_in_order', 1),
@@ -116,6 +117,13 @@ def main():
             report.update(passed=False, retained_authority=installed,
                           retained_stages=sorted(map(str, stages)),
                           retirement_reason='namespace or staged original workflow fixture remains')
+            # Export failure observations before the ephemeral CI runner exits;
+            # export errors never permit cleanup or replace the failed verdict.
+            args.report.write_text(json.dumps(report, indent=2) + '\n')
+            try:
+                report['failure_exports'] = workflow_failure_export.export(stages, args.report.parent)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                report['failure_export_error'] = str(error)[:512]
             args.report.write_text(json.dumps(report, indent=2) + '\n')
             raise RuntimeError('retain exact native authority and staged workflow fixture') from timeout_error
         subprocess.run([*installer, 'remove', '--device', str(installed['device']),
