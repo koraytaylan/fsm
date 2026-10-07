@@ -370,3 +370,18 @@ These fixtures use actual child retirement and startup refusal without Root
 closure or installed helper mutation. Complete derived-completion accounting,
 real-handler stdio execution/settlement acceptance, and milestone-wide gates
 remain open; tasks 8901/8902 remain in progress and completion remains 0/7.
+
+### Exact original startup deadline — verification waiting
+
+Committed `9b130ce6700090507e1d737f0938f8d1a25f11e2` carries the original
+absolute run deadline into binding, recovery and execution startup material
+instead of recomputing a later deadline during request preparation.
+Worker-entry fixtures compare the received Instant with the original run's
+deadline and then retire startup refusal without manufacturing closure proof.
+Original verification session 58142 is confirmed live, with its script process
+1565135 and idle-wait child 1565141 waiting for unrelated Cargo process 1561491;
+no runtime, Clippy or deadline-extension sensitivity pass is claimed yet.
+Continue that existing session and frozen worktree rather than restarting it
+on an observation timeout; its task-cache log is
+`native-original-deadline-check.log`, and its scope enforces 1 GiB/zero swap.
+Task status remains unchanged, with no final-review or installed acceptance claim.
