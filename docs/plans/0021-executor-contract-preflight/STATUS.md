@@ -131,3 +131,26 @@ Linux checks, not a new eight-stage workspace gate or native macOS/Windows
 acceptance; ignored native fixtures do not count as execution. This verifies
 the historical-definition prerequisite only: shared admission before external
 starts, the migration/current-outcome matrix and task completion remain open.
+
+### Borrowed definitions for writer-state admission — 2026-10-07
+
+Commits `8a7dbba6` and `3ce50e11` introduce private borrowed-definition resolver
+paths under both analyzers while keeping public owned-catalogue signatures and
+report semantics unchanged; the future admission component can use immutable
+verified Store definitions without constructing a copied compiled catalogue.
+Self-review preserves the distinction between invocation-digest keys and full
+compiled definition identities: arbitrary caller catalogue keys must not
+substitute another outcome definition. Commit `419f8be2` adds an independent
+public-entry regression with a parent invoking a string-payload child and an
+extraneous full-identity key pointing at a boolean-payload definition.
+
+Session 2145 verifies frozen `419f8be2` on stable/MSRV effect/outcome matrices,
+public-surface inventory and all-target executor Clippy, then substitutes the
+incorrect key-first lookup to require the new regression to fail before exact
+restoration; borrowed-contract-resolver-check.log and the sensitivity log are
+retained in the task cache. The original historical-definition run is already
+terminal and restored before this source advance. Results remain pending;
+this is isolated internal preparation for task 9103, with no changed persisted
+bytes, public signature, spawn authorization, runtime admission guarantee or
+task completion. Integration footprint needs the two private analyzer modules
+and the outcome regression in addition to task 9103's original admission paths.
