@@ -1304,3 +1304,10 @@ HTTP reverse-response queues now have count and charged-payload budgets;
 overload returns 503 without store dispatch, and saturated queues still close.
 Original protocol errors and journal formats remain unchanged. This mailbox
 bound does not complete autonomous HTTP ownership or streaming acceptance.
+
+Private-host preparation now includes bounded reserved cancellation controls,
+with response suppression and reusable journal keys before dispatch, original
+session-generation isolation and charged control/RPC allocations. Coarse-loop
+tool cancellation also remains active without progress metadata. This is a
+correction/preparation step, not autonomous stdio/HTTP execution or a new public
+API, error code, discovery version, journal format or hash domain.

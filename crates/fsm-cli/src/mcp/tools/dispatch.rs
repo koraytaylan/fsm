@@ -58,7 +58,9 @@ pub fn dispatch_with(
     // The two tools with coarse loops take the flag as well as the reporter:
     // they are the same two loops, and a call that can report where it is can
     // also notice that nobody is waiting for it any more.
-    if (progress.is_live() || ctx.cancel.cancelled()) && super::PROGRESS_TOOLS.contains(&name) {
+    // Cancellation can arrive after dispatch, even without a progress token.
+    // Keep the shared flag in every coarse-loop handler for the whole call.
+    if super::PROGRESS_TOOLS.contains(&name) {
         if let Some(refusal) = read_only_refusal(store, name, args) {
             return Err(attach_request_id(refusal, args));
         }

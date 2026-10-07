@@ -2632,3 +2632,10 @@ owned capacities and conservative structural/encoding allowances); admitted
 responses remain available. DELETE still closes at saturation. This bounds
 the mailbox queue; shared host/output budgets and interactive streaming remain
 unfinished. Direct Mailbox::post callers close the mailbox on failed admission.
+
+The staged private CLI execution host now reserves cancellation controls per
+admitted request and generation, including at application saturation; it is
+not yet constructed by either transport. Existing coarse-loop tool dispatch
+also checks its cancellation flag without requiring progress metadata. A
+never-dispatched cancelled request produces no response or Store mutation;
+cancellation does not revoke a durable workflow already created.

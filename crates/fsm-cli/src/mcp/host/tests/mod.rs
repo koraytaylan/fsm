@@ -345,3 +345,159 @@ fn execution_host_concurrent_callers_observe_their_complete_writes_in_fifo_order
     assert_eq!(store.journal.last_seq, 9);
     assert_eq!(store.state.instances.len(), 8);
 }
+
+#[test]
+fn execution_host_reserved_cancel_survives_saturation_and_does_not_claim_the_key() {
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let session = handle.session().unwrap();
+    let cancelled = session
+        .submit(command(
+            "instance_create",
+            r#"{"machine":"owner_case","request_id":"cancelled-key"}"#,
+        ))
+        .unwrap();
+    let mut replies = Vec::new();
+    for _ in 1..SESSION_COMMANDS {
+        let mut request = command("machine_list", "{}");
+        request.rpc_id = Value::Str("other-request".into());
+        replies.push(session.submit(request).unwrap());
+    }
+    for _ in 1..HOST_COMMANDS / SESSION_COMMANDS {
+        let other_session = handle.session().unwrap();
+        for _ in 0..SESSION_COMMANDS {
+            let mut request = command("machine_list", "{}");
+            request.rpc_id = Value::Str("other-request".into());
+            replies.push(other_session.submit(request).unwrap());
+        }
+    }
+    assert!(matches!(
+        handle
+            .session()
+            .unwrap()
+            .submit(command("machine_list", "{}")),
+        Err(AdmissionError::Busy)
+    ));
+    assert!(matches!(
+        session.submit(command("machine_list", "{}")),
+        Err(AdmissionError::Busy)
+    ));
+    assert_eq!(session.cancel(&Value::Str("unknown".into())), 0);
+    assert_eq!(session.cancel(&Value::Str("rpc-1".into())), 1);
+    let worker = std::thread::spawn(move || owner.run());
+    assert!(
+        cancelled.recv().is_err(),
+        "a never-dispatched cancellation has no response"
+    );
+    for reply in replies {
+        assert!(reply.recv().unwrap().result.is_ok());
+    }
+    assert_eq!(
+        session.cancel(&Value::Str("rpc-1".into())),
+        0,
+        "retired controls do not cancel future reuse"
+    );
+    let reused = session
+        .submit(command(
+            "instance_create",
+            r#"{"machine":"owner_case","request_id":"cancelled-key"}"#,
+        ))
+        .unwrap();
+    assert!(reused.recv().unwrap().result.is_ok());
+    handle.stop();
+    worker.join().unwrap();
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 2);
+}
+
+#[test]
+fn execution_host_cancellation_is_scoped_to_the_original_generation() {
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let first = handle.session().unwrap();
+    let second = handle.session().unwrap();
+    let cancelled = first
+        .submit(command(
+            "instance_create",
+            r#"{"machine":"owner_case","request_id":"first-key"}"#,
+        ))
+        .unwrap();
+    let retained = second
+        .submit(command(
+            "instance_create",
+            r#"{"machine":"owner_case","request_id":"second-key"}"#,
+        ))
+        .unwrap();
+    assert_eq!(first.cancel(&Value::Str("rpc-1".into())), 1);
+    let worker = std::thread::spawn(move || owner.run());
+    assert!(cancelled.recv().is_err());
+    assert!(retained.recv().unwrap().result.is_ok());
+    handle.stop();
+    worker.join().unwrap();
+    let store = Store::open(&scratch.0).unwrap();
+    assert!(!store.state.instances.contains_key("inst-first-key"));
+    assert!(store.state.instances.contains_key("inst-second-key"));
+    assert_eq!(store.journal.last_seq, 2);
+}
+
+#[test]
+fn execution_host_cancel_during_a_coarse_loop_works_without_progress_metadata() {
+    struct CancelOnObservation {
+        session: std::sync::Arc<std::sync::Mutex<Option<super::Session>>>,
+    }
+    impl crate::clock::Clock for CancelOnObservation {
+        fn now_ms(&mut self) -> i64 {
+            let session = self.session.lock().unwrap();
+            assert_eq!(
+                session
+                    .as_ref()
+                    .unwrap()
+                    .cancel(&Value::Str("rpc-1".into())),
+                1
+            );
+            2000
+        }
+    }
+    let scratch = Scratch::new();
+    let original = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let (owner, handle) = Owner::new(
+        seeded(&scratch.0),
+        CancelOnObservation {
+            session: std::sync::Arc::clone(&original),
+        },
+    );
+    let session = handle.session().unwrap();
+    *original.lock().unwrap() = Some(session.clone());
+    let reply = session.submit(command("simulate", r#"{"machine":"owner_case","events":[{"name":"finish","payload":{}},{"name":"finish","payload":{}}],"on_reject":"continue"}"#)).unwrap();
+    let worker = std::thread::spawn(move || owner.run());
+    let outcome = reply.recv().unwrap();
+    assert_eq!(outcome.result.unwrap_err().code, "req/cancelled");
+    assert_eq!(outcome.committed_seq, 1);
+    assert!(outcome.publication.is_none());
+    handle.stop();
+    worker.join().unwrap();
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+}
+
+#[test]
+fn execution_host_control_rpc_copy_is_charged_before_it_is_allocated() {
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let session = handle.session().unwrap();
+    let mut too_large = command("machine_list", "{}");
+    too_large.rpc_id = Value::Str("x".repeat(9 * 1024 * 1024));
+    assert!(matches!(
+        session.submit(too_large),
+        Err(AdmissionError::Busy)
+    ));
+    let mut exact = command("machine_list", "{}");
+    exact.rpc_id = Value::Str("x".repeat(SESSION_BYTES / 2 - 32 * 1024));
+    exact.arguments = Value::Str(String::new());
+    let remaining = SESSION_BYTES - command_charge(&exact);
+    exact.arguments = Value::Str(String::with_capacity(remaining));
+    assert_eq!(command_charge(&exact), SESSION_BYTES);
+    let reply = session.submit(exact).unwrap();
+    handle.stop();
+    owner.run();
+    assert!(reply.recv().is_err());
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+}

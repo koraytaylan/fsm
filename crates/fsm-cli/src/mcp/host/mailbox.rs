@@ -7,6 +7,7 @@ use std::sync::{Arc, Condvar, Mutex, mpsc};
 use fsm_core::json::Value;
 
 use super::{AdmissionError, Command, Outcome};
+use crate::mcp::cancel::{CancelFlag, Cancellations};
 
 pub(super) const HOST_COMMANDS: usize = 32;
 pub(super) const HOST_BYTES: usize = 32 * 1024 * 1024;
@@ -40,7 +41,18 @@ struct State {
     host: Charge,
     sessions: BTreeMap<u64, Charge>,
     last_generation: u64,
+    last_request: u64,
+    controls: BTreeMap<u64, RequestControl>,
     stopped: bool,
+}
+
+struct RequestControl {
+    generation: u64,
+    rpc_id: Value,
+    // A bounded host-local token scopes the existing flag implementation;
+    // it never allocates or replaces a journal request-id key.
+    internal_id: Value,
+    cancellations: Cancellations,
 }
 
 #[derive(Default)]
@@ -53,6 +65,7 @@ pub(super) struct Admitted {
     pub session: Arc<SessionState>,
     pub command: Command,
     pub reply: mpsc::SyncSender<Outcome>,
+    pub cancel: CancelFlag,
     reservation: Reservation,
 }
 
@@ -60,12 +73,14 @@ struct Reservation {
     mailbox: std::sync::Weak<Mailbox>,
     generation: u64,
     bytes: usize,
+    request: u64,
 }
 
 impl Drop for Reservation {
     fn drop(&mut self) {
         if let Some(mailbox) = self.mailbox.upgrade() {
             let mut state = mailbox.state.lock().unwrap_or_else(|p| p.into_inner());
+            state.controls.remove(&self.request);
             state.host.commands -= 1;
             state.host.bytes -= self.bytes;
             let charge = state
@@ -118,7 +133,24 @@ impl Mailbox {
         {
             return Err(AdmissionError::Busy);
         }
+        let request = state
+            .last_request
+            .checked_add(1)
+            .ok_or(AdmissionError::GenerationExhausted)?;
+        let internal_id = Value::Num(request.to_string());
+        let cancellations = Cancellations::default();
+        let cancel = cancellations.flag(&internal_id);
         let (reply, receiver) = mpsc::sync_channel(1);
+        state.last_request = request;
+        state.controls.insert(
+            request,
+            RequestControl {
+                generation: session.generation,
+                rpc_id: command.rpc_id.clone(),
+                internal_id,
+                cancellations,
+            },
+        );
         state.host.commands += 1;
         state.host.bytes += bytes;
         let charge = state.sessions.entry(session.generation).or_default();
@@ -129,14 +161,37 @@ impl Mailbox {
             session,
             command,
             reply,
+            cancel,
             reservation: Reservation {
                 mailbox: Arc::downgrade(self),
                 generation,
                 bytes,
+                request,
             },
         });
         self.ready.notify_one();
         Ok(receiver)
+    }
+
+    pub(super) fn cancel(&self, generation: u64, rpc_id: &Value) -> usize {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        let mut cancelled = 0;
+        for control in state.controls.values_mut() {
+            if control.generation == generation && &control.rpc_id == rpc_id {
+                control.cancellations.cancel(&control.internal_id);
+                cancelled += 1;
+            }
+        }
+        cancelled
+    }
+
+    pub(super) fn cancel_generation(&self, generation: u64) {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        for control in state.controls.values_mut() {
+            if control.generation == generation {
+                control.cancellations.cancel(&control.internal_id);
+            }
+        }
     }
 
     pub(super) fn next(&self) -> Option<Admitted> {
@@ -176,8 +231,11 @@ impl Mailbox {
 // 4096 bytes per object entry conservatively covers BTree node allocation.
 pub(super) fn command_charge(command: &Command) -> usize {
     std::mem::size_of::<Admitted>()
-        .saturating_add(4096)
+        // Reserve control BTree entries, bounded local numeric flag keys,
+        // their cancellation set and temporary duplicate keys on re-cancel.
+        .saturating_add(12 * 1024)
         .saturating_add(command.tool.capacity())
+        .saturating_add(value_charge(&command.rpc_id, 0))
         .saturating_add(value_charge(&command.rpc_id, 0))
         .saturating_add(value_charge(&command.arguments, 0))
 }

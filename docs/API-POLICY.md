@@ -1353,6 +1353,14 @@ API or wire capability: existing transports do not construct it yet. Its owned
 command boundary preserves ordinary Store journal formats, hashes, idempotency
 and injected clocks while bounding retained pending/in-flight command admission.
 The reserved stop control rejects queued work without dispatch. Production
-transport busy mapping, cancellation, executor scheduling, interaction and egress
+transport busy mapping, executor scheduling, interaction and egress
 remain integration obligations; this private step does not advertise autonomous
 progress or extend the closed fsm.executor/1 discovery record.
+
+Private host cancellation now has reserved, charged per-admitted-request control
+metadata and preserves response suppression before dispatch, original session
+generation/RPC identity and unclaimed journal keys. Coarse-loop dispatch always
+retains its existing cancellation flag, including calls without progress tokens;
+this corrects the existing cancellation behavior without adding an error code,
+wire capability, journal/hash format or supported Rust API. Executor state,
+interactive continuations, bounded egress and transport routing remain pending.

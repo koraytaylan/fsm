@@ -5,8 +5,8 @@ file; task frontmatter is authoritative and registration and integration
 evidence are coordinator-owned.
 
 - **Status:** Registered by hand; execution-host-ownership is in progress;
-  private Store owner and bounded command admission are implemented, with
-  executor state, cancellation and transport integration still outstanding.
+  private Store ownership, bounded admission and reserved cancellation are
+  implemented; executor state and transport integration remain outstanding.
 - **Goal:** accepted embedded workflows advance without client polling,
   with one writer and responsive, bounded stdio and HTTP sessions.
 - **Root cause:** stdio runs an executor tick only after requests and HTTP
@@ -59,3 +59,24 @@ clean-worktree, log-hash and no-swap kernel readbacks are recorded in
 HOST-OWNERSHIP-REVIEW.md. This evidence-only update does not repeat unchanged
 code gates; cancellation, executor state, interaction and transport integration
 remain unfinished, and task 8901 stays in progress at 0/7 tasks complete.
+
+### Reserved request-scoped cancellation — 2026-10-07
+
+Each admitted request now reserves charged control metadata and an RPC-ID copy;
+cancellation uses bounded host-local numeric keys and retires with its original
+reservation. Host saturation does not block cancellation, and unknown/retired
+IDs install no future state. Pre-dispatch cancellation suppresses the reply and
+claims no journal key; cancellation during coarse tool loops works without
+progress metadata. Original-session close cancels its coarse-loop flags.
+Eleven host cases and CLI Clippy pass on stable/Rust 1.89 in terminal session
+85885; the existing nine cancellation, seven progress and one structured-parity
+cases pass on both toolchains in terminal session 15809. Eight independent
+guard/accounting neutralizations in 85885 fail their intended assertions,
+restore exact sources and are followed by healthy checks.
+
+The manual coordinator adopts EMBEDDING.md and RELEASE.md into task 8901's
+footprint for the shared coarse-cancellation correction's same-commit guide and
+release documentation; no dependency/manifest owner changes are introduced.
+Full changed-source host gates and production transport integration are pending;
+executor state, interaction/diagnostic separation, scheduling and egress remain
+unimplemented, with task 8901 still in progress and completion unchanged at 0/7.

@@ -11,6 +11,8 @@ touches:
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - docs/SPEC.md
   - docs/API-POLICY.md
+  - docs/EMBEDDING.md
+  - docs/RELEASE.md
 status: in_progress
 merged_as: ""
 ---

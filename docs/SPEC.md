@@ -3137,11 +3137,23 @@ and request-key semantics. Application admission MUST permit at most 32 commands
 and 32 MiB of charged retained allocations per host, and 8 commands and 16 MiB
 per original session generation; charges MUST survive dequeue until command
 retirement. Charge Value storage, owned String/array capacities and a conservative
-4096-byte allowance per object entry and admitted envelope metadata; there are
-no retained wire copies in this boundary. A separately reserved coalesced stop
+4096-byte allowance per object entry, plus the reserved envelope/control
+allowance below; no original wire-frame copies are retained in this boundary. A separately reserved coalesced stop
 control and original-session close MUST remain available at saturation. Stop
 MUST reject queued commands before Store dispatch, finish any already executing
 operation, and reject further admission. This initial private owner does not
-yet carry executor state, cancellation, interactive continuations or bounded
+yet carry executor state, interactive continuations or bounded
 egress, and neither production transport constructs it yet; the public
 autonomous execution capability remains unimplemented.
+
+Private host cancellation MUST reserve control metadata for every admitted
+request, including the retained RPC-ID copy and a conservative 12 KiB allowance
+for envelope/control BTree entries, the bounded host-local numeric flag key and
+its cancellation-set allocations, in addition to payload capacities. Controls
+MUST remain bounded by admitted/in-flight commands and retire with their
+reservation. Unknown or retired RPC IDs MUST NOT install future cancellation.
+Cancellation MUST match the original session generation and RPC ID; cancellation
+before dispatch MUST perform no Store operation, claim no journal request key
+and suppress the response. Cancellation after dispatch MUST retain the existing
+coarse-loop flag even without progress metadata; a single engine step remains
+noninterruptible and an already-created durable workflow is not cancelled.

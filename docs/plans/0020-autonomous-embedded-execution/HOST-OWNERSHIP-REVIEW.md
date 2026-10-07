@@ -70,3 +70,52 @@ matches the sensitivity-restored hash above. Kernel readback of the live gate
 PID 2228170 confirmed 1 GiB RAM, zero swap usage and no OOM kills; serial workers
 and cache-only artifacts were used. This local primitive gate does not complete
 task 8901, implement transport autonomy or replace platform CI/native acceptance.
+
+## Reserved cancellation and coarse-loop repair — 2026-10-07
+
+Implementation base: `66027d3`; task 8901 remains in progress. Admitted/in-flight
+control entries are bounded by the same 32 host/8 original-session command
+counts and reserved before dispatch. Charges include the parsed RPC-ID copy,
+owned capacities and a conservative 12 KiB allowance for envelope/control
+metadata, cancellation-set BTree entries and bounded internal numeric keys,
+including temporary duplicate keys on repeated cancellation. The internal
+request token is not a journal key or client RPC ID. Control retirement is
+part of reservation retirement and unknown/retired IDs allocate no future
+cancellation state. Stop/close/cancel remain independent of application
+capacity; original-generation close marks its coarse-loop flags cancelled.
+
+Cancellation before dispatch suppresses the reply, performs no Store operation
+and leaves the caller's original journal key reusable. After dispatch, the
+existing shared flag reaches every coarse-loop handler even without a progress
+token; single macrosteps retain their noninterruptibility and cancellation
+does not revoke an already-created durable workflow. The prior dispatch branch
+only passed the flag when progress was live or cancellation was already true,
+so an arriving cancellation could be missed by a tokenless call. All four
+capability documents move with this correction; the coordinator adopts the
+embedding/release guide paths into the task footprint, with no manifest or
+dependency adoption required. Production host adapters remain unimplemented.
+
+Eleven private host cases pass on stable and Rust 1.89 in terminal session 85885,
+with CLI all-target Clippy, formatting and size checks. New cases cover
+cancellation at a full 32-command host queue, no-response/key reuse, original
+generation isolation, cancellation injected through the logical clock at an
+actual coarse-loop boundary without progress metadata, and exact-budget RPC
+control-copy accounting before allocation. Existing nine cancellation, seven
+progress and one structured-parity cases pass on both toolchains in terminal
+session 15809 (the initial filtered integration invocations ran zero cases;
+the subsequent unfiltered invocations provide the actual evidence).
+
+Eight isolated neutralizations in 85885 each return test exit 101 with an
+assertion failure: host/session count and byte limits, RPC-copy charging,
+pre-dispatch cancellation, generation matching, and coarse-loop flag forwarding.
+All modified files are restored byte-identically in finally blocks before
+healthy stable/MSRV checks. Restored SHA-256 values:
+- mailbox: `73c852da85b58f4cb882bbf0ec4fa16def6b63da510e8437b153ec3831eb36c1`
+- owner: `acf6baefc6f7bab37bf53fceae5f318eb598873f52cfd71d9c30d612ea41af17`
+- dispatch: `7ae676b58adacede41e9c502d27d2a7e2bfea7d10e3eca42a650d1461dc7a7c8`
+
+Sensitivity logs are execution-host-cancel-sensitivity-*.log under the dedicated
+task cache; all runs assert 1 GiB RAM/zero swap and use serial workers. The
+full changed-source stable host gate, platform CI, executor-state integration,
+interactive/diagnostic separation and production routing remain outstanding;
+no task completion or autonomous discovery capability is claimed.

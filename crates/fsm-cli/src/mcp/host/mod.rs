@@ -70,7 +70,13 @@ impl Session {
     /// Close controls remain available when application admission is saturated.
     pub(super) fn close(&self) {
         self.original.close();
+        self.mailbox.cancel_generation(self.original.generation);
         self.mailbox.wake();
+    }
+
+    /// Cancel only admitted requests of this original session incarnation.
+    pub(super) fn cancel(&self, rpc_id: &Value) -> usize {
+        self.mailbox.cancel(self.original.generation, rpc_id)
     }
 }
 
@@ -127,15 +133,20 @@ impl<C: Clock> Owner<C> {
     fn apply(&mut self, mut admitted: Admitted) {
         // The charged admitted envelope remains alive through dispatch. No
         // transport output or client input occurs in this operation boundary.
-        if !admitted.session.is_open() {
+        if !admitted.session.is_open() || admitted.cancel.cancelled() {
             return;
         }
         let before = self.store.journal.last_seq;
-        let result = super::tools::dispatch(
+        let context = super::tools::ToolCtx {
+            cancel: std::mem::take(&mut admitted.cancel),
+            ..Default::default()
+        };
+        let result = super::tools::dispatch_with(
             &mut self.store,
             &mut self.clock,
             &admitted.command.tool,
             &admitted.command.arguments,
+            &context,
         );
         let committed_seq = self.store.journal.last_seq;
         let publication = (committed_seq > before).then_some(Publication {
