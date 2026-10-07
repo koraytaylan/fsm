@@ -141,3 +141,20 @@ d5493ae7e3c1e4d47104fb2c32fbfe18b6367707eaee787c6230bd37eb403305
 under http-mailbox-admission-sensitivity.log in the explicit task cache.
 This establishes those two guards, not HTTP streaming or execution ownership;
 the original full-plan scope and outstanding acceptance gates remain unchanged.
+
+## Renewed full stable host gate
+
+Terminal session 75429 exits zero against frozen source
+14142897c7055e3b7555928a3270420cc746625c, with tracked source unchanged
+after each stage and at terminal observation. All eight required stages pass:
+formatting, file-size limits, debug and release workspace tests, all-target
+workspace Clippy with warnings denied, warning-free workspace documentation,
+CLI zero-dependency checks and embed acceptance. The controller asserts actual
+kernel one-GiB/zero-swap limits and runs builds/tests serially with one worker;
+all artifacts use the explicit task cache. The complete log
+http-mailbox-full-stable-gate.log has SHA-256
+87af71723a220e6263e2d16a9770adef1ef77dbe703ac1bf9591de35b6ca2493.
+This renews Linux stable host acceptance for the committed mailbox changes;
+it does not replace native platform CI, the official authority matrix or the
+outstanding HTTP ownership and autonomous execution acceptance inventories.
+Task 9401 remains in progress and plans 20–23 remain incomplete.

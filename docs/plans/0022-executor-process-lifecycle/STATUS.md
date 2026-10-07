@@ -10,6 +10,13 @@ Task frontmatter and roll-up remain unchanged: 3/7 complete, task 9401
 ownership integration in progress, bounded shutdown and reconciliation planned.
 Historical live-handle notes below describe earlier observations only.
 
+The renewed full stable host gate now passes all eight required stages at
+frozen 14142897c7055e3b7555928a3270420cc746625c in terminal session 75429,
+including debug/release workspace tests and all-target Clippy, under asserted
+one-GiB/zero-swap limits; HTTP-OWNERSHIP-REVIEW.md records the log digest and
+exact scope. HTTP ownership, autonomous progress, native platform CI and the
+official authority matrix remain outstanding; no task status is promoted.
+
 Frozen 43b7031 passes all twelve provisioned workflow scenarios on stable/MSRV,
 including the borrowed read-only public session with a genuine pending effect
 and held original writer, followed by all seven successful writable effects.
