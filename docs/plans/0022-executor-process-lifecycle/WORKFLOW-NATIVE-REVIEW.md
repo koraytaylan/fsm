@@ -1016,3 +1016,14 @@ intermittent preparation failure is fixed: the change preserves diagnostics
 and makes no lock/admission correction. Current stable native rerun, full host
 gate, production diagnostic wiring/sensitivity and broader crash/ownership
 coverage remain required; task 9401 remains in progress and plan 0022 3/7.
+
+Stable session 92662 also passed all eleven native scenarios at clean frozen
+8caa82caf6b01365041ecf840717192ae1524973, using rustc 1.98.1 (48a229cea 2026-09-01).
+Both toolchains executor/CLI all-target Clippy, formatting and source-size
+checks passed before native dispatch. Independent report/source/count/digest
+checks confirm terminal exit zero, no timeout and no retained installation
+or staging fields. Stable workflow log SHA-256 is 0d8c4d4fd005141aed6685a0e274464029f92c79efdd5b9eae71976f64849611;
+evidence remains in local-native-workflow-diagnostics-stable. Together with
+the preceding MSRV result this proves both eleven-scenario executions, while
+intermittent failure diagnosis, complete host gate and broader task 9401
+requirements remain open; plan status is unchanged.
