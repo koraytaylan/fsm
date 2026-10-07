@@ -1037,3 +1037,19 @@ in terminal session 5706 under verified one GiB/zero-swap limits; formatting,
 file-size and tracked diff checks pass. These controls prove decoder wiring,
 not owner diagnostic delivery, real broker failure reproduction or guard
 sensitivity; those broader proofs remain open.
+
+## Complete stable host gate at 1127dca
+
+Terminal session 88327 exited zero against the frozen committed decoder-test
+source 1127dca: all eight required stable host stages passed, including debug
+and release workspace tests, all-target workspace Clippy, warning-free docs,
+format/file-size checks, zero dependencies and embedding acceptance. Independent
+log inspection verified exactly eight zero stage exits and zero failed stages;
+tracked source remained clean. Complete native-refusal-full-stable-gate.log
+SHA-256 is 43e31a10f9a1ba79b7e1b92f8272fb29d2805a020c5f329ea984f8b18a8fae79. The original scope used verified
+one GiB RAM/zero-swap limits and sampled zero swap/no OOM throughout.
+Ordinary ignored native cases are not established by this host gate; actual
+eleven-scenario stable/MSRV evidence above predates only these test additions.
+Hosted CI and unsupported-platform axes remain unexecuted for current source;
+production failure delivery/sensitivity, legacy entry-point integration and
+broader shutdown/recovery/crash requirements remain incomplete.
