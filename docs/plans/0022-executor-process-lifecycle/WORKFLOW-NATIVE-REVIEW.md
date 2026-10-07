@@ -835,3 +835,18 @@ Actual privileged execution and retry/deadline guard sensitivity remain pending;
 compilation and portable controls do not prove those native assertions.
 The earlier full host gate predates this test-only addition, so affected full
 test gates require renewal before final review; task 9401 remains in progress.
+
+Frozen dea71a7 then passed actual provisioned empty_domain_preparation on
+stable and Rust 1.89.0 in terminal session 67420, exit zero, each with one
+passed, zero failed and zero ignored; runtimes were 2.28 and 2.27 seconds.
+The controller independently verified its kernel one-GiB/zero-swap limits,
+installed each exact built authority with digest/device/inode verification and
+removed only that matching installation after confirming no retained namespace.
+Evidence is prepared-contention-native-corrected.log and its retained
+prepared-contention-native-check.py controller in the dedicated task cache.
+An earlier direct attempt in session 25406 failed before domain allocation
+because the required installed authority was absent; protected readback found
+no retained namespace, and that failure remains in prepared-contention-native-stable.log.
+The successful runs execute both real-lock deadline retention and release-to-
+matching-closure assertions, but guard-neutralization sensitivity remains pending;
+they do not close broader race, shutdown, recovery or full native coverage.
