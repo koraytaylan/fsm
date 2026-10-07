@@ -441,7 +441,13 @@ fn run_owned(ctx: &Ctx, args: &Args, table: HandlerTable, interval: u64, exclusi
     ) {
         Err(error) => report(ctx, &error),
         Ok(outcome) => match owner::final_error(&outcome) {
-            Some(error) => report(ctx, &error),
+            Some(error) => crate::native_error::report_until(
+                ctx,
+                &crate::native_error::NativeSessionFailure {
+                    error,
+                    deadline: outcome.shutdown_deadline,
+                },
+            ),
             None => 0,
         },
     }

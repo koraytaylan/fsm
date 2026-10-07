@@ -20,6 +20,7 @@ touches:
   - crates/fsm-execute/tests/lifecycle_platform/test_authority_retirement.py
   - crates/fsm-execute/tests/fixtures/public_surface.txt
   - crates/fsm-cli/src/cli/execute.rs
+  - crates/fsm-cli/src/native_error.rs
   - crates/fsm-cli/src/mcp/serve.rs
   - crates/fsm-cli/src/mcp/executor.rs
   - crates/fsm-cli/tests/executor_ownership.rs

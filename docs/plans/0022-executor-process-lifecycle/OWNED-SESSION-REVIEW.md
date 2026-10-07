@@ -782,3 +782,30 @@ production_backend=false and gate_released=false. These eleven cases do not
 replace the complete native matrix, ordinary registered CLI workflow tests,
 later-source full host gates or unexecuted platform axes; task 9401 and the
 remaining tasks retain their existing statuses.
+
+### Final native CLI error delivery review — 2026-10-07
+
+The production native stdio error now carries its original shutdown deadline
+through the private CLI error boundary, and the standalone production report
+retains that same deadline for its final renderer. Error code, hint, details
+and exit classification remain intact. The final caller renders exact bytes
+and attempts a small atomic nonblocking pipe write through a separate open
+file description, preserving existing worker flags; nonpipe, inaccessible
+proc descriptor and larger frames use the existing bounded diagnostic worker
+without a join or new wait budget. Expired delivery may lose the final report,
+never converting uncertain cleanup into success. Pre-owner/borrowed/HTTP
+rendering is unchanged, and four public contract documents describe the scope.
+
+The real stderr-backpressure control now requires process exit before reading
+the still-open actual pipe, after independently authenticated Stopped and
+physical writer reacquisition. Stable all thirteen production controls,
+all-target CLI Clippy, MSRV all-target compilation and source-size checks pass
+(native-final-error-check.log). Restoring only synchronous final rendering in
+the production dispatcher makes that exact control fail with "owner did not
+exit while stderr remained blocked"; finally restoring the source passes all
+thirteen controls (native-final-error-sensitivity.log, mutation/restored logs).
+Existing healthy JSON error controls preserve original failure/cleanup facts.
+All checks run serially under asserted 1 GiB and zero swap. Larger-frame and
+nonpipe fallback process controls, standalone blocked-final-error coverage,
+later-source full host/platform gates and actual nonempty containment remain
+required; this review does not promote task 9401 or 9402.

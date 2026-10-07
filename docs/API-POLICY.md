@@ -1221,3 +1221,5 @@ error frame; a startup transport refusal does not confirm native cleanup.
 `OwnedSessionReport` adds `operator_output_drained: bool` and `operator_lines_dropped: u64` for bounded native MCP stderr delivery, separate from `output_drained` and native cleanup; downstream exhaustive struct construction must account for these added fields under the existing pre-1.0 API policy, with no journal, hash, authority, or wire schema change.
 
 Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.
+
+Final supported Linux native CLI error delivery shares the original owner shutdown deadline and may be lost under backpressure rather than blocking failure exit; codes, exit status, report schemas and durable formats stay unchanged, and the deadline carrier and renderer are crate-private.

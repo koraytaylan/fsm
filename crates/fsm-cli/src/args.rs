@@ -139,10 +139,22 @@ fn serve_run(ctx: &mut Ctx, args: &Args) -> u8 {
     }
     match crate::mcp::serve::run_with_mode(&ctx.data_dir, mode) {
         Ok(()) => 0,
-        Err(error) => error
-            .get_ref()
-            .and_then(|error| error.downcast_ref::<fsm_execute::error::ExecError>())
-            .map_or(1, |error| crate::cli::execute::report(ctx, error)),
+        Err(error) => {
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            if let Some(failure) = error
+                .get_ref()
+                .and_then(|error| error.downcast_ref::<crate::native_error::NativeSessionFailure>())
+            {
+                return crate::native_error::report_until(ctx, failure);
+            }
+            error
+                .get_ref()
+                .and_then(|error| error.downcast_ref::<fsm_execute::error::ExecError>())
+                .map_or(1, |error| crate::cli::execute::report(ctx, error))
+        }
     }
 }
 

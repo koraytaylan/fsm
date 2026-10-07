@@ -158,5 +158,11 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
             ),
         ])),
     );
-    Err(io::Error::new(kind, error))
+    Err(io::Error::new(
+        kind,
+        crate::native_error::NativeSessionFailure {
+            error,
+            deadline: report.shutdown_deadline,
+        },
+    ))
 }

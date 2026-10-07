@@ -10,6 +10,7 @@ pub(super) struct ProductionReport {
     pub shutdown: fsm_execute::service::ShutdownReport,
     pub endpoint_removed: bool,
     pub endpoint_cleanup_error: Option<String>,
+    pub shutdown_deadline: std::time::Instant,
 }
 
 pub(super) fn run(
@@ -101,6 +102,7 @@ pub(super) fn run(
         shutdown: control.report(),
         endpoint_removed,
         endpoint_cleanup_error,
+        shutdown_deadline: cleanup_deadline,
     })
 }
 

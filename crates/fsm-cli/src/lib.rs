@@ -16,6 +16,12 @@ pub mod cli;
 pub mod mcp;
 pub mod render;
 
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+mod native_error;
+
 // The durable store lives in `fsm-store` so embedders can depend on it without
 // depending on this binary crate. Re-exported here so `crate::store::…` paths
 // and existing `fsm_cli::store::…` importers keep resolving.

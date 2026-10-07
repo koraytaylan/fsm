@@ -4881,3 +4881,15 @@ MemorySwapCurrent was zero, without extending that claim to root-manager units.
 Both summaries retain gate_released=false. Ordinary production nonempty CLI
 workflow acceptance, later-source full host gates, native macOS/Windows axes
 and remaining integration requirements remain incomplete; progress stays 3/7.
+
+### Bounded final native CLI diagnostics — 2026-10-07
+
+Native standalone and owned stdio final error rendering now uses the original
+shutdown deadline, with best-effort nonblocking small pipe delivery and a
+bounded worker fallback without joining. The actual stderr-backpressure test
+requires exit while its pipe stays open/unread and rejects restoration of only
+the synchronous production renderer; all thirteen restored production stop
+controls, stable all-target CLI Clippy, MSRV compilation and size checks pass.
+OWNED-SESSION-REVIEW.md records exact scope and retained evidence. Full host
+gates and larger-frame/nonpipe/standalone fallback controls remain pending;
+task statuses and progress remain unchanged.

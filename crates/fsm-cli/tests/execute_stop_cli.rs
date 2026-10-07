@@ -833,15 +833,8 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
     // and physical writer reacquisition have both been independently observed.
     drop(Store::open(&fixture.data).unwrap());
     assert!(owner.0.stderr.is_some());
-    // Keep stderr blocked beyond the original finite delivery deadline before
-    // allowing the final operator error renderer to write its separate report.
-    std::thread::sleep(Duration::from_millis(600));
-    let stderr = owner.0.stderr.take().unwrap();
-    let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stderr.take(128 * 1024).read_to_end(&mut bytes).unwrap();
-        bytes
-    });
+    // Process exit must remain bounded while the actual pipe reader stays
+    // open and unread, including final error delivery after owner cleanup.
     let deadline = Instant::now() + Duration::from_secs(2);
     let status = loop {
         if let Some(status) = owner.0.try_wait().unwrap() {
@@ -849,13 +842,21 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
         }
         assert!(
             Instant::now() < deadline,
-            "owner did not exit after stderr release"
+            "owner did not exit while stderr remained blocked"
         );
         std::thread::sleep(Duration::from_millis(1));
     };
+    let mut stderr = Vec::new();
+    owner
+        .0
+        .stderr
+        .take()
+        .unwrap()
+        .take(128 * 1024)
+        .read_to_end(&mut stderr)
+        .unwrap();
     drop(release);
     feeder.join().unwrap();
-    let stderr = reader.join().unwrap();
     assert!(!status.success());
     assert!(
         String::from_utf8_lossy(&stderr)
