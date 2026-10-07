@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 #[path = "runner_advance_native_tests.rs"]
 mod advance;
 use advance::settle_owned;
+#[path = "runner_handoff_recovery_native_tests.rs"]
+mod handoff_recovery;
 #[path = "runner_recovery_native_tests.rs"]
 mod recovery;
 
@@ -127,6 +129,8 @@ pub(super) fn run() {
         "timeout",
         "retry-timeout",
         "process-exit",
+        "process-recover-removed",
+        "process-recover-changed",
         "process-failure",
         "process-signal",
         "cancel-mcp",
@@ -150,7 +154,11 @@ pub(super) fn run() {
                                 "-c",
                                 SERVER,
                                 barriers.path.to_str().unwrap(),
-                                mode,
+                                if mode.starts_with("process-recover-") {
+                                    "process-exit"
+                                } else {
+                                    mode
+                                },
                             ]
                             .into_iter()
                             .map(|value| Value::Str(value.into()))
@@ -178,6 +186,8 @@ pub(super) fn run() {
         if matches!(
             mode,
             "process-exit"
+                | "process-recover-removed"
+                | "process-recover-changed"
                 | "process-failure"
                 | "process-signal"
                 | "cancel-process"
@@ -196,6 +206,12 @@ pub(super) fn run() {
             handler.insert("timeout_ms".into(), Value::Num("10000".into()));
             handler.remove("tool");
             handler.remove("arguments");
+            if mode.starts_with("process-recover-") {
+                handler.insert(
+                    "on_ok".into(),
+                    object([("event", Value::Str("docs_ok".into()))]),
+                );
+            }
         }
         if matches!(mode, "timeout" | "retry-timeout") {
             let mut fields = table.as_obj().unwrap().clone();
@@ -453,7 +469,7 @@ pub(super) fn run() {
             "protocol" => "failed",
             "timeout" | "retry-timeout" => "timeout",
             "cancel-process" | "cancel-mcp" => "interrupted",
-            "process-exit" => "ok",
+            "process-exit" | "process-recover-removed" | "process-recover-changed" => "ok",
             "process-failure" | "process-signal" => "nonzero_exit",
             _ => panic!("uncertain runner must not reach verified completion"),
         };
@@ -490,7 +506,7 @@ pub(super) fn run() {
             settle_failure(&fixture, &effect, &original_claim, &completion);
         } else if matches!(mode, "cancel-process" | "cancel-mcp") {
             settle_interrupted(&fixture, &effect, &original_claim, &completion);
-        } else if mode == "process-exit" {
+        } else if mode == "process-exit" || mode.starts_with("process-recover-") {
             let (mut store, before) =
                 recovery::reopen_stopped(&fixture, &effect, &original_claim, &completion);
             settle_owned(
@@ -525,6 +541,15 @@ pub(super) fn run() {
                     .pending
                     .contains(&effect)
             );
+            drop(reopened);
+            if mode.starts_with("process-recover-") {
+                handoff_recovery::resume_original_event(
+                    &fixture,
+                    &effect,
+                    &completion,
+                    mode == "process-recover-changed",
+                );
+            }
         }
         assert!(runner::execute(&fixture.directory, 1).is_err());
         fixture.cleanup().unwrap();
