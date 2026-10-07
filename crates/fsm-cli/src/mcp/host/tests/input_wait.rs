@@ -236,3 +236,105 @@ fn execution_host_owned_response_wait_refuses_ninth_deferred_frame_and_preserves
     );
     assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 2);
 }
+
+#[test]
+fn execution_host_owned_response_wait_initialization_updates_original_marker_and_warnings() {
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 0));
+    let session = handle.session().unwrap();
+    let path = scratch.0.clone();
+    let (mut client, server) = UnixStream::pair().unwrap();
+    let output = SharedSink::new();
+    let sink = output.clone();
+    let diagnostics = SharedSink::new();
+    let diagnostic_sink = diagnostics.clone();
+    let (finished, result) = mpsc::channel();
+    let caller = thread::spawn(move || {
+        let mut input = OwnedInput::start(move || BufReader::new(server), || false).unwrap();
+        let (notifier, control) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
+        let mut diagnostic = crate::mcp::notify::diagnostic_output::DiagnosticOutput::start(
+            diagnostic_sink.writer(),
+        )
+        .unwrap();
+        let mut notified = false;
+        let mut pending = PendingInput::default();
+        let reply = {
+            let io = RefCell::new(
+                SessionIo::with_owned_wait(&notifier, &mut input, &mut pending)
+                    .with_wait_warnings(Some(&mut diagnostic), &mut notified),
+            );
+            handle_request_hosted(
+                &notifier,
+                &session,
+                &path,
+                &mut FixedClock::new(9999, 0),
+                &mut true,
+                &mut Live::default(),
+                value("4"),
+                "tools/call",
+                Some(value(REQUEST)),
+                "held owner initialization",
+                Some(&io),
+                None,
+            )
+        };
+        diagnostic.close();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !diagnostic.drained() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        control.close();
+        finished
+            .send((reply, notified, diagnostic.drained(), diagnostic.dropped()))
+            .unwrap();
+    });
+    let Next::Command(admitted) = owner
+        .mailbox
+        .next_until(Instant::now() + Duration::from_secs(5))
+    else {
+        panic!("request admission missing")
+    };
+    // The original command stays held: only the response-wait input pump can
+    // observe these frames, enqueue warnings and update the original marker.
+    send(
+        &mut client,
+        r#"{"jsonrpc":"2.0","id":6,"method":"tools/list"}"#,
+    );
+    for (id, length) in [(7, 512), (8, 513)] {
+        send(
+            &mut client,
+            &format!(
+                r#"{{"jsonrpc":"2.0","id":{id},"method":"{}"}}"#,
+                "é".repeat(length),
+            ),
+        );
+    }
+    send(
+        &mut client,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+    );
+    send(&mut client, r#"{"jsonrpc":"2.0","id":5,"method":"ping"}"#);
+    let observed = ping_observed(&output);
+    client.shutdown(Shutdown::Write).unwrap();
+    let completed = result.recv_timeout(Duration::from_secs(3));
+    let writer_held = Store::open(&scratch.0).is_err();
+    drop(admitted);
+    handle.stop();
+    owner.run();
+    caller.join().unwrap();
+    let (reply, notified, drained, dropped) = completed.unwrap();
+    assert!(observed && writer_held && reply.is_ok());
+    assert!(notified && drained);
+    assert_eq!(dropped, 0);
+    let limited = format!(
+        "fsm warn: {} before notifications/initialized\n",
+        "é".repeat(512)
+    );
+    assert_eq!(
+        diagnostics.text(),
+        format!("fsm warn: tools/list before notifications/initialized\n{limited}{limited}")
+    );
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, 1);
+    assert!(!reopened.state.dedup.contains_key("wait-input-create"));
+}

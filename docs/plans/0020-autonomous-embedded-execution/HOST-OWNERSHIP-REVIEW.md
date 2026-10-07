@@ -736,3 +736,15 @@ MSRV stop prerequisite is omitted because its corrected-source inventory
 already passed in session 81218. Session 63257 is confirmed live and waiting
 for independently running Cargo PID 46799 before any stable gate stage,
 without concurrent builds or added swap allowance. Its outcome is pending.
+
+An additional original-owner response-wait fixture holds the admitted
+command while actual Unix owned input carries pre-initialization requests,
+`notifications/initialized` and a ping. It requires the original marker to
+change, exactly three successfully drained warnings (ordinary method plus
+512/513 multibyte method boundaries), no warning for the post-initialization
+ping, writer ownership until retirement and unchanged verified creation
+sequence after EOF. This exercises the real hosted method/input-wait seam
+without releasing the original owner or fabricating a completion. Execution
+and sensitivity are pending; focused stable/MSRV checks (session 17943) wait
+for the original full-gate process 50136 to retire before starting Cargo.
+The live frozen gate remains on `3314aaa`, so it does not cover this new test.
