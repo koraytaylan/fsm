@@ -30,6 +30,8 @@ The retained helper is root-owned in the host namespace with its expected digest
 
 Frozen 8d5b705e..ad0ac436 passes actual SIGKILL of an independent public Pipeline caller after its durable stopped append while holding the writer, then exact stopped-state recovery, claim exclusion until single-consumption settlement and original event delivery without another allocation on stable/MSRV; review digest `85117ec9330d163ab8c0e8a3f674a38c60a931c3205e15c81a4d064e44b1dde8`. Lifecycle tests, all-target executor Clippy, the genuine enrolled native case, formatting and size checks pass. This proves the public Pipeline cut, not every standalone/embedded/public-tick host at every boundary; remaining claim and post-settlement process cuts and full CI keep 9401 in progress.
 
+Frozen b14c5d51..7d2954e2 passes actual SIGKILL of an independent public Pipeline caller after durable acknowledgement and before its original outcome event, then reconstructed configured-operator delivery once without another allocation on stable/MSRV; review digest `453f0b76fb31138cdd6bad8c75f1315db98a2e941f96910c02b68e82935e9797`. Reopened journal assertions, focused lifecycle tests, all-target executor Clippy, formatting and size checks pass. This proves the public Pipeline acknowledgement cut; after-claim and post-attempt process cuts, the remaining host matrix and full CI are unverified, so 9401 remains in progress.
+
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cdcc311f66d08ae7b640731ed4a159d2aaf25863b59dd833afca7a99b3e9a9c9`.
