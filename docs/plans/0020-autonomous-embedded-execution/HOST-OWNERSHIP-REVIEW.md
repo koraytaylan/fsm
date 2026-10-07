@@ -871,3 +871,29 @@ exec/inflight_deferred, park readiness, preserve every journal record and
 permit an unchanged reopen. This is a refusal/query fixture, not native
 closure, successful handoff delivery or installed-handler acceptance; its
 compilation/runtime check remains pending.
+
+### Observation terminal checks and readiness Clippy discrepancy — 2026-10-07
+
+Original observation session 83548 exited 0 at clean frozen `753a579`:
+stable and MSRV CLI library 129/129, production stdio 6/6, protocol lifecycle
+11/11 and CLI all-target Clippy pass, with formatting and file-size checks.
+Terminal `admitted-observation-check.log` SHA-256:
+`e6cf1b7420599f7557b28b5e0a411950dcddad93c6dc461d54c64fc85ab125f3`.
+
+Corrected readiness session 99838 exited 101 at frozen `82c0fc9`: stable
+owned lifecycle 3/3, public surface 17/17, CLI library 129/129, stdio 6/6 and
+protocol lifecycle 11/11 pass, then all-target Clippy reports E0599 for the
+readiness method that those runtime targets just compiled. No MSRV or guard
+sensitivity was reached. Session 34499 likewise exited 101 at frozen `1c529f6`:
+stable retained-readiness unit 1/1, owned lifecycle 3/3 and public surface
+17/17 pass, then Clippy reports the same missing-method error. Neither failed
+run is recorded as a passing source gate; terminal log SHA-256 values are
+`21d88ee4e302edb247d58d128e637018c75f179e7f09cc2a347758050b96de0e` and
+`196420758cc830042a46abdd69c4141016e6e4c9fc397309c6f2105b596d5e6a` respectively.
+
+The method exists in both exact clean frozen sources, and direct runtime
+targets compile and invoke it; shared build-artifact reuse is suspected, not
+established. Original session 72884 now verifies unchanged `1c529f6` serially
+in a dedicated readiness-isolated-check-target, retaining actual 1GiB/zero-swap
+limits and host memory thresholds, before any conclusion about Clippy or
+sensitivity. Existing failed logs are preserved and tasks remain open.
