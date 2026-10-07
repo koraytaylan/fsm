@@ -901,3 +901,30 @@ writer is held, explicitly checks read-only startup, then releases that writer
 before starting the first standalone owner. This preserves the actual two-owner
 race and avoids introducing a third embedded executor. Compilation and native
 rerun of this correction remain pending behind guarded retained-fixture cleanup.
+
+The failed 52f1cb5 fixture was archived and identity-matched retired using
+retire-failed-workflow-52f1cb5.py before frozen 67f61c0 verification.
+Stable session 24778 completed successfully with all six groups and eleven
+scenarios, including both original live-tree races; exact-source clean status,
+all markers/counts, terminal exit zero, no timeout, no retained installation or
+stage fields and log SHA-256 were independently verified. Stable log digest is
+2d74092cf6842a3d32a8e94a2008fb807fcebeba8a227726f3515815221960ad.
+Stable/MSRV all-target executor/CLI Clippy also passed before that producer.
+
+The matching MSRV producer in session 42460 terminated with exit one:
+its first four groups/nine scenarios passed, but the existing standalone/embedded
+race stalled in check_identity with inst-run/7/0 pending after its second
+native-claimed/native-launched diagnostics; the new standalone pair was not
+reached. Its original live-tree exclusion interval had returned, but that is
+not whole-scenario success. Actual inventory reported running, incomplete
+inventory, zero unclaimed reservations and all preparation counts zero.
+The root fixture failed with exit 101 and no producer timeout; protected
+inspection found the original namespace already retired by fixture teardown,
+while staging, resource/HOME and runtime drop-in remained retained, so no new
+production closure was inferred from absence. Evidence remains under
+local-native-workflow-67f61c0-msrv, log SHA-256
+7cfc8745cd9eef59aec5289bb77b97a0600523ebabfa1c0983801d6abbedab64.
+The next review must retain original owner diagnostics before fixture Drop
+and investigate the recurring second-launch stall; stable success does not
+establish a fixed MSRV race or complete ownership integration.
+Task 9401 remains in progress and plan 0022 remains 3/7.
