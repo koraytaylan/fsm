@@ -48,6 +48,7 @@ pub(super) fn resume_original_event(
         ("changed", Value::Bool(changed)),
     ]));
     let output = Command::new("/usr/bin/python3")
+        .env("TMPDIR", &fixture.store)
         .args(["-c", &script])
         .arg(fixture.directory.join("broker"))
         .arg(std::str::from_utf8(&parameters).unwrap())
