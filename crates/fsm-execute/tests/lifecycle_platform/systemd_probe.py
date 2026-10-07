@@ -98,6 +98,19 @@ def identity(root, role):
     assert int(observed["effective_capabilities"], 16) == 0, observed
     assert observed["no_new_privileges"] == "1", observed
     assert (root / f"{role}-migration-refused").read_text() == "refused"
+    receipt = (root / f"native-memory-{int(fields['Tgid'])}").read_text().splitlines()
+    assert len(receipt) == 4 and receipt[2:] == ["1073741824", "0"], receipt
+    membership = (root / f"{role}-cgroup").read_text().splitlines()
+    group = next(line[3:] for line in membership if line.startswith("0::"))
+    domain = Path("/sys/fs/cgroup") / group.lstrip("/")
+    original = domain.stat()
+    assert [str(original.st_dev), str(original.st_ino)] == receipt[:2], "memory domain changed"
+    assert (domain / "memory.max").read_text().strip() == receipt[2], "memory limit changed"
+    assert (domain / "memory.swap.max").read_text().strip() == receipt[3], "swap limit changed"
+    current = domain.stat()
+    assert (original.st_dev, original.st_ino) == (current.st_dev, current.st_ino)
+    observed["memory_limit"] = int(receipt[2])
+    observed["swap_limit"] = int(receipt[3])
     return observed
 
 
@@ -115,7 +128,7 @@ def run_case(binary, case, neutralize=False):
         command(["sudo", "-n", "install", "-d", "-m", "1777", str(root)])
         command(["sudo", "-n", "install", "-m", "755", str(binary), str(root / "fixture")])
         mode = "kill" if case == "client-death" else "spawn-stop" if case == "frozen-stop" else case
-        argv = ["sudo", "-n", "systemd-run", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--quiet", "--collect", "--pipe", f"--unit={unit}"]
+        argv = ["sudo", "-n", "systemd-run", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1", "--quiet", "--collect", "--pipe", f"--unit={unit}"]
         properties = list(PROPERTIES)
         if case == "spawn-stop":
             # A real deactivating job stays observable while descendants fork.

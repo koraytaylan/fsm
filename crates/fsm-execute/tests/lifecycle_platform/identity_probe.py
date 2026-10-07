@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-from systemd_probe import command, show
+from systemd_probe import command, show, identity as observe_identity
 
 INVENTORY = ("empty-domain", "unprivileged-refusal", "missing-authority", "helper-death", "active-refusal", "unknown-inode",
              "closed-refusal", "alias-refusal", "counter-rollback", "successor")
@@ -29,6 +29,8 @@ def wait_file(path, timeout=4):
         if time.monotonic() >= deadline:
             raise RuntimeError(f"missing native barrier: {path.name}")
         time.sleep(.005)
+    if path.name == "root-ready":
+        observe_identity(path.parent, "kill")
 
 
 def handle(value):
@@ -110,7 +112,7 @@ def exercise(binary):
 
         # A separate root controller unit makes its own uncatchable death
         # injection native, without using PID absence as cleanup authority.
-        command(["sudo", "-n", "systemd-run", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--quiet", "--collect", "--unit=" + controller,
+        command(["sudo", "-n", "systemd-run", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1", "--quiet", "--collect", "--unit=" + controller,
                  "--property=KillMode=control-group", "--property=RuntimeMaxSec=25s",
                  *argv("launch-hold", first)])
         wait_file(base / "helper-pid")
@@ -150,7 +152,7 @@ def exercise(binary):
         passed("closed-refusal", closed_identity=closed)
 
         # A same-name new unit is deliberately unrelated to the old handle.
-        command(["sudo", "-n", "systemd-run", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--quiet", "--collect", "--unit=" + unit(first),
+        command(["sudo", "-n", "systemd-run", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1", "--quiet", "--collect", "--unit=" + unit(first),
                  "--property=DynamicUser=yes", "--property=RuntimeMaxSec=8s", "/usr/bin/sleep", "6"])
         assert invoke("inspect", first).startswith("closed-alias-present\n")
         invoke("close", first, refuse=True, reason="unknown identity refuses native cleanup")

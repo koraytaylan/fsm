@@ -35,6 +35,12 @@ fn native_fixture() {
     };
     let directory = PathBuf::from(directory);
     let mode = std::env::var("FSM_LIFECYCLE_PROBE_MODE").expect("fixture mode");
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("FSM_NATIVE_FIXTURE_MEMORY_GUARD").is_some()
+        || std::env::var_os("FSM_LIFECYCLE_PROBE_CONTAINED").is_some()
+    {
+        verify_native_memory_limits(&directory);
+    }
     if mode == "identity-publication" {
         #[cfg(target_os = "linux")]
         {
@@ -191,6 +197,33 @@ fn native_fixture() {
         return;
     }
     descendant.wait().expect("descendant wait");
+}
+
+#[cfg(target_os = "linux")]
+fn verify_native_memory_limits(directory: &Path) {
+    use std::os::unix::fs::MetadataExt;
+
+    let membership = fs::read_to_string("/proc/self/cgroup").expect("fixture cgroup");
+    let group = membership
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .expect("unified fixture cgroup");
+    let domain = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
+    let original = fs::metadata(&domain).expect("original fixture domain");
+    let memory = fs::read_to_string(domain.join("memory.max")).expect("fixture memory limit");
+    let swap = fs::read_to_string(domain.join("memory.swap.max")).expect("fixture swap limit");
+    assert_eq!(memory.trim(), "1073741824", "fixture requires one GiB");
+    assert_eq!(swap.trim(), "0", "fixture requires zero swap");
+    let observed = fs::metadata(&domain).expect("fixture domain remains present");
+    assert_eq!(
+        (original.dev(), original.ino()),
+        (observed.dev(), observed.ino())
+    );
+    fs::write(
+        directory.join(format!("native-memory-{}", std::process::id())),
+        format!("{}\n{}\n1073741824\n0\n", original.dev(), original.ino()),
+    )
+    .expect("fixture memory observation");
 }
 
 fn await_file(path: &Path) {

@@ -48,7 +48,7 @@ def exercise(binary):
         command(['sudo', '-n', 'tee', str(base / 'data/counter')], input='0\n')
         command(['sudo', '-n', 'tee', str(base / 'data/broker-counter')], input='0\n')
         command(['sudo', '-n', 'install', '-m', '755', str(binary), str(base / 'fixture')])
-        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + broker,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1', '--quiet', '--collect', '--unit=' + broker,
                  '--property=RuntimeMaxSec=25s', '--property=UMask=0077', '/usr/bin/env',
                  f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}', f'FSM_LIFECYCLE_PROBE_MODE=identity-broker:{os.getuid()}',
                  str(base / 'fixture'), 'native_fixture', '--exact', '--nocapture'])
@@ -59,7 +59,7 @@ def exercise(binary):
             client = f'fsm-containment-signal-client-{namespace}-{record["id"]}.service'
             units.extend([worker, client])
             tuple_value = f'{record["id"]}:{record["inode"]}:{record["boot"]}'
-            command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + client,
+            command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1', '--quiet', '--collect', '--unit=' + client,
                      '--property=User=' + str(os.getuid()), '--property=ExitType=cgroup',
                      '--property=KillMode=control-group', '--property=RuntimeMaxSec=15s',
                      '/usr/bin/env', f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}',

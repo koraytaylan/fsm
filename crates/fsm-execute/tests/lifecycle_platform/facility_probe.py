@@ -41,7 +41,7 @@ def exercise(binary):
     def start(label, property_value):
         unit = f'fsm-containment-facility-{namespace}-{label}.service'
         units.append(unit)
-        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + unit,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1', '--quiet', '--collect', '--unit=' + unit,
                  '--property=UMask=0077', '--property=RuntimeMaxSec=20s', '--property=' + property_value,
                  '/usr/bin/env', f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}',
                  f'FSM_LIFECYCLE_PROBE_MODE=identity-broker:{os.getuid()}', str(base / 'fixture'),

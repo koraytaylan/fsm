@@ -1277,3 +1277,20 @@ checks every Python launch vector for both properties; Python syntax, file-size
 and diff checks pass. Actual kernel preflight verification for these older
 fixtures, compiled checks and renewed native/host gates remain pending, so no
 new runtime acceptance or task promotion is claimed.
+
+### Actual kernel preflight wiring
+
+Every Python transient launch now enables the fixture memory guard; contained
+Rust prototype handlers use their existing contained marker. The guard runs
+before publication, pre-entry, broker, identity or handler operations, checks
+the current unified kernel cgroup for exactly 1073741824 memory.max and zero
+memory.swap.max, rechecks original device/inode and writes a per-process
+observation in the owned fixture directory. Python handler identity checks
+match that observation to the original live cgroup and independently reread
+both kernel limits; identity root-ready barriers invoke that check too.
+The observation is a fixture diagnostic, not an authority closure receipt.
+Terminal session 29404 exits zero: stable and MSRV lifecycle_platform Clippy,
+formatting and file-size checks pass serially after actual controller kernel
+limit assertions. Python AST/syntax checks verify all sixteen guarded launch
+vectors. Native execution, guard sensitivity and renewed complete host/platform
+gates remain pending; plan/task statuses remain unchanged.

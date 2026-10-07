@@ -65,7 +65,7 @@ def exercise(binary):
         command(['sudo', '-n', 'tee', str(base / 'data/counter')], input='0\n')
         command(['sudo', '-n', 'tee', str(base / 'data/broker-counter')], input='0\n')
         command(['sudo', '-n', 'install', '-m', '755', str(binary), str(base / 'fixture')])
-        rejected = subprocess.run(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--wait',
+        rejected = subprocess.run(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1', '--quiet', '--collect', '--wait',
                                    '--unit=' + unsafe_controller, '--property=UMask=0000',
                                    '--property=RuntimeMaxSec=2s', '/usr/bin/env',
                                    f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}',
@@ -78,7 +78,7 @@ def exercise(binary):
         assert not (base / 'endpoint').exists() and not (base / 'broker-ready').exists()
         assert command(['sudo', '-n', 'cat', str(base / 'data/counter')]).strip() == '0'
         passed('unsafe-mask-refusal')
-        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + controller,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1', '--quiet', '--collect', '--unit=' + controller,
                  '--property=RuntimeMaxSec=25s', '--property=UMask=0077', '/usr/bin/env',
                  f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}', f'FSM_LIFECYCLE_PROBE_MODE=identity-broker:{os.getuid()}',
                  str(base / 'fixture'), 'native_fixture', '--exact', '--nocapture'])
@@ -124,7 +124,7 @@ def exercise(binary):
         other = 'fsm-containment-wrong-domain-' + namespace + '.service'
         units.append(other)
         before = snapshot()
-        rejected = subprocess.run(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--wait', '--unit=' + other,
+        rejected = subprocess.run(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1', '--quiet', '--collect', '--wait', '--unit=' + other,
                                    '--property=DynamicUser=yes', '--property=ProtectControlGroups=yes',
                                    '--property=NoNewPrivileges=yes', '--property=CapabilityBoundingSet=',
                                    '--property=RuntimeMaxSec=5s', '/usr/bin/env',
@@ -146,7 +146,7 @@ def exercise(binary):
         # worker gate must refuse before any fixture handler side effects.
         command(['sudo', '-n', 'rm', '--', str(base / 'work/root-ready')])
         before = snapshot()
-        replay = subprocess.run(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--wait', '--unit=' + name,
+        replay = subprocess.run(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--setenv=FSM_NATIVE_FIXTURE_MEMORY_GUARD=1', '--quiet', '--collect', '--wait', '--unit=' + name,
                  '--property=DynamicUser=yes', '--property=ProtectControlGroups=yes',
                  '--property=NoNewPrivileges=yes', '--property=CapabilityBoundingSet=',
                  '--property=RuntimeMaxSec=5s', '/usr/bin/env',

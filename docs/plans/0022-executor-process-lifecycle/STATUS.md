@@ -41,6 +41,10 @@ The sixteen Python feasibility service launch vectors and private Rust identity
 handler now also request one GiB/zero-swap limits; static launch inventory,
 syntax, file-size and diff checks pass, with actual kernel preflight and runtime
 verification still pending before broader native execution.
+The feasibility fixture now checks actual kernel memory/swap limits before
+native operations, with per-process original-domain observations independently
+checked at handler barriers; stable/MSRV target Clippy and static checks pass,
+while actual native guard sensitivity and broader runtime gates remain pending.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,
