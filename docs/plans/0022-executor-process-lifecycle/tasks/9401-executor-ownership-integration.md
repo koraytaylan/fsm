@@ -24,6 +24,7 @@ touches:
   - crates/fsm-execute/src/containment/broker_native_tests.rs
   - crates/fsm-execute/src/containment/broker_disconnect_native_tests.rs
   - crates/fsm-execute/src/containment/workflow_native_tests.rs
+  - crates/fsm-execute/src/containment/workflow_memory_limits.rs
   - crates/fsm-execute/src/containment/broker_claimed_closure_native_tests.rs
   - crates/fsm-execute/src/containment/supervisor_fresh_native_probe.rs
   - crates/fsm-execute/tests/lifecycle_platform/authority_probe.py

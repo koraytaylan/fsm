@@ -3,6 +3,9 @@ use super::*;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
+#[path = "workflow_memory_limits.rs"]
+mod memory_limits;
+
 fn workflow_broker(directory: &Path, store: &Path) -> super::broker_cases::Daemon {
     super::broker_cases::disconnect_cases::permit_operator_store(store);
     super::super::super::broker_endpoint::provision(directory, 65534).unwrap();
@@ -87,6 +90,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
                                         "handler-run={run}".into(),
                                         format!("handler-directory={}", resource.display()),
                                         format!("handler-failures={failures}"),
+                                        "handler-memory-limits=1073741824,0".into(),
                                     ]
                                     .into_iter()
                                     .map(Value::Str)
@@ -272,6 +276,7 @@ pub(super) fn run() {
                     <= 107
             );
             let fixture = Fixture::new_for_operator(table(&helper, &resource, failure));
+            let limits = memory_limits::Limits::install(&fixture);
             brokers.push(workflow_broker(&fixture.directory, &fixture.store));
             let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
             let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
@@ -286,9 +291,10 @@ pub(super) fn run() {
                 ("home", Value::Str(home.to_str().unwrap().into())),
                 ("resource_identity", resource_identity.clone()),
                 ("home_identity", home_identity.clone()),
+                ("memory_limits", limits.inventory()),
             ]));
             fixtures.push(fixture);
-            resources.push((resource, home, resource_identity, home_identity));
+            resources.push((resource, home, resource_identity, home_identity, limits));
         }
         let manifest_path = fixtures[0].directory.join("fixture-workflow.json");
         fs::write(&manifest_path, canon_bytes(&Value::Arr(manifest))).unwrap();
@@ -354,7 +360,7 @@ pub(super) fn run() {
         .unwrap();
         drop(report_output);
         drop(brokers);
-        for (mut fixture, (resource, home, resource_identity, home_identity)) in
+        for (mut fixture, (resource, home, resource_identity, home_identity, limits)) in
             fixtures.into_iter().zip(resources)
         {
             let resource_metadata = fs::symlink_metadata(&resource).unwrap();
@@ -369,6 +375,7 @@ pub(super) fn run() {
                 .expect("retain unknown or surviving original domain");
             fs::remove_dir_all(resource).unwrap();
             fs::remove_dir_all(home).unwrap();
+            limits.retire();
         }
     }
     // Only complete matched teardown permits retiring the staged helper bytes.

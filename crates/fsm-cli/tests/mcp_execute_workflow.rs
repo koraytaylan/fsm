@@ -137,6 +137,30 @@ fn workflow_handler() {
     else {
         return;
     };
+    #[cfg(target_os = "linux")]
+    if arguments
+        .iter()
+        .any(|argument| argument == "handler-memory-limits=1073741824,0")
+    {
+        let membership = fs::read_to_string("/proc/self/cgroup").unwrap();
+        let group = membership
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"))
+            .unwrap();
+        let directory = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
+        assert_eq!(
+            fs::read_to_string(directory.join("memory.max"))
+                .unwrap()
+                .trim(),
+            "1073741824"
+        );
+        assert_eq!(
+            fs::read_to_string(directory.join("memory.swap.max"))
+                .unwrap()
+                .trim(),
+            "0"
+        );
+    }
     assert!(arguments.contains(&format!("handler-resource={RESOURCE}")));
     assert!(arguments.contains(&"handler-run=run-1".to_owned()));
     let directory = PathBuf::from(

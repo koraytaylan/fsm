@@ -357,3 +357,33 @@ native services still require explicit verified memory/swap limits before any
 new native execution; the user-controller scope does not constrain them.
 No heavy build or native test ran during this teardown, and all scratch stayed
 in the existing dedicated home cache. Task and roll-up completion are unchanged.
+
+
+## Namespace-scoped native workflow memory controls
+
+The provisioned workflow now creates an exclusive root-owned runtime drop-in
+for each original fixture namespace before starting its broker or operator;
+MemoryMax=1G and MemorySwapMax=0 apply to that namespace's native services.
+Systemd documents truncated dash-prefix drop-ins in
+https://github.com/systemd/systemd/blob/main/man/systemd.unit.xml.
+The protected recovery inventory records the drop-in directory and both
+original directory/file identities. Successful matched fixture teardown removes
+only that exact unchanged one-file directory and reloads the manager; failures
+retain it alongside their evidence and require identity-matched later cleanup.
+Production launch policy and unrelated services are unchanged.
+
+Every provisioned handler has an explicit catalogue argument requiring actual
+memory.max=1073741824 and memory.swap.max=0 from its own kernel cgroup before
+logging calls or touching workflow resources. Missing or ineffective settings
+fail the workflow rather than allowing acceptance under assumed controller
+limits. These are per-service limits, not a claim of a shared aggregate native
+memory budget or a diagnosis of previous host freezes.
+
+Terminal session 66013 exits zero: formatting/file-size checks, stable/MSRV
+executor and CLI all-target Clippy, and three ordinary helper/diagnostic tests
+pass; five provisioned cases are explicitly ignored in this ordinary run.
+workflow-memory-limits-check.log records the controller's separately asserted
+one-GiB/zero-swap scope. Actual native limit assertions and phase-inventory race
+diagnosis remain unexecuted at this source, as do complete changed-source host,
+MSRV native and hosted platform acceptance. Plan 0022 remains 3/7 and task 9401
+in progress; these compilation/helper results do not promote native acceptance.
