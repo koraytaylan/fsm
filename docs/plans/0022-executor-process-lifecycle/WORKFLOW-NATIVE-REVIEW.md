@@ -517,3 +517,40 @@ remain retained; protected inspection confirms the namespace was already
 retired by Fixture cleanup. Corrected native receipt verification, sensitivity,
 full race and changed-source host/platform acceptance remain pending, with
 9401 in progress and plan 0022 still 3/7.
+
+
+## Verified native memory receipts and uncertain-cleanup race phase
+
+The prior 90eeef7 failed fixture was archived before exact resource/home/stage,
+configuration/identity-matched drop-in and installed-authority retirement.
+Frozen 82bbde440fcffca1f8a8035658eb81029194f39c stable producer session 32225
+ended with exit one (native test 101) after 41.89 seconds: all nine original
+scenarios passed their original assertions and root native verification,
+including per-claimed-domain kernel memory receipts; the race failed its
+mandatory competing-owner stopped assertion. No complete race or MSRV native
+acceptance is claimed. The retained workflow log SHA-256 matches its report;
+independent protected staging inspection finds 44 archived canonical receipts,
+each with memory_max=1073741824 and memory_swap_max=0. These cover the nine
+accepted scenarios, not a substitute for the failed race's final verdict.
+
+The race's authenticated last version-two observation reports admission closed,
+draining, complete inventory, helpers retired, writer released, no unresolved
+local run IDs, and one unclaimed reservation classified uncertain_cleanup;
+all other nine preparation buckets are zero. Protected original metadata has
+eight allocations, seven bound claimed domains with closure material, and an
+unbound allocation two with neither closing nor closed record. Read-only
+kernel inspection confirms allocation two's original prepared device/inode
+(29,5381215), populated zero; manager inspection reports not-found/inactive,
+no PID/job/control-group. These facts do not authorize dropping the reservation
+or manufacture an original domain closure. The next diagnosis must recover the
+actual cleanup transport/refusal reason while preserving root identity and
+revocation guards; preparation-phase uncertainty is no longer the sole missing
+observation.
+
+The failed stage /usr/libexec/fsm-workflow-d8b35d34ccc5d7d0bf18b470ad42d42b and
+namespace afdc129fd292adafcd2cdef226eeb982, resources, original authority and
+identity-tracked memory drop-in remain retained. Evidence lives in
+local-native-workflow-82bbde4-stable/workflow.json and workflow.log and protected
+staging. Full changed-source host gate, native MSRV, memory-guard sensitivity,
+complete race and remaining ownership/crash/platform proof are still required;
+9401 remains in progress and plan 0022 remains 3/7.

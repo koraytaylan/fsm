@@ -37,7 +37,9 @@ Historical live-handle notes below describe earlier observations only.
   phase and authenticated cleanup still need diagnosis and native proof.
   Version-two observation now publishes coherent bounded phase counts, with
   twenty actual transport controls passing on stable/MSRV and legacy replies
-  preserved; provisioned execution of these new counts remains pending.
+  preserved; provisioned stable execution identifies the retained reservation
+  as uncertain cleanup, while all nine original scenarios pass with verified
+  one-GiB/zero-swap per-service receipts at 82bbde4; the race remains failed.
 - Actual standalone/standalone and standalone/embedded live-tree races, complete
   claim/launch/settlement crash windows, nonempty blocked-session shutdown,
   signal handling and uncertainty reconciliation remain required before 9401
