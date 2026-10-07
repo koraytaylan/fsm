@@ -14,7 +14,10 @@ use std::{
 pub(super) fn bind(fixture: &Fixture, binding: &Value) {
     identity_after_contention(fixture, binding);
     let directory = &fixture.directory;
-    let before = Store::open_read_only(&fixture.store).unwrap().records.clone();
+    let before = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
     let lock = super::super::super::authority_lock(directory).unwrap();
     let started = Instant::now();
     let refused = super::super::super::bind(directory, binding);
