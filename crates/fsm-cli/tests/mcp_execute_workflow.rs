@@ -18,6 +18,9 @@ use fsm_core::json::{JsonLimits, Value, parse};
 #[path = "workflow_race/mod.rs"]
 mod workflow_race;
 
+#[path = "workflow_stdio/mod.rs"]
+mod workflow_stdio;
+
 const OPERATIONS: [&str; 7] = [
     "check_prerequisite",
     "check_identity",
@@ -249,7 +252,8 @@ fn write_handlers(directory: &Path, resource: &Path, failures: &str) {
 
 struct Client {
     process: Child,
-    input: ChildStdin,
+    input: Option<ChildStdin>,
+    mode: ExecutionMode,
     responses: Receiver<Result<Value, String>>,
     reader: Option<JoinHandle<()>>,
     request: u64,
@@ -327,7 +331,8 @@ impl Client {
         });
         let mut client = Self {
             process,
-            input,
+            input: Some(input),
+            mode,
             responses,
             reader: Some(reader),
             request: 0,
@@ -341,11 +346,11 @@ impl Client {
             assert!(text(&initialized, "instructions").contains("fsm://executor"));
         }
         writeln!(
-            client.input,
+            client.input.as_mut().unwrap(),
             "{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}}"
         )
         .unwrap();
-        client.input.flush().unwrap();
+        client.input.as_mut().unwrap().flush().unwrap();
         client
     }
 
@@ -358,9 +363,13 @@ impl Client {
             ("method", string(method)),
             ("params", parameters),
         ]);
-        self.input.write_all(&canon_bytes(&request)).unwrap();
-        self.input.write_all(b"\n").unwrap();
-        self.input.flush().unwrap();
+        self.input
+            .as_mut()
+            .unwrap()
+            .write_all(&canon_bytes(&request))
+            .unwrap();
+        self.input.as_mut().unwrap().write_all(b"\n").unwrap();
+        self.input.as_mut().unwrap().flush().unwrap();
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             let response = self
@@ -416,7 +425,23 @@ impl Client {
             capabilities.get("executes_effects"),
             Some(&Value::Bool(true))
         );
-        assert_eq!(text(&capabilities, "progress"), "client_requests");
+        let autonomous = cfg!(target_os = "linux") && matches!(self.mode, ExecutionMode::Embedded);
+        assert_eq!(
+            text(&capabilities, "format"),
+            if autonomous {
+                "fsm.executor/2"
+            } else {
+                "fsm.executor/1"
+            }
+        );
+        assert_eq!(
+            text(&capabilities, "progress"),
+            if autonomous {
+                "autonomous"
+            } else {
+                "client_requests"
+            }
+        );
         let handlers = capabilities.get("handlers").unwrap().as_arr().unwrap();
         assert_eq!(handlers.len(), OPERATIONS.len());
         handlers
@@ -665,7 +690,16 @@ fn run_scenario_mode(
         (failures == "race").then(|| workflow_race::contend(&directory, &mut client));
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
-        let instance = client.call("instance_get", value(r#"{"instance_id":"inst-run"}"#));
+        // A read-only observer cannot tick the host or advance its logical
+        // clock: the real Linux embedded client remains open and quiet.
+        let instance = if cfg!(target_os = "linux") && matches!(mode, ExecutionMode::Embedded) {
+            fsm_store::store::Store::open_read_only(&directory.store())
+                .unwrap()
+                .instance_view("inst-run", None, None)
+                .unwrap()
+        } else {
+            client.call("instance_get", value(r#"{"instance_id":"inst-run"}"#))
+        };
         if text(&instance, "status") == "completed" {
             assert_eq!(
                 text(instance.get("configuration").unwrap(), "leaf"),
@@ -752,6 +786,19 @@ fn run_scenario_mode(
     }
     if terminal == "rejected" {
         assert!(!directory.resource().join("work").exists());
+    }
+    if cfg!(target_os = "linux") && matches!(mode, ExecutionMode::Embedded) {
+        client.finish();
+        let reopened = fsm_store::store::Store::open(&directory.store()).unwrap();
+        assert_eq!(reopened.state.execution.unresolved().count(), 0);
+        assert_eq!(reopened.state.execution_handoffs.outstanding().count(), 0);
+        assert_eq!(
+            reopened
+                .instance_view("inst-run", None, None)
+                .unwrap()
+                .get("status"),
+            Some(&string("completed"))
+        );
     }
 }
 
