@@ -631,7 +631,19 @@ fn unsupported_native_modes_refuse_without_running_handlers_or_changing_the_jour
     *arguments.last_mut().unwrap() = Value::Str(format!("stub:mark:{}", marker.display()));
     let handlers = directory.path().join("handlers.json");
     fs::write(&handlers, fsm_core::canon::canon_bytes(&table)).unwrap();
+    let executor = ExecutorLoop::new(
+        directory.path(),
+        HandlerTable::parse(&stub_table_json()).unwrap(),
+    )
+    .unwrap();
+    let refusal = fsm_cli::mcp::serve::run_with_mode(
+        directory.path(),
+        fsm_cli::mcp::serve::ServeMode::Embedded(Box::new(executor)),
+    )
+    .unwrap_err();
+    assert!(refusal.to_string().contains("unsupported on this platform"));
     for mode in [vec!["execute"], vec!["serve", "--execute"]] {
+        let embedded = mode[0] == "serve";
         let output = Command::new(binary())
             .arg("--data-dir")
             .arg(directory.path())
@@ -647,10 +659,14 @@ fn unsupported_native_modes_refuse_without_running_handlers_or_changing_the_jour
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(
-            diagnostic.contains("unsupported on this platform"),
-            "{diagnostic}"
-        );
+        if embedded {
+            assert!(output.stdout.is_empty(), "no protocol session may begin");
+        } else {
+            assert!(
+                diagnostic.contains("unsupported on this platform"),
+                "{diagnostic}"
+            );
+        }
         assert!(!marker.exists());
         let reader = Store::open_read_only(directory.path()).unwrap();
         assert_eq!(reader.records, before);
