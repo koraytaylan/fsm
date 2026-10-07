@@ -723,3 +723,40 @@ namespace 7d303327335eab38c99567501a6311c0 and original runtime configuration
 remain retained for guarded archive/teardown; report/log are under
 local-native-workflow-32e7cdf-stable. Task 9401 remains in progress and plan
 0022 stays 3/7; plans 20–23 remain incomplete.
+
+
+## Completed race scenario and unused-allocation verifier correction
+
+The exact 32e7cdf failed fixture was archived before matched resource, native
+cgroup, manager, runtime drop-in and installation teardown. Frozen
+ae89aee79d95193b59e8bfa0114f772855051216 stable producer session 84683 ended
+with exit one (native test 101), accepting all nine original scenarios and
+reaching successful race scenario completion before root verification. The root
+verifier rejected last_allocation=8 versus its historical expected=7; its counter
+assertion ran before independent claimed-domain verification, so this is not
+complete native race acceptance. The original scenario reached completed
+workflow and successful competing-owner stopped assertions, demonstrating
+progress beyond earlier drain/stall windows without establishing repeatability.
+
+The counter assumption conflated published handler claims with prepared
+allocations: competing owners may prepare an extra original domain which must
+be authenticated and retired unused. Ordinary scenarios retain exact counter
+assertions. The race still requires exactly seven claimed/stopped/acknowledged
+records and original per-claim closure/store/memory proofs, unique claimed
+allocations within the original counter, and a bounded complete allocation
+inventory. Every additional allocation must match protected original prepared
+identity and complete closing/closed records, have no binding/submission/entry,
+exec-status or preflight execution material, no original cgroup, and an unloaded
+original unit with no queued job. No absent domain is promoted to cleanup
+without matching durable original revocation and closed evidence. Original
+unused prepared/closing/closed bytes are archived to protected staging before
+verification can trigger normal fixture teardown; root refusal remains fatal.
+
+Terminal session 22206 passes stable/MSRV executor/CLI all-target Clippy,
+format/file-size checks and three ordinary helper tests with five native skips;
+workflow-unused-domains-check.log retains verified one-GiB/zero-swap controller
+limits. Actual corrected unused-domain verification and sensitivity, repeated
+stable/MSRV native race execution and complete host/platform acceptance remain
+pending. The failed /usr/libexec/fsm-workflow-0c35f95795dcdb3070a0a405d122cf39 stage
+and its original protected inventory remain retained for guarded archival and
+teardown before a new producer. Task 9401 stays in progress; plan 0022 is 3/7.

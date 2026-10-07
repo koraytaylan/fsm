@@ -113,7 +113,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
     ])
 }
 
-fn verify_native_runs(fixture: &Fixture, failure: &str) {
+fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
     let expected = if failure == "suspend" {
@@ -126,10 +126,13 @@ fn verify_native_runs(fixture: &Fixture, failure: &str) {
     };
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(store.state.execution.unresolved().count(), 0);
-    assert_eq!(
-        number(&fixture.counter(), "last_allocation").unwrap(),
-        expected as u64
-    );
+    let last = number(&fixture.counter(), "last_allocation").unwrap();
+    if failure == "race" {
+        assert!((expected as u64..=4096).contains(&last));
+    } else {
+        assert_eq!(last, expected as u64);
+    }
+    let mut claimed = std::collections::BTreeSet::new();
     for kind in [
         RecordKind::ExecutionClaimed,
         RecordKind::ExecutionStopped,
@@ -177,6 +180,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str) {
         );
         assert_eq!(number(&domain, "generation").unwrap(), 1);
         let allocation = number(&domain, "allocation").unwrap();
+        assert!((1..=last).contains(&allocation) && claimed.insert(allocation));
         memory_limits::verify(fixture, &domain, allocation);
         let proof = VerifiedClosure::read(
             &fixture
@@ -192,6 +196,84 @@ fn verify_native_runs(fixture: &Fixture, failure: &str) {
                 .exists()
         );
     }
+    for allocation in (1..=last).filter(|allocation| !claimed.contains(allocation)) {
+        verify_unused_domain(fixture, allocation, staging);
+    }
+}
+
+fn verify_unused_domain(fixture: &Fixture, allocation: u64, staging: &Path) {
+    let domain =
+        super::super::super::closing::recorded_domain(&fixture.directory, allocation).unwrap();
+    let namespace = text(&domain, "namespace").unwrap();
+    // Retain original cleanup bytes before a verifier refusal can tear down
+    // this otherwise closed fixture; absence alone is never retirement proof.
+    for prefix in ["prepared", "closing", "closed"] {
+        let source = fixture
+            .directory
+            .join(format!("{prefix}-{allocation}.json"));
+        let metadata = fs::symlink_metadata(&source).unwrap();
+        assert!(metadata.is_file() && metadata.uid() == 0 && metadata.len() <= 65536);
+        let mut destination = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(staging.join(format!("unused-{namespace}-{allocation}-{prefix}.json")))
+            .unwrap();
+        destination.write_all(&fs::read(&source).unwrap()).unwrap();
+        destination.sync_all().unwrap();
+    }
+    assert_eq!(
+        read_value(
+            &fixture.directory.join(format!("closing-{allocation}.json")),
+            true
+        )
+        .unwrap(),
+        object([
+            ("format", Value::Str("fsm.native-closing/1".into())),
+            ("domain", domain.clone())
+        ])
+    );
+    assert_eq!(
+        read_value(
+            &fixture.directory.join(format!("closed-{allocation}.json")),
+            true
+        )
+        .unwrap(),
+        object([
+            ("format", Value::Str("fsm.native-domain-closed/1".into())),
+            ("domain", domain.clone())
+        ])
+    );
+    for prefix in [
+        "binding",
+        "launch",
+        "handoff",
+        "entry",
+        "exec-status",
+        "manager-stopped",
+        "manager-retired",
+        "fixture-memory",
+    ] {
+        for suffix in ["json", "json.pending"] {
+            assert!(
+                !fixture
+                    .directory
+                    .join(format!("{prefix}-{allocation}.{suffix}"))
+                    .try_exists()
+                    .unwrap()
+            );
+        }
+    }
+    assert!(
+        !cgroup(&origin(&fixture.directory).unwrap(), allocation)
+            .unwrap()
+            .try_exists()
+            .unwrap()
+    );
+    let unit = format!("fsm-containment-{namespace}-1-{allocation}.service");
+    assert!(
+        super::super::super::manager::retired(&unit, Instant::now() + Duration::from_secs(2))
+            .unwrap()
+    );
 }
 
 pub(super) fn run() {
@@ -350,7 +432,7 @@ pub(super) fn run() {
         // matched test teardown guards after original workflow/journal assertions.
         for (fixture, failure) in fixtures.iter().zip(&failures) {
             memory_limits::archive(fixture, &staging);
-            verify_native_runs(fixture, failure);
+            verify_native_runs(fixture, failure, &staging);
         }
         let mut report_output = std::io::stdout().lock();
         writeln!(
