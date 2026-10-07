@@ -227,7 +227,11 @@ pub(super) fn run() {
             fields.insert("handlers".into(), Value::Arr(handlers));
             table = Value::Obj(fields);
         }
-        let mut fixture = Fixture::new_for_table(table);
+        let mut fixture = if mode.starts_with("process-recover-") {
+            Fixture::new_for_operator(table)
+        } else {
+            Fixture::new_for_table(table)
+        };
         let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
         let (binding, effect) = claim_binding(&fixture, &domain);
         bind(&fixture.directory, &binding).unwrap();

@@ -54,7 +54,7 @@ authority=Path(sys.argv[1]).parent
 os.execv('/usr/libexec/fsm-containment-authority',['fsm-containment-authority','client-watch',authority.parent.name,authority.name.removeprefix('authority-')])
 "#;
 
-pub(super) const SUPERVISOR: &str = r#"import os,sys
+pub(in super::super) const SUPERVISOR: &str = r#"import os,sys
 os.setgroups([])
 os.setgid(65534)
 os.setuid(65534)
@@ -234,7 +234,7 @@ pub(super) fn complete(
     .unwrap()
 }
 
-fn install_supervisor(directory: &Path) {
+pub(in super::super) fn install_supervisor(directory: &Path) {
     let source = fs::File::open(std::env::current_exe().unwrap()).unwrap();
     let length = source.metadata().unwrap().len();
     assert!(
