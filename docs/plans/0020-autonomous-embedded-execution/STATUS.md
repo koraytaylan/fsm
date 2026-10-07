@@ -385,3 +385,22 @@ Continue that existing session and frozen worktree rather than restarting it
 on an observation timeout; its task-cache log is
 `native-original-deadline-check.log`, and its scope enforces 1 GiB/zero swap.
 Task status remains unchanged, with no final-review or installed acceptance claim.
+
+### Deadline checkpoint and response-depth correction
+
+Original session 58142 is terminal with exit 0: frozen `9b130ce6` passes
+84 executor unit tests and executor/CLI all-target Clippy on stable/MSRV,
+formatting/file-size checks, two intentional deadline-extension fixture
+failures, and all 62 restored native tests; terminal evidence is recorded in
+TRANSPORT-WORKER-REVIEW and supersedes the preceding live-job checkpoint.
+
+Completion storage review then identified unbounded accounting recursion on
+caller-built arrays/objects before canonical depth validation. The default
+JSON ceiling now gates that recursion, with an exact-depth/one-level-over
+public verifier fixture. Initial compilation rejected the misplaced fixture;
+its corrected frozen source is `55efd81a`, and session 34198 is confirmed
+live waiting for unrelated Cargo before verification, with no pass claimed.
+The broad eight-command stable host gate is prepared for this transport
+checkpoint and remains unexecuted, pending success of that original depth job.
+Derived completion/handoff storage accounting and real-handler stdio
+execution/settlement acceptance remain open; completion remains 0/7.

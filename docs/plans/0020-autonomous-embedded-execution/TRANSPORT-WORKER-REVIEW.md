@@ -282,3 +282,24 @@ The preflight now refuses before descending past the default JSON depth bound,
 and a public completion-entry fixture pins the exact depth and one level over.
 This protects traversal without authenticating any receipt or settlement;
 runtime and isolated depth-guard sensitivity checks remain pending.
+
+The original deadline job at frozen `9b130ce6700090507e1d737f0938f8d1a25f11e2`
+is now terminal: session 58142 exited 0 after formatting/file-size checks,
+all 84 executor unit tests and executor/CLI all-target Clippy on stable/MSRV.
+Deliberately extending prepared startup by one millisecond failed each of the
+original-startup and execution-startup fixtures; restoring the source passed
+all 62 native tests with `NATIVE_ORIGINAL_DEADLINE_PASSED`.
+Terminal log SHA-256 is
+`0b066dded6d58ab9c3546bc05fe19bf235b1827f5330168ddf5d3c23ca66e3cd`.
+
+Depth candidate `ae9f6910` failed compilation because its fixture was placed
+inside a production function; session 83003 exited 101 and supplies no pass.
+The fixture is corrected in frozen `55efd81a06713ef6abd4dcda2741ee3ffa1d9b15`;
+replacement session 34198 is confirmed live with script process 1587154,
+waiting for unrelated Cargo process 1584608 before checks. Continue that
+specific session and `native-response-depth-corrected-check.log`; no runtime,
+Clippy or sensitivity result for this correction is claimed yet.
+The eight-command stable host gate is prepared as
+`native-transport-milestone-check.sh` for exact frozen `55efd81a`, but has not
+started and must run serially after the depth job succeeds; it grants no
+installed native acceptance or task-completion claim.
