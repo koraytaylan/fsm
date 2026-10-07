@@ -10,6 +10,62 @@ enum OriginalPhase {
 }
 
 #[test]
+fn native_original_run_deadline_reaches_binding_and_recovery_startup_unchanged() {
+    let budget = Arc::new(worker::Budget::default());
+    let _scope = worker::Scope::enter(Some(&budget));
+    let claim = test_support::original_claim();
+    let hash = format!("sha256:{}", "a".repeat(64));
+    for recovery in [false, true] {
+        let (entered, arrived) = mpsc::channel();
+        let _startup =
+            crate::run::native_client::startup::FixtureFactory::install(move |prepared| {
+                entered.send(prepared.deadline).unwrap();
+                Err("fixture original startup refused".into())
+            });
+        let mut run = if recovery {
+            NativeRun::recover(&claim, &hash, Duration::from_secs(10))
+        } else {
+            NativeRun::start(&claim, &hash, Duration::from_secs(10))
+        }
+        .unwrap();
+        let observed = arrived.recv_timeout(Duration::from_secs(5)).unwrap();
+        retire(&mut run);
+        assert_eq!(observed, run.deadline);
+        assert_eq!(
+            run.poll().err().unwrap(),
+            "fixture original startup refused"
+        );
+        drop(run);
+        assert_eq!(budget.reserved(), 0);
+    }
+}
+
+#[test]
+fn native_original_run_deadline_reaches_execution_startup_unchanged() {
+    let budget = Arc::new(worker::Budget::default());
+    let _scope = worker::Scope::enter(Some(&budget));
+    let mut run = original_run(OriginalPhase::Execution);
+    run.require_writer_entry();
+    let (entered, arrived) = mpsc::channel();
+    let _startup = crate::run::native_client::startup::FixtureFactory::install(move |prepared| {
+        entered.send(prepared.deadline).unwrap();
+        Err("fixture execution startup refused".into())
+    });
+    let claim = run.claim.clone();
+    let hash = run.journal_claim.clone();
+    run.launch_bound(&claim, &hash).unwrap();
+    let observed = arrived.recv_timeout(Duration::from_secs(5)).unwrap();
+    retire(&mut run);
+    assert_eq!(observed, run.deadline);
+    assert_eq!(
+        run.poll().err().unwrap(),
+        "fixture execution startup refused"
+    );
+    drop(run);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
 fn native_bound_standalone_run_selects_worker_mode_before_successor_startup() {
     let mut run = original_run(OriginalPhase::Execution);
     assert!(run.request.ticket.is_none());

@@ -1589,3 +1589,6 @@ second slot for the same attempt; this fixes provisional lifecycle behavior
 without a signature, format, hash-domain or MSRV change.
 An unreserved standalone predecessor still honors worker mode selected before
 successor startup rather than spawning that helper synchronously on its owner.
+NativeRun binding, recovery and execution now preserve the original absolute
+startup deadline through preparation instead of reconstructing a later Instant
+from a remaining duration; no public signature or persistent format changes.

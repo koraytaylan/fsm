@@ -192,14 +192,14 @@ impl NativeRequest {
         namespace: &str,
         generation: u64,
         request: &Value,
-        timeout: Duration,
+        deadline: Instant,
     ) -> Result<Self, String> {
         if !self.progress().is_retired() {
             return Err(
                 "native original transport has not retired before successor startup".into(),
             );
         }
-        let prepared = PreparedRequest::prepare(namespace, generation, request, timeout)?;
+        let prepared = PreparedRequest::prepare_until(namespace, generation, request, deadline)?;
         // Sequential phases of one original attempt share its reservation;
         // the retired predecessor cannot run concurrently with this helper.
         let ticket = match &self.ticket {
@@ -207,6 +207,16 @@ impl NativeRequest {
             None => worker::reserve_current()?,
         };
         Self::start_reserved(prepared, ticket)
+    }
+
+    fn start_until(
+        namespace: &str,
+        generation: u64,
+        request: &Value,
+        deadline: Instant,
+    ) -> Result<Self, String> {
+        let prepared = PreparedRequest::prepare_until(namespace, generation, request, deadline)?;
+        Self::start_reserved(prepared, worker::reserve_current()?)
     }
 
     fn start_reserved(
@@ -305,6 +315,23 @@ struct PreparedRequest {
 }
 
 impl PreparedRequest {
+    fn prepare_until(
+        namespace: &str,
+        generation: u64,
+        request: &Value,
+        deadline: Instant,
+    ) -> Result<Self, String> {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or("native run deadline; claim remains uncertain")?;
+        let mut prepared = Self::prepare(namespace, generation, request, remaining)?;
+        // Validation and serialization consume the original attempt's time;
+        // deriving another Instant from the remaining duration would extend it.
+        prepared.deadline = deadline;
+        Ok(prepared)
+    }
+
     fn prepare(
         namespace: &str,
         generation: u64,

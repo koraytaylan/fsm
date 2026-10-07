@@ -3399,6 +3399,9 @@ MUST NOT authorize concurrent helpers, writer entry, closure or settlement.
 If the predecessor has no worker reservation, successor startup MUST honor
 the currently selected worker mode and reserve before dispatch, retaining
 synchronous standalone behavior when worker mode is absent.
+Original NativeRun binding, recovery and execution startup MUST carry the
+same absolute Instant deadline into prepared worker material; route validation,
+serialization and phase changes MUST NOT restart or extend that deadline.
 
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is

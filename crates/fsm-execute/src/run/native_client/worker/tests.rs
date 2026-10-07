@@ -31,7 +31,7 @@ fn native_successor_refuses_startup_before_original_helper_retirement() {
         "00000000000000000000000000000000",
         1,
         &message,
-        Duration::from_secs(1),
+        Instant::now() + Duration::from_secs(1),
     );
     request.cancel().unwrap();
     assert!(receive(&mut request).is_err());

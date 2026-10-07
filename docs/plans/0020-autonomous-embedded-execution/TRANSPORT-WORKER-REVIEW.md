@@ -261,3 +261,14 @@ frozen worktree clean. Original session 75717 exited 0 with
 `44b6d184bafd5ee4c546b7326d5408cfbe61b7a162ccaa33ec0d3a61bbde5fb8`.
 These are focused attempt-path checks under the original serial 1 GiB/zero-swap
 scope, not full stdio/native acceptance or final-review host gates.
+
+### Original startup deadline — candidate
+
+Binding and recovery reconstructed a transport deadline from the original
+timeout, and execution reconstructed it from remaining time before preparing
+the request; both could extend worker startup beyond the original run deadline.
+The run now carries the original absolute Instant through all prepared startup
+phases. Two fixtures reach binding/recovery and bound execution startup and
+compare the worker factory's received deadline with the original run's exact
+deadline, then retire startup refusal without supplying closure authority.
+Runtime and isolated deadline-preservation sensitivity checks remain pending.

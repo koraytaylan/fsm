@@ -113,8 +113,12 @@ impl NativeRun {
         } else {
             ("bind", binding)
         };
-        let request =
-            NativeRequest::start(&namespace, generation, &request(action, payload), timeout)?;
+        let request = NativeRequest::start_until(
+            &namespace,
+            generation,
+            &request(action, payload),
+            deadline,
+        )?;
         Ok(Self {
             claim: claim.clone(),
             journal_claim: journal_claim.into(),
@@ -233,17 +237,12 @@ impl NativeRun {
     }
 
     fn request_execution(&mut self) -> Result<(), String> {
-        let remaining = self
-            .deadline
-            .checked_duration_since(Instant::now())
-            .filter(|remaining| !remaining.is_zero())
-            .ok_or("native run deadline; claim remains uncertain")?;
         self.phase = Phase::Executing;
         self.request = self.request.successor(
             &self.namespace,
             self.generation,
             &request("execute", self.allocation.clone()),
-            remaining,
+            self.deadline,
         )?;
         Ok(())
     }

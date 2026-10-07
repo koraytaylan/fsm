@@ -2854,3 +2854,6 @@ occupied; no new attempt capacity is required for this sequential phase, and
 the original writer checks, claim identity and run deadline still govern entry.
 Selecting worker mode after standalone binding also moves successor startup
 off the caller, acquiring its first reservation before dispatch.
+All NativeRun startup phases carry the original absolute deadline into worker
+material, including time spent preparing the request; a phase change does not
+grant extra startup time.
