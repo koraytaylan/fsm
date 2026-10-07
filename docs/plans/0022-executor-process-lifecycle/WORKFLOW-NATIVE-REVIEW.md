@@ -1190,3 +1190,34 @@ Actual native execution and a renewed host gate remain pending for this test
 change. The 44f05eb full gate above predates it; separate Python feasibility
 probes still need their own service limits before the entire matrix is run.
 All original tests remain registered; task 9401 stays in progress, plan 0022 3/7.
+
+## First common-limits authority run and conservative retention
+
+Stable session 48165 at frozen 97b1477937cbbe7c83310d5db8735698b8eb0f38 is
+terminal exit one: the first five registered cases pass, but the multi-fixture
+enrolled_gate_authorization case reaches its 30-second outer harness timeout.
+No full native acceptance is claimed. The original helper remains installed
+at device 2306/inode 94765497, SHA-256
+9118fd5fa85fb9677bc0358ccb2ce182bbdc063eaafaf6dd9b13706e165f68ec.
+Failure logs and authority-retained.json remain in
+local-common-limits-authority-stable; controller log SHA-256 is
+d065e313aefe6fa666a55f3620292e30a10eb3976a394bb3c876b0ba9f6b205c.
+Later read-only retention-readback.json verifies 26 original namespace limit
+inventories, 20 actual root-owned memory receipts with one GiB/zero swap,
+clear original process/unit/group/job/authority inventories and exact retained
+helper identity; no closure receipt was created or inferred from absence.
+Automatic approval review rejected guarded helper removal because failed-case
+instructions require retention; removal remains unexecuted, with explicit
+approval requested for that exact original helper after rechecking the guards.
+
+The enrollment harness now receives the same finite 90-second outer allowance
+as other multi-fixture cases, reflecting its many sequential limit installation
+and retirement operations; original native run/stop deadlines are unchanged.
+The producer also retains exact helper identity after any failed or incomplete
+case inventory, even when namespace state is clear. All seven mocked retirement
+controls pass, and neutralizing only the complete-inventory guard makes the
+named clear-state failure and timeout controls fail before exact source
+restoration and a healthy rerun. Sensitivity log SHA-256 is
+acd974899bd530cb23dad5ef59e18da63b5c7d1c5722dd724a9b0be52e4b33c0;
+format/file-size/diff checks pass. Actual enrollment/full authority reruns,
+other feasibility service limits and renewed full host acceptance remain open.

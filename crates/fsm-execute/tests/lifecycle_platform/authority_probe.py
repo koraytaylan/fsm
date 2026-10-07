@@ -93,9 +93,12 @@ def main():
                        'FSM_NATIVE_FIXTURE_INODE=' + str(installed['inode']),
                        'FSM_NATIVE_FIXTURE_SHA256=' + authority_digest,
                        str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never']
-            # Broker access covers the expanded sequential owner/paired axes.
+            # Enrollment also runs many sequential real handler fixtures;
+            # each now includes service-limit setup and matched retirement.
+            # These harness bounds do not alter native execution/stop deadlines.
             timeout = 90 if case in ('provisioned_broker_access', 'provisioned_broker_disconnect',
                                     'provisioned_public_service_loop',
+                                    'enrolled_gate_authorization',
                                     'private_exec_status', 'native_capture_bounds') else 30
             try:
                 result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
@@ -122,13 +125,16 @@ def main():
             if unrelated is not None:
                 unrelated.wait(timeout=5)
         finally:
-            if not authority_state_is_clear():
+            clear = authority_state_is_clear()
+            complete = len(rows) == len(INVENTORY) and all(row['passed'] for row in rows)
+            if not clear or not complete:
                 retention = dict(installed, source_commit=commit,
-                                 reason='native authority state remains unresolved',
+                                 reason=('native authority state remains unresolved' if not clear
+                                         else 'native authority case failed or inventory incomplete'),
                                  passed=False, gate_released=False, cases=rows)
                 args.report.with_name('authority-retained.json').write_text(
                     json.dumps(retention, indent=2) + '\n')
-                raise RuntimeError('retained exact installed authority for unresolved native state') from native_timeout
+                raise RuntimeError('retained exact installed authority for failed or unresolved native state') from native_timeout
             subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                             '--inode', str(installed['inode']), '--sha256', authority_digest],
                            check=True, timeout=10)

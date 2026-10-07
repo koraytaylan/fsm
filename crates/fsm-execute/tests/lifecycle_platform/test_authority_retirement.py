@@ -52,10 +52,13 @@ class AuthorityRetirementTests(unittest.TestCase):
     def test_native_timeout_retains_exact_authority_for_unknown_state(self):
         self.check_main_teardown(retained=True, timeout=True)
 
-    def test_native_timeout_records_failed_case_and_partial_output_after_clear_teardown(self):
+    def test_native_timeout_retains_original_authority_even_when_state_is_clear(self):
         self.check_main_teardown(retained=False, timeout=True)
 
-    def check_main_teardown(self, retained, initially_clear=True, timeout=False):
+    def test_native_case_failure_retains_original_authority_even_when_state_is_clear(self):
+        self.check_main_teardown(retained=False, failed_case=True)
+
+    def check_main_teardown(self, retained, initially_clear=True, timeout=False, failed_case=False):
         report = MagicMock()
         artifact = MagicMock()
         artifact.read_bytes.return_value = b'fixture'
@@ -78,6 +81,8 @@ class AuthorityRetirementTests(unittest.TestCase):
                     raise probe.subprocess.TimeoutExpired(command, 30, output=b'partial stdout',
                                                           stderr=b'partial stderr')
                 name = command[command.index('--exact') + 1]
+                if failed_case:
+                    return SimpleNamespace(returncode=101, stderr=b'original case failed', stdout=b'')
                 return SimpleNamespace(returncode=0, stderr=b'',
                                        stdout=('test ' + name + ' ... ok').encode())
             self.assertIn('remove', command)
@@ -98,7 +103,7 @@ class AuthorityRetirementTests(unittest.TestCase):
                     probe.main()
                 self.assertFalse(calls.called)
                 self.assertFalse(any('install' in call.args[0] for call in outputs.call_args_list))
-            elif retained:
+            elif retained or timeout or failed_case:
                 with self.assertRaisesRegex(RuntimeError, 'retained exact installed authority') as failure:
                     probe.main()
                 if timeout:
@@ -112,20 +117,22 @@ class AuthorityRetirementTests(unittest.TestCase):
                 if timeout:
                     self.assertTrue(record['cases'][0]['timed_out'])
                     self.assertIsNone(record['cases'][0]['exit_code'])
+                if failed_case:
+                    self.assertEqual(record['cases'][0]['exit_code'], 101)
+                    self.assertFalse(record['cases'][0]['passed'])
             else:
-                self.assertEqual(probe.main(), 1 if timeout else 0)
+                self.assertEqual(probe.main(), 0)
                 self.assertEqual(sum('remove' in call.args[0] for call in calls.call_args_list), 1)
                 record = json.loads(report.write_text.call_args.args[0])
-                if timeout:
-                    self.assertFalse(record['passed'])
-                    self.assertTrue(record['cases'][0]['timed_out'])
-                    self.assertIsNone(record['cases'][0]['exit_code'])
-                else:
-                    broker = next(call for call in calls.call_args_list
-                                  if any(str(value).endswith('::provisioned_broker_access')
+                broker = next(call for call in calls.call_args_list
+                              if any(str(value).endswith('::provisioned_broker_access')
+                                     for value in call.args[0]))
+                self.assertEqual(broker.kwargs['timeout'], 90)
+                enrollment = next(call for call in calls.call_args_list
+                                  if any(str(value).endswith('::enrolled_gate_authorization')
                                          for value in call.args[0]))
-                    self.assertEqual(broker.kwargs['timeout'], 90)
-                    self.assertEqual(calls.call_args_list[0].kwargs['timeout'], 30)
+                self.assertEqual(enrollment.kwargs['timeout'], 90)
+                self.assertEqual(calls.call_args_list[0].kwargs['timeout'], 30)
             if timeout:
                 report.with_name.return_value.write_bytes.assert_called_once_with(
                     b'partial stdoutpartial stderr')

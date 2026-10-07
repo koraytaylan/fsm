@@ -25,6 +25,12 @@ and retain original namespaces on failed assertions; both toolchain all-target
 compilation checks pass, while actual capped native execution and renewed host
 acceptance remain pending for this test-only change. Separate feasibility
 probe service limits are still required before the whole native matrix runs.
+The first capped authority run passes five cases but times out its expanded
+enrollment fixture at the outer 30-second bound; the original helper is retained,
+and no full native pass is claimed. Read-only checks verify twenty actual
+one-GiB/zero-swap receipts and clear original inventories. The multi-fixture
+harness bound is now 90 seconds and failed-case retention controls plus guard
+sensitivity pass; original native deadlines and task statuses are unchanged.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,
