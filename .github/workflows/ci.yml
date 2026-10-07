@@ -100,7 +100,7 @@ jobs:
       matrix:
         rust: [stable, "1.89.0"]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       CARGO_BUILD_JOBS: "1"
     steps:

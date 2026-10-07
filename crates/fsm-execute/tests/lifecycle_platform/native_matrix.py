@@ -50,9 +50,12 @@ def main():
         module = importlib.import_module(name + '_probe')
         inventory = module.CASES if name == 'systemd' else module.INVENTORY
         path = args.report_dir.resolve() / (name + '.json')
+        # Authority includes two 180-second builds and twelve sequential cases
+        # (six at 90 seconds, six at 30), plus guarded retention/cleanup.
+        suite_timeout = 1200 if name == 'authority' else 180
         result = subprocess.run([sys.executable, str(Path(__file__).with_name(name + '_probe.py')),
                                  '--toolchain', args.toolchain, '--report', str(path)],
-                                cwd=repo, env=environment, timeout=180)
+                                cwd=repo, env=environment, timeout=suite_timeout)
         report, digest = load_report(path)
         assert result.returncode == 0 and report['passed'] is True, name + ' failed'
         assert report['schema'] == 'fsm.lifecycle-probe/1' and report['gate_released'] is False
