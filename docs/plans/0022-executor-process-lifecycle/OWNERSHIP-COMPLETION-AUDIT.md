@@ -25,7 +25,9 @@ service/borrowed selection. The renewed gate at 43b7031 found a stale ordinary
 borrowed legacy-spawn expectation and was stopped by exact scope identity,
 terminal 143, before all stages completed. The corrected native-refusal test
 and all four embedded read-only controls pass stable/MSRV at the current
-source, with all-target CLI Clippy; renewed complete host acceptance is pending.
+source, with all-target CLI Clippy. The corrected complete stable gate passes
+all eight stages at frozen 44f05eb in terminal session 77644; ignored native
+cases and hosted/platform acceptance still require separate current evidence.
 Terminal review 37460020929 proves all nine jobs at 665a71b, predating cold
 host code. All production/gate/executable-byte acceptance flags stay false.
 Remote successor push was rejected by automatic approval review and exact

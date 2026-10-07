@@ -16,7 +16,8 @@ and held original writer, followed by all seven successful writable effects.
 The full stable gate found an outdated unprovisioned legacy-spawn expectation
 and was stopped by its exact scope identity (terminal 143); the corrected
 native-refusal test and all four read-only controls now pass on both toolchains,
-with all-target CLI Clippy, while renewed full host acceptance remains pending.
+with all-target CLI Clippy; the corrected complete stable host gate now passes
+all eight stages at frozen 44f05eb in terminal session 77644.
 WORKFLOW-NATIVE-REVIEW.md records exact evidence; there is no task promotion.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
@@ -28,8 +29,8 @@ shutdown and crash proof remain incomplete.
   process/MCP execution and unavailable-authority refusal proven on stable/MSRV;
   borrowed MCP also selects native admission with all seven workflow effects
   proven on stable/MSRV, while bounded borrowed shutdown and HTTP remain incomplete.
-- Frozen 93a258f0ae08300b51a849394378296a632c13f5 passed the complete stable
-  host gate in terminal session 98900, exit zero: formatting, file size, debug
+- Frozen 44f05ebaab9df170debe1e1c0c4b2a918ad2ca47 passed the complete stable
+  host gate in terminal session 77644, exit zero: formatting, file size, debug
   and release workspace tests, all-target Clippy, warning-free documentation,
   zero dependencies and embedding acceptance all passed.
 - Linux's four workflow scenario groups require privileged native provisioning

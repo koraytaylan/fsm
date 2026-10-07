@@ -1155,3 +1155,19 @@ restored source SHA-256 is
 The scope asserts one GiB/zero-swap limits before mutation. This proves native
 selection through the borrowed public entry, not individual read-only guard
 sensitivity, bounded stop or current-source full platform acceptance.
+
+## Complete stable host gate at 44f05eb
+
+Terminal session 77644 exited zero at frozen clean
+44f05ebaab9df170debe1e1c0c4b2a918ad2ca47. Independent readback verifies exactly
+eight zero stage exits and GATE_FAILED_STAGES=0: formatting, file size, debug
+and release workspace tests, workspace all-target Clippy, warning-free docs,
+zero dependencies and downstream embedding acceptance all pass. Complete cache
+log native-borrowed-refusal-corrected-full-stable-gate.log SHA-256 is
+2f3fa24f640f4b18618c39b911e5015dda0c9593afb07641f2f808d3ea41ef30.
+The exact user scope asserted one GiB/zero-swap limits; sampled swap stayed zero.
+This renews ordinary host acceptance after public service and borrowed native
+selection, but ignored native cases rely on their separate provisioned evidence.
+Older authority/feasibility native fixtures still need service limits before
+the complete local native matrix can be rerun; HTTP, bounded borrowed stop,
+complete recovery/crash proof and hosted/platform acceptance remain incomplete.
