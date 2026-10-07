@@ -1,4 +1,5 @@
 //! Independent callers drive the same private owner and admitted envelopes.
+mod acceptance_owner;
 mod publication;
 
 #[cfg(target_os = "linux")]
@@ -27,7 +28,7 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 fn execution_host_protocol_reads_observe_the_same_admitted_prefix_as_tools() {
     use super::operation::{ReadCommand, ReadOperation};
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let session = handle.session().unwrap();
     let created = session
         .submit(command(
@@ -104,7 +105,7 @@ fn execution_host_protocol_payloads_share_the_exact_session_byte_budget() {
         operation::{Operation, ReadCommand, ReadOperation},
     };
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let session = handle.session().unwrap();
     let make = |limit: usize| {
         let mut operation = Operation::Read(ReadCommand {
@@ -314,7 +315,7 @@ fn seeded(path: &std::path::Path) -> Store {
 #[test]
 fn execution_host_mixed_sessions_capture_one_complete_prefix_and_one_writer() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     assert!(
         Store::open(&scratch.0).is_err(),
         "owner retains the sole writer"
@@ -391,7 +392,7 @@ fn execution_host_mixed_sessions_capture_one_complete_prefix_and_one_writer() {
 #[test]
 fn execution_host_count_boundaries_and_reserved_stop_do_not_write() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let mut replies = Vec::new();
     for _ in 0..HOST_COMMANDS / SESSION_COMMANDS {
         let session = handle.session().unwrap();
@@ -422,7 +423,7 @@ fn execution_host_count_boundaries_and_reserved_stop_do_not_write() {
 #[test]
 fn execution_host_exact_owned_byte_limits_hold_through_dequeue() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let first = handle.session().unwrap();
     assert!(matches!(
         first.submit(padded_command(SESSION_BYTES + 1)),
@@ -457,7 +458,7 @@ fn execution_host_exact_owned_byte_limits_hold_through_dequeue() {
 #[test]
 fn execution_host_host_byte_limit_plus_one_is_busy_before_dispatch() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let first = handle.session().unwrap();
     let second = handle.session().unwrap();
     let third = handle.session().unwrap();
@@ -478,7 +479,7 @@ fn execution_host_host_byte_limit_plus_one_is_busy_before_dispatch() {
 #[test]
 fn execution_host_original_generation_cannot_dispatch_after_close() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let old = handle.session().unwrap();
     let reply = old
         .submit(command(
@@ -514,7 +515,7 @@ fn execution_host_original_generation_cannot_dispatch_after_close() {
 #[test]
 fn execution_host_lost_reply_preserves_replay_and_content_conflict() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let session = handle.session().unwrap();
     let args = r#"{"machine":"owner_case","request_id":"create-1"}"#;
     drop(session.submit(command("instance_create", args)).unwrap());
@@ -542,7 +543,7 @@ fn execution_host_lost_reply_preserves_replay_and_content_conflict() {
 #[test]
 fn execution_host_concurrent_callers_observe_their_complete_writes_in_fifo_order() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let worker = std::thread::spawn(move || owner.run());
     let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
     let mut callers = Vec::new();
@@ -602,7 +603,7 @@ fn execution_host_concurrent_callers_observe_their_complete_writes_in_fifo_order
 #[test]
 fn execution_host_reserved_cancel_survives_saturation_and_does_not_claim_the_key() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let session = handle.session().unwrap();
     let cancelled = session
         .submit(command(
@@ -665,7 +666,7 @@ fn execution_host_reserved_cancel_survives_saturation_and_does_not_claim_the_key
 #[test]
 fn execution_host_cancellation_is_scoped_to_the_original_generation() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let first = handle.session().unwrap();
     let second = handle.session().unwrap();
     let cancelled = first
@@ -712,7 +713,7 @@ fn execution_host_cancel_during_a_coarse_loop_works_without_progress_metadata() 
     }
     let scratch = Scratch::new();
     let original = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let (owner, handle) = Owner::new(
+    let (owner, handle) = acceptance_owner::new(
         seeded(&scratch.0),
         CancelOnObservation {
             session: std::sync::Arc::clone(&original),
@@ -734,7 +735,7 @@ fn execution_host_cancel_during_a_coarse_loop_works_without_progress_metadata() 
 #[test]
 fn execution_host_control_rpc_copy_is_charged_before_it_is_allocated() {
     let scratch = Scratch::new();
-    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let (owner, handle) = acceptance_owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
     let session = handle.session().unwrap();
     let mut too_large = command("machine_list", "{}");
     too_large.rpc_id = Value::Str("x".repeat(9 * 1024 * 1024));
