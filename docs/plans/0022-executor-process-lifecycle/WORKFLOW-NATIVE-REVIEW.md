@@ -151,3 +151,27 @@ producer controls pass after correcting an initial missing path borrow; failed
 and corrected logs are retained as workflow-race-focus*.log. Actual native
 execution, MSRV checks, sensitivity and changed-source full gates remain
 required; no race acceptance or task promotion is inferred from compilation.
+
+The frozen 5d0e12c stable execution passed all original nine scenarios but
+failed the new observer after ten seconds: native recovery correctly retains
+the foreign claim without a Start directive, so it emits no observed-pending
+launch line. This is an observer failure, not a proved ownership defect.
+The control now requires actual paired startup and subsequent kernel read
+counter growth across the live-tree competition interval, preserving PID/start
+identity, one claimed/unresolved run, exact external call count and all final
+receipt assertions. Read-counter growth is process activity evidence, not an
+independent proof that a particular journal prefix was consumed; full race
+acceptance must be assessed with actual results and call-chain review.
+
+The failed producer retained its exact authority and protected staging. Matched
+root inventory verified original authority/store/resource/home identities,
+artifact digests, absent original PIDs and no namespace-prefixed native cgroup;
+its failed manager still matched original ExecMainPID with no live PID/job.
+All regular evidence and socket metadata were archived under
+local-native-workflow-5d0e12c-stable/retained-fixture before resetting only that
+matched failed unit and retiring the exact fixture and installed authority.
+An initial archive attempt refused a Unix socket before any deletion; the
+corrected archive preserves its metadata. This is test teardown and creates
+no closure receipt or successful native verdict. Corrected formatting/size,
+seven mocked producer tests and stable all-target Clippy pass; fresh execution
+and stronger observation proof remain required.

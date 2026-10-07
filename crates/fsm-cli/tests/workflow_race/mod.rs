@@ -107,26 +107,16 @@ pub(super) fn contend(directory: &Directory, client: &mut Client) -> Competitor 
         .unwrap();
     let mut competitor = Competitor { child, root };
     let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
-        assert!(
-            competitor.child.try_wait().unwrap().is_none(),
-            "standalone exited: {}",
-            bounded_executor_errors(&errors)
-        );
-        if fs::read_to_string(&output)
-            .unwrap()
-            .contains("observed pending")
-        {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "standalone never observed original pending effect: {}",
-            bounded_executor_errors(&errors)
-        );
-        client.call("instance_get", value(r#"{"instance_id":"inst-run"}"#));
+    while !fs::read_to_string(&errors).unwrap().contains("mode=paired") {
+        assert!(competitor.child.try_wait().unwrap().is_none());
+        assert!(Instant::now() < deadline, "standalone did not initialize");
         std::thread::sleep(Duration::from_millis(10));
     }
+    // A waiting foreign owner has no Start directive and is deliberately quiet.
+    // Observe kernel reads across an interval after startup instead of requiring
+    // a launch-oriented diagnostic that would misclassify correct exclusion.
+    std::thread::sleep(Duration::from_millis(100));
+    let before = read_characters(competitor.child.id());
     let until = Instant::now() + Duration::from_millis(500);
     while Instant::now() < until {
         client.call("instance_get", value(r#"{"instance_id":"inst-run"}"#));
@@ -154,6 +144,10 @@ pub(super) fn contend(directory: &Directory, client: &mut Client) -> Competitor 
         assert!(competitor.child.try_wait().unwrap().is_none());
         std::thread::sleep(Duration::from_millis(10));
     }
+    assert!(
+        read_characters(competitor.child.id()) > before,
+        "standalone never observed subsequent prefixes"
+    );
     fs::write(
         directory.resource().join("tree-release"),
         b"release original only",
@@ -172,4 +166,15 @@ fn process_identity(identifier: u32) -> (u32, String) {
         .collect();
     assert_ne!(fields[0], "Z", "original tree must be live");
     (identifier, fields[19].to_owned())
+}
+
+fn read_characters(identifier: u32) -> u64 {
+    let counters = fs::read_to_string(format!("/proc/{identifier}/io")).unwrap();
+    counters
+        .lines()
+        .find_map(|line| line.strip_prefix("rchar: "))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap()
 }
