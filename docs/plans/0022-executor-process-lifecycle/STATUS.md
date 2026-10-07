@@ -10,6 +10,12 @@ Task frontmatter and roll-up remain unchanged: 3/7 complete, task 9401
 ownership integration in progress, bounded shutdown and reconciliation planned.
 Historical live-handle notes below describe earlier observations only.
 
+The borrowed provisioned workflow now includes a read-only public session with
+a genuine pending effect and held original writer, followed by the unchanged
+seven-effect writable workflow; both toolchain compilation checks pass, while
+actual execution of this new control remains pending, as recorded in
+WORKFLOW-NATIVE-REVIEW.md, with no task promotion.
+
 The latest clean MSRV native rerun at 0593350 passed all eleven scenarios,
 including both ownership races, after bounded preparation/refusal diagnostics
 were added; the earlier intermittent uncertain-preparation failure remains

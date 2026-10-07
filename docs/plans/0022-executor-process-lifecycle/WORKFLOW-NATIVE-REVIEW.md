@@ -1095,3 +1095,21 @@ sensitivity, independent bounded output/EOF stop, HTTP hosting, complete native
 matrix and renewed full host gate remain pending. Earlier intermittent
 preparation uncertainty is still unexplained; repeated success does not prove
 its correction. Task 9401 remains in progress and plan 0022 3/7.
+
+## Borrowed read-only workflow control
+
+The provisioned borrowed scenario now first publishes its real pending begin
+effect through an ordinary session without an executor, retains the physical
+writer lease, and drives initialize plus three ping requests through a borrowed
+read-only public session against the healthy native facility. After observer
+EOF, a fresh read-only store must contain exactly the original journal records,
+the held writer has no unresolved claim, and the external handler log must be
+absent or empty; unexpected log read errors fail the control. Releasing the
+writer then resumes the original seven-effect borrowed workflow, whose existing
+root allocation count and original closure assertions remain unchanged.
+Stable/MSRV CLI all-target Clippy, formatting and file-size checks pass in
+terminal session 49403 under verified one GiB/zero-swap limits. Actual native
+execution, guard sensitivity and renewed full host gate remain pending; the
+held-writer assertion alone is a snapshot, while the fresh journal read proves
+durable immutability, and neither identifies which layered guard refused work.
+Task 9401 remains in progress and plan 0022 3/7.

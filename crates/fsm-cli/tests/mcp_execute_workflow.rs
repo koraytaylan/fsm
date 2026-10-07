@@ -261,13 +261,17 @@ enum ExecutionMode {
     Embedded,
     Standalone,
     Borrowed,
+    BorrowedReadOnly,
 }
 
 impl Client {
     fn start_mode(fixture: &Directory, mode: ExecutionMode) -> Self {
         let directory = &fixture.0;
         let errors = directory.join("stderr");
-        let borrowed = matches!(mode, ExecutionMode::Borrowed);
+        let borrowed = matches!(
+            mode,
+            ExecutionMode::Borrowed | ExecutionMode::BorrowedReadOnly
+        );
         let mut command = Command::new(if borrowed {
             std::env::current_exe().unwrap()
         } else {
@@ -281,6 +285,11 @@ impl Client {
                 .args(["--quiet", "--exact", "borrowed_native_session", "--ignored"])
                 .env("FSM_BORROWED_STORE", fixture.store())
                 .env("FSM_BORROWED_HANDLERS", directory.join("handlers.json"));
+            if matches!(mode, ExecutionMode::BorrowedReadOnly) {
+                command.env("FSM_BORROWED_READONLY", "1");
+            } else {
+                command.env_remove("FSM_BORROWED_READONLY");
+            }
         } else {
             command.arg("--data-dir").arg(fixture.store()).arg("serve");
         }
@@ -328,7 +337,7 @@ impl Client {
             "initialize",
             value(r#"{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"workflow-test","version":"1"}}"#),
         );
-        if !matches!(mode, ExecutionMode::Standalone) {
+        if matches!(mode, ExecutionMode::Embedded | ExecutionMode::Borrowed) {
             assert!(text(&initialized, "instructions").contains("fsm://executor"));
         }
         writeln!(
@@ -587,6 +596,39 @@ fn run_scenario_mode(
         "instance_create",
         value(r#"{"machine":"discovered_workflow","request_id":"run"}"#),
     );
+    #[cfg(target_os = "linux")]
+    if matches!(mode, ExecutionMode::Borrowed) {
+        drop(client);
+        client = Client::start_mode(&directory, ExecutionMode::Standalone);
+        client.call(
+            "instance_send",
+            value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
+        );
+        drop(client);
+        let writer = fsm_store::store::Store::open(&directory.store()).unwrap();
+        let records = writer.records.clone();
+        let readonly = fsm_store::store::Store::open_read_only(&directory.store()).unwrap();
+        let mut observer = Client::start_mode(&directory, ExecutionMode::BorrowedReadOnly);
+        for _ in 0..3 {
+            observer.request("ping", object([]));
+        }
+        drop(observer);
+        assert_eq!(readonly.records, records);
+        assert_eq!(
+            fsm_store::store::Store::open_read_only(&directory.store())
+                .unwrap()
+                .records,
+            records
+        );
+        assert_eq!(writer.state.execution.unresolved().count(), 0);
+        match fs::read_to_string(directory.resource().join("calls")) {
+            Ok(calls) => assert!(calls.is_empty()),
+            Err(error) => assert_eq!(error.kind(), std::io::ErrorKind::NotFound),
+        }
+        drop(readonly);
+        drop(writer);
+        client = Client::start_mode(&directory, ExecutionMode::Borrowed);
+    }
     #[cfg(target_os = "linux")]
     let mut first_owner = if matches!(mode, ExecutionMode::Standalone) {
         // Discovery precedes any pending effect; retire that host before the
@@ -869,7 +911,11 @@ fn borrowed_native_session() {
     )
     .unwrap();
     let mut executor = fsm_cli::mcp::serve::ExecutorLoop::new(&path, table).unwrap();
-    let mut store = fsm_cli::store::Store::open(&path).unwrap();
+    let mut store = if std::env::var_os("FSM_BORROWED_READONLY").is_some() {
+        fsm_cli::store::Store::open_read_only(&path).unwrap()
+    } else {
+        fsm_cli::store::Store::open(&path).unwrap()
+    };
     fsm_cli::mcp::serve::serve_session_with(
         Some(&mut store),
         &mut fsm_cli::clock::SystemClock,
