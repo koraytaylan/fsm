@@ -3,6 +3,16 @@ use super::*;
 use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
+mod crash;
+pub(super) use crash::{configure_table, restart_after_launch};
+
+pub(super) fn holds_tree(argument: &str) -> bool {
+    matches!(
+        argument,
+        "handler-failures=race" | "handler-failures=crash-launch"
+    )
+}
+
 pub(super) fn hold_tree(directory: &Path) {
     // The root-owned template keeps the marker outside DynamicUser RemoveIPC.
     fs::hard_link(

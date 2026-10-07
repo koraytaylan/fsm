@@ -158,7 +158,7 @@ fn workflow_handler() {
     if operation == "check_prerequisite"
         && arguments
             .iter()
-            .any(|argument| argument == "handler-failures=race")
+            .any(|argument| workflow_race::holds_tree(argument))
     {
         workflow_race::hold_tree(&directory);
     }
@@ -240,14 +240,17 @@ fn write_handlers(directory: &Path, resource: &Path, failures: &str) {
             ])
         })
         .collect();
-    fs::write(
-        directory.join("handlers.json"),
-        canon_bytes(&object([
-            ("format", string("fsm.handlers/1")),
-            ("handlers", Value::Arr(handlers)),
-        ])),
-    )
-    .unwrap();
+    let table = object([
+        ("format", string("fsm.handlers/1")),
+        ("handlers", Value::Arr(handlers)),
+    ]);
+    #[cfg(target_os = "linux")]
+    let table = {
+        let mut table = table;
+        workflow_race::configure_table(&mut table, failures);
+        table
+    };
+    fs::write(directory.join("handlers.json"), canon_bytes(&table)).unwrap();
 }
 
 struct Client {
@@ -691,6 +694,15 @@ fn run_scenario_mode(
     #[cfg(target_os = "linux")]
     let mut competitor =
         (failures == "race").then(|| workflow_race::contend(&directory, &mut client));
+    #[cfg(target_os = "linux")]
+    if failures == "crash-launch" {
+        competitor = Some(workflow_race::restart_after_launch(
+            &directory,
+            &mut client,
+            first_owner.as_mut().unwrap(),
+        ));
+        first_owner = None;
+    }
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         // A read-only observer cannot tick the host or advance its logical
@@ -770,7 +782,10 @@ fn run_scenario_mode(
             .filter(|entry| entry.get("kind").and_then(Value::as_str) == Some("EffectAcked"))
             .count()
     };
-    assert_eq!(acknowledgements, expected_calls.len());
+    assert_eq!(
+        acknowledgements,
+        expected_calls.len() - usize::from(failures == "crash-launch")
+    );
     assert_eq!(
         text(&client.call("journal_verify", object([])), "health"),
         "Ok"

@@ -67,7 +67,7 @@ fn stage_artifact(destination: &Path, source_variable: &str, digest_variable: &s
 }
 
 fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
-    object([
+    let mut table = object([
         ("format", Value::Str("fsm.handlers/1".into())),
         (
             "handlers",
@@ -110,13 +110,36 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
                     .collect(),
             ),
         ),
-    ])
+    ]);
+    if failures == "crash-launch" {
+        let Value::Obj(fields) = &mut table else {
+            panic!("handler table")
+        };
+        let Value::Arr(handlers) = fields.get_mut("handlers").unwrap() else {
+            panic!("handlers")
+        };
+        let Value::Obj(first) = &mut handlers[0] else {
+            panic!("first handler")
+        };
+        first.insert("timeout_ms".into(), Value::Num("3000".into()));
+        first.insert(
+            "retry".into(),
+            fsm_core::json::parse(
+                br#"{"attempts":2,"backoff_ms":10,"max_backoff_ms":10,"on":["timeout"]}"#,
+                &fsm_core::json::JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+        );
+    }
+    table
 }
 
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if failure == "suspend" {
+    let expected = if failure == "crash-launch" {
+        8
+    } else if failure == "suspend" {
         6
     } else {
         OPERATIONS[..4]
@@ -127,7 +150,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(store.state.execution.unresolved().count(), 0);
     let last = number(&fixture.counter(), "last_allocation").unwrap();
-    if failure == "race" {
+    if matches!(failure, "race" | "crash-launch") {
         assert!((expected as u64..=4096).contains(&last));
     } else {
         assert_eq!(last, expected as u64);
@@ -152,9 +175,54 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         .iter()
         .filter(|record| record.kind == RecordKind::ExecutionSettled)
     {
+        let disposition = record.body.get("disposition").and_then(Value::as_str);
+        if failure == "crash-launch" && number(&record.body, "run_id").unwrap() == 1 {
+            assert!(matches!(disposition, Some("attempted" | "interrupted")));
+        } else {
+            assert_eq!(disposition, Some("acked"));
+        }
+    }
+    if failure == "crash-launch" {
+        let claims: Vec<_> = store
+            .records
+            .iter()
+            .filter(|record| record.kind == RecordKind::ExecutionClaimed)
+            .collect();
+        assert_eq!(number(&claims[0].body, "run_id").unwrap(), 1);
+        assert_eq!(number(&claims[1].body, "run_id").unwrap(), 2);
+        for key in ["effect_id", "handler_fingerprint", "retry"] {
+            assert_eq!(claims[0].body.get(key), claims[1].body.get(key));
+        }
+        let stopped = store
+            .records
+            .iter()
+            .find(|record| record.kind == RecordKind::ExecutionStopped)
+            .unwrap();
+        let status = stopped
+            .body
+            .get("outcome")
+            .unwrap()
+            .get("status")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        assert!(matches!(status, "timeout" | "interrupted"));
+        let settled = store
+            .records
+            .iter()
+            .find(|record| record.kind == RecordKind::ExecutionSettled)
+            .unwrap();
         assert_eq!(
-            record.body.get("disposition").and_then(Value::as_str),
-            Some("acked")
+            settled.body.get("disposition").and_then(Value::as_str),
+            Some(if status == "timeout" {
+                "attempted"
+            } else {
+                "interrupted"
+            })
+        );
+        assert_eq!(
+            number(&claims[1].body, "attempt").unwrap(),
+            if status == "timeout" { 2 } else { 1 }
         );
     }
     for record in store
@@ -320,6 +388,10 @@ pub(super) fn run() {
         (
             "two_standalone_executors_exclude_a_live_handler_tree",
             vec!["race"],
+        ),
+        (
+            "workflow_race::crash::killed_standalone_recovers_without_overlapping_trees",
+            vec!["crash-launch"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ]
