@@ -18,6 +18,7 @@ CASES = (
     ('standalone_and_embedded_exclude_a_live_handler_tree', 1),
     ('two_standalone_executors_exclude_a_live_handler_tree', 1),
     ('workflow_race::crash::killed_standalone_recovers_without_overlapping_trees', 1),
+    ('workflow_race::crash::killed_standalone_after_verified_stop_recovers_once', 1),
     ('borrowed_embedded_handlers_complete_the_workflow', 1),
 )
 

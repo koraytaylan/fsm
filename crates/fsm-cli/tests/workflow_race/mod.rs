@@ -4,12 +4,12 @@ use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
 mod crash;
-pub(super) use crash::{configure_table, restart_after_launch};
+pub(super) use crash::{configure_table, restart_at_cut};
 
 pub(super) fn holds_tree(argument: &str) -> bool {
     matches!(
         argument,
-        "handler-failures=race" | "handler-failures=crash-launch"
+        "handler-failures=race" | "handler-failures=crash-launch" | "handler-failures=crash-stop"
     )
 }
 

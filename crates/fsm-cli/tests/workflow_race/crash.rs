@@ -1,10 +1,10 @@
-//! Forced standalone death after real claim/launch, with an independent observer.
+//! Forced standalone death at launch/verified-stop cuts, with an independent observer.
 use super::*;
 use fsm_store::store::VerifiedClosure;
 use std::os::unix::{fs::MetadataExt, process::ExitStatusExt};
 
 pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
-    if failures != "crash-launch" {
+    if !matches!(failures, "crash-launch" | "crash-stop") {
         return;
     }
     let Value::Obj(table) = table else {
@@ -23,10 +23,11 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
     );
 }
 
-pub(in super::super) fn restart_after_launch(
+pub(in super::super) fn restart_at_cut(
     directory: &Directory,
     client: &mut Client,
     original: &mut Competitor,
+    failures: &str,
 ) -> Competitor {
     let marker = directory.resource().join("tree-live");
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -73,9 +74,11 @@ pub(in super::super) fn restart_after_launch(
             .stopped_for(claim.effect().0, claim.effect().1)
             .is_none()
     );
-    original.child.kill().unwrap();
-    assert_eq!(original.child.wait().unwrap().signal(), Some(9));
-    let replacement = start(directory, "after-kill");
+    let mut replacement = match failures {
+        "crash-launch" => Some(kill_and_restart(directory, original)),
+        "crash-stop" => None,
+        _ => panic!("unknown crash cut"),
+    };
     let domain = claim.domain().to_value();
     let receipt = PathBuf::from("/var/lib/fsm-containment")
         .join(text(&domain, "namespace"))
@@ -109,9 +112,17 @@ pub(in super::super) fn restart_after_launch(
         }
         assert!(
             Instant::now() < deadline,
-            "original killed host's tree did not close"
+            "original native tree did not close"
         );
         std::thread::sleep(Duration::from_millis(5));
+    }
+    if replacement.is_none() {
+        assert!(original.child.try_wait().unwrap().is_none());
+        assert_eq!(
+            Store::open_read_only(&directory.store()).unwrap().records,
+            records
+        );
+        replacement = Some(kill_and_restart(directory, original));
     }
     // A killed handler cannot unlink its marker; only matched closure and dead
     // original identities permit retiring that exact fixture-owned link.
@@ -123,7 +134,13 @@ pub(in super::super) fn restart_after_launch(
     fs::remove_file(&marker).unwrap();
     fs::write(directory.resource().join("tree-release"), b"successor only").unwrap();
     drop(writer);
-    replacement
+    replacement.unwrap()
+}
+
+fn kill_and_restart(directory: &Directory, original: &mut Competitor) -> Competitor {
+    original.child.kill().unwrap();
+    assert_eq!(original.child.wait().unwrap().signal(), Some(9));
+    start(directory, "after-kill")
 }
 
 fn still_live(identity: &(u32, String)) -> bool {
@@ -146,6 +163,27 @@ fn still_live(identity: &(u32, String)) -> bool {
 fn killed_standalone_recovers_without_overlapping_trees() {
     run_scenario_mode(
         "crash-launch",
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        ExecutionMode::Standalone,
+    );
+}
+
+#[test]
+#[ignore = "requires the registered native workflow authority and independent tree observer"]
+fn killed_standalone_after_verified_stop_recovers_once() {
+    run_scenario_mode(
+        "crash-stop",
         "succeeded",
         &[
             "check_prerequisite",
