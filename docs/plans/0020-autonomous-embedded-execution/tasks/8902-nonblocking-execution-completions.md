@@ -79,7 +79,9 @@ pass at exact `80f1e5a` (see TRANSPORT-WORKER-REVIEW.md). New helper spawn is no
 with separate joined startup-refusal observations; its six new fixtures and
 executor unit/lifecycle/public API checks plus both-crate all-target Clippy pass
 on stable/MSRV at `0705bcb`. Original completion/recovery and shutdown receipt
-verification is now dispatched to reserved proof workers, with seven new wiring
-and guard fixtures pending runtime verification. Route discovery, durable completion storage,
+verification is now dispatched to reserved proof workers; stable executor unit
+(71), lifecycle/public surface and CLI/stdio/MCP checks pass at `635e933`.
+Original session 96881 continues for Clippy/MSRV; twelve new guard sensitivity
+cases are prepared but unexecuted. Route discovery, durable completion storage,
 installed-handler responsiveness and lifecycle fault acceptance remain open;
 no prerequisite is released and merged_as remains empty.

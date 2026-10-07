@@ -113,3 +113,22 @@ Worker-startup predecessor `0705bcb7f8e7eb0c94606446d05550eb6fe902a7` passed
 formatting/file size, executor unit tests (64), owned lifecycle (3), public
 surface (17), and executor plus CLI all-target Clippy on stable/MSRV in terminal
 session 99171; that source does not cover this later proof-reader candidate.
+
+## Verified runtime checkpoint and continuing job
+
+Exact frozen `635e933e9892d310f1d0ce1b9a5d1f724301bde5` passes stable
+executor unit tests (71), owned lifecycle (3), public surface (17), CLI unit
+tests (129), autonomous stdio (6) and MCP lifecycle (11), plus formatting and
+file-size checks. Original session 96881 remains live, waiting for unrelated
+Cargo work before Clippy and the MSRV stages; the job is not terminal and
+neither those stages nor the prepared twelve guard-neutralization cases are
+claimed passed. Continue that original session and source rather than starting
+a replacement on an observation timeout. Its dedicated cache script/log are
+`native-proof-check.sh` and `native-proof-check.log`; sensitivity is prepared in
+`native-proof-sensitivity-check.sh` and must run after the original job retires.
+The mutable proof log has no terminal hash yet. Both verification scopes use
+actual kernel MemoryMax=1 GiB/MemorySwapMax=0 with serial Cargo/test workers.
+
+The terminal predecessor startup log `native-worker-startup-check.log`
+(source `0705bcb`, session 99171, exit 0) has SHA-256:
+88a9e5a123e281bf43abff081f9fd0b5f3db3a1e5ac1eeda6dd19470447e0326.

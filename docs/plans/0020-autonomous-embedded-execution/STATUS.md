@@ -329,3 +329,11 @@ retain uncertainty. Actual-child wiring and timing/cancellation guard fixtures
 are added with runtime checks pending; Root-issued success, held real process/MCP
 host acceptance, route discovery, completion storage and worker fault phases
 remain unfinished, with 0/7 complete and no prerequisite release.
+
+### Proof-reader runtime checkpoint
+
+Exact `635e933` passes stable executor unit (71), owned lifecycle (3), public
+surface (17), CLI unit (129), autonomous stdio (6) and MCP lifecycle (11) checks.
+Original session 96881 continues behind unrelated Cargo work for Clippy/MSRV;
+new guard sensitivity is prepared but unexecuted. The milestone is partial,
+not task completion or native Root-authority acceptance; completion remains 0/7.
