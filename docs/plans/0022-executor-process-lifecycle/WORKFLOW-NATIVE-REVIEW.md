@@ -336,6 +336,34 @@ must precede a new producer, and separate root-manager test services need
 explicit memory and swap limits before further native execution.
 Task 9401 remains in progress and plan 0022 remains 3/7.
 
+## Failure archival rerun at 4ce2aa5
+
+The clean frozen MSRV producer at 4ce2aa5b8bf2ffce80ecb11a8666d91c5e686c68
+terminated with native fixture exit 101 and no producer timeout; the first
+four groups/nine scenarios passed, while the standalone/embedded race failed
+Drain and the two-standalone group was not reached. The last actual observation
+reported draining, closed admission, retired helpers, complete inventory,
+released writer, no unresolved run IDs and one unclaimed reservation in
+uncertain_preparation. These observations do not prove domain retirement or
+successful shutdown. The root test completed in 41.84 seconds and its child
+race in 9.32 seconds; workflow log SHA-256 is
+ec887428b02dd76f6243484b28047cb20a36b520d3adfad3291714b9bfba76f7.
+The report and log remain in local-native-workflow-4ce2aa5-msrv beneath the
+dedicated task cache; matched staging and authority remain retained pending
+guarded archival and retirement.
+
+Failure-only archival now preserves original owner logs before fixture Drop,
+with exclusive root-owned files and at most 64 KiB per source. The archived
+embedded log records all seven settled/acknowledged effects, while the competing
+owner records native-preparing check_identity followed by the generic native
+completion refusal. This changes the next diagnostic action: preparation's
+observe branch discards its actual error, and preparation/completion response
+decoders replace a broker refusal with generic text. Neither the log nor the
+inventory establishes authority-lock contention as the cause. Preserve the
+actual bounded refusal reason before choosing a production correction; do not
+release uncertain allocation ownership based on helper retirement or absence.
+Task 9401 remains in progress and plan 0022 remains 3/7.
+
 The residual 67f61c0 MSRV staging, HOME/resource and runtime drop-in were
 archived under retained-fixture-complete before identity-matched retirement;
 socket identities were recorded separately after a first copy attempt refused
