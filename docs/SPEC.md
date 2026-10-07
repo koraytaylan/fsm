@@ -3383,6 +3383,13 @@ NOT append an outcome or release capacity. Store-route discovery and current
 writer-held physical-store checks still execute on the owner; full retained
 completion storage accounting remains unfinished.
 
+NativeCompletion::verify MUST apply the same 2 MiB retained-response storage
+preflight before canonical serialization, material cloning or receipt access,
+including for caller-built Values and synchronous standalone verification;
+small encoded content MUST NOT exempt excess String or array capacity.
+Failure MUST return bounded uncertainty without supplying completion evidence.
+This response-entry guard does not account for all derived completion storage.
+
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is
 permanently broken; it MUST retain the initiating failure and actual output

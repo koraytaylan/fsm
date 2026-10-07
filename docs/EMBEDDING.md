@@ -2841,3 +2841,9 @@ transport retirement after join. The additive function is inventoried and has
 no journal, wire, hash-domain, dependency, core or MSRV change; ordinary unwind
 is covered, while native handler/owner faults and installed Root lifecycle
 acceptance remain distinct obligations.
+
+Caller-built responses passed to NativeCompletion::verify must fit the same
+2 MiB conservative storage charge used by native transport workers, including
+String and array capacities and 4096 bytes per object entry; encoded size alone
+does not establish that bound, and refusal occurs before material cloning or
+receipt access without creating completion evidence.

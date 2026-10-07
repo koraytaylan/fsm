@@ -198,3 +198,21 @@ those gates or installed Root-handler acceptance.
 All recorded build scopes enforce 1 GiB memory and zero swap with serial
 workers, using the dedicated task cache rather than `/tmp`.
 Plan 20 remains 0/7 and tasks 8901/8902 remain in progress.
+
+### Load-bearing unwind guards and completion-entry capacity
+
+Frozen `7a293e7` now passes all seven isolated guard-sensitivity cases:
+restoring fatal-hook invocation, suppressing unmarked hooks, removing each
+startup/transferred/proof entry scope separately, and disabling transport/proof
+panic-result replacement each causes its intended single fixture to fail.
+Each mutation was restored, after which all 56 native tests passed; original
+session 49181 exited 0 with `NATIVE_UNWIND_GUARD_SENSITIVITY_PASSED`.
+The terminal log SHA-256 is
+`37491371e19c0894c0be75da00a90611e04b6a0be57cc1e532abfde20eaf72ec`.
+
+The next implementation adds the existing retained-response storage preflight
+to public NativeCompletion::verify before serialization, cloning and receipt
+access, closing the caller-built allocation-capacity bypass of transport
+checking; a limit/one-byte-over fixture uses identical encoded content.
+Runtime and sensitivity checks for this addition are pending, and accounting
+for every derived completion representation remains open.

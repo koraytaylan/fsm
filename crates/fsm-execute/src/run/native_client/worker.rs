@@ -304,7 +304,7 @@ fn run(mut request: InlineRequest, shared: &Shared) {
     }
 }
 
-fn storage_fits(value: &Value) -> bool {
+pub(super) fn storage_fits(value: &Value) -> bool {
     fn charge(value: &Value, remaining: &mut usize) -> Option<()> {
         *remaining = remaining.checked_sub(std::mem::size_of::<Value>())?;
         match value {

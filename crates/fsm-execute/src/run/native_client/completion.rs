@@ -93,6 +93,11 @@ fn closed(value: &Value, fields: &[&str]) -> Result<(), String> {
 }
 
 fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Material, String> {
+    // Public verification also accepts caller-built Values whose allocation
+    // capacities can exceed their encoded size; refuse before cloning material.
+    if !super::worker::storage_fits(response) {
+        return Err("native completion retained response storage exceeds bound".into());
+    }
     let bytes = crate::value_limits::canonical(response, 65536)
         .map_err(|_| "native completion exceeds response bound")?;
     parse(&bytes, &JsonLimits::DEFAULT).map_err(|_| "native completion exceeds JSON limits")?;
@@ -320,6 +325,35 @@ fn stopped(candidate: &Value, class: Option<FailureClass>) -> Result<StoppedOutc
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn native_completion_verification_bounds_retained_capacity_before_material_cloning() {
+        let claim = claim();
+        let hash = format!("sha256:{}", "b".repeat(64));
+        let key = String::from("candidate");
+        let capacity = 2 * 1024 * 1024 - 2 * std::mem::size_of::<Value>() - 4096 - key.capacity();
+        for extra in [0, 1] {
+            let text = String::with_capacity(capacity + extra);
+            assert_eq!(text.capacity(), capacity + extra);
+            let response = Value::Obj(BTreeMap::from([(key.clone(), Value::Str(text))]));
+            // Both values encode identically; only retained capacity differs.
+            assert_eq!(
+                fsm_core::canon::canon_bytes(&response),
+                br#"{"candidate":""}"#
+            );
+            let error = NativeCompletion::verify(&response, &claim, &hash)
+                .err()
+                .unwrap();
+            assert_eq!(
+                error,
+                if extra == 0 {
+                    "native completion fields differ"
+                } else {
+                    "native completion retained response storage exceeds bound"
+                }
+            );
+        }
+    }
 
     #[test]
     fn exhaustion_uses_original_policy_and_preserves_raw_capture() {

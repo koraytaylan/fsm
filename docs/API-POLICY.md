@@ -1576,3 +1576,9 @@ transport retirement after join. The additive function is inventoried and has
 no journal, wire, hash-domain, dependency, core or MSRV change; ordinary unwind
 is covered, while native handler/owner faults and installed Root lifecycle
 acceptance remain distinct obligations.
+
+NativeCompletion::verify now applies the existing 2 MiB conservative parsed
+response charge to caller-built Values before cloning or receipt access;
+excess retained capacity refuses even when its encoded content is small.
+This tightens the provisional verifier's accepted inputs without a signature,
+journal, wire, hash-domain or MSRV change; derived completion accounting is open.

@@ -1523,3 +1523,8 @@ transport retirement after join. The additive function is inventoried and has
 no journal, wire, hash-domain, dependency, core or MSRV change; ordinary unwind
 is covered, while native handler/owner faults and installed Root lifecycle
 acceptance remain distinct obligations.
+
+Native completion verification now rejects caller-built responses exceeding
+the existing 2 MiB conservative retained-response charge before cloning or
+receipt access, including responses with small encoded content but large
+allocation capacities; this changes no persistent format or public signature.
