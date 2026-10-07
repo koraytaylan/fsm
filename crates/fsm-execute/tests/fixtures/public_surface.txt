@@ -413,6 +413,7 @@ reexport fsm_execute::contract::Limits from report
 reexport fsm_execute::contract::Report from report
 reexport fsm_execute::contract::analyze_contract from outcomes
 reexport fsm_execute::contract::analyze_effects from effects
+reexport fsm_execute::contract::check_pending from admission
 reexport fsm_execute::run::NativeAdmissionControl from native_admission_control
 reexport fsm_execute::run::Pipeline from pipeline
 reexport fsm_execute::run::SettleOutcome from pipeline
