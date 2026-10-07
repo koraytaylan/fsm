@@ -667,3 +667,19 @@ actual instance notification plus a verified reopened journal. The hook only
 pauses; it does not construct a replacement executor, result or journal record.
 This adds deterministic post-commit native-phase coverage; execution and guard
 neutralization still remain pending, as does fault injection before fsync.
+
+The installed-hook verification terminated successfully (session 55183,
+exit 0). Stable and MSRV each passed all six real-binary stdio cases,
+including installed-hook adapter cleanup, and all 11 legacy lifecycle cases;
+their CLI libraries each ran the pre-publication 124-case inventory.
+All-target CLI Clippy passed on both, with the later MSRV stage compiling the
+new publication source. The log `production-adapter-panic-hook-check.log`
+has SHA-256 `b67a354fdc1c93764e6941aa671b3e167e71f7a17b0b34a647a8e2fcc0f076d6`.
+Because source evolved between stages, this does not prove execution of the
+new publication fixtures or one frozen complete gate. The full-gate wrapper
+initially misclassified native_error test names using a substring check and
+stopped before any stage; it now matches actual diagnostic line prefixes.
+The exact clean frozen checkout is updated to `2416fe5`, and the full stable
+gate is launched behind independent Cargo work (session 80272). Its result,
+MSRV publication fixture execution and guard-neutralization remain pending;
+no plan task or cross-plan dependency is released.
