@@ -792,3 +792,27 @@ windows, remaining host routes, bounded shutdown/reconciliation, current-source
 full host and 81-case native gates, hosted macOS/Windows and live-model evidence
 remain required. Task 9401 stays in progress, plan 0022 remains 3/7 and plans
 20–23 remain incomplete; gate_released remains false.
+
+## Full stable host gate at 57052bd
+
+Frozen 57052bdcf7e00e72abf4b740a9077aef3851200c completed the full stable
+host gate in terminal session 70719 with exit zero: formatting, source size,
+debug and release workspace tests, workspace all-target Clippy with denied
+warnings, documentation with denied warnings, zero-dependency verification and
+embed acceptance each returned zero; GATE_FAILED_STAGES is zero.
+The retained native-race-full-stable-gate.log has SHA-256
+2195b114576356ca1da454483400a99447cee4e134f26dac38c5705dc221ac9c
+under the dedicated fsm-plan-native-matrix-20261005 task cache.
+The controller used one build worker and one test worker in a verified
+one-GiB memory scope with memory.swap.max=0; observed swap usage was zero,
+with no OOM or OOM-kill events. The tracked worktree remained clean throughout;
+the unrelated user-owned untracked workflow was excluded from edits and review.
+The committed 568ebf6..57052bd review range passes git diff --check.
+
+This closes the current-source stable host gate obligation for this checkpoint,
+but ordinary workspace tests do not execute provisioned ignored native cases;
+the separate ten-scenario stable/MSRV producer evidence above retains its own
+scope. Current-source full 81-case native coverage, deterministic contention
+and verifier sensitivity, standalone/standalone races, crash windows and the
+remaining host, shutdown, recovery and platform obligations remain pending.
+Task 9401 remains in progress, plan 0022 remains 3/7 and gate_released is false.
