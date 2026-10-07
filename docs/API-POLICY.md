@@ -1445,3 +1445,14 @@ enqueue still does not prove delivery. Legacy direct and public queued helpers
 retain their behavior. Response Value construction, long diagnostics, progress
 forwarding, response/notification ordering and production activation remain
 separate integration obligations; no public wire/API/format version changes.
+
+The private owned stdio adapter now preserves tool progress metadata through
+a charged hosted command context and dispatches with the original cancellation
+flag. Its context constructor accepts only the bounded hosted output mode, so
+owner-side progress cannot call a direct transport writer. Existing progress
+rate/final-report behavior is reused. Admission conservatively charges metadata
+copies and adapter/RPC retention; output refusal remains observable by the
+independent hosted lifetime controls. Legacy borrowed helpers are unchanged.
+This does not move long diagnostics off the owner or establish response/change
+notification ordering, production activation, HTTP or installed-handler
+acceptance, and introduces no public signature, error code or wire version.

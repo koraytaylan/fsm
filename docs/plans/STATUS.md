@@ -60,3 +60,8 @@ Plan 0020 now has a verified private stdio question path that leaves the writer
 free during the client wait and revalidates settlement; focused stable/MSRV
 and compatibility evidence is recorded in its ownership review, while progress,
 egress and production activation remain open and completion stays 0/7.
+
+Plan 0020's private stdio composition now passes 118 CLI library cases and
+all-target Clippy on stable/MSRV with bounded output, one sampled native-pass
+timestamp and final progress forwarding; real-binary activation and full
+remaining plan acceptance stay open, with task completion still 0/7.

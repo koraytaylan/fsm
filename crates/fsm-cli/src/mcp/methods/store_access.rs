@@ -119,15 +119,24 @@ impl StoreAccess<'_> {
             }
             Self::Hosted {
                 session, output, ..
-            } => receive(
-                session,
-                output,
-                session.submit(Command {
+            } => {
+                let command = Command {
                     rpc_id: context.request_id.clone().unwrap_or(Value::Null),
                     tool: name.into(),
                     arguments,
-                }),
-            ),
+                };
+                let admission = if let Some(hosted) =
+                    crate::mcp::host::operation::HostedToolContext::new(
+                        context.meta.as_ref(),
+                        &command.rpc_id,
+                        output,
+                    ) {
+                    session.submit_hosted(command, hosted)
+                } else {
+                    session.submit(command)
+                };
+                receive(session, output, admission)
+            }
         }
     }
 }

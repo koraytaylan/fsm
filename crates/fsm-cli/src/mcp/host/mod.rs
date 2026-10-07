@@ -68,6 +68,20 @@ pub(super) struct Session {
 }
 
 impl Session {
+    pub(in crate::mcp) fn submit_hosted(
+        &self,
+        command: Command,
+        context: operation::HostedToolContext,
+    ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
+        self.mailbox.admit(
+            Arc::clone(&self.original),
+            Operation::HostedTool {
+                command,
+                context: Box::new(context),
+            },
+        )
+    }
+
     pub(super) fn submit(
         &self,
         command: Command,
@@ -216,6 +230,18 @@ fn apply_command(
     };
     let result = match &mut admitted.command {
         Operation::Tool(command) => {
+            super::tools::dispatch_with(store, clock, &command.tool, &command.arguments, &context)
+        }
+        Operation::HostedTool {
+            command,
+            context: hosted,
+        } => {
+            let context = super::tools::ToolCtx {
+                notifier: Some(&hosted.notifier),
+                meta: hosted.metadata.take(),
+                cancel: context.cancel.clone(),
+                ..Default::default()
+            };
             super::tools::dispatch_with(store, clock, &command.tool, &command.arguments, &context)
         }
         Operation::Read(command) => match &command.operation {

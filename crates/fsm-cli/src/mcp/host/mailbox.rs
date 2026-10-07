@@ -344,6 +344,16 @@ pub(super) fn command_charge(command: &Command) -> usize {
 pub(super) fn operation_charge(operation: &Operation) -> usize {
     match operation {
         Operation::Tool(command) => command_charge(command),
+        Operation::HostedTool { command, context } => command_charge(command)
+            .saturating_add(std::mem::size_of::<super::operation::HostedToolContext>())
+            .saturating_add(context.adapter_bytes)
+            .saturating_add(
+                context
+                    .metadata
+                    .as_ref()
+                    .map_or(0, |value| value_charge(value, 0).saturating_mul(4)),
+            )
+            .saturating_add(32 * 1024),
         Operation::Read(command) => {
             envelope_charge(&command.rpc_id).saturating_add(match &command.operation {
                 ReadOperation::ResourcesList => 0,

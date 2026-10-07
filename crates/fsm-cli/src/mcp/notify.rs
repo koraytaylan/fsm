@@ -71,6 +71,11 @@ impl Notifier {
         }
     }
 
+    /// Only this mode permits owner-side emission without a transport write.
+    pub(crate) fn hosted_handle(&self) -> Option<Self> {
+        matches!(self.out, OutputMode::Hosted(_)).then(|| self.clone_handle())
+    }
+
     /// Private hosted budget: 64 frames / 32 MiB retained, 16 MiB encoded per frame.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub(crate) fn hosted_queued(

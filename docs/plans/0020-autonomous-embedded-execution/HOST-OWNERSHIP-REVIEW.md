@@ -489,3 +489,23 @@ DeadlineApplied records at the single sampled timestamp, then verifies the
 reopened sequence and journal. It does not change a golden or runtime behavior.
 Session 98317 is the corrected combined stable/MSRV verification; its result
 remains pending and no all-target Clippy or MSRV pass is inferred from 64303.
+
+### Corrected stdio output/clock/progress milestone — 2026-10-07
+
+Terminal session 98317 passed all 118 CLI library cases and CLI all-target
+Clippy on both stable and Rust 1.89, covering hosted frame/queue bounds,
+original-owner stdio lifetime, question continuation, one logical sample for
+two durable deadlines, and numeric progress metadata reaching its final
+byte-stream report. The cache log hosted-progress-corrected-check.log has
+SHA-256 `4fbf944b0941561f13ea3e211b96120db43bab189ef4f54ca52e200b742108a7`. Each serial stage verified Cargo idle,
+available-memory/swap thresholds and actual 1 GiB/zero-swap kernel limits
+immediately before starting.
+
+This closes the two fixture findings from 94022 and 64303. It is a focused
+private-composition milestone, not the eight-stage changed-source workspace
+gate, production binary activation or native macOS/Windows, installed-handler
+and live-client acceptance. Normal response-wait cancellation/EOF pumping,
+long diagnostics, publication ordering, versioned discovery and transport
+activation remain concrete next steps; metadata/preparation-growth and output
+guard sensitivity remain required before final acceptance. No task is complete
+and no dependency is released.

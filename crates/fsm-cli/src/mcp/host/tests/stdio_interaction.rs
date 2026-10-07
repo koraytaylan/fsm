@@ -385,3 +385,35 @@ fn execution_host_session_channels_stdio_invalid_answer_keeps_original_key_and_a
     assert_eq!(reopened.journal.last_seq, 3);
     assert!(reopened.state.dedup.contains_key("question-answer"));
 }
+
+#[test]
+fn execution_host_session_channels_stdio_progress_metadata_reaches_the_final_report() {
+    let mut conversation = Conversation::start();
+    conversation.frame(value(r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"journal_verify","arguments":{},"_meta":{"progressToken":17}}}"#));
+    let reply = conversation.wait_rpc(4);
+    let frames = conversation
+        .output
+        .text()
+        .lines()
+        .map(value)
+        .collect::<Vec<_>>();
+    let reports = frames
+        .iter()
+        .filter(|frame| {
+            frame.get("method").and_then(Value::as_str) == Some("notifications/progress")
+        })
+        .collect::<Vec<_>>();
+    let report = conversation.finish();
+    assert!(report.failure.is_none());
+    assert!(report.shutdown.writer_released);
+    assert!(error_code(&reply).is_none());
+    assert!(!reports.is_empty());
+    let final_report = reports.last().unwrap().get("params").unwrap();
+    assert_eq!(
+        final_report.get("progressToken"),
+        Some(&Value::Num("17".into()))
+    );
+    assert_eq!(final_report.get("progress"), final_report.get("total"));
+    let reopened = Store::open(&conversation.scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, 2);
+}

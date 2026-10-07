@@ -3266,3 +3266,14 @@ capacity, including any blocked in-flight frame. An encoded-frame or queue
 refusal MUST close hosted output admission and expose failure to independent
 input/lifecycle observation; successful enqueue MUST NOT imply delivery.
 Already retained frames stay charged until the actual writer retires them.
+
+Private hosted stdio tool envelopes MUST preserve progress metadata and the
+original cancellation control while dispatching. Progress emission MUST use
+only the hosted bounded queued notifier, never a direct transport writer.
+Admission MUST conservatively charge retained adapter metadata/RPC copies,
+owned tool-context allocation, and up to four metadata/progress-token copies
+plus a 32 KiB context allowance to the original request reservation. Progress
+retains the existing rate limit and final-report behavior. Refused progress
+output MUST remain visible to hosted session/lifecycle failure observation.
+This does not move long diagnostics off the writer or establish mutation
+response/notification ordering; both remain integration obligations.

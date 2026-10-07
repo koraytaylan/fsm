@@ -216,3 +216,49 @@ forwarding, long diagnostics, response-before-notification/commit ordering,
 production selection/versioned discovery, HTTP, growth sensitivity and native
 platform/installed-handler acceptance remain open; no task completion or
 dependency release follows from the implementation checkpoint.
+
+### Hosted stdio progress context — implementation pending verification
+
+The owned stdio path now submits a charged HostedToolContext with the original
+metadata and cancellation control to ordinary dispatch. Its constructor
+accepts only the private hosted queued notifier, preventing owner-side direct
+transport writes. Metadata/progress copies, adapter retention and context
+allocation are conservatively charged before dispatch. A byte-stream case
+uses journal_verify with a numeric progress token and checks the final report,
+unchanged journal and original writer release. Borrowed/direct helper behavior
+is unchanged.
+
+Session 28645 was retired at its verified idle waiter with exit 130 before
+Cargo; its frozen successor 94022 failed compilation as recorded in the review.
+Corrected output/clock code plus this progress integration is queued in session
+64303 for stable/MSRV library tests and CLI all-target Clippy, under serial
+Cargo-idle waits and immediate memory/swap threshold and actual 1 GiB/zero-swap
+checks. No passing result is claimed yet.
+
+Manual review confirms that progress emission uses the original bounded output
+and preserves the existing reporter rate/final semantics. Normal response waits
+still need input pumping for cancellation and EOF during long calls, and long
+read-only diagnostics still need separation from the owner; these are concrete
+production-path gaps, alongside response/change-notification ordering, versioned
+discovery, real-binary activation and remaining native/platform acceptance.
+Completion remains 0/7 with no dependency release or task landing OID.
+
+### Corrected stdio output/clock/progress milestone — 2026-10-07
+
+Terminal session 98317 passed all 118 CLI library cases and CLI all-target
+Clippy on both stable and Rust 1.89, covering hosted frame/queue bounds,
+original-owner stdio lifetime, question continuation, one logical sample for
+two durable deadlines, and numeric progress metadata reaching its final
+byte-stream report. The cache log hosted-progress-corrected-check.log has
+SHA-256 `4fbf944b0941561f13ea3e211b96120db43bab189ef4f54ca52e200b742108a7`. Each serial stage verified Cargo idle,
+available-memory/swap thresholds and actual 1 GiB/zero-swap kernel limits
+immediately before starting.
+
+This closes the two fixture findings from 94022 and 64303. It is a focused
+private-composition milestone, not the eight-stage changed-source workspace
+gate, production binary activation or native macOS/Windows, installed-handler
+and live-client acceptance. Normal response-wait cancellation/EOF pumping,
+long diagnostics, publication ordering, versioned discovery and transport
+activation remain concrete next steps; metadata/preparation-growth and output
+guard sensitivity remain required before final acceptance. No task is complete
+and no dependency is released.
