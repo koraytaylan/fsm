@@ -70,6 +70,11 @@ DELETE closes/wakes the original mailbox before acquiring execution state,
 with late posts refused. Both toolchain targeted tests and CLI Clippy pass;
 HTTP-OWNERSHIP-REVIEW.md records the stopped old fake-clock test and corrected
 evidence, while bounded admission, streaming and actual owner wiring remain open.
+HTTP reverse-response queues now enforce 64-message/32-MiB charged-payload
+admission with explicit 503 overload and no journal mutation; exact boundaries,
+capacity release and saturated DELETE pass on stable/MSRV alongside CLI Clippy.
+Queue-only accounting does not complete host/output ownership; reverse streaming,
+full allocation lifetime, guard sensitivity and broad gates remain open.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

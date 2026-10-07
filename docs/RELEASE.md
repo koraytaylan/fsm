@@ -1299,3 +1299,8 @@ clients; session DELETE closes and wakes the original mailbox before acquiring
 execution state. Existing protocol errors and journal formats are unchanged.
 Reverse-request streaming, bounded mailbox admission and HTTP native ownership
 remain unfinished and are not release acceptance claims.
+
+HTTP reverse-response queues now have count and charged-payload budgets;
+overload returns 503 without store dispatch, and saturated queues still close.
+Original protocol errors and journal formats remain unchanged. This mailbox
+bound does not complete autonomous HTTP ownership or streaming acceptance.

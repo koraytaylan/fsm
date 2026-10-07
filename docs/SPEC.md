@@ -3116,3 +3116,12 @@ polls. Closing an original session MUST close its mailbox and wake its waiters
 before acquiring session execution state; late responses MUST NOT reopen that
 mailbox. This does not establish autonomous HTTP ownership, bounded mailbox
 admission or reverse-request streaming, which remain implementation obligations.
+
+HTTP reverse-response admission MUST bound each original mailbox to 64 queued
+messages and 32 MiB of charged owned payload bytes; count/byte exhaustion MUST
+return HTTP 503 before adding the response, without journal mutation. Charges
+include Value storage, owned String/array capacities, worst-case JSON escaping
+and a conservative 4096-byte allowance per object entry; queue slots have a
+separate count bound. Dequeue transfers payload ownership to the reader and
+releases the queue charge; close discards queued responses and remains available
+at saturation. This is a mailbox queue budget, not a complete host/output budget.

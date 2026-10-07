@@ -91,3 +91,35 @@ http-mailbox-idle-corrected-check.log SHA-256 is
 c0b0a18ec71335b7b176f759772c6dc0f95a3cfbc297c9783792c67d7a0ada6d.
 SPEC/API-POLICY/EMBEDDING/RELEASE describe the exact correction and remaining
 limitations; full host/platform gates and guard sensitivity remain pending.
+
+## Implemented reverse-response queue admission
+
+Production response POST now uses explicit mailbox admission: at most 64
+queued values and 32 MiB of charged payload storage per original mailbox.
+The charge includes Value storage, owned string/array capacities, six bytes
+per string/key byte for worst-case escaping and a conservative 4096-byte
+object-entry allowance; recursive depth over 32 refuses. Saturating arithmetic
+cannot wrap into acceptance. Queue slots remain separately count-bounded.
+Dequeue releases the queue's charge while transferring payload ownership to
+the existing reader; this does not account the complete host/output lifetime.
+Count/byte exhaustion returns HTTP 503 without enqueueing or touching Store;
+closed admission returns 404. Close remains independent of queue saturation.
+Existing direct Mailbox::post callers close their mailbox on failed admission
+rather than silently dropping an unanswered response; HTTP uses explicit
+try_post results and preserves previously admitted values on overload.
+
+Terminal session 60211 exits zero under asserted kernel one-GiB/zero-swap
+limits: stable/MSRV all-target CLI Clippy, four mailbox cases, twelve HTTP
+POST cases, nine session cases and nine elicitation tool cases pass, with
+formatting/file-size/diff checks. The new actual endpoint case admits exactly
+64 responses, rejects the next with 503, verifies unchanged original journal
+records and successfully DELETEs the saturated session. The charged-byte
+case accepts exactly 32 MiB including spare owned String capacity, rejects
+limit-plus-one, and proves release on dequeue/close. Initial session 10097
+failed compilation because the test moved records out of a Drop store; the
+corrected test clones its small original journal snapshot.
+http-mailbox-admission-corrected-check.log SHA-256 is
+1b18e231f0325e53ddca7fc055585f37eeebb169e8580007a31fef2a752afe75.
+Capability docs move with this transport policy. Guard-neutralization proof,
+renewed full host/platform gates, full allocation lifetime, reverse streaming
+and actual HTTP executor ownership remain outstanding; no task promotion.

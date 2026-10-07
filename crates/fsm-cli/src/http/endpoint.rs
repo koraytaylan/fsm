@@ -245,8 +245,8 @@ impl Endpoint {
                 write_response(out, &Response::text(202, ""))
             }
             Incoming::Response { id, result, error } => {
-                self.deliver_response(request, id, result, error);
-                write_response(out, &Response::text(202, ""))
+                let status = self.deliver_response(request, id, result, error);
+                write_response(out, &Response::text(status, ""))
             }
             Incoming::Request { id, method, params } => {
                 self.request(request, clock, out, id, &method, params)
@@ -390,14 +390,14 @@ impl Endpoint {
         id: Value,
         result: Option<Value>,
         error: Option<Value>,
-    ) {
+    ) -> u16 {
         let Some(session_id) = http.header(SESSION_HEADER) else {
-            return;
+            return 202;
         };
         // Only into this session's mailbox: one client's answer must never
         // complete another client's question.
         let Some(mailbox) = self.mailboxes.lock_safe().get(session_id).cloned() else {
-            return;
+            return 202;
         };
         let mut message = BTreeMap::from([
             ("jsonrpc".to_string(), Value::Str("2.0".into())),
@@ -409,7 +409,11 @@ impl Endpoint {
         if let Some(error) = error {
             message.insert("error".to_string(), error);
         }
-        mailbox.post(Value::Obj(message));
+        match mailbox.try_post(Value::Obj(message)) {
+            Ok(()) => 202,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => 503,
+            Err(_) => 404,
+        }
     }
 
     /// The stream state for one session, created on first use.

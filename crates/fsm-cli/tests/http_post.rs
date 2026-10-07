@@ -536,3 +536,43 @@ fn an_answer_for_one_session_does_not_complete_anothers_wait() {
         "another session's answer completed this one: {asked:.400}"
     );
 }
+
+#[test]
+fn reverse_response_overload_is_503_and_does_not_change_the_journal() {
+    let dir = scratch("mailbox-overload");
+    let endpoint = Endpoint::new(DEFAULT_PATH, Some(seeded(&dir)), "");
+    let session = header(
+        &serve(
+            &endpoint,
+            &raw("POST", DEFAULT_PATH, &[], INITIALIZE_ASKING),
+        ),
+        "Mcp-Session-Id",
+    )
+    .unwrap();
+    let ping = raw(
+        "POST",
+        DEFAULT_PATH,
+        &[("Mcp-Session-Id", &session)],
+        r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#,
+    );
+    assert_eq!(status(&serve(&endpoint, &ping)), 200);
+    let before = Store::open_read_only(&dir).unwrap().records.clone();
+    let response = raw(
+        "POST",
+        DEFAULT_PATH,
+        &[("Mcp-Session-Id", &session)],
+        r#"{"jsonrpc":"2.0","id":"unmatched","result":null}"#,
+    );
+    for _ in 0..64 {
+        assert_eq!(status(&serve(&endpoint, &response)), 202);
+    }
+    assert_eq!(status(&serve(&endpoint, &response)), 503);
+    assert_eq!(Store::open_read_only(&dir).unwrap().records, before);
+    assert_eq!(
+        status(&serve(
+            &endpoint,
+            &raw("DELETE", DEFAULT_PATH, &[("Mcp-Session-Id", &session)], "")
+        )),
+        200
+    );
+}

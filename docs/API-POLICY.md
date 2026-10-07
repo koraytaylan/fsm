@@ -1341,3 +1341,9 @@ session DELETE closes and wakes the original mailbox. This is a correction to
 reverse-response waiting with no new error code, persistence format or tool
 schema. Existing public Mailbox/Reader paths remain reachable through endpoint;
 Mailbox::close is additive. HTTP autonomous ownership remains incomplete.
+
+HTTP reverse-response overload now returns 503 at 64 queued messages or 32 MiB
+of charged owned payloads per mailbox, preserving admitted replies and journal
+state. This is a finite transport admission policy; no error-code registry or
+persistence format changes. Legacy Mailbox::post closes on failed admission;
+production HTTP uses explicit admission results and returns overload to callers.

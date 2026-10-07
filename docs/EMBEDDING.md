@@ -2625,3 +2625,10 @@ elicitation deadline check; DELETE closes the original mailbox and wakes its
 readers, and late replies cannot revive it. HTTP reverse-request streaming,
 bounded mailbox admission and autonomous executor ownership remain incomplete;
 this polling correction alone does not provide a working interactive HTTP flow.
+
+HTTP reverse-response POSTs receive 503 when their session mailbox has 64
+queued messages or would exceed 32 MiB of charged payload storage (including
+owned capacities and conservative structural/encoding allowances); admitted
+responses remain available. DELETE still closes at saturation. This bounds
+the mailbox queue; shared host/output budgets and interactive streaming remain
+unfinished. Direct Mailbox::post callers close the mailbox on failed admission.
