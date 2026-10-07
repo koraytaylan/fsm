@@ -1,13 +1,16 @@
 //! Hosted bounds include the actual writer's blocked in-flight frame.
 
 use super::ProtocolOutput;
-use crate::mcp::notify::{Notifier, encoded::MAX_FRAME_BYTES};
+use crate::mcp::notify::{Notifier, SharedSink};
 use fsm_core::json::Value;
 use std::{
     io::{self, Write},
     sync::mpsc,
     time::Duration,
 };
+
+// Independent SPEC boundary; changing a production limit must break this proof.
+const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 struct HeldWriter {
     entered: Option<mpsc::SyncSender<()>>,
@@ -98,12 +101,21 @@ fn hosted_notifier_encoded_limit_accepts_exact_and_refuses_one_more_without_publ
         .send(&Value::Str("x".repeat(MAX_FRAME_BYTES - 3)))
         .unwrap();
     observed.recv_timeout(Duration::from_secs(2)).unwrap();
+    let retained = output.0.0.lock().unwrap().charged_bytes;
+    output.close();
+    release.send(()).unwrap();
+    assert_eq!(retained, MAX_FRAME_BYTES);
+
+    // Refuse on an empty queue: a 32 MiB queue guard must not mask the
+    // independent 16 MiB encoded-frame guard.
+    let sink = SharedSink::new();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
     let refused = notifier
         .send(&Value::Str("x".repeat(MAX_FRAME_BYTES - 2)))
         .unwrap_err();
     let retained = output.0.0.lock().unwrap().charged_bytes;
-    release.send(()).unwrap();
     assert_eq!(refused.kind(), io::ErrorKind::WouldBlock);
-    assert_eq!(retained, MAX_FRAME_BYTES);
+    assert_eq!(retained, 0);
+    assert!(sink.text().is_empty());
     assert!(output.is_broken() && notifier.is_broken());
 }

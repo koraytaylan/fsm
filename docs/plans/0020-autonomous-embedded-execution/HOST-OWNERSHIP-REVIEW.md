@@ -534,3 +534,9 @@ creation. The capacity limit case is helper evidence; production byte-limit
 wiring and guard-neutralization evidence are still required. No task is done,
 no scheduling dependency is released, production stdio is not yet activated,
 and native platform and complete egress acceptance remain outstanding.
+
+The encoded-frame boundary fixture now derives its 16 MiB expectation
+independently from SPEC and attempts the oversized frame on an empty hosted
+queue, asserting zero retained bytes and no sink publication; this closes the
+review defect where queue capacity could mask an ineffective encoded-frame
+guard, but execution and guard-neutralization proof remain pending.
