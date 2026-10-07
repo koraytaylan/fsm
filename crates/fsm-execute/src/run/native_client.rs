@@ -184,6 +184,31 @@ impl NativeRequest {
     ) -> Result<Self, String> {
         let prepared = PreparedRequest::prepare(namespace, generation, request, timeout)?;
         let ticket = worker::reserve_current()?;
+        Self::start_reserved(prepared, ticket)
+    }
+
+    fn successor(
+        &self,
+        namespace: &str,
+        generation: u64,
+        request: &Value,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        if !self.progress().is_retired() {
+            return Err(
+                "native original transport has not retired before successor startup".into(),
+            );
+        }
+        let prepared = PreparedRequest::prepare(namespace, generation, request, timeout)?;
+        // Sequential phases of one original attempt share its reservation;
+        // the retired predecessor cannot run concurrently with this helper.
+        Self::start_reserved(prepared, self.ticket.clone())
+    }
+
+    fn start_reserved(
+        prepared: PreparedRequest,
+        ticket: Option<std::sync::Arc<worker::Ticket>>,
+    ) -> Result<Self, String> {
         let startup = startup::Startup::new(prepared);
         if let Some(ticket) = ticket {
             let worker = worker::Worker::start_prepared(startup, std::sync::Arc::clone(&ticket))?;

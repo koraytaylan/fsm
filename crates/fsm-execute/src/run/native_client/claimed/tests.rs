@@ -9,6 +9,60 @@ enum OriginalPhase {
     Execution,
 }
 
+#[test]
+fn native_bound_execution_reuses_its_original_slot_when_the_pool_is_full() {
+    let budget = Arc::new(worker::Budget::default());
+    let _scope = worker::Scope::enter(Some(&budget));
+    let mut run = original_run(OriginalPhase::Execution);
+    run.require_writer_entry();
+    let original = Arc::clone(run.request.ticket.as_ref().unwrap());
+    let deadline = run.deadline;
+    let mut occupied = Vec::new();
+    for _ in 0..127 {
+        occupied.push(worker::reserve_current().unwrap().unwrap());
+    }
+    assert_eq!(budget.reserved(), 128);
+    assert!(worker::reserve_current().is_err());
+    let _startup = crate::run::native_client::startup::FixtureFactory::install(|_| {
+        Err("fixture execution startup refused".into())
+    });
+    let claim = run.claim.clone();
+    let hash = run.journal_claim.clone();
+    let launch = run.launch_bound(&claim, &hash);
+    if launch.is_ok() {
+        let until = Instant::now() + Duration::from_secs(5);
+        while !run.reap().unwrap() {
+            assert!(Instant::now() < until);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    assert!(
+        launch.is_ok(),
+        "bound attempt lost its reserved launch: {launch:?}"
+    );
+    assert!(Arc::ptr_eq(run.request.ticket.as_ref().unwrap(), &original));
+    assert_eq!(run.deadline, deadline);
+    assert_eq!(run.claim, claim);
+    assert_eq!(run.journal_claim, hash);
+    assert_eq!(budget.reserved(), 128);
+    assert_eq!(
+        run.poll().err().unwrap(),
+        "fixture execution startup refused"
+    );
+    assert_eq!(run.progress().phase, NativeRunPhase::Uncertain);
+    assert!(run.progress().helper.not_started);
+    drop(run);
+    assert_eq!(
+        budget.reserved(),
+        128,
+        "retained original ticket still owns capacity"
+    );
+    drop(original);
+    assert_eq!(budget.reserved(), 127);
+    drop(occupied);
+    assert_eq!(budget.reserved(), 0);
+}
+
 fn original_run(phase: OriginalPhase) -> NativeRun {
     let claim = test_support::original_claim();
     let hash = format!("sha256:{}", "a".repeat(64));

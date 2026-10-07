@@ -229,3 +229,16 @@ and `519bbabac7a715ac2c3907f4662e264ad2c4360c05781f6172a2623a894c0553`.
 These focused checks do not constitute the full stable host gate, installed
 native acceptance, or complete derived-storage accounting; those remain
 required at the integrated working-path milestone.
+
+### Sequential attempt reservation reuse — candidate
+
+Inspection found that execution startup reserved a second slot while the
+completed binding request still owned the first, refusing bound attempts at
+the 128-slot ceiling; sequential execution now reuses the original ticket
+after actual predecessor retirement, retaining identity and the run deadline.
+The full-pool fixture fills 127 other slots without spawning helpers and
+reaches the original NativeRun bound-entry path using actual binding child
+retirement and a refused execution-start fixture, supplying no Root closure.
+A held-child fixture refuses successor startup before actual retirement.
+Runtime and isolated guard-sensitivity verification remain pending; tasks
+8901/8902 remain in progress and derived-completion accounting is still open.

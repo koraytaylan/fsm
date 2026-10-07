@@ -3390,6 +3390,13 @@ small encoded content MUST NOT exempt excess String or array capacity.
 Failure MUST return bounded uncertainty without supplying completion evidence.
 This response-entry guard does not account for all derived completion storage.
 
+Sequential binding and execution transports of one original NativeRun MUST
+reuse that run's reserved slot and byte charge; a full pool MUST NOT refuse
+the execution phase solely because the binding phase retains its reservation.
+Successor startup MUST require actual predecessor transport retirement and
+MUST preserve the original claim, claim hash and run deadline; this reuse
+MUST NOT authorize concurrent helpers, writer entry, closure or settlement.
+
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is
 permanently broken; it MUST retain the initiating failure and actual output

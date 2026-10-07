@@ -239,7 +239,7 @@ impl NativeRun {
             .filter(|remaining| !remaining.is_zero())
             .ok_or("native run deadline; claim remains uncertain")?;
         self.phase = Phase::Executing;
-        self.request = NativeRequest::start(
+        self.request = self.request.successor(
             &self.namespace,
             self.generation,
             &request("execute", self.allocation.clone()),

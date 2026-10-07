@@ -1528,3 +1528,7 @@ Native completion verification now rejects caller-built responses exceeding
 the existing 2 MiB conservative retained-response charge before cloning or
 receipt access, including responses with small encoded content but large
 allocation capacities; this changes no persistent format or public signature.
+
+Fixed owned native attempts requesting a second worker slot between binding
+and execution, which could refuse already-bound work at pool saturation;
+execution now reuses the original reservation after actual helper retirement.

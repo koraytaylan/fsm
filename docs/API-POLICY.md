@@ -1582,3 +1582,8 @@ response charge to caller-built Values before cloning or receipt access;
 excess retained capacity refuses even when its encoded content is small.
 This tightens the provisional verifier's accepted inputs without a signature,
 journal, wire, hash-domain or MSRV change; derived completion accounting is open.
+
+Sequential NativeRun binding/execution now reuses its original worker reservation
+after actual binding transport retirement, so pool saturation cannot consume a
+second slot for the same attempt; this fixes provisional lifecycle behavior
+without a signature, format, hash-domain or MSRV change.

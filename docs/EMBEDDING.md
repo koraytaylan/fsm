@@ -2847,3 +2847,8 @@ Caller-built responses passed to NativeCompletion::verify must fit the same
 String and array capacities and 4096 bytes per object entry; encoded size alone
 does not establish that bound, and refusal occurs before material cloning or
 receipt access without creating completion evidence.
+
+A bound NativeRun keeps its original reservation for execution startup after
+the binding helper has actually retired, including when all 128 slots are
+occupied; no new attempt capacity is required for this sequential phase, and
+the original writer checks, claim identity and run deadline still govern entry.

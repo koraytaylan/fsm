@@ -8,6 +8,43 @@ use std::{collections::BTreeMap, io::Write, sync::mpsc, time::Instant};
 mod startup;
 
 #[test]
+fn native_successor_refuses_startup_before_original_helper_retirement() {
+    let budget = Arc::new(Budget::default());
+    let _scope = Scope::enter(Some(&budget));
+    let (inline, _gate, output) = held_transport();
+    drop(output);
+    let mut request = NativeRequest {
+        inline: Some(inline),
+        worker: None,
+        ticket: None,
+    };
+    assert!(request.poll().unwrap().is_none());
+    let _startup = crate::run::native_client::startup::FixtureFactory::install(|_| {
+        Err("fixture successor startup refused".into())
+    });
+    let message = parse(
+        br#"{"format":"fsm.native-request/1","action":"prepare","payload":null}"#,
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let refused = request.successor(
+        "00000000000000000000000000000000",
+        1,
+        &message,
+        Duration::from_secs(1),
+    );
+    request.cancel().unwrap();
+    assert!(receive(&mut request).is_err());
+    assert_eq!(
+        refused.err().unwrap(),
+        "native original transport has not retired before successor startup"
+    );
+    assert_eq!(budget.reserved(), 1);
+    drop(request);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
 fn native_worker_polling_and_cancellation_return_before_held_child_release() {
     let budget = Arc::new(Budget::default());
     let _scope = Scope::enter(Some(&budget));
