@@ -57,6 +57,10 @@ Frozen 8c790bc now passes all eight capped feasibility suites on both stable and
 MSRV (69 ordered registered cases each), with original handler kernel limits
 independently checked; production authority/full official matrix and renewed
 host/platform gates remain separate outstanding evidence, without task promotion.
+The existing elicitation handler now separates immutable store preparation,
+client interaction and event settlement as an HTTP owner prerequisite; stable/
+MSRV CLI Clippy and existing schema/tool tests pass, while adapters still hold
+their current references and HTTP ownership integration remains unfinished.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

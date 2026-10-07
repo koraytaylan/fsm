@@ -98,9 +98,6 @@ pub(in crate::mcp::tools) fn run_instance_elicit_with(
     args: &Value,
     ctx: &crate::mcp::tools::ToolCtx<'_>,
 ) -> Result<Value, ErrorObj> {
-    let instance_id = str_arg(args, "instance_id").unwrap_or("").to_string();
-    let event = str_arg(args, "event").unwrap_or("").to_string();
-    let request_id = str_arg(args, "request_id").unwrap_or("").to_string();
     if !ctx.client_elicitation {
         return Err(ErrorObj::new(
             "req/elicit_unsupported",
@@ -116,6 +113,25 @@ pub(in crate::mcp::tools) fn run_instance_elicit_with(
         .hint("send the event directly with instance_send"));
     };
 
+    let mut prepared = prepare_elicitation(store, args)?;
+    let params = std::mem::replace(&mut prepared.params, Value::Null);
+    let answer = crate::mcp::elicit::ask(io, "elicitation/create", params, clock)?;
+    settle_elicitation(store, clock, prepared, answer)
+}
+
+/// Owned values crossing the store boundary while the client answers.
+struct PreparedElicitation {
+    instance_id: String,
+    event: String,
+    request_id: String,
+    machine: fsm_core::machine::CompiledMachine,
+    params: Value,
+}
+
+fn prepare_elicitation(store: &Store, args: &Value) -> Result<PreparedElicitation, ErrorObj> {
+    let instance_id = str_arg(args, "instance_id").unwrap_or("").to_string();
+    let event = str_arg(args, "event").unwrap_or("").to_string();
+    let request_id = str_arg(args, "request_id").unwrap_or("").to_string();
     // Enabled on *this* instance, right now, in the ordinary vocabulary.
     let view = store.instance_view(&instance_id, None, None)?;
     let sendable = view
@@ -172,7 +188,28 @@ pub(in crate::mcp::tools) fn run_instance_elicit_with(
         ("requestedSchema".to_string(), schema),
     ]));
 
-    let answer = crate::mcp::elicit::ask(io, "elicitation/create", params, clock)?;
+    Ok(PreparedElicitation {
+        instance_id,
+        event,
+        request_id,
+        machine,
+        params,
+    })
+}
+
+fn settle_elicitation(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    prepared: PreparedElicitation,
+    answer: Value,
+) -> Result<Value, ErrorObj> {
+    let PreparedElicitation {
+        instance_id,
+        event,
+        request_id,
+        machine,
+        params: _,
+    } = prepared;
     let action = answer
         .get("action")
         .and_then(Value::as_str)

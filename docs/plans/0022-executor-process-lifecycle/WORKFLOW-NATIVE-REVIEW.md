@@ -1266,6 +1266,27 @@ service limits, renewed host/platform gates, HTTP ownership, bounded borrowed
 shutdown and the production crash matrix remain open; task 9401 stays in progress.
 This evidence-only update runs diff checks; compilation gates are omitted.
 
+## HTTP owner prerequisite: elicitation store boundary
+
+Current HTTP request delivery holds its lives map and SerializedWriter across
+handle_request, including the client's potentially five-minute elicitation
+wait. run_http also discards Embedded executor state after selecting a store;
+retaining a timer alone would preserve these ownership defects.
+The existing elicitation handler now separates immutable preparation values,
+client interaction and ordinary event settlement. Preparation captures the
+original instance/event/request IDs, compiled contract and requested schema;
+settlement retains existing decline/no-write, coercion and idempotent send
+semantics. No new public API, journal bytes or transport behavior is introduced.
+This is an extraction prerequisite: existing adapters still call all three
+phases synchronously while holding their current references, so HTTP mutex
+release and autonomous host integration are explicitly not yet implemented.
+Terminal session 8462 exits zero after actual one-GiB/zero-swap controller
+assertions: stable/MSRV all-target CLI Clippy and all nine schema plus nine
+elicitation tool tests pass on each toolchain, along with formatting/file-size
+and diff checks. elicitation-store-boundary-check.log SHA-256 is
+173dd9f71cb55dbdfdce69507cf1a221ffecdc9014044796de2e542f0a41f40e.
+Renewed full host acceptance remains pending; task 9401 stays in progress.
+
 ## Remaining feasibility service launch limits
 
 All sixteen literal Python systemd-run launch vectors now request MemoryMax=1G
