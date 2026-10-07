@@ -9,6 +9,10 @@ touches:
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/src/mcp/host/
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
+  - crates/fsm-cli/src/mcp/tools/mod.rs
+  - crates/fsm-cli/src/mcp/tools/elicitation.rs
+  - crates/fsm-cli/src/mcp/elicit.rs
+  - crates/fsm-cli/src/mcp/notify.rs
   - crates/fsm-cli/src/mcp/methods.rs
   - crates/fsm-cli/src/mcp/methods/
   - crates/fsm-cli/src/mcp/serve.rs
@@ -61,3 +65,7 @@ request queue has explicit count and byte bounds.
 - An expired session generation cannot receive a newer session's response.
 
 - **Done when:** the production command boundary passes every `execution_host` case above with exactly one store owner, bounded admission, and unchanged journal/idempotency behavior under the stable host gate.
+
+The coordinator adopts these shared elicitation and framing boundaries serially
+under task 8901 to complete the private stdio vertical path; task 8904 remains
+planned and its scheduling dependency is not released by this integration.

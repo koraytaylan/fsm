@@ -156,3 +156,24 @@ actual protocol guard-removal cases fail as intended in session 15951, then
 pass after exact source restoration. This keeps stop, session close and failed
 output independent of owner response delivery, without claiming writer closure. Production selection
 and remaining transport/protocol/native acceptance stay open; completion is 0/7.
+
+### Private stdio question path — 2026-10-07
+
+The integration priority is one working stdio path before wider transport work.
+Hosted elicitation now retains the original admission slot and cancellation
+control while waiting outside the store owner, then settles through ordinary
+idempotent send with target-instance history revalidation. Actual byte-stream
+cases cover a quiet deadline during a question, a stale answer followed by a
+fresh question, original RPC cancellation, independent stop, and invalid-answer
+correction with the same journal key. Portable cases cover full-count resume,
+replacement-session refusal, unrelated writes and exact/plus-one answer byte
+limits. These are private composition tests, not installed-handler acceptance.
+
+The final focused stable check is queued in session 96804 and must finish before
+source edits resume; it waits for unrelated Cargo work and verifies actual
+1 GiB memory/zero-swap limits before starting. The earlier 37-case check passed,
+but the subsequent request-key fix and explicit Awaiting envelope require this
+new result. Broader checks belong at production stdio activation; the frozen
+3ff97a7 gate does not cover these changes. Progress forwarding, complete egress,
+versioned discovery, HTTP integration and platform/native acceptance remain
+open, with no task completion or dependency release.
