@@ -44,6 +44,12 @@ jobs:
       RUSTDOCFLAGS: --deny warnings
     steps:
       - uses: actions/checkout@v7
+      - name: Prepare task cache
+        shell: bash
+        run: |
+          task_cache="$HOME/.cache/fsm-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$task_cache"
+          printf 'TMPDIR=%s\n' "$task_cache" >> "$GITHUB_ENV"
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal --component rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -97,6 +103,12 @@ jobs:
       RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v7
+      - name: Prepare task cache
+        shell: bash
+        run: |
+          task_cache="$HOME/.cache/fsm-snapshot-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$task_cache"
+          printf 'TMPDIR=%s\n' "$task_cache" >> "$GITHUB_ENV"
       - name: Install musl toolchain
         if: contains(matrix.target, 'musl')
         run: sudo apt-get update && sudo apt-get install --yes musl-tools
