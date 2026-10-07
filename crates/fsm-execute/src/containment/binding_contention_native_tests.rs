@@ -71,6 +71,13 @@ pub(super) fn bind(fixture: &Fixture, binding: &Value) {
         super::super::super::read_value(&directory.join("binding-1.json"), true).unwrap(),
         *binding
     );
+    let lock = super::super::super::authority_lock(directory).unwrap();
+    let refused = super::super::super::runner::execute(directory, 1);
+    drop(lock);
+    assert_eq!(
+        refused.unwrap_err(),
+        "runner binding validation refused: authority busy"
+    );
     assert_no_launch(fixture);
     assert_eq!(
         Store::open_read_only(&fixture.store).unwrap().records,

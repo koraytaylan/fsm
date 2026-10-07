@@ -1582,3 +1582,5 @@ Pending-contract checks preserve explicitly manual effects as compatible evidenc
 The shared native preparation path now refuses incompatible or unknown pending contracts before helper preparation, retaining pending work without new journal entries or preparation reservations; final claim/entry rechecks and provisioned native acceptance remain pending.
 
 Fixed warm native owners remaining retained after another host delivered their original acknowledged event: exact acknowledgement and closure-bound handoff reconciliation now recognizes accepted-event fold retirement without another event send, preserving outstanding obligations and historical acknowledgement behavior.
+
+Native execution refusal diagnostics now distinguish original binding validation, manager launch and enrolled entry authorization without exposing handler arguments or changing refusal, recovery or deadline policy.

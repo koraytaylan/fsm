@@ -75,7 +75,8 @@ pub(super) fn execute_cancellable(
     cancelled: &AtomicBool,
 ) -> Result<Value, String> {
     let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
-    let (claim, lock) = validate_binding(directory, &binding, None)?;
+    let (claim, lock) = validate_binding(directory, &binding, None)
+        .map_err(|error| format!("runner binding validation refused: {error}"))?;
     if number(&claim.domain().to_value(), "allocation")? != allocation {
         return Err("runner allocation differs from claim".into());
     }
@@ -130,7 +131,8 @@ pub(super) fn execute_cancellable(
     let exec_listener =
         super::exec_status::Listener::create(directory, allocation, &binding, &kind)?;
     exec_listener.send_challenge(&mut input)?;
-    let (child, _) = launch::begin(directory, allocation, streams)?;
+    let (child, _) = launch::begin(directory, allocation, streams)
+        .map_err(|error| format!("runner launch refused: {error}"))?;
     let mut owned = OwnedRun {
         directory: directory.into(),
         allocation,
@@ -169,7 +171,8 @@ pub(super) fn execute_cancellable(
     }
 
     if !cancelled.load(Ordering::Acquire) {
-        authorize::publish_enrolled(directory, &object([("grant", grant)]))?;
+        authorize::publish_enrolled(directory, &object([("grant", grant)]))
+            .map_err(|error| format!("runner enrolled entry refused: {error}"))?;
     }
     let deadline = Instant::now() + timeout;
     let observation_interval = (timeout / 4).min(Duration::from_millis(100));
