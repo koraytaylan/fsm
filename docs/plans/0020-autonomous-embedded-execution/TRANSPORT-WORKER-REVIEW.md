@@ -303,3 +303,26 @@ The eight-command stable host gate is prepared as
 `native-transport-milestone-check.sh` for exact frozen `55efd81a`, but has not
 started and must run serially after the depth job succeeds; it grants no
 installed native acceptance or task-completion claim.
+
+### Verified depth checkpoint and running stable host gate
+
+Corrected frozen `55efd81a06713ef6abd4dcda2741ee3ffa1d9b15` passes all
+85 executor unit tests and executor/CLI all-target Clippy on stable and MSRV,
+plus formatting/file-size checks. Neutralizing only the accounting depth
+condition fails the intended public verifier boundary fixture; restoring the
+source passes all 63 native tests and leaves the frozen worktree clean.
+Original session 34198 exited 0 with `NATIVE_RESPONSE_DEPTH_PASSED`.
+Terminal check/sensitivity log SHA-256 values are respectively
+`4c109edd983a0e8e3efc53dd568f0a56b0827d8097cdf5417d48f95a6ffbc656`
+and `537aaed90920ed86e4865e660c2e6d192d89f4229c8d598066600caea9a72f46`.
+
+Queued session 37722 confirmed that predecessor success and exact clean frozen
+source before starting the prepared eight-command stable host gate; it is
+confirmed live and compiling the debug workspace test stage, after formatting
+and file-size checks. Its original log is
+`native-transport-milestone-check.log`; it has no terminal hash or full-gate
+pass yet. Continue that same handle/worktree/target without resetting or
+restarting it. Actual kernel 1 GiB/zero-swap limits and serial Cargo/test
+workers remain enforced at every stage. Installed Root-handler acceptance,
+remaining working-path obligations and native platform axes are not supplied
+by this local host gate.

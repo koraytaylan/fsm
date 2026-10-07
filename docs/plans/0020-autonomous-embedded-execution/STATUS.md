@@ -404,3 +404,16 @@ The broad eight-command stable host gate is prepared for this transport
 checkpoint and remains unexecuted, pending success of that original depth job.
 Derived completion/handoff storage accounting and real-handler stdio
 execution/settlement acceptance remain open; completion remains 0/7.
+
+### Response-depth checkpoint and milestone host gate
+
+The corrected frozen `55efd81a` now passes 85 executor unit tests and both-crate
+all-target Clippy on stable/MSRV, formatting/file-size checks, the isolated
+intended depth-guard failure and all 63 restored native tests; original session
+34198 is terminal with exit 0 and hashes are in TRANSPORT-WORKER-REVIEW.
+The prepared broad stable host gate has started serially in session 37722
+after confirming that success and exact clean frozen source. It is confirmed
+live compiling workspace debug tests, with remaining stages and a full-gate
+result pending; continue that original handle and preserve its frozen worktree.
+The job retains the actual 1 GiB/zero-swap cap and dedicated task cache.
+No native acceptance, task completion or prerequisite release is claimed.
