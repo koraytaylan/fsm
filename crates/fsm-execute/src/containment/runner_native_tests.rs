@@ -333,7 +333,21 @@ pub(super) fn run() {
                     Err(error) => panic!("uncertain native identity inspection failed: {error}"),
                     Ok(_) => {
                         let sample =
-                            super::super::super::observation::read(&fixture.directory, 1).unwrap();
+                            match super::super::super::observation::read(&fixture.directory, 1) {
+                                Ok(sample) => sample,
+                                // Retirement may race the read after metadata above;
+                                // absence ends sampling, never the proof refusal below.
+                                Err(_)
+                                    if fs::symlink_metadata(&group).is_err_and(|error| {
+                                        error.kind() == std::io::ErrorKind::NotFound
+                                    }) =>
+                                {
+                                    break;
+                                }
+                                Err(error) => {
+                                    panic!("uncertain native observation failed: {error}")
+                                }
+                            };
                         assert_eq!(sample.get("domain"), Some(&domain.to_value()));
                         assert_eq!(sample.get("closing"), Some(&Value::Bool(true)));
                         if sample.get("populated") == Some(&Value::Bool(false)) {
