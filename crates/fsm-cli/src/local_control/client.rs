@@ -25,7 +25,9 @@ const CLIENT_WORKER_CAP: usize = 8;
 struct WorkerPermit;
 impl WorkerPermit {
     fn acquire() -> io::Result<Self> {
-        CLIENT_WORKERS
+        // Rust 1.89 lacks try_update; retain its identical predecessor at MSRV.
+        #[allow(deprecated)]
+        let admitted = CLIENT_WORKERS
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
                 (count < CLIENT_WORKER_CAP).then_some(count + 1)
             })
@@ -34,7 +36,8 @@ impl WorkerPermit {
                     io::ErrorKind::WouldBlock,
                     "control client workers occupied; admission and cleanup unconfirmed",
                 )
-            })?;
+            });
+        admitted?;
         Ok(Self)
     }
 }
