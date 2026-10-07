@@ -446,3 +446,10 @@ forwarding, long diagnostics, response-before-notification/commit ordering,
 production selection/versioned discovery, HTTP, growth sensitivity and native
 platform/installed-handler acceptance remain open; no task completion or
 dependency release follows from the implementation checkpoint.
+
+Frozen output/clock verification session 94022 ran against clean exact
+7f506c4 in a detached task-cache checkout and exited 101 at compilation: the
+new escaping fixture used JsonLimits::default() although the established
+constructor is the JsonLimits::DEFAULT constant. No test or Clippy pass is
+claimed for that source. The fixture is corrected in the active workspace;
+new progress-context implementation is outside that frozen verification range.

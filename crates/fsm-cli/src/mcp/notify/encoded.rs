@@ -87,7 +87,7 @@ mod tests {
     fn hosted_frame_preflight_matches_canonical_escaping_and_structure() {
         let value = parse(
             br#"{"\u0000":[null,true,false,12,"\"\\\n\r\t\b\f\u001f","\u00e9\ud83d\ude00"],"empty":{}}"#,
-            &JsonLimits::default(),
+            &JsonLimits::DEFAULT,
         ).unwrap();
         let mut expected = fsm_core::canon::canon_bytes(&value);
         expected.push(b'\n');
