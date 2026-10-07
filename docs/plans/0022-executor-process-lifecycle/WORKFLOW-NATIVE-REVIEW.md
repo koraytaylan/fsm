@@ -616,3 +616,29 @@ remain retained; evidence is local-native-workflow-7d6b0fb-stable/workflow.json
 and workflow.log. Next diagnosis must inspect the original second-claim
 execution failure and cleanup reasons, rather than infer native launch from a
 host request log. Task 9401 stays in progress and plan 0022 remains 3/7.
+
+
+## Retained execution observation errors
+
+Review of the actual second-claim failure path finds NativeOwners::observe
+ignores errors returned by NativeExecution::observe, though the latter already
+retains transport refusal text in its ExecError. The owner now retains one
+bounded native-execution-uncertain diagnostic on this error path and drains it
+through the existing owned/paired lifecycle diagnostic channel, after any
+pending cleanup diagnostic. The shared formatter bounds each line to 1024
+UTF-8 bytes including its fixed prefix and replaces controls with spaces;
+total pending diagnostic retention is two lines/2048 bytes. It changes no
+ownership, native I/O, launch eligibility, deadline or retry behavior, and
+never treats the diagnostic as original domain evidence. All four capability
+documents record the changed aggregate budget.
+
+Terminal session 66960 passes stable/MSRV executor/CLI all-target Clippy,
+format/file-size checks, seven admission/control tests, the prepared-cleanup
+refusal control and two owner provenance/cancellation controls on each
+toolchain; native-execution-diagnostic-check.log retains asserted one-GiB,
+zero-swap controller limits. These are preliminary compilation/helper proofs;
+actual owned/paired failure logging and guard sensitivity remain pending.
+The original failed 7d6b0fb stage/namespace and its second durable claim remain
+retained, requiring original evidence-based reconciliation and guarded archival
+before a new producer. Plan 0022 is still 3/7 and task 9401 remains in progress;
+full race and changed-source host/native/platform acceptance are unproven.

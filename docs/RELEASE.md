@@ -1237,3 +1237,11 @@ preserves its broker reason prefixed `prepared cleanup refused`, capped to
 1024 Unicode characters before the lifecycle line's stricter 1024-byte limit;
 success still requires the complete matching original domain, and malformed
 or extended responses never confirm cleanup.
+
+Native owner observation failures also produce best-effort
+`native-execution-uncertain` lifecycle lines under the same 1024-byte UTF-8 and
+single-line rules. A runner retains at most one cleanup line and one execution
+line (2048 bytes total), drains one per lifecycle poll with cleanup first, and
+may omit simultaneous additional failures. These messages do not authorize
+retry, launch, closure or settlement and leave original claims, reservations,
+helpers, deadlines and public/wire/persistent formats unchanged.

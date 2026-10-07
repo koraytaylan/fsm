@@ -41,11 +41,14 @@ pub(super) struct NativeOwners {
     owners: BTreeMap<u64, Owner>,
     observed_seq: u64,
     cursor: u64,
+    execution_diagnostic: Option<String>,
 }
 
 impl NativeOwners {
     pub(super) fn take_cleanup_diagnostic(&mut self) -> Option<String> {
-        self.admissions.take_cleanup_diagnostic()
+        self.admissions
+            .take_cleanup_diagnostic()
+            .or_else(|| self.execution_diagnostic.take())
     }
     pub(super) fn preparation_inventory(&self) -> [usize; 10] {
         self.admissions.phase_counts()
@@ -537,8 +540,13 @@ impl NativeOwners {
         for owner in self.owners.values_mut() {
             if owner.execution.progress().phase == NativeRunPhase::Uncertain {
                 let _ = owner.execution.reap();
-            } else {
-                let _ = owner.execution.observe();
+            } else if let Err(error) = owner.execution.observe() {
+                self.execution_diagnostic.get_or_insert_with(|| {
+                    super::native_admission::bounded_diagnostic(
+                        "native-execution-uncertain ",
+                        &error.message,
+                    )
+                });
             }
         }
     }

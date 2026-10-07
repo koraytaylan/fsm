@@ -402,7 +402,11 @@ impl Phase {
 }
 
 fn cleanup_diagnostic(error: &str) -> String {
-    let mut line = String::from("native-prepared-cleanup-uncertain ");
+    bounded_diagnostic("native-prepared-cleanup-uncertain ", error)
+}
+
+pub(super) fn bounded_diagnostic(prefix: &str, error: &str) -> String {
+    let mut line = String::from(prefix);
     for character in error.chars() {
         let character = if character.is_control() {
             ' '
