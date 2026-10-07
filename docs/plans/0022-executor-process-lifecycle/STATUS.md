@@ -4855,3 +4855,15 @@ its physical store. Stronger exact diagnostic evidence and provisioned real
 workflow coverage are still required; no legacy fallback or removed scenarios
 will substitute for them. The no-fail-fast gate continues on unchanged runtime
 and final result remains pending.
+
+### Current local authority verification — 2026-10-07
+
+Exact frozen 0e6fdd0 passed all eleven production authority inventory cases
+on stable Rust 1.98.1 and MSRV 1.89.0, including expanded broker access and
+disconnect; both probes are terminal with exit zero, and all per-case log
+hashes match their retained reports. Evidence lives in the task cache under
+local-native-authority-0e6fdd0 and local-native-authority-msrv-0e6fdd0.
+OWNED-SESSION-REVIEW.md records the scope and remaining proof obligations.
+The reports explicitly keep production_backend=false and gate_released=false;
+this is not full native-matrix or ordinary CLI workflow acceptance. Plan
+progress remains 3/7 and task 9401 remains in progress.

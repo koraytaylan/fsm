@@ -762,3 +762,23 @@ after timeout; changing only broker access back to 30 seconds fails the wiring
 test, and finally restoration passes (authority-broker-timeout-mutation.log
 and authority-broker-timeout-restored.log). No native subprocess is invoked
 by these tests; actual expanded inventory rerun remains required.
+
+### Exact-source expanded authority inventory — 2026-10-07
+
+Frozen 0e6fdd0fd6b9bc23209bfc508d990de63b70a64b passed all eleven actual
+authority cases on stable Rust 1.98.1 and MSRV 1.89.0, with no timed-out
+case and exit zero throughout. Reports and per-case logs are retained in
+local-native-authority-0e6fdd0 and local-native-authority-msrv-0e6fdd0;
+independent readback verifies every per-case SHA-256 against its report.
+Stable broker access takes 32.59 seconds, exceeding the former outer budget;
+the corrected 90-second budget permits the unchanged inner assertions to
+complete. The root broker inventory now executes its claimed interruption,
+owned/paired driver and fresh/cold handoff controls successfully rather than
+inferring acceptance from earlier subcontrols of a failed aggregate.
+Both controllers/builds ran serially in asserted 1 GiB/zero-swap user scopes;
+root-manager transient service units are outside those user scopes, so this
+does not establish zero swap for every native service. Both reports retain
+production_backend=false and gate_released=false. These eleven cases do not
+replace the complete native matrix, ordinary registered CLI workflow tests,
+later-source full host gates or unexecuted platform axes; task 9401 and the
+remaining tasks retain their existing statuses.
