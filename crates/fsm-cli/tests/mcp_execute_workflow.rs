@@ -261,6 +261,9 @@ struct Client {
 }
 
 #[derive(Clone, Copy)]
+// Provisioned Linux cases construct the standalone and borrowed modes; other
+// platforms compile their refusal paths without running those native fixtures.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 enum ExecutionMode {
     Embedded,
     Standalone,
