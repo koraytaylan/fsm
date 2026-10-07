@@ -2865,3 +2865,5 @@ PendingEffect::emitting_machine_id identifies the definition that actually emitt
 contract::check_pending checks a reconstructed PendingEffect against a verified Store view and the full operator HandlerTable, including the current receiving definition closure and actual configured outcomes after migration; it never consumes an attempt or writes a request key, and service dispatch must still revalidate the writer and generation because the checker does not authorize a process.
 
 An explicitly manual pending effect can pass check_pending while remaining in the outbox: compatibility evidence does not turn manual policy into an automatic handler or acknowledge its work.
+
+Both shared service tick entry points check the complete pending contract before native preparation is queued; refusal retains pending work and allocates no preparation reservation, while the scheduler can continue unrelated compatible effects, and final writer-held claim and bound-entry revalidation remain unfinished.

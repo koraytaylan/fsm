@@ -45,6 +45,7 @@ impl Runner {
         handler: &crate::config::HandlerSpec,
         scheduler: &mut Scheduler,
     ) -> Result<(), ExecError> {
+        crate::contract::check_pending(snapshot, effect, scheduler.handler_table())?;
         #[cfg(target_os = "linux")]
         return self.native.queue(snapshot, effect, handler, scheduler);
         #[cfg(not(target_os = "linux"))]
@@ -230,5 +231,46 @@ mod tests {
             (store.journal.last_seq, store.journal.last_hash.clone()),
             head
         );
+    }
+    #[test]
+    fn native_preparation_checks_later_contract_before_backend_authority() {
+        use crate::config::HandlerTable;
+        use fsm_core::json::{JsonLimits, parse};
+        let mut store = Store::open_memory().unwrap();
+        let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
+        let machine = parse(br#"{"format":"fsm.machine/1","name":"preparation_contract","context":[],"events":[{"name":"next","fields":[]}],"effects":[{"name":"work","fields":[]},{"name":"restore","fields":[]}],"states":[{"name":"first","entry":{"emit":[{"effect":"work"}]}},{"name":"later","entry":{"emit":[{"effect":"restore"}]}}],"initial":"first","transitions":[{"from":"first","on":"next","to":"later"}]}"#, &JsonLimits::DEFAULT).unwrap();
+        store
+            .define_machine_on(&mut clock, machine, false, false)
+            .unwrap();
+        store
+            .create_instance_ctx_on(
+                &mut clock,
+                "preparation_contract",
+                "case-1",
+                "create",
+                None,
+                &std::collections::BTreeMap::new(),
+                &[],
+            )
+            .unwrap();
+        let effect =
+            crate::effect::resolve(&store, &store.state.instances["case-1"].pending[0]).unwrap();
+        let table = HandlerTable::parse(r#"{"format":"fsm.handlers/1","handlers":[{"effect":"work","argv":["/operator/work"],"timeout_ms":1000},{"effect":"restore","argv":["/operator/restore"],"timeout_ms":1000,"on_ok":{"event":"undeclared","payload":{}}}]}"#).unwrap();
+        let handler = table.handlers["work"].clone();
+        let mut scheduler = Scheduler::new(table);
+        let mut runner = Runner::new().unwrap();
+        let state = store.state.clone();
+        let records = store.records.clone();
+        assert_eq!(
+            runner
+                .queue_native(&store, &effect, &handler, &mut scheduler)
+                .unwrap_err()
+                .code,
+            "exec/contract_invalid"
+        );
+        assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+        assert_eq!(store.records, records);
+        #[cfg(target_os = "linux")]
+        assert_eq!(runner.native_preparation_inventory(), [0; 10]);
     }
 }

@@ -1601,3 +1601,5 @@ PendingEffect now exposes emitting_machine_id, reconstructed from the original v
 The provisional contract::check_pending API adds read-only pending membership, historical effect and current receiver compatibility checks, using existing exec/contract diagnostics; it changes no persisted format, hash or spawn authorization, and is an additive pre-1.0 API change.
 
 The provisional pending-contract checker preserves explicit manual disposition as compatible read-only evidence, using the existing manual_effects policy and introducing no wire, persisted-format or error-code change.
+
+Shared service native preparation now performs pending-contract refusal before queuing a helper, using existing exec/contract diagnostics and no persisted-format or public signature change; this execution-policy capability has a pre-1.0 minor consequence, with final claim/entry validation and native acceptance still pending.

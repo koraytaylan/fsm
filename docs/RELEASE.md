@@ -1543,3 +1543,5 @@ Pending-effect reconstruction now retains the historical emitting machine identi
 Added provisional read-only contract::check_pending evidence for shared service admission: incompatible later steps and current receiving outcomes are checked alongside concrete pending arguments, without changing journal bytes or runtime spawn policy; production wiring and admission caching remain pending.
 
 Pending-contract checks preserve explicitly manual effects as compatible evidence without changing their pending state or allowing automatic execution.
+
+The shared native preparation path now refuses incompatible or unknown pending contracts before helper preparation, retaining pending work without new journal entries or preparation reservations; final claim/entry rechecks and provisioned native acceptance remain pending.

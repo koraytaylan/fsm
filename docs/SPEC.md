@@ -3467,3 +3467,5 @@ Application to an existing instance still invalidates its subscribed resource
 URI after the original application response publication scope releases.
 
 Pending-contract evidence MUST accept an explicitly manual pending effect when its current executable closure is compatible, without acknowledging it or authorizing automatic execution.
+
+The shared service native preparation path MUST check pending contract evidence against the complete loaded table before queuing a preparation helper; incompatibility or unknown evidence MUST return the typed contract refusal without a preparation reservation or journal mutation, leaving other eligible work serviceable; final writer-held claim and bound-entry contract revalidation remain a separate integration obligation.
