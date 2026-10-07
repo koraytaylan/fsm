@@ -2760,3 +2760,10 @@ modes refuse with the existing args error before table loading or store open.
 The original native owner receives this interval, and reserved stop observation
 stays independent at 50 ms. This adds a CLI option without altering supported
 public Rust signatures, persistence, core time semantics, dependencies or MSRV.
+
+Hosted stdio retires its wait once the original native owner has returned
+and operator output has drained when protocol output is permanently broken;
+it preserves failed-delivery facts and the initiating error, while merely
+blocked output still shares the original deadline. This prevents a known
+failed output from consuming the final diagnostic delivery window and does
+not change native ownership proof, public Rust APIs or persistence.

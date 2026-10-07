@@ -3320,3 +3320,10 @@ return the existing CLI args error before opening the store or starting
 execution. The interval bounds scheduler timed wakes, while reserved native
 stop observation remains bounded independently at 50 ms; wait duration MUST
 NOT supply logical journal time. Borrowed helper behavior remains unchanged.
+
+Hosted stdio MAY finish its retirement wait after the original owner has
+returned and operator diagnostics have drained when protocol output is
+permanently broken; it MUST retain the initiating failure and actual output
+drainage facts rather than waiting solely for the original deadline or
+claiming delivery. A merely blocked, healthy output still uses the original
+deadline and MUST NOT be classified as broken.

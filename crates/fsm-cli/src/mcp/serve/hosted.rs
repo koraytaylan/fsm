@@ -186,7 +186,7 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
             }
         }
         let operator_drained = exit.as_ref().is_some_and(|exit| exit.diagnostics.drained());
-        if (worker.is_none() && queued.drained() && operator_drained)
+        if (worker.is_none() && (queued.drained() || queued.is_broken()) && operator_drained)
             || Instant::now() >= request.deadline()
         {
             break;

@@ -584,3 +584,16 @@ receiver, retains open stdin, requires an explicit failure exit within the
 lifecycle bound and reopens the unchanged empty journal; input EOF cannot
 supply its shutdown trigger. These new cases are queued for stable/MSRV
 execution and all-target Clippy, not yet passing acceptance evidence.
+
+The initial subscription/output run terminated 101 after stable passed the
+quiet subscribed and unsubscribed cases and invalid interval refusal. Broken
+stdout caused the expected failure exit, but its diagnostic assertion failed:
+the hosted retirement loop waited until the original deadline despite a
+permanently broken output queue, leaving the final regular-file diagnostic
+worker no delivery window. The loop now finishes once original native owner
+retirement and operator drainage are proven and protocol output is broken,
+retaining the original failure and false drainage facts; a healthy blocked
+sink still uses the original deadline. Exact one-millisecond/24-hour CLI
+boundary acceptance cases are also added. The corrected stable/MSRV actual
+binary inventory and Clippy checks are running; no successful final result
+or additional task completion is claimed at this checkpoint.
