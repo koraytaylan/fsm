@@ -127,7 +127,8 @@ fn quiet_deadline(subscribed: bool) {
         Some("autonomous")
     );
     if subscribed {
-        writeln!(fixture.child.stdin.as_mut().unwrap(), "{}", r#"{"jsonrpc":"2.0","id":4,"method":"resources/subscribe","params":{"uri":"fsm://instance/inst-quiet-owned"}}"#).unwrap();
+        let subscription = r#"{"jsonrpc":"2.0","id":4,"method":"resources/subscribe","params":{"uri":"fsm://instance/inst-quiet-owned"}}"#;
+        writeln!(fixture.child.stdin.as_mut().unwrap(), "{subscription}").unwrap();
         loop {
             let response = value(
                 &replies
@@ -231,12 +232,8 @@ fn production_stdio_broken_stdout_stops_without_waiting_for_input_eof() {
     let mut fixture = Fixture { child, directory };
     // Closing the receiving end causes actual production output failure.
     drop(fixture.child.stdout.take());
-    writeln!(
-        fixture.child.stdin.as_mut().unwrap(),
-        "{}",
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#
-    )
-    .unwrap();
+    let initialize = r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#;
+    writeln!(fixture.child.stdin.as_mut().unwrap(), "{initialize}").unwrap();
     let deadline = Instant::now() + Duration::from_secs(12);
     let status = loop {
         if let Some(status) = fixture.child.try_wait().unwrap() {
