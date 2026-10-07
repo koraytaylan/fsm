@@ -156,3 +156,16 @@ not merely the native factory. The scope verified one GiB/zero swap before
 compilation; public-service-selection-sensitivity.log SHA-256 is 2f12a67ade6f1ec4ab2838570bfd60dc8dcd5a4c9417902995c7aa5f3edf81a3.
 It proves unavailable-authority refusal wiring, not actual provisioned loop
 execution, bounded output/shutdown, or completion of ownership integration.
+
+The provisioned process/MCP fresh-admission probe now preserves its existing
+two shared-tick runs and adds a third through actual public service::run,
+requiring native claim/launch/settlement lines, preserved journal prefix, no
+unresolved ownership and acknowledgement before outcome event. Root verification
+requires allocations 1/2/3, distinct effects, genuine original bindings and
+durable acknowledgement/event keys before fixture cleanup. Stable/MSRV executor
+all-target Clippy passed in terminal session 85611 under verified one GiB and
+zero swap; formatting, size and diff checks pass. This is compiled fixture
+implementation only: actual provisioned execution is pending, and its root
+service namespaces need the same verified memory limits used by the workflow
+producer before local execution. It does not replace existing capacity-reuse
+assertions or establish successful loop shutdown from the controlled unwind.

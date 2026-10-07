@@ -143,6 +143,7 @@ fn shared_tick_admission() {
     let state = writer.state.clone();
     let mut watcher = Watcher::with_handlers(path.into(), &table);
     assert_eq!(table.max_inflight, 1);
+    let service_table = table.clone();
     let mut scheduler = Scheduler::new(table);
     let mut runner = Runner::new_native().unwrap();
     let mut pipeline = Pipeline;
@@ -542,7 +543,103 @@ fn shared_tick_admission() {
             .seq
     };
     assert!(sequence(&acknowledgement) < sequence(&event));
+    drop(current);
+    public_service_run(path, service_table, &mut clock);
     emit(format_args!("\nFSM_NATIVE_FRESH_ADMISSION"));
+}
+
+fn public_service_run(path: &Path, table: HandlerTable, clock: &mut FixedClock) {
+    let mut writer = Store::open(path).unwrap();
+    writer
+        .create_instance_ctx_on(
+            clock,
+            "case_review",
+            "service-instance",
+            "service-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    writer
+        .send_event_stamp_on(
+            clock,
+            "service-instance",
+            "docs_ok",
+            &mut Value::Obj(BTreeMap::new()),
+            "service-send",
+            None,
+            &[],
+        )
+        .unwrap();
+    let effect = writer.state.instances["service-instance"].pending[0].clone();
+    let prefix = writer.records.clone();
+    drop(writer);
+    let mut lines = Vec::new();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fsm_execute::service::run(
+            fsm_execute::service::RunConfig {
+                data_dir: path,
+                table,
+                poll_interval_ms: 5,
+                contention: fsm_execute::service::Contention::Retry,
+            },
+            clock,
+            &mut |line| {
+                assert!(
+                    lines.len() < 32,
+                    "public service run diagnostics exceeded bound"
+                );
+                lines.push(line.to_owned());
+                if line.starts_with("native-settled ") && line.contains(&effect) {
+                    std::panic::panic_any("public-service-complete");
+                }
+            },
+        )
+        .unwrap();
+    }));
+    assert_eq!(
+        *result.unwrap_err().downcast::<&str>().unwrap(),
+        "public-service-complete"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("native-claimed ") && line.contains(&effect))
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("native-launched ") && line.contains(&effect))
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("disposition=acked advance=advanced"))
+    );
+    let current = Store::open_read_only(path).unwrap();
+    assert_eq!(&current.records[..prefix.len()], prefix.as_slice());
+    assert!(current.state.execution.unresolved().next().is_none());
+    assert_eq!(
+        current
+            .records
+            .iter()
+            .filter(|record| record.kind == fsm_core::record::RecordKind::ExecutionClaimed)
+            .count(),
+        3
+    );
+    let sequence = |request: &str| {
+        current
+            .records
+            .iter()
+            .find(|record| record.body.get("request_id").and_then(Value::as_str) == Some(request))
+            .unwrap()
+            .seq
+    };
+    assert!(
+        sequence(&fsm_execute::rid::ack_rid(&effect))
+            < sequence(&fsm_execute::rid::event_rid(&effect, "docs_ok"))
+    );
 }
 
 fn absent(authority: &Path, names: &[&str]) {

@@ -33,10 +33,10 @@ pub(super) fn cancellation(fixture: &mut Fixture, table: &Value) {
 pub(super) fn admission(fixture: &mut Fixture, table: &Value) {
     disconnect_cases::permit_operator_store(&fixture.store);
     disconnect_cases::fresh_admission(&fixture.directory, table);
-    assert_eq!(number(&fixture.counter(), "last_allocation").unwrap(), 2);
+    assert_eq!(number(&fixture.counter(), "last_allocation").unwrap(), 3);
     let store = Store::open_read_only(&fixture.store).unwrap();
     let mut effects = std::collections::BTreeSet::new();
-    for allocation in [1, 2] {
+    for allocation in [1, 2, 3] {
         let binding = read_value(
             &fixture.directory.join(format!("binding-{allocation}.json")),
             true,
