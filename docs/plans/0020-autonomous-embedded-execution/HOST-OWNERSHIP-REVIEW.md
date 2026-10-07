@@ -179,3 +179,34 @@ The broader changed-source stable host gate is deferred to the working-path
 integration milestone at the user's direction; the prior frozen cancellation
 gate does not certify this new code. Platform CI remains unexecuted for this
 unit, task 8901 remains in progress, and no downstream task is released.
+
+## Store-backed protocol command boundary — 2026-10-07
+
+Owned resource-list/resource-read/completion commands now share the exact tool
+mailbox, original-generation cancellation and reservations. Their dispatcher
+reuses the existing resources/complete implementations; immutable read results
+capture the same complete prefix as admitted writes, with no publication
+interval. Original native handler metadata is resolved from the retained
+driver's table; adapters receive no writer or transport borrow through this
+boundary. Resource URI capacities and completion Value allocations are charged
+with the same RPC-copy/envelope accounting before admission.
+
+Fifteen host cases and all-target CLI Clippy pass on stable and Rust 1.89 in
+terminal session 87315. The new mixed protocol/tool case proves a resource read,
+resource listing and instance-ID completion all see the preceding committed
+creation in admission order, and none appends a record. The URI-capacity case
+accepts exactly the session byte limit, rejects limit-plus-one and a further
+tool command sharing that full budget, and preserves the journal on stop.
+The initial mixed case used the wrong template parameter; it now uses the
+existing resource registry's fsm://instance/{id} vocabulary, without changing
+completion behavior. A private-interface warning was fixed by retaining MCP
+visibility for the command type.
+
+The isolated URI-charge neutralization in terminal session 78755 failed the
+actual submission assertion with test exit 101, restored source bytes in
+finally and passed the healthy rerun; its retained log is execution-host-protocol-read-charge-sensitivity.log
+in the task cache; restored mailbox SHA-256 is
+`eec54c2d3ae8113691259c14a0b93ec4e3b0ea3a027cadd498de85fb113a3ab6`.
+Broad gates remain assigned to the working-path milestone;
+production stdio wiring, interaction/progress egress, real held-handler proof
+and full lifecycle acceptance remain open, with task 8901 still in progress.

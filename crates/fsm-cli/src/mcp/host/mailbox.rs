@@ -6,7 +6,10 @@ use std::sync::{Arc, Condvar, Mutex, mpsc};
 
 use fsm_core::json::Value;
 
-use super::{AdmissionError, Command, Outcome};
+use super::{
+    AdmissionError, Command, Outcome,
+    operation::{Operation, ReadOperation},
+};
 use crate::mcp::cancel::{CancelFlag, Cancellations};
 
 pub(super) const HOST_COMMANDS: usize = 32;
@@ -63,7 +66,7 @@ pub(super) struct Mailbox {
 
 pub(super) struct Admitted {
     pub session: Arc<SessionState>,
-    pub command: Command,
+    pub command: Operation,
     pub reply: mpsc::SyncSender<Outcome>,
     pub cancel: CancelFlag,
     reservation: Reservation,
@@ -115,9 +118,9 @@ impl Mailbox {
     pub(super) fn admit(
         self: &Arc<Self>,
         session: Arc<SessionState>,
-        command: Command,
+        command: Operation,
     ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
-        let bytes = command_charge(&command);
+        let bytes = operation_charge(&command);
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if state.stopped {
             return Err(AdmissionError::Stopped);
@@ -146,7 +149,7 @@ impl Mailbox {
             request,
             RequestControl {
                 generation: session.generation,
-                rpc_id: command.rpc_id.clone(),
+                rpc_id: command.rpc_id().clone(),
                 internal_id,
                 cancellations,
             },
@@ -252,14 +255,29 @@ impl Mailbox {
 // retained command and capacities, including RPC IDs; there are no wire copies.
 // 4096 bytes per object entry conservatively covers BTree node allocation.
 pub(super) fn command_charge(command: &Command) -> usize {
-    std::mem::size_of::<Admitted>()
-        // Reserve control BTree entries, bounded local numeric flag keys,
-        // their cancellation set and temporary duplicate keys on re-cancel.
-        .saturating_add(12 * 1024)
+    envelope_charge(&command.rpc_id)
         .saturating_add(command.tool.capacity())
-        .saturating_add(value_charge(&command.rpc_id, 0))
-        .saturating_add(value_charge(&command.rpc_id, 0))
         .saturating_add(value_charge(&command.arguments, 0))
+}
+
+pub(super) fn operation_charge(operation: &Operation) -> usize {
+    match operation {
+        Operation::Tool(command) => command_charge(command),
+        Operation::Read(command) => {
+            envelope_charge(&command.rpc_id).saturating_add(match &command.operation {
+                ReadOperation::ResourcesList => 0,
+                ReadOperation::ResourceRead { uri } => uri.capacity(),
+                ReadOperation::Complete { parameters } => value_charge(parameters, 0),
+            })
+        }
+    }
+}
+
+fn envelope_charge(rpc_id: &Value) -> usize {
+    std::mem::size_of::<Admitted>()
+        .saturating_add(12 * 1024)
+        .saturating_add(value_charge(rpc_id, 0))
+        .saturating_add(value_charge(rpc_id, 0))
 }
 
 fn value_charge(value: &Value, depth: usize) -> usize {

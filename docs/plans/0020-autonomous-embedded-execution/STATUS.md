@@ -108,3 +108,13 @@ in terminal session 97765. Formatting and file-size checks also pass. This advan
 milestone without releasing later tasks or claiming real-handler/transport
 acceptance; task 8901 remains in progress at 0/7, and the broader changed-source
 gate will run at the next integration milestone.
+
+### Store-backed protocol boundary for stdio — 2026-10-07
+
+Resource reads/listing and argument completions now use owned typed commands
+through the same ordered, count/byte-bounded mailbox as tools; URI and Value
+capacities are charged before admission. Fifteen host cases and CLI all-target
+Clippy pass on stable/Rust 1.89 in terminal session 87315; focused sensitivity
+and boundary evidence are recorded in HOST-OWNERSHIP-REVIEW.md. Production
+stdio routing and client-interaction/progress egress remain the working-path
+integration frontier; no task completion or autonomous capability is claimed.

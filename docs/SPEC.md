@@ -3172,3 +3172,13 @@ is uncertain, rather than treating owner exit as evidence of stopped work.
 Operator diagnostics MUST use the existing bounded output worker, with loss
 counted explicitly. Complete completion fairness, real-handler responsiveness
 and production transport integration remain acceptance obligations.
+
+Private store-backed protocol reads (resource listing/resolution and argument
+completion) MUST share the tool command mailbox, original session generation,
+count/byte admission and cancellation controls. Charge retained resource-URI
+String capacity and completion Value storage/capacities alongside the reserved
+envelope and RPC-ID copy. Read results MUST capture their committed prefix
+before another owner command, return no appended interval, and use the existing
+resource/completion implementations. Native resource resolution uses the
+original driver's sanitized handler table; no transport obtains a writer
+borrow or installs a second writer through these commands.

@@ -11,6 +11,123 @@ use super::{AdmissionError, Command, Owner, Publication};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
+#[test]
+fn execution_host_protocol_reads_observe_the_same_admitted_prefix_as_tools() {
+    use super::operation::{ReadCommand, ReadOperation};
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let session = handle.session().unwrap();
+    let created = session
+        .submit(command(
+            "instance_create",
+            r#"{"machine":"owner_case","request_id":"protocol-create"}"#,
+        ))
+        .unwrap();
+    let read = session
+        .read(ReadCommand {
+            rpc_id: Value::Str("resource-read".into()),
+            operation: ReadOperation::ResourceRead {
+                uri: "fsm://instance/inst-protocol-create".into(),
+            },
+        })
+        .unwrap();
+    let listed = session
+        .read(ReadCommand {
+            rpc_id: Value::Null,
+            operation: ReadOperation::ResourcesList,
+        })
+        .unwrap();
+    let completed = session.read(ReadCommand {
+        rpc_id: Value::Null,
+        operation: ReadOperation::Complete { parameters: value(r#"{"ref":{"type":"ref/resource","uri":"fsm://instance/{id}"},"argument":{"name":"id","value":"inst-protocol"}}"#) },
+    }).unwrap();
+    let worker = std::thread::spawn(move || owner.run());
+    assert!(created.recv().unwrap().result.is_ok());
+    let read = read.recv().unwrap();
+    assert_eq!(read.rpc_id, Value::Str("resource-read".into()));
+    assert_eq!(read.committed_seq, 2);
+    assert_eq!(read.publication, None);
+    let read = read.result.unwrap();
+    let contents = read.get("contents").and_then(Value::as_arr).unwrap();
+    let report = value(contents[0].get("text").and_then(Value::as_str).unwrap());
+    assert_eq!(
+        report.get("status").and_then(Value::as_str),
+        Some("running")
+    );
+    let listed = listed.recv().unwrap();
+    assert_eq!(listed.committed_seq, 2);
+    assert!(
+        listed
+            .result
+            .unwrap()
+            .get("resources")
+            .and_then(Value::as_arr)
+            .unwrap()
+            .iter()
+            .any(|resource| resource.get("uri").and_then(Value::as_str)
+                == Some("fsm://instance/inst-protocol-create"))
+    );
+    let completed = completed.recv().unwrap();
+    assert_eq!(completed.committed_seq, 2);
+    assert_eq!(completed.publication, None);
+    assert_eq!(
+        completed
+            .result
+            .unwrap()
+            .get("completion")
+            .and_then(|completion| completion.get("values"))
+            .and_then(Value::as_arr)
+            .unwrap(),
+        &[Value::Str("inst-protocol-create".into())]
+    );
+    handle.stop();
+    worker.join().unwrap();
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 2);
+}
+
+#[test]
+fn execution_host_protocol_payloads_share_the_exact_session_byte_budget() {
+    use super::{
+        mailbox::operation_charge,
+        operation::{Operation, ReadCommand, ReadOperation},
+    };
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 1));
+    let session = handle.session().unwrap();
+    let make = |limit: usize| {
+        let mut operation = Operation::Read(ReadCommand {
+            rpc_id: Value::Str("read".into()),
+            operation: ReadOperation::ResourceRead { uri: String::new() },
+        });
+        let base = operation_charge(&operation);
+        if let Operation::Read(ReadCommand {
+            operation: ReadOperation::ResourceRead { uri },
+            ..
+        }) = &mut operation
+        {
+            *uri = String::with_capacity(limit - base);
+        }
+        assert_eq!(operation_charge(&operation), limit);
+        let Operation::Read(command) = operation else {
+            unreachable!()
+        };
+        command
+    };
+    assert!(matches!(
+        session.read(make(SESSION_BYTES + 1)),
+        Err(AdmissionError::Busy)
+    ));
+    let accepted = session.read(make(SESSION_BYTES)).unwrap();
+    assert!(matches!(
+        session.submit(command("machine_list", "{}")),
+        Err(AdmissionError::Busy)
+    ));
+    handle.stop();
+    owner.run();
+    assert!(accepted.recv().is_err());
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn execution_host_native_due_deadline_completes_without_any_client_command() {

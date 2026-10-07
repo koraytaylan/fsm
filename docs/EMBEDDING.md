@@ -2651,3 +2651,10 @@ discriminator, journal/hash format, dependency or MSRV; production transports
 do not construct it yet, so public autonomous execution remains unimplemented.
 Quiet deadline progress and writer release are focused host evidence, not
 real-process/MCP responsiveness or complete transport acceptance.
+
+Private host protocol-read commands now cover resource listing/resolution and
+argument completion through the same bounded mailbox as tools, capturing one
+committed prefix and charging URI/Value allocation capacities. They reuse the
+existing resolvers and the original native driver's sanitized handler table;
+this adds no public wire/error/journal/hash change and does not yet connect
+production stdio or HTTP to the command host.

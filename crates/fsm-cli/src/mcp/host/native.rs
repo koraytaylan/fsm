@@ -78,6 +78,7 @@ impl<C: Clock> NativeOwner<C> {
     /// Service the original native driver independently of application input.
     pub(super) fn run(mut self) -> NativeExit {
         let control = self.driver.control();
+        let handlers = crate::mcp::executor::handlers(self.driver.handler_table());
         let mut next_pass = Instant::now();
         let mut commands = 0;
         let mut failure = None;
@@ -107,7 +108,7 @@ impl<C: Clock> NativeOwner<C> {
             match self.mailbox.next_until(next_pass.min(control_check)) {
                 Next::Command(admitted) => {
                     if let Some(store) = self.driver.store_mut() {
-                        apply_command(store, &mut self.clock, admitted);
+                        apply_command(store, &mut self.clock, admitted, Some(&handlers));
                     }
                     commands += 1;
                 }

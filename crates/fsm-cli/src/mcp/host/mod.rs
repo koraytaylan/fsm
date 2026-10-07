@@ -2,8 +2,9 @@
 //!
 //! Admission holds no Store borrow. The owner captures each result and journal
 //! prefix before taking another command; stop and session close bypass the
-//! application queue. Executor scheduling and bounded session egress are later
-//! integration steps, so this module does not advertise autonomous execution.
+//! application queue. The staged native owner drives quiet decision passes;
+//! production adapters and bounded session egress remain integration steps,
+//! so this module does not advertise autonomous execution.
 
 // Transport construction lands in tasks 9001/9002; the private harness already
 // drives these exact constructors and envelopes rather than a test-only owner.
@@ -16,6 +17,8 @@ use crate::store::{ErrorObj, Store};
 use fsm_core::json::Value;
 
 mod mailbox;
+pub(super) mod operation;
+use operation::{Operation, ReadCommand, ReadOperation};
 #[cfg(target_os = "linux")]
 mod native;
 use mailbox::{Admitted, Mailbox};
@@ -66,7 +69,17 @@ impl Session {
         &self,
         command: Command,
     ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
-        self.mailbox.admit(Arc::clone(&self.original), command)
+        self.mailbox
+            .admit(Arc::clone(&self.original), Operation::Tool(command))
+    }
+
+    /// Read operations share admission order and retained-allocation budgets.
+    pub(super) fn read(
+        &self,
+        command: ReadCommand,
+    ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
+        self.mailbox
+            .admit(Arc::clone(&self.original), Operation::Read(command))
     }
 
     /// Close controls remain available when application admission is saturated.
@@ -141,12 +154,17 @@ impl<C: Clock> Owner<C> {
     }
 
     fn apply(&mut self, admitted: Admitted) {
-        apply_command(&mut self.store, &mut self.clock, admitted);
+        apply_command(&mut self.store, &mut self.clock, admitted, None);
     }
 }
 
 // Both writer-only and native owners use exactly this committing boundary.
-fn apply_command(store: &mut Store, clock: &mut dyn Clock, mut admitted: Admitted) {
+fn apply_command(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    mut admitted: Admitted,
+    handlers: Option<&Value>,
+) {
     // The charged admitted envelope remains alive through dispatch. No
     // transport output or client input occurs in this operation boundary.
     if !admitted.session.is_open() || admitted.cancel.cancelled() {
@@ -157,13 +175,21 @@ fn apply_command(store: &mut Store, clock: &mut dyn Clock, mut admitted: Admitte
         cancel: std::mem::take(&mut admitted.cancel),
         ..Default::default()
     };
-    let result = super::tools::dispatch_with(
-        store,
-        clock,
-        &admitted.command.tool,
-        &admitted.command.arguments,
-        &context,
-    );
+    let result = match &admitted.command {
+        Operation::Tool(command) => {
+            super::tools::dispatch_with(store, clock, &command.tool, &command.arguments, &context)
+        }
+        Operation::Read(command) => match &command.operation {
+            ReadOperation::ResourcesList => Ok(super::resources::list(Some(store))),
+            ReadOperation::ResourceRead { uri } => {
+                super::resources::read_with_executor(uri, Some(store), handlers)
+            }
+            ReadOperation::Complete { parameters } => {
+                super::complete::complete(Some(parameters), Some(store))
+                    .map_err(|error| ErrorObj::new("req/args_invalid", error.0))
+            }
+        },
+    };
     let committed_seq = store.journal.last_seq;
     let publication = (committed_seq > before).then_some(Publication {
         first_seq: before.saturating_add(1),
@@ -172,7 +198,7 @@ fn apply_command(store: &mut Store, clock: &mut dyn Clock, mut admitted: Admitte
     if admitted.session.is_open() {
         let outcome = Outcome {
             session_generation: admitted.session.generation,
-            rpc_id: std::mem::replace(&mut admitted.command.rpc_id, Value::Null),
+            rpc_id: admitted.command.take_rpc_id(),
             result,
             committed_seq,
             publication,
