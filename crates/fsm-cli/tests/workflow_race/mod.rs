@@ -47,7 +47,18 @@ impl Competitor {
             fsm_execute::service::ShutdownMode::Drain,
             5000,
         )
-        .unwrap();
+        .unwrap_or_else(|error| {
+            // Let the original owner publish its deadline classification;
+            // this observer wait cannot renew its request or authorize cleanup.
+            let observed_until = Instant::now() + Duration::from_secs(1);
+            while self.child.try_wait().unwrap().is_none() && Instant::now() < observed_until {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            panic!(
+                "standalone drain transport: {error}; final stderr: {}",
+                bounded_executor_errors(&directory.0.join("race-stderr"))
+            );
+        });
         assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
         let deadline = Instant::now() + Duration::from_secs(5);
         while self.child.try_wait().unwrap().is_none() {
@@ -94,6 +105,7 @@ pub(super) fn contend(directory: &Directory, client: &mut Client) -> Competitor 
     let errors = directory.0.join("race-stderr");
     let child = Command::new(directory.executable())
         .env("HOME", text(entry, "home"))
+        .arg("--json")
         .arg("--data-dir")
         .arg(directory.store())
         .args(["execute", "--handlers"])

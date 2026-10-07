@@ -193,3 +193,22 @@ execution remain pending; the retained failed fixture has not been retired.
 Corrected stable CLI/executor all-target Clippy, formatting, file size and
 seven mocked producer checks pass in terminal session 40244, retained as
 native-preparation-cancel-delivery-check.log; native acceptance remains pending.
+
+Fresh 2976089 stable producer execution (session 20432, exit one) still failed
+standalone drain after all original scenarios and embedded workflow completion.
+However protected original allocation-two now has exact matching closing-2 and
+closed-2 records (fsm.native-domain-closed/1), absent in the earlier run: actual
+prepared cleanup now executes, while this does not prove full driver shutdown.
+The producer retained exact authority SHA-256
+7d9fe96f598f11b3353ea93ce44330d404309bfd58218e6661d369fb8d612ec5 and staging
+fsm-workflow-6f5284006093792f310c5948f6b7bb6f. The prior failed be271fa fixture
+was archived completely, including socket metadata and original empty
+allocation-two cgroup identity, before matched test-only retirement; no execution
+closure was manufactured. Current failed fixture remains retained.
+
+The race control now captures the competitor's actual JSON final error after
+transport timeout with a one-second observer-only wait; this preserves the
+original five-second driver request deadline and continues to fail on transport
+uncertainty. It supplies missing shutdown facts before the owned child guard
+retires the exact parent, without accepting the failed drain or increasing its
+budget. Fresh execution and remaining ownership proof are still required.
