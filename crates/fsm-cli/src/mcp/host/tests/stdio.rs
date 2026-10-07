@@ -44,6 +44,7 @@ fn execution_host_owned_stdio_adapter_panic_retires_original_writer() {
             move || BufReader::new(server),
             std::io::sink(),
             std::io::sink(),
+            Duration::from_millis(50),
             || panic!("fixture adapter unwind after original owner startup"),
         )
     });

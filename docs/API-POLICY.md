@@ -1488,3 +1488,10 @@ contracts. This stdio capability and wire discriminator change has a pre-1.0
 minor-version consequence, with no core semantics, journal bytes, hash domains,
 public Rust signatures, dependency or MSRV changes. Production acceptance and
 complete bounded egress ordering remain pending in plans 20–23.
+
+Linux embedded stdio accepts `serve --execute --poll-interval-ms N`, default
+250 ms, within 1..=86400000 milliseconds; malformed values and incompatible
+modes refuse with the existing args error before table loading or store open.
+The original native owner receives this interval, and reserved stop observation
+stays independent at 50 ms. This adds a CLI option without altering supported
+public Rust signatures, persistence, core time semantics, dependencies or MSRV.

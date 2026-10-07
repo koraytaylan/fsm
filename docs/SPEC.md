@@ -3312,3 +3312,11 @@ contracts. This stdio capability and wire discriminator change has a pre-1.0
 minor-version consequence, with no core semantics, journal bytes, hash domains,
 public Rust signatures, dependency or MSRV changes. Production acceptance and
 complete bounded egress ordering remain pending in plans 20–23.
+
+Linux embedded stdio MUST accept `serve --execute --poll-interval-ms N`
+with a positive whole-millisecond interval no greater than 86400000; the
+default is 250 ms. Invalid intervals or use outside embedded stdio MUST
+return the existing CLI args error before opening the store or starting
+execution. The interval bounds scheduler timed wakes, while reserved native
+stop observation remains bounded independently at 50 ms; wait duration MUST
+NOT supply logical journal time. Borrowed helper behavior remains unchanged.

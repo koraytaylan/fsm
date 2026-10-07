@@ -7,6 +7,7 @@ use fsm_execute::{
 use std::{io, os::unix::fs::DirBuilderExt, path::Path};
 
 pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
+    let poll_interval = executor.poll_interval;
     let store = match super::open_writer(dir) {
         Ok(store) => store,
         Err(reason) => {
@@ -48,12 +49,13 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
                 format!("native stdio publication failed: {error}"),
             ))
         })?;
-    let result = super::hosted::serve(
+    let result = super::hosted::serve_with_interval(
         driver,
         crate::clock::SystemClock,
         || io::BufReader::new(io::stdin()),
         io::stdout(),
         io::stderr(),
+        poll_interval,
     );
     let report = match result {
         Ok(report) => report,

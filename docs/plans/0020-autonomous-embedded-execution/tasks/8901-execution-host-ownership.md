@@ -6,6 +6,8 @@ kind: task
 depends_on: []
 gated: false
 touches:
+  - crates/fsm-cli/src/args.rs
+  - crates/fsm-cli/src/cli/execute.rs
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/src/mcp/host/
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
@@ -114,3 +116,9 @@ The first working production path is extended with actual-binary quiet
 subscription output and broken-stdout cleanup while stdin remains open; both
 new scenarios are pending serial stable/MSRV verification, and the complete
 9001/native scenario inventory and all task dependencies remain open.
+
+The working-path integration now adopts embedded stdio poll-interval wiring
+from 8903: the actual CLI validates the finite interval before loading a table
+or opening a writer, passes it to the original native owner, and keeps native
+stop observation independent; 8903 remains planned pending its complete
+scheduling/fairness acceptance inventory, and verification is pending.

@@ -2753,3 +2753,10 @@ retires the original session and requests original-control shutdown while
 retaining the initiating panic as a report failure; native retirement and
 output delivery still require their independent evidence within the original
 deadline, with no new public API or wire/journal format.
+
+Linux embedded stdio accepts `serve --execute --poll-interval-ms N`, default
+250 ms, within 1..=86400000 milliseconds; malformed values and incompatible
+modes refuse with the existing args error before table loading or store open.
+The original native owner receives this interval, and reserved stop observation
+stays independent at 50 ms. This adds a CLI option without altering supported
+public Rust signatures, persistence, core time semantics, dependencies or MSRV.

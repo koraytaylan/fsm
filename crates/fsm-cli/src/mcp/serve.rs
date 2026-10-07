@@ -142,6 +142,7 @@ pub enum ServeMode {
 /// lends it: `service::tick` would open a second `Store` on the same data
 /// directory and collide with the lock this process already holds.
 pub struct ExecutorLoop {
+    pub(crate) poll_interval: std::time::Duration,
     handlers: Value,
     watcher: fsm_execute::watch::Watcher,
     scheduler: fsm_execute::sched::Scheduler,
@@ -156,6 +157,7 @@ impl ExecutorLoop {
         table: fsm_execute::config::HandlerTable,
     ) -> Result<Self, fsm_execute::error::ExecError> {
         Ok(Self {
+            poll_interval: std::time::Duration::from_millis(250),
             handlers: super::executor::handlers(&table),
             watcher: fsm_execute::watch::Watcher::with_handlers(data_dir.to_path_buf(), &table),
             scheduler: fsm_execute::sched::Scheduler::new(table),

@@ -163,6 +163,7 @@ static SERVE: CmdSpec = CmdSpec {
     positionals: &[],
     flags: &[
         "handlers",
+        "poll-interval-ms",
         "http",
         "http-path",
         "http-origin",

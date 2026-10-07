@@ -57,6 +57,7 @@ fn quiet_deadline(subscribed: bool) {
         .arg(&directory)
         .args(["serve", "--execute", "--handlers"])
         .arg(&handlers)
+        .args(["--poll-interval-ms", "50"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(std::fs::File::create(&diagnostics).unwrap()))
@@ -258,4 +259,38 @@ fn production_stdio_broken_stdout_stops_without_waiting_for_input_eof() {
     let error = std::fs::read_to_string(&diagnostics).unwrap();
     assert!(error.contains("exec/inflight_deferred"), "{error}");
     assert_eq!(Store::open(&fixture.directory).unwrap().journal.last_seq, 0);
+}
+
+#[test]
+fn production_stdio_poll_interval_refuses_invalid_values_before_loading_or_opening() {
+    for interval in ["0", "-1", "1.5", "86400001", "18446744073709551615"] {
+        let directory = std::env::temp_dir().join(format!(
+            "fsm-invalid-serve-interval-{}-{interval}",
+            std::process::id()
+        ));
+        let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .arg("--data-dir")
+            .arg(&directory)
+            .args([
+                "serve",
+                "--execute",
+                "--handlers",
+                "missing-handler-table",
+                "--poll-interval-ms",
+                interval,
+            ])
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "interval {interval}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !directory.exists(),
+            "invalid interval must not create a store"
+        );
+        assert!(String::from_utf8_lossy(&output.stderr).contains("--poll-interval-ms"));
+    }
 }

@@ -28,6 +28,7 @@ use crate::{
 use super::{SessionRuntime, SessionStore, serve_session_core};
 
 const SHUTDOWN_TIMEOUT_MS: i64 = 10000;
+#[cfg(test)]
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 pub(in crate::mcp) struct HostedReport {
@@ -50,6 +51,7 @@ impl Drop for Finished {
 }
 
 /// Compose actual bounded byte input/output with the owned command host.
+#[cfg(test)]
 pub(in crate::mcp) fn serve<C: Clock + Send + 'static, R: BufRead + 'static>(
     driver: OwnedNativeExecutor,
     clock: C,
@@ -57,7 +59,26 @@ pub(in crate::mcp) fn serve<C: Clock + Send + 'static, R: BufRead + 'static>(
     output: impl Write + Send + 'static,
     operator_output: impl Write + Send + 'static,
 ) -> io::Result<HostedReport> {
-    serve_with_adapter_start(driver, clock, input, output, operator_output, || {})
+    serve_with_interval(driver, clock, input, output, operator_output, POLL_INTERVAL)
+}
+
+pub(in crate::mcp) fn serve_with_interval<C: Clock + Send + 'static, R: BufRead + 'static>(
+    driver: OwnedNativeExecutor,
+    clock: C,
+    input: impl FnOnce() -> R + Send + 'static,
+    output: impl Write + Send + 'static,
+    operator_output: impl Write + Send + 'static,
+    interval: Duration,
+) -> io::Result<HostedReport> {
+    serve_with_adapter_start(
+        driver,
+        clock,
+        input,
+        output,
+        operator_output,
+        interval,
+        || {},
+    )
 }
 
 // The start hook lets tests unwind on the adapter after original owner startup,
@@ -68,6 +89,7 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
     input: impl FnOnce() -> R + Send + 'static,
     output: impl Write + Send + 'static,
     operator_output: impl Write + Send + 'static,
+    interval: Duration,
     adapter_start: impl FnOnce(),
 ) -> io::Result<HostedReport> {
     let data_dir = driver
@@ -85,13 +107,8 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
     let diagnostics = DiagnosticOutput::start(operator_output)?;
     let mut adapter_diagnostics = diagnostics.fork();
     let (notifier, queued) = Notifier::hosted_queued(Box::new(output))?;
-    let (owner, handle) = NativeOwner::new(
-        driver,
-        clock,
-        diagnostics,
-        POLL_INTERVAL,
-        SHUTDOWN_TIMEOUT_MS,
-    )?;
+    let (owner, handle) =
+        NativeOwner::new(driver, clock, diagnostics, interval, SHUTDOWN_TIMEOUT_MS)?;
     let session = handle
         .session()
         .map_err(|error| io::Error::other(format!("host session admission failed: {error:?}")))?;

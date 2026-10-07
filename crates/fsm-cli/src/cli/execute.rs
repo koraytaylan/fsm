@@ -68,6 +68,17 @@ pub static SPECS: &[CmdSpec] = &[
 pub fn serve_mode(ctx: &mut Ctx, args: &Args) -> Result<ServeMode, u8> {
     let read_only = args.switches.contains("read-only");
     let embedded = args.switches.contains("execute");
+    if args.flags.contains_key("poll-interval-ms")
+        && (!embedded || read_only || args.flags.contains_key("http"))
+    {
+        return Err(emit_error(
+            ctx,
+            &ErrorObj::new(
+                "args",
+                "serve --poll-interval-ms requires embedded stdio --execute",
+            ),
+        ));
+    }
     if read_only && embedded {
         return Err(emit_error(
             ctx,
@@ -104,10 +115,19 @@ pub fn serve_mode(ctx: &mut Ctx, args: &Args) -> Result<ServeMode, u8> {
             .hint("pass a path: serve --execute --handlers ./handlers.json"),
         ));
     }
+    let interval = poll_interval(args).map_err(|error| emit_error(ctx, &error))?;
+    if interval > fsm_execute::config::MAX_TIMEOUT_MS as u64 {
+        return Err(emit_error(
+            ctx,
+            &ErrorObj::new("args", "serve --poll-interval-ms must be at most 86400000"),
+        ));
+    }
     let text =
         read_input_from(source, ctx.stdin.as_deref()).map_err(|error| emit_error(ctx, &error))?;
     let table = HandlerTable::parse(&text).map_err(|error| report(ctx, &error))?;
-    let executor = ExecutorLoop::new(&ctx.data_dir, table).map_err(|error| report(ctx, &error))?;
+    let mut executor =
+        ExecutorLoop::new(&ctx.data_dir, table).map_err(|error| report(ctx, &error))?;
+    executor.poll_interval = std::time::Duration::from_millis(interval);
     Ok(ServeMode::Embedded(Box::new(executor)))
 }
 
