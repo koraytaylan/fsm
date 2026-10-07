@@ -149,7 +149,12 @@ impl NativeAdmissions {
                 TRANSPORT_TIMEOUT,
             ) {
                 Ok(preparation) => Phase::Preparing(preparation),
-                Err(_) => Phase::UnknownAllocation,
+                Err(error) => {
+                    self.cleanup_diagnostic.get_or_insert_with(|| {
+                        bounded_diagnostic("native-preparation-uncertain ", &error)
+                    });
+                    Phase::UnknownAllocation
+                }
             };
         }
     }
@@ -164,7 +169,12 @@ impl NativeAdmissions {
                 Phase::Preparing(mut preparation) => match preparation.poll() {
                     Ok(Some(domain)) => Phase::Prepared(domain),
                     Ok(None) => Phase::Preparing(preparation),
-                    Err(_) => Phase::UncertainPreparation(preparation),
+                    Err(error) => {
+                        self.cleanup_diagnostic.get_or_insert_with(|| {
+                            bounded_diagnostic("native-preparation-uncertain ", &error)
+                        });
+                        Phase::UncertainPreparation(preparation)
+                    }
                 },
                 Phase::Prepared(domain) if pending.cancelled => {
                     match NativePreparedCleanup::start(&domain, TRANSPORT_TIMEOUT) {

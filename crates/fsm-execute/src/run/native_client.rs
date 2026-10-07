@@ -30,6 +30,20 @@ const HELPER: &str = "/usr/libexec/fsm-containment-authority";
 const RESPONSE_LIMIT: usize = 65540;
 const POLL_BUDGET: usize = 65536;
 
+fn refusal(response: &Value, prefix: &str) -> Option<String> {
+    let fields = response.as_obj()?;
+    if fields.len() != 3
+        || response.get("format").and_then(Value::as_str) != Some("fsm.native-response/1")
+        || response.get("ok") != Some(&Value::Bool(false))
+    {
+        return None;
+    }
+    response
+        .get("result")
+        .and_then(Value::as_str)
+        .map(|reason| super::native_admission::bounded_diagnostic(prefix, reason))
+}
+
 pub(super) fn discover_store(store: &Path) -> Result<(String, u64), String> {
     discovery::discover(store)
 }
@@ -397,6 +411,32 @@ fn decode_response(framed: &[u8]) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn refusal_requires_closed_envelope_and_bounds_sanitized_reason() {
+        use fsm_core::json::Value;
+        use std::collections::BTreeMap;
+        let mut fields = BTreeMap::from([
+            ("format".into(), Value::Str("fsm.native-response/1".into())),
+            ("ok".into(), Value::Bool(false)),
+            ("result".into(), Value::Str("authority\nbusy".into())),
+        ]);
+        assert_eq!(
+            super::refusal(&Value::Obj(fields.clone()), "refused: ").unwrap(),
+            "refused: authority busy"
+        );
+        fields.insert("result".into(), Value::Str("é".repeat(1024)));
+        assert!(
+            super::refusal(&Value::Obj(fields.clone()), "refused: ")
+                .unwrap()
+                .len()
+                <= 1024
+        );
+        fields.insert("extra".into(), Value::Null);
+        assert!(super::refusal(&Value::Obj(fields.clone()), "refused: ").is_none());
+        fields.remove("extra");
+        fields.insert("ok".into(), Value::Bool(true));
+        assert!(super::refusal(&Value::Obj(fields), "refused: ").is_none());
+    }
     use super::*;
 
     fn framed(body: &[u8]) -> Vec<u8> {

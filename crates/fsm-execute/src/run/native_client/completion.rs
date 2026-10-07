@@ -97,6 +97,9 @@ fn validate(response: &Value, claim: &Claim, journal_claim: &str) -> Result<Mate
         .map_err(|_| "native completion exceeds response bound")?;
     parse(&bytes, &JsonLimits::DEFAULT).map_err(|_| "native completion exceeds JSON limits")?;
     closed(response, &["format", "ok", "result"])?;
+    if let Some(reason) = super::refusal(response, "native completion refused: ") {
+        return Err(reason);
+    }
     if response.get("format").and_then(Value::as_str) != Some("fsm.native-response/1")
         || response.get("ok") != Some(&Value::Bool(true))
     {

@@ -977,3 +977,14 @@ The next review must retain original owner diagnostics before fixture Drop
 and investigate the recurring second-launch stall; stable success does not
 establish a fixed MSRV race or complete ownership integration.
 Task 9401 remains in progress and plan 0022 remains 3/7.
+
+The diagnostic correction preserves closed preparation/completion refusal
+reasons with single-line 1024-byte UTF-8 limits and records preparation startup
+and poll failures in the existing single pending diagnostic slot; uncertainty,
+reservation ownership and shutdown deadlines are unchanged. Stable focused
+closed-envelope/sanitization control and executor all-target Clippy passed in
+terminal session 11019 under verified memory.max=1073741824 and
+memory.swap.max=0; formatting, file-size and tracked diff checks also pass.
+This helper control does not prove production failure delivery or diagnose the
+original race; actual native rerun, MSRV checks, full host gate and guard
+sensitivity remain required, after identity-guarded retained-fixture retirement.

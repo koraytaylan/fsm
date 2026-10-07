@@ -1254,3 +1254,12 @@ remain uncertain immediately; exhaustion never releases capacity or proves
 closure. Original prepared identity, no-submission, durable revocation, manager
 retirement and empty-cgroup checks still govern success. The host transport and
 shutdown deadlines are unchanged, with no new public or persistent format.
+
+Native preparation failures now share the single pending lifecycle diagnostic
+slot with prepared cleanup, using `native-preparation-uncertain`; startup and
+poll failures retain their original uncertainty and reservation semantics.
+Closed native-response/1 refusal envelopes preserve preparation and completion
+broker reasons with their operation prefix, sanitized and capped to 1024 UTF-8
+bytes; malformed envelopes retain generic errors. These additive diagnostics
+change no error code, journal/hash format, control version, dependency or MSRV
+and grant no closure, ownership release or renewed deadline.

@@ -125,6 +125,9 @@ impl NativePreparation {
 }
 
 fn decode(response: &Value, namespace: &str, generation: u64) -> Result<NativeDomain, String> {
+    if let Some(reason) = super::refusal(response, "native preparation refused: ") {
+        return Err(reason);
+    }
     let fields = response
         .as_obj()
         .ok_or("native preparation response is not an object")?;
