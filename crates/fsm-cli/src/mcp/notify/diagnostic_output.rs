@@ -9,6 +9,15 @@ pub(crate) struct DiagnosticOutput {
     dropped: u64,
 }
 impl DiagnosticOutput {
+    /// Share one bounded writer, retaining each producer's own rejection count.
+    /// The composing caller must combine these counts when reporting delivery.
+    pub(crate) fn fork(&self) -> Self {
+        Self {
+            control: self.control.clone(),
+            dropped: 0,
+        }
+    }
+
     pub(crate) fn start(writer: impl Write + Send + 'static) -> io::Result<Self> {
         Ok(Self {
             control: OutputControl::start(writer)?,

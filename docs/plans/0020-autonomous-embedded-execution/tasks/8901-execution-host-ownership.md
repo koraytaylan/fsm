@@ -11,6 +11,9 @@ touches:
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - crates/fsm-cli/src/mcp/methods.rs
   - crates/fsm-cli/src/mcp/methods/
+  - crates/fsm-cli/src/mcp/serve.rs
+  - crates/fsm-cli/src/mcp/serve/
+  - crates/fsm-cli/src/mcp/notify/diagnostic_output.rs
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md

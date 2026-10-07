@@ -6,8 +6,21 @@ pub(super) enum SessionStore<'a> {
     Borrowed(Option<&'a mut Store>),
     #[cfg(target_os = "linux")]
     Native(&'a mut fsm_execute::service::OwnedNativeExecutor),
+    #[cfg(target_os = "linux")]
+    Hosted {
+        session: &'a crate::mcp::host::Session,
+        data_dir: &'a std::path::Path,
+    },
 }
 impl SessionStore<'_> {
+    pub(super) fn hosted(&self) -> Option<(&crate::mcp::host::Session, &std::path::Path)> {
+        match self {
+            #[cfg(target_os = "linux")]
+            Self::Hosted { session, data_dir } => Some((session, data_dir)),
+            _ => None,
+        }
+    }
+
     // A mutable facade borrow deliberately bounds every native writer view to
     // one request/inspection; the caller never holds it across idle observation.
     pub(super) fn as_deref(&mut self) -> Option<&Store> {
@@ -15,6 +28,8 @@ impl SessionStore<'_> {
             Self::Borrowed(store) => store.as_deref(),
             #[cfg(target_os = "linux")]
             Self::Native(driver) => driver.store_mut().map(|store| &*store),
+            #[cfg(target_os = "linux")]
+            Self::Hosted { .. } => None,
         }
     }
     pub(super) fn as_deref_mut(&mut self) -> Option<&mut Store> {
@@ -22,20 +37,22 @@ impl SessionStore<'_> {
             Self::Borrowed(store) => store.as_deref_mut(),
             #[cfg(target_os = "linux")]
             Self::Native(driver) => driver.store_mut(),
+            #[cfg(target_os = "linux")]
+            Self::Hosted { .. } => None,
         }
     }
     pub(super) fn observes_admitted(&self) -> bool {
         match self {
             Self::Borrowed(_) => false,
             #[cfg(target_os = "linux")]
-            Self::Native(_) => true,
+            Self::Native(_) | Self::Hosted { .. } => true,
         }
     }
     pub(super) fn is_embedded(&self, borrowed_executor: bool) -> bool {
         match self {
             Self::Borrowed(_) => borrowed_executor,
             #[cfg(target_os = "linux")]
-            Self::Native(_) => true,
+            Self::Native(_) | Self::Hosted { .. } => true,
         }
     }
     pub(super) fn tick(
@@ -54,6 +71,8 @@ impl SessionStore<'_> {
                 executor.tick(store, clock)
             }
             #[cfg(target_os = "linux")]
+            Self::Hosted { .. } => Vec::new(),
+            #[cfg(target_os = "linux")]
             Self::Native(driver) => {
                 let now_ms = clock.now_ms();
                 driver.tick(clock, now_ms)
@@ -67,6 +86,8 @@ impl SessionStore<'_> {
                 let _ = clock;
                 Vec::new()
             }
+            #[cfg(target_os = "linux")]
+            Self::Hosted { .. } => Vec::new(),
             #[cfg(target_os = "linux")]
             Self::Native(driver) => {
                 let now_ms = clock.now_ms();

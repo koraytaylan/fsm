@@ -20,7 +20,7 @@ mod mailbox;
 pub(super) mod operation;
 use operation::{Operation, ReadCommand, ReadOperation};
 #[cfg(target_os = "linux")]
-mod native;
+pub(super) mod native;
 use mailbox::{Admitted, Mailbox};
 
 #[cfg(test)]
@@ -117,6 +117,11 @@ impl Handle {
         if let Some((control, timeout_ms)) = &self.native_stop {
             let _ = control.stop(fsm_execute::service::ShutdownMode::Abort, *timeout_ms);
         }
+        self.reject_queued();
+    }
+
+    /// An adapter already holding the original lifecycle stop need not escalate it.
+    pub(super) fn reject_queued(&self) {
         self.mailbox.stop();
     }
 }

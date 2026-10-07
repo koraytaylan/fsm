@@ -259,3 +259,44 @@ the task-cache log is execution-host-output-admission-sensitivity.log. Full chan
 gates remain assigned to the requested working-path milestone. Production
 process entry, interactive continuations, progress forwarding, complete egress
 and real held-handler/lifecycle acceptance remain incomplete; no task is done.
+
+## Owned byte-stream stdio composition — 2026-10-07
+
+The new private composition starts the original native owner on its own worker
+and reuses the real capped framing/session loop and shared method dispatcher.
+SessionStore::Hosted returns no Store borrow and performs no client-driven
+executor tick. Input idle stays live; EOF/broken output/control request original
+shutdown and reject queued commands without escalating an earlier drain.
+The report retains either the returned original driver or a still-live worker,
+uses the original absolute deadline for output retirement, and exposes unknown
+diagnostic loss as None. No live worker is joined after the deadline.
+
+Three actual Unix-stream cases cover byte-level initialization and creation,
+quiet deadline completion observed only through a read-only Store, EOF and
+actual writer reopening, independent stop while input remains open, and an
+output worker held until after the original deadline. The held-output report
+proves writer release while output_drained remains false; it does not infer
+interruption/retirement of arbitrary blocking Read/Write objects or real
+process/MCP domain closure. All 24 host cases and CLI all-target Clippy pass
+on stable and Rust 1.89 in terminal session 5017 under verified actual 1 GiB
+RAM/zero-swap limits with serial workers. The initial 23-case run passed tests
+but failed Clippy on literal formatting in the new fixture; that was fixed
+before 5017. Formatting and source-size checks pass after the exact-wording
+mode instruction extraction in c5722fd; this extraction is a separate refactor
+commit and introduces no wire or persistence change.
+
+The adapter and native owner share one bounded operator-output worker;
+each producer retains its own rejection count and the report combines them,
+avoiding synchronous adapter diagnostic writes during shutdown. This final
+sharing adjustment awaits the frozen milestone gate; the earlier 5017 result
+does not cover it.
+
+The manual coordinator adopts serve.rs, serve/ and notify/diagnostic_output.rs
+for this ownership/dispatch staging milestone; final process-entry selection remains task 9001's obligation
+and these shared boundaries are integrated serially, with no parallel mutation
+or manifest/dependency change. Task 8901 stays in progress. A frozen isolated
+checkout will run the broader eight-stage stable host gate for this combined
+integration milestone; further active-worktree changes are not covered by it.
+Production selection, interactive/progress forwarding, complete egress,
+versioned discovery and real held-handler/native/platform acceptance remain
+unfinished, and no autonomous capability or task completion is claimed.

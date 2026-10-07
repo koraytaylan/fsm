@@ -2668,3 +2668,13 @@ be mislabeled server-busy when output is saturated. Production transports do
 not select this entry yet; interactive/progress forwarding and full egress
 admission remain outstanding, with no shipped autonomous capability or new
 public error/journal/hash/version/dependency/MSRV claim.
+
+The private owned stdio composition now connects the existing capped framing
+and shared hosted method handler to the native owner with independent bounded
+input/output workers. Quiet byte input permits deadline progress; EOF and
+explicit control preserve the original shutdown deadline. A blocked output
+worker cannot keep the writer, and failed/unfinished delivery remains explicit;
+a live uncertain owner is retained instead of joined after its deadline. This
+is private integration evidence, with no production backend selection, public
+signature/error/wire-version/journal/hash/dependency/MSRV change; interactive
+and progress forwarding, complete egress and versioned discovery remain open.

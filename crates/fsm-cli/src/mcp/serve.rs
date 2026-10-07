@@ -19,15 +19,17 @@ use super::tools;
 use super::{cancel, logging, subscribe, watch};
 
 use super::framing::{LINE_CAP, Line, read_capped_line};
+mod mode;
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
 mod native_stdio;
-mod mode;
 use mode::mode_note;
 mod session_store;
 use session_store::{SessionLive, SessionRuntime, SessionStore};
+#[cfg(target_os = "linux")]
+pub(in crate::mcp) mod hosted;
 #[cfg(target_os = "linux")]
 mod owned;
 #[cfg(target_os = "linux")]
@@ -590,13 +592,17 @@ fn serve_session_core(
     // ran without reading the launch command.
     let embedded = store.is_embedded(executor.is_some());
     let admitted_progress = store.observes_admitted();
-    let mode_note = mode_note(
-        store.as_deref(),
-        embedded,
-        admitted_progress,
-        degraded.is_some(),
-        contended,
-    );
+    let mode_note = if store.hosted().is_some() {
+        "\n\nConfigured effects and deadlines progress while stdin remains open; client requests observe that progress."
+    } else {
+        mode_note(
+            store.as_deref(),
+            embedded,
+            admitted_progress,
+            degraded.is_some(),
+            contended,
+        )
+    };
     let mut initialized = false;
     let mut initialized_notified = false;
     let mut live = SessionLive {
@@ -717,7 +723,11 @@ fn serve_session_core(
                             if let Some(requested) =
                                 params.as_ref().and_then(|p| p.get("requestId"))
                             {
-                                live.cancellations.cancel(requested);
+                                if let Some((session, _)) = store.hosted() {
+                                    session.cancel(requested);
+                                } else {
+                                    live.cancellations.cancel(requested);
+                                }
                                 // An id nobody is running is accepted in
                                 // silence — the client may be racing a reply
                                 // it has not read yet, which is not an error.
@@ -790,21 +800,38 @@ fn serve_session_core(
                         let io = std::cell::RefCell::new(crate::mcp::notify::SessionIo::new(
                             &output, &mut input,
                         ));
-                        crate::mcp::methods::handle_request(
-                            &output,
-                            store.as_deref_mut(),
-                            clock,
-                            &mut initialized,
-                            &mut live,
-                            id,
-                            &method,
-                            params,
-                            mode_note,
-                            Some(&io),
-                            // stdout is both the answer and the stream, so
-                            // the feed writes where everything else does.
-                            None,
-                        )?;
+                        if let Some((session, data_dir)) = store.hosted() {
+                            crate::mcp::methods::handle_request_hosted(
+                                &output,
+                                session,
+                                data_dir,
+                                clock,
+                                &mut initialized,
+                                &mut live,
+                                id,
+                                &method,
+                                params,
+                                mode_note,
+                                Some(&io),
+                                None,
+                            )?;
+                        } else {
+                            crate::mcp::methods::handle_request(
+                                &output,
+                                store.as_deref_mut(),
+                                clock,
+                                &mut initialized,
+                                &mut live,
+                                id,
+                                &method,
+                                params,
+                                mode_note,
+                                Some(&io),
+                                // stdout is both the answer and the stream, so
+                                // the feed writes where everything else does.
+                                None,
+                            )?;
+                        }
                         drive_executor(
                             executor.as_deref_mut(),
                             &mut store,

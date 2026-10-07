@@ -22,14 +22,14 @@ use super::{
 const COMMAND_BATCH: usize = 8;
 
 /// Carries the original driver back even when shutdown cannot prove closure.
-pub(super) struct NativeExit {
+pub(in crate::mcp) struct NativeExit {
     pub driver: OwnedNativeExecutor,
     pub shutdown: ShutdownReport,
     pub diagnostics: DiagnosticOutput,
     pub failure: Option<io::Error>,
 }
 
-pub(super) struct NativeOwner<C> {
+pub(in crate::mcp) struct NativeOwner<C> {
     _retirement: Retirement,
     driver: OwnedNativeExecutor,
     clock: C,
@@ -40,7 +40,7 @@ pub(super) struct NativeOwner<C> {
 }
 
 impl<C: Clock> NativeOwner<C> {
-    pub(super) fn new(
+    pub(in crate::mcp) fn new(
         driver: OwnedNativeExecutor,
         clock: C,
         diagnostics: DiagnosticOutput,
@@ -76,7 +76,7 @@ impl<C: Clock> NativeOwner<C> {
     }
 
     /// Service the original native driver independently of application input.
-    pub(super) fn run(mut self) -> NativeExit {
+    pub(in crate::mcp) fn run(mut self) -> NativeExit {
         let control = self.driver.control();
         let handlers = crate::mcp::executor::handlers(self.driver.handler_table());
         let mut next_pass = Instant::now();

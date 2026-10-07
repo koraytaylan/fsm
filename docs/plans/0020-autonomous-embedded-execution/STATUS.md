@@ -132,3 +132,16 @@ protocol suites pass on each toolchain, with detailed evidence and coordinator
 footprint adoption in HOST-OWNERSHIP-REVIEW.md. Production stdio entry,
 interactive/progress forwarding, complete egress and real-handler proof remain
 open; task 8901 stays in progress and completion remains 0/7.
+
+### Owned byte-stream stdio milestone — 2026-10-07
+
+The actual capped byte-framing loop now composes with the owned native host
+through a facade that gives the adapter no writer reference. Unix-stream cases
+prove quiet deadline progress, EOF writer release, original control deadline
+reuse, and writer release while output is held with delivery still false. All
+24 host cases and CLI all-target Clippy pass on stable/Rust 1.89 in session
+5017; review and manual footprint adoption are recorded in
+HOST-OWNERSHIP-REVIEW.md. The combined milestone's broader stable gate will
+use a frozen isolated checkout so work can continue independently. Production
+process entry, interactive/progress forwarding, complete egress and versioned
+discovery remain open; task 8901 is in progress with completion still 0/7.

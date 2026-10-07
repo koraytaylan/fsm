@@ -3193,3 +3193,17 @@ pre-dispatch cancelled hosted request MUST remain unanswered with its journal
 key unclaimed; closed host admission MUST terminate the original session.
 This private entry is not yet selected by production transports; interactive
 continuations, progress forwarding and complete egress admission remain open.
+
+The staged owned stdio composition MUST reuse the existing capped byte framing
+and shared method handler, with a session store facade that supplies no Store
+reference to the hosted adapter. Open quiet input MUST leave the native owner
+free to progress; EOF, failed output and independent control MUST enter the
+original lifecycle stop. Preserve its first absolute deadline and requested
+mode rather than escalating a previously requested drain merely to reject
+queued application commands. Never join a live owner after the deadline;
+retain the original worker or returned native driver and report uncertainty.
+Protocol/operator delivery facts MUST remain separate from native writer
+release; unknown diagnostic loss is None, not a fabricated zero count.
+This private composition is not selected by the production process entry yet;
+interactive/progress forwarding, complete egress and fsm.executor/2 discovery
+remain required before that selection.
