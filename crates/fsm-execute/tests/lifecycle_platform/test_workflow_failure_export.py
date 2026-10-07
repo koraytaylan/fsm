@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import stat
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -38,6 +40,17 @@ class Export(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'stage count'):
                     exporter.export({Path(f'/usr/libexec/fsm-workflow-{index:x}') for index in range(9)}, Path(scratch))
                 reader.assert_not_called()
+
+    def test_directory_entry_bound_refuses_before_opening_any_file(self):
+        path = '/usr/libexec/fsm-workflow-aa'
+        stage = SimpleNamespace(parent=Path('/usr/libexec'), name='fsm-workflow-aa',
+                                lstat=lambda: SimpleNamespace(st_mode=stat.S_IFDIR | 0o700, st_uid=0),
+                                iterdir=lambda: iter(Path(f'entry-{index}') for index in range(129)))
+        with patch.object(exporter, 'Path', side_effect=lambda value: stage if value == path else Path(value)):
+            with patch.object(exporter.os, 'open') as opened:
+                with self.assertRaisesRegex(ValueError, 'entry count'):
+                    exporter.read_stage(path)
+                opened.assert_not_called()
 
     def test_existing_export_is_never_overwritten(self):
         with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as scratch:

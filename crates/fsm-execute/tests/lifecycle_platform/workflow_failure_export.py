@@ -17,7 +17,12 @@ def read_stage(stage):
     if not stat.S_ISDIR(before.st_mode) or before.st_uid != 0 or before.st_mode & 0o022:
         raise ValueError('retained stage is not root protected')
     records = []
-    for path in sorted(stage.iterdir()):
+    entries = []
+    for path in stage.iterdir():
+        if len(entries) == 128:
+            raise ValueError('retained stage entry count exceeds bound')
+        entries.append(path)
+    for path in sorted(entries):
         if not (path.name.endswith('.inventory.json') or
                 path.name.startswith('failure-') and path.suffix in ('.log', '.json')):
             continue
