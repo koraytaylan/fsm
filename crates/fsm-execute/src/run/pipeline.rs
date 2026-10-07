@@ -587,6 +587,34 @@ impl Pipeline {
             .get("seq")
             .and_then(Value::as_num)
             .and_then(|raw| raw.parse().ok());
+        if let Some(material) = body.get("handoff") {
+            let original = fsm_core::record::execution::AcknowledgedHandoff::from_value(material)
+                .map_err(|_| unproven())?;
+            if original.claim() != claim
+                || original.handler_contract() != &handler.contract_value()
+                || original.outcome() != completion.stopped_outcome()
+                || original.acknowledgement_request_id() != settlement_request_id
+                || Some(original.acknowledgement_seq()) != seq
+                || !completion
+                    .proof()
+                    .matches_claim(claim, original.original_claim_hash())
+            {
+                return Err(unproven());
+            }
+            match store
+                .state
+                .execution_handoffs
+                .outstanding()
+                .find(|handoff| handoff.claim().run_id() == claim.run_id())
+            {
+                Some(current) if current != &original => return Err(unproven()),
+                // The exact replayed acknowledgement installed this obligation;
+                // only a matching accepted-event fold can have removed it.
+                None => return Ok(SettleOutcome::AlreadySettled),
+                Some(_) => {}
+            }
+            return self.advance_native_handoff(store, clock, &original);
+        }
         self.advance(store, clock, effect_id, instance_id, advance, seq)
     }
 

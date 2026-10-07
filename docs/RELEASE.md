@@ -1580,3 +1580,5 @@ Added provisional read-only contract::check_pending evidence for shared service 
 Pending-contract checks preserve explicitly manual effects as compatible evidence without changing their pending state or allowing automatic execution.
 
 The shared native preparation path now refuses incompatible or unknown pending contracts before helper preparation, retaining pending work without new journal entries or preparation reservations; final claim/entry rechecks and provisioned native acceptance remain pending.
+
+Fixed warm native owners remaining retained after another host delivered their original acknowledged event: exact acknowledgement and closure-bound handoff reconciliation now recognizes accepted-event fold retirement without another event send, preserving outstanding obligations and historical acknowledgement behavior.

@@ -1639,3 +1639,5 @@ The provisional contract::check_pending API adds read-only pending membership, h
 The provisional pending-contract checker preserves explicit manual disposition as compatible read-only evidence, using the existing manual_effects policy and introducing no wire, persisted-format or error-code change.
 
 Shared service native preparation now performs pending-contract refusal before queuing a helper, using existing exec/contract diagnostics and no persisted-format or public signature change; this execution-policy capability has a pre-1.0 minor consequence, with final claim/entry validation and native acceptance still pending.
+
+Warm native completion reconciliation now recognizes another host's accepted original event through the exact replayed acknowledgement and verified handoff retirement; this fixes retained-owner drain without changing public signatures, error codes, persisted formats or hash domains, and historical acknowledgements without handoffs retain their existing path.
