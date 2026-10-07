@@ -132,3 +132,24 @@ actual kernel MemoryMax=1 GiB/MemorySwapMax=0 with serial Cargo/test workers.
 The terminal predecessor startup log `native-worker-startup-check.log`
 (source `0705bcb`, session 99171, exit 0) has SHA-256:
 88a9e5a123e281bf43abff081f9fd0b5f3db3a1e5ac1eeda6dd19470447e0326.
+
+## Internally scoped native worker unwind — implementation candidate
+
+The CLI process hook previously aborted before a native worker join could
+report failure. A new provisional filter wraps an embedding hook without
+global installation and suppresses that hook only inside private thread-local
+transport/proof worker entry scopes. Installed Linux stdio composes this exact
+filter with its existing adapter/fatal hook. Thread names, environment values,
+sibling threads and callers cannot arm the permission. Other panics still
+reach their original hook. Ordinary std-thread join errors override published
+responses/proofs with bounded uncertainty and retain original ownership;
+previously published actual helper observations remain usable only after join.
+
+Fatal-hook subprocess cases use the exact public filter used by installed
+stdio: real original startup/proof worker panics must return bounded uncertainty
+without panic-payload disclosure, while a forged worker name must abort through
+the original hook. Core dumps are disabled before re-exec and no artifact path
+is selected. A separate actual-child case panics after real reap/EOF and checks
+that its published response is discarded. These are worker/filter acceptance,
+not installed Root-handler panic or native-domain closure acceptance; candidate
+compilation, runtime, Clippy and new guard sensitivity remain pending.

@@ -3390,12 +3390,21 @@ drainage facts rather than waiting solely for the original deadline or
 claiming delivery. A merely blocked, healthy output still uses the original
 deadline and MUST NOT be classified as broken.
 
-The installed process panic hook MUST permit unwind only on the current
-hosted protocol-adapter thread while its cleanup boundary is active. That
-boundary MUST enqueue a bounded operator diagnostic, retire the original
-session and request supervised native shutdown. Other threads and legacy
-serve paths retain their fatal panic behavior; catching an adapter unwind
-MUST NOT imply native owner/handler panic containment has been accepted.
+The installed process panic hook MUST permit unwind on the current owned
+stdio protocol-adapter catcher and on internally marked opt-in transport/proof
+worker bodies; it MUST NOT synchronously format panic text, write stderr or
+abort on those marked threads. `filter_native_worker_panics` MUST wrap an
+embedding hook without installing global process state and MUST forward all
+unmarked panics unchanged, including a thread with a forged worker name.
+Only internal original worker entry MUST arm this thread-local permission;
+thread names, environment values and sibling threads MUST NOT grant it.
+Actual worker join failure MUST override any previously published response or
+proof with bounded uncertainty, MUST NOT manufacture helper observations or
+native closure, and MUST retain original claim/capacity until authoritative
+settlement. Observations published before a panic MAY still establish actual
+transport retirement after join; unobserved reap/EOF MUST remain unknown.
+Other host/handler threads and borrowed serve paths retain their fatal panic
+behavior; this scoped unwind boundary establishes no native-domain closure.
 
 Owned hosted stdio MUST defer change-feed publication across an application
 mutation from admission through response queueing, and across each native

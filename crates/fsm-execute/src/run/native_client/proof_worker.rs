@@ -40,6 +40,7 @@ impl<T: Send + 'static> ProofWorker<T> {
         let thread = std::thread::Builder::new()
             .name("fsm-native-proof".into())
             .spawn(move || {
+                let _unwind = super::unwind::WorkerUnwind::enter();
                 let _ticket = ticket;
                 #[cfg(test)]
                 if let Some(hook) = hook {

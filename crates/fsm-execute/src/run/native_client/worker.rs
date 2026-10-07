@@ -110,6 +110,7 @@ impl Worker {
         let thread = std::thread::Builder::new()
             .name("fsm-native-transport".into())
             .spawn(move || {
+                let _unwind = super::unwind::WorkerUnwind::enter();
                 let _ticket = ticket;
                 let request = if published.cancelled.load(Ordering::Acquire) {
                     Err(
@@ -165,6 +166,7 @@ impl Worker {
         let thread = std::thread::Builder::new()
             .name("fsm-native-transport".into())
             .spawn(move || {
+                let _unwind = super::unwind::WorkerUnwind::enter();
                 let _ticket = ticket;
                 let request = delivered
                     .lock()

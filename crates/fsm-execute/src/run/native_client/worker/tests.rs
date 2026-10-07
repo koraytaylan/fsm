@@ -146,3 +146,31 @@ fn native_worker_public_start_refuses_the_next_slot_before_helper_startup() {
     drop(tickets);
     assert_eq!(budget.0.load(Ordering::Acquire), 0);
 }
+
+#[test]
+fn native_worker_panic_after_actual_retirement_discards_the_published_response() {
+    let budget = Arc::new(Budget::default());
+    let _scope = Scope::enter(Some(&budget));
+    let ticket = reserve_current().unwrap().unwrap();
+    let (inline, mut gate, mut output) = held_transport();
+    frame(&mut output, &response());
+    drop(output);
+    let worker = Worker::start_after_retirement(inline, Arc::clone(&ticket), || {
+        panic!("fixture panic after actual helper reap and EOF");
+    })
+    .unwrap_or_else(|_| panic!("worker startup failed"));
+    let mut request = NativeRequest {
+        inline: None,
+        worker: Some(worker),
+        ticket: Some(ticket),
+    };
+    gate.write_all(b"release\n").unwrap();
+    assert_eq!(
+        receive(&mut request).unwrap_err(),
+        "native transport worker panicked; ownership remains uncertain"
+    );
+    assert!(request.reap().unwrap());
+    let progress = request.progress();
+    assert!(!progress.not_started && progress.reaped && progress.stdout_eof && progress.stderr_eof);
+    assert_eq!(budget.reserved(), 1);
+}

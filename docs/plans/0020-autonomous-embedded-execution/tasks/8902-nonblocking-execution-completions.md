@@ -85,3 +85,8 @@ Original session 96881 continues for Clippy/MSRV; twelve new guard sensitivity
 cases are prepared but unexecuted. Route discovery, durable completion storage,
 installed-handler responsiveness and lifecycle fault acceptance remain open;
 no prerequisite is released and merged_as remains empty.
+
+Additional worker-fault checkpoint: internally scoped transport/proof unwind
+permission is composed with the installed CLI hook through an inventoried
+embedding filter; five new fixtures await runtime verification. This grants no
+native closure or original claim release, and owner/handler faults remain open.

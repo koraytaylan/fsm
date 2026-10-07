@@ -38,7 +38,7 @@ pub(super) fn install_panic_hook() {
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
     {
-        std::panic::set_hook(Box::new(|info| {
+        let hook = |info: &std::panic::PanicHookInfo<'_>| {
             if ADAPTER_UNWIND.with(std::cell::Cell::get) {
                 // The catcher records the failure through bounded diagnostics;
                 // no synchronous stderr write or process abort on this thread.
@@ -46,6 +46,9 @@ pub(super) fn install_panic_hook() {
             }
             let _ = writeln!(std::io::stderr(), "{}", panic_text(info));
             std::process::abort();
-        }));
+        };
+        #[cfg(target_os = "linux")]
+        let hook = fsm_execute::run::native_client::filter_native_worker_panics(hook);
+        std::panic::set_hook(Box::new(hook));
     }
 }

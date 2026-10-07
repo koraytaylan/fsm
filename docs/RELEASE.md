@@ -1511,3 +1511,15 @@ Static guard handles add fixed per-session/host metadata, with one held guard
 per request scope and no growing record/ID registry. This changes notification
 ordering without journal/core/public API or dependency/MSRV changes; full
 commit-barrier and guard-neutralization acceptance remains pending.
+
+The provisional `filter_native_worker_panics` API wraps an embedding hook without
+installing it, allowing unwind only inside internally marked opt-in transport
+and proof worker bodies. Linux owned stdio uses that wrapper around its existing
+fatal/adapter hook. Unmarked panics still reach the original hook, including a
+thread with a forged worker name. Worker join failure replaces any published
+response/proof with bounded uncertainty; it creates no new reap/EOF, closure,
+outcome or claim release. Published actual observations may still establish
+transport retirement after join. The additive function is inventoried and has
+no journal, wire, hash-domain, dependency, core or MSRV change; ordinary unwind
+is covered, while native handler/owner faults and installed Root lifecycle
+acceptance remain distinct obligations.

@@ -337,3 +337,12 @@ surface (17), CLI unit (129), autonomous stdio (6) and MCP lifecycle (11) checks
 Original session 96881 continues behind unrelated Cargo work for Clippy/MSRV;
 new guard sensitivity is prepared but unexecuted. The milestone is partial,
 not task completion or native Root-authority acceptance; completion remains 0/7.
+
+### Worker unwind candidate
+
+Linux stdio now wraps its existing panic hook with the inventoried native-worker
+filter, scoped only to actual internal transport/proof worker bodies; other
+panics retain their fatal policy. Five worker/filter fixtures cover ordinary
+panic, unknown observations, discarded published responses and forged-name
+refusal, with runtime checks pending. Native Root-handler/owner fault acceptance
+and the remaining plan obligations are unchanged; completion remains 0/7.

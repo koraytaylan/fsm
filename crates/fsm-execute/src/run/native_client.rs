@@ -24,6 +24,7 @@ mod shutdown;
 mod startup;
 #[cfg(test)]
 mod test_support;
+mod unwind;
 
 pub use claimed::{NativeRun, NativeRunPhase, NativeRunProgress};
 pub use completion::NativeCompletion;
@@ -31,6 +32,24 @@ pub use execution::{NativeExecution, NativeExecutionProgress};
 pub use preparation::{NativePreparation, NativePreparationPhase, NativePreparationProgress};
 pub use prepared_cleanup::NativePreparedCleanup;
 pub use shutdown::NativeShutdown;
+
+/// Wrap an embedding panic hook to allow only internally marked native workers to unwind.
+///
+/// This installs no process hook; pass the returned closure to `set_hook`.
+/// Unmarked panics reach the original hook unchanged. Worker join failure
+/// retains uncertainty and grants no native closure or journal ownership.
+pub fn filter_native_worker_panics<F>(
+    hook: F,
+) -> impl Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync + 'static
+where
+    F: Fn(&std::panic::PanicHookInfo<'_>) + Send + Sync + 'static,
+{
+    move |info| {
+        if !unwind::is_isolated() {
+            hook(info);
+        }
+    }
+}
 
 const HELPER: &str = "/usr/libexec/fsm-containment-authority";
 const RESPONSE_LIMIT: usize = 65540;
