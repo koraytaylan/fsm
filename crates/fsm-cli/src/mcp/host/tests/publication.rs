@@ -164,3 +164,186 @@ fn execution_host_session_channels_native_pass_holds_feed_until_deadline_commit_
         crate::journal_io::JournalHealth::Ok
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn execution_host_session_channels_elicitation_feed_runs_before_answer_and_defers_settlement() {
+    use crate::mcp::{host::mailbox::Next, owned_input::OwnedInput};
+    use fsm_core::{canon::canon_bytes, json::Value};
+    use std::{
+        collections::BTreeMap,
+        io::{BufReader, Write},
+        os::unix::net::UnixStream,
+        sync::mpsc,
+    };
+    let scratch = Scratch::new();
+    let mut store = Store::open(&scratch.0).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    store
+        .define_machine_on(&mut clock, value(super::interaction::CASE), false, false)
+        .unwrap();
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "question_case",
+            "inst-question",
+            "question-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let before = store.journal.last_seq;
+    let (mut owner, handle) = Owner::new(store, FixedClock::new(2000, 0));
+    let session = handle.session().unwrap();
+    let path = scratch.0.clone();
+    let sink = SharedSink::new();
+    let (notifier, output) = Notifier::hosted_queued(Box::new(sink.writer())).unwrap();
+    let adapter_output = notifier.clone_handle();
+    let mut subscriptions = Subscriptions::default();
+    subscriptions.subscribe("fsm://instance/inst-question");
+    let mut feed = Feed::new(&scratch.0, subscriptions, notifier.clone_handle(), before);
+    let (mut client, server) = UnixStream::pair().unwrap();
+    let (response_queued, observed) = mpsc::channel();
+    let (release, resume) = mpsc::channel();
+    let caller = std::thread::spawn(move || {
+        let mut input = OwnedInput::start(move || BufReader::new(server), || false).unwrap();
+        let mut pending = crate::mcp::notify::pending_input::PendingInput::default();
+        let io = RefCell::new(SessionIo::with_owned_wait(
+            &adapter_output,
+            &mut input,
+            &mut pending,
+        ));
+        let reply = handle_request_hosted(
+            &adapter_output,
+            &session,
+            &path,
+            &mut FixedClock::new(2000, 0),
+            &mut true,
+            &mut Live {
+                client_elicitation: true,
+                ..Live::default()
+            },
+            value("4"),
+            "tools/call",
+            Some(value(
+                r#"{"name":"instance_send","arguments":{"instance_id":"inst-question","event":"decide","request_id":"question-publication"}}"#,
+            )),
+            "elicitation publication case",
+            Some(&io),
+            None,
+        );
+        response_queued.send(()).unwrap();
+        resume.recv_timeout(Duration::from_secs(5)).unwrap();
+        // The original request's I/O scope survives real response admission.
+        drop(io);
+        reply
+    });
+    let Next::Command(prepared) = owner
+        .mailbox
+        .next_until(Instant::now() + Duration::from_secs(5))
+    else {
+        panic!("original preparation missing")
+    };
+    owner.apply(prepared);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let question =
+        loop {
+            if let Some(question) = sink.text().lines().map(value).find(|frame| {
+                frame.get("method").and_then(Value::as_str) == Some("elicitation/create")
+            }) {
+                break question;
+            }
+            assert!(Instant::now() < deadline, "original question missing");
+            std::thread::sleep(Duration::from_millis(1));
+        };
+    let waiting_unguarded = !notifier.publication_pending();
+    owner
+        .store
+        .create_instance_ctx_on(
+            &mut clock,
+            "question_case",
+            "other",
+            "other-create",
+            None,
+            &BTreeMap::new(),
+            &[],
+        )
+        .unwrap();
+    let waiting_published = feed.poll_once();
+    let waiting_watermark = feed.watermark();
+    let answer = Value::Obj(BTreeMap::from([
+        ("jsonrpc".into(), Value::Str("2.0".into())),
+        ("id".into(), question.get("id").unwrap().clone()),
+        (
+            "result".into(),
+            value(r#"{"action":"accept","content":{"score":7}}"#),
+        ),
+    ]));
+    client.write_all(&canon_bytes(&answer)).unwrap();
+    client.write_all(b"\n").unwrap();
+    let Next::Command(settlement) = owner
+        .mailbox
+        .next_until(Instant::now() + Duration::from_secs(5))
+    else {
+        panic!("original settlement missing")
+    };
+    let settling_guarded = notifier.publication_pending();
+    owner.apply(settlement);
+    observed.recv_timeout(Duration::from_secs(5)).unwrap();
+    let committed = Store::open_read_only(&scratch.0).unwrap().journal.last_seq;
+    let deferred = feed.poll_once();
+    let held_watermark = feed.watermark();
+    release.send(()).unwrap();
+    let reply = caller.join().unwrap();
+    let released = !notifier.publication_pending();
+    let published = feed.poll_once();
+    handle.stop();
+    owner.run();
+    output.close();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !output.drained() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(waiting_unguarded && settling_guarded && released && reply.is_ok());
+    assert_eq!(waiting_published, 1);
+    assert_eq!(waiting_watermark, before + 1);
+    assert_eq!(committed, before + 2);
+    assert_eq!(deferred, 0);
+    assert_eq!(held_watermark, waiting_watermark);
+    assert_eq!(published, 2);
+    assert!(output.drained());
+    let frames: Vec<_> = sink.text().lines().map(value).collect();
+    let response = frames
+        .iter()
+        .position(|frame| frame.get("id") == Some(&value("4")))
+        .unwrap();
+    let update = frames
+        .iter()
+        .position(|frame| {
+            frame.get("method").and_then(Value::as_str) == Some("notifications/resources/updated")
+        })
+        .unwrap();
+    assert!(response < update);
+    assert_ne!(
+        frames[response]
+            .get("result")
+            .and_then(|result| result.get("isError")),
+        Some(&Value::Bool(true))
+    );
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, committed);
+    assert!(reopened.state.dedup.contains_key("question-publication"));
+    assert_eq!(
+        reopened
+            .instance_view("inst-question", None, None)
+            .unwrap()
+            .get("status")
+            .and_then(Value::as_str),
+        Some("completed")
+    );
+    assert_eq!(
+        crate::journal_io::verify(&scratch.0).health,
+        crate::journal_io::JournalHealth::Ok
+    );
+}

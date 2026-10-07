@@ -763,3 +763,14 @@ so this debug pass does not cover them or complete a task or plan.
 Read-only installed-helper metadata currently reports mode 0711, owner
 nobody, device 2306 and inode 94765497; this is not a protected Root helper
 or evidence of native acceptance, and no helper mutation was attempted.
+
+An additional elicitation publication fixture reaches the actual hosted
+method with owned byte input and the original owner preparation/resume
+commands. While the original question remains unanswered, an unrelated
+actual owner-store mutation must publish through the feed. After the actual
+answer, the original settlement is applied and its real response is queued
+while the same request I/O scope is held; feed publication and watermark
+advance must defer until that scope releases. It then requires response
+before instance update, actual completed state, durable request identity and
+verified reopened journal. Runtime and phase-specific guard sensitivity
+remain pending; this adds no new public test API or fabricated completion.
