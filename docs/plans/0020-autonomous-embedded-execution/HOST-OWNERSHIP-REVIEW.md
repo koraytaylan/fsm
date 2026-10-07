@@ -625,3 +625,20 @@ and the eight-stage stable gate is now launched; it is not yet passing proof.
 No task is marked done and native-installed authority, additional effect/
 retry/compensation/recovery cases, complete publication ordering and HTTP
 remain outstanding.
+
+The frozen full stable gate on c4a0ace stopped at the size stage: serve.rs
+had 1007 lines; formatting passed and no workspace test stage ran. Refactor
+6cb9b40 moves unchanged panic formatting/installation into serve/panic.rs
+and preserves the public formatter re-export, bringing the file below 1000.
+Review of that boundary then found that production run_with_mode installs an
+aborting panic hook before native startup, so the earlier private catch_unwind
+fixture did not prove actual production adapter cleanup. The new adapter-thread
+unwind scope permits the installed hook to return only inside that cleanup
+boundary, queues a bounded static operator diagnostic, and retains original
+session retirement and native-control shutdown. Other threads and legacy
+serve retain fatal hook behavior; owner/handler panic containment is not proven.
+An actual-binary FSM_MCP_PANIC case now requires a normal failure exit instead
+of abort, both bounded/final diagnostics and writer reopening with stdin open.
+Stable/MSRV library, actual-binary, legacy lifecycle and all-target Clippy
+verification is running; this newer source invalidates the older full-gate
+candidate and no new successful result or task completion is claimed.

@@ -122,32 +122,41 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
         })?;
     let input_control = control.clone();
     let input_output = queued.clone();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let input = OwnedInput::start(input, move || {
-            input_control.report().phase != ExecutorPhase::Running
-                || input_output.is_broken()
-                || finished.load(Ordering::Acquire)
-        })?;
-        adapter_start();
-        serve_session_core(
-            SessionRuntime {
-                store: SessionStore::Hosted {
-                    session: &session,
-                    data_dir: &data_dir,
+    let result = {
+        let _adapter_unwind = super::panic::AdapterUnwind::enter();
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let input = OwnedInput::start(input, move || {
+                input_control.report().phase != ExecutorPhase::Running
+                    || input_output.is_broken()
+                    || finished.load(Ordering::Acquire)
+            })?;
+            adapter_start();
+            serve_session_core(
+                SessionRuntime {
+                    store: SessionStore::Hosted {
+                        session: &session,
+                        data_dir: &data_dir,
+                    },
+                    executor: None,
+                    handlers: Some(handlers),
+                    bounded_shutdown: true,
+                    diagnostics: Some(&mut adapter_diagnostics),
                 },
-                executor: None,
-                handlers: Some(handlers),
-                bounded_shutdown: true,
-                diagnostics: Some(&mut adapter_diagnostics),
-            },
-            &mut SystemClock,
-            None,
-            None,
-            input,
-            notifier,
-        )
-    }))
-    .unwrap_or_else(|_| Err(io::Error::other("hosted protocol adapter panicked")));
+                &mut SystemClock,
+                None,
+                None,
+                input,
+                notifier,
+            )
+        }))
+    };
+    let result = match result {
+        Ok(result) => result,
+        Err(_) => {
+            let _ = adapter_diagnostics.enqueue("fsm panic: hosted protocol adapter unwound");
+            Err(io::Error::other("hosted protocol adapter panicked"))
+        }
+    };
     session.close();
     let explicit_stop = control.report().phase != ExecutorPhase::Running;
     let request = control

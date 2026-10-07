@@ -338,3 +338,52 @@ fn production_stdio_exact_poll_interval_boundaries_accept_and_eof_does_not_wait_
         assert_eq!(Store::open(&fixture.directory).unwrap().journal.last_seq, 0);
     }
 }
+
+#[test]
+fn production_stdio_installed_panic_hook_allows_original_adapter_cleanup() {
+    let directory =
+        std::env::temp_dir().join(format!("fsm-serve-adapter-panic-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    let handlers = directory.join("handlers.json");
+    std::fs::write(
+        &handlers,
+        r#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator_review"]}"#,
+    )
+    .unwrap();
+    let diagnostics = directory.join("server.stderr");
+    let child = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .arg("--data-dir")
+        .arg(&directory)
+        .args(["serve", "--execute", "--handlers"])
+        .arg(&handlers)
+        .env("FSM_MCP_PANIC", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(std::fs::File::create(&diagnostics).unwrap()))
+        .spawn()
+        .unwrap();
+    let mut fixture = Fixture { child, directory };
+    let deadline = Instant::now() + Duration::from_secs(12);
+    let status = loop {
+        if let Some(status) = fixture.child.try_wait().unwrap() {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "adapter panic must request original native shutdown"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert!(fixture.child.stdin.is_some());
+    assert!(
+        status.code().is_some() && !status.success(),
+        "an adapter panic must return a reported failure rather than aborting the process"
+    );
+    let error = std::fs::read_to_string(&diagnostics).unwrap();
+    assert!(
+        error.contains("fsm panic: hosted protocol adapter unwound"),
+        "{error}"
+    );
+    assert!(error.contains("exec/inflight_deferred"), "{error}");
+    assert_eq!(Store::open(&fixture.directory).unwrap().journal.last_seq, 0);
+}

@@ -3327,3 +3327,10 @@ permanently broken; it MUST retain the initiating failure and actual output
 drainage facts rather than waiting solely for the original deadline or
 claiming delivery. A merely blocked, healthy output still uses the original
 deadline and MUST NOT be classified as broken.
+
+The installed process panic hook MUST permit unwind only on the current
+hosted protocol-adapter thread while its cleanup boundary is active. That
+boundary MUST enqueue a bounded operator diagnostic, retire the original
+session and request supervised native shutdown. Other threads and legacy
+serve paths retain their fatal panic behavior; catching an adapter unwind
+MUST NOT imply native owner/handler panic containment has been accepted.
