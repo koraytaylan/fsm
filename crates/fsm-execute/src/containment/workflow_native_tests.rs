@@ -362,7 +362,7 @@ pub(super) fn run() {
                     .len()
                     <= 107
             );
-            let fixture = Fixture::new_for_operator(table(&helper, &resource, failure));
+            let fixture = Fixture::new_for_workflow(table(&helper, &resource, failure));
             let limits = memory_limits::Limits::install(&fixture);
             brokers.push(workflow_broker(&fixture.directory, &fixture.store));
             let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());

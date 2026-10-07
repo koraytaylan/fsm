@@ -31,7 +31,6 @@ pub(super) fn cancellation(fixture: &mut Fixture, table: &Value) {
 }
 
 pub(super) fn admission(fixture: &mut Fixture, table: &Value) {
-    let (limits, evidence) = super::super::memory_limits::install_admission(fixture);
     disconnect_cases::permit_operator_store(&fixture.store);
     disconnect_cases::fresh_admission(&fixture.directory, table);
     assert_eq!(number(&fixture.counter(), "last_allocation").unwrap(), 3);
@@ -77,9 +76,7 @@ pub(super) fn admission(fixture: &mut Fixture, table: &Value) {
         );
     }
     drop(store);
-    super::super::memory_limits::archive(fixture, &evidence);
     fixture.cleanup().unwrap();
-    limits.retire();
 }
 
 pub(super) fn run(fixture: &mut Fixture, binding: &Value, effect: &str, successor: &NativeDomain) {

@@ -20,6 +20,12 @@ with all-target CLI Clippy; the corrected complete stable host gate now passes
 all eight stages at frozen 44f05eb in terminal session 77644.
 WORKFLOW-NATIVE-REVIEW.md records exact evidence; there is no task promotion.
 
+Common authority fixtures now configure one GiB/zero-swap native service limits
+and retain original namespaces on failed assertions; both toolchain all-target
+compilation checks pass, while actual capped native execution and renewed host
+acceptance remain pending for this test-only change. Separate feasibility
+probe service limits are still required before the whole native matrix runs.
+
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,
 shutdown and crash proof remain incomplete.

@@ -92,6 +92,7 @@ struct Fixture {
     store: PathBuf,
     groups: Vec<(PathBuf, Value)>,
     created_base: bool,
+    memory_limits: Option<(memory_limits::Limits, PathBuf)>,
 }
 
 impl Fixture {
@@ -100,11 +101,21 @@ impl Fixture {
     }
 
     fn new_for_table(table: Value) -> Self {
-        Self::new_for_table_location(table, false)
+        Self::new_for_table_location(table, false).with_memory_limits()
     }
 
     fn new_for_operator(table: Value) -> Self {
+        Self::new_for_table_location(table, true).with_memory_limits()
+    }
+
+    // Workflow staging retains its own exact limit inventory and receipts.
+    fn new_for_workflow(table: Value) -> Self {
         Self::new_for_table_location(table, true)
+    }
+
+    fn with_memory_limits(mut self) -> Self {
+        self.memory_limits = Some(memory_limits::install_fixture(&self));
+        self
     }
 
     fn new_for_table_location(table: Value, operator_store: bool) -> Self {
@@ -150,6 +161,7 @@ impl Fixture {
             store,
             groups: Vec::new(),
             created_base,
+            memory_limits: None,
         };
         drop(Store::open(&fixture.store).unwrap());
         super::super::register(&fixture.directory, &fixture.store).unwrap();
@@ -245,10 +257,16 @@ impl Fixture {
         }) {
             return Err("fixture retains authority for an unknown surviving domain".into());
         }
+        if let Some((_, evidence)) = &self.memory_limits {
+            memory_limits::archive(self, evidence);
+        }
         fs::remove_dir_all(&self.store).map_err(io)?;
         fs::remove_dir_all(self.directory.parent().ok_or("namespace missing")?).map_err(io)?;
         if self.created_base {
             let _ = fs::remove_dir(super::super::BASE);
+        }
+        if let Some((limits, _)) = self.memory_limits.take() {
+            limits.retire();
         }
         Ok(())
     }
@@ -256,7 +274,8 @@ impl Fixture {
 
 impl Drop for Fixture {
     fn drop(&mut self) {
-        if self.directory.exists() {
+        // Failed native assertions retain original authority and limit inventory.
+        if !std::thread::panicking() && self.directory.exists() {
             let _ = self.cleanup();
         }
     }

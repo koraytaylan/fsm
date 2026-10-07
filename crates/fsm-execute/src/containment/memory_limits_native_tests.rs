@@ -152,6 +152,14 @@ pub(super) fn archive(fixture: &Fixture, staging: &Path) {
             Err(error) => panic!("memory receipt metadata: {error}"),
         };
         assert!(metadata.is_file() && metadata.uid() == 0 && metadata.len() <= 4096);
+        let prepared = read_value(
+            &fixture
+                .directory
+                .join(format!("prepared-{allocation}.json")),
+            true,
+        )
+        .unwrap();
+        verify(fixture, prepared.get("domain").unwrap(), allocation);
         let mut destination = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -164,12 +172,12 @@ pub(super) fn archive(fixture: &Fixture, staging: &Path) {
 }
 
 /// Retain the exact service configuration before any admission handler entry.
-pub(super) fn install_admission(fixture: &Fixture) -> (Limits, PathBuf) {
+pub(super) fn install_fixture(fixture: &Fixture) -> (Limits, PathBuf) {
     let cache = PathBuf::from(std::env::var_os("TMPDIR").expect("explicit fixture cache required"));
     assert!(cache.is_absolute() && !cache.starts_with("/tmp"));
     let namespace = fixture.directory.parent().unwrap().file_name().unwrap();
     let evidence = cache.join(format!(
-        "fsm-public-service-{}",
+        "fsm-native-service-{}",
         namespace.to_str().unwrap()
     ));
     fs::DirBuilder::new().mode(0o700).create(&evidence).unwrap();

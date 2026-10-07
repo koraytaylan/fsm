@@ -1171,3 +1171,22 @@ selection, but ignored native cases rely on their separate provisioned evidence.
 Older authority/feasibility native fixtures still need service limits before
 the complete local native matrix can be rerun; HTTP, bounded borrowed stop,
 complete recovery/crash proof and hosted/platform acceptance remain incomplete.
+
+## Common authority-fixture service limits
+
+Ordinary authority fixtures now install the same namespace-specific one GiB,
+zero-swap service configuration before native work; workflow staging explicitly
+retains its existing separate limit inventory. The public-service admission
+axis uses this common ownership instead of installing duplicate configuration.
+Common teardown archives actual memory receipts after matching each against
+the original prepared domain and retires configuration only after successful
+matched fixture cleanup. Inventories use exclusive root-owned directories
+fsm-native-service-{namespace} under the explicit task cache. Failed assertions
+retain the namespace and configuration rather than invoking cleanup in panic
+Drop; missing receipt files do not manufacture native closure evidence.
+Stable/MSRV executor all-target Clippy, formatting, file-size and diff checks
+pass in terminal session 11012 under verified one GiB/zero-swap user limits.
+Actual native execution and a renewed host gate remain pending for this test
+change. The 44f05eb full gate above predates it; separate Python feasibility
+probes still need their own service limits before the entire matrix is run.
+All original tests remain registered; task 9401 stays in progress, plan 0022 3/7.
