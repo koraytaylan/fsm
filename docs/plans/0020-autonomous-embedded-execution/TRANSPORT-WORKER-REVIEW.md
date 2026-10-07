@@ -163,3 +163,38 @@ await runtime verification. Predecessor `7165ef9` passed stable/MSRV executor
 unit (76), lifecycle (3), public surface (17), CLI unit (129), autonomous stdio
 (6), MCP lifecycle (11) and both-crate all-target Clippy in terminal session
 87416; it does not cover these later test additions.
+
+## Terminal checkpoints and working-path priority
+
+The previously continuing proof-reader job is now terminal: frozen `635e933`
+passed all listed runtime suites and both-crate all-target Clippy on stable
+and MSRV, with marker `NATIVE_PROOF_INTEGRATED_PASSED`; its twelve isolated
+guard neutralizations each failed the intended fixture, and restoring that
+source passed all 49 native tests with marker
+`NATIVE_PROOF_GUARD_SENSITIVITY_PASSED`.
+The respective terminal log SHA-256 values are
+`aa126fee1595dbb648356f75891bb278cf7eca7b382cd011245f2f33e6d004ad`
+and `b836864cb16fb912eaa1614a00e53f91c97dd143bceaa8457143409e68349fc9`.
+
+The integrated unwind checkpoint at `7165ef9` is terminal with marker
+`NATIVE_UNWIND_INTEGRATED_PASSED` and log SHA-256
+`02fad5a8aec4d0f33f8c18ff9b1f0162728751dd1b9de6cc822342a84acabc05`.
+Frozen `7a293e7ffa5f9fe248b169542ad29abd9b7d1708` then passed formatting,
+file-size checks, all six unwind-filter fixtures, the actual-child
+post-retirement panic fixture, and both-crate all-target Clippy on stable
+and MSRV, ending with `NATIVE_UNWIND_ADDITIONAL_PHASES_PASSED` and a clean
+source worktree; its terminal log SHA-256 is
+`7cfa5d259c4c34ab854fc1539be28bf5f59ccdd4106c37adff283f0a8ca640bd`.
+These additional checks cover test additions to unchanged production code;
+unwind-specific guard sensitivity remains pending.
+
+Following the user's working-path direction, the next implementation milestone
+is one complete Linux production stdio execution path, including result
+settlement and bounded retention, before expanding HTTP or other plan surfaces.
+Use focused checks while developing that path and run the full stable host gate
+at the integrated milestone before final review, together with the required
+guard sensitivity and platform evidence; earlier checkpoints do not replace
+those gates or installed Root-handler acceptance.
+All recorded build scopes enforce 1 GiB memory and zero swap with serial
+workers, using the dedicated task cache rather than `/tmp`.
+Plan 20 remains 0/7 and tasks 8901/8902 remain in progress.
