@@ -167,3 +167,28 @@ the sensitivity log SHA-256 is
 These focused Linux checks preserve analyzer behavior and do not replace a
 full workspace gate or native platform acceptance; service admission is still
 unwired and task completion remains 0/6.
+
+### Shared pending-contract evidence component — 2026-10-07
+
+Commit `cae7af9a` adds provisional `contract::check_pending`, borrowing verified
+Store definitions to check running membership, historical emission identity,
+reconstructed concrete arguments, the current executable definition closure
+and the configured pending outcomes against the current receiving definition.
+It uses existing typed contract diagnostics and performs no journal mutation,
+attempt consumption or request-key allocation; SPEC, API policy, embedding,
+release notes and public-surface inventory move with this API addition.
+Three independent public-entry cases cover compatible read-only checking,
+an incompatible later restore followed by repair, and forged concrete args,
+with complete Store-state invariance assertions. Commit `03187966` classifies
+unavailable effect reconstruction as unknown evidence rather than forwarding
+an unrelated resolution-domain error.
+
+Session 13715 verifies frozen `03187966` on stable/MSRV admission, effect,
+outcome and public-surface targets plus all-target executor Clippy, then
+neutralizes only the concrete-effect equality guard to require the substituted
+argument case to fail before restoration. The log is
+pending-contract-evidence-check.log with pending-contract-evidence-sensitivity.log
+in the task cache; verification is queued behind unrelated Cargo work using
+the existing serial 1 GiB/zero-swap scope. This component is not wired to
+service dispatch yet, so no before-spawn guarantee, native marker acceptance,
+admission-cache completion or task completion is claimed.
