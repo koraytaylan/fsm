@@ -8,7 +8,7 @@ use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::{Store, VerifiedClosure};
 use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -33,17 +33,21 @@ pub(super) struct Daemon(Child);
 
 impl Daemon {
     fn start(directory: &Path) -> Self {
-        let namespace = directory.parent().unwrap().file_name().unwrap();
+        disconnect_cases::install_fixture_binary(directory, "broker-test");
         Self(
             Command::new("/usr/bin/python3")
                 .args([
                     "-c",
                     "import os,sys;os.umask(0o077);os.execv(sys.argv[1],sys.argv[1:])",
                 ])
-                .arg("/usr/libexec/fsm-containment-authority")
-                .arg("serve")
-                .arg(namespace)
-                .arg("1")
+                .arg(directory.join("broker-test"))
+                .args([
+                    "--exact",
+                    "authority::allocator::native_tests::broker_cases::frozen_broker",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("FSM_NATIVE_BROKER_DIRECTORY", directory)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -88,6 +92,15 @@ impl Daemon {
             std::thread::sleep(Duration::from_millis(5));
         }
     }
+}
+
+#[test]
+#[ignore = "started only as the frozen Root backend by the native fixture"]
+fn frozen_broker() {
+    assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
+    let directory = PathBuf::from(std::env::var_os("FSM_NATIVE_BROKER_DIRECTORY").unwrap());
+    super::super::super::protected_directory(&directory).unwrap();
+    super::super::super::broker::serve(&directory).unwrap();
 }
 
 impl Drop for Daemon {

@@ -235,21 +235,32 @@ pub(super) fn complete(
 }
 
 pub(in super::super) fn install_supervisor(directory: &Path) {
-    let source = fs::File::open(std::env::current_exe().unwrap()).unwrap();
+    install_fixture_binary(directory, "supervisor-test");
+}
+
+pub(in super::super) fn install_fixture_binary(directory: &Path, name: &str) {
+    let source = fs::File::open("/proc/self/exe").unwrap();
     let length = source.metadata().unwrap().len();
     assert!(
         length > 0 && length <= MAX_SUPERVISOR_BINARY,
         "native supervisor executable size {length} exceeds fixture bound {MAX_SUPERVISOR_BINARY} or is empty"
     );
+    let mut bytes = Vec::new();
+    source.take(length + 1).read_to_end(&mut bytes).unwrap();
+    assert_eq!(bytes.len() as u64, length);
+    let path = directory.join(name);
+    if let Ok(metadata) = fs::symlink_metadata(&path) {
+        assert!(metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o7777 == 0o755);
+        assert_eq!(metadata.len(), length);
+        assert_eq!(fs::read(path).unwrap(), bytes);
+        return;
+    }
     let mut destination = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(directory.join("supervisor-test"))
+        .open(path)
         .unwrap();
-    assert_eq!(
-        std::io::copy(&mut source.take(length + 1), &mut destination).unwrap(),
-        length
-    );
+    destination.write_all(&bytes).unwrap();
     destination
         .set_permissions(fs::Permissions::from_mode(0o755))
         .unwrap();
