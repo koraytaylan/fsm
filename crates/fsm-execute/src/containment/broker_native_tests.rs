@@ -13,7 +13,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[path = "broker_disconnect_native_tests.rs"]
-mod disconnect_cases;
+pub(super) mod disconnect_cases;
 
 #[path = "broker_fresh_native_tests.rs"]
 mod fresh_cases;
@@ -29,7 +29,7 @@ pub(super) fn disconnect() {
 mod client_script;
 use client_script::CLIENT;
 
-struct Daemon(Child);
+pub(super) struct Daemon(Child);
 
 impl Daemon {
     fn start(directory: &Path) -> Self {
@@ -52,7 +52,7 @@ impl Daemon {
         )
     }
 
-    fn ready(directory: &Path, epoch: u64) -> Self {
+    pub(super) fn ready(directory: &Path, epoch: u64) -> Self {
         let mut daemon = Self::start(directory);
         let deadline = Instant::now() + Duration::from_secs(3);
         loop {

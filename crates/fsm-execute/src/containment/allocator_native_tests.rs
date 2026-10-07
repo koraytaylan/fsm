@@ -51,6 +51,15 @@ mod runner_cases;
 #[path = "broker_native_tests.rs"]
 mod broker_cases;
 
+#[path = "workflow_native_tests.rs"]
+mod workflow_cases;
+
+#[test]
+#[ignore = "requires exact staged CLI artifacts and provisioned root native authority"]
+fn provisioned_cli_workflow() {
+    workflow_cases::run();
+}
+
 #[path = "supervisor_native_probe.rs"]
 mod supervisor_probe;
 

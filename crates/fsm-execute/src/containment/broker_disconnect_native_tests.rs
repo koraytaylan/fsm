@@ -728,7 +728,7 @@ pub(super) fn discovery_faults(directory: &Path) {
     fs::write(&route, &original_route).unwrap();
 }
 
-pub(super) fn permit_operator_store(path: &Path) {
+pub(in super::super) fn permit_operator_store(path: &Path) {
     let metadata = fs::symlink_metadata(path).unwrap();
     assert_eq!(metadata.uid(), 0);
     assert!(metadata.is_dir() || metadata.is_file());

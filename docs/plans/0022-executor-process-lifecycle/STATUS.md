@@ -4916,3 +4916,15 @@ native-final-error-full-stable-gate.log under the task cache; the scope
 asserted MemoryMax=1 GiB and MemorySwapMax=0, with observed swap usage zero.
 This failed aggregate does not release ownership integration or any dependent
 task, and source is no longer frozen by that terminal run.
+
+### Provisioned ordinary workflow fixture — 2026-10-07
+
+Added an opt-in root fixture that stages exact approved helper/CLI bytes outside
+ProtectHome, registers each physical store and immutable catalogue, provisions
+the genuine unprivileged broker route, and executes all four original workflow
+tests with their nine unchanged scenarios. Native claim/allocation counts and
+matching original closure receipts independently reject accidental legacy
+execution. WORKFLOW-NATIVE-REVIEW.md records staging, private control homes,
+external resources, conservative teardown and evidence guards. Stable all-target
+Clippy, MSRV compilation, size and real helper controls pass; actual native
+workflow execution and later-source full gates remain pending, with no promotion.

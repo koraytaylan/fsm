@@ -26,14 +26,56 @@ const OPERATIONS: [&str; 7] = [
 const RESOURCE: &str = "resource with spaces; $(literal) \"quoted\"";
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
-struct Directory(PathBuf);
+struct Directory(PathBuf, Option<Value>);
 
 impl Directory {
     fn resource(&self) -> PathBuf {
-        self.0.join("resource")
+        self.1.as_ref().map_or_else(
+            || self.0.join("resource"),
+            |entry| PathBuf::from(text(entry, "resource")),
+        )
+    }
+
+    fn store(&self) -> PathBuf {
+        self.1.as_ref().map_or_else(
+            || self.0.join("store"),
+            |entry| PathBuf::from(text(entry, "store")),
+        )
+    }
+
+    fn executable(&self) -> PathBuf {
+        self.1.as_ref().map_or_else(
+            || PathBuf::from(env!("CARGO_BIN_EXE_fsm")),
+            |entry| PathBuf::from(text(entry, "cli")),
+        )
     }
 
     fn new() -> Self {
+        #[cfg(target_os = "linux")]
+        if let Some(manifest) = std::env::var_os("FSM_NATIVE_WORKFLOW_MANIFEST") {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = fs::symlink_metadata(&manifest).unwrap();
+            assert!(metadata.is_file());
+            assert_eq!(metadata.uid(), 0);
+            assert_eq!(metadata.mode() & 0o7777, 0o444);
+            let mut encoded = Vec::new();
+            fs::File::open(&manifest)
+                .unwrap()
+                .take(65537)
+                .read_to_end(&mut encoded)
+                .unwrap();
+            assert!(encoded.len() <= 65536);
+            let entries = parse(&encoded, &JsonLimits::DEFAULT).unwrap();
+            let index = NEXT.fetch_add(1, Ordering::Relaxed) as usize;
+            let entry = entries
+                .as_arr()
+                .unwrap()
+                .get(index)
+                .expect("one registered fixture per scenario")
+                .clone();
+            let root = PathBuf::from(text(&entry, "directory"));
+            return Self(root, Some(entry));
+        }
         loop {
             let path = std::env::temp_dir().join(format!(
                 "fsm-mcp-workflow-{}-{}",
@@ -43,7 +85,7 @@ impl Directory {
             match fs::create_dir(&path) {
                 Ok(()) => {
                     fs::create_dir(path.join("resource")).unwrap();
-                    return Self(path);
+                    return Self(path, None);
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("create test directory: {error}"),
@@ -54,7 +96,9 @@ impl Directory {
 
 impl Drop for Directory {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        if self.1.is_none() {
+            let _ = fs::remove_dir_all(&self.0);
+        }
     }
 }
 
@@ -120,6 +164,12 @@ fn workflow_handler() {
                 if failed { "first" } else { "first,second" },
             )
             .unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(directory.join("work"), fs::Permissions::from_mode(0o644))
+                    .unwrap();
+            }
         }
         "restore" => {
             assert_eq!(fs::read_to_string(&phase).unwrap(), "suspended");
@@ -132,7 +182,7 @@ fn workflow_handler() {
     std::process::exit(if failed { 7 } else { 0 });
 }
 
-fn write_handlers(directory: &Path, failures: &str) {
+fn write_handlers(directory: &Path, resource: &Path, failures: &str) {
     let executable = std::env::current_exe().unwrap();
     let handlers = OPERATIONS
         .iter()
@@ -149,10 +199,7 @@ fn write_handlers(directory: &Path, failures: &str) {
                         string(&format!("handler-operation={operation}")),
                         string("handler-resource={resource}"),
                         string("handler-run={run}"),
-                        string(&format!(
-                            "handler-directory={}",
-                            directory.join("resource").to_str().unwrap()
-                        )),
+                        string(&format!("handler-directory={}", resource.to_str().unwrap())),
                         string(&format!("handler-failures={failures}")),
                     ]),
                 ),
@@ -188,11 +235,16 @@ struct Client {
 }
 
 impl Client {
-    fn start(directory: &Path) -> Self {
+    fn start(fixture: &Directory) -> Self {
+        let directory = &fixture.0;
         let errors = directory.join("stderr");
-        let mut process = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        let mut command = Command::new(fixture.executable());
+        if let Some(entry) = &fixture.1 {
+            command.env("HOME", text(entry, "home"));
+        }
+        let mut process = command
             .arg("--data-dir")
-            .arg(directory.join("store"))
+            .arg(fixture.store())
             .args(["serve", "--execute", "--handlers"])
             .arg(directory.join("handlers.json"))
             .stdin(Stdio::piped())
@@ -450,8 +502,8 @@ fn machine(handlers: &BTreeMap<String, Value>) -> Value {
 fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: &str) {
     let directory = Directory::new();
     fs::write(directory.resource().join("phase"), "active").unwrap();
-    write_handlers(&directory.0, failures);
-    let mut client = Client::start(&directory.0);
+    write_handlers(&directory.0, &directory.resource(), failures);
+    let mut client = Client::start(&directory);
     let handlers = client.discover_handlers();
     client.call("machine_create", object([("spec", machine(&handlers))]));
     client.call(
