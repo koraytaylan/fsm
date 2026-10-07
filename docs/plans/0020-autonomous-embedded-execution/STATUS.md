@@ -266,3 +266,12 @@ long diagnostics, publication ordering, versioned discovery and transport
 activation remain concrete next steps; metadata/preparation-growth and output
 guard sensitivity remain required before final acceptance. No task is complete
 and no dependency is released.
+
+### Production stdio observation and lifecycle milestone
+
+Five actual-binary cases and CLI all-target Clippy pass on stable/MSRV at
+`c4a0ace`: quiet subscribed/unsubscribed deadline progress, broken-output
+shutdown with open input, exact interval acceptance/EOF independence, and
+invalid interval refusal before loading/opening. The frozen full stable gate
+has started on that source; its result is pending, and progress remains 0/7
+with full native/effect scenarios, publication ordering and HTTP incomplete.

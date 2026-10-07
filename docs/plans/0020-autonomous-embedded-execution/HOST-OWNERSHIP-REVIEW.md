@@ -608,3 +608,20 @@ cgroup limits for every stage. It has not been launched: the corrected narrow
 actual-binary/MSRV check remains live, waiting for independent Cargo work.
 Preparation is not passing gate evidence, and the earlier 3ff97a7 full gate
 does not cover this production integration.
+
+The corrected output-retirement run first proved all five real-binary cases
+on stable, then stopped on two write_literal fixture lint findings; the
+conditional full-gate wrapper therefore terminated without starting a stage.
+`c4a0ace` corrects those fixtures without changing protocol bytes. Its focused
+check terminated 0 (session 37304): all five actual-binary cases and CLI
+all-target Clippy pass on stable and MSRV 1.89.0. This includes quiet subscribed
+and unsubscribed deadlines, broken stdout with stdin still open, exact interval
+boundaries with EOF cleanup independent of the timer, and invalid intervals
+refused before table loading/store creation. The terminal log
+`production-quiet-subscription-lint-corrected-check.log` has SHA-256
+`d69f7da162e0e85be1338ae968dfca57276b86a5ed920e37f76adc77a1c44969`.
+The frozen full-gate checkout and expected source were updated to `c4a0ace`
+and the eight-stage stable gate is now launched; it is not yet passing proof.
+No task is marked done and native-installed authority, additional effect/
+retry/compensation/recovery cases, complete publication ordering and HTTP
+remain outstanding.
