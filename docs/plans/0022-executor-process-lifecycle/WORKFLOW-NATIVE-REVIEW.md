@@ -276,3 +276,27 @@ snapshots to diagnose retained competing ownership; the failed 03e1aab fixture
 is still retained. Full changed-source host gates, provisioned stable/MSRV race
 execution, complete bounded health and remaining lifecycle proof stay required.
 Task 9401 remains in progress; plan 0022 remains 3/7.
+
+## Actual competing-owner inventory diagnosis
+
+Frozen a1ba97c stable producer session 45108 ended with exit one after passing
+all nine original scenarios and reaching completed embedded workflow in the
+race. The authenticated last report, retained verbatim in
+local-native-workflow-a1ba97c-stable/workflow.log, proves admission closed,
+phase draining, inventory_complete=true, helpers_retired=true,
+writer_released=true, no unresolved local run IDs, and exactly one unclaimed
+reservation before timeout. Thus writer retention and unretired helpers do not
+explain the blocked stop; releasing the reservation without original domain
+cleanup would weaken the guarantee. The failed fixture and exact installed
+artifact remain retained by producer guards. This is actual control metadata,
+not inferred process activity or a native closure proof.
+
+The prior 03e1aab fixture was fully archived with socket and original cgroup
+metadata before identity-matched test teardown; only its empty unbound original
+allocation-three cgroup and inactive matched units were retired, with no
+manufactured successful native verdict. Existing aggregate metadata cannot
+distinguish whether the remaining reservation is an uncertain preparation,
+known prepared cleanup, or uncertain claim publication. The next bounded health
+step must expose that phase distinction from the retained original admission
+state before changing reconciliation behavior; aggregate absence or helper reap
+alone cannot release it. Task 9401 and plan completion remain unchanged.

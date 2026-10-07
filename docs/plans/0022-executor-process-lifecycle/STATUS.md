@@ -32,7 +32,9 @@ Historical live-handle notes below describe earlier observations only.
 - Private authenticated read-only control observation now reports actual bounded
   inventory without closing admission or renewing deadlines; stable/MSRV actual
   transport controls and identity-guard sensitivity pass, while the provisioned
-  competing-owner drain still needs diagnosis and current-source native proof.
+  competing-owner drain now reports one retained unclaimed reservation with
+  complete inventory, retired helpers and released writer; original admission
+  phase and authenticated cleanup still need diagnosis and native proof.
 - Actual standalone/standalone and standalone/embedded live-tree races, complete
   claim/launch/settlement crash windows, nonempty blocked-session shutdown,
   signal handling and uncertainty reconciliation remain required before 9401
