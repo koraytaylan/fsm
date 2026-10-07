@@ -61,6 +61,7 @@ pub(super) fn resume_original_event(
         "unprivileged handoff recovery failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed; 0 ignored;"));
     assert_eq!(
         String::from_utf8(output.stdout)
             .unwrap()
@@ -172,6 +173,6 @@ fn recovered_event() {
     // and reopened-journal assertions rather than standing in for them.
     #[allow(clippy::print_stdout)]
     {
-        println!("FSM_NATIVE_HANDOFF_RECOVERED");
+        println!("\nFSM_NATIVE_HANDOFF_RECOVERED");
     }
 }
