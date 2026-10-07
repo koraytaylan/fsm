@@ -122,3 +122,14 @@ This verifies --ignored executes the original scenarios rather than skipping
 them. The controller's cgroup asserted 1073741824-byte memory.max and zero
 memory.swap.max; separate root-manager units remain outside that scope.
 The full host gate and hosted CI are still required and unexecuted here.
+
+## Complete local stable host gate
+
+Frozen 93a258f0ae08300b51a849394378296a632c13f5 completed session 98900
+with exit zero and eight stage exits zero, ending GATE_FAILED_STAGES=0.
+workflow-classification-full-stable-gate.log has SHA-256 7de2844a18e5146076cde9d20f73c5343ab561226ae3d12cf41375fae08ebb67.
+All prescribed CONTRIBUTING.md host stages ran serially under asserted 1 GiB
+and zero swap. The four Linux privileged scenario skips are supplemented by
+the independently verified actual stable/MSRV producer runs at 594425b; the
+intervening commit changes this review document only. Hosted CI and all remaining
+production ownership/crash/shutdown requirements remain incomplete.

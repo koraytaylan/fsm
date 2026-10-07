@@ -6,46 +6,39 @@ lifecycle updates.
 
 ## Current integration checkpoint — 2026-10-07
 
-Task frontmatter and roll-up remain unchanged: 3/7 complete, ownership
-integration in progress, bounded shutdown and reconciliation planned.
-Historical live-handle notes below are retained as contemporaneous evidence;
-they do not describe currently running work.
+Task frontmatter and roll-up remain unchanged: 3/7 complete, task 9401
+ownership integration in progress, bounded shutdown and reconciliation planned.
+Historical live-handle notes below describe earlier observations only.
 
 - Production standalone and ordinary embedded stdio select native owners;
-  borrowed embedding helpers and HTTP ownership remain incomplete.
-- Full stable gate session 86747 on db058013 completed with exit 1: debug and
-  release workspace tests failed the four production workflow scenarios at
-  their first pending effect; formatting, size, Clippy, documentation, zero
-  dependencies and embedding acceptance passed.
-- Workflow helper arguments now explicitly carry resource inputs and failure
-  selection without operator environment; resource files are isolated from
-  store/configuration, and stall diagnostics read at most 8192 input bytes.
-  Registered physical-store authority, immutable catalogue, handler identity
-  access and installed native workflow acceptance still require completion.
-- Native operator output uses a bounded worker; all 13 actual production
-  control tests pass, including blocked stderr and quiet broken stderr, and
-  single-warning guard mutation fails then passes after restoration.
-- Runtime 7cf0e39 adds separate internal diagnostic framing preserving actual
-  human and JSON rendering bytes while retaining protocol framing checks and
-  shared queue accounting; focused stable tests/Clippy and MSRV compilation
-  pass, but final CLI renderer wiring remains synchronous and incomplete.
-- Full stable gate session 50807 terminated with exit 1 on runtime 7cf0e39:
-  debug/release failed only the four production workflow scenarios; all six
-  other gate stages passed, with evidence in
-  diagnostic-framing-full-stable-gate.log; this gate is not accepted.
-- The authority probe now retains its exact installed artifact when native
-  state survives or cannot be inspected; permanent mocked wiring tests and
-  both guard mutations pass after restoration, with no native acceptance yet.
-  Read-only host preflight confirms noninteractive root access and a writable
-  cgroup mount; local stable authority execution on 15d9f94 passed nine cases
-  including enrolled entry, private exec status and capture bounds; later
-  broker fixture corrections preserve strict guards and actual writer leases.
-  The latest run hit the old 30-second outer broker budget; matched retained
-  artifact cleanup completed, and the harness now records partial timeout
-  evidence with a finite 90-second expanded-case budget.
-  The native inventory and ordinary production workflows remain unaccepted.
+  borrowed embedding helpers, low-level service::run and HTTP ownership remain
+  incomplete.
+- Frozen 93a258f0ae08300b51a849394378296a632c13f5 passed the complete stable
+  host gate in terminal session 98900, exit zero: formatting, file size, debug
+  and release workspace tests, all-target Clippy, warning-free documentation,
+  zero dependencies and embedding acceptance all passed.
+- Linux's four workflow scenario groups require privileged native provisioning
+  and run through the mandatory stable/MSRV native CI producer; non-Linux
+  retains their ordinary execution. Frozen 594425b passed all nine real
+  registered scenarios on stable and MSRV in terminal session 44303, with
+  exact clean source, original assertions, native receipts and complete log
+  digests independently verified. Ordinary gate skips alone are insufficient.
+- Final native CLI error rendering is bounded by the original shutdown deadline;
+  actual blocked pipe/socket controls and all 13 production stop controls pass.
+  Startup errors and borrowed/HTTP routes remain outside that ownership claim.
+- The full 81-case native matrix passed both toolchains at b7967cc, predating
+  later workflow/renderer changes; current-source full native and hosted CI
+  acceptance, native macOS/Windows axes and live-model evidence remain missing.
+- Actual standalone/standalone and standalone/embedded live-tree races, complete
+  claim/launch/settlement crash windows, nonempty blocked-session shutdown,
+  signal handling and uncertainty reconciliation remain required before 9401
+  or its dependent tasks can be promoted.
+- Builds/controllers ran serially in asserted 1 GiB/zero-swap user scopes;
+  separate root-manager native service units do not inherit those limits.
 
-Detailed review and limits are in [OWNED-SESSION-REVIEW.md](OWNED-SESSION-REVIEW.md).
+Review evidence is in [WORKFLOW-NATIVE-REVIEW.md](WORKFLOW-NATIVE-REVIEW.md)
+and the existing ownership/shutdown reviews; this is preliminary local
+acceptance, not completion of plans 20–23.
 
 ## Historical execution evidence
 
