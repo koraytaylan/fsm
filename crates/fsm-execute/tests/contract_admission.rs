@@ -88,3 +88,20 @@ fn pending_contract_check_refuses_substituted_concrete_arguments() {
     );
     assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
 }
+
+#[test]
+fn explicitly_manual_pending_effect_remains_compatible_and_unacknowledged() {
+    let (store, effect, mut table) = fixture();
+    table.handlers.remove("work");
+    table.manual_effects.insert("work".into());
+    let state = store.state.clone();
+    let records = store.records.clone();
+    check_pending(&store, &effect, &table).unwrap();
+    assert!(fsm_store::snapshot::store_states_eq(&state, &store.state));
+    assert_eq!(store.records, records);
+    assert!(
+        store.state.instances["case-1"]
+            .pending
+            .contains(&effect.effect_id)
+    );
+}

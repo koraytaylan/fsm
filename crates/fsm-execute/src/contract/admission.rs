@@ -64,10 +64,13 @@ pub fn check_pending(
     if report.status != CheckStatus::Compatible {
         return Err(refusal(report.status).details(report.to_value()));
     }
-    let handler = table
-        .handlers
-        .get(&effect.effect_name)
-        .ok_or_else(|| refusal(CheckStatus::Invalid))?;
+    let Some(handler) = table.handlers.get(&effect.effect_name) else {
+        if table.manual_effects.contains(&effect.effect_name) {
+            // Manual compatibility is operator policy, never spawn permission.
+            return Ok(());
+        }
+        return Err(refusal(CheckStatus::Invalid));
+    };
     substitute(&handler.argv, &effect.args).map_err(|_| refusal(CheckStatus::Invalid))?;
     if let HandlerKind::Mcp { arguments, .. } = &handler.kind {
         substitute_arguments(arguments, &effect.args).map_err(|_| refusal(CheckStatus::Invalid))?;

@@ -1599,3 +1599,5 @@ from a remaining duration; no public signature or persistent format changes.
 PendingEffect now exposes emitting_machine_id, reconstructed from the original verified emitting prefix rather than the current instance definition; adding this provisional public Rust struct field requires a pre-1.0 minor release and downstream struct literals must supply it, with no persisted format, journal hash, dependency or MSRV change.
 
 The provisional contract::check_pending API adds read-only pending membership, historical effect and current receiver compatibility checks, using existing exec/contract diagnostics; it changes no persisted format, hash or spawn authorization, and is an additive pre-1.0 API change.
+
+The provisional pending-contract checker preserves explicit manual disposition as compatible read-only evidence, using the existing manual_effects policy and introducing no wire, persisted-format or error-code change.

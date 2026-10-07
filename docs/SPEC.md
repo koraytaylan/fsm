@@ -3465,3 +3465,5 @@ coalesced `notifications/resources/list_changed` per observed batch; an
 `EventApplied` or `DeadlineApplied` alone MUST NOT produce that notification.
 Application to an existing instance still invalidates its subscribed resource
 URI after the original application response publication scope releases.
+
+Pending-contract evidence MUST accept an explicitly manual pending effect when its current executable closure is compatible, without acknowledging it or authorizing automatic execution.
