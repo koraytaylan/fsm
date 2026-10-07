@@ -897,3 +897,27 @@ established. Original session 72884 now verifies unchanged `1c529f6` serially
 in a dedicated readiness-isolated-check-target, retaining actual 1GiB/zero-swap
 limits and host memory thresholds, before any conclusion about Clippy or
 sensitivity. Existing failed logs are preserved and tasks remain open.
+
+### Isolated readiness checks and restored sensitivity — 2026-10-07
+
+Original session 72884 exited 0 at exact clean frozen `1c529f6`: stable and
+MSRV readiness authority unit 1/1, owned lifecycle 3/3, public surface 17/17,
+CLI library 129/129, production stdio 6/6, protocol lifecycle 11/11 and both
+crate all-target Clippy pass in the dedicated build directory. No source
+change was needed to eliminate the earlier shared-artifact missing-method
+Clippy discrepancy; its failed logs remain retained.
+
+Disabling the independent observation branch, removing empty-inventory scan
+suppression and adding a second observation clock sample each causes the
+exact long-interval owner fixture to fail at runtime (0 passed, 1 failed),
+without compiler failure. Original source is restored, the baseline passes
+and the frozen checkout is clean. This proves those three guards at the
+original owner loop; prepared-domain, bound-entry and installed-handler
+readiness wake acceptance, publication during admitted completion, full
+eight-completion fairness and worker isolation remain outstanding.
+
+Terminal `readiness-isolated-check.log` SHA-256:
+`aec9d262b96fb8f8fb87b93317f43fee39024472992ebfdf2e263cb43bc70b55`. The full stable workspace
+gate is next at this committed observation/readiness milestone, with the
+dedicated target retained to avoid stale cross-checkout artifacts; tasks and
+plan completion counts remain unchanged.
