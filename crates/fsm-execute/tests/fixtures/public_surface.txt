@@ -91,6 +91,7 @@ field fsm_execute::effect::PendingEffect::args
 field fsm_execute::effect::PendingEffect::effect_id
 field fsm_execute::effect::PendingEffect::effect_name
 field fsm_execute::effect::PendingEffect::emitted_seq
+field fsm_execute::effect::PendingEffect::emitting_machine_id
 field fsm_execute::effect::PendingEffect::instance_id
 field fsm_execute::effect::PendingEffect::k
 field fsm_execute::error::ExecError::code

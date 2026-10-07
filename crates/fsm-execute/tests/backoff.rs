@@ -41,6 +41,7 @@ fn table() -> HandlerTable {
 fn observation(attempt: u32, last_ts: i64) -> Observation {
     Observation {
         pending: vec![PendingEffect {
+            emitting_machine_id: "scheduler-fixture-definition".into(),
             instance_id: "case-1".into(),
             effect_id: "case-1/3/0".into(),
             effect_name: "notify".into(),

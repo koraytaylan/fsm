@@ -1595,3 +1595,5 @@ successor startup rather than spawning that helper synchronously on its owner.
 NativeRun binding, recovery and execution now preserve the original absolute
 startup deadline through preparation instead of reconstructing a later Instant
 from a remaining duration; no public signature or persistent format changes.
+
+PendingEffect now exposes emitting_machine_id, reconstructed from the original verified emitting prefix rather than the current instance definition; adding this provisional public Rust struct field requires a pre-1.0 minor release and downstream struct literals must supply it, with no persisted format, journal hash, dependency or MSRV change.

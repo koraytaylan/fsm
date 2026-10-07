@@ -29,6 +29,9 @@ use crate::error::ExecError;
 /// One pending effect, resolved back to what the machine actually emitted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingEffect {
+    /// The historical definition that emitted it, even after instance migration.
+    /// Reconstructed from the verified emitting prefix; not spawn authorization.
+    pub emitting_machine_id: String,
     /// The instance that emitted it.
     pub instance_id: String,
     /// The opaque `{instance}/{seq}/{k}` id the store hands out.
@@ -62,6 +65,7 @@ pub fn resolve(store: &Store, effect_id: &str) -> Result<PendingEffect, ExecErro
         .find(|emit| emit.k == id.k)
         .ok_or_else(|| unresolved(&id, format!("the emitting record emitted no k={}", id.k)))?;
     Ok(PendingEffect {
+        emitting_machine_id: emitting_machine_id(&before, record, &id)?,
         instance_id: id.instance_id.to_string(),
         effect_id: effect_id.to_string(),
         effect_name: emit.name,
@@ -69,6 +73,32 @@ pub fn resolve(store: &Store, effect_id: &str) -> Result<PendingEffect, ExecErro
         emitted_seq: id.seq,
         k: id.k,
     })
+}
+
+// SPEC executor pending-effect reconstruction: the receiving definition may
+// have migrated since this original emission, so current Store state is wrong.
+fn emitting_machine_id(
+    before: &StoreState,
+    record: &Record,
+    id: &EffectId<'_>,
+) -> Result<String, ExecError> {
+    match record.kind {
+        RecordKind::InstanceCreated => Ok(created_machine(before, record, id)?
+            .compiled
+            .machine_id
+            .clone()),
+        RecordKind::InstanceInvoked => record
+            .body
+            .get("child_machine_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| unresolved(id, "the instance_invoked record names no machine")),
+        _ => before
+            .instance_machines
+            .get(id.instance_id)
+            .cloned()
+            .ok_or_else(|| unresolved(id, "the instance did not exist before this record")),
+    }
 }
 
 /// The three parts the store packs into one pending-effect id.

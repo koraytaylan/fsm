@@ -474,6 +474,7 @@ mod tests {
     // These are local reservation transitions, not native authority fixtures.
     fn reservation(phase: Phase) -> (NativeAdmissions, Scheduler, PendingEffect) {
         let effect = PendingEffect {
+            emitting_machine_id: "scheduler-fixture-definition".into(),
             instance_id: "local".into(),
             effect_id: "local/3/0".into(),
             effect_name: "notify".into(),

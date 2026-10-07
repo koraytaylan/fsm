@@ -2859,3 +2859,5 @@ off the caller, acquiring its first reservation before dispatch.
 All NativeRun startup phases carry the original absolute deadline into worker
 material, including time spent preparing the request; a phase change does not
 grant extra startup time.
+
+PendingEffect::emitting_machine_id identifies the definition that actually emitted the effect, including after migration; obtain it through effect::resolve rather than substituting the current instance definition, and do not treat this evidence as execution authorization because shared runtime contract admission remains unfinished.

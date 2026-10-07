@@ -1537,3 +1537,5 @@ execution now reuses the original reservation after actual helper retirement.
 Worker mode selected after standalone binding applies to successor startup too.
 Binding, recovery and execution startup now preserve the original run's exact
 absolute deadline rather than extending it while preparing the next request.
+
+Pending-effect reconstruction now retains the historical emitting machine identity for subsequent contract admission across migration; the provisional Rust PendingEffect struct gains emitting_machine_id, requiring callers constructing literals to adapt, without changing journal bytes, hashes or runtime spawn policy.

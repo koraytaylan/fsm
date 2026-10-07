@@ -509,3 +509,70 @@ fn resolution_is_deterministic_across_calls_and_opens() {
     assert_eq!(once, twice);
     assert_eq!(once, after_reopen);
 }
+
+#[test]
+fn migrated_pending_effect_retains_its_original_emitting_definition_on_reopen() {
+    use fsm_core::hashes::{digest_of, machine_id};
+
+    let directory = TestDirectory::create("effect-migration-definition");
+    let (mut store, mut clock) = writer(&directory);
+    let original = creation_emit_machine();
+    let original_identity = machine_id(&original);
+    let mut replacement = original.clone();
+    let Value::Obj(fields) = &mut replacement else {
+        panic!("fixture definition must be an object");
+    };
+    fields.insert("name".into(), Value::Str("case_intake_replacement".into()));
+    fields.insert(
+        "supersedes".into(),
+        definition(&format!(
+            r#"{{"machine":"{}","states":{{"intake":"intake","closed":"closed"}},"context":{{"case_id":"ctx.case_id"}}}}"#,
+            digest_of(&original_identity).unwrap()
+        )),
+    );
+    let replacement_identity = machine_id(&replacement);
+    assert_ne!(original_identity, replacement_identity);
+    for source in [original, replacement] {
+        store
+            .define_machine_on(&mut clock, source, false, false)
+            .unwrap();
+    }
+    store
+        .create_instance_ctx_on(
+            &mut clock,
+            "case_intake_effects",
+            "migrated-case",
+            "create-migrated",
+            None,
+            &overrides(&[("case_id", Val::Str("original-case".into()))]),
+            &[],
+        )
+        .unwrap();
+    let pending = pending_ids(&store, "migrated-case");
+    store
+        .migrate_instance_on(
+            &mut clock,
+            "migrated-case",
+            "case_intake_replacement",
+            "replace-definition",
+        )
+        .unwrap();
+    assert_eq!(
+        store.state.instance_machines["migrated-case"],
+        replacement_identity
+    );
+    assert_eq!(pending_ids(&store, "migrated-case"), pending);
+    drop(store);
+
+    let observer = read_only(&directory);
+    let records = observer.records.clone();
+    let resolved = resolve(&observer, &pending[0]).unwrap();
+    assert_eq!(resolved.emitting_machine_id, original_identity);
+    assert_ne!(
+        resolved.emitting_machine_id,
+        observer.state.instance_machines["migrated-case"]
+    );
+    assert_eq!(resolved.effect_name, "open_case");
+    assert_eq!(argument(&resolved, "case"), "original-case");
+    assert_eq!(observer.records, records);
+}

@@ -1380,6 +1380,15 @@ remain runtime-dependent, never structural contradictions. Final findings,
 sites and bytes MUST satisfy the same inclusive limits and deterministic
 ordering as effect analysis. Compatibility MUST NOT authorize a spawn.
 
+Executor pending-effect reconstruction MUST retain the emitting definition's
+machine identity from the verified prefix preceding its emitting record:
+creation uses the recorded machine, invocation uses the recorded child machine,
+and events and deadlines use the instance's definition in that prefix.
+Migration MUST NOT replace that identity with the current receiving definition.
+This reconstructed context MUST NOT enter journal bytes, hashes or replay state;
+it supplies evidence for separately integrated runtime contract admission and
+MUST NOT itself authorize an external start.
+
 ## CLI executor machine checks
 
 `fsm execute --check --handlers <file>` MAY select exactly one of

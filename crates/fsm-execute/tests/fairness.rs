@@ -42,6 +42,7 @@ fn table(caps: &str) -> HandlerTable {
 
 fn effect(instance: &str, k: u32) -> PendingEffect {
     PendingEffect {
+        emitting_machine_id: "scheduler-fixture-definition".into(),
         instance_id: instance.to_string(),
         effect_id: format!("{instance}/3/{k:03}"),
         effect_name: "notify".to_string(),

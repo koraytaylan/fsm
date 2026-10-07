@@ -817,6 +817,7 @@ mod claim_release_tests {
         let other = Claim::from_value(&value).unwrap();
         let mut scheduler = Scheduler::new(HandlerTable::default());
         let effect = PendingEffect {
+            emitting_machine_id: "scheduler-fixture-definition".into(),
             instance_id: "case-1".into(),
             effect_id: "case-1/3/0".into(),
             effect_name: "original".into(),

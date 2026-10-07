@@ -73,3 +73,19 @@ The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this file
 - **Outcome:** effect and outcome analysis implemented and reviewed; complete contract admission remains unfinished; completion requires the task acceptance evidence and the stable host and relevant platform gates, with unexecuted environments recorded.
 
 _Task frontmatter is authoritative; this file is the roll-up._
+
+### Historical emitting-definition context — 2026-10-07
+
+PendingEffect now retains emitting_machine_id reconstructed from the same
+verified pre-emission prefix used to recover its actual arguments: creation
+and invocation use their recorded definition identities, and transition and
+deadline emissions use the historical instance definition. Current migrated
+instance state does not replace that context. The independent migration case
+creates a pending entry effect, migrates to a distinct definition, reopens
+read-only, and checks the original identity and concrete args without writes.
+SPEC, API policy, embedding guidance, release notes and the provisional Rust
+surface inventory move with the added public struct field; downstream literal
+construction requires adaptation and the pre-1.0 minor consequence is explicit.
+This supplies task 9103's historical evidence without integrating admission,
+persisting authorization, changing journal/hash bytes, or completing a task;
+focused verification and guard sensitivity remain pending.

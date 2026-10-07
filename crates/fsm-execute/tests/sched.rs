@@ -41,6 +41,7 @@ fn table() -> HandlerTable {
 
 fn effect(effect_id: &str, name: &str) -> PendingEffect {
     PendingEffect {
+        emitting_machine_id: "scheduler-fixture-definition".into(),
         instance_id: effect_id.split('/').next().unwrap().to_string(),
         effect_id: effect_id.to_string(),
         effect_name: name.to_string(),
