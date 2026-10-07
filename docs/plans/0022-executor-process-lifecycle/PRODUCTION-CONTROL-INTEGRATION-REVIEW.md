@@ -192,3 +192,27 @@ adds coverage rather than substituting a filtered inventory. Host inventory
 relocation 2013015 preserves every original sequential case and bytes.
 Stable/MSRV all-target executor Clippy passed in terminal session 4044; actual
 new root-case execution is pending behind frozen-source guarded installation.
+
+## Actual provisioned public-loop execution at f47fa07
+
+Terminal session 11970 passed the registered provisioned_public_service_loop
+case on stable rustc 1.98.1 and MSRV 1.89.0 against clean frozen
+f47fa07a75bf5bae10f25a7e95af14ed315ccf0d, with one pass/zero fail/zero ignored
+on each toolchain in 5.42/5.13 seconds. Each case executes both process and MCP
+axes, preserving original shared-tick reuse and adding an actual public loop
+claim, launch and durable settlement with acknowledgement-before-event proof.
+The controller verified one GiB/zero swap before dispatch and retained original
+installed authority on failure; both successes retired its matched installation.
+Independent protected inspection verified four root-owned namespace inventories,
+twelve regular bounded original-domain receipts with exact allocations 1/2/3
+and memory.max=1073741824/memory.swap.max=0, plus original namespace/drop-in
+and installation retirement. Receipt filename matching excludes the separate
+memory-limits inventory (the initial broad glob incorrectly counted it).
+Evidence is public-service-native-check.log and four fsm-public-service-*
+directories in the dedicated task cache; log SHA-256 is
+bb5ff5d6caf07ca167f660735049227dd64aa557540d862994d6178fdeea3895.
+This proves provisioned process/MCP execution through service::run; controlled
+unwind after settlement is not proof of bounded loop shutdown or interruption
+recovery. Current complete native matrix, renewed host gate, borrowed MCP/HTTP
+integration and broader lifecycle requirements remain incomplete, task 9401
+in progress and plan 0022 3/7.
