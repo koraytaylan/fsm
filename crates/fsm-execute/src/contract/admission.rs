@@ -17,15 +17,16 @@ pub fn check_pending(
     effect: &PendingEffect,
     table: &HandlerTable,
 ) -> Result<(), ExecError> {
-    let instance = store
+    if !store
         .state
         .instances
         .get(&effect.instance_id)
-        .filter(|instance| {
+        .is_some_and(|instance| {
             instance.status == Status::Running && instance.pending.contains(&effect.effect_id)
         })
-        .ok_or_else(stale)?;
-    let _ = instance;
+    {
+        return Err(stale());
+    }
     if !store
         .state
         .machines
@@ -33,7 +34,7 @@ pub fn check_pending(
     {
         return Err(unknown_definition());
     }
-    if resolve(store, &effect.effect_id)? != *effect {
+    if resolve(store, &effect.effect_id).map_err(|_| stale())? != *effect {
         return Err(stale());
     }
     let receiver = store
