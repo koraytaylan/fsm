@@ -687,3 +687,39 @@ namespace 14d8d0b46fee501c283d2e736bf0be75 with original runtime configuration
 remain retained for guarded archive/teardown; report/log are in
 local-native-workflow-df6ad43-stable. Task 9401 remains in progress, plan 0022
 3/7, and plans 20–23 remain incomplete.
+
+
+## Corrected contention run and failure-time competitor observation
+
+The df6ad43 failed fixture was fully archived before identity-matched retirement
+of original namespace/resources/home/stage, runtime configuration and installed
+authority. Frozen 32e7cdf7d99d62acda40bf78873dfa379013433c stable producer session
+55114 ended with exit one (native test 101), accepting all nine original
+scenarios but failing the race before its final stop assertion. Actual journal
+inspection shows the first claim stopped, acknowledged and its outcome event
+applied; the workflow stalls at check_identity with no second claim, despite an
+unbound prepared allocation two. The external calls contain only
+check_prerequisite. Protected extraction finds no execution/cleanup diagnostic
+line in either the retained workflow log or competitor stdout, so this run does
+not prove contention retry success or isolate the retained preparation phase.
+Its workflow log digest independently matches the source-frozen report.
+
+The original race loop now obtains one authenticated competitor observation
+only when its existing thirty-second workflow assertion fails, before the
+competitor's exact child guard retires it. Observation has its own bounded
+250-millisecond diagnostic timeout and returns null on unavailable inventory;
+it cannot renew the workflow or driver deadlines or promote unavailable facts
+to zero inventory. Original completion, external effects and stopped assertions
+remain intact. This supplies actual phase evidence for early race stalls that
+previously reached teardown without a control snapshot.
+
+Terminal session 86987 passes stable/MSRV executor/CLI all-target Clippy,
+format/file-size checks and three ordinary helper tests with five native skips;
+workflow-stalled-inventory-check.log retains asserted one-GiB/zero-swap controller
+limits. Actual failure-time observation, corrected contention sensitivity,
+complete race and changed-source host/native/platform proof remain pending.
+The failed stage /usr/libexec/fsm-workflow-d6dd6ca63ca907c912f54255307d18af,
+namespace 7d303327335eab38c99567501a6311c0 and original runtime configuration
+remain retained for guarded archive/teardown; report/log are under
+local-native-workflow-32e7cdf-stable. Task 9401 remains in progress and plan
+0022 stays 3/7; plans 20–23 remain incomplete.

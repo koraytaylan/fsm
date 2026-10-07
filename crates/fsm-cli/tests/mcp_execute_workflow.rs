@@ -551,10 +551,19 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
             assert_eq!(instance.get("effects_pending"), Some(&value("[]")));
             break;
         }
+        #[cfg(target_os = "linux")]
+        let failure_inventory = || {
+            competitor
+                .as_ref()
+                .map_or(Value::Null, |owner| owner.observation(&directory))
+        };
+        #[cfg(not(target_os = "linux"))]
+        let failure_inventory = || Value::Null;
         assert!(
             Instant::now() < deadline,
-            "workflow stalled: {instance:?}; executor stderr: {}",
-            bounded_executor_errors(&client.errors)
+            "workflow stalled: {instance:?}; executor stderr: {}; competitor inventory: {:?}",
+            bounded_executor_errors(&client.errors),
+            failure_inventory()
         );
         std::thread::sleep(Duration::from_millis(10));
     }

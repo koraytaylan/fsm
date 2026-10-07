@@ -40,6 +40,9 @@ impl Drop for Competitor {
     }
 }
 impl Competitor {
+    pub(super) fn observation(&self, directory: &Directory) -> Value {
+        fsm_cli::local_control::observe(&self.root, &directory.store(), 250).unwrap_or(Value::Null)
+    }
     pub(super) fn stop(&mut self, directory: &Directory) {
         let root = self.root.clone();
         let data = directory.store();
