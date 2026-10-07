@@ -364,7 +364,7 @@ pub(super) fn run() {
         "FSM_NATIVE_WORKFLOW_CLI_ARTIFACT",
         "FSM_NATIVE_WORKFLOW_CLI_SHA256",
     );
-    for (group, (case, failures)) in [
+    let cases = [
         (
             "discovered_handlers_complete_the_workflow_in_order",
             vec![""],
@@ -394,10 +394,20 @@ pub(super) fn run() {
             vec!["crash-launch"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    ];
+    let selected = std::env::var("FSM_NATIVE_WORKFLOW_FILTER").ok();
+    assert!(
+        selected
+            .as_ref()
+            .is_none_or(|selected| cases.iter().any(|(case, _)| *case == selected.as_str()))
+    );
+    for (group, (case, failures)) in cases.into_iter().enumerate() {
+        if selected
+            .as_ref()
+            .is_some_and(|selected| selected.as_str() != case)
+        {
+            continue;
+        }
         let mut fixtures = Vec::new();
         let mut brokers = Vec::new();
         let mut resources = Vec::new();
