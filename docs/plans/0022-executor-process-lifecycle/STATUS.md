@@ -20,6 +20,8 @@ Frozen 89cf8f0c..e501d571 passes genuine native acknowledged-event recovery thro
 
 Frozen e3147b2d..0417f9e6 passes the genuine standalone-kill-after-launch path and warm completion reconciliation after another host delivers the original event on stable/MSRV, with focused tests, all-target CLI/executor Clippy, formatting and size checks; neutralizing accepted-event retirement fails the named native assertion and restoration passes. Review digest: `478b2ceee9925d014b51c7295c3ed56b95685fb4a79f0c4465515eaccb38b8ce`. The broader standalone/embedded workflow still fails when native execution is refused as authority busy after a claim, and full CI and the remaining crash cutpoints are unverified; 9401 remains in progress.
 
+Local broker milestones before 7b978a42 served through the retained installed backend; their source pin establishes client and directly invoked helper assertions, but cannot establish changed backend behavior. Fixtures now stage the currently executing backend bytes under the protected authority, while preserving the installed helper's client and gate roles; backend acceptance must use that corrected boundary.
+
 The retained helper is root-owned in the host namespace with its expected digest and 0711 permissions; the restricted sandbox maps host root to nobody. No ownership repair is required, and failed-run artifacts remain preserved.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
