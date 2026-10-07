@@ -75,6 +75,9 @@ admission with explicit 503 overload and no journal mutation; exact boundaries,
 capacity release and saturated DELETE pass on stable/MSRV alongside CLI Clippy.
 Queue-only accounting does not complete host/output ownership; reverse streaming,
 full allocation lifetime, guard sensitivity and broad gates remain open.
+Both mailbox admission guards now have independently failing neutralization
+proof, followed by exact source restoration and healthy stable/MSRV endpoint
+and mailbox reruns; broader transport ownership and acceptance remain unfinished.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

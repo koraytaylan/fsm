@@ -123,3 +123,21 @@ http-mailbox-admission-corrected-check.log SHA-256 is
 Capability docs move with this transport policy. Guard-neutralization proof,
 renewed full host/platform gates, full allocation lifetime, reverse streaming
 and actual HTTP executor ownership remain outstanding; no task promotion.
+
+### Admission guard sensitivity
+
+Terminal session 57875 exits zero: neutralizing only the count predicate makes
+the actual endpoint overload regression fail with HTTP 202 instead of 503;
+neutralizing only the charged-byte predicate makes the exact byte-boundary
+case fail because admission unexpectedly succeeds. Each negative run exits
+101 and matches the intended assertion, rather than a compilation failure.
+The original mailbox source is restored in finally after each mutation and
+verified byte-for-byte, SHA-256
+a8a80e596921aef826d50d61dbd9faea14c2b9fe03a748c1a5868bc545383d42.
+Healthy actual endpoint and all four mailbox cases then pass on stable/MSRV;
+tracked source is clean afterward. The controller verifies actual one-GiB/
+zero-swap limits before any builds. Sensitivity log SHA-256 is
+d5493ae7e3c1e4d47104fb2c32fbfe18b6367707eaee787c6230bd37eb403305
+under http-mailbox-admission-sensitivity.log in the explicit task cache.
+This establishes those two guards, not HTTP streaming or execution ownership;
+the original full-plan scope and outstanding acceptance gates remain unchanged.
