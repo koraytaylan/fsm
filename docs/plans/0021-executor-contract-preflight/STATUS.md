@@ -110,3 +110,24 @@ regression. The original log is historical-effect-definition-check.log and the
 new run uses historical-effect-definition-corrected-check.log in the task
 cache; results remain pending and no runtime admission or task completion is
 claimed.
+
+### Terminal historical-definition reconstruction verification — 2026-10-07
+
+Corrected session 96331 exits zero at frozen `1187b05f`: stable and Rust 1.89
+executor unit/all integration targets and all-target Clippy pass, including
+all nine effect-resolution cases, composition identity assertions and the
+provisional public-surface inventory. Formatting and file-size checks pass.
+The isolated mutation replacing the original emitting prefix identity with
+the current instance definition fails exactly the migration/reopen regression
+(0 passed, 1 failed, no compiler failure); exact source restoration then passes
+all nine resolution cases and leaves the frozen source clean. The corrected
+log SHA-256 is
+`d22690c794a68964a2096e3fc82c7e4f0beabf4a3d9fcb102b566ccd7af224eb`;
+the sensitivity log SHA-256 is
+`b9f67e986e8beb6c188100fe40bd9008002c487ff4085f1438bb29f77588362a`.
+Every stage validates actual 1 GiB/zero-swap kernel limits and serial Cargo
+ownership, and the complete committed diff range is clean. These are focused
+Linux checks, not a new eight-stage workspace gate or native macOS/Windows
+acceptance; ignored native fixtures do not count as execution. This verifies
+the historical-definition prerequisite only: shared admission before external
+starts, the migration/current-outcome matrix and task completion remain open.
