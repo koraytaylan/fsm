@@ -24,7 +24,7 @@ def exercise(binary):
     def start(label, wait=False):
         name = f'fsm-containment-restart-{namespace}-{label}.service'
         units.append(name)
-        argv = ['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + name,
+        argv = ['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + name,
                 '--property=UMask=0077', '--property=RuntimeMaxSec=20s']
         if wait:
             argv.append('--wait')
@@ -64,7 +64,7 @@ def exercise(binary):
         command(['sudo', '-n', 'install', '-m', '755', str(binary), str(base / 'fixture')])
         publisher = f'fsm-containment-publication-{namespace}.service'
         units.append(publisher)
-        command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + publisher,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + publisher,
                  '--property=UMask=0077', '--property=RuntimeMaxSec=10s', '/usr/bin/env',
                  f'FSM_LIFECYCLE_PROBE_DIRECTORY={base}', 'FSM_LIFECYCLE_PROBE_MODE=identity-publication',
                  str(base / 'fixture'), 'native_fixture', '--exact', '--nocapture'])
@@ -179,7 +179,7 @@ def exercise(binary):
         # canonical group's record. Preserve the unrelated alias on refusal.
         numeric_alias = f'fsm-containment-identity-{namespace}-0{record["id"]}.service'
         units.append(numeric_alias)
-        command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + numeric_alias,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + numeric_alias,
                  '--property=RuntimeMaxSec=20s', '/usr/bin/sleep', '15'])
         alias_domain = Path('/sys/fs/cgroup/system.slice') / numeric_alias
         alias_native_inode = alias_domain.stat().st_ino
@@ -199,7 +199,7 @@ def exercise(binary):
         alias = f'fsm-containment-endpoint-alias-{namespace}.service'
         units.append(alias)
         script = 'import socket,sys,time; from pathlib import Path; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.listen(1); Path(sys.argv[2]).write_text("ready"); time.sleep(15)'
-        command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + alias,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + alias,
                  '--property=UMask=0077', '--property=RuntimeMaxSec=15s',
                  '/usr/bin/python3', '-c', script, str(old), str(base / 'alias-ready')])
         wait_file(base / 'alias-ready')

@@ -423,6 +423,8 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
                 ));
             }
             for property in [
+                "MemoryMax=1G",
+                "MemorySwapMax=0",
                 "DynamicUser=yes",
                 "ProtectControlGroups=yes",
                 "ProtectHome=yes",

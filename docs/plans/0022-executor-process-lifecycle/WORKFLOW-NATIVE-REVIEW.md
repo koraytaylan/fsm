@@ -1265,3 +1265,15 @@ driver, not the official nine-suite matrix or MSRV acceptance. Other feasibility
 service limits, renewed host/platform gates, HTTP ownership, bounded borrowed
 shutdown and the production crash matrix remain open; task 9401 stays in progress.
 This evidence-only update runs diff checks; compilation gates are omitted.
+
+## Remaining feasibility service launch limits
+
+All sixteen literal Python systemd-run launch vectors now request MemoryMax=1G
+and MemorySwapMax=0, including broker rejection/replay subprocesses and numeric
+alias/controller units. The private Rust identity prototype adds the same two
+properties to its handler unit. This closes the configuration gap for services
+that systemd launches outside the capped test-controller scope. AST inspection
+checks every Python launch vector for both properties; Python syntax, file-size
+and diff checks pass. Actual kernel preflight verification for these older
+fixtures, compiled checks and renewed native/host gates remain pending, so no
+new runtime acceptance or task promotion is claimed.

@@ -37,6 +37,10 @@ helper unchanged; subsequently all twelve stable authority cases pass at
 2adb356 through the retained-helper driver, with original helper identity,
 clear inventories and every case-log digest verified. The official complete
 native matrix, MSRV authority run and renewed host gate remain pending.
+The sixteen Python feasibility service launch vectors and private Rust identity
+handler now also request one GiB/zero-swap limits; static launch inventory,
+syntax, file-size and diff checks pass, with actual kernel preflight and runtime
+verification still pending before broader native execution.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

@@ -41,7 +41,7 @@ def exercise(binary):
         return record, Path('/sys/fs/cgroup/system.slice') / units[-1]
 
     def start_controller(action, record):
-        command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + controller,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + controller,
                  '--property=KillMode=control-group', '--property=RuntimeMaxSec=25s', *argv(action, record)])
 
     def kill_controller():
@@ -145,7 +145,7 @@ def exercise(binary):
         command(['sudo', '-n', 'tee', str(receipt)], input=receipt_bytes)
         passed('receipt-mismatch')
         alias = units[-1]
-        command(['sudo', '-n', 'systemd-run', '--quiet', '--collect', '--unit=' + alias,
+        command(['sudo', '-n', 'systemd-run', '--property=MemoryMax=1G', '--property=MemorySwapMax=0', '--quiet', '--collect', '--unit=' + alias,
                  '--property=RuntimeMaxSec=15s', '/usr/bin/sleep', '15'])
         assert domain.exists() and domain.stat().st_ino != third['inode']
         refused = subprocess.run(['sudo', '-n', *argv('close', third)], capture_output=True, text=True, timeout=7)

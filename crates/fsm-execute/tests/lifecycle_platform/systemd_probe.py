@@ -115,7 +115,7 @@ def run_case(binary, case, neutralize=False):
         command(["sudo", "-n", "install", "-d", "-m", "1777", str(root)])
         command(["sudo", "-n", "install", "-m", "755", str(binary), str(root / "fixture")])
         mode = "kill" if case == "client-death" else "spawn-stop" if case == "frozen-stop" else case
-        argv = ["sudo", "-n", "systemd-run", "--quiet", "--collect", "--pipe", f"--unit={unit}"]
+        argv = ["sudo", "-n", "systemd-run", "--property=MemoryMax=1G", "--property=MemorySwapMax=0", "--quiet", "--collect", "--pipe", f"--unit={unit}"]
         properties = list(PROPERTIES)
         if case == "spawn-stop":
             # A real deactivating job stays observable while descendants fork.
