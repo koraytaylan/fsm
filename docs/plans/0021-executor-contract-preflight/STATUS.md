@@ -210,3 +210,28 @@ all-target Clippy, followed by concrete-argument guard neutralization and
 restoration under serial 1 GiB/zero-swap limits. The corrected log is
 pending-contract-evidence-corrected-check.log in the task cache; results are
 pending and production dispatch wiring remains unfinished.
+
+### First shared production preparation check — 2026-10-07
+
+Commit `b0a97c49` calls the pending checker at Runner's actual native queue
+entry before backend authority lookup or a preparation reservation. Both
+shared tick entry points use this boundary; service refusal releases the
+unclaimed scheduler slot and preserves pending work without journal writes.
+The independent queue-entry case uses a valid first effect and an invalid
+later restore, requires the typed contract refusal before backend capability
+refusal, and asserts complete Store/record invariance plus zero preparation
+inventory. This fixture proves preparation wiring, not Root closure or an
+external marker scenario; actual native provisioning remains unavailable.
+
+Session 59714 waits for corrected checker session 44579's original live PID
+2206291 to retire successfully before advancing the same isolated source to
+frozen `b0a97c49`; it runs stable/MSRV executor unit/integration targets and
+all-target Clippy, then removes only the actual queue contract call to require
+the named typed-refusal fixture to fail before restoration. Its log is
+native-contract-preparation-check.log and sensitivity log is
+native-contract-preparation-sensitivity.log in the task cache, using serial
+one-worker and actual 1 GiB/zero-swap limits. Results are pending: final
+writer-held claim checks, bound-entry checks, cache invalidation, acknowledged
+outcome recovery and the full provisioned side-effect inventory remain open.
+The integration footprint additionally requires run/native_host.rs for this
+first service hook; no full admission guarantee or task completion is claimed.
