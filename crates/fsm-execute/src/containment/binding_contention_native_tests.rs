@@ -109,7 +109,7 @@ fn identity_after_contention(fixture: &Fixture, binding: &Value) {
     assert_no_launch(fixture);
 }
 
-struct NamespaceSwap {
+pub(super) struct NamespaceSwap {
     directory: PathBuf,
     saved: PathBuf,
     replacement: Option<(u64, u64)>,
@@ -117,7 +117,7 @@ struct NamespaceSwap {
 }
 
 impl NamespaceSwap {
-    fn new(directory: &Path) -> Self {
+    pub(super) fn new(directory: &Path) -> Self {
         let saved = directory.with_extension("binding-contention-original");
         assert!(!saved.exists());
         fs::rename(directory, &saved).unwrap();
@@ -133,7 +133,7 @@ impl NamespaceSwap {
         swap
     }
 
-    fn restore(&mut self) -> std::io::Result<()> {
+    pub(super) fn restore(&mut self) -> std::io::Result<()> {
         if self.restored {
             return Ok(());
         }

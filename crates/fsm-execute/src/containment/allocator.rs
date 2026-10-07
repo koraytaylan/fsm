@@ -10,6 +10,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 const GROUPS: &str = "/sys/fs/cgroup/system.slice";
 const MAX_ALLOCATIONS: u64 = 4096;
@@ -258,7 +259,16 @@ fn advance(directory: &Path, mut value: Value, next: u64) -> Result<(), String> 
 }
 
 pub(super) fn prepare(directory: &Path) -> Result<Value, String> {
+    prepare_with_contention_probe(directory, || {})
+}
+
+fn prepare_with_contention_probe(
+    directory: &Path,
+    mut contention: impl FnMut(),
+) -> Result<Value, String> {
+    let acquisition_deadline = Instant::now() + Duration::from_secs(2);
     protected_directory(directory)?;
+    let original = origin(directory)?;
     // A missing/delegated facility refuses before burning an allocation.
     protected_directory(Path::new(GROUPS))?;
     super::catalogue::read(directory)?;
@@ -278,8 +288,30 @@ pub(super) fn prepare(directory: &Path) -> Result<Value, String> {
     if !metadata.is_file() || metadata.uid() != 0 || metadata.mode() & 0o077 != 0 {
         return Err("authority lock is not protected".into());
     }
-    lock.try_lock().map_err(|_| "authority busy")?;
+    loop {
+        if Instant::now() >= acquisition_deadline {
+            return Err("authority busy".into());
+        }
+        match lock.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {
+                contention();
+                std::thread::sleep(
+                    Duration::from_millis(5)
+                        .min(acquisition_deadline.saturating_duration_since(Instant::now())),
+                );
+            }
+            Err(std::fs::TryLockError::Error(error)) => return Err(io(error)),
+        }
+    }
+    if Instant::now() >= acquisition_deadline {
+        return Err("authority busy".into());
+    }
+    protected_directory(directory)?;
     let origin = origin(directory)?;
+    if origin != original {
+        return Err("authority identity differs".into());
+    }
     let registration = read_value(&directory.join("store.json"), true)?;
     closed(&registration, &["format", "path", "identity"])?;
     let store_metadata =

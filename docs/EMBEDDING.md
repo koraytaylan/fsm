@@ -2581,6 +2581,16 @@ may omit simultaneous additional failures. These messages do not authorize
 retry, launch, closure or settlement and leave original claims, reservations,
 helpers, deadlines and public/wire/persistent formats unchanged.
 
+Native preparation MUST tolerate contention before allocation publication:
+only a protected authority lock's `WouldBlock` acquisition may be retried,
+within one two-second monotonic budget established at preparation entry.
+Preparation MUST revalidate the original authority identity after acquisition
+and before publishing an allocation intent or advancing its counter. Other
+lock errors and acquisition exhaustion MUST refuse without those mutations.
+No already-published preparation or execute action may be retried, no host or
+handler deadline is renewed, and no refusal proves native closure or releases
+uncertain ownership; public APIs and persistent formats are unchanged.
+
 A native transport worker MUST NOT finish solely because a later reap observes
 helper exit and both EOFs after its preceding response poll returned pending.
 It MUST retain that original transport and decode its response, or publish an
