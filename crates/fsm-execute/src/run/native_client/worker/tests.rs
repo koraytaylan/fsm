@@ -15,6 +15,8 @@ use std::{
     time::Instant,
 };
 
+mod startup;
+
 fn held_transport() -> (InlineRequest, UnixStream, UnixStream) {
     let (gate, input) = UnixStream::pair().unwrap();
     let (stream, response) = UnixStream::pair().unwrap();

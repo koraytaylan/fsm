@@ -20,6 +20,7 @@ mod execution;
 mod preparation;
 mod prepared_cleanup;
 mod shutdown;
+mod startup;
 
 pub use claimed::{NativeRun, NativeRunPhase, NativeRunProgress};
 pub use completion::NativeCompletion;
@@ -112,12 +113,22 @@ impl Reader {
 /// Observed transport retirement facts; none authenticate handler-tree closure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NativeHelperProgress {
+    /// A joined worker finished startup without creating a helper; no closure is implied.
+    pub not_started: bool,
     /// The owned helper returned an actual exit status to `try_wait`.
     pub reaped: bool,
     /// The helper output socket returned EOF.
     pub stdout_eof: bool,
     /// The helper diagnostic socket returned EOF.
     pub stderr_eof: bool,
+}
+
+impl NativeHelperProgress {
+    /// Whether the observed transport is empty or actually reaped with both EOFs.
+    /// This does not establish native domain closure or release a durable claim.
+    pub fn is_retired(self) -> bool {
+        self.not_started || (self.reaped && self.stdout_eof && self.stderr_eof)
+    }
 }
 
 /// One owned helper request; claim and closure verification belong to its host.
@@ -142,7 +153,7 @@ pub struct NativeRequest {
 }
 
 impl NativeRequest {
-    /// Start the fixed helper, preserving synchronous standalone construction.
+    /// Dispatch fixed-helper startup to the selected worker, or start synchronously standalone.
     pub fn start(
         namespace: &str,
         generation: u64,
@@ -151,11 +162,20 @@ impl NativeRequest {
     ) -> Result<Self, String> {
         let prepared = PreparedRequest::prepare(namespace, generation, request, timeout)?;
         let ticket = worker::reserve_current()?;
-        let inline = InlineRequest::start_prepared(prepared)?;
+        let startup = startup::Startup::new(prepared);
+        if let Some(ticket) = ticket {
+            let worker = worker::Worker::start_prepared(startup, std::sync::Arc::clone(&ticket))?;
+            return Ok(Self {
+                inline: None,
+                worker: Some(worker),
+                ticket: Some(ticket),
+            });
+        }
+        let inline = startup.start()?;
         Ok(Self {
             inline: Some(inline),
             worker: None,
-            ticket,
+            ticket: None,
         })
     }
 
@@ -214,7 +234,8 @@ impl NativeRequest {
         }
     }
 
-    /// Observe actual helper retirement; worker mode joins only a finished worker.
+    /// Observe transport retirement; worker mode joins only a finished worker.
+    /// Joined startup refusal retires an empty transport without child reap or EOF.
     pub fn reap(&mut self) -> Result<bool, String> {
         self.ensure_worker()?;
         match self.worker.as_mut() {
@@ -383,6 +404,7 @@ impl InlineRequest {
     /// Read the last observed cleanup facts without polling, I/O or claim release.
     fn progress(&self) -> NativeHelperProgress {
         NativeHelperProgress {
+            not_started: false,
             reaped: self.status.is_some(),
             stdout_eof: self.stdout.eof,
             stderr_eof: self.stderr.eof,

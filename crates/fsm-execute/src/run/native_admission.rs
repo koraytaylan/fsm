@@ -407,7 +407,7 @@ impl Phase {
             Self::Cleaning(_, cleanup) | Self::UncertainCleanup(_, cleanup) => cleanup.progress(),
             _ => return false,
         };
-        !progress.reaped || !progress.stdout_eof || !progress.stderr_eof
+        !progress.is_retired()
     }
 }
 

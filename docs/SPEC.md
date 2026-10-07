@@ -3344,21 +3344,33 @@ a retained preparation, bound entry or original outcome ready, stdio MUST
 schedule its next ordinary owner decision without waiting for the configured
 timer, while preserving application-command service between decision passes.
 
-The opt-in owned native driver's worker polling mode MUST retain the original
-transport request on its worker, perform its socket polling, reap and final
-transport drop there, and expose only bounded response/error and actual helper
-observations to the owner. A transport MUST NOT report retirement before its
-original worker is joined and its actual reap and both EOFs are observed.
+The opt-in owned native driver's worker polling mode MUST reserve capacity
+before dispatching immutable startup material and MUST perform protected helper
+validation, socket setup and helper spawn on the transport worker; the caller
+MUST NOT wait for startup. The original absolute deadline MUST cover queued
+startup and transport observation. Cancellation observed before startup MUST
+refuse startup; cancellation during startup MUST remain pending until the
+original worker observes the original returned helper. Already-running
+transferred helpers MUST retain their original process, streams and deadline,
+without a new helper startup, and MUST reserve before worker adoption.
+Socket polling, reap and final transport drop MUST run on that original worker.
+A started transport MUST NOT report retirement before its original worker is
+joined and its actual reap and both EOFs are observed. A joined worker that
+completed startup without creating a helper MUST report `not_started` separately
+from reap and EOF, MUST leave all three actual child/stream observations false,
+and MAY retire only that empty transport; it MUST NOT authorize native-domain
+cleanup, claim release or successful completion. Before worker join, absent
+helper creation MUST remain unobserved. NativeHelperProgress::is_retired MUST
+recognize only this joined startup refusal or all three actual started-helper
+observations; it supplies no native closure evidence.
 The pool MUST reserve one of 128 transport slots and a fixed 16 MiB transport
 charge before helper startup; the charge MUST remain until both owner handle
-and worker retire. Already-running transferred helpers MUST reserve before
-worker adoption and MUST retain their original process, streams and deadline,
-without a new helper startup. Parsed response storage MUST be preflighted at 2 MiB using
+and worker retire. Parsed response storage MUST be preflighted at 2 MiB using
 Value storage, String/array capacities and a conservative 4096 bytes per object
 entry. Refusal MUST retain uncertain native ownership and MUST NOT settle a
 different attempt. Synchronous standalone construction and polling remain
-unchanged. This mode does not yet move helper startup or receipt verification
-off the owner or establish durable-completion storage accounting.
+unchanged. Receipt verification and store-route discovery still execute on the
+owner; durable-completion storage accounting remains unfinished.
 
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is

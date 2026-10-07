@@ -55,13 +55,14 @@ impl NativeOwners {
     }
 
     pub(super) fn shutdown_inventory(&self) -> (Vec<u64>, usize, bool) {
-        let helpers_retired =
-            self.admissions.helpers_retired()
-                && self.owners.values().all(|owner| {
-                    owner.execution.progress().helper.is_none_or(|helper| {
-                        helper.reaped && helper.stdout_eof && helper.stderr_eof
-                    })
-                });
+        let helpers_retired = self.admissions.helpers_retired()
+            && self.owners.values().all(|owner| {
+                owner
+                    .execution
+                    .progress()
+                    .helper
+                    .is_none_or(|helper| helper.is_retired())
+            });
         (
             self.local_claims().map(Claim::run_id).collect(),
             self.admissions.len(),
@@ -82,7 +83,7 @@ impl NativeOwners {
                     .execution
                     .progress()
                     .helper
-                    .is_none_or(|helper| helper.reaped && helper.stdout_eof && helper.stderr_eof)
+                    .is_none_or(|helper| helper.is_retired())
         })
     }
 
@@ -199,12 +200,13 @@ impl NativeOwners {
         }
         // One owned recovery transport at a time, independent of owner count.
         // A failed request is never replaced by a bind/execute request.
-        let busy =
-            self.owners.values().any(|owner| {
-                owner.execution.progress().helper.is_some_and(|helper| {
-                    !helper.reaped || !helper.stdout_eof || !helper.stderr_eof
-                })
-            });
+        let busy = self.owners.values().any(|owner| {
+            owner
+                .execution
+                .progress()
+                .helper
+                .is_some_and(|helper| !helper.is_retired())
+        });
         if !busy {
             for owner in self.owners.values_mut().filter(|owner| !owner.requested) {
                 let (instance, effect) = owner.claim.effect();
@@ -521,7 +523,7 @@ impl NativeOwners {
             return Ok(false);
         }
         let helper = shutdown.progress();
-        if !helper.reaped || !helper.stdout_eof || !helper.stderr_eof {
+        if !helper.is_retired() {
             return Ok(false);
         }
         if !owner.execution.retire_interrupted(store)? {

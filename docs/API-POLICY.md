@@ -1544,10 +1544,17 @@ preparation, bound-entry and completion wake acceptance remains pending.
 OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
 selects it while standalone defaults remain synchronous. Original raw helper
 requests move to reserved worker polling for socket exchange, reap and final
-transport drop; responses require actual worker join plus helper reap and both
-EOFs. Each of 128 pool slots reserves 16 MiB before helper startup and retains
+transport drop; immutable new startup is also dispatched to that worker,
+including protected-helper checks, sockets and spawn, under the original
+absolute deadline. Started responses require actual worker join plus helper
+reap and both EOFs. Each of 128 pool slots reserves 16 MiB before dispatch and retains
 that charge until owner handle and worker retire, with a 2 MiB parsed-response
-storage preflight. Startup and receipt verification still run on the owner,
-and durable-completion storage and worker panic acceptance remain pending.
-This additive provisional API is inventoried; no wire or journal format,
+storage preflight. Joined startup refusal reports not_started separately from
+actual child reap/EOF; is_retired recognizes that empty transport without
+granting native closure or claim release. Owned startup failures now surface
+through polling, while standalone construction remains synchronous. The new
+NativeHelperProgress field changes downstream struct literals on this
+provisional API; the field and method are inventoried. Receipt verification
+and store-route discovery still run on the owner; durable-completion storage
+and worker panic acceptance remain pending. No wire or journal format,
 core semantics, dependency or MSRV changes are introduced.

@@ -86,6 +86,57 @@ pub(super) struct Worker {
 }
 
 impl Worker {
+    pub(super) fn start_prepared(
+        startup: super::startup::Startup,
+        ticket: Arc<Ticket>,
+    ) -> Result<Self, String> {
+        Self::start_prepared_after_retirement(startup, ticket, || {})
+    }
+
+    fn start_prepared_after_retirement(
+        startup: super::startup::Startup,
+        ticket: Arc<Ticket>,
+        after_retirement: impl FnOnce() + Send + 'static,
+    ) -> Result<Self, String> {
+        let shared = Arc::new(Shared::default());
+        let published = Arc::clone(&shared);
+        let thread = std::thread::Builder::new()
+            .name("fsm-native-transport".into())
+            .spawn(move || {
+                let _ticket = ticket;
+                let request = if published.cancelled.load(Ordering::Acquire) {
+                    Err(
+                        "native client cancelled before startup; ownership remains uncertain"
+                            .into(),
+                    )
+                } else if std::time::Instant::now() >= startup.deadline() {
+                    Err("native client deadline before startup; ownership remains uncertain".into())
+                } else {
+                    startup.start()
+                };
+                match request {
+                    Ok(request) => run(request, &published),
+                    Err(error) => {
+                        *published
+                            .response
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner()) = Some(Err(error));
+                        // No Child was returned by startup; actual reap/EOF bits
+                        // remain false, and this observation is withheld until join.
+                        published.progress.store(8, Ordering::Release);
+                    }
+                }
+                after_retirement();
+            })
+            .map_err(|_| "native transport worker unavailable; no helper started")?;
+        Ok(Self {
+            shared,
+            thread: Some(thread),
+            joined: false,
+            collected: false,
+        })
+    }
+
     pub(super) fn start(
         request: InlineRequest,
         ticket: Arc<Ticket>,
@@ -184,6 +235,7 @@ impl Worker {
     pub(super) fn progress(&self) -> NativeHelperProgress {
         let bits = self.shared.progress.load(Ordering::Acquire);
         NativeHelperProgress {
+            not_started: bits & 8 != 0 && self.joined,
             reaped: bits & 1 != 0 && self.joined,
             stdout_eof: bits & 2 != 0,
             stderr_eof: bits & 4 != 0,
@@ -193,7 +245,7 @@ impl Worker {
     pub(super) fn reap(&mut self) -> bool {
         self.join_finished();
         let progress = self.progress();
-        progress.reaped && progress.stdout_eof && progress.stderr_eof
+        progress.is_retired()
     }
 }
 

@@ -75,6 +75,8 @@ worker polling with reserved count/byte capacity and join-gated retirement;
 standalone defaults remain synchronous. Real held-child tests cover polling,
 cancellation, response storage and original worker retirement; stable/MSRV
 executor and stdio checks, all-target Clippy and four guard sensitivity cases
-pass at exact `80f1e5a` (see TRANSPORT-WORKER-REVIEW.md). Helper spawn, receipt verification, durable completion storage,
+pass at exact `80f1e5a` (see TRANSPORT-WORKER-REVIEW.md). New helper spawn is now dispatched on the original reserved transport worker
+with separate joined startup-refusal observations; its six new fixtures await
+runtime verification. Receipt verification, route discovery, durable completion storage,
 installed-handler responsiveness and lifecycle fault acceptance remain open;
 no prerequisite is released and merged_as remains empty.

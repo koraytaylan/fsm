@@ -307,3 +307,13 @@ TRANSPORT-WORKER-REVIEW.md; startup, receipt verification, durable-completion ac
 real process/MCP responsiveness and worker panic/failure cases are unfinished.
 Task 8901 remains in progress, no prerequisite is released, and completion
 remains 0/7; native helper fixtures do not imply installed-authority acceptance.
+
+### Worker helper startup candidate
+
+New owned transport construction now dispatches protected helper validation,
+socket setup and spawn to its reserved worker; absolute deadlines and pending
+cancellation follow the original startup. Joined startup refusal is separately
+observed and retires only an empty transport, with actual child/EOF facts false
+and original execution retained. Six startup/refusal fixtures are added;
+runtime checks are pending and receipt verification, route discovery and real
+installed-handler acceptance remain open, with 0/7 complete.

@@ -64,3 +64,23 @@ Terminal logs remain under the dedicated task cache with SHA-256:
 - `native-worker-integrated-check.log`: `4632bd78ffb97a5db8e445ef1524292ef9c07e385bc6ba555588f71567554507`
 
 - `native-worker-sensitivity-check.log`: `19547b55d5f97c80e39c0ac52065e011d0b52b4b441e343c9a5da5cc34cde2d7`
+
+## Worker startup candidate
+
+New owned requests now dispatch immutable startup material after reservation;
+protected-helper validation, sockets and spawn occur on that worker under the
+original absolute deadline. Cancellation during held startup is delivered to
+the actual helper returned by that original startup. Standalone startup remains
+synchronous. Joined startup refusal reports `not_started` with all actual
+reap/EOF bits false; `is_retired` retires only that empty transport. Admission,
+recovery and shutdown inventories use this predicate without granting claim
+release or native closure. The provisional field changes downstream struct
+literals and is inventoried with its public method.
+
+A private per-caller factory exercises public construction with held startup
+and an actual child; fixtures also cover empty startup refusal, unjoined
+startup refusal, expiry before startup, synchronous standalone refusal and
+retained original execution without a completion. They do not replace installed
+Root-authority process/MCP acceptance. Candidate runtime, Clippy and new guard
+sensitivity are pending; receipt verification, route discovery, completion
+storage accounting and worker failure/panic acceptance remain open.

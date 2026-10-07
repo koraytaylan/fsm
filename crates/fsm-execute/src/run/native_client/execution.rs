@@ -247,7 +247,7 @@ impl NativeExecution {
         if self
             .progress()
             .helper
-            .is_some_and(|helper| !helper.reaped || !helper.stdout_eof || !helper.stderr_eof)
+            .is_some_and(|helper| !helper.is_retired())
         {
             return Ok(false);
         }
@@ -354,6 +354,40 @@ mod tests {
         assert_eq!(progress.phase, NativeRunPhase::Uncertain);
         assert!(progress.retained);
         assert!(progress.helper.is_none());
+    }
+
+    #[test]
+    fn joined_startup_refusal_retains_original_execution_without_a_completion() {
+        use crate::run::native_client::{startup::FixtureFactory, worker};
+        use std::{sync::Arc, time::Instant};
+        let budget = Arc::new(worker::Budget::default());
+        let _scope = worker::Scope::enter(Some(&budget));
+        let _factory = FixtureFactory::install(|_| Err("fixture helper startup refused".into()));
+        // Literal original identity is not protected closure evidence.
+        let claim = original_owner();
+        let hash = format!("sha256:{}", "a".repeat(64));
+        let run = NativeRun::recover(&claim, &hash, Duration::from_secs(1)).unwrap();
+        let mut execution = NativeExecution::with_run(&claim, run);
+        let until = Instant::now() + Duration::from_secs(5);
+        let refusal = loop {
+            match execution.observe() {
+                Ok(false) => {
+                    assert!(Instant::now() < until);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Ok(true) => panic!("startup refusal fabricated a verified completion"),
+                Err(error) => break error,
+            }
+        };
+        assert_eq!(refusal.code, "exec/inflight_deferred");
+        assert!(execution.reap().unwrap());
+        let progress = execution.progress();
+        assert_eq!(progress.phase, NativeRunPhase::Uncertain);
+        assert!(progress.retained && execution.completion().is_none());
+        let helper = progress.helper.unwrap();
+        assert!(helper.not_started && helper.is_retired());
+        assert!(!helper.reaped && !helper.stdout_eof && !helper.stderr_eof);
+        assert_eq!(execution.claim, claim);
     }
 
     #[test]
