@@ -1,6 +1,7 @@
 //! Namespace-specific test service limits, retained with any failed fixture.
 use super::*;
 use std::os::unix::fs::OpenOptionsExt;
+use std::process::Command;
 
 const CHECK: &[u8] = br#"import json,os,sys
 from pathlib import Path
@@ -33,7 +34,7 @@ impl Limits {
             "fsm-containment-{}-.service.d",
             namespace.to_str().unwrap()
         ));
-        super::super::super::protected_directory(directory.parent().unwrap()).unwrap();
+        protected_directory(directory.parent().unwrap()).unwrap();
         fs::DirBuilder::new()
             .mode(0o755)
             .create(&directory)

@@ -9,6 +9,9 @@ use std::collections::BTreeMap;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::time::{Duration, Instant};
 
+#[path = "memory_limits_native_tests.rs"]
+mod memory_limits;
+
 #[path = "admission_native_tests.rs"]
 mod admission_cases;
 

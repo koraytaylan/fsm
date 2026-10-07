@@ -3,9 +3,6 @@ use super::*;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-#[path = "workflow_memory_limits.rs"]
-mod memory_limits;
-
 #[path = "workflow_failure_diagnostics.rs"]
 mod failure_diagnostics;
 
