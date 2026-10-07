@@ -4928,3 +4928,14 @@ execution. WORKFLOW-NATIVE-REVIEW.md records staging, private control homes,
 external resources, conservative teardown and evidence guards. Stable all-target
 Clippy, MSRV compilation, size and real helper controls pass; actual native
 workflow execution and later-source full gates remain pending, with no promotion.
+
+The first frozen native workflow run at 9aa7c63 failed the original legacy
+EffectAcked counter after reaching succeeded; native atomic acked settlements
+now receive explicit durable/matched-history accounting. A controlled owned
+dynamic-user experiment also reproduced removal of a newly created shm work
+file while a preprovisioned root-owned linked result persisted; fixture work
+publication now uses that backing inode only when the real handler executes.
+Protected recovery inventories and matched retained-artifact cleanup are
+recorded in WORKFLOW-NATIVE-REVIEW.md. Corrected stable/MSRV compilation,
+Clippy, size, producer and actual helper checks pass; actual native rerun and
+complete integration remain pending, with progress unchanged at 3/7.

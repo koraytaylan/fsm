@@ -46,3 +46,34 @@ a six-line size excess and then an ancestor-visibility compile refusal; the
 setup is now in its own module and the original root-only ownership assertions
 are unchanged. Actual registered production workflow execution remains pending;
 compilation and mocked evidence do not promote task 9401 or release its gate.
+
+## First native execution and fixture corrections
+
+Frozen 9aa7c63 terminated with native test exit 101 in 4.67 seconds: the first
+ordinary scenario reached its succeeded state but its legacy EffectAcked
+history counter read zero versus seven expected calls. SPEC settlement is an
+atomic ExecutionSettled/acked record, without a separate EffectAcked append;
+the manifest-backed test now counts only durable acked settlements through a
+read-only Store and cross-checks the MCP settlement-entry count, while ordinary
+legacy counting stays unchanged. Independent root readback also requires every
+settlement to be acked; attempted/interrupted dispositions never substitute.
+
+The retirement guard retained exact authority and staged bytes. Subsequent
+authoritative inspection found no authority namespace, production-profile
+cgroup or owned executable process, with all seven external calls and active
+phase; work was missing. An owned DynamicUser service with MemoryMax=64 MiB
+and MemorySwapMax=0 reproduced deletion of its newly owned shm file while a
+root-owned linked file survived, consistent with systemd's implied RemoveIPC
+policy ([upstream documentation](https://raw.githubusercontent.com/systemd/systemd/main/man/systemd.exec.xml)).
+The fixture now preprovisions a root-owned empty backing inode and the actual
+perform_work handler publishes its work link and writes the real full/partial
+result; work remains absent for rejected preflights, and containment policy
+is unchanged. Protected staging inventories now retain original resource/home
+identities for failed-run recovery. Matched cleanup verified staged helper/CLI
+digests, original authority device/inode/digest, no live owned executables and
+no production domains before removing only these test artifacts; this is owned
+fixture teardown, not native closure inferred from absence or a passed verdict.
+Failed evidence remains local-native-workflow-9aa7c63-stable. Stable all-target
+Clippy, MSRV compilation, source size, seven producer tests and the real helper
+argument control pass after correction (native-workflow-settlement-resource-
+final-check.log); a fresh frozen native rerun remains required.

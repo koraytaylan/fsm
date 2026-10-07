@@ -158,6 +158,13 @@ fn workflow_handler() {
         "suspend" => fs::write(&phase, "suspended").unwrap(),
         "perform_work" => {
             assert_eq!(fs::read_to_string(&phase).unwrap(), "suspended");
+            let template = directory.join(".work-template");
+            let shared = template.exists();
+            if shared {
+                // A real operation publishes preprovisioned external data;
+                // work stays absent until this handler actually executes.
+                fs::hard_link(template, directory.join("work")).unwrap();
+            }
             // A partial external result must not suppress compensating work.
             fs::write(
                 directory.join("work"),
@@ -165,7 +172,7 @@ fn workflow_handler() {
             )
             .unwrap();
             #[cfg(unix)]
-            {
+            if !shared {
                 use std::os::unix::fs::PermissionsExt;
                 fs::set_permissions(directory.join("work"), fs::Permissions::from_mode(0o644))
                     .unwrap();
@@ -539,10 +546,34 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
     );
     assert_eq!(history.get("chain_verified"), Some(&Value::Bool(true)));
     let entries = history.get("entries").unwrap().as_arr().unwrap();
-    let acknowledgements = entries
-        .iter()
-        .filter(|entry| entry.get("kind").and_then(Value::as_str) == Some("EffectAcked"))
-        .count();
+    let acknowledgements = if directory.1.is_some() {
+        // Native settlement acknowledges atomically without an EffectAcked
+        // append; attempted/interrupted dispositions never count as an ack.
+        let store = fsm_store::store::Store::open_read_only(&directory.store()).unwrap();
+        let acked = store
+            .records
+            .iter()
+            .filter(|record| {
+                record.kind == fsm_core::record::RecordKind::ExecutionSettled
+                    && record.body.get("disposition").and_then(Value::as_str) == Some("acked")
+            })
+            .count();
+        assert_eq!(
+            entries
+                .iter()
+                .filter(
+                    |entry| entry.get("kind").and_then(Value::as_str) == Some("ExecutionSettled")
+                )
+                .count(),
+            acked
+        );
+        acked
+    } else {
+        entries
+            .iter()
+            .filter(|entry| entry.get("kind").and_then(Value::as_str) == Some("EffectAcked"))
+            .count()
+    };
     assert_eq!(acknowledgements, expected_calls.len());
     assert_eq!(
         text(&client.call("journal_verify", object([])), "health"),

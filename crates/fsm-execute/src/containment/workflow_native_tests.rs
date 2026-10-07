@@ -144,6 +144,16 @@ fn verify_native_runs(fixture: &Fixture, failure: &str) {
     for record in store
         .records
         .iter()
+        .filter(|record| record.kind == RecordKind::ExecutionSettled)
+    {
+        assert_eq!(
+            record.body.get("disposition").and_then(Value::as_str),
+            Some("acked")
+        );
+    }
+    for record in store
+        .records
+        .iter()
         .filter(|record| record.kind == RecordKind::ExecutionClaimed)
     {
         let mut material = record.body.as_obj().unwrap().clone();
@@ -235,7 +245,11 @@ pub(super) fn run() {
             // Distinct DynamicUser allocations append the same external log;
             // shared fixture files are writable, while executable/catalogue and
             // operator store remain protected by their separate ownership.
-            for (name, bytes) in [("phase", b"active".as_slice()), ("calls", b"".as_slice())] {
+            for (name, bytes) in [
+                ("phase", b"active".as_slice()),
+                ("calls", b"".as_slice()),
+                (".work-template", b"".as_slice()),
+            ] {
                 let path = resource.join(name);
                 fs::write(&path, bytes).unwrap();
                 fs::set_permissions(path, fs::Permissions::from_mode(0o666)).unwrap();
@@ -255,6 +269,8 @@ pub(super) fn run() {
             );
             let fixture = Fixture::new_for_operator(table(&helper, &resource, failure));
             brokers.push(workflow_broker(&fixture.directory, &fixture.store));
+            let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
+            let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
             manifest.push(object([
                 (
                     "directory",
@@ -264,15 +280,20 @@ pub(super) fn run() {
                 ("resource", Value::Str(resource.to_str().unwrap().into())),
                 ("cli", Value::Str(cli.to_str().unwrap().into())),
                 ("home", Value::Str(home.to_str().unwrap().into())),
+                ("resource_identity", resource_identity.clone()),
+                ("home_identity", home_identity.clone()),
             ]));
             fixtures.push(fixture);
-            let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
-            let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
             resources.push((resource, home, resource_identity, home_identity));
         }
         let manifest_path = fixtures[0].directory.join("fixture-workflow.json");
         fs::write(&manifest_path, canon_bytes(&Value::Arr(manifest))).unwrap();
         fs::set_permissions(&manifest_path, fs::Permissions::from_mode(0o444)).unwrap();
+        // Protected recovery inventory survives a failed scenario even when
+        // the normal matched namespace teardown has already completed.
+        let inventory = staging.join(format!("{case}.inventory.json"));
+        fs::write(&inventory, fs::read(&manifest_path).unwrap()).unwrap();
+        fs::set_permissions(inventory, fs::Permissions::from_mode(0o600)).unwrap();
         let log_path = staging.join(format!("{case}.log"));
         let log = fs::OpenOptions::new()
             .write(true)
