@@ -18,6 +18,8 @@ Frozen 26c68220 passes all six portable gates and both independently verified 82
 
 Frozen 89cf8f0c..e501d571 passes genuine native acknowledged-event recovery through a reconstructed paired driver with removed and changed handler tables on stable/MSRV, plus focused lifecycle tests, all-target executor Clippy, formatting and size checks; disabling handoff adoption fails the new recovery assertion and restoration passes. The frozen review has task-cache digest `f11fef60205f63f2791ac541c68926c543b94b660515f4769b86c2b1e7ff3d84`, including the corrected uncertainty-observer race and retained failed evidence. This proves original-event delivery once without another allocation after writer reopen, not executor-kill cutpoints or the full host crash matrix; 9401 remains in progress.
 
+Frozen e3147b2d..0417f9e6 passes the genuine standalone-kill-after-launch path and warm completion reconciliation after another host delivers the original event on stable/MSRV, with focused tests, all-target CLI/executor Clippy, formatting and size checks; neutralizing accepted-event retirement fails the named native assertion and restoration passes. Review digest: `478b2ceee9925d014b51c7295c3ed56b95685fb4a79f0c4465515eaccb38b8ce`. The broader standalone/embedded workflow still fails when native execution is refused as authority busy after a claim, and full CI and the remaining crash cutpoints are unverified; 9401 remains in progress.
+
 The retained helper is root-owned in the host namespace with its expected digest and 0711 permissions; the restricted sandbox maps host root to nobody. No ownership repair is required, and failed-run artifacts remain preserved.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
