@@ -43,6 +43,12 @@ jobs:
       RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
     steps:
       - uses: actions/checkout@v7
+      - name: Prepare task cache
+        shell: bash
+        run: |
+          task_cache="$HOME/.cache/fsm-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$task_cache"
+          printf 'TMPDIR=%s\n' "$task_cache" >> "$GITHUB_ENV"
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal --component rustfmt,clippy
       # Caches built dependencies keyed by lockfile and toolchain; the shared
       # key lets the release workflow restore what this job saves on develop.
@@ -136,6 +142,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Prepare task cache
+        shell: bash
+        run: |
+          task_cache="$HOME/.cache/fsm-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$task_cache"
+          printf 'TMPDIR=%s\n' "$task_cache" >> "$GITHUB_ENV"
       - run: rustup toolchain install 1.89 --profile minimal
       - run: cargo test -p fsm-cli --test zero_deps
       - name: Embed acceptance depends on fsm-core alone
