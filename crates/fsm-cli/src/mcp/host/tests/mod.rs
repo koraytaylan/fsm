@@ -3,6 +3,8 @@
 mod interaction;
 mod protocol;
 #[cfg(target_os = "linux")]
+mod scheduling;
+#[cfg(target_os = "linux")]
 mod stdio;
 #[cfg(target_os = "linux")]
 mod stdio_interaction;

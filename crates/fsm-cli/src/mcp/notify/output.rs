@@ -6,9 +6,30 @@ use std::sync::{Arc, Condvar, Mutex};
 
 const MAX_FRAMES: usize = 256;
 const MAX_ALLOCATION_BYTES: usize = 8 * 1024 * 1024;
+const HOSTED_MAX_FRAMES: usize = 64;
+const HOSTED_MAX_ALLOCATION_BYTES: usize = 32 * 1024 * 1024;
+
+#[cfg(test)]
+mod hosted_tests;
+
+#[derive(Clone, Copy)]
+struct Limits {
+    frames: usize,
+    bytes: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            frames: MAX_FRAMES,
+            bytes: MAX_ALLOCATION_BYTES,
+        }
+    }
+}
 
 #[derive(Default)]
 struct State {
+    limits: Limits,
     frames: VecDeque<Vec<u8>>,
     charged_frames: usize,
     charged_bytes: usize,
@@ -21,8 +42,28 @@ struct State {
 pub struct ProtocolOutput(Arc<(Mutex<State>, Condvar)>);
 
 impl ProtocolOutput {
-    pub(crate) fn start(mut writer: impl Write + Send + 'static) -> io::Result<Self> {
-        let shared = Arc::new((Mutex::new(State::default()), Condvar::new()));
+    pub(crate) fn start(writer: impl Write + Send + 'static) -> io::Result<Self> {
+        Self::start_with(writer, Limits::default())
+    }
+
+    pub(super) fn start_hosted(writer: impl Write + Send + 'static) -> io::Result<Self> {
+        Self::start_with(
+            writer,
+            Limits {
+                frames: HOSTED_MAX_FRAMES,
+                bytes: HOSTED_MAX_ALLOCATION_BYTES,
+            },
+        )
+    }
+
+    fn start_with(mut writer: impl Write + Send + 'static, limits: Limits) -> io::Result<Self> {
+        let shared = Arc::new((
+            Mutex::new(State {
+                limits,
+                ..State::default()
+            }),
+            Condvar::new(),
+        ));
         let worker = shared.clone();
         std::thread::Builder::new()
             .name("fsm-protocol-output".into())
@@ -83,8 +124,8 @@ impl ProtocolOutput {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, "output closed"));
         }
         let charged = state.charged_bytes.checked_add(frame.capacity());
-        if state.charged_frames == MAX_FRAMES
-            || charged.is_none_or(|bytes| bytes > MAX_ALLOCATION_BYTES)
+        if state.charged_frames == state.limits.frames
+            || charged.is_none_or(|bytes| bytes > state.limits.bytes)
         {
             return Err(io::Error::new(
                 io::ErrorKind::WouldBlock,
@@ -105,6 +146,15 @@ impl ProtocolOutput {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .broken
+    }
+
+    // Hosted overflow is a session failure, observable by idle input/lifecycle controls.
+    pub(super) fn refuse_hosted(&self) {
+        let (lock, wake) = &*self.0;
+        let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
+        state.closed = true;
+        state.broken = true;
+        wake.notify_all();
     }
 
     /// Close admission without waiting for a blocked writer.

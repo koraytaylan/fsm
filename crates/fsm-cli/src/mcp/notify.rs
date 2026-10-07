@@ -8,6 +8,7 @@
 
 #[cfg(target_os = "linux")]
 pub(crate) mod diagnostic_output;
+mod encoded;
 mod output;
 
 pub use output::ProtocolOutput as OutputControl;
@@ -16,6 +17,7 @@ pub use output::ProtocolOutput as OutputControl;
 enum OutputMode {
     Direct(Arc<Mutex<Box<dyn Write + Send>>>),
     Queued(OutputControl),
+    Hosted(OutputControl),
 }
 
 use std::io::Write;
@@ -69,6 +71,21 @@ impl Notifier {
         }
     }
 
+    /// Private hosted budget: 64 frames / 32 MiB retained, 16 MiB encoded per frame.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) fn hosted_queued(
+        out: Box<dyn Write + Send>,
+    ) -> std::io::Result<(Self, OutputControl)> {
+        let control = OutputControl::start_hosted(out)?;
+        Ok((
+            Self {
+                out: OutputMode::Hosted(control.clone()),
+                broken: Arc::new(Mutex::new(false)),
+            },
+            control,
+        ))
+    }
+
     /// Emit one complete message: synchronous write/flush or bounded queue admission.
     ///
     /// The lock scope **is** the correctness argument. A background thread
@@ -77,25 +94,32 @@ impl Notifier {
     /// the flush — would let the other writer's line land inside this one,
     /// and a JSON-RPC client that reads a spliced line has no way to recover.
     pub fn send(&self, message: &Value) -> std::io::Result<()> {
-        let bytes = canon_bytes(message);
         // A serialized message occupies exactly one line: the canonical
         // encoder escapes any newline inside a string, so a raw one here
         // would be a bug in the encoder rather than in the caller.
-        debug_assert!(!bytes.contains(&b'\n'));
         // A poisoned lock means some other thread panicked mid-write, which
         // the panic hook already reports. Taking the stream anyway keeps a
         // server whose protocol state is otherwise fine alive.
         let result = match &self.out {
             OutputMode::Direct(out) => {
+                let bytes = canon_bytes(message);
+                debug_assert!(!bytes.contains(&b'\n'));
                 let mut out = out.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 out.write_all(&bytes)
                     .and_then(|()| out.write_all(b"\n"))
                     .and_then(|()| out.flush())
             }
             OutputMode::Queued(out) => {
-                let mut frame = bytes;
+                let mut frame = canon_bytes(message);
                 frame.push(b'\n');
                 out.enqueue(frame)
+            }
+            OutputMode::Hosted(out) => {
+                let result = encoded::frame(message).and_then(|frame| out.enqueue(frame));
+                if result.is_err() {
+                    out.refuse_hosted();
+                }
+                result
             }
         };
         if result.is_err() {
@@ -122,7 +146,8 @@ impl Notifier {
             .broken
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        failed || matches!(&self.out, OutputMode::Queued(output) if output.is_broken())
+        failed
+            || matches!(&self.out, OutputMode::Queued(output) | OutputMode::Hosted(output) if output.is_broken())
     }
 }
 

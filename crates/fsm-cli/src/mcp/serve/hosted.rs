@@ -75,7 +75,7 @@ pub(in crate::mcp) fn serve<C: Clock + Send + 'static, R: BufRead + 'static>(
     let control = driver.control();
     let diagnostics = DiagnosticOutput::start(operator_output)?;
     let mut adapter_diagnostics = diagnostics.fork();
-    let (notifier, queued) = Notifier::queued(Box::new(output))?;
+    let (notifier, queued) = Notifier::hosted_queued(Box::new(output))?;
     let (owner, handle) = NativeOwner::new(
         driver,
         clock,

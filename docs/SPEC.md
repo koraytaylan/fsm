@@ -3162,7 +3162,9 @@ noninterruptible and an already-created durable workflow is not cancelled.
 The staged private native host MUST drive native decisions without requiring
 a client command. Its wait deadlines MUST use a monotonic clock and MUST NOT
 supply journal timestamps; each decision pass samples the injected logical
-clock. Service a native pass after at most eight admitted commands or the
+clock exactly once and supplies that fixed timestamp to retry/deadline decisions
+and every journal operation in the pass. Shutdown observation similarly uses
+one sampled timestamp per observation pass. Service a native pass after at most eight admitted commands or the
 configured finite poll interval. Independent lifecycle controls MUST be observed
 within 50 ms of an idle wait regardless of that interval. A host stop MUST close
 native admission through the original control before rejecting queued commands.
@@ -3251,3 +3253,16 @@ existing req/cancelled tool outcome and cannot cancel an already committed
 workflow. EOF or an unanswered-client timeout MUST release the continuation
 reservation without changing durable workflow state. Production selection,
 full progress/egress integration and versioned discovery remain outstanding.
+
+The private hosted stdio output adapter MUST cap one complete canonical frame,
+including its trailing LF, at 16 MiB before allocating encoded bytes. Its
+preflight MUST traverse borrowed values with checked size arithmetic and a
+maximum nesting depth of 256, including protocol wrappers, then allocate only
+the accepted complete-frame size and use the ordinary canonical encoder.
+This is an output bound, not a claim that construction of the response Value
+is bounded by encoded size. Public borrowed/direct output remains unchanged.
+Hosted output MUST retain at most 64 frames and 32 MiB of frame allocation
+capacity, including any blocked in-flight frame. An encoded-frame or queue
+refusal MUST close hosted output admission and expose failure to independent
+input/lifecycle observation; successful enqueue MUST NOT imply delivery.
+Already retained frames stay charged until the actual writer retires them.

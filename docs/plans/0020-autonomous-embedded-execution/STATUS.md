@@ -182,3 +182,37 @@ The corrected private question path passes all 38 host cases and CLI Clippy on
 stable and MSRV, plus ten affected compatibility suites on both; four guard
 neutralizations fail and restore successfully, as recorded in
 HOST-OWNERSHIP-REVIEW.md, with production activation still pending.
+
+### One logical sample per native pass — implementation pending verification
+
+The native owner now supplies a fixed sampled clock to every operation within
+a decision pass and within each shutdown-observation pass, rather than letting
+journal operations resample the underlying clock. A new actual native-driver
+case advances two due instances in one pass and pins one sample and identical
+durable timestamps, with original-owner retirement before assertions. Focused
+verification is queued in session 36963 behind unrelated Cargo work under the
+existing verified 1 GiB/zero-swap serial scope; no pass is claimed yet.
+The stdio path remains the integration priority and completion remains 0/7.
+
+### Hosted output and decision-clock integration — pending verification
+
+The coordinator extends the serial task-8901 footprint to the existing output
+queue and new bounded encoding module. Private stdio now selects a distinct
+64-frame / 32 MiB retained queue and preflights the 16 MiB encoded-frame limit
+without allocating a serialized duplicate; any refusal closes output admission
+and is visible to idle input/lifecycle checks. Legacy queued/direct helpers
+retain their limits and behavior. New cases reach the actual hosted notifier
+and include blocked in-flight allocation, exact count/byte acceptance, plus-one
+refusals, canonical escapes and bounded recursion. The native decision-clock
+case checks two durable deadline records under one sample.
+
+Session 36963 was retired at its verified idle waiter with exit 130, before any
+Cargo stage; no result is claimed for that attempt. Combined CLI-library and
+all-target Clippy checks on stable/MSRV are queued in session 28645, with
+Cargo-idle waits and memory/swap threshold and actual 1 GiB/zero-swap checks
+immediately before each stage. Code and acceptance remain provisional until
+that job and the next production-activation milestone are verified. Progress
+forwarding, long diagnostics, response-before-notification/commit ordering,
+production selection/versioned discovery, HTTP, growth sensitivity and native
+platform/installed-handler acceptance remain open; no task completion or
+dependency release follows from the implementation checkpoint.

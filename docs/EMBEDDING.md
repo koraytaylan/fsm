@@ -2704,3 +2704,19 @@ This advances the private stdio path without selecting a production backend or
 changing public signatures, error codes, wire versions, journal formats, hash
 domains, dependencies or MSRV; progress forwarding, complete egress accounting,
 versioned discovery and installed-handler acceptance remain pending.
+
+The private native owner now samples its injected logical clock once per
+decision or shutdown-observation pass and uses a fixed clock for all journal
+operations in that pass. Monotonic waits remain independent of journal time.
+This aligns the staged autonomous scheduling contract without changing the
+public explicit-tick APIs, persistent format, hash domain or production routing;
+changed-source verification and the broader activation milestone remain pending.
+
+Private hosted stdio output now preflights canonical frame size on borrowed
+values before allocating encoded bytes, caps the complete frame at 16 MiB,
+and retains at most 64 frames / 32 MiB including blocked in-flight allocations.
+Refusal closes admission and exposes failure to idle input/lifecycle controls;
+enqueue still does not prove delivery. Legacy direct and public queued helpers
+retain their behavior. Response Value construction, long diagnostics, progress
+forwarding, response/notification ordering and production activation remain
+separate integration obligations; no public wire/API/format version changes.

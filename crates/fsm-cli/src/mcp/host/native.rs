@@ -12,7 +12,10 @@ use std::{
 
 use fsm_execute::service::{ExecutorPhase, OwnedNativeExecutor, ShutdownMode, ShutdownReport};
 
-use crate::{clock::Clock, mcp::notify::diagnostic_output::DiagnosticOutput};
+use crate::{
+    clock::{Clock, FixedClock},
+    mcp::notify::diagnostic_output::DiagnosticOutput,
+};
 
 use super::{
     Handle, apply_command,
@@ -93,8 +96,7 @@ impl<C: Clock> NativeOwner<C> {
                 break;
             }
             if commands == COMMAND_BATCH || Instant::now() >= next_pass {
-                let now_ms = self.clock.now_ms();
-                let lines = self.driver.tick(&mut self.clock, now_ms);
+                let lines = self.decision_pass();
                 if let Err(error) = publish(&mut self.diagnostics, lines) {
                     failure = Some(error);
                     break;
@@ -129,7 +131,7 @@ impl<C: Clock> NativeOwner<C> {
             .expect("validated native host shutdown timeout");
         let shutdown = loop {
             let now_ms = self.clock.now_ms();
-            let lines = self.driver.poll(&mut self.clock, now_ms);
+            let lines = self.driver.poll(&mut FixedClock::new(now_ms, 0), now_ms);
             if let Err(error) = publish(&mut self.diagnostics, lines) {
                 failure.get_or_insert(error);
             }
@@ -151,6 +153,12 @@ impl<C: Clock> NativeOwner<C> {
             diagnostics: self.diagnostics,
             failure,
         }
+    }
+
+    /// SPEC: one logical sample supplies every operation in this decision pass.
+    pub(super) fn decision_pass(&mut self) -> Vec<String> {
+        let now_ms = self.clock.now_ms();
+        self.driver.tick(&mut FixedClock::new(now_ms, 0), now_ms)
     }
 }
 

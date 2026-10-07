@@ -13,6 +13,9 @@ touches:
   - crates/fsm-cli/src/mcp/tools/elicitation.rs
   - crates/fsm-cli/src/mcp/elicit.rs
   - crates/fsm-cli/src/mcp/notify.rs
+  - crates/fsm-cli/src/mcp/notify/output.rs
+  - crates/fsm-cli/src/mcp/notify/output/
+  - crates/fsm-cli/src/mcp/notify/encoded.rs
   - crates/fsm-cli/src/mcp/methods.rs
   - crates/fsm-cli/src/mcp/methods/
   - crates/fsm-cli/src/mcp/serve.rs
