@@ -158,3 +158,16 @@ This renews Linux stable host acceptance for the committed mailbox changes;
 it does not replace native platform CI, the official authority matrix or the
 outstanding HTTP ownership and autonomous execution acceptance inventories.
 Task 9401 remains in progress and plans 20–23 remain incomplete.
+
+### Crate-private elicitation boundary — 2026-10-07
+
+Moved the existing preparation and settlement functions into
+`mcp/tools/elicitation.rs`, accessible to a future crate-private host, with
+owned prepared state and a consuming question transfer that retains no duplicate
+question value. Existing dispatch still performs read-only/schema/capability
+checks before preparation; settlement still uses ordinary event sending and the
+original idempotency key. This refactor does not release the current HTTP Store
+lock or implement host scheduling. No public API, journal bytes, or advertised
+capability changes. Stable CLI all-target Clippy and all nine schema plus nine
+tool elicitation tests passed in terminal session 54486 under asserted 1 GiB
+RAM and zero swap; the full changed-source host gate remains pending.

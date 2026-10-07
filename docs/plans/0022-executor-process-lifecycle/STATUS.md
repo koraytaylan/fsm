@@ -5036,3 +5036,11 @@ settlement assertions and exact physical-store checks; sessions 88622 and
 passes. WORKFLOW-NATIVE-REVIEW.md records both retained evidence sets and scope.
 Both reports keep gate_released=false; remaining ownership, shutdown, recovery,
 full host/CI and cross-plan requirements stay incomplete, with no task promotion.
+
+### Host-accessible elicitation preparation — 2026-10-07
+
+The existing owned preparation/settlement boundary now lives in a crate-private
+tools module so host integration can transfer the question without retaining a
+Store borrow. Stable focused checks passed (session 54486); the full host gate
+remains pending. HTTP ownership, streaming and autonomous scheduling remain
+unimplemented, task 9401 stays in progress, and plan completion stays 3/7.
