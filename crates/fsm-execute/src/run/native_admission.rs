@@ -38,6 +38,7 @@ struct Pending {
 #[derive(Default)]
 pub(super) struct NativeAdmissions {
     pending: BTreeMap<String, Pending>,
+    cleanup_diagnostic: Option<String>,
 }
 
 pub(super) struct AdmissionRequest {
@@ -174,7 +175,11 @@ impl NativeAdmissions {
                 Phase::Cleaning(domain, mut cleanup) => match cleanup.poll() {
                     Ok(true) => Phase::Closed,
                     Ok(false) => Phase::Cleaning(domain, cleanup),
-                    Err(_) => Phase::UncertainCleanup(domain, cleanup),
+                    Err(error) => {
+                        self.cleanup_diagnostic
+                            .get_or_insert_with(|| cleanup_diagnostic(&error));
+                        Phase::UncertainCleanup(domain, cleanup)
+                    }
                 },
                 Phase::UncertainPreparation(mut preparation) => {
                     let _ = preparation.reap();
@@ -187,6 +192,10 @@ impl NativeAdmissions {
                 other => other,
             };
         }
+    }
+
+    pub(super) fn take_cleanup_diagnostic(&mut self) -> Option<String> {
+        self.cleanup_diagnostic.take()
     }
 
     pub(super) fn local_publications(&self, snapshot: &Store) -> Vec<Claim> {
@@ -392,6 +401,22 @@ impl Phase {
     }
 }
 
+fn cleanup_diagnostic(error: &str) -> String {
+    let mut line = String::from("native-prepared-cleanup-uncertain ");
+    for character in error.chars() {
+        let character = if character.is_control() {
+            ' '
+        } else {
+            character
+        };
+        if line.len() + character.len_utf8() > 1024 {
+            break;
+        }
+        line.push(character);
+    }
+    line
+}
+
 fn eligible(store: &Store, effect: &PendingEffect) -> bool {
     store.state.execution.admission() == Admission::Enabled
         && store
@@ -477,8 +502,28 @@ mod tests {
         };
         let admissions = NativeAdmissions {
             pending: BTreeMap::from([(effect.effect_id.clone(), pending)]),
+            cleanup_diagnostic: None,
         };
         (admissions, scheduler, effect)
+    }
+
+    #[test]
+    fn cleanup_diagnostic_is_single_line_byte_bounded_and_consumed_once() {
+        let prefix = cleanup_diagnostic("");
+        let boundary = "a".repeat(1024 - prefix.len());
+        assert_eq!(cleanup_diagnostic(&boundary).len(), 1024);
+        assert_eq!(
+            cleanup_diagnostic(&(boundary.clone() + "b")),
+            prefix.clone() + &boundary
+        );
+        assert_eq!(cleanup_diagnostic(&(boundary + "é")).len(), 1024);
+        assert_eq!(cleanup_diagnostic("a\n\r\0b"), prefix + "a   b");
+        let mut admissions = NativeAdmissions {
+            cleanup_diagnostic: Some(cleanup_diagnostic("refused")),
+            ..NativeAdmissions::default()
+        };
+        assert!(admissions.take_cleanup_diagnostic().is_some());
+        assert!(admissions.take_cleanup_diagnostic().is_none());
     }
 
     #[test]

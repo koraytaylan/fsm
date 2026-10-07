@@ -554,3 +554,29 @@ local-native-workflow-82bbde4-stable/workflow.json and workflow.log and protecte
 staging. Full changed-source host gate, native MSRV, memory-guard sensitivity,
 complete race and remaining ownership/crash/platform proof are still required;
 9401 remains in progress and plan 0022 remains 3/7.
+
+
+## Bounded original cleanup failure logging
+
+The retained uncertain-cleanup transition previously discarded its actual
+transport/refusal string. Native admissions now retain at most one diagnostic
+line when that transition occurs and drain it once through both owned and
+paired lifecycle polling, without journal/native I/O in the getter, additional
+writer acquisition, a changed cleanup deadline, or release of any reservation.
+The line is capped at 1024 UTF-8 bytes including its fixed
+native-prepared-cleanup-uncertain prefix, normalizes controls to spaces and
+omits additional simultaneous failures rather than growing a queue. It carries
+transport/refusal diagnostics, never handler output or closure authorization.
+The four capability documents move with this additive logging behavior; public
+Rust inventory, control wire versions and persistent formats are unchanged.
+
+Terminal session 32923 passes stable/MSRV executor/CLI all-target Clippy,
+formatting/file-size checks and seven admission/control tests on each toolchain;
+native-cleanup-diagnostic-check.log records the asserted one-GiB/zero-swap scope.
+The new control covers exact 1024-byte and limit-plus-one inputs, UTF-8 boundary,
+control normalization and one-time draining. This is helper/accounting proof;
+actual driver failure emission and production-facing budget sensitivity still
+require the provisioned control, and no race acceptance is inferred.
+The original failed 82bbde4 namespace/stage and matched memory configuration
+remain retained pending archive/teardown before that run; task 9401 and plan
+0022 completion remain unchanged.

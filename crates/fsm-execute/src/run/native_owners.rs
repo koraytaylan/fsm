@@ -44,6 +44,9 @@ pub(super) struct NativeOwners {
 }
 
 impl NativeOwners {
+    pub(super) fn take_cleanup_diagnostic(&mut self) -> Option<String> {
+        self.admissions.take_cleanup_diagnostic()
+    }
     pub(super) fn preparation_inventory(&self) -> [usize; 10] {
         self.admissions.phase_counts()
     }

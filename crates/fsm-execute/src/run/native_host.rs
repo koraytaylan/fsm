@@ -6,6 +6,10 @@ use fsm_store::{clock::Clock, store::Store};
 
 impl Runner {
     #[cfg(target_os = "linux")]
+    pub(crate) fn take_native_cleanup_diagnostic(&mut self) -> Option<String> {
+        self.native.take_cleanup_diagnostic()
+    }
+    #[cfg(target_os = "linux")]
     pub(crate) fn native_preparation_inventory(&self) -> [usize; 10] {
         self.native.preparation_inventory()
     }

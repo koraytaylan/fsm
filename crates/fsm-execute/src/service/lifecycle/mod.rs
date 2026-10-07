@@ -115,6 +115,7 @@ impl OwnedNativeExecutor {
         );
         let complete = observed.is_ok();
         let mut lines = observed.unwrap_or_else(|error| vec![super::error_line(&error)]);
+        lines.extend(self.runner.take_native_cleanup_diagnostic());
         if self.control.requested() {
             // These are this runner's client helpers, never foreign domains.
             self.runner.cancel_foreign_native_helpers();

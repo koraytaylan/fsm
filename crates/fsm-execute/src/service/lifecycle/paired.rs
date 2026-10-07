@@ -134,6 +134,7 @@ impl PairedNativeExecutor {
         }
         let mut lines = Vec::new();
         self.runner.finished_effects();
+        lines.extend(self.runner.take_native_cleanup_diagnostic());
         self.runner.release_native_preparations(&mut self.scheduler);
         let mut complete = self.refresh(now_ms, &mut lines);
         if self.control.requested() {

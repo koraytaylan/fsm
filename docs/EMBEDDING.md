@@ -2546,3 +2546,14 @@ not grant cleanup, settlement or closure permission. Legacy observation /1
 and terminal stop reports keep their original twelve-field schema unchanged.
 local_control::observe now requests /2; this additive health API/protocol version
 changes no persisted format, hash domain, dependency or MSRV.
+
+
+Native prepared-cleanup failure diagnostics are best-effort lifecycle log lines
+beginning `native-prepared-cleanup-uncertain`, bounded to 1024 UTF-8 bytes with
+control characters replaced by spaces. A runner retains at most one pending
+line and drains it once through owned or paired lifecycle polling; additional
+simultaneous failures may be omitted. It reports the cleanup transport/refusal
+message, not handler output or native closure evidence, and never releases an
+uncertain reservation, changes shutdown eligibility or renews a deadline.
+This additive diagnostic leaves the provisional public Rust surface, private
+control versions, persistent journal/hash formats, dependencies and MSRV intact.
