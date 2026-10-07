@@ -31,6 +31,9 @@ and no full native pass is claimed. Read-only checks verify twenty actual
 one-GiB/zero-swap receipts and clear original inventories. The multi-fixture
 harness bound is now 90 seconds and failed-case retention controls plus guard
 sensitivity pass; original native deadlines and task statuses are unchanged.
+The isolated stable enrollment rerun now passes at b3f316c in 33.14 seconds,
+exceeding the old outer allowance, while retaining the original installed
+helper unchanged; the complete authority/MSRV/native matrix remains pending.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

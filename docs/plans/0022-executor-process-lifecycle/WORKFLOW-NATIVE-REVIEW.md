@@ -1221,3 +1221,20 @@ restoration and a healthy rerun. Sensitivity log SHA-256 is
 acd974899bd530cb23dad5ef59e18da63b5c7d1c5722dd724a9b0be52e4b33c0;
 format/file-size/diff checks pass. Actual enrollment/full authority reruns,
 other feasibility service limits and renewed full host acceptance remain open.
+
+## Enrollment rerun with original helper retained
+
+Terminal session 32347 exits zero at clean frozen
+b3f316cf4bbf8f26ae33b946b3a755da076ccae3: actual enrolled_gate_authorization
+passes in 33.14367136405781 seconds within the revised 90-second outer bound.
+This measured duration exceeds the previous 30-second harness allowance;
+native run/stop assertions and deadlines remain unchanged. Exact fixture
+SHA-256 is c573d9f39eafe56d5f2f3403f6ec1cdc9d2dfc0c7edd6bbbd3165dcbc7c790a5.
+Complete log SHA-256 is
+765ef66f1c4737ba7270d7b78a1b809771cead1f47ab55177deb32ea645b8d25;
+report/log remain under local-retained-enrollment-stable in the task cache.
+The controller asserts one GiB/zero swap, source remains clean and original
+authority state is clear afterward. Original helper device/inode/digest is
+verified before and after, and it remains installed: no installation,
+replacement or removal occurred. This proves enrollment with common service
+limits, not all twelve authority cases, MSRV or complete matrix acceptance.
