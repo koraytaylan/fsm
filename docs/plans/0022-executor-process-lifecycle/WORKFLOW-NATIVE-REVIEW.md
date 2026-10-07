@@ -483,3 +483,37 @@ resource/home/drop-in inventory for namespace 900133141f382ae4a34d25c5bf8e5cbf
 remain retained for matched archive/cleanup before a new producer. Task 9401 and
 plan 0022 completion remain unchanged; full native race and host/platform proof
 are still required.
+
+
+## Native preflight execution and canonical receipt correction
+
+The exact 9bab4bf remaining fixture resources, stage, runtime drop-in and actual
+permission-denied diagnostic were archived before identity/content-matched
+teardown and installed-authority removal. Frozen
+90eeef79663eea45838574dc4c7896e909f53d70 producer session 92096 ended with exit
+one (native test 101), retaining the staged evidence: the original discovered
+workflow test passed, with its retained log showing one passed, zero failed,
+zero ignored in 4.18 seconds. The outer native verifier then refused its first
+memory receipt as noncanonical, before any case marker was accepted; the
+complete ten-scenario producer is therefore unaccepted. The workflow executed
+through the privileged preflight but receipt bytes were not retained after
+Fixture teardown, so this result is not independent archived per-domain limit
+proof and does not validate the competing-owner race.
+
+The fixture checker now serializes its restricted integer/string domain record
+with sorted keys and compact separators required by the authority canonical
+reader; no reader guard was weakened. Root supervision additionally archives
+bounded original memory-receipt bytes into protected staging before verifying
+each fixture, so a later verifier refusal cannot erase them during normal
+matched namespace cleanup. Missing receipts remain a verification failure for
+claimed domains, and these test receipts grant no closure authority.
+
+Terminal session 19273 passes stable/MSRV executor/CLI all-target Clippy,
+formatting/file-size checks and three ordinary helper tests with five native
+skips; workflow-memory-receipt-check.log retains verified controller limits.
+The failed /usr/libexec/fsm-workflow-9bd8cfad3c407b8b17f22b92d970c6c3 stage and
+its resource/home/drop-in inventory for namespace 4ae92016a963bdce73596109d44b99f1
+remain retained; protected inspection confirms the namespace was already
+retired by Fixture cleanup. Corrected native receipt verification, sensitivity,
+full race and changed-source host/platform acceptance remain pending, with
+9401 in progress and plan 0022 still 3/7.

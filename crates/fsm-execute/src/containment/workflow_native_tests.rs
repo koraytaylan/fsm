@@ -349,6 +349,7 @@ pub(super) fn run() {
         // No absence is promoted into a production closure receipt: these are
         // matched test teardown guards after original workflow/journal assertions.
         for (fixture, failure) in fixtures.iter().zip(&failures) {
+            memory_limits::archive(fixture, &staging);
             verify_native_runs(fixture, failure);
         }
         let mut report_output = std::io::stdout().lock();

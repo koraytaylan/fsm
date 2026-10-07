@@ -16,7 +16,7 @@ memory=(p/'memory.max').read_text().strip();swap=(p/'memory.swap.max').read_text
 assert memory=='1073741824' and swap=='0'
 receipt=dict(domain=domain,memory_max=memory,memory_swap_max=swap)
 fd=os.open(a/f'fixture-memory-{allocation}.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-with os.fdopen(fd,'w') as f:json.dump(receipt,f);f.flush();os.fsync(f.fileno())
+with os.fdopen(fd,'w') as f:json.dump(receipt,f,sort_keys=True,separators=(',',':'));f.flush();os.fsync(f.fileno())
 "#;
 
 pub(super) struct Limits {
@@ -128,4 +128,36 @@ pub(super) fn verify(fixture: &Fixture, domain: &Value, allocation: u64) {
     assert_eq!(receipt.get("domain"), Some(domain));
     assert_eq!(text(&receipt, "memory_max").unwrap(), "1073741824");
     assert_eq!(text(&receipt, "memory_swap_max").unwrap(), "0");
+}
+
+pub(super) fn archive(fixture: &Fixture, staging: &Path) {
+    let namespace = fixture
+        .directory
+        .parent()
+        .unwrap()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let last = number(&fixture.counter(), "last_allocation").unwrap();
+    assert!(last <= 4096);
+    for allocation in 1..=last {
+        let source = fixture
+            .directory
+            .join(format!("fixture-memory-{allocation}.json"));
+        let metadata = match fs::symlink_metadata(&source) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => panic!("memory receipt metadata: {error}"),
+        };
+        assert!(metadata.is_file() && metadata.uid() == 0 && metadata.len() <= 4096);
+        let mut destination = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(staging.join(format!("memory-{namespace}-{allocation}.json")))
+            .unwrap();
+        destination.write_all(&fs::read(source).unwrap()).unwrap();
+        destination.sync_all().unwrap();
+    }
 }
