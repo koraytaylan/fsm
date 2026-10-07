@@ -1582,6 +1582,9 @@ response charge to caller-built Values before cloning or receipt access;
 excess retained capacity refuses even when its encoded content is small.
 This tightens the provisional verifier's accepted inputs without a signature,
 journal, wire, hash-domain or MSRV change; derived completion accounting is open.
+The response storage preflight now applies the existing JSON depth ceiling
+before recursive descent, closing the caller-built deep-Value stack overflow
+route without changing public signatures or any persistent/wire format.
 
 Sequential NativeRun binding/execution now reuses its original worker reservation
 after actual binding transport retirement, so pool saturation cannot consume a

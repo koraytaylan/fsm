@@ -2847,6 +2847,8 @@ Caller-built responses passed to NativeCompletion::verify must fit the same
 String and array capacities and 4096 bytes per object entry; encoded size alone
 does not establish that bound, and refusal occurs before material cloning or
 receipt access without creating completion evidence.
+The same preflight enforces the default JSON depth ceiling before recursive
+descent, so caller-built nesting cannot bypass the parser's depth limit.
 
 A bound NativeRun keeps its original reservation for execution startup after
 the binding helper has actually retired, including when all 128 slots are

@@ -224,6 +224,29 @@ fn stopped_for_claim(
     claim: &Claim,
 ) -> Result<StoppedOutcome, String> {
     use std::collections::BTreeMap;
+
+    #[test]
+    fn native_completion_storage_preflight_bounds_depth_before_serialization() {
+        let claim = claim();
+        let hash = format!("sha256:{}", "b".repeat(64));
+        let mut response = Value::Null;
+        for _ in 0..JsonLimits::DEFAULT.max_depth {
+            response = Value::Arr(vec![response]);
+        }
+        assert_eq!(
+            NativeCompletion::verify(&response, &claim, &hash)
+                .err()
+                .unwrap(),
+            "native completion is not an object"
+        );
+        response = Value::Arr(vec![response]);
+        assert_eq!(
+            NativeCompletion::verify(&response, &claim, &hash)
+                .err()
+                .unwrap(),
+            "native completion retained response storage exceeds bound"
+        );
+    }
     let ordinary = stopped(candidate, class)?;
     let Some(class) = class else {
         return Ok(ordinary);

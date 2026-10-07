@@ -272,3 +272,13 @@ phases. Two fixtures reach binding/recovery and bound execution startup and
 compare the worker factory's received deadline with the original run's exact
 deadline, then retire startup refusal without supplying closure authority.
 Runtime and isolated deadline-preservation sensitivity checks remain pending.
+
+### Caller-built response depth — candidate
+
+Review of retained completion data found that storage accounting traversed
+caller-built arrays/objects before canonical validation without enforcing the
+JSON depth ceiling; an excessive tree could overflow the accounting stack.
+The preflight now refuses before descending past the default JSON depth bound,
+and a public completion-entry fixture pins the exact depth and one level over.
+This protects traversal without authenticating any receipt or settlement;
+runtime and isolated depth-guard sensitivity checks remain pending.

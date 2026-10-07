@@ -305,7 +305,12 @@ fn run(mut request: InlineRequest, shared: &Shared) {
 }
 
 pub(super) fn storage_fits(value: &Value) -> bool {
-    fn charge(value: &Value, remaining: &mut usize) -> Option<()> {
+    fn charge(value: &Value, depth: u32, remaining: &mut usize) -> Option<()> {
+        if matches!(value, Value::Arr(_) | Value::Obj(_))
+            && depth >= fsm_core::json::JsonLimits::DEFAULT.max_depth
+        {
+            return None;
+        }
         *remaining = remaining.checked_sub(std::mem::size_of::<Value>())?;
         match value {
             Value::Str(text) | Value::Num(text) => {
@@ -318,13 +323,13 @@ pub(super) fn storage_fits(value: &Value) -> bool {
                         .checked_mul(std::mem::size_of::<Value>())?,
                 )?;
                 for entry in entries {
-                    charge(entry, remaining)?;
+                    charge(entry, depth + 1, remaining)?;
                 }
             }
             Value::Obj(entries) => {
                 for (key, entry) in entries {
                     *remaining = remaining.checked_sub(4096usize.checked_add(key.capacity())?)?;
-                    charge(entry, remaining)?;
+                    charge(entry, depth + 1, remaining)?;
                 }
             }
             _ => {}
@@ -332,7 +337,7 @@ pub(super) fn storage_fits(value: &Value) -> bool {
         Some(())
     }
     let mut remaining = RESPONSE_STORAGE;
-    charge(value, &mut remaining).is_some()
+    charge(value, 0, &mut remaining).is_some()
 }
 
 #[cfg(test)]

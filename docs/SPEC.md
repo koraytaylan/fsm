@@ -3387,6 +3387,9 @@ NativeCompletion::verify MUST apply the same 2 MiB retained-response storage
 preflight before canonical serialization, material cloning or receipt access,
 including for caller-built Values and synchronous standalone verification;
 small encoded content MUST NOT exempt excess String or array capacity.
+The storage preflight MUST enforce JsonLimits::DEFAULT.max_depth before
+descending into an array or object, including before canonical serialization
+validates caller-built material; excess nesting MUST return refusal.
 Failure MUST return bounded uncertainty without supplying completion evidence.
 This response-entry guard does not account for all derived completion storage.
 
