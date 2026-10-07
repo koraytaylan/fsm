@@ -376,3 +376,37 @@ fn handwritten_finding_pins_typed_cause_shape_without_private_argv() {
             .contains("/private")
     );
 }
+
+#[test]
+fn an_extraneous_catalogue_key_cannot_substitute_another_outcome_definition() {
+    let child = compile_fixture(r#""str""#);
+    let impostor = compile_fixture(r#""bool""#);
+    let digest = child
+        .machine_id
+        .rsplit_once("@sha256:")
+        .unwrap()
+        .1
+        .to_owned();
+    let root = compile_accepted(&json(&format!(
+        r#"{{"format":"fsm.machine/1","name":"parent","context":[],"events":[],"effects":[],"states":[{{"name":"waiting","invoke":[{{"id":"child","machine":"{digest}"}}]}}],"initial":"waiting","transitions":[]}}"#
+    ))).unwrap();
+    let catalogue = BTreeMap::from([
+        (digest, child.clone()),
+        // Public catalogues are keyed by invocation digest; this unrelated key
+        // must not replace the child selected by its actual compiled identity.
+        (child.machine_id.clone(), impostor),
+    ]);
+    let checked = analyze_contract(
+        &root,
+        &catalogue,
+        &table(r#"{"value":"hello"}"#, &[]),
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(checked.status, CheckStatus::Compatible);
+    assert!(checked.findings.is_empty());
+    assert!(checked.definitions.contains(&child.machine_id));
+    assert_eq!(checked.effects.len(), 1);
+    assert_eq!(checked.effects[0].machine_id, child.machine_id);
+    assert_eq!(checked.effects[0].outcomes["on_ok"], "compatible");
+}
