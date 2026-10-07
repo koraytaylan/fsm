@@ -3290,3 +3290,9 @@ store operation. Cancellation of a known deferred request MUST suppress it
 without installing future cancellation for unknown IDs. Borrowed input helpers
 MUST retain their existing blocking behavior. Owned idle intervals and original
 stop/output failure observation MUST remain finite during the wait.
+
+An unwind from the hosted protocol adapter MUST retire its original session,
+request shutdown through the original native control and retain the adapter
+failure in the shutdown report; catching an adapter panic MUST NOT establish
+native containment, worker retirement or output delivery without their usual
+evidence, and MUST NOT join a live owner beyond the original shutdown deadline.

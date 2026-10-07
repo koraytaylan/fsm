@@ -83,3 +83,9 @@ cancellation, the eighth/ninth frame boundary, and capacity release.
 Verification is queued behind an independently running Cargo process; these
 fixtures have not yet been accepted as passing evidence, production stdio
 selection is unchanged, and this task remains in progress.
+
+The hosted adapter unwind boundary now requests original-control shutdown
+and retains the initiating failure instead of detaching its native owner; a
+fixture injects an adapter panic after original owner startup and asserts
+original control retirement and writer reopening, with verification pending
+in the same queued milestone run and no additional task completion claim.

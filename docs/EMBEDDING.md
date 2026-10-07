@@ -2742,3 +2742,9 @@ and the raw input backlog remain separate accounting units. Borrowed helpers
 retain their blocking behavior; retirement does not undo committed work or
 prove writer release. Long diagnostics, publication ordering, production
 activation and full/platform/native acceptance remain unfinished.
+
+Private hosted stdio now catches protocol-adapter unwinds after owner startup,
+retires the original session and requests original-control shutdown while
+retaining the initiating panic as a report failure; native retirement and
+output delivery still require their independent evidence within the original
+deadline, with no new public API or wire/journal format.

@@ -55,11 +55,24 @@ impl Drop for Finished {
 /// Compose actual bounded byte input/output with the owned command host.
 #[allow(dead_code)] // Process-entry selection follows the remaining protocol integration.
 pub(in crate::mcp) fn serve<C: Clock + Send + 'static, R: BufRead + 'static>(
+    driver: OwnedNativeExecutor,
+    clock: C,
+    input: impl FnOnce() -> R + Send + 'static,
+    output: impl Write + Send + 'static,
+    operator_output: impl Write + Send + 'static,
+) -> io::Result<HostedReport> {
+    serve_with_adapter_start(driver, clock, input, output, operator_output, || {})
+}
+
+// The start hook lets tests unwind on the adapter after original owner startup,
+// without process-global environment changes or a second ownership boundary.
+pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: BufRead + 'static>(
     mut driver: OwnedNativeExecutor,
     clock: C,
     input: impl FnOnce() -> R + Send + 'static,
     output: impl Write + Send + 'static,
     operator_output: impl Write + Send + 'static,
+    adapter_start: impl FnOnce(),
 ) -> io::Result<HostedReport> {
     let data_dir = driver
         .store_mut()
@@ -96,12 +109,13 @@ pub(in crate::mcp) fn serve<C: Clock + Send + 'static, R: BufRead + 'static>(
         })?;
     let input_control = control.clone();
     let input_output = queued.clone();
-    let result = (|| {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let input = OwnedInput::start(input, move || {
             input_control.report().phase != ExecutorPhase::Running
                 || input_output.is_broken()
                 || finished.load(Ordering::Acquire)
         })?;
+        adapter_start();
         serve_session_core(
             SessionRuntime {
                 store: SessionStore::Hosted {
@@ -119,7 +133,8 @@ pub(in crate::mcp) fn serve<C: Clock + Send + 'static, R: BufRead + 'static>(
             input,
             notifier,
         )
-    })();
+    }))
+    .unwrap_or_else(|_| Err(io::Error::other("hosted protocol adapter panicked")));
     session.close();
     let explicit_stop = control.report().phase != ExecutorPhase::Running;
     let request = control

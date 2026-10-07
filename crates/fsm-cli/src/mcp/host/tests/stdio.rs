@@ -32,6 +32,40 @@ impl crate::clock::Clock for LogicalClock {
 }
 
 #[test]
+fn execution_host_owned_stdio_adapter_panic_retires_original_writer() {
+    let scratch = Scratch::new();
+    let driver = OwnedNativeExecutor::new(seeded(&scratch.0), HandlerTable::default()).unwrap();
+    let control = driver.control();
+    let (client, server) = UnixStream::pair().unwrap();
+    let worker = std::thread::spawn(move || {
+        hosted::serve_with_adapter_start(
+            driver,
+            FixedClock::new(1000, 0),
+            move || BufReader::new(server),
+            std::io::sink(),
+            std::io::sink(),
+            || panic!("fixture adapter unwind after original owner startup"),
+        )
+    });
+    let report = worker
+        .join()
+        .expect("adapter unwind must be caught")
+        .unwrap();
+    // Unblock the separate real reader even if the cleanup assertions fail.
+    client.shutdown(Shutdown::Write).unwrap();
+    assert_eq!(
+        report.failure.unwrap().to_string(),
+        "hosted protocol adapter panicked"
+    );
+    assert_eq!(report.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(report.shutdown.admission_closed && report.shutdown.writer_released);
+    assert!(report.shutdown.helpers_retired && report.shutdown.inventory_complete);
+    assert!(report.worker.is_none());
+    assert_eq!(control.report().phase, ExecutorPhase::Stopped);
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+}
+
+#[test]
 fn execution_host_owned_stdio_blocked_output_does_not_keep_the_writer() {
     use std::sync::mpsc;
     struct HeldOutput {
