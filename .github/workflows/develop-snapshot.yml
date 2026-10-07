@@ -1,0 +1,193 @@
+# A trusted, rolling review channel for the head of develop. This is not the
+# stable release channel: every successful build replaces the assets on one
+# explicitly named prerelease, while the tag and release remain separate from
+# immutable release tags.
+#
+# The snapshot re-uses the same CI gate as ci.yml and the same build matrix as
+# release.yml, so a snapshot that succeeded is evidence for both. It does not
+# run fuzz-smoke or the git-dep integration: those guard formal releases, and
+# adding them here would double nightly-toolchain runner time on every push to
+# develop.
+name: develop snapshot
+
+on:
+  push:
+    branches:
+      - develop
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── verify ────────────────────────────────────────────────────────────
+  # The same gate as ci.yml, run on the snapshot commit. A snapshot that
+  # does not pass the gate is not published.
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable, "1.89"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
+      RUSTFLAGS: --deny warnings
+      RUSTDOCFLAGS: --deny warnings
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install ${{ matrix.rust }} --profile minimal --component rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: gate-${{ matrix.os }}-${{ matrix.rust }}
+          save-if: false
+      - run: cargo fmt --all -- --check
+      - run: scripts/oversized-files.sh
+      - run: cargo test --workspace --no-fail-fast
+      - run: cargo test --workspace --release --no-fail-fast
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo doc --workspace --no-deps
+      - name: Fuzz targets still compile
+        if: runner.os == 'Linux'
+        run: cargo build --manifest-path fuzz/Cargo.toml --bins
+      - name: Decimal vectors regenerate byte-identically
+        shell: bash
+        run: |
+          work="$(mktemp -d)"
+          python3 tools/gen_decimal_vectors.py "$work/dec-a.jsonl"
+          python3 tools/gen_decimal_vectors.py "$work/dec-b.jsonl"
+          cmp "$work/dec-a.jsonl" "$work/dec-b.jsonl"
+          cmp "$work/dec-a.jsonl" crates/fsm-core/tests/fixtures/decimal/generated_vectors.jsonl
+
+  # ── build ─────────────────────────────────────────────────────────────
+  # Same target matrix as release.yml. Every platform the release ships is
+  # built here, so a snapshot is a complete preview of what the next
+  # release will contain.
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - run: rustup toolchain install stable --profile minimal
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+          save-if: false
+      - run: cargo build --release -p fsm-cli --target ${{ matrix.target }}
+      - name: Smoke-test the target CLI
+        shell: bash
+        run: |
+          bin="target/${{ matrix.target }}/release/fsm"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            bin="$bin.exe"
+          fi
+          "$bin" version
+      - name: Package
+        shell: bash
+        run: |
+          name="fsm-develop-snapshot-${{ matrix.target }}"
+          mkdir "$name"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            cp "target/${{ matrix.target }}/release/fsm.exe" "$name/"
+          else
+            cp "target/${{ matrix.target }}/release/fsm" "$name/"
+          fi
+          cp README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          cp docs/SPEC.md "$name/"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a "$name.zip" "$name"
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: snapshot-${{ matrix.target }}
+          path: |
+            fsm-develop-snapshot-*.tar.gz
+            fsm-develop-snapshot-*.zip
+
+  # ── publish ───────────────────────────────────────────────────────────
+  # Replace the single rolling prerelease with the freshly built assets.
+  # The tag moves to the new commit, the release notes say which commit it
+  # is, and the assets are clobbered. Nothing immutable is touched.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+          pattern: snapshot-*
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd assets
+          sha256sum fsm-develop-snapshot-*.tar.gz fsm-develop-snapshot-*.zip > SHA256SUMS
+      - name: Replace the trusted rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT_TAG: develop-snapshot
+          SNAPSHOT_TITLE: "fsm develop snapshot"
+        run: |
+          short="$(echo "$GITHUB_SHA" | head -c 12)"
+          notes="Rolling snapshot from develop at ${short}."
+          notes="$notes Assets are replaced after each successful verified build;"
+          notes="$notes this is not a stable release."
+          notes="$notes"$'\n\n'"**Commit:** [\`${short}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})"
+          notes="$notes"$'\n\n'"Verify any download: \`sha256sum --check SHA256SUMS\`"
+          if gh release view "$SNAPSHOT_TAG" >/dev/null 2>&1; then
+            gh api --method PATCH \
+              "repos/${GITHUB_REPOSITORY}/git/refs/tags/${SNAPSHOT_TAG}" \
+              -f sha="$GITHUB_SHA" -F force=true
+            gh release edit "$SNAPSHOT_TAG" \
+              --title "$SNAPSHOT_TITLE" \
+              --notes "$notes" \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          else
+            gh release create "$SNAPSHOT_TAG" \
+              --title "$SNAPSHOT_TITLE" \
+              --notes "$notes" \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi
+          gh release upload "$SNAPSHOT_TAG" assets/* --clobber
