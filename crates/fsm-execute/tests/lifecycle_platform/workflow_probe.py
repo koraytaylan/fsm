@@ -14,6 +14,7 @@ CASES = (
     ('each_failed_preflight_stops_before_external_changes', 4),
     ('failures_after_suspension_restore_the_resource', 2),
     ('cleanup_failures_are_explicit_after_success_or_partial_work', 2),
+    ('standalone_and_embedded_exclude_a_live_handler_tree', 1),
 )
 
 
@@ -118,7 +119,7 @@ def main():
         subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                         '--inode', str(installed['inode']), '--sha256', expected], check=True, timeout=10)
     args.report.write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(dict(report=str(args.report), passed=report['passed'], scenarios=9, gate_released=False)))
+    print(json.dumps(dict(report=str(args.report), passed=report['passed'], scenarios=sum(count for _, count in CASES), gate_released=False)))
     return 0 if report['passed'] else 1
 
 

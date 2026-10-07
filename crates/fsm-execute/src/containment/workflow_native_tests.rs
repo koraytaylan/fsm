@@ -227,6 +227,10 @@ pub(super) fn run() {
             "cleanup_failures_are_explicit_after_success_or_partial_work",
             vec!["restore", "perform_work,restore"],
         ),
+        (
+            "standalone_and_embedded_exclude_a_live_handler_tree",
+            vec!["race"],
+        ),
     ]
     .into_iter()
     .enumerate()

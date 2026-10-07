@@ -14,6 +14,10 @@ use std::time::{Duration, Instant};
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
 
+#[cfg(target_os = "linux")]
+#[path = "workflow_race/mod.rs"]
+mod workflow_race;
+
 const OPERATIONS: [&str; 7] = [
     "check_prerequisite",
     "check_identity",
@@ -147,6 +151,14 @@ fn workflow_handler() {
         .open(directory.join("calls"))
         .unwrap();
     writeln!(calls, "{operation}").unwrap();
+    #[cfg(target_os = "linux")]
+    if operation == "check_prerequisite"
+        && arguments
+            .iter()
+            .any(|argument| argument == "handler-failures=race")
+    {
+        workflow_race::hold_tree(&directory);
+    }
     let phase = directory.join("phase");
     let failed = arguments
         .iter()
@@ -521,6 +533,9 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
         "instance_send",
         value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
     );
+    #[cfg(target_os = "linux")]
+    let mut competitor =
+        (failures == "race").then(|| workflow_race::contend(&directory, &mut client));
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let instance = client.call("instance_get", value(r#"{"instance_id":"inst-run"}"#));
@@ -539,6 +554,10 @@ fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: 
             bounded_executor_errors(&client.errors)
         );
         std::thread::sleep(Duration::from_millis(10));
+    }
+    #[cfg(target_os = "linux")]
+    if let Some(competitor) = &mut competitor {
+        competitor.stop(&directory);
     }
     let history = client.call(
         "instance_history",
@@ -720,4 +739,11 @@ fn stalled_workflow_diagnostics_bound_input_bytes_and_tolerate_partial_utf8() {
     assert_eq!(reader.position(), 8192);
     assert_eq!(prefix, format!("{}�", "x".repeat(8191)));
     assert!(!prefix.contains("hidden suffix"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md"]
+fn standalone_and_embedded_exclude_a_live_handler_tree() {
+    run_scenario("race", "succeeded", &OPERATIONS, "active");
 }

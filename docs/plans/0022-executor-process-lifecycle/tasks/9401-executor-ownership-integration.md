@@ -32,6 +32,7 @@ touches:
   - crates/fsm-cli/src/mcp/executor.rs
   - crates/fsm-cli/tests/executor_ownership.rs
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
+  - crates/fsm-cli/tests/workflow_race/mod.rs
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md

@@ -133,3 +133,21 @@ and zero swap. The four Linux privileged scenario skips are supplemented by
 the independently verified actual stable/MSRV producer runs at 594425b; the
 intervening commit changes this review document only. Hosted CI and all remaining
 production ownership/crash/shutdown requirements remain incomplete.
+
+## Standalone/embedded live-tree control prepared
+
+A fifth provisioned group retains the seven-operation happy workflow but holds
+its first embedded handler and actual sleep child open with an exclusive
+root-backed external marker. A real standalone CLI starts against the same
+registered physical store and immutable table; the observer requires its
+pending observation, unchanged original PID/start-time identities, one durable
+claim and one unresolved owner through a bounded competition window, then
+releases the original tree and requires seven original calls, normal domain
+outcome and matching native receipts. Standalone receives an actual private
+control drain after completion and must exit successfully; cleanup owns only
+that exact process. Producer counts now derive from all five groups/ten cases.
+Stable all-target CLI/executor Clippy, formatting, size and seven mocked
+producer controls pass after correcting an initial missing path borrow; failed
+and corrected logs are retained as workflow-race-focus*.log. Actual native
+execution, MSRV checks, sensitivity and changed-source full gates remain
+required; no race acceptance or task promotion is inferred from compilation.
