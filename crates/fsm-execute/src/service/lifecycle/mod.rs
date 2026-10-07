@@ -145,7 +145,7 @@ impl OwnedNativeExecutor {
         }
         self.control.publish(
             run_ids,
-            unclaimed,
+            self.runner.native_preparation_inventory(),
             helpers_retired,
             complete,
             self.store.is_none(),

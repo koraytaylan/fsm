@@ -429,6 +429,19 @@ fn observation_reads_actual_inventory_without_closing_admission_or_releasing_wri
         fsm_core::replay::state_root_at(&after.state, after.journal.last_seq)
     );
     assert_eq!(before.journal.last_hash, after.journal.last_hash);
+    assert_eq!(report.get("preparation_phases"), Some(&Value::Null));
+    driver.poll(&mut FixedClock::new(0, 1), 0);
+    let (snapshot, counts) = driver.control().observation();
+    assert_eq!(counts, Some([0; 10]));
+    assert_eq!(snapshot.unclaimed_reservations, Some(0));
+    let published = fsm_cli::local_control::observe(&fixture.root, &fixture.data, 1000).unwrap();
+    let phases = published
+        .get("preparation_phases")
+        .unwrap()
+        .as_obj()
+        .unwrap();
+    assert_eq!(phases.len(), 10);
+    assert!(phases.values().all(|count| count.as_num() == Some("0")));
     assert!(endpoint.close(1000).unwrap());
 }
 
@@ -490,5 +503,36 @@ fn foreign_or_extended_observation_refuses_without_mutating_control() {
         assert!(fsm_cli::local_control::observe(&fixture.root, &fixture.data, timeout).is_err());
         assert!(!driver.control().report().admission_closed);
     }
+    assert!(endpoint.close(1000).unwrap());
+}
+
+#[test]
+fn legacy_observation_keeps_its_original_twelve_field_report() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    let mut value = parse(
+        &fs::read(endpoint.directory().join("identity")).unwrap(),
+        &JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    let Value::Obj(fields) = &mut value else {
+        unreachable!()
+    };
+    fields.insert("format".into(), Value::Str("fsm.executor-observe/1".into()));
+    let mut stream = send(&endpoint, &value, 0);
+    stream
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).unwrap();
+    let report = parse(&response, &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(report.as_obj().unwrap().len(), 12);
+    assert_eq!(
+        report.get("format").and_then(Value::as_str),
+        Some("fsm.executor-control-report/1")
+    );
+    assert_eq!(report.get("admission_closed"), Some(&Value::Bool(false)));
+    assert!(!driver.control().report().admission_closed);
     assert!(endpoint.close(1000).unwrap());
 }

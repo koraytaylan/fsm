@@ -356,6 +356,7 @@ method fsm_execute::sched::Scheduler::retain_claim
 method fsm_execute::sched::Scheduler::stalled
 method fsm_execute::sched::Scheduler::unhandled
 method fsm_execute::sched::Scheduler::unstartable
+method fsm_execute::service::ExecutorControl::observation
 method fsm_execute::service::ExecutorControl::report
 method fsm_execute::service::ExecutorControl::stop
 method fsm_execute::service::ExecutorControl::wait_for_request

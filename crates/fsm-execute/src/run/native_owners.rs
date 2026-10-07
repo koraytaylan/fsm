@@ -44,6 +44,10 @@ pub(super) struct NativeOwners {
 }
 
 impl NativeOwners {
+    pub(super) fn preparation_inventory(&self) -> [usize; 10] {
+        self.admissions.phase_counts()
+    }
+
     pub(super) fn shutdown_inventory(&self) -> (Vec<u64>, usize, bool) {
         let helpers_retired =
             self.admissions.helpers_retired()

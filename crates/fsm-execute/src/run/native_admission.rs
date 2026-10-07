@@ -263,6 +263,26 @@ impl NativeAdmissions {
             .all(|pending| !pending.phase.helper_busy())
     }
 
+    pub(super) fn phase_counts(&self) -> [usize; 10] {
+        let mut counts = [0; 10];
+        for pending in self.pending.values() {
+            let index = match pending.phase {
+                Phase::Queued => 0,
+                Phase::Preparing(_) => 1,
+                Phase::Prepared(_) => 2,
+                Phase::Cleaning(_, _) => 3,
+                Phase::UnknownAllocation => 4,
+                Phase::UncertainPreparation(_) => 5,
+                Phase::UncertainCleanup(_, _) => 6,
+                Phase::UncertainDomain(_) => 7,
+                Phase::ClaimUncertain(_) => 8,
+                Phase::Closed => 9,
+            };
+            counts[index] += 1;
+        }
+        counts
+    }
+
     pub(super) fn len(&self) -> usize {
         self.pending.len()
     }
@@ -512,6 +532,34 @@ mod tests {
                 )
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn phase_inventory_distinguishes_unknown_allocation_from_uncertain_publication() {
+        // Classification metadata only; it cannot grant native closure authority.
+        let fixture = fsm_core::json::parse(
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../fsm-core/tests/fixtures/execution-handoff.json"
+            )),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let domain =
+            NativeDomain::from_value(fixture.get("claim").unwrap().get("domain").unwrap()).unwrap();
+        for (phase, index) in [
+            (Phase::Queued, 0),
+            (Phase::Prepared(domain.clone()), 2),
+            (Phase::UnknownAllocation, 4),
+            (Phase::UncertainDomain(domain.clone()), 7),
+            (Phase::ClaimUncertain(domain), 8),
+            (Phase::Closed, 9),
+        ] {
+            let (admissions, _, _) = reservation(phase);
+            let counts = admissions.phase_counts();
+            assert_eq!(counts.iter().sum::<usize>(), admissions.len());
+            assert_eq!(counts[index], 1);
+        }
     }
 
     #[test]

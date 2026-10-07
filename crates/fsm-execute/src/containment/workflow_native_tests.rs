@@ -346,7 +346,12 @@ pub(super) fn run() {
             verify_native_runs(fixture, failure);
         }
         let mut report_output = std::io::stdout().lock();
-        writeln!(report_output, "FSM_NATIVE_WORKFLOW_CASE {case} {}", failures.len()).unwrap();
+        writeln!(
+            report_output,
+            "FSM_NATIVE_WORKFLOW_CASE {case} {}",
+            failures.len()
+        )
+        .unwrap();
         drop(report_output);
         drop(brokers);
         for (mut fixture, (resource, home, resource_identity, home_identity)) in

@@ -35,6 +35,9 @@ Historical live-handle notes below describe earlier observations only.
   competing-owner drain now reports one retained unclaimed reservation with
   complete inventory, retired helpers and released writer; original admission
   phase and authenticated cleanup still need diagnosis and native proof.
+  Version-two observation now publishes coherent bounded phase counts, with
+  twenty actual transport controls passing on stable/MSRV and legacy replies
+  preserved; provisioned execution of these new counts remains pending.
 - Actual standalone/standalone and standalone/embedded live-tree races, complete
   claim/launch/settlement crash windows, nonempty blocked-session shutdown,
   signal handling and uncertainty reconciliation remain required before 9401

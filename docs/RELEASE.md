@@ -1205,3 +1205,18 @@ MUST NOT be interpreted as a native closure receipt or current durable prefix.
 This is additive local metadata observation, with no journal/format/hash-domain,
 dependency or MSRV change; production race and full lifecycle acceptance remain
 separate requirements.
+
+Private observation version 2 keeps the closed four-field identity request
+fsm.executor-observe/2 and returns fsm.executor-observation-report/1 with the
+original twelve metadata fields plus preparation_phases. This is either null
+(unpublished/poisoned, never inferred zero) or exactly ten bounded nonnegative
+counts: queued, preparing, prepared, cleaning, unknown_allocation,
+uncertain_preparation, uncertain_cleanup, uncertain_domain, claim_uncertain,
+and closed; their sum MUST equal unclaimed_reservations and be at most 4096.
+The original owner's coherent ExecutorControl::observation snapshot supplies
+these counts, with no journal/native I/O or control mutation. The fixed array
+uses the same phase order and is optional when unpublished/poisoned. Counts do
+not grant cleanup, settlement or closure permission. Legacy observation /1
+and terminal stop reports keep their original twelve-field schema unchanged.
+local_control::observe now requests /2; this additive health API/protocol version
+changes no persisted format, hash domain, dependency or MSRV.

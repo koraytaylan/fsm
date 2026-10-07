@@ -40,6 +40,7 @@ struct State {
     request: RequestState,
     run_ids: Vec<u64>,
     unclaimed: Option<usize>,
+    preparation_phases: Option<[usize; 10]>,
     complete: bool,
     helpers_retired: bool,
     writer_released: bool,
@@ -75,6 +76,7 @@ impl ExecutorControl {
                     request: RequestState::new(),
                     run_ids: Vec::new(),
                     unclaimed: None,
+                    preparation_phases: None,
                     complete: false,
                     helpers_retired: false,
                     writer_released: false,
@@ -149,17 +151,35 @@ impl ExecutorControl {
             .report(Instant::now(), self.admission.is_closed())
     }
 
+    /// Observe one coherent metadata snapshot, including bounded preparation counts.
+    /// Counts are ordered: queued, preparing, prepared, cleaning, unknown allocation,
+    /// uncertain preparation, uncertain cleanup, uncertain domain, uncertain claim,
+    /// closed; None means unpublished or poisoned, never a zero inventory.
+    /// This performs no journal/native I/O and never changes admission or deadlines.
+    pub fn observation(&self) -> (ShutdownReport, Option<[usize; 10]>) {
+        let state = self.state();
+        let report = state.report(Instant::now(), self.admission.is_closed());
+        let counts = if state.poisoned {
+            None
+        } else {
+            state.preparation_phases
+        };
+        (report, counts)
+    }
+
     pub(super) fn publish(
         &self,
         run_ids: Vec<u64>,
-        unclaimed: usize,
+        preparation_phases: [usize; 10],
         helpers_retired: bool,
         complete: bool,
         writer_released: bool,
     ) {
         let mut state = self.state();
         state.run_ids = run_ids;
+        let unclaimed = preparation_phases.iter().sum();
         state.unclaimed = Some(unclaimed);
+        state.preparation_phases = Some(preparation_phases);
         state.helpers_retired = helpers_retired;
         state.complete = complete;
         state.writer_released = writer_released;

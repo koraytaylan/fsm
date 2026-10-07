@@ -300,3 +300,38 @@ known prepared cleanup, or uncertain claim publication. The next bounded health
 step must expose that phase distinction from the retained original admission
 state before changing reconciliation behavior; aggregate absence or helper reap
 alone cannot release it. Task 9401 and plan completion remain unchanged.
+
+
+## Coherent preparation phase observation
+
+The observation request now uses fsm.executor-observe/2 and returns the closed
+fsm.executor-observation-report/1 schema with ten named preparation counts;
+legacy observe/1 keeps its original twelve-field report and stop responses are
+unchanged. ExecutorControl::observation takes one metadata lock for both the
+report and counts, publishing their total together; unpublished or poisoned
+counts remain null. Both native owner routes publish the original admissions
+phases, and received named counts must sum to unclaimed_reservations within
+4096. Counts are diagnostic metadata, never authority to close a domain, drop
+an uncertain reservation, or manufacture a stopped report.
+
+Terminal session 59772 passes all twenty actual local control tests on stable
+and MSRV, both CLI all-target Clippy checks and seventeen public API inventory
+tests; local-control-phase-inventory-check.log retains the asserted one-GiB,
+zero-swap scope. Actual socket tests cover unpublished versus published zero
+counts and the legacy twelve-field response. Terminal session 39894 passes
+stable/MSRV executor all-target Clippy, four admission controls on each
+toolchain, formatting and file size checks, with evidence in
+local-control-phase-classification-corrected-check.log; the classification
+control distinguishes unknown allocation from uncertain domain and claim
+publication. Initial executor Clippy failed on the existing workflow marker
+stdout lint, fixed separately in 9120474 before the successful checks.
+
+Review confirms no persistent journal bytes, native closure eligibility,
+shutdown deadlines, dependencies or MSRV changed; the provisional public API
+inventory and SPEC/API-POLICY/EMBEDDING/RELEASE move with this addition.
+This does not yet prove the new phase snapshot in the provisioned race, whose
+failed a1ba97c fixture remains retained, nor current-source complete host,
+native or platform acceptance. Matched archival/test teardown of that fixture
+must precede a new producer, and separate root-manager test services need
+explicit memory and swap limits before further native execution.
+Task 9401 remains in progress and plan 0022 remains 3/7.

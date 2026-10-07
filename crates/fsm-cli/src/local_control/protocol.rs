@@ -203,7 +203,7 @@ pub(super) fn observation_value(identity: &ControlIdentity) -> Value {
     let Value::Obj(mut fields) = identity_value(identity) else {
         unreachable!("closed identity object")
     };
-    fields.insert("format".into(), Value::Str("fsm.executor-observe/1".into()));
+    fields.insert("format".into(), Value::Str("fsm.executor-observe/2".into()));
     Value::Obj(fields)
 }
 
@@ -211,7 +211,11 @@ pub(super) fn validate_observation(
     identity: &ControlIdentity,
     value: &Value,
 ) -> Result<(), ExecError> {
-    if value == &observation_value(identity) {
+    let mut legacy = observation_value(identity);
+    if let Value::Obj(fields) = &mut legacy {
+        fields.insert("format".into(), Value::Str("fsm.executor-observe/1".into()));
+    }
+    if value == &observation_value(identity) || value == &legacy {
         Ok(())
     } else {
         Err(ExecError::new(
@@ -219,6 +223,44 @@ pub(super) fn validate_observation(
             "observation schema or original identity differs",
         ))
     }
+}
+
+pub(super) const PREPARATION_PHASES: [&str; 10] = [
+    "queued",
+    "preparing",
+    "prepared",
+    "cleaning",
+    "unknown_allocation",
+    "uncertain_preparation",
+    "uncertain_cleanup",
+    "uncertain_domain",
+    "claim_uncertain",
+    "closed",
+];
+
+pub(super) fn observation_report_value(
+    identity: &ControlIdentity,
+    report: &ShutdownReport,
+    phases: Option<[usize; 10]>,
+) -> Value {
+    let Value::Obj(mut fields) = report_value(identity, report) else {
+        unreachable!()
+    };
+    fields.insert(
+        "format".into(),
+        Value::Str("fsm.executor-observation-report/1".into()),
+    );
+    let phases = phases.map_or(Value::Null, |counts| {
+        Value::Obj(
+            PREPARATION_PHASES
+                .into_iter()
+                .zip(counts)
+                .map(|(name, count)| (name.into(), Value::Num(count.to_string())))
+                .collect(),
+        )
+    });
+    fields.insert("preparation_phases".into(), phases);
+    Value::Obj(fields)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -229,8 +271,12 @@ pub(super) enum ReportKind {
 
 pub(super) fn valid_report(value: &Value, identity: &ControlIdentity, kind: ReportKind) -> bool {
     let valid = || -> Option<()> {
-        if value.as_obj()?.len() != 12
-            || value.get("format")?.as_str()? != "fsm.executor-control-report/1"
+        let (fields, format) = match kind {
+            ReportKind::Terminal => (12, "fsm.executor-control-report/1"),
+            ReportKind::Observed => (13, "fsm.executor-observation-report/1"),
+        };
+        if value.as_obj()?.len() != fields
+            || value.get("format")?.as_str()? != format
             || value.get("incarnation")?.as_str()? != identity.incarnation
             || value.get("store_device")?.as_num()?.parse::<u64>().ok()? != identity.store_device
             || value.get("store_inode")?.as_num()?.parse::<u64>().ok()? != identity.store_inode
@@ -276,6 +322,25 @@ pub(super) fn valid_report(value: &Value, identity: &ControlIdentity, kind: Repo
         let reservations = value.get("unclaimed_reservations")?;
         if reservations != &Value::Null && reservations.as_num()?.parse::<usize>().is_err() {
             return None;
+        }
+        if kind == ReportKind::Observed {
+            let phases = value.get("preparation_phases")?;
+            if phases != &Value::Null {
+                if phases.as_obj()?.len() != PREPARATION_PHASES.len() {
+                    return None;
+                }
+                let mut total = 0usize;
+                for name in PREPARATION_PHASES {
+                    total =
+                        total.checked_add(phases.get(name)?.as_num()?.parse::<usize>().ok()?)?;
+                    if total > 4096 {
+                        return None;
+                    }
+                }
+                if reservations.as_num()?.parse::<usize>().ok()? != total {
+                    return None;
+                }
+            }
         }
         if phase == "stopped"
             && (!ids.is_empty()

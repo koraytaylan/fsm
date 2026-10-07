@@ -233,10 +233,10 @@ impl PairedNativeExecutor {
         self.publish_writer(complete, true);
     }
     fn publish_writer(&self, complete: bool, writer_released: bool) {
-        let (ids, unclaimed, retired) = self.runner.native_shutdown_inventory();
+        let (ids, _, retired) = self.runner.native_shutdown_inventory();
         self.control.publish(
             ids,
-            unclaimed,
+            self.runner.native_preparation_inventory(),
             retired && self.closures.is_empty(),
             complete,
             writer_released,

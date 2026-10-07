@@ -59,12 +59,23 @@ impl Connection {
                     }
                     self.input.extend_from_slice(body);
                     if end.is_some() {
+                        let observation_version_two = parse(&self.input, &JsonLimits::DEFAULT)
+                            .ok()
+                            .is_some_and(|value| {
+                                value.get("format").and_then(Value::as_str)
+                                    == Some("fsm.executor-observe/2")
+                            });
                         let request = parse(&self.input, &JsonLimits::DEFAULT)
                             .map_err(|_| invalid("invalid control JSON"))
                             .and_then(|value| {
-                                if value.get("format").and_then(Value::as_str)
-                                    == Some("fsm.executor-observe/1")
-                                {
+                                if value.get("format").and_then(Value::as_str).is_some_and(
+                                    |format| {
+                                        matches!(
+                                            format,
+                                            "fsm.executor-observe/1" | "fsm.executor-observe/2"
+                                        )
+                                    },
+                                ) {
                                     protocol::validate_observation(identity, &value)
                                         .map(|()| None)
                                         .map_err(|error| invalid(&error.message))
@@ -78,7 +89,13 @@ impl Connection {
                         match request {
                             Ok(Some(request)) => self.request = Some(request),
                             Ok(None) => {
-                                self.reply(protocol::report_value(identity, &control.report()))?
+                                let (report, phases) = control.observation();
+                                let value = if observation_version_two {
+                                    protocol::observation_report_value(identity, &report, phases)
+                                } else {
+                                    protocol::report_value(identity, &report)
+                                };
+                                self.reply(value)?;
                             }
                             Err(error) => self.reply(Value::Obj(BTreeMap::from([(
                                 "error".into(),
