@@ -850,3 +850,22 @@ no retained namespace, and that failure remains in prepared-contention-native-st
 The successful runs execute both real-lock deadline retention and release-to-
 matching-closure assertions, but guard-neutralization sensitivity remains pending;
 they do not close broader race, shutdown, recovery or full native coverage.
+
+Native guard sensitivity completed in terminal session 28529, exit zero:
+replacing only prepared cleanup's authority-busy retry with immediate refusal
+failed the expected deadline error assertion (authority busy versus prepared
+cleanup authority deadline), and extending only its entry deadline from two
+to four seconds failed the three-second upper-bound assertion after 4.02 seconds.
+Both mutated native tests exited 101, with zero passed and one failed; each
+matched authority installation was retired only after clear native state.
+The controller restored original closure.rs bytes in finally and verified
+git diff --exit-code before rebuilding healthy controls; stable passed in
+2.27 seconds and MSRV passed in 2.37 seconds, each one passed/zero failed/
+zero ignored. The tracked worktree is clean after restoration.
+Evidence prepared-contention-sensitivity-final.log has SHA-256
+03690d9d1a3c15ac339ecd3e4159afc6dbfacdc159ee267cfccd2c05a74c6472;
+prepared-contention-sensitivity.py preserves the exact mutations and controller.
+Two earlier controller prechecks refused ambiguous replacement patterns before
+changing source; their logs remain retained. This proves the tested retry and
+deadline assertions are load-bearing, not complete concurrency integration or
+other native verifier sensitivity; task 9401 remains in progress.
