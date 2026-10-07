@@ -346,3 +346,8 @@ panics retain their fatal policy. Five worker/filter fixtures cover ordinary
 panic, unknown observations, discarded published responses and forged-name
 refusal, with runtime checks pending. Native Root-handler/owner fault acceptance
 and the remaining plan obligations are unchanged; completion remains 0/7.
+
+Worker/filter predecessor `7165ef9` passes stable/MSRV executor unit (76),
+lifecycle/public API, CLI/stdio/MCP and both-crate all-target Clippy in terminal
+session 87416; two additional transferred-helper/post-publication fatal-hook
+cases are added and await verification, without releasing a task prerequisite.

@@ -15,15 +15,16 @@ use std::{
 };
 
 fn probe(mode: &str) -> Output {
+    let fixture = if mode == "adoption" {
+        "run::native_client::worker::tests::native_worker_panic_after_actual_retirement_discards_the_published_response"
+    } else {
+        "run::native_client::unwind::tests::native_unwind_process_probe"
+    };
     // Disable kernel core dumps before re-exec; no artifact path is selected.
     Command::new("sh")
         .args(["-c", "ulimit -c 0\nexec \"$@\"", "sh"])
         .arg(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "run::native_client::unwind::tests::native_unwind_process_probe",
-            "--nocapture",
-        ])
+        .args(["--exact", fixture, "--nocapture"])
         .env("FSM_NATIVE_UNWIND_TEST", mode)
         .output()
         .unwrap()
@@ -44,6 +45,28 @@ fn native_unwind_fatal_hook_allows_original_transport_panic_without_payload_disc
 #[test]
 fn native_unwind_fatal_hook_allows_original_proof_panic_without_fabricating_result() {
     let output = probe("proof");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("private fixture panic payload"));
+}
+
+#[test]
+fn native_unwind_fatal_hook_allows_transferred_helper_panic_after_actual_retirement() {
+    let output = probe("adoption");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("fixture panic after actual"));
+}
+
+#[test]
+fn native_unwind_fatal_hook_discards_a_published_proof_after_worker_panic() {
+    let output = probe("proof_published");
     assert!(
         output.status.success(),
         "{}",
@@ -109,10 +132,22 @@ fn native_unwind_process_probe() {
             drop(request);
             assert_eq!(budget.reserved(), 0);
         }
-        "proof" => {
+        "proof" | "proof_published" => {
             let ticket = reserve_current().unwrap().unwrap();
+            let _after_result = (mode == "proof_published").then(|| {
+                crate::run::native_client::proof_worker::FixtureHook::after_result(|| {
+                    panic!("private fixture panic payload");
+                })
+            });
+            let publish = mode == "proof_published";
             let mut worker = ProofWorker::<()>::start(
-                || panic!("private fixture panic payload"),
+                move || {
+                    if publish {
+                        Ok(())
+                    } else {
+                        panic!("private fixture panic payload");
+                    }
+                },
                 Arc::clone(&ticket),
                 until,
             )

@@ -149,6 +149,11 @@ fn native_worker_public_start_refuses_the_next_slot_before_helper_startup() {
 
 #[test]
 fn native_worker_panic_after_actual_retirement_discards_the_published_response() {
+    if std::env::var("FSM_NATIVE_UNWIND_TEST").ok().as_deref() == Some("adoption") {
+        std::panic::set_hook(Box::new(
+            crate::run::native_client::filter_native_worker_panics(|_| std::process::abort()),
+        ));
+    }
     let budget = Arc::new(Budget::default());
     let _scope = Scope::enter(Some(&budget));
     let ticket = reserve_current().unwrap().unwrap();

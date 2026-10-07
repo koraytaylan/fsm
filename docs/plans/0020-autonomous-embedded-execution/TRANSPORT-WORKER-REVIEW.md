@@ -153,3 +153,13 @@ is selected. A separate actual-child case panics after real reap/EOF and checks
 that its published response is discarded. These are worker/filter acceptance,
 not installed Root-handler panic or native-domain closure acceptance; candidate
 compilation, runtime, Clippy and new guard sensitivity remain pending.
+
+### Additional unwind phases
+
+Fatal-hook re-exec now also covers the transferred original helper after actual
+reap/EOF and a proof panic after its result has been published; each must retain
+bounded failure rather than deliver the prior response/proof. These new cases
+await runtime verification. Predecessor `7165ef9` passed stable/MSRV executor
+unit (76), lifecycle (3), public surface (17), CLI unit (129), autonomous stdio
+(6), MCP lifecycle (11) and both-crate all-target Clippy in terminal session
+87416; it does not cover these later test additions.
