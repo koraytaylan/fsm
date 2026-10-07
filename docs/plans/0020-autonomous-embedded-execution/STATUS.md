@@ -489,3 +489,28 @@ ordinary tests and both integration targets' Clippy are queued, with actual
 1 GiB memory and zero-swap limits checked at every build stage.
 Both handles were confirmed live while unrelated Cargo PID 1799180 remained
 running; no checks have been declared successful and completion stays 0/7.
+
+### Terminal client-submission and native-scenario compilation checks — 2026-10-07
+
+Both original verification sessions are now terminal exit zero: session 30366
+at frozen `d1af4bf6` passes all six real-binary `autonomous_stdio` cases and
+that target's Clippy on stable and Rust 1.89; its log SHA-256 is
+`cea3b34711ac0bf81e58f90f8acbc15549be999f29ffa0c7db7a744db6ed84b1`.
+Session 95283 advances the same clean isolated worktree only after the original
+predecessor retires, then at frozen `c83bbb59` passes those six cases plus
+three ordinary workflow cases and both targets' Clippy on both toolchains.
+Its log SHA-256 is
+`145015b1e6ce319a436f420de64f328c3ddc0f6c17ff32f64330e896e9677ea5`.
+Both runs pass formatting and file-size checks and verify actual kernel
+1 GiB/zero-swap limits at every stage; live readbacks also showed zero swap
+usage for both owned scopes while queued. The isolated source remains clean
+at `c83bbb59`, and the complete committed diff range checks cleanly.
+
+The eight native workflow cases are explicitly ignored in each ordinary
+workflow target run; compilation and Clippy do not establish native execution,
+Root closure, success/compensation acceptance or platform portability.
+No new full eight-stage host gate or macOS/Windows result is claimed: these
+focused checks validate the client-submission coverage and compile the stronger
+native acceptance path, while the last full milestone remains `55efd81a`.
+Actual native provisioning and the remaining stdio acceptance inventory are
+still outstanding, with task completion unchanged at 0/7.
