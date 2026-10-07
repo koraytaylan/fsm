@@ -149,7 +149,7 @@ pub(super) fn refused_close(directory: &Path) -> Value {
     request(&directory.join("broker"), "close", Value::Num("1".into()))
 }
 
-pub(super) use host_cases::run;
+pub(super) use host_cases::{public_service_loop, run};
 
 #[path = "broker_host_cases.rs"]
 mod host_cases;

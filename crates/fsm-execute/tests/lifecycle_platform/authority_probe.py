@@ -13,7 +13,8 @@ FIXTURE_TARGET = 'lifecycle_runner'
 INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_domain_refusal',
          'counter_rollback_refusal', 'incomplete_intent_refusal',
          'enrolled_gate_authorization', 'private_exec_status', 'native_capture_bounds', 'genuine_claim_binding',
-         'provisioned_broker_access', 'provisioned_broker_disconnect')
+         'provisioned_broker_access', 'provisioned_broker_disconnect',
+         'provisioned_public_service_loop')
 
 
 def build_authority(repo, toolchain, operation):
@@ -94,6 +95,7 @@ def main():
                        str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never']
             # Broker access covers the expanded sequential owner/paired axes.
             timeout = 90 if case in ('provisioned_broker_access', 'provisioned_broker_disconnect',
+                                    'provisioned_public_service_loop',
                                     'private_exec_status', 'native_capture_bounds') else 30
             try:
                 result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)

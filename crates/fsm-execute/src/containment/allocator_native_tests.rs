@@ -76,6 +76,12 @@ fn provisioned_broker_access() {
 }
 
 #[test]
+#[ignore = "requires provisioned root broker, installed authority and real native service limits"]
+fn provisioned_public_service_loop() {
+    broker_cases::public_service_loop();
+}
+
+#[test]
 #[ignore = "requires provisioned root broker and writable cgroups"]
 fn provisioned_broker_disconnect() {
     broker_cases::disconnect();

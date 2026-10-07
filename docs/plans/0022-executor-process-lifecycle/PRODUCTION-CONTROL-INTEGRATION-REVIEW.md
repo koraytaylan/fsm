@@ -183,3 +183,12 @@ under verified controller limits; formatting, file-size and diff checks pass.
 Earlier checks found an oversized broker file and missing imports, resolved
 by keeping memory setup in the shared helper; actual root execution remains
 pending and no native runtime acceptance is claimed.
+
+A separately registered provisioned_public_service_loop root case invokes
+both original process/MCP admission axes, each including public service::run,
+and is included in the native authority producer inventory with its existing
+90-second broker bound. Original broker_access cases remain unchanged; this
+adds coverage rather than substituting a filtered inventory. Host inventory
+relocation 2013015 preserves every original sequential case and bytes.
+Stable/MSRV all-target executor Clippy passed in terminal session 4044; actual
+new root-case execution is pending behind frozen-source guarded installation.

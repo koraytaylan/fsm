@@ -2,6 +2,11 @@
 
 use super::run_case;
 
+pub(in super::super) fn public_service_loop() {
+    run_case(false, Host::Admission);
+    run_case(false, Host::AdmissionMcp);
+}
+
 pub(super) enum Host {
     Primitive,
     BoundClosure,
