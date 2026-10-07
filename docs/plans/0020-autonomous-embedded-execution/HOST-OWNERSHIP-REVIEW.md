@@ -597,3 +597,14 @@ sink still uses the original deadline. Exact one-millisecond/24-hour CLI
 boundary acceptance cases are also added. The corrected stable/MSRV actual
 binary inventory and Clippy checks are running; no successful final result
 or additional task completion is claimed at this checkpoint.
+
+The broader working-path gate is prepared on the clean detached cache checkout
+`production-stdio-full-gate-source` at exact source
+`582c6a6c1f56865697b366670a834061b9e4f271`. The script
+`production-stdio-full-stable-gate.sh` covers all eight required stable stages,
+checks the frozen commit and tracked cleanliness before/after each stage,
+waits for Cargo idle and asserts memory thresholds plus actual 1 GiB/zero-swap
+cgroup limits for every stage. It has not been launched: the corrected narrow
+actual-binary/MSRV check remains live, waiting for independent Cargo work.
+Preparation is not passing gate evidence, and the earlier 3ff97a7 full gate
+does not cover this production integration.
