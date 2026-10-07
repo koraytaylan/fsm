@@ -580,3 +580,39 @@ require the provisioned control, and no race acceptance is inferred.
 The original failed 82bbde4 namespace/stage and matched memory configuration
 remain retained pending archive/teardown before that run; task 9401 and plan
 0022 completion remain unchanged.
+
+
+## Race variability and preserved broker refusal text
+
+The original 82bbde4 failed race was archived with namespace/resource/home/stage,
+original socket/cgroup/manager inventories and matched runtime configuration
+before identity-guarded test teardown; no successful closure verdict was added.
+Frozen 7d6b0fbe02bc9f1949e4a21d02199f64a1a2af5f stable producer session 12108
+ended with exit one (native test 101), again accepting all nine original
+scenarios but failing the race. This time it stalled after first acknowledged
+settlement, with a second claimed effect and no external check_identity call,
+before reaching the competing-owner drain observation. The retained original
+second-domain records have binding and exec-status, but no launch/handoff;
+all three original manager units are inactive with no PID/job. This is a new
+observed failure window, not proof that earlier uncertain cleanup was fixed.
+
+Review finds prepared-cleanup response validation previously replaced any
+broker refusal text with a generic original-domain mismatch. It now preserves
+a string reason only from the exact closed format/ok=false/result envelope,
+capped at 1024 characters, before existing one-line 1024-byte diagnostic
+formatting; successful responses still require complete original-domain
+matching. The helper control pins exact refusal text and preserves malformed,
+changed-identity and extended-response refusals. No deadline, closure guard,
+reservation release or native authority eligibility was changed.
+Terminal session 44592 passes stable/MSRV executor/CLI all-target Clippy,
+formatting/file size, seven admission/control tests and the prepared-cleanup
+refusal control on both toolchains; native-cleanup-refusal-check.log records
+asserted controller limits. Actual failure emission and full native acceptance
+remain pending.
+
+The failed stage /usr/libexec/fsm-workflow-e4c52d395991f98314acb542dd6f26b2,
+namespace 243b5c034fe924af35bbaca06f1afc6c and its original memory configuration
+remain retained; evidence is local-native-workflow-7d6b0fb-stable/workflow.json
+and workflow.log. Next diagnosis must inspect the original second-claim
+execution failure and cleanup reasons, rather than infer native launch from a
+host request log. Task 9401 stays in progress and plan 0022 remains 3/7.

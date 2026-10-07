@@ -3047,3 +3047,9 @@ message, not handler output or native closure evidence, and never releases an
 uncertain reservation, changes shutdown eligibility or renews a deadline.
 This additive diagnostic leaves the provisional public Rust surface, private
 control versions, persistent journal/hash formats, dependencies and MSRV intact.
+
+For a closed authenticated prepared-cleanup refusal response, the diagnostic
+preserves its broker reason prefixed `prepared cleanup refused`, capped to
+1024 Unicode characters before the lifecycle line's stricter 1024-byte limit;
+success still requires the complete matching original domain, and malformed
+or extended responses never confirm cleanup.

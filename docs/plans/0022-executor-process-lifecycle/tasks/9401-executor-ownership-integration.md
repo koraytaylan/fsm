@@ -7,6 +7,7 @@ depends_on:
   - contained-handler-runner
 gated: false
 touches:
+  - crates/fsm-execute/src/run/native_client/prepared_cleanup.rs
   - crates/fsm-execute/src/service/lifecycle/paired.rs
   - crates/fsm-execute/src/service/lifecycle/mod.rs
   - crates/fsm-execute/src/service/lifecycle/control.rs

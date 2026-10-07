@@ -94,6 +94,16 @@ impl NativePreparedCleanup {
 fn validate(response: &Value, original: &Value) -> Result<(), String> {
     if response.as_obj().is_some_and(|fields| fields.len() == 3)
         && response.get("format").and_then(Value::as_str) == Some("fsm.native-response/1")
+        && response.get("ok") == Some(&Value::Bool(false))
+        && let Some(reason) = response.get("result").and_then(Value::as_str)
+    {
+        return Err(format!(
+            "prepared cleanup refused: {}",
+            reason.chars().take(1024).collect::<String>()
+        ));
+    }
+    if response.as_obj().is_some_and(|fields| fields.len() == 3)
+        && response.get("format").and_then(Value::as_str) == Some("fsm.native-response/1")
         && response.get("ok") == Some(&Value::Bool(true))
         && response.get("result") == Some(original)
     {
@@ -121,6 +131,11 @@ mod tests {
         assert!(validate(&Value::Obj(response.clone()), &original).is_ok());
         response.insert("ok".into(), Value::Bool(false));
         assert!(validate(&Value::Obj(response.clone()), &original).is_err());
+        response.insert("result".into(), Value::Str("authority busy".into()));
+        assert_eq!(
+            validate(&Value::Obj(response.clone()), &original).unwrap_err(),
+            "prepared cleanup refused: authority busy"
+        );
         response.insert("ok".into(), Value::Bool(true));
         response.insert("result".into(), Value::Null);
         assert!(validate(&Value::Obj(response.clone()), &original).is_err());
