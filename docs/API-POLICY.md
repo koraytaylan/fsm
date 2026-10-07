@@ -1531,3 +1531,12 @@ and do not reset the eight-command allowance. This fixes long-interval
 transport observation without changing public signatures, wire formats,
 journal bytes, core semantics, dependencies or MSRV; completion-triggered
 wakes, worker isolation and real-handler acceptance remain pending.
+
+OwnedNativeExecutor adds has_ready_native_work, a read-only retained-local
+readiness query performing no I/O, logical clock sampling or ownership change;
+it grants no completion or closure authority. Linux owned stdio uses readiness
+after admitted observation to schedule the next writer decision before a long
+scheduler timer expires, servicing application commands between decisions.
+The provisional executor public-surface inventory records this additive method;
+this has no journal, wire-format, core, dependency or MSRV consequence. Real
+preparation, bound-entry and completion wake acceptance remains pending.

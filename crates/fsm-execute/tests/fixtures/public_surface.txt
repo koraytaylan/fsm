@@ -363,6 +363,7 @@ method fsm_execute::service::ExecutorControl::wait_for_request
 method fsm_execute::service::OwnedNativeExecutor::control
 method fsm_execute::service::OwnedNativeExecutor::from_owned_parts
 method fsm_execute::service::OwnedNativeExecutor::handler_table
+method fsm_execute::service::OwnedNativeExecutor::has_ready_native_work
 method fsm_execute::service::OwnedNativeExecutor::new
 method fsm_execute::service::OwnedNativeExecutor::poll
 method fsm_execute::service::OwnedNativeExecutor::store_mut

@@ -824,3 +824,22 @@ compilation and runtime checks are queued after the existing frozen full gate
 and publication sensitivity work. This fixture does not prove an installed
 handler completion, completion-triggered wake, worker transport isolation or
 eight-completion fairness. Tasks and dependencies remain unchanged.
+
+### Retained readiness wakes the next writer decision — 2026-10-07
+
+Review of the long-interval observation candidate found that admission-free
+polling can deliver a prepared domain or make bound entry ready, while only
+an ordinary owner decision may authorize its next transition. Waiting for
+the configured timer after that observation can still strand the original
+three-second preparation transport at a 24-hour interval. The original driver
+now exposes a read-only retained readiness query, recorded explicitly in the
+provisional public-surface inventory; after observation the host schedules
+its next ordinary decision immediately when readiness exists. It still
+services the mailbox between decisions and samples the logical clock once
+per pass. Observation itself remains admission free.
+
+No installed-helper acceptance is claimed: real prepared-domain, bound-entry
+and completion-triggered fixtures, eight-completion fairness and worker
+isolation remain obligations. The downstream empty-lifecycle fixture checks
+that readiness supplies neither work nor closure on empty live/stopped drivers;
+focused compilation and public-surface verification are pending.

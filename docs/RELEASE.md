@@ -1,5 +1,14 @@
 # Releasing
 
+OwnedNativeExecutor adds has_ready_native_work, a read-only retained-local
+readiness query performing no I/O, logical clock sampling or ownership change;
+it grants no completion or closure authority. Linux owned stdio uses readiness
+after admitted observation to schedule the next writer decision before a long
+scheduler timer expires, servicing application commands between decisions.
+The provisional executor public-surface inventory records this additive method;
+this has no journal, wire-format, core, dependency or MSRV consequence. Real
+preparation, bound-entry and completion wake acceptance remains pending.
+
 Linux owned stdio now observes already-admitted native work every 50 ms while
 idle, independently of the configured scheduler interval, using the original
 driver and one injected logical-time sample with publication deferred through

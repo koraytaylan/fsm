@@ -3337,6 +3337,12 @@ deadlines and MUST NOT reset the eight-command scheduler allowance.
 After an ordinary tick, the owner MUST publish original lifecycle inventory
 before relying on quiescence; a complete empty inventory with actual helper
 retirement MUST suppress further observation scans until the next tick.
+`OwnedNativeExecutor::has_ready_native_work` MUST inspect only retained local
+readiness without I/O, clock reads or ownership changes; it MUST NOT establish
+completion, closure or writer availability. After admitted observation makes
+a retained preparation, bound entry or original outcome ready, stdio MUST
+schedule its next ordinary owner decision without waiting for the configured
+timer, while preserving application-command service between decision passes.
 
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is

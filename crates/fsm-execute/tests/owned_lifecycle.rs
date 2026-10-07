@@ -41,6 +41,7 @@ fn empty_shutdown_releases_the_actual_writer_before_reporting_stopped() {
         let directory = Directory::new();
         let store = Store::open(&directory.0).unwrap();
         let mut executor = OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap();
+        assert!(!executor.has_ready_native_work());
         let control = executor.control();
         let Err(error) = Store::open(&directory.0) else {
             panic!("owned writer must hold its lock")
@@ -50,6 +51,7 @@ fn empty_shutdown_releases_the_actual_writer_before_reporting_stopped() {
         assert!(request.poll().admission_closed);
         assert!(!request.poll().writer_released);
         assert!(executor.poll(&mut FixedClock::new(0, 1), 0).is_empty());
+        assert!(!executor.has_ready_native_work());
         let report = request.wait();
         assert_eq!(report.phase, ExecutorPhase::Stopped);
         assert!(report.inventory_complete && report.helpers_retired && report.writer_released);

@@ -134,6 +134,11 @@ impl<C: Clock> NativeOwner<C> {
                         break;
                     }
                     inventory_unpublished = false;
+                    // Observation cannot authorize binding or entry; wake the
+                    // original writer decision rather than waiting on its timer.
+                    if self.driver.has_ready_native_work() {
+                        next_pass = Instant::now();
+                    }
                 }
                 next_observation = Instant::now() + OBSERVATION_INTERVAL;
             }

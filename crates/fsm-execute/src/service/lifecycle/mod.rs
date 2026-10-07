@@ -74,6 +74,14 @@ impl OwnedNativeExecutor {
         self.control.clone()
     }
 
+    /// Inspect retained local readiness without I/O, clocks or ownership changes.
+    ///
+    /// A ready preparation, bound entry or original outcome needs an owner
+    /// decision; readiness alone proves neither completion nor native closure.
+    pub fn has_ready_native_work(&self) -> bool {
+        self.runner.native_ready()
+    }
+
     /// Access the owned journal until confirmed shutdown releases it.
     pub fn store_mut(&mut self) -> Option<&mut Store> {
         self.store.as_mut()
