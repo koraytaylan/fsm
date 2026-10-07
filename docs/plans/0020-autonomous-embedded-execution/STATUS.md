@@ -314,6 +314,18 @@ New owned transport construction now dispatches protected helper validation,
 socket setup and spawn to its reserved worker; absolute deadlines and pending
 cancellation follow the original startup. Joined startup refusal is separately
 observed and retires only an empty transport, with actual child/EOF facts false
-and original execution retained. Six startup/refusal fixtures are added;
-runtime checks are pending and receipt verification, route discovery and real
-installed-handler acceptance remain open, with 0/7 complete.
+and original execution retained. Six startup/refusal fixtures pass with the executor unit/lifecycle/public API
+checks and both-crate all-target Clippy on stable/MSRV at exact `0705bcb` in
+terminal session 99171. That source does not cover the proof-reader candidate.
+Route discovery and real installed-handler acceptance remain open, with 0/7 complete.
+
+### Original proof-reader candidate
+
+Completion/recovery and shutdown now dispatch original receipt verification to
+workers after actual transport response collection, reusing the original slot,
+charge and deadline without a Store or journal allocator. Results and transport
+retirement inventory require actual proof-worker join; cancellation and expiry
+retain uncertainty. Actual-child wiring and timing/cancellation guard fixtures
+are added with runtime checks pending; Root-issued success, held real process/MCP
+host acceptance, route discovery, completion storage and worker fault phases
+remain unfinished, with 0/7 complete and no prerequisite release.

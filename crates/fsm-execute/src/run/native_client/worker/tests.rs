@@ -1,86 +1,11 @@
 //! Real held child/stream observations are not native domain closure evidence.
 
 use super::*;
-use crate::run::native_client::{NativeRequest, RESPONSE_LIMIT, Reader};
-use fsm_core::{
-    canon::canon_bytes,
-    json::{JsonLimits, parse},
-};
-use std::{
-    collections::BTreeMap,
-    io::Write,
-    os::{fd::OwnedFd, unix::net::UnixStream},
-    process::{Command, Stdio},
-    sync::mpsc,
-    time::Instant,
-};
+use crate::run::native_client::{NativeRequest, test_support::*};
+use fsm_core::json::{JsonLimits, parse};
+use std::{collections::BTreeMap, io::Write, sync::mpsc, time::Instant};
 
 mod startup;
-
-fn held_transport() -> (InlineRequest, UnixStream, UnixStream) {
-    let (gate, input) = UnixStream::pair().unwrap();
-    let (stream, response) = UnixStream::pair().unwrap();
-    stream.set_nonblocking(true).unwrap();
-    let (stderr, diagnostics) = Reader::open(4096).unwrap();
-    let mut command = Command::new("sh");
-    command
-        .args(["-c", "read signal"])
-        .stdin(Stdio::from(OwnedFd::from(input)))
-        .stdout(Stdio::from(OwnedFd::from(response.try_clone().unwrap())))
-        .stderr(diagnostics);
-    let child = command.spawn().unwrap();
-    drop(command);
-    (
-        InlineRequest {
-            child,
-            input: None,
-            pending: Vec::new(),
-            written: 0,
-            stdout: Reader {
-                stream,
-                bytes: Vec::with_capacity(RESPONSE_LIMIT + 1),
-                limit: RESPONSE_LIMIT + 1,
-                eof: false,
-            },
-            stderr,
-            status: None,
-            deadline: Instant::now() + Duration::from_secs(10),
-            error: None,
-            collected: false,
-        },
-        gate,
-        response,
-    )
-}
-
-fn frame(response: &mut UnixStream, value: &Value) {
-    let body = canon_bytes(value);
-    assert!(body.len() + 4 <= RESPONSE_LIMIT);
-    response
-        .write_all(&(body.len() as u32).to_be_bytes())
-        .unwrap();
-    response.write_all(&body).unwrap();
-}
-
-fn response() -> Value {
-    parse(
-        br#"{"format":"fsm.native-response/1","ok":true,"result":null}"#,
-        &JsonLimits::DEFAULT,
-    )
-    .unwrap()
-}
-
-fn receive(request: &mut NativeRequest) -> Result<Value, String> {
-    let until = Instant::now() + Duration::from_secs(5);
-    loop {
-        match request.poll() {
-            Ok(Some(value)) => return Ok(value),
-            Err(error) => return Err(error),
-            Ok(None) => assert!(Instant::now() < until, "original worker response missing"),
-        }
-        std::thread::sleep(Duration::from_millis(1));
-    }
-}
 
 #[test]
 fn native_worker_polling_and_cancellation_return_before_held_child_release() {

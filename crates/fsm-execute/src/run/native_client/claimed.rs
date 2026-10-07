@@ -1,5 +1,6 @@
 //! One claim-bound bind/execute sequence; journal ownership stays with the host.
 
+use super::proof_worker::ProofWorker;
 use super::{NativeCompletion, NativeHelperProgress, NativeRequest};
 use fsm_core::json::Value;
 use fsm_core::record::execution::Claim;
@@ -49,6 +50,7 @@ pub struct NativeRun {
     allocation: Value,
     deadline: Instant,
     request: NativeRequest,
+    verification: Option<ProofWorker<NativeCompletion>>,
     phase: Phase,
     error: Option<String>,
     writer_entry: bool,
@@ -121,6 +123,7 @@ impl NativeRun {
             allocation,
             deadline,
             request,
+            verification: None,
             phase: if recovery {
                 Phase::Recovering
             } else {
@@ -142,6 +145,9 @@ impl NativeRun {
         let result = self.advance();
         if let Err(error) = &result {
             self.error = Some(error.clone());
+            if let Some(verification) = &self.verification {
+                verification.cancel();
+            }
             let _ = self.request.cancel();
         }
         result
@@ -150,6 +156,12 @@ impl NativeRun {
     fn advance(&mut self) -> Result<Option<NativeCompletion>, String> {
         if Instant::now() >= self.deadline {
             return Err("native run deadline; claim remains uncertain".into());
+        }
+        if let Some(verification) = &mut self.verification {
+            let Some(completion) = verification.poll()? else {
+                return Ok(None);
+            };
+            return self.finish(completion);
         }
         if matches!(self.phase, Phase::Bound) {
             if self.writer_entry {
@@ -172,17 +184,31 @@ impl NativeRun {
                 Ok(None)
             }
             Phase::Executing | Phase::Recovering => {
+                if let Some(ticket) = &self.request.ticket {
+                    let claim = self.claim.clone();
+                    let hash = self.journal_claim.clone();
+                    self.verification = Some(ProofWorker::start(
+                        move || NativeCompletion::verify(&response, &claim, &hash),
+                        std::sync::Arc::clone(ticket),
+                        self.deadline,
+                    )?);
+                    return Ok(None);
+                }
                 let completion =
                     NativeCompletion::verify(&response, &self.claim, &self.journal_claim)?;
-                if Instant::now() >= self.deadline {
-                    return Err("native run deadline; claim remains uncertain".into());
-                }
-                self.phase = Phase::Finished;
-                Ok(Some(completion))
+                self.finish(completion)
             }
             Phase::Bound => Err("native run bound transition invalid".into()),
             Phase::Finished => Err("native run completion already collected".into()),
         }
+    }
+
+    fn finish(&mut self, completion: NativeCompletion) -> Result<Option<NativeCompletion>, String> {
+        if Instant::now() >= self.deadline {
+            return Err("native run deadline; claim remains uncertain".into());
+        }
+        self.phase = Phase::Finished;
+        Ok(Some(completion))
     }
 
     pub(super) fn require_writer_entry(&mut self) {
@@ -226,6 +252,9 @@ impl NativeRun {
     pub fn cancel(&mut self) -> Result<(), String> {
         self.error
             .get_or_insert_with(|| "native run cancelled; claim remains uncertain".into());
+        if let Some(verification) = &self.verification {
+            verification.cancel();
+        }
         self.request.cancel()
     }
 
@@ -239,15 +268,20 @@ impl NativeRun {
             Phase::Executing => NativeRunPhase::Executing,
             Phase::Recovering => NativeRunPhase::Recovering,
         };
+        let helper = self.request.progress();
         NativeRunProgress {
             phase,
-            helper: self.request.progress(),
+            helper: self.verification.as_ref().map_or(helper, |verification| {
+                verification.withhold_retirement(helper)
+            }),
         }
     }
 
     /// Observe helper retirement; this does not prove native handler closure.
     pub fn reap(&mut self) -> Result<bool, String> {
-        self.request.reap()
+        let helper = self.request.reap()?;
+        let proof = self.verification.as_mut().is_none_or(ProofWorker::reap);
+        Ok(helper && proof)
     }
 }
 
@@ -264,3 +298,6 @@ fn request(action: &str, payload: Value) -> Value {
         ("payload", payload),
     ])
 }
+
+#[cfg(test)]
+mod tests;

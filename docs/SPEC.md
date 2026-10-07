@@ -3369,8 +3369,19 @@ and worker retire. Parsed response storage MUST be preflighted at 2 MiB using
 Value storage, String/array capacities and a conservative 4096 bytes per object
 entry. Refusal MUST retain uncertain native ownership and MUST NOT settle a
 different attempt. Synchronous standalone construction and polling remain
-unchanged. Receipt verification and store-route discovery still execute on the
-owner; durable-completion storage accounting remains unfinished.
+unchanged. In this mode original completion and shutdown receipt verification
+MUST run on independent proof workers after actual transport response collection,
+reusing the original reserved transport charge without taking a new slot. They
+MUST capture only immutable original response/identity/route material, never a
+Store or journal allocator; current ownership and writer-protected settlement
+checks MUST remain with the owner. Original deadlines and cancellation MUST
+suppress proof delivery before and after verification. Neither a completion
+nor shutdown proof MUST be delivered before actual proof-worker join, and
+transport inventory MUST withhold retirement while that original proof worker
+is unjoined. A proof refusal MUST retain uncertain original ownership and MUST
+NOT append an outcome or release capacity. Store-route discovery and current
+writer-held physical-store checks still execute on the owner; full retained
+completion storage accounting remains unfinished.
 
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is

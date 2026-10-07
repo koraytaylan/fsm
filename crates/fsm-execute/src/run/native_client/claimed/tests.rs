@@ -1,0 +1,148 @@
+//! Actual transport retirement precedes held proof reads; literal claims grant no closure.
+
+use super::*;
+use crate::run::native_client::{proof_worker::FixtureHook, test_support, worker};
+use std::sync::{Arc, mpsc};
+
+enum OriginalPhase {
+    Recovery,
+    Execution,
+}
+
+fn original_run(phase: OriginalPhase) -> NativeRun {
+    let claim = test_support::original_claim();
+    let hash = format!("sha256:{}", "a".repeat(64));
+    let _startup = test_support::completed_transport();
+    match phase {
+        OriginalPhase::Recovery => {
+            NativeRun::recover(&claim, &hash, Duration::from_secs(10)).unwrap()
+        }
+        OriginalPhase::Execution => {
+            let mut run = NativeRun::start(&claim, &hash, Duration::from_secs(10)).unwrap();
+            let until = Instant::now() + Duration::from_secs(5);
+            while run.progress().phase != NativeRunPhase::Bound {
+                assert!(run.poll().unwrap().is_none());
+                assert!(Instant::now() < until, "original binding response missing");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            run
+        }
+    }
+}
+
+fn wait_for_proof(
+    run: &mut NativeRun,
+    arrived: &mpsc::Receiver<std::thread::ThreadId>,
+) -> std::thread::ThreadId {
+    let until = Instant::now() + Duration::from_secs(5);
+    while run.verification.is_none() {
+        assert!(run.poll().unwrap().is_none());
+        assert!(Instant::now() < until, "original proof worker missing");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    arrived.recv_timeout(Duration::from_secs(5)).unwrap()
+}
+
+fn retire(run: &mut NativeRun) {
+    let until = Instant::now() + Duration::from_secs(5);
+    while !run.reap().unwrap() {
+        assert!(Instant::now() < until, "original proof worker not joined");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn native_proof_recovery_poll_and_cancel_do_not_wait_for_a_held_original_reader() {
+    let budget = Arc::new(worker::Budget::default());
+    let _scope = worker::Scope::enter(Some(&budget));
+    let mut run = original_run(OriginalPhase::Recovery);
+    let (entered, arrived) = mpsc::channel();
+    let (release, held) = mpsc::channel();
+    let _hook = FixtureHook::install(move || {
+        entered.send(std::thread::current().id()).unwrap();
+        held.recv_timeout(Duration::from_secs(5)).unwrap();
+    });
+    let reader = wait_for_proof(&mut run, &arrived);
+    let before = run.progress();
+    let pending = run.poll();
+    let retired = run.reap().unwrap();
+    run.cancel().unwrap();
+    let after_cancel = run.progress();
+    let reserved = budget.reserved();
+    release.send(()).unwrap();
+    retire(&mut run);
+    assert_ne!(reader, std::thread::current().id());
+    assert!(before.helper.stdout_eof && before.helper.stderr_eof && !before.helper.reaped);
+    assert!(matches!(pending, Ok(None)) && !retired);
+    assert_eq!(after_cancel.phase, NativeRunPhase::Uncertain);
+    assert!(!after_cancel.helper.is_retired());
+    assert_eq!(reserved, 1, "proof read must reuse the original slot");
+    assert_eq!(
+        run.poll().err().unwrap(),
+        "native run cancelled; claim remains uncertain"
+    );
+    assert!(run.progress().helper.is_retired());
+    assert_eq!(budget.reserved(), 1);
+    drop(run);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
+fn native_proof_execution_refusal_keeps_the_original_generation_and_slot() {
+    let budget = Arc::new(worker::Budget::default());
+    let _scope = worker::Scope::enter(Some(&budget));
+    let mut run = original_run(OriginalPhase::Execution);
+    let original = run.claim.clone();
+    let hash = run.journal_claim.clone();
+    let _execution_startup = test_support::completed_transport();
+    let (entered, arrived) = mpsc::channel();
+    let (release, held) = mpsc::channel();
+    let _hook = FixtureHook::install(move || {
+        entered.send(std::thread::current().id()).unwrap();
+        held.recv_timeout(Duration::from_secs(5)).unwrap();
+    });
+    let reader = wait_for_proof(&mut run, &arrived);
+    let before = run.progress();
+    let pending = run.poll();
+    let retired = run.reap().unwrap();
+    let reserved = budget.reserved();
+    release.send(()).unwrap();
+    retire(&mut run);
+    let refusal = run.poll().err().unwrap();
+    assert_ne!(reader, std::thread::current().id());
+    assert_eq!(before.phase, NativeRunPhase::Executing);
+    assert!(before.helper.stdout_eof && before.helper.stderr_eof && !before.helper.reaped);
+    assert!(matches!(pending, Ok(None)) && !retired);
+    assert_eq!(refusal, "native completion is not an object");
+    assert_eq!(run.claim, original);
+    assert_eq!(run.journal_claim, hash);
+    assert_eq!(run.progress().phase, NativeRunPhase::Uncertain);
+    assert_eq!(reserved, 1);
+    assert_eq!(budget.reserved(), 1);
+    drop(run);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
+fn native_proof_published_refusal_is_not_delivered_before_the_original_reader_join() {
+    let budget = Arc::new(worker::Budget::default());
+    let _scope = worker::Scope::enter(Some(&budget));
+    let mut run = original_run(OriginalPhase::Recovery);
+    let (entered, arrived) = mpsc::channel();
+    let (release, held) = mpsc::channel();
+    let _hook = FixtureHook::after_result(move || {
+        entered.send(std::thread::current().id()).unwrap();
+        held.recv_timeout(Duration::from_secs(5)).unwrap();
+    });
+    let reader = wait_for_proof(&mut run, &arrived);
+    let pending = run.poll();
+    let retired = run.reap().unwrap();
+    release.send(()).unwrap();
+    retire(&mut run);
+    let refusal = run.poll().err().unwrap();
+    assert_ne!(reader, std::thread::current().id());
+    assert!(matches!(pending, Ok(None)) && !retired);
+    assert_eq!(refusal, "native completion is not an object");
+    assert_eq!(run.progress().phase, NativeRunPhase::Uncertain);
+    assert_eq!(budget.reserved(), 1);
+}

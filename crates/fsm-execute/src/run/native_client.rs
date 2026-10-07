@@ -19,8 +19,11 @@ mod discovery;
 mod execution;
 mod preparation;
 mod prepared_cleanup;
+mod proof_worker;
 mod shutdown;
 mod startup;
+#[cfg(test)]
+mod test_support;
 
 pub use claimed::{NativeRun, NativeRunPhase, NativeRunProgress};
 pub use completion::NativeCompletion;

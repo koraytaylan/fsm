@@ -88,9 +88,9 @@ impl OwnedNativeExecutor {
 
     /// Select original transport worker polling for this owned driver.
     ///
-    /// New helper startup and original transport observation run on workers;
-    /// standalone defaults remain synchronous. Receipt verification and journal
-    /// settlement remain on the owner, and polling grants no native closure.
+    /// New helper startup, transport observation and original receipt reads
+    /// run on workers; standalone defaults remain synchronous. Current ownership
+    /// and journal settlement remain on the owner; polling grants no native closure.
     pub fn enable_worker_polling(&mut self) {
         self.workers.get_or_insert_with(|| {
             std::sync::Arc::new(crate::run::native_client::worker::Budget::default())

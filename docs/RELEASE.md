@@ -14,8 +14,14 @@ granting native closure or claim release. Owned startup failures now surface
 through polling, while standalone construction remains synchronous. The new
 NativeHelperProgress field changes downstream struct literals on this
 provisional API; the field and method are inventoried. Receipt verification
-and store-route discovery still run on the owner; durable-completion storage
-and worker panic acceptance remain pending. No wire or journal format,
+for original completion and shutdown now runs on proof workers after actual
+transport response collection, reusing the original reservation and deadline.
+Response delivery and retirement inventory require actual proof-worker join;
+cancellation and expiry suppress returned proof without releasing the original
+claim. Those readers capture immutable material and take no Store or journal
+allocator. Store-route discovery and current writer-held physical-store checks
+remain on the owner; full retained completion storage and worker panic acceptance
+remain pending. No wire or journal format,
 core semantics, dependency or MSRV changes are introduced.
 
 OwnedNativeExecutor adds has_ready_native_work, a read-only retained-local

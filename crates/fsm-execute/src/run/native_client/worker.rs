@@ -19,6 +19,13 @@ const RESPONSE_STORAGE: usize = 2 * 1024 * 1024;
 #[derive(Default)]
 pub(crate) struct Budget(AtomicUsize);
 
+#[cfg(test)]
+impl Budget {
+    pub(super) fn reserved(&self) -> usize {
+        self.0.load(Ordering::Acquire)
+    }
+}
+
 pub(super) struct Ticket(Arc<Budget>);
 
 impl Drop for Ticket {

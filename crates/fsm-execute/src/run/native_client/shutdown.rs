@@ -1,5 +1,6 @@
 //! Protected closure requests retained independently of execution transport.
 
+use super::proof_worker::ProofWorker;
 use super::{NativeHelperProgress, NativeRequest, check_claim_store};
 use fsm_core::{json::Value, record::execution::Claim};
 use fsm_store::store::{Store, VerifiedClosure};
@@ -23,6 +24,7 @@ pub struct NativeShutdown {
     deadline: Instant,
     response_checked: bool,
     proof: Option<VerifiedClosure>,
+    verification: Option<ProofWorker<VerifiedClosure>>,
     error: Option<String>,
 }
 
@@ -99,6 +101,7 @@ impl NativeShutdown {
             deadline,
             response_checked: false,
             proof: None,
+            verification: None,
             error: None,
         })
     }
@@ -122,6 +125,9 @@ impl NativeShutdown {
             }
             Err(error) => {
                 self.error = Some(error.clone());
+                if let Some(verification) = &self.verification {
+                    verification.cancel();
+                }
                 let _ = self.request.cancel();
                 Err(error)
             }
@@ -132,6 +138,13 @@ impl NativeShutdown {
         if Instant::now() >= self.deadline {
             return Err("native shutdown deadline; original claim remains unresolved".into());
         }
+        if let Some(verification) = &mut self.verification {
+            let proof = verification.poll()?;
+            if Instant::now() >= self.deadline {
+                return Err("native shutdown deadline; original claim remains unresolved".into());
+            }
+            return Ok(proof);
+        }
         if !self.response_checked {
             let Some(response) = self.request.poll()? else {
                 return Ok(None);
@@ -139,14 +152,21 @@ impl NativeShutdown {
             validate_response(&response)?;
             self.response_checked = true;
         }
-        check_claim_store(&self.store_directory, &self.claim)?;
-        let proof = VerifiedClosure::read(&self.receipt).map_err(|error| error.message)?;
-        proof
-            .check_store(&self.store_directory)
-            .map_err(|error| error.message)?;
-        if !proof.matches_claim(&self.claim, &self.journal_claim) {
-            return Err("native shutdown receipt differs from original claim".into());
+        let original = OriginalClosure {
+            store_directory: self.store_directory.clone(),
+            claim: self.claim.clone(),
+            journal_claim: self.journal_claim.clone(),
+            receipt: self.receipt.clone(),
+        };
+        if let Some(ticket) = &self.request.ticket {
+            self.verification = Some(ProofWorker::start(
+                move || original.verify(),
+                std::sync::Arc::clone(ticket),
+                self.deadline,
+            )?);
+            return Ok(None);
         }
+        let proof = original.verify()?;
         if Instant::now() >= self.deadline {
             return Err("native shutdown deadline; original claim remains unresolved".into());
         }
@@ -155,12 +175,38 @@ impl NativeShutdown {
 
     /// Observe helper retirement without asserting closure or releasing ownership.
     pub fn reap(&mut self) -> Result<bool, String> {
-        self.request.reap()
+        let helper = self.request.reap()?;
+        let proof = self.verification.as_mut().is_none_or(ProofWorker::reap);
+        Ok(helper && proof)
     }
 
     /// Inspect identifier-free helper facts; these never prove domain closure.
     pub fn progress(&self) -> NativeHelperProgress {
-        self.request.progress()
+        let helper = self.request.progress();
+        self.verification.as_ref().map_or(helper, |verification| {
+            verification.withhold_retirement(helper)
+        })
+    }
+}
+
+struct OriginalClosure {
+    store_directory: PathBuf,
+    claim: Claim,
+    journal_claim: String,
+    receipt: PathBuf,
+}
+
+impl OriginalClosure {
+    fn verify(self) -> Result<VerifiedClosure, String> {
+        check_claim_store(&self.store_directory, &self.claim)?;
+        let proof = VerifiedClosure::read(&self.receipt).map_err(|error| error.message)?;
+        proof
+            .check_store(&self.store_directory)
+            .map_err(|error| error.message)?;
+        if !proof.matches_claim(&self.claim, &self.journal_claim) {
+            return Err("native shutdown receipt differs from original claim".into());
+        }
+        Ok(proof)
     }
 }
 
@@ -279,6 +325,95 @@ mod tests {
         )
         .unwrap();
         Claim::from_value(fixture.get("claim").unwrap()).unwrap()
+    }
+
+    #[test]
+    fn native_proof_shutdown_poll_and_inventory_wait_for_the_original_reader_join() {
+        use crate::run::native_client::{proof_worker::FixtureHook, test_support, worker};
+        use std::sync::{Arc, mpsc};
+        let budget = Arc::new(worker::Budget::default());
+        let _scope = worker::Scope::enter(Some(&budget));
+        let _startup = test_support::completed_transport();
+        let claim = original_claim();
+        let domain = claim.domain().to_value();
+        let namespace = domain.get("namespace").and_then(Value::as_str).unwrap();
+        let generation = domain
+            .get("generation")
+            .and_then(Value::as_num)
+            .unwrap()
+            .parse()
+            .unwrap();
+        let message = Value::Obj(BTreeMap::from([
+            ("format".into(), Value::Str("fsm.native-request/1".into())),
+            ("action".into(), Value::Str("close-claimed".into())),
+            (
+                "payload".into(),
+                Value::Obj(BTreeMap::from([
+                    (
+                        "format".into(),
+                        Value::Str("fsm.native-claim-binding/1".into()),
+                    ),
+                    ("claim".into(), claim.to_value()),
+                    (
+                        "journal_claim".into(),
+                        Value::Str(format!("sha256:{}", "a".repeat(64))),
+                    ),
+                ])),
+            ),
+        ]));
+        let request =
+            NativeRequest::start(namespace, generation, &message, Duration::from_secs(10)).unwrap();
+        // This directly retained poll fixture bypasses startup routing, writes
+        // no native artifact and can obtain no receipt from this absent path.
+        let mut shutdown = NativeShutdown {
+            request,
+            claim,
+            journal_claim: format!("sha256:{}", "a".repeat(64)),
+            store_directory: PathBuf::from("/fsm-proof-fixture-no-authority"),
+            receipt: PathBuf::from("/fsm-proof-fixture-no-receipt"),
+            deadline: Instant::now() + Duration::from_secs(10),
+            response_checked: false,
+            proof: None,
+            verification: None,
+            error: None,
+        };
+        let (entered, arrived) = mpsc::channel();
+        let (release, held) = mpsc::channel();
+        let _hook = FixtureHook::install(move || {
+            entered.send(std::thread::current().id()).unwrap();
+            held.recv_timeout(Duration::from_secs(5)).unwrap();
+        });
+        let until = Instant::now() + Duration::from_secs(5);
+        let reader = loop {
+            if let Ok(reader) = arrived.try_recv() {
+                break reader;
+            }
+            assert!(shutdown.poll().unwrap().is_none());
+            assert!(Instant::now() < until, "original shutdown reader missing");
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        let before = shutdown.progress();
+        let pending = shutdown.poll();
+        let retired = shutdown.reap().unwrap();
+        let reserved = budget.reserved();
+        release.send(()).unwrap();
+        while !shutdown.reap().unwrap() {
+            assert!(
+                Instant::now() < until,
+                "original shutdown reader not joined"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let refused = shutdown.poll().is_err();
+        assert_ne!(reader, std::thread::current().id());
+        assert!(before.stdout_eof && before.stderr_eof && !before.reaped);
+        assert!(matches!(pending, Ok(None)) && !retired);
+        assert!(refused && shutdown.proof.is_none());
+        assert!(shutdown.progress().is_retired());
+        assert_eq!(reserved, 1);
+        assert_eq!(budget.reserved(), 1);
+        drop(shutdown);
+        assert_eq!(budget.reserved(), 0);
     }
 
     #[test]

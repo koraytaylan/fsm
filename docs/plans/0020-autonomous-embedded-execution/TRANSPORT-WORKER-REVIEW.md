@@ -84,3 +84,32 @@ retained original execution without a completion. They do not replace installed
 Root-authority process/MCP acceptance. Candidate runtime, Clippy and new guard
 sensitivity are pending; receipt verification, route discovery, completion
 storage accounting and worker failure/panic acceptance remain open.
+
+## Original completion and shutdown proof readers — candidate
+
+NativeRun completion/recovery and NativeShutdown receipt verification now
+select independent proof workers after actual raw response collection when
+owned polling is enabled. They reuse the original transport reservation and
+absolute deadline, capture immutable response/claim/hash/route material and
+hold no Store or journal allocator. Original current ownership, stopped/ack
+ordering and physical-store checks at writer settlement remain on the owner.
+Proof results are delivered once after actual worker join; helper retirement
+inventory is withheld while that proof worker remains unjoined. Cancellation
+or expiry before/after the read refuses delivery and retains uncertainty.
+Standalone observation remains synchronous.
+
+Actual-child fixtures cover held completion and recovery readers, cancellation,
+refusal without generation or slot replacement, publication before join, and
+shutdown polling/retirement. Shutdown's directly retained fixture bypasses
+startup routing and reads only an absent authority/receipt route; it proves no
+installed shutdown or native closure. Unit-result reader cases additionally
+pin pre-read expiry, post-read expiry and post-entry cancellation; unit values
+provide no opaque proof. Shared private child fixtures expose no public API.
+Runtime and Clippy checks for this candidate remain pending. Actual Root-issued
+completion success, real process/MCP host responsiveness, full completion-storage
+accounting, metadata route discovery and worker failure/panic phases remain open.
+
+Worker-startup predecessor `0705bcb7f8e7eb0c94606446d05550eb6fe902a7` passed
+formatting/file size, executor unit tests (64), owned lifecycle (3), public
+surface (17), and executor plus CLI all-target Clippy on stable/MSRV in terminal
+session 99171; that source does not cover this later proof-reader candidate.
