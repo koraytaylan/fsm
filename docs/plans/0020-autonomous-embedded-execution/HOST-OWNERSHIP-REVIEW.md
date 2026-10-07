@@ -729,3 +729,10 @@ and file-size checks pass. The terminal log SHA-256 is `72ab7bc9f5a9b0fc0326870d
 The fixture preserves unread actual stderr, bounded stop, physical writer
 reacquisition and both diagnostic assertions; it adds original-owner readiness
 rather than relaxing acceptance. A new exact-source full gate is required.
+
+The full stable gate is now frozen at exact clean source `3314aaa`
+(session 63257, log `readiness-full-stable-frozen-gate.log`); the previous
+MSRV stop prerequisite is omitted because its corrected-source inventory
+already passed in session 81218. Session 63257 is confirmed live and waiting
+for independently running Cargo PID 46799 before any stable gate stage,
+without concurrent builds or added swap allowance. Its outcome is pending.
