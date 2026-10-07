@@ -154,3 +154,16 @@ this is isolated internal preparation for task 9103, with no changed persisted
 bytes, public signature, spawn authorization, runtime admission guarantee or
 task completion. Integration footprint needs the two private analyzer modules
 and the outcome regression in addition to task 9103's original admission paths.
+
+Session 2145 is now terminal exit zero: stable and Rust 1.89 effect/outcome
+matrices, public-surface inventory, all-target executor Clippy, formatting and
+file-size checks pass at frozen `419f8be2`. All eleven outcome cases pass,
+including the independent extraneous-key regression; substituting key-first
+lookup fails exactly that public-entry case (0 passed, 1 failed, no compiler
+failure), and restored source passes all eleven cases. The main log SHA-256 is
+`543cf7f231639ac923ad667d606a8511af267a7489f935f2e6e2cfe9a31d9c61`;
+the sensitivity log SHA-256 is
+`fe2e02879200fc330ebfb25103d2b5cacdbc1667384259a5736241d44bd438a3`.
+These focused Linux checks preserve analyzer behavior and do not replace a
+full workspace gate or native platform acceptance; service admission is still
+unwired and task completion remains 0/6.
