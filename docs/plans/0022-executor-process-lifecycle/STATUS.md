@@ -53,6 +53,10 @@ Frozen 8895f99 subsequently passes all systemd/identity/broker/window cases;
 signal exposed a lease-client diagnostic targeting its root-owned namespace,
 repaired to use the existing writable work directory with both signal cases
 passing on the working tree; frozen complete rerun and broader gates stay open.
+Frozen 8c790bc now passes all eight capped feasibility suites on both stable and
+MSRV (69 ordered registered cases each), with original handler kernel limits
+independently checked; production authority/full official matrix and renewed
+host/platform gates remain separate outstanding evidence, without task promotion.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

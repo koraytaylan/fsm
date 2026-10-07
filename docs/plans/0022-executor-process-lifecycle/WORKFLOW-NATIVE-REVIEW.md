@@ -1343,3 +1343,29 @@ actual signal cases with this working-tree repair. The preliminary report
 local-feasibility-memory-signal-repair.json records source_dirty=true and has
 SHA-256 630e41d4adfe456c253d418a3e062d69f3bdd678f96b79beb536458daea3cfd6.
 File-size/diff checks pass; frozen complete rerun and broader gates remain open.
+
+### Complete capped feasibility inventories on stable and MSRV
+
+Terminal session 19697 exits zero at clean frozen
+8c790bc373a246cbcd4677b27f7991c276fc7dd7: all eight feasibility suites pass
+serially on stable and MSRV, with 69 registered cases per toolchain (systemd,
+identity, broker, window, signal, restart, facility, evidence: 6/10/10/11/2/16/5/9).
+Independent readback matches every ordered case inventory to current source,
+requires every case passing and exact clean source, and checks every systemd
+handler observation for one GiB memory and zero swap. The controller asserts
+actual kernel limits before starting subprocesses; root transient service
+vectors and prototype handler units carry those same limits.
+Reports/logs remain in the explicit task cache under
+local-feasibility-memory-final-{stable,1.89.0}, with suite logs alongside.
+Systemd report SHA-256 is
+1e467dcdf0880758b747b40b1d20cdb5e0eb8ef523476b325568b599911e34b6
+(stable) and cf24bf6581af37f3ace4ca38526beb0ec52b8e12f7b5beaf41202e2028741e35
+(MSRV); evidence report SHA-256 is
+884798c44a1501bf73a3999ff0f835b6e0423300490234161a960ace5327c3fd
+(stable) and 71d1106fcc403f5e896d5cddc12256a889f8201e3c16cd8015ad1ad440c63aee
+(MSRV). These are the eight feasibility inventories, not the ninth production
+authority suite, full official matrix, workflow or renewed complete host gate.
+Every report retains gate_released=false. The original authority helper remains
+unchanged; its pending removal approval is not inferred from these passing runs.
+HTTP ownership, bounded borrowed shutdown and production crash proof stay open.
+This evidence-only update runs diff checks; compilation gates are omitted.
