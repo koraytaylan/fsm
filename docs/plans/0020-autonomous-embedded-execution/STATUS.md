@@ -1,11 +1,12 @@
-# Plan 0020 — Autonomous Embedded Execution — Ready
+# Plan 0020 — Autonomous Embedded Execution — In progress
 
 The roll-up row in [../STATUS.md](../STATUS.md) must stay in sync with this
 file; task frontmatter is authoritative and registration and integration
 evidence are coordinator-owned.
 
-- **Status:** Registered by hand; execution-host-ownership is dependency-ready;
-  implementation has not started.
+- **Status:** Registered by hand; execution-host-ownership is in progress;
+  private Store owner and bounded command admission are implemented, with
+  executor state, cancellation and transport integration still outstanding.
 - **Goal:** accepted embedded workflows advance without client polling,
   with one writer and responsive, bounded stdio and HTTP sessions.
 - **Root cause:** stdio runs an executor tick only after requests and HTTP
@@ -30,3 +31,22 @@ evidence are coordinator-owned.
 
 Registration makes the dependency-free ungated ownership task ready; it does
 not establish autonomous execution or release any cross-plan prerequisite.
+
+### Initial private owner and admission — 2026-10-07
+
+The private `mcp/host/` owner now retains the Store and injected clock, accepts
+owned tool/RPC envelopes, applies complete ordinary dispatch operations and
+captures immutable results, committed sequence and appended interval. Host and
+session count/owned-allocation budgets survive dequeue until retirement; stop
+and original-generation close bypass application admission. Seven real Store
+command-boundary cases pass on stable and Rust 1.89 with all-target CLI Clippy,
+formatting and size checks in terminal session 88778. Four isolated guard
+neutralizations each failed their production-envelope assertions and restored
+the original mailbox bytes; session 95084 then failed only the new test's
+formatting, repaired before 88778. HOST-OWNERSHIP-REVIEW.md records the scope.
+
+This starts task 8901 without completing it: executor state, reserved cancel
+control and interaction/diagnostic separation remain unfinished; transports do
+not construct this owner yet, and bounded egress and autonomous scheduling are
+not established. Full changed-source stable host gate and platform CI remain
+pending, merged_as stays empty, and completion remains 0/7.

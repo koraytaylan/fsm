@@ -11,7 +11,7 @@ touches:
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
   - docs/SPEC.md
   - docs/API-POLICY.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Execution Host Ownership

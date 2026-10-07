@@ -3125,3 +3125,23 @@ and a conservative 4096-byte allowance per object entry; queue slots have a
 separate count bound. Dequeue transfers payload ownership to the reader and
 releases the queue charge; close discards queued responses and remains available
 at saturation. This is a mailbox queue budget, not a complete host/output budget.
+
+## Private execution-host command ownership
+
+The staged private execution-host owner MUST retain its owned Store and injected
+logical clock; application handles MUST submit owned tool arguments and RPC IDs
+without obtaining a Store borrow. Each complete operation MUST capture its
+immutable result, committed journal sequence and appended interval before the
+next operation. Idempotent replay MUST retain the ordinary Store fingerprint
+and request-key semantics. Application admission MUST permit at most 32 commands
+and 32 MiB of charged retained allocations per host, and 8 commands and 16 MiB
+per original session generation; charges MUST survive dequeue until command
+retirement. Charge Value storage, owned String/array capacities and a conservative
+4096-byte allowance per object entry and admitted envelope metadata; there are
+no retained wire copies in this boundary. A separately reserved coalesced stop
+control and original-session close MUST remain available at saturation. Stop
+MUST reject queued commands before Store dispatch, finish any already executing
+operation, and reject further admission. This initial private owner does not
+yet carry executor state, cancellation, interactive continuations or bounded
+egress, and neither production transport constructs it yet; the public
+autonomous execution capability remains unimplemented.

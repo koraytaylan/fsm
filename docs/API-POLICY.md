@@ -1347,3 +1347,12 @@ of charged owned payloads per mailbox, preserving admitted replies and journal
 state. This is a finite transport admission policy; no error-code registry or
 persistence format changes. Legacy Mailbox::post closes on failed admission;
 production HTTP uses explicit admission results and returns overload to callers.
+
+The staged private MCP execution-host owner introduces no supported public Rust
+API or wire capability: existing transports do not construct it yet. Its owned
+command boundary preserves ordinary Store journal formats, hashes, idempotency
+and injected clocks while bounding retained pending/in-flight command admission.
+The reserved stop control rejects queued work without dispatch. Production
+transport busy mapping, cancellation, executor scheduling, interaction and egress
+remain integration obligations; this private step does not advertise autonomous
+progress or extend the closed fsm.executor/1 discovery record.

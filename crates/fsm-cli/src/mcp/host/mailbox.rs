@@ -1,0 +1,206 @@
+//! Count and owned-allocation admission held until the owner finishes a command.
+
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, mpsc};
+
+use fsm_core::json::Value;
+
+use super::{AdmissionError, Command, Outcome};
+
+pub(super) const HOST_COMMANDS: usize = 32;
+pub(super) const HOST_BYTES: usize = 32 * 1024 * 1024;
+pub(super) const SESSION_COMMANDS: usize = 8;
+pub(super) const SESSION_BYTES: usize = 16 * 1024 * 1024;
+
+pub(super) struct SessionState {
+    pub generation: u64,
+    open: AtomicBool,
+}
+
+impl SessionState {
+    pub(super) fn is_open(&self) -> bool {
+        self.open.load(Ordering::Acquire)
+    }
+
+    pub(super) fn close(&self) {
+        self.open.store(false, Ordering::Release);
+    }
+}
+
+#[derive(Default)]
+struct Charge {
+    commands: usize,
+    bytes: usize,
+}
+
+#[derive(Default)]
+struct State {
+    queue: VecDeque<Admitted>,
+    host: Charge,
+    sessions: BTreeMap<u64, Charge>,
+    last_generation: u64,
+    stopped: bool,
+}
+
+#[derive(Default)]
+pub(super) struct Mailbox {
+    state: Mutex<State>,
+    ready: Condvar,
+}
+
+pub(super) struct Admitted {
+    pub session: Arc<SessionState>,
+    pub command: Command,
+    pub reply: mpsc::SyncSender<Outcome>,
+    reservation: Reservation,
+}
+
+struct Reservation {
+    mailbox: std::sync::Weak<Mailbox>,
+    generation: u64,
+    bytes: usize,
+}
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        if let Some(mailbox) = self.mailbox.upgrade() {
+            let mut state = mailbox.state.lock().unwrap_or_else(|p| p.into_inner());
+            state.host.commands -= 1;
+            state.host.bytes -= self.bytes;
+            let charge = state
+                .sessions
+                .get_mut(&self.generation)
+                .expect("admission charge");
+            charge.commands -= 1;
+            charge.bytes -= self.bytes;
+            if charge.commands == 0 {
+                state.sessions.remove(&self.generation);
+            }
+        }
+    }
+}
+
+impl Mailbox {
+    pub(super) fn session(&self) -> Result<Arc<SessionState>, AdmissionError> {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        if state.stopped {
+            return Err(AdmissionError::Stopped);
+        }
+        state.last_generation = state
+            .last_generation
+            .checked_add(1)
+            .ok_or(AdmissionError::GenerationExhausted)?;
+        Ok(Arc::new(SessionState {
+            generation: state.last_generation,
+            open: AtomicBool::new(true),
+        }))
+    }
+
+    pub(super) fn admit(
+        self: &Arc<Self>,
+        session: Arc<SessionState>,
+        command: Command,
+    ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
+        let bytes = command_charge(&command);
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        if state.stopped {
+            return Err(AdmissionError::Stopped);
+        }
+        if !session.is_open() {
+            return Err(AdmissionError::Closed);
+        }
+        let per_session = state.sessions.get(&session.generation);
+        if state.host.commands >= HOST_COMMANDS
+            || bytes > HOST_BYTES.saturating_sub(state.host.bytes)
+            || per_session.is_some_and(|charge| charge.commands >= SESSION_COMMANDS)
+            || bytes > SESSION_BYTES.saturating_sub(per_session.map_or(0, |charge| charge.bytes))
+        {
+            return Err(AdmissionError::Busy);
+        }
+        let (reply, receiver) = mpsc::sync_channel(1);
+        state.host.commands += 1;
+        state.host.bytes += bytes;
+        let charge = state.sessions.entry(session.generation).or_default();
+        charge.commands += 1;
+        charge.bytes += bytes;
+        let generation = session.generation;
+        state.queue.push_back(Admitted {
+            session,
+            command,
+            reply,
+            reservation: Reservation {
+                mailbox: Arc::downgrade(self),
+                generation,
+                bytes,
+            },
+        });
+        self.ready.notify_one();
+        Ok(receiver)
+    }
+
+    pub(super) fn next(&self) -> Option<Admitted> {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        loop {
+            if state.stopped {
+                // Reservations acquire state on drop, so retire outside it.
+                let rejected = std::mem::take(&mut state.queue);
+                drop(state);
+                drop(rejected);
+                return None;
+            }
+            if let Some(command) = state.queue.pop_front() {
+                return Some(command);
+            }
+            state = self.ready.wait(state).unwrap_or_else(|p| p.into_inner());
+        }
+    }
+
+    pub(super) fn stop(&self) {
+        let rejected = {
+            let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+            state.stopped = true;
+            std::mem::take(&mut state.queue)
+        };
+        drop(rejected);
+        self.wake();
+    }
+
+    pub(super) fn wake(&self) {
+        self.ready.notify_all();
+    }
+}
+
+// Queue slots and admission metadata are count-bounded. Charge the complete
+// retained command and capacities, including RPC IDs; there are no wire copies.
+// 4096 bytes per object entry conservatively covers BTree node allocation.
+pub(super) fn command_charge(command: &Command) -> usize {
+    std::mem::size_of::<Admitted>()
+        .saturating_add(4096)
+        .saturating_add(command.tool.capacity())
+        .saturating_add(value_charge(&command.rpc_id, 0))
+        .saturating_add(value_charge(&command.arguments, 0))
+}
+
+fn value_charge(value: &Value, depth: usize) -> usize {
+    if depth > 32 {
+        return usize::MAX;
+    }
+    let base = std::mem::size_of::<Value>();
+    let content = match value {
+        Value::Null | Value::Bool(_) => 0,
+        Value::Num(text) | Value::Str(text) => text.capacity(),
+        Value::Arr(values) => values
+            .iter()
+            .fold(values.capacity().saturating_mul(base), |bytes, child| {
+                bytes.saturating_add(value_charge(child, depth + 1))
+            }),
+        Value::Obj(fields) => fields.iter().fold(0usize, |bytes, (key, child)| {
+            bytes
+                .saturating_add(4096)
+                .saturating_add(key.capacity())
+                .saturating_add(value_charge(child, depth + 1))
+        }),
+    };
+    base.saturating_add(content)
+}
