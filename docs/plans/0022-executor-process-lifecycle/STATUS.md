@@ -22,6 +22,10 @@ Frozen e3147b2d..0417f9e6 passes the genuine standalone-kill-after-launch path a
 
 Local broker milestones before 7b978a42 served through the retained installed backend; their source pin establishes client and directly invoked helper assertions, but cannot establish changed backend behavior. Fixtures now stage the currently executing backend bytes under the protected authority, while preserving the installed helper's client and gate roles; backend acceptance must use that corrected boundary.
 
+Frozen a243de84..3da1a31a passes all thirteen production workflow scenarios and both enrolled-authorization and provisioned-broker cases on stable/MSRV with the frozen backend, plus focused tests, all-target CLI/executor Clippy, formatting and size checks; review digest `184976e75460ff323fcaebf9546555d1e9ae42f7822c30678e05b6a926eb1e94`. This resolves the earlier local stale-backend contention evidence and corrects warm completion delivery without loosening cold operator routing; full CI and the remaining lifecycle cutpoints are unverified.
+
+Frozen 3da1a31a..5a826175 passes genuine standalone death after verified native closure while the writer remains held, then original timeout settlement and sequential attempt-two recovery on stable/MSRV; review digest `ab97304614bfc85675d4dfa60aca5348dd7bff6b7095cf064bd1078e951e9c71`. The new cut exposed missing native attempted settlements in watcher retry observations; removing that observation reproduces the named stall and restoration passes. This proves the new fourteenth scenario through focused checks, not the full expanded inventory or the remaining claim/stopped/settlement host cutpoints; 9401 remains in progress.
+
 The retained helper is root-owned in the host namespace with its expected digest and 0711 permissions; the restricted sandbox maps host root to nobody. No ownership repair is required, and failed-run artifacts remain preserved.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
