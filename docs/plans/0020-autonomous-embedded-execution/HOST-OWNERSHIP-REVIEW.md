@@ -843,3 +843,22 @@ and completion-triggered fixtures, eight-completion fairness and worker
 isolation remain obligations. The downstream empty-lifecycle fixture checks
 that readiness supplies neither work nor closure on empty live/stopped drivers;
 focused compilation and public-surface verification are pending.
+
+### Frozen initialization/publication gate and sensitivity terminal evidence
+
+Original session 58152 exited 0 at exact clean frozen `0dc9782`, with all eight
+stable stages passing: fmt, size, workspace debug and release, workspace
+all-target Clippy, warnings-denied Rustdoc, zero-dependency and downstream
+embedding tests. Terminal log `initialization-publication-full-stable-frozen-gate.log`
+SHA-256: `2a77d1a99733094e88fc7449cec889c743dc1d7bc61dd7551e8ef8c83f31c962`.
+
+Original sensitivity session 53595 exited 0: neutralizing ordinary SessionIo
+publication, native decision publication, post-answer elicitation timing and
+the two feed checks as one guard produces the exact expected runtime failures;
+the original source is restored clean and all three publication cases pass.
+Terminal log `publication-phase-sensitivity-check.log` SHA-256:
+`8bfe43036516da5d685eb49ad0603bf62b9f7048c5bd788ee27091032459af1d`. The source remains exact
+`0dc9782`; no claims are made for individual post-load feed-race, pre-fsync or
+shutdown-phase guards. These gates do not cover later `753a579` observation or
+`82c0fc9` readiness scheduling changes, which retain their own focused review
+and pending real-handler acceptance obligations.
