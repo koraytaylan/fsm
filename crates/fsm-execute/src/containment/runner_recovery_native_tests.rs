@@ -24,9 +24,12 @@ pub(super) fn reopen_stopped(
     let hash = store.current_execution_claim_hash(claim).unwrap();
     assert!(completion.proof().matches_claim(claim, &hash));
     completion.proof().check_store(&fixture.store).unwrap();
-    if mode == "process-recover-stopped-kill" {
+    if matches!(
+        mode,
+        "process-recover-stopped-kill" | "process-recover-acked-kill"
+    ) {
         drop(store);
-        super::stopped_host::kill_after_publication(fixture);
+        super::stopped_host::kill_after_publication(fixture, mode);
         store = Store::open(&fixture.store).unwrap();
     } else {
         Pipeline
@@ -38,6 +41,40 @@ pub(super) fn reopen_stopped(
                 &format!("exec-stop-{effect}-{}", claim.run_id()),
             )
             .unwrap();
+    }
+    if mode == "process-recover-acked-kill" {
+        assert_eq!(store.records.len(), before + 2);
+        assert_eq!(store.records[before].kind, RecordKind::ExecutionStopped);
+        assert_eq!(store.records[before + 1].kind, RecordKind::ExecutionSettled);
+        let records = store.records.clone();
+        drop(store);
+        let reopened = Store::open(&fixture.store).unwrap();
+        assert_eq!(reopened.records, records);
+        assert_eq!(reopened.state.execution.unresolved().count(), 0);
+        assert_eq!(reopened.state.execution_handoffs.outstanding().count(), 1);
+        let handoff = reopened
+            .state
+            .execution_handoffs
+            .outstanding()
+            .next()
+            .unwrap();
+        assert_eq!(handoff.claim(), claim);
+        assert_eq!(
+            handoff.handler_contract(),
+            &completion.handler().contract_value()
+        );
+        assert!(
+            !reopened.state.instances["instance"]
+                .pending
+                .contains(&effect.to_owned())
+        );
+        assert_eq!(
+            reopened.state.instances["instance"]
+                .configuration
+                .sequential_leaf(),
+            Some("docs_review")
+        );
+        return (reopened, before);
     }
     assert_eq!(store.records.len(), before + 1);
     assert_eq!(

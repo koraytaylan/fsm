@@ -134,6 +134,7 @@ pub(super) fn run() {
         "process-recover-removed",
         "process-recover-changed",
         "process-recover-stopped-kill",
+        "process-recover-acked-kill",
         "process-failure",
         "process-signal",
         "cancel-mcp",
@@ -191,6 +192,7 @@ pub(super) fn run() {
             "process-exit"
                 | "process-recover-removed"
                 | "process-recover-changed"
+                | "process-recover-acked-kill"
                 | "process-recover-stopped-kill"
                 | "process-failure"
                 | "process-signal"
@@ -494,6 +496,7 @@ pub(super) fn run() {
             "process-exit"
             | "process-recover-removed"
             | "process-recover-changed"
+            | "process-recover-acked-kill"
             | "process-recover-stopped-kill" => "ok",
             "process-failure" | "process-signal" => "nonzero_exit",
             _ => panic!("uncertain runner must not reach verified completion"),
@@ -534,13 +537,15 @@ pub(super) fn run() {
         } else if mode == "process-exit" || mode.starts_with("process-recover-") {
             let (mut store, before) =
                 recovery::reopen_stopped(&fixture, &effect, &original_claim, &completion, mode);
-            settle_owned(
-                &fixture,
-                &mut store,
-                &mut fsm_store::clock::FixedClock::new(1000, 1),
-                &original_claim,
-                &completion,
-            );
+            if mode != "process-recover-acked-kill" {
+                settle_owned(
+                    &fixture,
+                    &mut store,
+                    &mut fsm_store::clock::FixedClock::new(1000, 1),
+                    &original_claim,
+                    &completion,
+                );
+            }
             assert_eq!(store.records.len(), before + 2);
             assert!(
                 store

@@ -20,7 +20,7 @@ impl Drop for Host {
     }
 }
 
-pub(super) fn kill_after_publication(fixture: &Fixture) {
+pub(super) fn kill_after_publication(fixture: &Fixture, mode: &str) {
     super::super::broker_cases::disconnect_cases::install_fixture_binary(
         &fixture.directory,
         "stopped-host-test",
@@ -33,6 +33,7 @@ pub(super) fn kill_after_publication(fixture: &Fixture) {
                 "--ignored",
                 "--nocapture",
             ])
+            .env("FSM_STOPPED_HOST_CUT", mode)
             .env("FSM_STOPPED_HOST_STORE", &fixture.store)
             .env("FSM_STOPPED_HOST_AUTHORITY", &fixture.directory)
             .stdin(Stdio::piped())
@@ -94,6 +95,24 @@ fn persist_then_wait() {
             &format!("exec-stop-{}-{}", claim.effect().1, claim.run_id()),
         )
         .unwrap();
+    if std::env::var("FSM_STOPPED_HOST_CUT").unwrap() == "process-recover-acked-kill" {
+        Pipeline
+            .settle_native_stopped(
+                &mut writer,
+                &mut fsm_store::clock::FixedClock::new(1001, 1),
+                &claim,
+                &completion,
+            )
+            .unwrap();
+        assert_eq!(writer.state.execution.unresolved().count(), 0);
+        assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
+        assert_eq!(
+            writer.state.instances["instance"]
+                .configuration
+                .sequential_leaf(),
+            Some("docs_review")
+        );
+    }
     let mut ready = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
