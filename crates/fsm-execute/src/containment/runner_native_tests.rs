@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 #[path = "runner_advance_native_tests.rs"]
 mod advance;
 use advance::settle_owned;
+#[path = "runner_recovery_native_tests.rs"]
+mod recovery;
 
 pub(super) const SERVER: &str = r#"import json,os,subprocess,sys,time
 from pathlib import Path
@@ -489,15 +491,8 @@ pub(super) fn run() {
         } else if matches!(mode, "cancel-process" | "cancel-mcp") {
             settle_interrupted(&fixture, &effect, &original_claim, &completion);
         } else if mode == "process-exit" {
-            let mut store = Store::open(&fixture.store).unwrap();
-            let before = store.records.len();
-            assert!(
-                store
-                    .state
-                    .execution
-                    .stopped_for("instance", &effect)
-                    .is_none()
-            );
+            let (mut store, before) =
+                recovery::reopen_stopped(&fixture, &effect, &original_claim, &completion);
             settle_owned(
                 &fixture,
                 &mut store,
