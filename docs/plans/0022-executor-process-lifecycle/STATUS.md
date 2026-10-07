@@ -10,11 +10,12 @@ Task frontmatter and roll-up remain unchanged: 3/7 complete, task 9401
 ownership integration in progress, bounded shutdown and reconciliation planned.
 Historical live-handle notes below describe earlier observations only.
 
-The latest clean MSRV native rerun at 4ce2aa5 failed the original race's Drain
-with one uncertain preparation after nine scenarios passed; bounded failure
-archival preserved both original owners' diagnostics, but the broker's generic
-refusal still hides the cause, and the two-standalone group was not reached
-(see WORKFLOW-NATIVE-REVIEW.md for exact evidence and remaining investigation).
+The latest clean MSRV native rerun at 0593350 passed all eleven scenarios,
+including both ownership races, after bounded preparation/refusal diagnostics
+were added; the earlier intermittent uncertain-preparation failure remains
+unexplained because this passing run supplies no failure reason, and current
+stable verification plus broader ownership/crash proof remain pending
+(see WORKFLOW-NATIVE-REVIEW.md for exact evidence).
 
 - Production standalone and ordinary embedded stdio select native owners;
   borrowed embedding helpers, low-level service::run and HTTP ownership remain

@@ -998,3 +998,21 @@ retire-failed-workflow-4ce2aa5.py. Original logs, resource/HOME, staging and
 drop-in evidence are preserved in that report directory retained-fixture;
 socket metadata is recorded separately. The matched installation was removed
 with its device, inode and digest guard; absence supplies no closure verdict.
+
+## MSRV eleven-scenario result at 0593350
+
+Terminal producer session 47837 passed all six groups/eleven scenarios on
+rustc 1.89.0, including both standalone/embedded and two-standalone live-tree
+races, against clean frozen 05933508c2e9facb0b88efed416cc0b8f0b831e2.
+Independent checks matched current source, exact scenario counts, all success
+flags, exit zero, no timeout, no retained installation/stage fields and complete
+log SHA-256 0dc494145a4305ebc611f1370b955e002b9d5a19483a427a2baaa178d071b8eb.
+Evidence is local-native-workflow-diagnostics-msrv beneath the task cache.
+The live controller scope measured MemoryCurrent=429924352 and
+MemorySwapCurrent=0 during the final group; its kernel limits were verified
+before dispatch, and native service memory receipt assertions remained enabled.
+This is the first verified MSRV eleven-scenario success, not proof that the
+intermittent preparation failure is fixed: the change preserves diagnostics
+and makes no lock/admission correction. Current stable native rerun, full host
+gate, production diagnostic wiring/sensitivity and broader crash/ownership
+coverage remain required; task 9401 remains in progress and plan 0022 3/7.
