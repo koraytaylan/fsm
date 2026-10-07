@@ -102,6 +102,24 @@ pub(super) fn analyze(
     limits: Limits,
     defer_outcomes: bool,
 ) -> Result<Report, ExecError> {
+    analyze_resolved(
+        root,
+        &|identity| catalogue.get(identity),
+        table,
+        limits,
+        defer_outcomes,
+    )
+}
+
+/// Borrow definitions from the caller's immutable verified view instead of
+/// requiring an additional owned catalogue for service admission.
+pub(super) fn analyze_resolved<'a>(
+    root: &'a CompiledMachine,
+    resolve: &dyn Fn(&str) -> Option<&'a CompiledMachine>,
+    table: &HandlerTable,
+    limits: Limits,
+    defer_outcomes: bool,
+) -> Result<Report, ExecError> {
     let ceiling = Limits::default();
     if limits.definitions > ceiling.definitions
         || limits.sites > ceiling.sites
@@ -152,7 +170,7 @@ pub(super) fn analyze(
             {
                 Some(root)
             } else {
-                catalogue.get(&digest)
+                resolve(&digest)
             };
             let child = child.filter(|child| {
                 child

@@ -27,14 +27,36 @@ pub fn analyze_contract(
     table: &HandlerTable,
     limits: Limits,
 ) -> Result<Report, ExecError> {
+    analyze_resolved(
+        root,
+        &|identity| {
+            catalogue.get(identity).or_else(|| {
+                catalogue
+                    .values()
+                    .find(|machine| machine.machine_id == identity)
+            })
+        },
+        table,
+        limits,
+    )
+}
+
+/// Resolve both invocation digests and full definition identities in a borrowed
+/// immutable view; the public owned-catalogue API keeps its existing contract.
+pub(super) fn analyze_resolved<'a>(
+    root: &'a CompiledMachine,
+    resolve: &dyn Fn(&str) -> Option<&'a CompiledMachine>,
+    table: &HandlerTable,
+    limits: Limits,
+) -> Result<Report, ExecError> {
     let ceiling = Limits::default();
     if limits.findings > ceiling.findings || limits.report_bytes > ceiling.report_bytes {
         return Err(limit());
     }
     // Share traversal without constructing effect-only outcome placeholders.
-    let mut report = super::effects::analyze(
+    let mut report = super::effects::analyze_resolved(
         root,
-        catalogue,
+        resolve,
         table,
         Limits {
             findings: limits.findings,
@@ -55,15 +77,12 @@ pub fn analyze_contract(
         let machine = if site.machine_id == root.machine_id {
             root
         } else {
-            catalogue
-                .values()
-                .find(|machine| machine.machine_id == site.machine_id)
-                .ok_or_else(|| {
-                    ExecError::new(
-                        "exec/contract_definition_unknown",
-                        "checked definition unavailable",
-                    )
-                })?
+            resolve(&site.machine_id).ok_or_else(|| {
+                ExecError::new(
+                    "exec/contract_definition_unknown",
+                    "checked definition unavailable",
+                )
+            })?
         };
         let handler = &table.handlers[&site.effect];
         for (name, advance) in [("on_ok", &handler.on_ok), ("on_failed", &handler.on_failed)] {
