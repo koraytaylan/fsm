@@ -921,3 +921,20 @@ Terminal `readiness-isolated-check.log` SHA-256:
 gate is next at this committed observation/readiness milestone, with the
 dedicated target retained to avoid stale cross-checkout artifacts; tasks and
 plan completion counts remain unchanged.
+
+### Native startup data separated from helper I/O — 2026-10-07
+
+The native transport constructor now delegates bounded pure route/request
+validation and canonical encoding to immutable PreparedRequest material
+(namespace, generation, bounded encoded bytes and the original absolute
+monotonic deadline), then performs protected-helper inspection, socket setup
+and process spawn in start_prepared. The public synchronous constructor
+continues to invoke both phases in order; its errors, framing, child ownership,
+reap/EOF requirements and cancellation behavior are unchanged. This internal
+seam lets a future supervisor consume bounded data without any Store handle
+or allocator; it does not yet move startup off the original owner.
+
+Formatting, file-size and tracked diff checks pass; focused native-client
+unit/public-surface/Clippy checks remain queued after the live readiness gate.
+No public API, protocol, journal, hash, logical-time or dependency change is
+claimed, and task 8902 remains planned pending the integrated worker boundary.

@@ -132,9 +132,16 @@ pub struct NativeRequest {
     collected: bool,
 }
 
-impl NativeRequest {
-    /// Start the fixed provisioned helper with one bounded request and deadline.
-    pub fn start(
+/// Immutable bounded startup material; no store, sockets or child ownership.
+struct PreparedRequest {
+    namespace: String,
+    generation: u64,
+    bytes: Vec<u8>,
+    deadline: Instant,
+}
+
+impl PreparedRequest {
+    fn prepare(
         namespace: &str,
         generation: u64,
         request: &Value,
@@ -160,6 +167,35 @@ impl NativeRequest {
             .map_err(|_| "native client request exceeds bound")?;
         parse(&bytes, &JsonLimits::DEFAULT)
             .map_err(|_| "native client request exceeds JSON limits")?;
+        Ok(Self {
+            namespace: namespace.into(),
+            generation,
+            bytes,
+            deadline,
+        })
+    }
+}
+
+impl NativeRequest {
+    /// Start the fixed provisioned helper with one bounded request and deadline.
+    pub fn start(
+        namespace: &str,
+        generation: u64,
+        request: &Value,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        Self::start_prepared(PreparedRequest::prepare(
+            namespace, generation, request, timeout,
+        )?)
+    }
+
+    fn start_prepared(prepared: PreparedRequest) -> Result<Self, String> {
+        let PreparedRequest {
+            namespace,
+            generation,
+            bytes,
+            deadline,
+        } = prepared;
         protected_helper()?;
         let (input, input_peer) = UnixStream::pair().map_err(message)?;
         input.set_nonblocking(true).map_err(message)?;
@@ -168,7 +204,7 @@ impl NativeRequest {
         let (stderr, diagnostics) = Reader::open(4096)?;
         let mut command = Command::new(HELPER);
         command
-            .args(["client-watch", namespace, &generation.to_string()])
+            .args(["client-watch", &namespace, &generation.to_string()])
             .env_clear()
             .env("LANG", "C")
             .env("LC_ALL", "C")
