@@ -33,7 +33,10 @@ harness bound is now 90 seconds and failed-case retention controls plus guard
 sensitivity pass; original native deadlines and task statuses are unchanged.
 The isolated stable enrollment rerun now passes at b3f316c in 33.14 seconds,
 exceeding the old outer allowance, while retaining the original installed
-helper unchanged; the complete authority/MSRV/native matrix remains pending.
+helper unchanged; subsequently all twelve stable authority cases pass at
+2adb356 through the retained-helper driver, with original helper identity,
+clear inventories and every case-log digest verified. The official complete
+native matrix, MSRV authority run and renewed host gate remain pending.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

@@ -1238,3 +1238,30 @@ authority state is clear afterward. Original helper device/inode/digest is
 verified before and after, and it remains installed: no installation,
 replacement or removal occurred. This proves enrollment with common service
 limits, not all twelve authority cases, MSRV or complete matrix acceptance.
+
+## Complete stable authority inventory with retained helper
+
+Terminal session 32476 exits zero at clean frozen
+2adb3565f565fee173c204eeaa5635a3daf9e32e: all twelve registered authority cases
+pass with common native service limits, including enrollment, capture/status,
+broker ownership/recovery, disconnect and process/MCP public service execution.
+Every case exits zero without timeout and verifies clear authority state;
+all twelve original case-log digests were independently checked against
+local-retained-authority-stable/authority.json in the explicit task cache.
+Their total measured case duration is 136.6618398865685 seconds, within the
+existing 180-second suite allowance; native assertions/deadlines are unchanged.
+Fixture SHA-256 is
+c573d9f39eafe56d5f2f3403f6ec1cdc9d2dfc0c7edd6bbbd3165dcbc7c790a5;
+report SHA-256 is
+b8089dc23d5971f2a011323375de52e2435d67b0586ab4a15628e1ae327f25cc;
+retained-authority-stable-controller.log SHA-256 is
+3141db7b011ed3d48c76fd8c9f016dfbb1a6b8af712f45569c6cdf48c8ed3a45.
+The controller verifies actual one-GiB/zero-swap limits, and native services
+use the common original-domain preflight. The exact original helper identity
+is checked before and after each case and remains installed unchanged;
+the driver performs no installation, replacement or removal.
+This proves the complete stable authority inventory through the retained-helper
+driver, not the official nine-suite matrix or MSRV acceptance. Other feasibility
+service limits, renewed host/platform gates, HTTP ownership, bounded borrowed
+shutdown and the production crash matrix remain open; task 9401 stays in progress.
+This evidence-only update runs diff checks; compilation gates are omitted.
