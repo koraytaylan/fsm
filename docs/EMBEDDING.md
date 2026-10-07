@@ -2904,3 +2904,5 @@ An explicitly manual pending effect can pass check_pending while remaining in th
 Both shared service tick entry points check the complete pending contract before native preparation is queued; refusal retains pending work and allocates no preparation reservation, while the scheduler can continue unrelated compatible effects, and final writer-held claim and bound-entry revalidation remain unfinished.
 
 A runner retaining an original native completion can reconcile delivery performed by another host: it validates the replayed acknowledgement's exact handoff against its checked completion and original closure, then retires only when the healthy writer's verified fold has consumed that obligation; outstanding or conflicting handoffs retain delivery checks or refusal, so a disabled event alone never proves completion.
+
+An already verified native completion uses its original closure-bound healthy physical writer to deliver its exact acknowledgement handoff; warm and cold delivery share accepted-event retirement checks, while only cold discovery requires its additional protected operator route.

@@ -613,7 +613,7 @@ impl Pipeline {
                 None => return Ok(SettleOutcome::AlreadySettled),
                 Some(_) => {}
             }
-            return self.advance_native_handoff(store, clock, &original);
+            return self.deliver_native_handoff(store, clock, &original, advance);
         }
         self.advance(store, clock, effect_id, instance_id, advance, seq)
     }
@@ -664,10 +664,22 @@ impl Pipeline {
             handler.on_failed.as_ref()
         }
         .ok_or_else(unproven)?;
-        let (instance, effect) = handoff.claim().effect();
+        let (_, effect) = handoff.claim().effect();
         if event_rid(effect, &advance.event) != handoff.event_request_id() {
             return Err(unproven());
         }
+        self.deliver_native_handoff(store, clock, handoff, advance)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn deliver_native_handoff(
+        &mut self,
+        store: &mut Store,
+        clock: &mut dyn Clock,
+        handoff: &fsm_core::record::execution::AcknowledgedHandoff,
+        advance: &Advance,
+    ) -> Result<SettleOutcome, ExecError> {
+        let (instance, effect) = handoff.claim().effect();
         let head = store.journal.last_seq;
         self.advance(store, clock, effect, instance, advance, Some(head))?;
         // A duplicate rejected/ignored response is not accepted-event proof.

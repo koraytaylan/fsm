@@ -1584,3 +1584,5 @@ The shared native preparation path now refuses incompatible or unknown pending c
 Fixed warm native owners remaining retained after another host delivered their original acknowledged event: exact acknowledgement and closure-bound handoff reconciliation now recognizes accepted-event fold retirement without another event send, preserving outstanding obligations and historical acknowledgement behavior.
 
 Native execution refusal diagnostics now distinguish original binding validation, manager launch and enrolled entry authorization without exposing handler arguments or changing refusal, recovery or deadline policy.
+
+Corrected warm completion delivery to preserve its existing verified physical-writer authorization while sharing accepted-event fold retirement checks with cold recovery; cold operator-route validation remains mandatory for cold adoption.
