@@ -938,3 +938,25 @@ Formatting, file-size and tracked diff checks pass; focused native-client
 unit/public-surface/Clippy checks remain queued after the live readiness gate.
 No public API, protocol, journal, hash, logical-time or dependency change is
 claimed, and task 8902 remains planned pending the integrated worker boundary.
+
+### Terminal readiness milestone gate and native startup checks — 2026-10-07
+
+Original full-gate session 26190 exited 0 at exact clean frozen `1c529f6`:
+all eight stable stages pass (fmt, size, whole-workspace debug and release,
+workspace all-target Clippy, warnings-denied Rustdoc, zero dependencies and
+downstream embed acceptance). The isolated target preserves coherent source
+artifacts; every stage checks actual 1GiB/zero-swap limits and host resource
+thresholds before Cargo, with no overlapping owned build. Terminal log
+`readiness-full-stable-gate.log` SHA-256:
+`d3457695db0fc8283451923807bd58af471f5b0599048eaf79b263659469a07d`. This covers the native
+observation/readiness scheduling milestone and its refusal/query fixtures,
+not the later startup refactor or real native-handler scenario inventory.
+
+Original startup session 77843 exited 0 at exact clean frozen `344d8e2`:
+stable and MSRV native-client unit 21/21, provisional public surface 17/17
+and executor all-target Clippy pass, alongside formatting and size checks.
+Terminal `native-startup-check.log` SHA-256:
+`351e1419bf23de5514e778aeb2181c7a98a7d83b649e271b003fb0144eb78d0b`. These checks support
+behavior-preserving preparation/startup separation; helper spawn and transport
+remain on the calling owner, and no worker boundary or installed-helper
+acceptance is inferred. Task completion and dependency release remain unchanged.

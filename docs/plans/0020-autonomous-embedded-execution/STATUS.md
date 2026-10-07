@@ -10,7 +10,7 @@ evidence are coordinator-owned.
   quiet decision passes; initial Linux production stdio wiring is implemented
   with v2 discovery and a passing stable/MSRV real-binary quiet-deadline/EOF path;
   selected compatibility and CLI all-target Clippy pass on both; complete
-  scenario acceptance, the full gate and HTTP remain outstanding.
+  scenario acceptance, subsequent milestone gates and HTTP remain outstanding.
 - **Goal:** accepted embedded workflows advance without client polling,
   with one writer and responsive, bounded stdio and HTTP sessions.
 - **Root cause:** stdio runs an executor tick only after requests and HTTP
@@ -275,3 +275,21 @@ shutdown with open input, exact interval acceptance/EOF independence, and
 invalid interval refusal before loading/opening. The frozen full stable gate
 has started on that source; its result is pending, and progress remains 0/7
 with full native/effect scenarios, publication ordering and HTTP incomplete.
+
+### Verified observation/readiness milestone and bounded startup seam
+
+Exact clean `1c529f6` passes all eight stable host gate stages in terminal
+session 26190, after stable/MSRV focused checks and three restored observation
+guard sensitivity cases. Separate exact clean `344d8e2` passes native-client
+21/21, public-surface 17/17 and executor all-target Clippy on stable/MSRV in
+terminal session 77843, covering the behavior-preserving immutable startup
+data seam. Source identities and terminal log hashes are recorded in
+HOST-OWNERSHIP-REVIEW.md; the earlier full gate does not cover this later
+refactor.
+
+The original stdio owner observes retained work independently of long
+scheduler intervals, suppresses repeated empty-inventory scans and wakes an
+ordinary decision for retained readiness. Real installed-handler completion,
+held-handler responsiveness, transport worker isolation, eight-completion
+fairness, long diagnostics and HTTP remain unfinished; the working stdio
+path remains the priority, with 0/7 tasks complete and no dependency release.
