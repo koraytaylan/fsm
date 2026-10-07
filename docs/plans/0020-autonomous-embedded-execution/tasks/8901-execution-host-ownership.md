@@ -16,6 +16,7 @@ touches:
   - crates/fsm-cli/src/mcp/notify/output.rs
   - crates/fsm-cli/src/mcp/notify/output/
   - crates/fsm-cli/src/mcp/notify/encoded.rs
+  - crates/fsm-cli/src/mcp/notify/pending_input.rs
   - crates/fsm-cli/src/mcp/methods.rs
   - crates/fsm-cli/src/mcp/methods/
   - crates/fsm-cli/src/mcp/serve.rs
@@ -72,3 +73,13 @@ request queue has explicit count and byte bounds.
 The coordinator adopts these shared elicitation and framing boundaries serially
 under task 8901 to complete the private stdio vertical path; task 8904 remains
 planned and its scheduling dependency is not released by this integration.
+
+The staged owned-input response wait now services cancellation, ping and EOF
+while the writer is occupied, retaining at most eight raw deferred frames and
+16 MiB of their allocation capacity; other requests remain in wire order for
+the ordinary dispatcher, and cancellation suppresses only known pending IDs.
+New fixtures cover EOF and cancellation before an owner turn, deferred
+cancellation, the eighth/ninth frame boundary, and capacity release.
+Verification is queued behind an independently running Cargo process; these
+fixtures have not yet been accepted as passing evidence, production stdio
+selection is unchanged, and this task remains in progress.

@@ -620,7 +620,14 @@ fn serve_session_core(
         },
         bounded_shutdown,
     };
+    let mut pending_input = super::notify::pending_input::PendingInput::default();
     loop {
+        if store
+            .hosted()
+            .is_some_and(|(session, _)| session.is_retired())
+        {
+            return Ok(());
+        }
         #[cfg(target_os = "linux")]
         if diagnostics
             .as_ref()
@@ -634,7 +641,10 @@ fn serve_session_core(
         // Bound rather than matched in place: the borrow of `input` ends at
         // the semicolon, which is what lets a request arm lend the same
         // reader to a `SessionIo`.
-        let line = read_capped_line(&mut input, LINE_CAP)?;
+        let line = match pending_input.take() {
+            Some(line) => Line::Data(line.into_bytes()),
+            None => read_capped_line(&mut input, LINE_CAP)?,
+        };
         match line {
             #[cfg(target_os = "linux")]
             Line::Idle => {
@@ -802,10 +812,14 @@ fn serve_session_core(
                         // request: a server-to-client request writes through
                         // the notifier and reads its answer from this same
                         // input.
-                        let io = std::cell::RefCell::new(crate::mcp::notify::SessionIo::new(
-                            &output, &mut input,
-                        ));
                         if let Some((session, data_dir)) = store.hosted() {
+                            let io = std::cell::RefCell::new(
+                                crate::mcp::notify::SessionIo::with_owned_wait(
+                                    &output,
+                                    &mut input,
+                                    &mut pending_input,
+                                ),
+                            );
                             crate::mcp::methods::handle_request_hosted(
                                 &output,
                                 session,
@@ -821,6 +835,9 @@ fn serve_session_core(
                                 None,
                             )?;
                         } else {
+                            let io = std::cell::RefCell::new(crate::mcp::notify::SessionIo::new(
+                                &output, &mut input,
+                            ));
                             crate::mcp::methods::handle_request(
                                 &output,
                                 store.as_deref_mut(),

@@ -375,6 +375,7 @@ fn request_and_await_with(
                             .and_then(|parameters| parameters.get("requestId"))
                         {
                             session.cancel(request_id);
+                            io.cancel_deferred(request_id);
                         }
                     }
                 }

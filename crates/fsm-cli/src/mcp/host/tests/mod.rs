@@ -1,5 +1,7 @@
 //! Independent callers drive the same private owner and admitted envelopes.
 
+#[cfg(target_os = "linux")]
+mod input_wait;
 mod interaction;
 mod protocol;
 #[cfg(target_os = "linux")]

@@ -3277,3 +3277,16 @@ retains the existing rate limit and final-report behavior. Refused progress
 output MUST remain visible to hosted session/lifecycle failure observation.
 This does not move long diagnostics off the writer or establish mutation
 response/notification ordering; both remain integration obligations.
+
+Hosted stdio response waits with owned input MUST continue bounded frame reads
+while waiting for owner replies, routing cancellation to the original session
+and treating EOF as original-session retirement without undoing committed work.
+They MAY answer ping immediately; other incoming requests MUST remain in wire
+order for the ordinary dispatcher. A separate input backlog MUST retain at most
+eight raw frames and 16 MiB of String allocation capacity, with queue metadata
+bounded by that count. These frames are not yet application-admitted; their
+parsed copies MUST be dropped. Backlog refusal uses server-busy before any
+store operation. Cancellation of a known deferred request MUST suppress it
+without installing future cancellation for unknown IDs. Borrowed input helpers
+MUST retain their existing blocking behavior. Owned idle intervals and original
+stop/output failure observation MUST remain finite during the wait.

@@ -1456,3 +1456,14 @@ independent hosted lifetime controls. Legacy borrowed helpers are unchanged.
 This does not move long diagnostics off the owner or establish response/change
 notification ordering, production activation, HTTP or installed-handler
 acceptance, and introduces no public signature, error code or wire version.
+
+Private hosted stdio response waits now read owned input at finite intervals,
+route current cancellation and EOF without an owner turn, and answer ping
+while waiting. Other requests stay in wire order in an independently bounded
+eight-frame / 16 MiB raw input backlog, then enter ordinary dispatch; parsed
+copies are dropped. Known deferred cancellation suppresses that frame without
+creating future cancellation metadata for unknown IDs. Application admission
+and the raw input backlog remain separate accounting units. Borrowed helpers
+retain their blocking behavior; retirement does not undo committed work or
+prove writer release. Long diagnostics, publication ordering, production
+activation and full/platform/native acceptance remain unfinished.

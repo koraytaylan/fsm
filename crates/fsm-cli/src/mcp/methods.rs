@@ -68,8 +68,8 @@ pub fn handle_request<'a>(
 #[allow(dead_code, clippy::too_many_arguments)] // Production adapter integration follows.
 pub(in crate::mcp) fn handle_request_hosted<'a>(
     output: &'a Notifier,
-    session: &crate::mcp::host::Session,
-    data_dir: &std::path::Path,
+    session: &'a crate::mcp::host::Session,
+    data_dir: &'a std::path::Path,
     clock: &mut dyn Clock,
     initialized: &mut bool,
     live: &mut Live,
@@ -87,6 +87,7 @@ pub(in crate::mcp) fn handle_request_hosted<'a>(
             session,
             data_dir,
             output,
+            io,
         },
         clock,
         initialized,

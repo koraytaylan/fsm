@@ -5,6 +5,7 @@
 
 use std::{io, path::PathBuf};
 
+mod input_wait;
 mod interaction;
 
 use fsm_core::json::Value;
@@ -27,6 +28,7 @@ pub(super) enum StoreAccess<'a> {
         session: &'a Session,
         data_dir: &'a std::path::Path,
         output: &'a crate::mcp::notify::Notifier,
+        io: Option<&'a std::cell::RefCell<crate::mcp::notify::SessionIo<'a>>>,
     },
 }
 
@@ -42,8 +44,11 @@ impl StoreAccess<'_> {
         match self {
             Self::Borrowed(store) => Ok(crate::mcp::resources::list(store.as_deref())),
             Self::Hosted {
-                session, output, ..
-            } => read(session, output, id, ReadOperation::ResourcesList)?
+                session,
+                output,
+                io,
+                ..
+            } => read(session, output, id, ReadOperation::ResourcesList, *io)?
                 .map_err(|error| io::Error::other(error.message)),
         }
     }
@@ -61,12 +66,16 @@ impl StoreAccess<'_> {
                 handlers,
             )),
             Self::Hosted {
-                session, output, ..
+                session,
+                output,
+                io,
+                ..
             } => read(
                 session,
                 output,
                 id,
                 ReadOperation::ResourceRead { uri: uri.into() },
+                *io,
             ),
         }
     }
@@ -81,7 +90,10 @@ impl StoreAccess<'_> {
                 Ok(crate::mcp::complete::complete(parameters, store.as_deref()))
             }
             Self::Hosted {
-                session, output, ..
+                session,
+                output,
+                io,
+                ..
             } => Ok(read(
                 session,
                 output,
@@ -89,6 +101,7 @@ impl StoreAccess<'_> {
                 ReadOperation::Complete {
                     parameters: parameters.cloned().unwrap_or(Value::Null),
                 },
+                *io,
             )?
             .map_err(|error| crate::mcp::complete::Invalid(error.message))),
         }
@@ -135,7 +148,7 @@ impl StoreAccess<'_> {
                 } else {
                     session.submit(command)
                 };
-                receive(session, output, admission)
+                receive_input(session, output, admission, context.io)
             }
         }
     }
@@ -146,23 +159,40 @@ fn read(
     output: &crate::mcp::notify::Notifier,
     id: &Value,
     operation: ReadOperation,
+    input: Option<&std::cell::RefCell<crate::mcp::notify::SessionIo<'_>>>,
 ) -> io::Result<Result<Value, ErrorObj>> {
-    receive(
+    receive_input(
         session,
         output,
         session.read(ReadCommand {
             rpc_id: id.clone(),
             operation,
         }),
+        input,
     )
 }
 
-fn receive(
+fn receive_input(
     session: &Session,
     output: &crate::mcp::notify::Notifier,
     admission: Result<std::sync::mpsc::Receiver<Outcome>, AdmissionError>,
+    input: Option<&std::cell::RefCell<crate::mcp::notify::SessionIo<'_>>>,
 ) -> io::Result<Result<Value, ErrorObj>> {
-    Ok(wait(session, output, admission)?.result)
+    Ok(wait_input(session, output, admission, input)?.result)
+}
+
+fn wait_input<T>(
+    session: &Session,
+    output: &crate::mcp::notify::Notifier,
+    admission: Result<std::sync::mpsc::Receiver<T>, AdmissionError>,
+    input: Option<&std::cell::RefCell<crate::mcp::notify::SessionIo<'_>>>,
+) -> io::Result<T> {
+    let owned = input.is_some_and(|input| input.borrow().has_owned_wait());
+    if owned {
+        input_wait::wait(session, output, admission, input.expect("owned input"))
+    } else {
+        wait(session, output, admission)
+    }
 }
 
 fn admission_error(error: AdmissionError) -> io::Error {

@@ -10,6 +10,7 @@
 pub(crate) mod diagnostic_output;
 mod encoded;
 mod output;
+pub(crate) mod pending_input;
 
 pub use output::ProtocolOutput as OutputControl;
 
@@ -317,12 +318,45 @@ pub fn sleep_unless_stopped(stop: &AtomicBool, total_ms: u64) {
 pub struct SessionIo<'a> {
     notifier: &'a Notifier,
     input: &'a mut dyn std::io::BufRead,
+    pending: Option<&'a mut pending_input::PendingInput>,
 }
 
 impl<'a> SessionIo<'a> {
     /// Both halves of one session, borrowed for one request.
     pub fn new(notifier: &'a Notifier, input: &'a mut dyn std::io::BufRead) -> Self {
-        Self { notifier, input }
+        Self {
+            notifier,
+            input,
+            pending: None,
+        }
+    }
+
+    pub(crate) fn with_owned_wait(
+        notifier: &'a Notifier,
+        input: &'a mut dyn std::io::BufRead,
+        pending: &'a mut pending_input::PendingInput,
+    ) -> Self {
+        Self {
+            notifier,
+            input,
+            pending: Some(pending),
+        }
+    }
+
+    pub(crate) fn has_owned_wait(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    pub(crate) fn defer(&mut self, line: String) -> bool {
+        self.pending
+            .as_deref_mut()
+            .is_some_and(|pending| pending.push(line))
+    }
+
+    pub(crate) fn cancel_deferred(&mut self, requested: &Value) {
+        if let Some(pending) = self.pending.as_deref_mut() {
+            pending.cancel(requested);
+        }
     }
 
     /// The one writer.
