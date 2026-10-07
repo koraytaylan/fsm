@@ -1522,3 +1522,12 @@ Static guard handles add fixed per-session/host metadata, with one held guard
 per request scope and no growing record/ID registry. This changes notification
 ordering without journal/core/public API or dependency/MSRV changes; full
 commit-barrier and guard-neutralization acceptance remains pending.
+
+Linux owned stdio now observes already-admitted native work every 50 ms while
+idle, independently of the configured scheduler interval, using the original
+driver and one injected logical-time sample with publication deferred through
+its return; these observations admit no effects, retries or machine deadlines
+and do not reset the eight-command allowance. This fixes long-interval
+transport observation without changing public signatures, wire formats,
+journal bytes, core semantics, dependencies or MSRV; completion-triggered
+wakes, worker isolation and real-handler acceptance remain pending.

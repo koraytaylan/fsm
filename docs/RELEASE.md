@@ -1,5 +1,14 @@
 # Releasing
 
+Linux owned stdio now observes already-admitted native work every 50 ms while
+idle, independently of the configured scheduler interval, using the original
+driver and one injected logical-time sample with publication deferred through
+its return; these observations admit no effects, retries or machine deadlines
+and do not reset the eight-command allowance. This fixes long-interval
+transport observation without changing public signatures, wire formats,
+journal bytes, core semantics, dependencies or MSRV; completion-triggered
+wakes, worker isolation and real-handler acceptance remain pending.
+
 Clarify the existing membership-based hosted change feed and correct the elicitation publication fixture to require its single instance invalidation after response admission, retaining durable completed-state and verified-journal checks.
 
 Owned stdio fixes initialization warning and notification handling during owner-response waits and avoids waiting for impossible broken-stderr drainage after original-owner retirement; production stderr lifecycle regressions provide the focused acceptance cases, with broader changed-source acceptance pending.

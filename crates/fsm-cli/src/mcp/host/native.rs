@@ -23,6 +23,7 @@ use super::{
 };
 
 const COMMAND_BATCH: usize = 8;
+const OBSERVATION_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Carries the original driver back even when shutdown cannot prove closure.
 pub(in crate::mcp) struct NativeExit {
@@ -93,10 +94,13 @@ impl<C: Clock> NativeOwner<C> {
         let control = self.driver.control();
         let handlers = crate::mcp::executor::handlers(self.driver.handler_table());
         let mut next_pass = Instant::now();
+        let mut next_observation = next_pass;
+        let mut inventory_unpublished = true;
         let mut commands = 0;
         let mut failure = None;
         loop {
-            if control.report().phase != ExecutorPhase::Running || self.diagnostics.is_broken() {
+            let report = control.report();
+            if report.phase != ExecutorPhase::Running || self.diagnostics.is_broken() {
                 if self.diagnostics.is_broken() {
                     failure = Some(io::Error::new(
                         io::ErrorKind::BrokenPipe,
@@ -113,11 +117,33 @@ impl<C: Clock> NativeOwner<C> {
                 }
                 commands = 0;
                 next_pass = Instant::now() + self.interval;
+                next_observation = Instant::now() + OBSERVATION_INTERVAL;
+                inventory_unpublished = true;
+            } else if Instant::now() >= next_observation {
+                // An ordinary tick may change retained work without publishing
+                // lifecycle inventory; publish once before trusting quiescence.
+                if inventory_unpublished
+                    || !report.inventory_complete
+                    || !report.helpers_retired
+                    || !report.unresolved_run_ids.is_empty()
+                    || report.unclaimed_reservations != Some(0)
+                {
+                    let lines = self.observation_pass();
+                    if let Err(error) = publish(&mut self.diagnostics, lines) {
+                        failure = Some(error);
+                        break;
+                    }
+                    inventory_unpublished = false;
+                }
+                next_observation = Instant::now() + OBSERVATION_INTERVAL;
             }
             // Independent lifecycle control does not need an application
             // command to wake a long configured scheduler interval.
-            let control_check = Instant::now() + Duration::from_millis(50);
-            match self.mailbox.next_until(next_pass.min(control_check)) {
+            let control_check = Instant::now() + OBSERVATION_INTERVAL;
+            match self
+                .mailbox
+                .next_until(next_pass.min(next_observation).min(control_check))
+            {
                 Next::Command(admitted) => {
                     if let Some(store) = self.driver.store_mut() {
                         apply_command(store, &mut self.clock, admitted, Some(&handlers));
@@ -172,6 +198,16 @@ impl<C: Clock> NativeOwner<C> {
     /// SPEC: one logical sample supplies every operation in this decision pass.
     pub(super) fn decision_pass(&mut self) -> Vec<String> {
         self.decision_pass_after_commit(|| {})
+    }
+
+    /// Observe retained original work without scheduling admission or deadlines.
+    pub(super) fn observation_pass(&mut self) -> Vec<String> {
+        let _publication = self
+            .publication
+            .as_ref()
+            .and_then(crate::mcp::notify::Notifier::publication_guard);
+        let now_ms = self.clock.now_ms();
+        self.driver.poll(&mut FixedClock::new(now_ms, 0), now_ms)
     }
 
     // Tests pause only after the original driver returns, preserving the real

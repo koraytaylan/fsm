@@ -3328,6 +3328,15 @@ return the existing CLI args error before opening the store or starting
 execution. The interval bounds scheduler timed wakes, while reserved native
 stop observation remains bounded independently at 50 ms; wait duration MUST
 NOT supply logical journal time. Borrowed helper behavior remains unchanged.
+While running, the original stdio owner MUST also observe already-admitted
+native work at idle intervals no greater than 50 ms, independently of the
+configured scheduler interval. Each observation MUST sample the injected
+logical clock once and retain the native publication guard through original
+driver return; observation MUST NOT schedule effects, retries or machine
+deadlines and MUST NOT reset the eight-command scheduler allowance.
+After an ordinary tick, the owner MUST publish original lifecycle inventory
+before relying on quiescence; a complete empty inventory with actual helper
+retirement MUST suppress further observation scans until the next tick.
 
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is

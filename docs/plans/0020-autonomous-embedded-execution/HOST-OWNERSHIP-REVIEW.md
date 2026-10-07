@@ -803,3 +803,24 @@ input fixture fail; each mutation is restored and the clean baseline passes.
 The aggregate terminal log SHA-256 is `7fda4cf7f3cd71db50041266c0d0d1cc199f21968e73da1e48aae0aaccfa981c`.
 This proves those three guards are load-bearing at the real hosted method/input
 seam, without claiming publication-phase sensitivity or native acceptance.
+
+### Long-interval admitted observation candidate — 2026-10-07
+
+The original NativeOwner now has a separate 50 ms admitted-work observation
+deadline; ordinary scheduler decisions retain their configured interval and
+eight-command allowance. Observation uses the original driver, one logical
+clock sample and the same publication guard, without new effect admission,
+retry or machine-deadline scheduling. After each ordinary decision the owner
+publishes lifecycle inventory once, then suppresses repeated scans only when
+that original inventory is complete, all helpers retired, no run IDs remain
+and unclaimed reservations are exactly Some(0). Unknown inventory remains
+observable, and independent stop checks retain their 50 ms bound.
+
+The production-owner long-interval fixture advances logical time after the
+first decision and requires one inventory observation, no further idle clock
+samples, no deadline journal append, original writer release and successful
+reopen/verification. Formatting, file-size and tracked diff checks pass;
+compilation and runtime checks are queued after the existing frozen full gate
+and publication sensitivity work. This fixture does not prove an installed
+handler completion, completion-triggered wake, worker transport isolation or
+eight-completion fairness. Tasks and dependencies remain unchanged.
