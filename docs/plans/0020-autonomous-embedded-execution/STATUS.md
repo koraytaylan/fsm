@@ -294,15 +294,16 @@ held-handler responsiveness, transport worker isolation, eight-completion
 fairness, long diagnostics and HTTP remain unfinished; the working stdio
 path remains the priority, with 0/7 tasks complete and no dependency release.
 
-### Original raw transport worker polling — implementation pending verification
+### Original raw transport worker polling — focused checks verified
 
 Task 8902 starts with actual owned-stdio selection of worker polling: raw
 transport socket exchange, reap and final drop move with the original request;
 new helper startup reserves a pool slot and transport charge first, transferred
 helpers reserve before adoption, and response/retirement requires actual worker
 join plus reap and both EOFs. Four actual held-child/storage/capacity fixtures
-are added without a public test-access API. Compilation and runtime checks
-remain pending; startup, receipt verification, durable-completion accounting,
+are added without a public test-access API. Stable/MSRV executor and stdio checks, all-target Clippy and four restored
+guard sensitivity cases pass at exact `80f1e5a`, as recorded in
+TRANSPORT-WORKER-REVIEW.md; startup, receipt verification, durable-completion accounting,
 real process/MCP responsiveness and worker panic/failure cases are unfinished.
 Task 8901 remains in progress, no prerequisite is released, and completion
 remains 0/7; native helper fixtures do not imply installed-authority acceptance.

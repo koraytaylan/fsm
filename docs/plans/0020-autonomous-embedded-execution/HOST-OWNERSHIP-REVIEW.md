@@ -961,35 +961,8 @@ behavior-preserving preparation/startup separation; helper spawn and transport
 remain on the calling owner, and no worker boundary or installed-helper
 acceptance is inferred. Task completion and dependency release remain unchanged.
 
-### Original transport polling worker — implementation candidate
+### Original transport polling worker
 
-OwnedNativeExecutor exposes explicit worker polling and NativeOwner selects
-it after validating finite bounds. Scoped pool selection restores the previous
-thread-local context; standalone defaults remain synchronous. New requests
-reserve before helper construction; transferred running requests reserve before
-adoption and carry the original child, streams, captured prefix, write offset
-and absolute deadline into their worker without restarting the helper.
-Each of 128 pool slots charges 16 MiB until both original owner handle and
-worker retire; parsed response storage preflights at 2 MiB, using Value storage,
-String/array capacities and conservative object-entry allocation.
-
-Only finished workers are joined, cached reap is withheld until join, and
-response collection cannot race an unfinished worker. Worker cancellation is
-an atomic request; actual helper kill/reap/socket observation remains on that
-worker. Failed thread creation retains the original inline request for later
-observation rather than dropping its helper in the failed spawn closure.
-An unfinished detached worker retains its ticket and grants no retirement.
-
-Four fixtures use an actual barrier-held child and actual Unix streams to
-check polling/cancellation before release, actual reap/EOF with a held unjoined
-worker, exact 2 MiB parsed storage and one byte over through public polling,
-and public-constructor refusal at slot 129 before helper startup. They do not
-provide native domain closure or installed process/MCP acceptance. Formatting,
-file-size and tracked diff checks pass; runtime compilation and Clippy remain
-pending, as do guard sensitivity and thread-failure/panic phases.
-
-Helper spawn and protected/receipt metadata I/O still execute on the owner;
-completion candidates need durable-storage accounting and actual supervised
-handler tests before task completion. Task 8902 is now in progress for this
-partial integrated boundary; task 8901's prerequisite remains unreleased and
-no task or plan completion follows from these implementation changes.
+Implementation, terminal stable/MSRV checks, guard sensitivity and remaining
+acceptance gaps are recorded in [TRANSPORT-WORKER-REVIEW.md](TRANSPORT-WORKER-REVIEW.md);
+task 8902 remains in progress and no prerequisite is released.
