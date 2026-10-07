@@ -34,6 +34,7 @@ use super::jsonrpc::notification;
 /// The protocol stream, and the lock that keeps it one line at a time.
 pub struct Notifier {
     out: OutputMode,
+    publication: Arc<AtomicU64>,
     /// Set once a write fails, so a caller can stop rather than retrying into
     /// a stream that is gone.
     broken: Arc<Mutex<bool>>,
@@ -43,6 +44,7 @@ impl Notifier {
     pub fn new(out: Box<dyn Write + Send>) -> Self {
         Self {
             out: OutputMode::Direct(Arc::new(Mutex::new(out))),
+            publication: Arc::new(AtomicU64::new(0)),
             broken: Arc::new(Mutex::new(false)),
         }
     }
@@ -58,6 +60,7 @@ impl Notifier {
         Ok((
             Self {
                 out: OutputMode::Queued(control.clone()),
+                publication: Arc::new(AtomicU64::new(0)),
                 broken: Arc::new(Mutex::new(false)),
             },
             control,
@@ -68,6 +71,7 @@ impl Notifier {
     pub fn clone_handle(&self) -> Self {
         Self {
             out: self.out.clone(),
+            publication: Arc::clone(&self.publication),
             broken: Arc::clone(&self.broken),
         }
     }
@@ -86,10 +90,23 @@ impl Notifier {
         Ok((
             Self {
                 out: OutputMode::Hosted(control.clone()),
+                publication: Arc::new(AtomicU64::new(0)),
                 broken: Arc::new(Mutex::new(false)),
             },
             control,
         ))
+    }
+
+    pub(crate) fn publication_guard(&self) -> Option<PublicationGuard> {
+        if !matches!(self.out, OutputMode::Hosted(_)) {
+            return None;
+        }
+        self.publication.fetch_add(1, Ordering::AcqRel);
+        Some(PublicationGuard(Arc::clone(&self.publication)))
+    }
+
+    pub(crate) fn publication_pending(&self) -> bool {
+        self.publication.load(Ordering::Acquire) != 0
     }
 
     /// Emit one complete message: synchronous write/flush or bounded queue admission.
@@ -154,6 +171,13 @@ impl Notifier {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         failed
             || matches!(&self.out, OutputMode::Queued(output) | OutputMode::Hosted(output) if output.is_broken())
+    }
+}
+
+pub(crate) struct PublicationGuard(Arc<AtomicU64>);
+impl Drop for PublicationGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -319,6 +343,7 @@ pub struct SessionIo<'a> {
     notifier: &'a Notifier,
     input: &'a mut dyn std::io::BufRead,
     pending: Option<&'a mut pending_input::PendingInput>,
+    publication: Option<PublicationGuard>,
 }
 
 impl<'a> SessionIo<'a> {
@@ -328,6 +353,7 @@ impl<'a> SessionIo<'a> {
             notifier,
             input,
             pending: None,
+            publication: None,
         }
     }
 
@@ -340,6 +366,13 @@ impl<'a> SessionIo<'a> {
             notifier,
             input,
             pending: Some(pending),
+            publication: None,
+        }
+    }
+
+    pub(crate) fn hold_publication(&mut self) {
+        if self.publication.is_none() {
+            self.publication = self.notifier.publication_guard();
         }
     }
 

@@ -8,6 +8,7 @@ gated: false
 touches:
   - crates/fsm-cli/src/args.rs
   - crates/fsm-cli/src/cli/execute.rs
+  - crates/fsm-cli/src/mcp/watch.rs
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/src/mcp/host/
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
@@ -122,3 +123,9 @@ from 8903: the actual CLI validates the finite interval before loading a table
 or opening a writer, passes it to the original native owner, and keeps native
 stop observation independent; 8903 remains planned pending its complete
 scheduling/fairness acceptance inventory, and verification is pending.
+
+The serial working-path integration now adopts change-feed publication guards
+from 8904 across hosted application responses, answered elicitation settlement
+and native decision passes, with a real hosted mutation/feed scope fixture;
+full commit-boundary, concurrency and guard-neutralization proof remains
+pending, and no task dependency is released.

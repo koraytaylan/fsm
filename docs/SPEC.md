@@ -3334,3 +3334,12 @@ boundary MUST enqueue a bounded operator diagnostic, retire the original
 session and request supervised native shutdown. Other threads and legacy
 serve paths retain their fatal panic behavior; catching an adapter unwind
 MUST NOT imply native owner/handler panic containment has been accepted.
+
+Owned hosted stdio MUST defer change-feed publication across an application
+mutation from admission through response queueing, and across each native
+decision pass until its journal operations return. The guard MUST hold no
+store or transport I/O lock; a skipped feed pass MUST preserve its watermark.
+Elicitation MUST acquire its application publication guard only after the
+client has answered, so unanswered questions do not suppress autonomous
+updates. Scoped guards MUST retire on response completion, cancellation,
+disconnect or unwind, without undoing committed idempotent results.

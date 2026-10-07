@@ -642,3 +642,19 @@ of abort, both bounded/final diagnostics and writer reopening with stdin open.
 Stable/MSRV library, actual-binary, legacy lifecycle and all-target Clippy
 verification is running; this newer source invalidates the older full-gate
 candidate and no new successful result or task completion is claimed.
+
+The owned stdio path now adds a shared atomic publication scope: ordinary
+hosted tool calls hold it from submission through request-scope response
+admission, elicitation holds it only after the answer before settlement,
+and production native decision/shutdown passes hold it through journal return.
+The feed checks both before and after loading a read-only prefix and skips
+without changing its watermark while a scope is active. It holds no Store or
+transport lock and retains no journal records or request-ID registry.
+A new fixture calls the real hosted method boundary with its original owner,
+observes the committed prefix while the response scope still exists, proves
+feed/watermark deferral, releases the scope and verifies actual queued response
+before instance/list notifications and the reopened journal. Its execution,
+commit-boundary pause, native-pass/elicitation phase coverage and guard
+neutralization proof remain pending; this is not complete 8904 acceptance.
+The live panic-hook check began before this source addition, so its stages
+must be attributed individually rather than treated as one frozen-source gate.

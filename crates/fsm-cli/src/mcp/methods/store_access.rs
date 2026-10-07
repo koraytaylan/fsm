@@ -133,6 +133,9 @@ impl StoreAccess<'_> {
             Self::Hosted {
                 session, output, ..
             } => {
+                if let Some(input) = context.io {
+                    input.borrow_mut().hold_publication();
+                }
                 let command = Command {
                     rpc_id: context.request_id.clone().unwrap_or(Value::Null),
                     tool: name.into(),

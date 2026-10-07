@@ -52,6 +52,11 @@ pub(super) fn call(
         Ok(answer) => answer,
         Err(error) => return Ok(Err(error.request_id(continuation.request_id()))),
     };
+    context
+        .io
+        .expect("selected client conversation")
+        .borrow_mut()
+        .hold_publication();
     super::receive_input(
         session,
         output,

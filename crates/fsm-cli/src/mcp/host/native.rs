@@ -40,6 +40,7 @@ pub(in crate::mcp) struct NativeOwner<C> {
     diagnostics: DiagnosticOutput,
     interval: Duration,
     shutdown_timeout_ms: i64,
+    publication: Option<crate::mcp::notify::Notifier>,
 }
 
 impl<C: Clock> NativeOwner<C> {
@@ -73,9 +74,18 @@ impl<C: Clock> NativeOwner<C> {
                 diagnostics,
                 interval,
                 shutdown_timeout_ms,
+                publication: None,
             },
             handle,
         ))
+    }
+
+    pub(in crate::mcp) fn with_publication(
+        mut self,
+        output: &crate::mcp::notify::Notifier,
+    ) -> Self {
+        self.publication = output.hosted_handle();
+        self
     }
 
     /// Service the original native driver independently of application input.
@@ -130,6 +140,10 @@ impl<C: Clock> NativeOwner<C> {
             .stop(mode, self.shutdown_timeout_ms)
             .expect("validated native host shutdown timeout");
         let shutdown = loop {
+            let _publication = self
+                .publication
+                .as_ref()
+                .and_then(crate::mcp::notify::Notifier::publication_guard);
             let now_ms = self.clock.now_ms();
             let lines = self.driver.poll(&mut FixedClock::new(now_ms, 0), now_ms);
             if let Err(error) = publish(&mut self.diagnostics, lines) {
@@ -157,6 +171,10 @@ impl<C: Clock> NativeOwner<C> {
 
     /// SPEC: one logical sample supplies every operation in this decision pass.
     pub(super) fn decision_pass(&mut self) -> Vec<String> {
+        let _publication = self
+            .publication
+            .as_ref()
+            .and_then(crate::mcp::notify::Notifier::publication_guard);
         let now_ms = self.clock.now_ms();
         self.driver.tick(&mut FixedClock::new(now_ms, 0), now_ms)
     }

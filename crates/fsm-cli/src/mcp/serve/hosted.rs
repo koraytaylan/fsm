@@ -109,6 +109,7 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
     let (notifier, queued) = Notifier::hosted_queued(Box::new(output))?;
     let (owner, handle) =
         NativeOwner::new(driver, clock, diagnostics, interval, SHUTDOWN_TIMEOUT_MS)?;
+    let owner = owner.with_publication(&notifier);
     let session = handle
         .session()
         .map_err(|error| io::Error::other(format!("host session admission failed: {error:?}")))?;

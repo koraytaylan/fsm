@@ -1,4 +1,5 @@
 //! Independent callers drive the same private owner and admitted envelopes.
+mod publication;
 
 #[cfg(target_os = "linux")]
 mod input_wait;

@@ -1508,3 +1508,13 @@ thread cleanup scope, recording the failure through bounded operator output
 and original-control supervised shutdown. Legacy serve and other threads
 retain fatal behavior; this does not establish native owner/handler panic
 containment acceptance or change public APIs, protocol bytes or persistence.
+
+Owned hosted stdio now scopes application publication through final response
+admission, starts elicitation publication only after the answer, and guards
+native decision passes through their journal returns. The feed defers without
+advancing its watermark while any scope is active, using shared atomic control
+without a Store or transport lock; scoped drop releases it on every exit.
+Static guard handles add fixed per-session/host metadata, with one held guard
+per request scope and no growing record/ID registry. This changes notification
+ordering without journal/core/public API or dependency/MSRV changes; full
+commit-barrier and guard-neutralization acceptance remains pending.

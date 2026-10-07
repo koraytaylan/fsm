@@ -132,11 +132,19 @@ impl Feed {
     /// Public so a golden can drive the feed deterministically instead of
     /// sleeping.
     pub fn poll_once(&mut self) -> usize {
+        if self.out.publication_pending() {
+            return 0;
+        }
         let Ok(store) = Store::open_read_only(&self.data_dir) else {
             // A directory that cannot be opened read-only is one a writer is
             // rebuilding; the next poll finds it.
             return 0;
         };
+        // A commit could start while the read-only prefix was loaded. If it
+        // is still unpublished, retry the same watermark on a later pass.
+        if self.out.publication_pending() {
+            return 0;
+        }
         // The whole common case: one comparison, then out.
         if store.journal.last_seq <= self.watermark {
             return 0;
