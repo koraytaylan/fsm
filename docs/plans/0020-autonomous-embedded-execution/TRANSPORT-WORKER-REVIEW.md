@@ -216,3 +216,16 @@ access, closing the caller-built allocation-capacity bypass of transport
 checking; a limit/one-byte-over fixture uses identical encoded content.
 Runtime and sensitivity checks for this addition are pending, and accounting
 for every derived completion representation remains open.
+
+Frozen `191078b2d96c88b75a65cc7153ec4a81a7298e5c` subsequently passed
+formatting/file-size checks, all 79 executor unit tests and executor/CLI
+all-target Clippy on stable and MSRV; neutralizing only the completion-entry
+charge produced the intended single boundary-fixture failure, and restoring
+the source passed that fixture with a clean worktree.
+Original session 93273 exited 0 with `NATIVE_COMPLETION_CAPACITY_PASSED`.
+Terminal check/sensitivity log SHA-256 values are respectively
+`5909de9bb3919b8135b58fa4a438292347b1835289fce96759e6ed4eec9b0fa1`
+and `519bbabac7a715ac2c3907f4662e264ad2c4360c05781f6172a2623a894c0553`.
+These focused checks do not constitute the full stable host gate, installed
+native acceptance, or complete derived-storage accounting; those remain
+required at the integrated working-path milestone.
