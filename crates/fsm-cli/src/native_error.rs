@@ -81,3 +81,7 @@ fn deliver_pipe(frame: &[u8], deadline: Instant) -> Option<bool> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "native_error_tests.rs"]
+mod tests;

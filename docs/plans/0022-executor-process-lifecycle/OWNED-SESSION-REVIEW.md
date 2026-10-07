@@ -809,3 +809,24 @@ All checks run serially under asserted 1 GiB and zero swap. Larger-frame and
 nonpipe fallback process controls, standalone blocked-final-error coverage,
 later-source full host/platform gates and actual nonempty containment remain
 required; this review does not promote task 9401 or 9402.
+
+### Final delivery fallback process controls — 2026-10-07
+
+Permanent private-renderer process tests cover a 2 MiB final frame on an
+actual pipe and on a Unix socket whose readers remain open/unread until
+exit. Both observe the actual named diagnostic worker in the corresponding
+kernel wait, require failure exit within two seconds of a 500 ms original
+deadline and kill/reap only their owned child on assertion failure. Healthy
+small/large JSON/human frames and a nonpipe human frame compare exact shared
+renderer bytes, including original code, hint and details. These exercise
+the production renderer, supplementing the existing actual CLI dispatcher
+control; they are not standalone/nonempty containment acceptance.
+The initial run missed the readiness line because libtest prefixes it;
+corrected marker recognition preserves every deadline/blocking assertion.
+Stable/MSRV all four controls, stable all-target CLI Clippy and source-size
+checks pass (native-final-error-fallback-corrected.log). Removing only the
+fallback original-deadline predicate fails both blocked controls while healthy
+bytes still pass; finally restoration passes all four tests, with retained
+native-final-fallback-sensitivity.log and mutation/restored logs. Serial
+scopes assert 1 GiB and zero swap. Full changed-source gates, standalone
+production blockage and nonempty shutdown requirements remain pending.

@@ -4893,3 +4893,12 @@ controls, stable all-target CLI Clippy, MSRV compilation and size checks pass.
 OWNED-SESSION-REVIEW.md records exact scope and retained evidence. Full host
 gates and larger-frame/nonpipe/standalone fallback controls remain pending;
 task statuses and progress remain unchanged.
+
+Final-renderer follow-up adds permanent actual-process large-pipe and nonpipe
+socket controls that observe the diagnostic worker blocked while its reader
+stays open/unread and require bounded failure exit; healthy small/large JSON
+and human bytes preserve original diagnostics exactly. Stable/MSRV tests and
+stable all-target CLI Clippy pass, and removing only the fallback deadline
+guard fails both blocked controls before restored tests pass. The detailed
+review records scope and retained evidence; no task is promoted, and full
+changed-source gates plus actual standalone/nonempty acceptance remain pending.
