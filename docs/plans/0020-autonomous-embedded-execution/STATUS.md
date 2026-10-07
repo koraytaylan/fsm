@@ -417,3 +417,11 @@ live compiling workspace debug tests, with remaining stages and a full-gate
 result pending; continue that original handle and preserve its frozen worktree.
 The job retains the actual 1 GiB/zero-swap cap and dedicated task cache.
 No native acceptance, task completion or prerequisite release is claimed.
+
+The original milestone session 37722 has passed the complete stable debug
+workspace suite and doctests on unchanged clean frozen `55efd81a`; release
+Cargo process 1673689 is confirmed live compiling the next stage.
+Formatting/file-size/debug checks are passed, with the other five host-gate
+commands still pending. Continue the same session, log and frozen source;
+the full gate and installed/native acceptance remain unproven, and plan
+completion stays 0/7.

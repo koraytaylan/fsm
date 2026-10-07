@@ -326,3 +326,14 @@ restarting it. Actual kernel 1 GiB/zero-swap limits and serial Cargo/test
 workers remain enforced at every stage. Installed Root-handler acceptance,
 remaining working-path obligations and native platform axes are not supplied
 by this local host gate.
+
+The same session 37722 has now passed the complete stable debug workspace
+test command, including its doctests, and advanced to
+`cargo +stable test --workspace --release --no-fail-fast`; release Cargo
+process 1673689 is confirmed live under the original gate script 1606776.
+Frozen source remains exact clean `55efd81a`.
+Formatting, file-size and debug workspace stages are passed; release tests,
+workspace Clippy, warning-denied docs and the explicit zero-dependency/embed
+commands remain pending. The original log is still mutable and supplies no
+terminal hash or full eight-command pass. Ignored native fixtures and absent
+native platform runs do not become acceptance through the debug result.
