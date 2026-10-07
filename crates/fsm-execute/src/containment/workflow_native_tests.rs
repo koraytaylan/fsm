@@ -303,7 +303,7 @@ pub(super) fn run() {
             .unwrap();
         let mut child = Command::new("/usr/bin/python3")
             .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-            .arg(&helper).args(["--exact", case, "--nocapture", "--color", "never"])
+            .arg(&helper).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
             .env("FSM_NATIVE_WORKFLOW_MANIFEST", &manifest_path)
             .env("TMPDIR", &fixtures[0].store)
             .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log)

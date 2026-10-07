@@ -106,20 +106,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Prepare native task cache
+        run: |
+          native_cache="$HOME/.cache/fsm-native-${{ matrix.rust }}"
+          mkdir -p "$native_cache"
+          printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
       - name: Provisioned native containment matrix
-        env:
-          CARGO_TARGET_DIR: ${{ runner.temp }}/fsm-native-target
-          TMPDIR: ${{ runner.temp }}
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
           --toolchain '${{ matrix.rust }}'
-          --report-dir '${{ runner.temp }}/native-evidence'
+          --report-dir '${{ env.FSM_NATIVE_CACHE }}/native-evidence'
+      - name: Provisioned original CLI workflow scenarios
+        run: >-
+          python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
+          --toolchain '${{ matrix.rust }}'
+          --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/workflow.json'
       - name: Retain exact native evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: native-containment-${{ matrix.rust }}
-          path: ${{ runner.temp }}/native-evidence
+          path: ${{ env.FSM_NATIVE_CACHE }}/native-evidence
           if-no-files-found: error
 
   # The zero-dependency guarantee and the core-only embed boundary are

@@ -93,3 +93,21 @@ artifact fields. Both reports keep gate_released=false. Controllers/builds ran
 serially under asserted 1 GiB and zero swap; root-manager service units are
 outside those scopes. This accepts these registered embedded workflow scenarios,
 not standalone/signal/blockage races or full ownership integration.
+
+## Mandatory privileged workflow classification
+
+The four original workflow scenario tests now declare Linux native provisioning
+as their ignore reason and link this review; other platforms retain ordinary
+execution. The privileged supervisor explicitly selects --ignored, while its
+existing exact one-passed/zero-ignored assertion and independent native receipt
+checks prevent a skipped child from passing. Stable and MSRV native CI jobs now
+require workflow_probe.py after the containment matrix and retain its report
+alongside the other evidence, with no optional success path. Native CI scratch
+and Cargo targets use a dedicated HOME cache with inherited TMPDIR.
+
+Seven mocked producer retirement controls, formatting, source-size and diff
+checks pass; an initial sandbox attempt could not write the external task cache,
+and the authorized unsandboxed rerun passed. These mocked controls do not prove
+native execution. Fresh frozen-source native stable/MSRV runs and the full host
+gate remain required after this classification; hosted CI remains unexecuted.
+Task 9401 remains in progress and plan completion stays 3/7.
