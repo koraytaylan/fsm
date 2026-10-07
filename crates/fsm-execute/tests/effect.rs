@@ -200,6 +200,10 @@ fn a_transition_emit_resolves_to_its_name_and_evaluated_args() {
     let store = read_only(&directory);
     assert_eq!(ids.len(), 2, "two emits in one entry block");
     let assigned = resolve(&store, &ids[0]).unwrap();
+    assert_eq!(
+        assigned.emitting_machine_id,
+        fsm_core::hashes::machine_id(&transition_emit_machine())
+    );
     assert_eq!(assigned.effect_name, "assign_reviewer");
     assert_eq!(assigned.instance_id, "case-1");
     assert_eq!(assigned.k, 0);
@@ -238,6 +242,10 @@ fn a_creation_time_emit_resolves_from_the_instance_created_record() {
     let store = read_only(&directory);
     assert_eq!(ids, ["case-2/0/0"], "a creation emit carries a zero seq");
     let opened = resolve(&store, &ids[0]).unwrap();
+    assert_eq!(
+        opened.emitting_machine_id,
+        fsm_core::hashes::machine_id(&creation_emit_machine())
+    );
     assert_eq!(opened.effect_name, "open_case");
     assert_eq!(opened.emitted_seq, 0);
     assert_eq!(
@@ -319,6 +327,10 @@ fn a_deadline_emit_resolves_from_the_deadline_applied_record() {
     let store = read_only(&directory);
     assert_eq!(ids.len(), 1);
     let escalated = resolve(&store, &ids[0]).unwrap();
+    assert_eq!(
+        escalated.emitting_machine_id,
+        fsm_core::hashes::machine_id(&deadline_emit_machine())
+    );
     assert_eq!(escalated.effect_name, "escalate_case");
     assert_eq!(argument(&escalated, "case"), "case-9");
 }

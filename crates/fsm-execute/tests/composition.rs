@@ -336,6 +336,7 @@ fn a_childs_creation_emitted_effect_resolves_through_its_invocation_record() {
         .iter()
         .find(|effect| effect.instance_id == child)
         .expect("the child's effect");
+    assert_eq!(effect.emitting_machine_id, machine_id(&value(LEAF)));
     assert_eq!(
         effect
             .args
