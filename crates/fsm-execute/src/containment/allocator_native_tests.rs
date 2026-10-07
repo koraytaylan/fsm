@@ -27,6 +27,9 @@ mod capture_cases;
 #[path = "prepared_contention_native_tests.rs"]
 mod prepared_contention_cases;
 
+#[path = "binding_contention_native_tests.rs"]
+mod binding_contention_cases;
+
 #[path = "profile_native_tests.rs"]
 mod profile_cases;
 
@@ -478,7 +481,7 @@ fn genuine_claim_binding() {
     drop(lock);
     let (binding, effect) = claim_binding(&fixture, &domain);
     admission_cases::bound_claim(&fixture, &binding, &effect);
-    super::super::bind(&fixture.directory, &binding).unwrap();
+    binding_contention_cases::bind(&fixture, &binding);
     let path = fixture.directory.join("binding-1.json");
     assert_eq!(read_value(&path, true).unwrap(), binding);
     assert!(super::super::bind(&fixture.directory, &binding).is_err());

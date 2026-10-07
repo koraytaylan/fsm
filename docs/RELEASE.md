@@ -1292,6 +1292,16 @@ may omit simultaneous additional failures. These messages do not authorize
 retry, launch, closure or settlement and leave original claims, reservations,
 helpers, deadlines and public/wire/persistent formats unchanged.
 
+Binding validation MUST tolerate contention of its protected authority lock
+before any binding, entry authorization or manager submission mutation: only
+`authority busy` during acquisition may be retried, within one two-second
+monotonic acquisition budget established at validation entry. Validation MUST
+check the original authority identity after acquiring the lock. Exhaustion
+MUST refuse without publishing binding or launch state; subsequent validation
+still checks the current original claim and all existing entry guards. This is
+not permission to retry an execute action, renew a host/handler/shutdown deadline,
+release ownership or infer closure, and changes no public or persistent format.
+
 Prepared-domain discard MUST retain the complete original domain while the
 protected authority lock is contended: only the `authority busy` refusal before
 revocation/native mutation may be retried, and acquisition plus retirement share

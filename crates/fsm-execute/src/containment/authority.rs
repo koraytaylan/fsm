@@ -7,6 +7,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::{JsonLimits, Value, parse};
@@ -413,7 +414,16 @@ fn verify_claim(store: &Store, claim: &Claim, original: &str) -> Result<(), Stri
 }
 
 fn bind(directory: &Path, binding: &Value) -> Result<(), String> {
-    let (claim, _lock) = validate_binding(directory, binding, None)?;
+    bind_with_contention_probe(directory, binding, || {})
+}
+
+fn bind_with_contention_probe(
+    directory: &Path,
+    binding: &Value,
+    contention: impl FnMut(),
+) -> Result<(), String> {
+    let (claim, _lock) =
+        validate_binding_with_contention_probe(directory, binding, None, contention)?;
     let allocation = number(&claim.domain().to_value(), "allocation")?;
     publish_once(
         &directory.join(format!("binding-{allocation}.json")),
@@ -426,6 +436,18 @@ fn validate_binding(
     binding: &Value,
     argv: Option<&[String]>,
 ) -> Result<(Claim, File), String> {
+    validate_binding_with_contention_probe(directory, binding, argv, || {})
+}
+
+// The probe lets a native fixture change the original namespace during an actual
+// failed lock attempt; production callers supply no action or alternate authority.
+fn validate_binding_with_contention_probe(
+    directory: &Path,
+    binding: &Value,
+    argv: Option<&[String]>,
+    mut contention: impl FnMut(),
+) -> Result<(Claim, File), String> {
+    let authority_deadline = Instant::now() + Duration::from_secs(2);
     protected_directory(directory)?;
     closed(binding, &["format", "claim", "journal_claim"])?;
     if text(binding, "format")? != "fsm.native-claim-binding/1" {
@@ -446,7 +468,34 @@ fn validate_binding(
     {
         return Err("authority identity differs".into());
     }
-    let lock = authority_lock(directory)?;
+    let lock = loop {
+        if Instant::now() >= authority_deadline {
+            return Err("authority busy".into());
+        }
+        match authority_lock(directory) {
+            Ok(lock) => break lock,
+            // SPEC: binding validation retries only acquisition, before mutation.
+            Err(error) if error == "authority busy" => {
+                contention();
+                std::thread::sleep(
+                    Duration::from_millis(5)
+                        .min(authority_deadline.saturating_duration_since(Instant::now())),
+                );
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    if Instant::now() >= authority_deadline {
+        return Err("authority busy".into());
+    }
+    protected_directory(directory)?;
+    if identity(&fs::symlink_metadata(directory).map_err(io)?)
+        != *domain
+            .get("authority")
+            .ok_or("authority identity missing")?
+    {
+        return Err("authority identity differs".into());
+    }
     let allocation = number(&domain, "allocation")?;
     entry::ensure_open(directory, allocation)?;
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
