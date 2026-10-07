@@ -31,8 +31,10 @@ fn renderer_child() {
     };
     let ctx = Ctx::new("unused".into(), mode.ends_with("json"), false);
     let failure = failure(mode.starts_with("large"));
-    writeln!(io::stdout(), "RENDER_READY").unwrap();
-    io::stdout().flush().unwrap();
+    let mut readiness = io::stdout().lock();
+    writeln!(readiness, "RENDER_READY").unwrap();
+    readiness.flush().unwrap();
+    drop(readiness);
     std::process::exit(i32::from(report_until(&ctx, &failure)));
 }
 
