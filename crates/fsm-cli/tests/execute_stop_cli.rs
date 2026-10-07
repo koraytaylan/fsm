@@ -724,7 +724,7 @@ fn production_stdio_control_remains_responsive_with_actual_blocked_pipe_output()
 
 #[test]
 fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
-    use std::io::{Read, Write};
+    use std::io::{BufRead, BufReader, Read, Write};
     struct Owner(std::process::Child);
     impl Drop for Owner {
         fn drop(&mut self) {
@@ -758,15 +758,36 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
             .args(["serve", "--execute", "--handlers"])
             .arg(&handlers)
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap(),
     );
     let mut input = owner.0.stdin.take().unwrap();
+    let stdout = owner.0.stdout.take().unwrap();
+    let (ready, observed) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut ready = Some(ready);
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let frame = json(line.as_bytes());
+            if frame.get("id") == Some(&json(b"2"))
+                && let Some(ready) = ready.take()
+            {
+                ready.send(frame).unwrap();
+            }
+        }
+    });
+    // A completed original-owner command proves its initial decision pass
+    // preceded the warning flood; stderr remains unread throughout cleanup.
+    input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n").unwrap();
+    input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n").unwrap();
+    let frame = observed.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert!(
+        frame.get("result").is_some(),
+        "owner readiness failed: {frame:?}"
+    );
     let (release, hold) = std::sync::mpsc::channel::<()>();
     let feeder = std::thread::spawn(move || {
-        let _ = input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}\n");
         for _ in 0..2000 {
             if input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n").is_err() { return; }
         }
@@ -857,6 +878,7 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
         .unwrap();
     drop(release);
     feeder.join().unwrap();
+    reader.join().unwrap();
     assert!(!status.success());
     assert!(
         String::from_utf8_lossy(&stderr)

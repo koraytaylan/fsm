@@ -708,3 +708,24 @@ production stop tests passed 13/13; stable and MSRV each passed CLI libraries
 The terminal `production-stderr-check.log` SHA-256 is `c0a58e284a444cbd0f0aa05bf4fa5536c6961c045d2db9054e3ed6b18ca80822`.
 The new frozen full stable gate and MSRV production stop cases remain pending;
 these results do not release any task or establish native platform acceptance.
+
+The new frozen-gate wrapper terminated before its eight stable stages
+(session 31118, exit 101): MSRV production stop tests passed 12/13, with
+actual backpressure and cleanup succeeding but the required initial native
+action diagnostic absent. The fixture could flood warnings before the native
+owner initial pass, filling the bounded operator queue and rejecting that
+diagnostic. It now waits for one actual original-owner tool response before
+the flood while retaining the unread stderr pipe, so original-owner readiness
+is established without sleeps or fabricated scheduler results. A first retry
+failed compilation on a nonexistent JSON variant and executed no acceptance;
+the ID comparison is corrected using the existing JSON parser. Corrected
+serial stable/MSRV stop and all-target Clippy checks run in session 81218.
+No full-gate or task-completion claim follows from the prior narrow results.
+
+Corrected readiness session 81218 terminated successfully (exit 0): stable
+and MSRV production stop tests each pass 13/13, including required native
+diagnostic retention, and all-target CLI Clippy passes on both. Formatting
+and file-size checks pass. The terminal log SHA-256 is `72ab7bc9f5a9b0fc0326870df438196f7eb8ad700fc1411fbbcb3963a35ce74a`.
+The fixture preserves unread actual stderr, bounded stop, physical writer
+reacquisition and both diagnostic assertions; it adds original-owner readiness
+rather than relaxing acceptance. A new exact-source full gate is required.
