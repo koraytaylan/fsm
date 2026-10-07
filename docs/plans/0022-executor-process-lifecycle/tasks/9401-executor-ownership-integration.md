@@ -9,6 +9,7 @@ gated: false
 touches:
   - crates/fsm-execute/src/containment/runner_native_tests.rs
   - crates/fsm-execute/src/containment/runner_recovery_native_tests.rs
+  - crates/fsm-execute/src/containment/runner_stopped_host_native_tests.rs
   - crates/fsm-execute/src/containment/runner_handoff_recovery_native_tests.rs
   - crates/fsm-execute/src/containment/allocator.rs
   - crates/fsm-execute/src/containment/allocation_contention_native_tests.rs

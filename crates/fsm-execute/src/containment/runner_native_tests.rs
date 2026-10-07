@@ -491,7 +491,10 @@ pub(super) fn run() {
             "protocol" => "failed",
             "timeout" | "retry-timeout" => "timeout",
             "cancel-process" | "cancel-mcp" => "interrupted",
-            "process-exit" | "process-recover-removed" | "process-recover-changed" => "ok",
+            "process-exit"
+            | "process-recover-removed"
+            | "process-recover-changed"
+            | "process-recover-stopped-kill" => "ok",
             "process-failure" | "process-signal" => "nonzero_exit",
             _ => panic!("uncertain runner must not reach verified completion"),
         };
