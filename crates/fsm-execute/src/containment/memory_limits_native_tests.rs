@@ -162,3 +162,28 @@ pub(super) fn archive(fixture: &Fixture, staging: &Path) {
         destination.sync_all().unwrap();
     }
 }
+
+/// Retain the exact service configuration before any admission handler entry.
+pub(super) fn install_admission(fixture: &Fixture) -> (Limits, PathBuf) {
+    let cache = PathBuf::from(std::env::var_os("TMPDIR").expect("explicit fixture cache required"));
+    assert!(cache.is_absolute() && !cache.starts_with("/tmp"));
+    let namespace = fixture.directory.parent().unwrap().file_name().unwrap();
+    let evidence = cache.join(format!(
+        "fsm-public-service-{}",
+        namespace.to_str().unwrap()
+    ));
+    fs::DirBuilder::new().mode(0o700).create(&evidence).unwrap();
+    let limits = Limits::install(fixture);
+    let mut inventory = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(evidence.join("memory-limits.json"))
+        .unwrap();
+    inventory
+        .write_all(&canon_bytes(&limits.inventory()))
+        .unwrap();
+    inventory.sync_all().unwrap();
+    fs::File::open(&evidence).unwrap().sync_all().unwrap();
+    (limits, evidence)
+}

@@ -169,3 +169,17 @@ implementation only: actual provisioned execution is pending, and its root
 service namespaces need the same verified memory limits used by the workflow
 producer before local execution. It does not replace existing capacity-reuse
 assertions or establish successful loop shutdown from the controlled unwind.
+
+Native memory-limit helpers are now shared at the common fixture layer
+(refactor 23bf040). Both fresh-admission process/MCP axes install the original
+namespace-specific one GiB/zero-swap drop-in before requesting work, retain its
+exact configuration and file identities in an exclusive root-owned task-cache
+evidence directory, and require original-domain memory receipts for all three
+allocations. Receipts are archived before fixture cleanup; successful cleanup
+precedes identity-matched drop-in retirement. Failed evidence/drop-ins remain
+retained for guarded review, with no automatic failure cleanup assertion.
+Final stable/MSRV all-target executor Clippy passed in terminal session 46287
+under verified controller limits; formatting, file-size and diff checks pass.
+Earlier checks found an oversized broker file and missing imports, resolved
+by keeping memory setup in the shared helper; actual root execution remains
+pending and no native runtime acceptance is claimed.
