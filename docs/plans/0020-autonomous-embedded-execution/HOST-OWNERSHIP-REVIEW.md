@@ -683,3 +683,21 @@ The exact clean frozen checkout is updated to `2416fe5`, and the full stable
 gate is launched behind independent Cargo work (session 80272). Its result,
 MSRV publication fixture execution and guard-neutralization remain pending;
 no plan task or cross-plan dependency is released.
+
+The frozen `2416fe5` stable gate terminated at workspace debug tests
+(session 80272, exit 101): formatting and file-size checks passed, all 126
+CLI library cases including both new publication fixtures passed, and the
+only failing target was `execute_stop_cli` with two stderr lifecycle failures;
+release, Clippy, documentation and later acceptance stages did not execute.
+The broken-stderr case waited for impossible operator drainage after original
+owner retirement; the stalled-stderr case exposed skipped initialization
+warnings in the owned response-wait pump. The correction retains failed
+delivery facts, restores bounded warnings once per incoming request and
+observes initialization notifications during that wait. Focused stable/MSRV
+verification is queued serially under 1 GiB and zero-swap limits (session
+76883); no task or dependency is released, and the full gate requires a new
+frozen source after the focused checks pass.
+
+The corrected source passes all 13 stable `execute_stop_cli` cases, including
+broken and stalled actual stderr with stdin open and physical writer release;
+remaining focused stages and the new frozen full gate are still pending.

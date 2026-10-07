@@ -51,6 +51,9 @@ pub(super) fn wait<T>(
         }
         match parse_line(&line) {
             Ok(Incoming::Notification { method, params }) => {
+                if method == "notifications/initialized" {
+                    input.borrow_mut().initialized_while_waiting();
+                }
                 if method == "notifications/cancelled"
                     && let Some(requested) =
                         params.as_ref().and_then(|params| params.get("requestId"))
@@ -60,6 +63,7 @@ pub(super) fn wait<T>(
                 }
             }
             Ok(Incoming::Request { id, method, .. }) => {
+                input.borrow_mut().warn_wait_request(&method)?;
                 if method == "ping" {
                     output.send(&result_response(id, Value::Obj(Default::default())))?;
                 } else if !input.borrow_mut().defer(line) {

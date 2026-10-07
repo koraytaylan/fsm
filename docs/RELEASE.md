@@ -1,5 +1,7 @@
 # Releasing
 
+Owned stdio fixes initialization warning and notification handling during owner-response waits and avoids waiting for impossible broken-stderr drainage after original-owner retirement; production stderr lifecycle regressions provide the focused acceptance cases, with broader changed-source acceptance pending.
+
 The provisional native original-outcome advance checks physical store identity before replay or event application; a protected native control replaces the original directory inode after durable Acked settlement and asserts refusal with unchanged journal/state, restoring the original directory before subsequent fixture work, while changed-source compilation and native acceptance remain pending.
 
 Executor tick scan failures no longer stall owned output draining; a Linux regression uses a 4 MiB writer and an independent completion marker, with both public tick regressions passing and both rejecting the previous behavior in a sensitivity run; broader changed-source acceptance remains pending.

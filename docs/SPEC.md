@@ -3291,6 +3291,14 @@ store operation. Cancellation of a known deferred request MUST suppress it
 without installing future cancellation for unknown IDs. Borrowed input helpers
 MUST retain their existing blocking behavior. Owned idle intervals and original
 stop/output failure observation MUST remain finite during the wait.
+Owned response waits MUST observe `notifications/initialized` on the original
+session and enqueue the usual initialization warning once per incoming request,
+including requests refused by the backlog; deferred dispatch MUST NOT repeat it.
+The wait-path warning MUST retain at most 512 method characters before bounded
+diagnostic admission, so hostile method names cannot expand its buffer.
+After original-owner retirement, a broken operator output queue MUST permit
+shutdown to return without waiting for impossible drainage, retaining failure
+and reporting operator delivery as unproven.
 
 An unwind from the hosted protocol adapter MUST retire its original session,
 request shutdown through the original native control and retain the adapter

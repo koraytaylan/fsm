@@ -624,7 +624,9 @@ fn serve_session_core(
         // Bound rather than matched in place: the borrow of `input` ends at
         // the semicolon, which is what lets a request arm lend the same
         // reader to a `SessionIo`.
-        let line = match pending_input.take() {
+        let deferred = pending_input.take();
+        let from_pending = deferred.is_some();
+        let line = match deferred {
             Some(line) => Line::Data(line.into_bytes()),
             None => read_capped_line(&mut input, LINE_CAP)?,
         };
@@ -755,7 +757,11 @@ fn serve_session_core(
                         }
                     }
                     Ok(Incoming::Request { id, method, params }) => {
-                        if initialized && !initialized_notified && method != "initialize" {
+                        if initialized
+                            && !initialized_notified
+                            && method != "initialize"
+                            && !from_pending
+                        {
                             let warning =
                                 format!("fsm warn: {method} before notifications/initialized");
                             #[cfg(target_os = "linux")]
@@ -796,13 +802,17 @@ fn serve_session_core(
                         // the notifier and reads its answer from this same
                         // input.
                         if let Some((session, data_dir)) = store.hosted() {
-                            let io = std::cell::RefCell::new(
-                                crate::mcp::notify::SessionIo::with_owned_wait(
-                                    &output,
-                                    &mut input,
-                                    &mut pending_input,
-                                ),
+                            let io = crate::mcp::notify::SessionIo::with_owned_wait(
+                                &output,
+                                &mut input,
+                                &mut pending_input,
                             );
+                            #[cfg(target_os = "linux")]
+                            let io = io.with_wait_warnings(
+                                diagnostics.as_deref_mut(),
+                                &mut initialized_notified,
+                            );
+                            let io = std::cell::RefCell::new(io);
                             crate::mcp::methods::handle_request_hosted(
                                 &output,
                                 session,

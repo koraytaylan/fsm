@@ -195,8 +195,10 @@ pub(in crate::mcp) fn serve_with_adapter_start<C: Clock + Send + 'static, R: Buf
                 }
             }
         }
-        let operator_drained = exit.as_ref().is_some_and(|exit| exit.diagnostics.drained());
-        if (worker.is_none() && (queued.drained() || queued.is_broken()) && operator_drained)
+        let operator_retired = exit
+            .as_ref()
+            .is_some_and(|exit| exit.diagnostics.drained() || exit.diagnostics.is_broken());
+        if (worker.is_none() && (queued.drained() || queued.is_broken()) && operator_retired)
             || Instant::now() >= request.deadline()
         {
             break;

@@ -344,6 +344,8 @@ pub struct SessionIo<'a> {
     input: &'a mut dyn std::io::BufRead,
     pending: Option<&'a mut pending_input::PendingInput>,
     publication: Option<PublicationGuard>,
+    #[cfg(target_os = "linux")]
+    wait_warnings: Option<(&'a mut diagnostic_output::DiagnosticOutput, &'a mut bool)>,
 }
 
 impl<'a> SessionIo<'a> {
@@ -354,6 +356,8 @@ impl<'a> SessionIo<'a> {
             input,
             pending: None,
             publication: None,
+            #[cfg(target_os = "linux")]
+            wait_warnings: None,
         }
     }
 
@@ -367,7 +371,42 @@ impl<'a> SessionIo<'a> {
             input,
             pending: Some(pending),
             publication: None,
+            #[cfg(target_os = "linux")]
+            wait_warnings: None,
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn with_wait_warnings(
+        mut self,
+        diagnostics: Option<&'a mut diagnostic_output::DiagnosticOutput>,
+        initialized_notified: &'a mut bool,
+    ) -> Self {
+        self.wait_warnings = diagnostics.map(|output| (output, initialized_notified));
+        self
+    }
+
+    pub(crate) fn initialized_while_waiting(&mut self) {
+        #[cfg(target_os = "linux")]
+        if let Some((_, notified)) = self.wait_warnings.as_mut() {
+            **notified = true;
+        }
+    }
+
+    pub(crate) fn warn_wait_request(&mut self, method: &str) -> std::io::Result<()> {
+        #[cfg(target_os = "linux")]
+        if let Some((output, notified)) = self.wait_warnings.as_mut()
+            && !**notified
+            && method != "initialize"
+        {
+            let method: String = method.chars().take(512).collect();
+            output.enqueue(&format!(
+                "fsm warn: {method} before notifications/initialized"
+            ))?;
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = method;
+        Ok(())
     }
 
     pub(crate) fn hold_publication(&mut self) {
