@@ -90,7 +90,6 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
                                         "handler-run={run}".into(),
                                         format!("handler-directory={}", resource.display()),
                                         format!("handler-failures={failures}"),
-                                        "handler-memory-limits=1073741824,0".into(),
                                     ]
                                     .into_iter()
                                     .map(Value::Str)
@@ -178,6 +177,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str) {
         );
         assert_eq!(number(&domain, "generation").unwrap(), 1);
         let allocation = number(&domain, "allocation").unwrap();
+        memory_limits::verify(fixture, &domain, allocation);
         let proof = VerifiedClosure::read(
             &fixture
                 .directory
@@ -257,7 +257,6 @@ pub(super) fn run() {
                 ("phase", b"active".as_slice()),
                 ("calls", b"".as_slice()),
                 (".work-template", b"".as_slice()),
-                (".memory-observed", b"".as_slice()),
             ] {
                 let path = resource.join(name);
                 fs::write(&path, bytes).unwrap();

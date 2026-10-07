@@ -2,12 +2,28 @@
 use super::*;
 use std::os::unix::fs::OpenOptionsExt;
 
-const CONFIGURATION: &[u8] = b"[Service]\nMemoryMax=1G\nMemorySwapMax=0\n";
+const CHECK: &[u8] = br#"import json,os,sys
+from pathlib import Path
+a=Path(sys.argv[1])
+group=next(line[3:] for line in Path('/proc/self/cgroup').read_text().splitlines() if line.startswith('0::'))
+p=Path('/sys/fs/cgroup')/group.lstrip('/')
+allocation=int(p.name.removesuffix('.service').rsplit('-',1)[1])
+domain=json.loads((a/f'prepared-{allocation}.json').read_text())['domain']
+m=p.stat()
+assert p.name==f"fsm-containment-{domain['namespace']}-{domain['generation']}-{allocation}.service"
+assert (m.st_dev,m.st_ino)==(domain['cgroup']['device'],domain['cgroup']['inode'])
+memory=(p/'memory.max').read_text().strip();swap=(p/'memory.swap.max').read_text().strip()
+assert memory=='1073741824' and swap=='0'
+receipt=dict(domain=domain,memory_max=memory,memory_swap_max=swap)
+fd=os.open(a/f'fixture-memory-{allocation}.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+with os.fdopen(fd,'w') as f:json.dump(receipt,f);f.flush();os.fsync(f.fileno())
+"#;
 
 pub(super) struct Limits {
     directory: PathBuf,
     directory_identity: Value,
     file_identity: Value,
+    configuration: Vec<u8>,
 }
 
 impl Limits {
@@ -22,6 +38,23 @@ impl Limits {
             .mode(0o755)
             .create(&directory)
             .unwrap();
+        let checker = fixture.directory.join("fixture-memory-check.py");
+        let mut checker_file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o500)
+            .open(&checker)
+            .unwrap();
+        checker_file.write_all(CHECK).unwrap();
+        checker_file.sync_all().unwrap();
+        // The test preflight alone runs privileged; the original gate and
+        // handler retain their DynamicUser and cgroup access restrictions.
+        let configuration = format!(
+            "[Service]\nMemoryMax=1G\nMemorySwapMax=0\nExecStartPre=+/usr/bin/python3 {} {}\n",
+            checker.display(),
+            fixture.directory.display()
+        )
+        .into_bytes();
         let path = directory.join("90-fsm-workflow-memory.conf");
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -29,12 +62,13 @@ impl Limits {
             .mode(0o644)
             .open(&path)
             .unwrap();
-        file.write_all(CONFIGURATION).unwrap();
+        file.write_all(&configuration).unwrap();
         file.sync_all().unwrap();
         let limits = Self {
             directory_identity: identity(&fs::symlink_metadata(&directory).unwrap()),
             file_identity: identity(&file.metadata().unwrap()),
             directory,
+            configuration,
         };
         assert!(
             Command::new("/usr/bin/systemctl")
@@ -54,6 +88,10 @@ impl Limits {
             ),
             ("directory_identity", self.directory_identity.clone()),
             ("file_identity", self.file_identity.clone()),
+            (
+                "configuration",
+                Value::Str(String::from_utf8(self.configuration.clone()).unwrap()),
+            ),
         ])
     }
 
@@ -65,7 +103,7 @@ impl Limits {
         let metadata = fs::symlink_metadata(&path).unwrap();
         assert!(metadata.is_file() && metadata.uid() == 0);
         assert_eq!(identity(&metadata), self.file_identity);
-        assert_eq!(fs::read(&path).unwrap(), CONFIGURATION);
+        assert_eq!(fs::read(&path).unwrap(), self.configuration);
         assert_eq!(fs::read_dir(&self.directory).unwrap().count(), 1);
         fs::remove_file(path).unwrap();
         fs::remove_dir(self.directory).unwrap();
@@ -77,4 +115,17 @@ impl Limits {
                 .success()
         );
     }
+}
+
+pub(super) fn verify(fixture: &Fixture, domain: &Value, allocation: u64) {
+    let receipt = read_value(
+        &fixture
+            .directory
+            .join(format!("fixture-memory-{allocation}.json")),
+        true,
+    )
+    .unwrap();
+    assert_eq!(receipt.get("domain"), Some(domain));
+    assert_eq!(text(&receipt, "memory_max").unwrap(), "1073741824");
+    assert_eq!(text(&receipt, "memory_swap_max").unwrap(), "0");
 }

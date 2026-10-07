@@ -143,27 +143,6 @@ fn workflow_handler() {
             .find_map(|argument| argument.strip_prefix("handler-directory="))
             .expect("explicit workflow directory argument"),
     );
-    #[cfg(target_os = "linux")]
-    if arguments
-        .iter()
-        .any(|argument| argument == "handler-memory-limits=1073741824,0")
-    {
-        let membership = fs::read_to_string("/proc/self/cgroup").unwrap();
-        let group = membership
-            .lines()
-            .find_map(|line| line.strip_prefix("0::"))
-            .unwrap();
-        let cgroup = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
-        let memory = fs::read_to_string(cgroup.join("memory.max"));
-        let swap = fs::read_to_string(cgroup.join("memory.swap.max"));
-        fs::write(
-            directory.join(".memory-observed"),
-            format!("cgroup={group}\nmemory={memory:?}\nswap={swap:?}\n"),
-        )
-        .unwrap();
-        assert_eq!(memory.unwrap().trim(), "1073741824");
-        assert_eq!(swap.unwrap().trim(), "0");
-    }
     assert!(arguments.contains(&format!("handler-resource={RESOURCE}")));
     assert!(arguments.contains(&"handler-run=run-1".to_owned()));
     let mut calls = OpenOptions::new()
@@ -222,7 +201,7 @@ fn workflow_handler() {
     std::process::exit(if failed { 7 } else { 0 });
 }
 
-fn write_handlers(directory: &Path, resource: &Path, failures: &str, native: bool) {
+fn write_handlers(directory: &Path, resource: &Path, failures: &str) {
     let executable = std::env::current_exe().unwrap();
     let handlers = OPERATIONS
         .iter()
@@ -232,7 +211,7 @@ fn write_handlers(directory: &Path, resource: &Path, failures: &str, native: boo
                 (
                     "argv",
                     Value::Arr({
-                        let mut arguments = vec![
+                        let arguments = vec![
                             string(executable.to_str().unwrap()),
                             string("workflow_handler"),
                             string("--exact"),
@@ -243,9 +222,6 @@ fn write_handlers(directory: &Path, resource: &Path, failures: &str, native: boo
                             string(&format!("handler-directory={}", resource.to_str().unwrap())),
                             string(&format!("handler-failures={failures}")),
                         ];
-                        if native {
-                            arguments.push(string("handler-memory-limits=1073741824,0"));
-                        }
                         arguments
                     }),
                 ),
@@ -548,12 +524,7 @@ fn machine(handlers: &BTreeMap<String, Value>) -> Value {
 fn run_scenario(failures: &str, terminal: &str, expected_calls: &[&str], phase: &str) {
     let directory = Directory::new();
     fs::write(directory.resource().join("phase"), "active").unwrap();
-    write_handlers(
-        &directory.0,
-        &directory.resource(),
-        failures,
-        directory.1.is_some(),
-    );
+    write_handlers(&directory.0, &directory.resource(), failures);
     let mut client = Client::start(&directory);
     let handlers = client.discover_handlers();
     client.call("machine_create", object([("spec", machine(&handlers))]));

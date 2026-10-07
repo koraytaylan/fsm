@@ -448,3 +448,38 @@ recorded in workflow-memory-observation-check.log under verified controller
 limits. Actual handler diagnosis, limit guard sensitivity, provisioned race,
 full host/native and platform acceptance remain pending; task 9401 and plan
 0022 completion stay unchanged.
+
+
+## Actual cgroup access refusal and privileged test preflight
+
+The remaining cc974a3 stage/resource/home/drop-in were archived under its
+retained-fixture directory before exact identity/content-matched retirement;
+its namespace and original cgroups had already been retired by Fixture cleanup,
+so no authority-domain closure was inferred or generated from their absence.
+Frozen 9bab4bf7307ce4e962f6ae262685e05f25ed39f2 producer session 43358 failed
+with test exit 101 before any original scenario passed. The actual retained
+handler observation names its original service cgroup and reports PermissionDenied
+(code 13) for both memory.max and memory.swap.max. Original prepared cgroups
+are root-only; the independent manager-created probe did not reproduce that
+permission boundary, so its success could not prove unprivileged handler reads.
+
+The fixture now uses a namespace-specific ExecStartPre privileged test checker
+before the original DynamicUser gate/handler, leaving their access restrictions
+unchanged. The checker matches the actual current cgroup device/inode and service
+name against protected prepared-<allocation>.json, asserts the kernel memory
+and swap limits, and writes an exclusive root-protected fixture-only receipt.
+Original workflow verification independently requires that receipt's complete
+domain and expected values for every claimed allocation. It is diagnostic
+resource evidence, never a native closure or settlement receipt; production
+launch policy and published handler contracts are unchanged. The runtime
+inventory includes exact configuration bytes for matched later retirement.
+
+Terminal session 43318 passes stable/MSRV executor/CLI all-target Clippy,
+formatting/file size and three ordinary helper tests with five provisioned skips;
+workflow-memory-preflight-check.log records verified controller limits.
+Actual preflight execution and guard sensitivity are pending. The failed 9bab4bf
+stage /usr/libexec/fsm-workflow-70b2e5d6b51a740bbfa29fd2c9941746 and protected
+resource/home/drop-in inventory for namespace 900133141f382ae4a34d25c5bf8e5cbf
+remain retained for matched archive/cleanup before a new producer. Task 9401 and
+plan 0022 completion remain unchanged; full native race and host/platform proof
+are still required.
