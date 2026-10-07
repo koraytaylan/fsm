@@ -33,6 +33,11 @@ touches:
   - crates/fsm-cli/tests/executor_ownership.rs
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
   - crates/fsm-cli/tests/workflow_race/mod.rs
+  - crates/fsm-cli/src/local_control/client.rs
+  - crates/fsm-cli/src/local_control/protocol.rs
+  - crates/fsm-cli/src/local_control/server.rs
+  - crates/fsm-cli/src/local_control/mod.rs
+  - crates/fsm-cli/tests/local_executor_control.rs
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md

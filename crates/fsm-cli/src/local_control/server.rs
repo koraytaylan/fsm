@@ -62,12 +62,24 @@ impl Connection {
                         let request = parse(&self.input, &JsonLimits::DEFAULT)
                             .map_err(|_| invalid("invalid control JSON"))
                             .and_then(|value| {
-                                protocol::apply_request(control, identity, &value)
-                                    .map_err(|error| invalid(&error.message))
+                                if value.get("format").and_then(Value::as_str)
+                                    == Some("fsm.executor-observe/1")
+                                {
+                                    protocol::validate_observation(identity, &value)
+                                        .map(|()| None)
+                                        .map_err(|error| invalid(&error.message))
+                                } else {
+                                    protocol::apply_request(control, identity, &value)
+                                        .map(Some)
+                                        .map_err(|error| invalid(&error.message))
+                                }
                             });
                         self.input.clear();
                         match request {
-                            Ok(request) => self.request = Some(request),
+                            Ok(Some(request)) => self.request = Some(request),
+                            Ok(None) => {
+                                self.reply(protocol::report_value(identity, &control.report()))?
+                            }
                             Err(error) => self.reply(Value::Obj(BTreeMap::from([(
                                 "error".into(),
                                 Value::Str(error.to_string()),

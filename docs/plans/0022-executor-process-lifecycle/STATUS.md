@@ -29,6 +29,10 @@ Historical live-handle notes below describe earlier observations only.
 - The full 81-case native matrix passed both toolchains at b7967cc, predating
   later workflow/renderer changes; current-source full native and hosted CI
   acceptance, native macOS/Windows axes and live-model evidence remain missing.
+- Private authenticated read-only control observation now reports actual bounded
+  inventory without closing admission or renewing deadlines; stable/MSRV actual
+  transport controls and identity-guard sensitivity pass, while the provisioned
+  competing-owner drain still needs diagnosis and current-source native proof.
 - Actual standalone/standalone and standalone/embedded live-tree races, complete
   claim/launch/settlement crash windows, nonempty blocked-session shutdown,
   signal handling and uncertainty reconciliation remain required before 9401

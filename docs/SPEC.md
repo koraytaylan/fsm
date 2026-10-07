@@ -3006,3 +3006,18 @@ permitted after cancellation, and transport failure or unknown allocation
 retains uncertainty and capacity rather than treating helper death as closure.
 This changes cancellation cleanup only, with no journal format, hash domain,
 request key, dependency or MSRV change.
+
+The Linux private owner control additionally accepts the closed four-field
+fsm.executor-observe/1 request (format, incarnation, store_device, store_inode)
+through local_control::observe(root, data_dir, timeout_ms). It MUST authenticate
+the same original private endpoint and physical identity and use the existing
+1024-byte request, 128-KiB response, 64-connection and eight-client-worker bounds.
+It MUST return only the actual bounded control metadata snapshot, without
+opening or writing Store, requesting stop, changing admission, extending any
+existing shutdown deadline or authorizing closure/settlement. Observation may
+report running/draining/stopping as well as terminal phases; stop clients still
+MUST accept only terminal identity-matched reports. An observation snapshot
+MUST NOT be interpreted as a native closure receipt or current durable prefix.
+This is additive local metadata observation, with no journal/format/hash-domain,
+dependency or MSRV change; production race and full lifecycle acceptance remain
+separate requirements.

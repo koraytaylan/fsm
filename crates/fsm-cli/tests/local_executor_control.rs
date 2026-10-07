@@ -409,3 +409,86 @@ fn excessive_cleanup_deadline_refuses_before_closing_transport() {
     assert!(endpoint.close(1000).unwrap());
     assert!(driver.store_mut().is_some());
 }
+
+#[test]
+fn observation_reads_actual_inventory_without_closing_admission_or_releasing_writer() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    let before = Store::open_read_only(&fixture.data).unwrap();
+    let report = fsm_cli::local_control::observe(&fixture.root, &fixture.data, 1000).unwrap();
+    assert_eq!(report.get("phase").and_then(Value::as_str), Some("running"));
+    assert_eq!(report.get("admission_closed"), Some(&Value::Bool(false)));
+    assert_eq!(report.get("writer_released"), Some(&Value::Bool(false)));
+    assert!(!driver.control().report().admission_closed);
+    assert!(Store::open(&fixture.data).is_err());
+    let after = Store::open_read_only(&fixture.data).unwrap();
+    assert_eq!(before.records, after.records);
+    assert_eq!(
+        fsm_core::replay::state_root_at(&before.state, before.journal.last_seq),
+        fsm_core::replay::state_root_at(&after.state, after.journal.last_seq)
+    );
+    assert_eq!(before.journal.last_hash, after.journal.last_hash);
+    assert!(endpoint.close(1000).unwrap());
+}
+
+#[test]
+fn observation_reports_draining_without_renewing_the_original_stop_deadline() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    let control = driver.control();
+    let _stream = send(&endpoint, &request(&endpoint, "drain", 5000), 0);
+    wait_for(|| control.report().admission_closed);
+    let deadline = control.stop(ShutdownMode::Drain, 5000).unwrap().deadline();
+    let report = fsm_cli::local_control::observe(&fixture.root, &fixture.data, 1000).unwrap();
+    assert_eq!(
+        report.get("phase").and_then(Value::as_str),
+        Some("draining")
+    );
+    assert_eq!(report.get("admission_closed"), Some(&Value::Bool(true)));
+    assert_eq!(
+        control.stop(ShutdownMode::Drain, 1000).unwrap().deadline(),
+        deadline
+    );
+    driver.poll(&mut FixedClock::new(0, 1), 0);
+    assert!(endpoint.close(1000).unwrap());
+}
+
+#[test]
+fn foreign_or_extended_observation_refuses_without_mutating_control() {
+    let fixture = Fixture::new();
+    let mut driver = fixture.driver();
+    let endpoint = LocalControlEndpoint::publish(&fixture.root, &mut driver).unwrap();
+    for field in ["incarnation", "extra"] {
+        let mut value = parse(
+            &fs::read(endpoint.directory().join("identity")).unwrap(),
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        let Value::Obj(fields) = &mut value else {
+            unreachable!()
+        };
+        fields.insert("format".into(), Value::Str("fsm.executor-observe/1".into()));
+        fields.insert(field.into(), Value::Str("foreign".into()));
+        let mut stream = send(&endpoint, &value, 0);
+        stream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).unwrap();
+        assert!(
+            parse(&response, &JsonLimits::DEFAULT)
+                .unwrap()
+                .get("error")
+                .is_some()
+        );
+        assert!(!driver.control().report().admission_closed);
+        assert_eq!(driver.control().report().phase, ExecutorPhase::Running);
+    }
+    for timeout in [0, fsm_execute::config::MAX_TIMEOUT_MS + 1] {
+        assert!(fsm_cli::local_control::observe(&fixture.root, &fixture.data, timeout).is_err());
+        assert!(!driver.control().report().admission_closed);
+    }
+    assert!(endpoint.close(1000).unwrap());
+}

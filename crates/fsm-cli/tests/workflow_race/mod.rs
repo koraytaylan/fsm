@@ -41,23 +41,32 @@ impl Drop for Competitor {
 }
 impl Competitor {
     pub(super) fn stop(&mut self, directory: &Directory) {
-        let report = fsm_cli::local_control::stop(
-            &self.root,
-            &directory.store(),
-            fsm_execute::service::ShutdownMode::Drain,
-            5000,
-        )
-        .unwrap_or_else(|error| {
-            // Let the original owner publish its deadline classification;
-            // this observer wait cannot renew its request or authorize cleanup.
-            let observed_until = Instant::now() + Duration::from_secs(1);
-            while self.child.try_wait().unwrap().is_none() && Instant::now() < observed_until {
-                std::thread::sleep(Duration::from_millis(5));
+        let root = self.root.clone();
+        let data = directory.store();
+        let stopped = std::thread::spawn(move || {
+            fsm_cli::local_control::stop(
+                &root,
+                &data,
+                fsm_execute::service::ShutdownMode::Drain,
+                5000,
+            )
+        });
+        let observed_until = Instant::now() + Duration::from_secs(7);
+        let mut last = Value::Null;
+        while !stopped.is_finished() && Instant::now() < observed_until {
+            if let Ok(report) = fsm_cli::local_control::observe(&self.root, &directory.store(), 250)
+            {
+                last = report;
             }
-            panic!(
-                "standalone drain transport: {error}; final stderr: {}",
-                bounded_executor_errors(&directory.0.join("race-stderr"))
-            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(
+            stopped.is_finished(),
+            "original bounded stop client did not retire"
+        );
+        let report = stopped.join().unwrap().unwrap_or_else(|error| {
+            panic!("standalone drain transport: {error}; actual last inventory: {last:?}; final stderr: {}",
+                bounded_executor_errors(&directory.0.join("race-stderr")));
         });
         assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -129,6 +138,13 @@ pub(super) fn contend(directory: &Directory, client: &mut Client) -> Competitor 
     // a launch-oriented diagnostic that would misclassify correct exclusion.
     std::thread::sleep(Duration::from_millis(100));
     let before = read_characters(competitor.child.id());
+    let observed =
+        fsm_cli::local_control::observe(&competitor.root, &directory.store(), 1000).unwrap();
+    assert_eq!(
+        observed.get("phase").and_then(Value::as_str),
+        Some("running")
+    );
+    assert_eq!(observed.get("admission_closed"), Some(&Value::Bool(false)));
     let until = Instant::now() + Duration::from_millis(500);
     while Instant::now() < until {
         client.call("instance_get", value(r#"{"instance_id":"inst-run"}"#));

@@ -238,3 +238,41 @@ while the mandatory stopped assertion stays intact. Existing stop-only transport
 and process activity counters cannot supply those facts. This is aligned with
 task 9401's bounded uncertainty health requirement, which remains unfinished;
 no native race or complete cancellation/shutdown acceptance is claimed.
+
+## Authenticated bounded local inventory observation
+
+The private control now accepts fsm.executor-observe/1 as a closed original
+four-field identity request and replies with actual ExecutorControl metadata
+without asking it to stop. It uses the existing bounded transport loop, response
+allocation, discovery and charged client-worker cap; stop clients still require
+terminal reports and stopped reports require admission closed plus complete
+empty/retired/released facts. Observation may report running/draining/stopping
+and never supplies native closure, durable prefix or settlement authorization.
+The race diagnostic now requires an authenticated running observation before
+competition and records bounded actual snapshots alongside its original stop
+request, preserving the five-second driver deadline and mandatory stopped
+assertion. No production race acceptance is inferred from the new transport.
+
+Terminal session 93284 passes stable and MSRV all-target CLI Clippy and all
+19 real control tests, including writer-held observation with unchanged complete
+records/state root/head, draining observation preserving the original deadline,
+and foreign/extended/invalid-bound refusals without control mutation. Failed
+first compilation used StoreState equality, corrected to the complete normative
+state-root API; MSRV Clippy then exposed an existing explicit stdout-write lint
+in the renderer readiness fixture, corrected separately in 2684165 with exact
+bytes preserved. All four actual renderer controls pass on MSRV in session
+99115 after correction. Logs are local-control-observation-final-check.log and
+renderer-msrv-readiness-check.log.
+
+Sensitivity session 41222 neutralizes only observation identity/schema equality:
+the actual foreign/extended transport control fails with exit 101; exact source
+bytes are restored in finally, and all 19 controls pass again. Its retained log
+local-control-observation-sensitivity.log includes the verified 1 GiB/zero-swap
+scope and terminal sensitivity marker. This proves the new refusal is wired
+through actual transport, with no weakening of stopped eligibility.
+
+The frozen workflow producer must next execute with these actual inventory
+snapshots to diagnose retained competing ownership; the failed 03e1aab fixture
+is still retained. Full changed-source host gates, provisioned stable/MSRV race
+execution, complete bounded health and remaining lifecycle proof stay required.
+Task 9401 remains in progress; plan 0022 remains 3/7.

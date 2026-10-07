@@ -6,7 +6,7 @@ mod endpoint;
 mod protocol;
 mod server;
 
-pub use client::stop;
+pub use client::{observe, stop};
 pub use endpoint::LocalControlEndpoint;
 
 use std::{fs, io, os::unix::fs::MetadataExt, path::Path};

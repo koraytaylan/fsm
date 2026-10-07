@@ -199,7 +199,35 @@ pub(super) fn parse_identity(value: &Value) -> Option<ControlIdentity> {
     })
 }
 
-pub(super) fn valid_report(value: &Value, identity: &ControlIdentity) -> bool {
+pub(super) fn observation_value(identity: &ControlIdentity) -> Value {
+    let Value::Obj(mut fields) = identity_value(identity) else {
+        unreachable!("closed identity object")
+    };
+    fields.insert("format".into(), Value::Str("fsm.executor-observe/1".into()));
+    Value::Obj(fields)
+}
+
+pub(super) fn validate_observation(
+    identity: &ControlIdentity,
+    value: &Value,
+) -> Result<(), ExecError> {
+    if value == &observation_value(identity) {
+        Ok(())
+    } else {
+        Err(ExecError::new(
+            "exec/config",
+            "observation schema or original identity differs",
+        ))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ReportKind {
+    Terminal,
+    Observed,
+}
+
+pub(super) fn valid_report(value: &Value, identity: &ControlIdentity, kind: ReportKind) -> bool {
     let valid = || -> Option<()> {
         if value.as_obj()?.len() != 12
             || value.get("format")?.as_str()? != "fsm.executor-control-report/1"
@@ -210,7 +238,11 @@ pub(super) fn valid_report(value: &Value, identity: &ControlIdentity) -> bool {
             return None;
         }
         let phase = value.get("phase")?.as_str()?;
-        if !matches!(phase, "stopped" | "uncertain") {
+        if !matches!(
+            phase,
+            "running" | "draining" | "stopping" | "stopped" | "uncertain"
+        ) || (kind == ReportKind::Terminal && !matches!(phase, "stopped" | "uncertain"))
+        {
             return None;
         }
         for field in [
@@ -224,7 +256,9 @@ pub(super) fn valid_report(value: &Value, identity: &ControlIdentity) -> bool {
                 return None;
             }
         }
-        if value.get("admission_closed")? != &Value::Bool(true) {
+        if (kind == ReportKind::Terminal || phase == "stopped")
+            && value.get("admission_closed")? != &Value::Bool(true)
+        {
             return None;
         }
         let Value::Arr(ids) = value.get("unresolved_run_ids")? else {

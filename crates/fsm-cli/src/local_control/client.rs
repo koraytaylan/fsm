@@ -54,6 +54,23 @@ pub fn stop(
     mode: ShutdownMode,
     timeout_ms: i64,
 ) -> io::Result<Value> {
+    request(root, data_dir, Request::Stop(mode), timeout_ms)
+}
+
+/// Observe the original owner's current bounded metadata without requesting stop.
+/// No journal is opened or changed; stale snapshots and transport failure grant
+/// no native closure or settlement permission, and existing deadlines stay fixed.
+pub fn observe(root: &Path, data_dir: &Path, timeout_ms: i64) -> io::Result<Value> {
+    request(root, data_dir, Request::Observe, timeout_ms)
+}
+
+#[derive(Clone, Copy)]
+enum Request {
+    Stop(ShutdownMode),
+    Observe,
+}
+
+fn request(root: &Path, data_dir: &Path, request: Request, timeout_ms: i64) -> io::Result<Value> {
     let budget = finite_timeout(timeout_ms)?;
     let deadline = Instant::now() + budget;
     let permit = WorkerPermit::acquire()?;
@@ -64,7 +81,7 @@ pub fn stop(
         .name("fsm-control-client".into())
         .spawn(move || {
             let _permit = permit;
-            let result = exchange(&root, &data_dir, mode, timeout_ms, deadline);
+            let result = exchange(&root, &data_dir, request, timeout_ms, deadline);
             let _ = send.send(result);
         })?;
     receive
@@ -87,7 +104,7 @@ fn remaining(deadline: Instant) -> io::Result<Duration> {
 fn exchange(
     root: &Path,
     data_dir: &Path,
-    mode: ShutdownMode,
+    kind: Request,
     timeout_ms: i64,
     deadline: Instant,
 ) -> io::Result<Value> {
@@ -97,10 +114,11 @@ fn exchange(
     // A connect that completed late must not initiate a late first stop request.
     stream.set_write_timeout(Some(remaining(deadline)?))?;
     let mut request = Vec::new();
-    write_canonical(
-        &protocol::request_value(&identity, mode, timeout_ms),
-        &mut request,
-    );
+    let value = match kind {
+        Request::Stop(mode) => protocol::request_value(&identity, mode, timeout_ms),
+        Request::Observe => protocol::observation_value(&identity),
+    };
+    write_canonical(&value, &mut request);
     if request.len() > REQUEST_CAP {
         return Err(invalid("control request exceeds byte limit"));
     }
@@ -122,7 +140,11 @@ fn exchange(
     }
     let value = parse(&response, &JsonLimits::DEFAULT)
         .map_err(|_| invalid("invalid control report JSON"))?;
-    if !protocol::valid_report(&value, &identity) {
+    let report_kind = match kind {
+        Request::Stop(_) => protocol::ReportKind::Terminal,
+        Request::Observe => protocol::ReportKind::Observed,
+    };
+    if !protocol::valid_report(&value, &identity, report_kind) {
         return Err(invalid(
             "control report original identity or schema differs",
         ));
