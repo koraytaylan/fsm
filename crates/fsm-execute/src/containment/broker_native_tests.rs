@@ -149,34 +149,7 @@ pub(super) fn refused_close(directory: &Path) -> Value {
     request(&directory.join("broker"), "close", Value::Num("1".into()))
 }
 
-pub(super) fn run() {
-    for timeout in [false, true] {
-        run_case(timeout, Host::Primitive);
-    }
-    run_case(false, Host::Shared);
-    run_case(false, Host::BoundClosure);
-    run_case(false, Host::BoundClosureMcp);
-    run_case(false, Host::BoundInterruption);
-    run_case(false, Host::BoundInterruptionMcp);
-    run_case(false, Host::BoundOwnedDriver);
-    run_case(false, Host::BoundOwnedDriverMcp);
-    run_case(false, Host::BoundPairedDriver);
-    run_case(false, Host::BoundPairedDriverMcp);
-    run_case(false, Host::Fresh);
-    run_case(false, Host::FreshMcp);
-    run_case(false, Host::Cold);
-    run_case(false, Host::ColdMcp);
-    run_case(false, Host::ColdConflict);
-    run_case(false, Host::ColdConflictMcp);
-    run_case(false, Host::ColdRejected);
-    run_case(false, Host::ColdRejectedMcp);
-    run_case(false, Host::Admission);
-    run_case(false, Host::AdmissionMcp);
-    run_case(false, Host::AdmissionCancellation);
-    run_case(false, Host::AdmissionMcpCancellation);
-    run_case(false, Host::AdmissionCompetition);
-    run_case(false, Host::AdmissionMcpCompetition);
-}
+pub(super) use host_cases::run;
 
 #[path = "broker_host_cases.rs"]
 mod host_cases;
