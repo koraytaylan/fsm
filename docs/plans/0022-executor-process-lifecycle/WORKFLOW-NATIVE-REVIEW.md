@@ -988,3 +988,13 @@ memory.swap.max=0; formatting, file-size and tracked diff checks also pass.
 This helper control does not prove production failure delivery or diagnose the
 original race; actual native rerun, MSRV checks, full host gate and guard
 sensitivity remain required, after identity-guarded retained-fixture retirement.
+
+MSRV session 48058 completed with all 19 native-client controls and executor
+all-target Clippy passing under verified one GiB/zero-swap limits. Protected
+inspection confirmed the failed 4ce2aa5 namespace and original cgroups absent,
+with no registered matching units or live staged executable; exact manifest
+identities and staged digests were checked before archival and retirement by
+retire-failed-workflow-4ce2aa5.py. Original logs, resource/HOME, staging and
+drop-in evidence are preserved in that report directory retained-fixture;
+socket metadata is recorded separately. The matched installation was removed
+with its device, inode and digest guard; absence supplies no closure verdict.
