@@ -49,6 +49,7 @@ fn execution_host_native_decision_pass_uses_one_sample_for_both_deadline_records
             .unwrap();
     }
     let calls = Arc::new(AtomicUsize::new(0));
+    let before = store.journal.last_seq;
     let driver = OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap();
     let (mut owner, handle) = NativeOwner::new(
         driver,
@@ -70,11 +71,18 @@ fn execution_host_native_decision_pass_uses_one_sample_for_both_deadline_records
         "{lines:?}"
     );
     assert_eq!(samples, 1);
-    assert_eq!(records.len(), 5);
-    assert_eq!(records[3].ts, 1001);
-    assert_eq!(records[4].ts, 1001);
+    // The journal loader includes sequence-zero Genesis; select this pass by sequence.
+    let applied = records
+        .iter()
+        .filter(|record| record.seq > before)
+        .collect::<Vec<_>>();
+    assert_eq!(applied.len(), 2);
+    for record in applied {
+        assert_eq!(record.kind, fsm_core::record::RecordKind::DeadlineApplied);
+        assert_eq!(record.ts, 1001);
+    }
     let reopened = Store::open(&scratch.0).unwrap();
-    assert_eq!(reopened.journal.last_seq, 5);
+    assert_eq!(reopened.journal.last_seq, before + 2);
     assert_eq!(
         crate::journal_io::verify(&scratch.0).health,
         crate::journal_io::JournalHealth::Ok

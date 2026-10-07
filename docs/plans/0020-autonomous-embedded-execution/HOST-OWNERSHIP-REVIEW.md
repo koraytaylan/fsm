@@ -453,3 +453,39 @@ new escaping fixture used JsonLimits::default() although the established
 constructor is the JsonLimits::DEFAULT constant. No test or Clippy pass is
 claimed for that source. The fixture is corrected in the active workspace;
 new progress-context implementation is outside that frozen verification range.
+
+### Hosted stdio progress context — implementation pending verification
+
+The owned stdio path now submits a charged HostedToolContext with the original
+metadata and cancellation control to ordinary dispatch. Its constructor
+accepts only the private hosted queued notifier, preventing owner-side direct
+transport writes. Metadata/progress copies, adapter retention and context
+allocation are conservatively charged before dispatch. A byte-stream case
+uses journal_verify with a numeric progress token and checks the final report,
+unchanged journal and original writer release. Borrowed/direct helper behavior
+is unchanged.
+
+Session 28645 was retired at its verified idle waiter with exit 130 before
+Cargo; its frozen successor 94022 failed compilation as recorded in the review.
+Corrected output/clock code plus this progress integration is queued in session
+64303 for stable/MSRV library tests and CLI all-target Clippy, under serial
+Cargo-idle waits and immediate memory/swap threshold and actual 1 GiB/zero-swap
+checks. No passing result is claimed yet.
+
+Manual review confirms that progress emission uses the original bounded output
+and preserves the existing reporter rate/final semantics. Normal response waits
+still need input pumping for cancellation and EOF during long calls, and long
+read-only diagnostics still need separation from the owner; these are concrete
+production-path gaps, alongside response/change-notification ordering, versioned
+discovery, real-binary activation and remaining native/platform acceptance.
+Completion remains 0/7 with no dependency release or task landing OID.
+
+Combined session 64303 compiled the corrected code and passed 117 library
+cases, including bounded hosted output and actual stdio progress forwarding;
+the remaining clock case failed only its absolute Vec length assertion.
+load_records includes the sequence-zero Genesis record. The fixture now
+selects records after the captured pre-pass sequence and requires exactly two
+DeadlineApplied records at the single sampled timestamp, then verifies the
+reopened sequence and journal. It does not change a golden or runtime behavior.
+Session 98317 is the corrected combined stable/MSRV verification; its result
+remains pending and no all-target Clippy or MSRV pass is inferred from 64303.
