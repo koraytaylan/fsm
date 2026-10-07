@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use fsm_core::json::Value;
 
@@ -20,6 +19,9 @@ use super::{cancel, logging, subscribe, watch};
 
 use super::framing::{LINE_CAP, Line, read_capped_line};
 mod mode;
+mod panic;
+use panic::install_panic_hook;
+pub use panic::panic_text;
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
@@ -38,8 +40,6 @@ pub use owned::{
 };
 const KNOWN_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 const DEFAULT_VERSION: &str = "2025-06-18";
-
-static HOOK: AtomicBool = AtomicBool::new(false);
 
 pub fn negotiate(client: Option<&str>) -> &'static str {
     match client {
@@ -99,25 +99,6 @@ pub fn tool_ok(name: &str, structured: Value) -> Value {
     // `--json`, and a cosmetic addition to `content` must not move it.
     result.insert("structuredContent".into(), structured);
     Value::Obj(result)
-}
-
-pub fn panic_text(info: &std::panic::PanicHookInfo<'_>) -> String {
-    format!(
-        "fsm panic: {info}\n{}",
-        std::backtrace::Backtrace::force_capture()
-    )
-}
-
-fn install_panic_hook() {
-    if HOOK
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_ok()
-    {
-        std::panic::set_hook(Box::new(|info| {
-            let _ = writeln!(std::io::stderr(), "{}", panic_text(info));
-            std::process::abort();
-        }));
-    }
 }
 
 /// How this server relates to the writer lock and to the executor.
