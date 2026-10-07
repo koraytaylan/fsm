@@ -270,10 +270,12 @@ pub fn request_and_await(
             )
             .hint("ask again, or send the event directly with instance_send"));
         }
-        let Some(line) = io
-            .read_line()
-            .map_err(|e| ErrorObj::new("io/read", e.to_string()))?
-        else {
+        let line = match io.read_line() {
+            Ok(line) => line,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
+            Err(error) => return Err(ErrorObj::new("io/read", error.to_string())),
+        };
+        let Some(line) = line else {
             // The client is gone. There is nothing to answer and nothing to
             // report to: this is a session ending, not a failure.
             return Err(ErrorObj::new(

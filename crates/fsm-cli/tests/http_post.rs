@@ -508,7 +508,18 @@ fn an_answer_for_one_session_does_not_complete_anothers_wait() {
     assert_eq!(status(&response), 202);
 
     // The first session's ask times out rather than being answered by it.
-    let asked = serve(
+    let serve_with_timeout = |endpoint: &Endpoint, request: &Request| {
+        let mut out = Vec::new();
+        endpoint
+            .serve(
+                request,
+                &mut FixedClock::new(2_000, fsm_cli::mcp::elicit::DEFAULT_TIMEOUT_MS + 1),
+                &mut out,
+            )
+            .expect("response at the injected timeout");
+        String::from_utf8(out).unwrap()
+    };
+    let asked = serve_with_timeout(
         &endpoint,
         &raw(
             "POST",

@@ -65,3 +65,29 @@ journal replay, but it does not cover an outstanding reverse request or native
 execution ownership; passing it alone cannot establish this boundary.
 This review adds no runtime capability; implementation and runtime proof remain
 open, with the capability documentation and full gates required when wired.
+
+## Implemented idle/closure correction
+
+The mailbox is extracted into http/mailbox.rs while retaining its existing
+endpoint exports. A quiet poll returns WouldBlock, which reverse waiting handles
+by returning to the original elicitation deadline check; closed mailboxes yield
+EOF. Session DELETE closes/wakes the original mailbox before acquiring lives,
+clears queued replies and refuses late posts. VecDeque replaces front-removal
+shifting, but mailbox admission remains unbounded and is not claimed complete.
+The new reverse-wait regression uses the actual Notifier/SessionIo/mailbox path
+and replies after 150 ms, across multiple 50 ms polls; a separate case proves
+idle versus closure and late-post refusal. This is not full HTTP streaming proof.
+
+Initial session 41047 was stopped by the exact test PID after the old HTTP
+isolation test's 1 ms fake-clock increments caused a prolonged wait; no passing
+aggregate is claimed. That case now uses an injected timeout-sized clock step
+and preserves its cross-session assertion. Terminal corrected session 90623
+exits zero: stable/MSRV all-target CLI Clippy, both new mailbox cases, nine
+elicitation tools, eleven HTTP POST cases, nine session cases and the actual
+HTTP notification case pass, with formatting/file-size checks. The session-ID
+subprocess-only test retains its existing ignore marker and is driven by its
+existing fallback test. Controller kernel limits are asserted one GiB/zero swap.
+http-mailbox-idle-corrected-check.log SHA-256 is
+c0b0a18ec71335b7b176f759772c6dc0f95a3cfbc297c9783792c67d7a0ada6d.
+SPEC/API-POLICY/EMBEDDING/RELEASE describe the exact correction and remaining
+limitations; full host/platform gates and guard sensitivity remain pending.

@@ -3107,3 +3107,12 @@ ticks retain their prohibition on fresh allocation or entry. This provisional
 host selection changes no public signature, error code, journal/hash format,
 dependency or MSRV; protocol input still drives these borrowed ticks and its
 inline diagnostics/EOF shutdown remain outside the bounded owned-host claim.
+
+## HTTP reverse-response idle and closure
+
+A quiet HTTP reverse-response mailbox poll MUST remain idle rather than imply
+client EOF; reverse waiting MUST return to its deadline check between idle
+polls. Closing an original session MUST close its mailbox and wake its waiters
+before acquiring session execution state; late responses MUST NOT reopen that
+mailbox. This does not establish autonomous HTTP ownership, bounded mailbox
+admission or reverse-request streaming, which remain implementation obligations.

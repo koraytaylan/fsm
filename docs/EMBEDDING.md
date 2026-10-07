@@ -2617,3 +2617,11 @@ ticks retain their prohibition on fresh allocation or entry. This provisional
 host selection changes no public signature, error code, journal/hash format,
 dependency or MSRV; protocol input still drives these borrowed ticks and its
 inline diagnostics/EOF shutdown remain outside the bounded owned-host claim.
+
+## HTTP reverse-response wait state
+
+A quiet HTTP mailbox poll leaves the question outstanding and returns to the
+elicitation deadline check; DELETE closes the original mailbox and wakes its
+readers, and late replies cannot revive it. HTTP reverse-request streaming,
+bounded mailbox admission and autonomous executor ownership remain incomplete;
+this polling correction alone does not provide a working interactive HTTP flow.

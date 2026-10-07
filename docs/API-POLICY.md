@@ -1333,3 +1333,11 @@ ticks retain their prohibition on fresh allocation or entry. This provisional
 host selection changes no public signature, error code, journal/hash format,
 dependency or MSRV; protocol input still drives these borrowed ticks and its
 inline diagnostics/EOF shutdown remain outside the bounded owned-host claim.
+
+## HTTP reverse-response polling correction
+
+Quiet HTTP mailbox polls no longer report client disconnection; an actual
+session DELETE closes and wakes the original mailbox. This is a correction to
+reverse-response waiting with no new error code, persistence format or tool
+schema. Existing public Mailbox/Reader paths remain reachable through endpoint;
+Mailbox::close is additive. HTTP autonomous ownership remains incomplete.

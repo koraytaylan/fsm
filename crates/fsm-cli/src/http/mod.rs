@@ -14,6 +14,7 @@
 //! Plan 0015.
 
 pub mod endpoint;
+mod mailbox;
 pub mod request;
 pub mod response;
 pub mod security;

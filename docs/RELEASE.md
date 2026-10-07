@@ -1291,3 +1291,11 @@ ticks retain their prohibition on fresh allocation or entry. This provisional
 host selection changes no public signature, error code, journal/hash format,
 dependency or MSRV; protocol input still drives these borrowed ticks and its
 inline diagnostics/EOF shutdown remain outside the bounded owned-host claim.
+
+### HTTP reverse-response idle correction
+
+Quiet mailbox polls remain pending rather than masquerading as disconnected
+clients; session DELETE closes and wakes the original mailbox before acquiring
+execution state. Existing protocol errors and journal formats are unchanged.
+Reverse-request streaming, bounded mailbox admission and HTTP native ownership
+remain unfinished and are not release acceptance claims.

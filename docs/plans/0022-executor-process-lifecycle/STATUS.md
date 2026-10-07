@@ -65,6 +65,11 @@ HTTP-OWNERSHIP-REVIEW.md records additional production defects: reverse requests
 are buffered until handling finishes, quiet mailbox polls become EOF, and the
 response mailbox is unbounded; the next owner/transport boundary must address
 these together rather than relying on a lock-only elicitation special case.
+Quiet HTTP mailbox polls now preserve reverse waiting and its deadline checks;
+DELETE closes/wakes the original mailbox before acquiring execution state,
+with late posts refused. Both toolchain targeted tests and CLI Clippy pass;
+HTTP-OWNERSHIP-REVIEW.md records the stopped old fake-clock test and corrected
+evidence, while bounded admission, streaming and actual owner wiring remain open.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

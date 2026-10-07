@@ -9,7 +9,9 @@
 
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::sync::{Condvar, Mutex};
+use std::sync::Mutex;
+
+pub use super::mailbox::{Mailbox, MailboxReader};
 
 use fsm_core::json::{JsonLimits, Value, parse};
 
@@ -154,8 +156,10 @@ impl Endpoint {
             "DELETE" => {
                 let id = request.header(SESSION_HEADER).unwrap_or("");
                 if self.sessions.close(id) {
+                    if let Some(mailbox) = self.mailboxes.lock_safe().remove(id) {
+                        mailbox.close();
+                    }
                     self.lives.lock_safe().remove(id);
-                    self.mailboxes.lock_safe().remove(id);
                     // The stream closes with the session, and says nothing
                     // on its way out: there is nothing to say and the client
                     // may already be gone.
@@ -580,97 +584,6 @@ fn accepts_events(request: &Request) -> bool {
 
 fn canon(value: &Value) -> Vec<u8> {
     fsm_core::canon::canon_bytes(value)
-}
-
-/// Inbound responses for one session, and whoever is waiting for them.
-#[derive(Default)]
-pub struct Mailbox {
-    waiting: Mutex<Vec<Value>>,
-    arrived: Condvar,
-}
-
-impl Mailbox {
-    /// Put an answer in, waking whoever is waiting.
-    pub fn post(&self, message: Value) {
-        self.waiting
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .push(message);
-        self.arrived.notify_all();
-    }
-
-    /// Take the next answer, waiting up to `timeout` for one.
-    pub fn take(&self, timeout: std::time::Duration) -> Option<Value> {
-        let mut waiting = self
-            .waiting
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if waiting.is_empty() {
-            let (next, _) = self
-                .arrived
-                .wait_timeout(waiting, timeout)
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            waiting = next;
-        }
-        if waiting.is_empty() {
-            None
-        } else {
-            Some(waiting.remove(0))
-        }
-    }
-}
-
-/// A reader over a mailbox, so plan 0013's `request_and_await` reads an
-/// HTTP client's answer exactly as it reads a stdio one.
-pub struct MailboxReader {
-    mailbox: std::sync::Arc<Mailbox>,
-    pending: Vec<u8>,
-    at: usize,
-}
-
-impl MailboxReader {
-    pub fn new(mailbox: std::sync::Arc<Mailbox>) -> Self {
-        Self {
-            mailbox,
-            pending: Vec::new(),
-            at: 0,
-        }
-    }
-}
-
-impl std::io::Read for MailboxReader {
-    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-        let available = std::io::BufRead::fill_buf(self)?;
-        let n = available.len().min(out.len());
-        out[..n].copy_from_slice(&available[..n]);
-        std::io::BufRead::consume(self, n);
-        Ok(n)
-    }
-}
-
-impl std::io::BufRead for MailboxReader {
-    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
-        if self.at == self.pending.len() {
-            // One poll interval, not the whole elicitation timeout: the
-            // caller's own deadline is what bounds the wait, and this loop
-            // is what lets it see it.
-            match self.mailbox.take(std::time::Duration::from_millis(50)) {
-                Some(message) => {
-                    self.pending = canon(&message);
-                    self.pending.push(b'\n');
-                    self.at = 0;
-                }
-                // Nothing arrived: an empty read, which the caller reads as
-                // end of input and treats as the client having gone.
-                None => return Ok(&[]),
-            }
-        }
-        Ok(&self.pending[self.at..])
-    }
-
-    fn consume(&mut self, amount: usize) {
-        self.at = (self.at + amount).min(self.pending.len());
-    }
 }
 
 /// A lock that hands back the data even when a holder panicked, matching how
