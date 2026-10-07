@@ -125,8 +125,6 @@ fn persist_then_wait() {
                     .last()
                     .unwrap()
                     .body
-                    .get("execution")
-                    .unwrap()
                     .get("disposition")
                     .and_then(Value::as_str),
                 Some("attempted")
