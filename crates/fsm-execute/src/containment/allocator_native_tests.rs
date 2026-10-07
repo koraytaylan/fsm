@@ -21,6 +21,9 @@ mod exec_status_cases;
 #[path = "capture_native_tests.rs"]
 mod capture_cases;
 
+#[path = "prepared_contention_native_tests.rs"]
+mod prepared_contention_cases;
+
 #[path = "profile_native_tests.rs"]
 mod profile_cases;
 
@@ -253,6 +256,7 @@ impl Drop for Fixture {
 #[test]
 #[ignore = "requires writable provisioned root cgroups"]
 fn empty_domain_preparation() {
+    prepared_contention_cases::run();
     let mut fixture = Fixture::new();
     let domain = fixture.prepare();
     assert_eq!(number(&domain, "allocation").unwrap(), 1);

@@ -816,3 +816,22 @@ scope. Current-source full 81-case native coverage, deterministic contention
 and verifier sensitivity, standalone/standalone races, crash windows and the
 remaining host, shutdown, recovery and platform obligations remain pending.
 Task 9401 remains in progress, plan 0022 remains 3/7 and gate_released is false.
+
+## Prepared cleanup contention fixture
+
+The existing provisioned empty_domain_preparation case now additionally enters
+production discard_prepared with a real protected authority lock held: expiry
+must report the original two-second cleanup deadline and preserve the recorded
+domain, original cgroup identity and absence of revocation, binding and closure.
+A second call must remain pending while the lock is held, then close only that
+original domain after release, with the matching durable closed record.
+This adds no production behavior or public surface and preserves the existing
+native case inventory. Stable and Rust 1.89 all-target executor/CLI Clippy and
+the existing seven admission/control and one cleanup-refusal controls pass in
+terminal session 83188; the initial check failed on module-path imports,
+corrected before rerunning. Logs prepared-contention-compilation-check.log and
+prepared-contention-compilation-corrected-check.log retain both outcomes.
+Actual privileged execution and retry/deadline guard sensitivity remain pending;
+compilation and portable controls do not prove those native assertions.
+The earlier full host gate predates this test-only addition, so affected full
+test gates require renewal before final review; task 9401 remains in progress.
