@@ -109,3 +109,8 @@ The stable real-binary fixture passes after correcting its invalid empty handler
 table to a declared manual-effect table; broader verification remains pending
 and task 9001 stays planned
 until its scheduling dependency and full scenario inventory are accepted.
+
+The first working production path is extended with actual-binary quiet
+subscription output and broken-stdout cleanup while stdin remains open; both
+new scenarios are pending serial stable/MSRV verification, and the complete
+9001/native scenario inventory and all task dependencies remain open.

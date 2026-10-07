@@ -573,3 +573,14 @@ This milestone proves one production path on both host toolchains; the frozen
 workspace debug/release/docs/full gate, remaining success/retry/compensation/
 recovery/notification scenarios and native platform axes are still required.
 Task statuses and all unreleased dependencies remain unchanged.
+
+The actual-binary inventory now additionally covers a subscribed instance:
+after subscribe acknowledgement, no more requests are sent and an actual
+`notifications/resources/updated` frame must arrive with the expected URI,
+followed by read-only confirmation of terminal deadline state and EOF cleanup.
+The unsubscribed case remains separate, with independent fixture directories
+for parallel test execution. A broken-stdout case closes the actual stdout
+receiver, retains open stdin, requires an explicit failure exit within the
+lifecycle bound and reopens the unchanged empty journal; input EOF cannot
+supply its shutdown trigger. These new cases are queued for stable/MSRV
+execution and all-target Clippy, not yet passing acceptance evidence.
