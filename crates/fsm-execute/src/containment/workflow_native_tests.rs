@@ -321,6 +321,7 @@ pub(super) fn run() {
             "two_standalone_executors_exclude_a_live_handler_tree",
             vec!["race"],
         ),
+        ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ]
     .into_iter()
     .enumerate()

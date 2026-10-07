@@ -260,21 +260,30 @@ struct Client {
 enum ExecutionMode {
     Embedded,
     Standalone,
+    Borrowed,
 }
 
 impl Client {
-    fn start(fixture: &Directory) -> Self {
-        Self::start_mode(fixture, ExecutionMode::Embedded)
-    }
-
     fn start_mode(fixture: &Directory, mode: ExecutionMode) -> Self {
         let directory = &fixture.0;
         let errors = directory.join("stderr");
-        let mut command = Command::new(fixture.executable());
+        let borrowed = matches!(mode, ExecutionMode::Borrowed);
+        let mut command = Command::new(if borrowed {
+            std::env::current_exe().unwrap()
+        } else {
+            fixture.executable()
+        });
         if let Some(entry) = &fixture.1 {
             command.env("HOME", text(entry, "home"));
         }
-        command.arg("--data-dir").arg(fixture.store()).arg("serve");
+        if borrowed {
+            command
+                .args(["--quiet", "--exact", "borrowed_native_session", "--ignored"])
+                .env("FSM_BORROWED_STORE", fixture.store())
+                .env("FSM_BORROWED_HANDLERS", directory.join("handlers.json"));
+        } else {
+            command.arg("--data-dir").arg(fixture.store()).arg("serve");
+        }
         if matches!(mode, ExecutionMode::Embedded) {
             command
                 .args(["--execute", "--handlers"])
@@ -291,6 +300,13 @@ impl Client {
         let (sender, responses) = mpsc::channel();
         let reader = std::thread::spawn(move || {
             for line in BufReader::new(output).lines() {
+                if borrowed
+                    && line
+                        .as_ref()
+                        .is_ok_and(|line| line.is_empty() || line == "running 1 test")
+                {
+                    continue;
+                }
                 let response = line.map_err(|error| error.to_string()).and_then(|line| {
                     parse(line.as_bytes(), &JsonLimits::DEFAULT)
                         .map_err(|error| format!("invalid MCP response {line:?}: {error:?}"))
@@ -312,7 +328,7 @@ impl Client {
             "initialize",
             value(r#"{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"workflow-test","version":"1"}}"#),
         );
-        if matches!(mode, ExecutionMode::Embedded) {
+        if !matches!(mode, ExecutionMode::Standalone) {
             assert!(text(&initialized, "instructions").contains("fsm://executor"));
         }
         writeln!(
@@ -557,7 +573,14 @@ fn run_scenario_mode(
     let directory = Directory::new();
     fs::write(directory.resource().join("phase"), "active").unwrap();
     write_handlers(&directory.0, &directory.resource(), failures);
-    let mut client = Client::start(&directory);
+    let mut client = Client::start_mode(
+        &directory,
+        if matches!(mode, ExecutionMode::Borrowed) {
+            mode
+        } else {
+            ExecutionMode::Embedded
+        },
+    );
     let handlers = client.discover_handlers();
     client.call("machine_create", object([("spec", machine(&handlers))]));
     client.call(
@@ -589,7 +612,7 @@ fn run_scenario_mode(
     } else {
         None
     };
-    if matches!(mode, ExecutionMode::Embedded) {
+    if !matches!(mode, ExecutionMode::Standalone) {
         client.call(
             "instance_send",
             value(r#"{"instance_id":"inst-run","request_id":"begin","event":{"name":"begin"}}"#),
@@ -833,5 +856,44 @@ fn two_standalone_executors_exclude_a_live_handler_tree() {
         &OPERATIONS,
         "active",
         ExecutionMode::Standalone,
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "child of the provisioned borrowed native workflow case"]
+fn borrowed_native_session() {
+    let path = PathBuf::from(std::env::var_os("FSM_BORROWED_STORE").unwrap());
+    let table = fsm_execute::config::HandlerTable::parse(
+        &fs::read_to_string(std::env::var_os("FSM_BORROWED_HANDLERS").unwrap()).unwrap(),
+    )
+    .unwrap();
+    let mut executor = fsm_cli::mcp::serve::ExecutorLoop::new(&path, table).unwrap();
+    let mut store = fsm_cli::store::Store::open(&path).unwrap();
+    fsm_cli::mcp::serve::serve_session_with(
+        Some(&mut store),
+        &mut fsm_cli::clock::SystemClock,
+        Some(&mut executor),
+        None,
+        BufReader::new(std::io::stdin()),
+        std::io::stdout(),
+    )
+    .unwrap();
+    drop(executor);
+    drop(store);
+    // Keep libtest's summary outside the MCP protocol stream.
+    std::process::exit(0);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md"]
+fn borrowed_embedded_handlers_complete_the_workflow() {
+    run_scenario_mode(
+        "",
+        "succeeded",
+        &OPERATIONS,
+        "active",
+        ExecutionMode::Borrowed,
     );
 }

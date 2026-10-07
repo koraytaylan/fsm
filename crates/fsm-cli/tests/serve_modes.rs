@@ -413,16 +413,16 @@ fn a_second_writer_is_still_refused_within_one_process() {
 }
 
 #[test]
-fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
-    let directory = TestDirectory::create("embedded");
+fn borrowed_embedded_refuses_unavailable_authority_without_acknowledgement() {
+    let directory = TestDirectory::create("borrowed-native-refusal");
     seeded(&directory);
-    let table = HandlerTable::parse(&stub_table_json()).unwrap();
-    let mut executor = ExecutorLoop::new(directory.path(), table).unwrap();
+    let mut executor = ExecutorLoop::new(
+        directory.path(),
+        HandlerTable::parse(&stub_table_json()).unwrap(),
+    )
+    .unwrap();
     let mut store = open_writer(directory.path());
     let mut clock = SystemClock;
-
-    // One line: advance into the state that emits. The tick that follows it
-    // observes the effect and spawns the handler.
     let sink = fsm_cli::mcp::notify::SharedSink::new();
     let input = initialize_lines()
         + &call(
@@ -439,32 +439,9 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
         sink.writer(),
     )
     .unwrap();
-    // The send emitted an effect for the executor to find. **Not** that it is
-    // still pending: the same session runs a tick after the send, so a stub
-    // handler that finishes inside it settles the effect before this line
-    // — which is what a fast runner does, and what failed a release on
-    // macOS at the MSRV. The claim is that the effect exists, and it exists
-    // either way.
-    assert!(
-        !store.state.instances["order-1"].pending.is_empty()
-            || store
-                .records
-                .iter()
-                .any(|record| record.kind == RecordKind::EffectAcked),
-        "the send emitted no effect for the executor to see"
-    );
-
-    // Further lines: each one drives another tick. Nothing happens between
-    // them, which is exactly the limit embedded mode has and the reason the
-    // unattended claim belongs to a separate process.
+    assert!(sink.text().contains("exec/mode"));
+    let records = store.records.clone();
     for round in 0..40 {
-        if store
-            .records
-            .iter()
-            .any(|record| record.kind == RecordKind::EffectAcked)
-        {
-            break;
-        }
         let sink = fsm_cli::mcp::notify::SharedSink::new();
         serve_session_with(
             Some(&mut store),
@@ -483,22 +460,14 @@ fn embedded_mode_journals_the_ack_but_only_when_the_client_speaks() {
         .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-
-    assert_eq!(
-        store
-            .records
-            .iter()
-            .filter(|record| record.kind == RecordKind::EffectAcked)
-            .count(),
-        1,
-        "the serve process itself journaled the ack — no external executor"
-    );
+    assert_eq!(store.records, records);
+    assert!(!store.state.instances["order-1"].pending.is_empty());
+    assert!(store.state.execution.unresolved().next().is_none());
     assert!(
-        store
+        !store
             .records
             .iter()
-            .any(|record| record.body.get("event").and_then(Value::as_str) == Some("confirmed")),
-        "and the advance the table declares"
+            .any(|record| record.kind == RecordKind::EffectAcked)
     );
 }
 

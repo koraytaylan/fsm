@@ -1053,3 +1053,24 @@ eleven-scenario stable/MSRV evidence above predates only these test additions.
 Hosted CI and unsupported-platform axes remain unexecuted for current source;
 production failure delivery/sensitivity, legacy entry-point integration and
 broader shutdown/recovery/crash requirements remain incomplete.
+
+## Borrowed MCP native selection and workflow fixture
+
+ExecutorLoop::new now selects native shared-tick admission. The borrowed public
+session refusal test drives a genuine emitted effect through initialize/send
+and forty additional ping ticks, requiring exec/mode, unchanged later records,
+retained pending effect and no acknowledgement/claim without authority. The
+previous unprovisioned happy-path ack assertion is replaced by this real refusal
+contract; happy-path coverage moves to a registered twelfth provisioned workflow
+scenario, invoking the public borrowed session helper in the exact staged test
+artifact against the same seven-operation immutable catalogue and original
+root closure/memory proofs. All eleven prior scenarios remain registered.
+Only the helper libtest preamble is excluded from response decoding; helper
+EOF exits after explicitly dropping original executor/store, with no shutdown
+claim for live work. Stable/MSRV refusal and CLI/executor all-target Clippy pass
+in terminal session 71682, with one GiB/zero-swap bounds; a redundant PathBuf
+conversion was fixed after initial Clippy. All seven mocked producer retirement
+controls pass with the twelve-scenario inventory (the first default-sandbox
+attempt could not write its cache directory). Actual provisioned borrowed
+execution, selection sensitivity, read-only constructor controls and renewed
+full host gate remain pending; task 9401 and plan 0022 status are unchanged.

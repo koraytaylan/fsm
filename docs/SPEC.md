@@ -3098,3 +3098,12 @@ produces its store diagnosis and the existing three-blocked-tick exec/mode
 refusal; paired loops keep their existing writer-on-demand behavior. The probe
 claims no execution ownership and changes no journal/hash format, error code,
 public signature or shutdown deadline; complete bounded shutdown remains open.
+
+Borrowed MCP ExecutorLoop construction now selects native shared-tick
+admission: the public borrowed session helper requires protected native
+authority for fresh effects and refuses unavailable capability with exec/mode,
+without direct-child fallback or synthetic acknowledgement. Read-only borrowed
+ticks retain their prohibition on fresh allocation or entry. This provisional
+host selection changes no public signature, error code, journal/hash format,
+dependency or MSRV; protocol input still drives these borrowed ticks and its
+inline diagnostics/EOF shutdown remain outside the bounded owned-host claim.

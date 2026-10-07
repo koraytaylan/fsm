@@ -155,7 +155,7 @@ impl ExecutorLoop {
             handlers: super::executor::handlers(&table),
             watcher: fsm_execute::watch::Watcher::with_handlers(data_dir.to_path_buf(), &table),
             scheduler: fsm_execute::sched::Scheduler::new(table),
-            runner: fsm_execute::run::Runner::new()?,
+            runner: fsm_execute::run::Runner::new_native()?,
             pipeline: fsm_execute::run::Pipeline,
         })
     }
