@@ -231,11 +231,10 @@ fn durable_ownership_counts_are_read_only_and_do_not_invent_live_health() {
             if entry.file_type().unwrap().is_dir() {
                 result.extend(files(&entry.path()));
             } else {
-                // Windows denies reading the writer's exclusively locked,
-                // empty coordination file; retain its presence and size.
-                let bytes = if entry.file_name() == "LOCK" {
-                    assert_eq!(entry.metadata().unwrap().len(), 0);
-                    Vec::new()
+                // Windows denies reading the writer's exclusively locked
+                // advisory PID file; retain its presence and metadata length.
+                let bytes = if cfg!(windows) && entry.file_name() == "LOCK" {
+                    entry.metadata().unwrap().len().to_le_bytes().to_vec()
                 } else {
                     std::fs::read(entry.path()).unwrap()
                 };
