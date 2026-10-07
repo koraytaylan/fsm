@@ -1,13 +1,13 @@
-//! Private single-writer command owner, staged before transport adapters.
+//! Private single-writer command owner shared by transport adapters.
 //!
 //! Admission holds no Store borrow. The owner captures each result and journal
 //! prefix before taking another command; stop and session close bypass the
-//! application queue. The staged native owner drives quiet decision passes;
-//! production adapters and bounded session egress remain integration steps,
-//! so this module does not advertise autonomous execution.
+//! application queue. On Linux, production stdio selects the native owner,
+//! which drives quiet decision passes and retains the writer through shutdown;
+//! HTTP integration and complete transport acceptance remain separate tasks.
 
-// Transport construction lands in tasks 9001/9002; the private harness already
-// drives these exact constructors and envelopes rather than a test-only owner.
+// The private ownership harness drives production constructors and envelopes;
+// tasks 9001/9002 retain their complete transport acceptance inventories.
 #![allow(dead_code)]
 
 use std::sync::{Arc, mpsc};

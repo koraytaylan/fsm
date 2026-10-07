@@ -96,9 +96,10 @@ not standalone/signal/blockage races or full ownership integration.
 
 ## Mandatory privileged workflow classification
 
-The four original workflow scenario tests now declare Linux native provisioning
-as their ignore reason and link this review; other platforms retain ordinary
-execution. The privileged supervisor explicitly selects --ignored, while its
+The four original workflow scenario tests declare Linux native provisioning
+as their ignore reason and link this review on every platform; unsupported
+platforms instead verify refusal before native execution or journal mutation.
+The privileged Linux supervisor explicitly selects --ignored, while its
 existing exact one-passed/zero-ignored assertion and independent native receipt
 checks prevent a skipped child from passing. Stable and MSRV native CI jobs now
 require workflow_probe.py after the containment matrix and retain its report
