@@ -1491,13 +1491,12 @@ Zero-deps passed and all six portable jobs remain live at this observation, so n
 
 The checkpoint fixture now assigns its memory store an owned directory under the explicit home .cache/fsm-handoff-checkpoint-tests root, whose child is removed by the fixture guard, containing the snapshot automatically emitted at sequence 10,000. The initial test left only crates/fsm-store/<memory>/snapshots/snap-10000.json, which was identified and removed. Automatic approval review rejected a first correction using the system temporary-directory API; the applied correction has no system-temp or /tmp fallback. Verified 1 GiB RAM/zero-swap session 40434 passed all-target store MSRV Clippy and the corrected regression, with local-handoff-checkpoint-anchor-owned-cache-msrv.log retained; source-size/diff checks pass and no placeholder snapshot artifact remains. This changes fixture cache ownership, not production persistence or native acceptance.
 
-## Prioritized provisioning repair
+## Prioritized provisioned acceptance
 
-Repair the installed containment helper ownership/provisioning before further
-downstream integration: inspect its exact current identity and retained failed-run
-inventory, preserve those original artifacts, restore the production-required
-ownership through the supported provisioning path, and run actual native
-ownership/shutdown acceptance against the repaired installation. Record a frozen
-verdict, not transient process checkpoints; absence observations do not substitute
-for original closure receipts. This work belongs to 9401 and does not release its
-prerequisite until its written acceptance inventory passes.
+Privileged host inspection confirms the retained helper is root-owned, mode
+0711, with its original digest; the sandbox UID map exposes host root as
+unmapped nobody, so changing ownership would repair no host defect.
+Run native acceptance in the host namespace with the original retention
+artifacts preserved, then evaluate genuine ownership/shutdown against the
+written inventory. No replacement, removal or closure is justified by this
+identity check alone, and this work does not release the 9401 prerequisite.

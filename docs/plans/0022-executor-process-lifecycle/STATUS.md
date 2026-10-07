@@ -14,7 +14,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 3/7 tasks completed.
 
-Native lifecycle acceptance remains incomplete: the installed containment helper is owned by nobody and the earlier failed authority run retains its original evidence. Prioritize a tracked provisioning repair under task 9401, preserve failed-run artifacts, verify genuine helper ownership and shutdown evidence, and close the prerequisite before promoting downstream integration; platform acceptance remains incomplete.
+Native lifecycle acceptance remains incomplete; the retained helper is root-owned in the host namespace with its expected digest and 0711 permissions, while the restricted sandbox maps host root to nobody. No ownership repair is required. Preserve failed-run artifacts and execute genuine native ownership/shutdown acceptance in the host namespace under task 9401 before promoting downstream integration; platform acceptance remains incomplete.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:

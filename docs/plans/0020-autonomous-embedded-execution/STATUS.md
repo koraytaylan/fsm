@@ -14,7 +14,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 0/7 tasks completed.
 
-Frozen 55efd81a passed the eight-stage stable Linux host gate; later focused stable/MSRV stdio checks passed at c83bbb59, but provisioned handler acceptance and the 8901 ownership inventory remain incomplete. Freeze 8901 at its written acceptance inventory: sibling scheduling and channel work does not complete or expand it. Prioritize the 0022 helper repair and shutdown prerequisite before further 0020 implementation.
+Frozen 55efd81a passed the eight-stage stable Linux host gate; later focused stable/MSRV stdio checks passed at c83bbb59, but provisioned handler acceptance and the 8901 ownership inventory remain incomplete. Freeze 8901 at its written acceptance inventory: sibling scheduling and channel work does not complete or expand it. Prioritize the 0022 host-namespace native acceptance and shutdown prerequisite before further 0020 implementation.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
