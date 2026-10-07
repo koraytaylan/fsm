@@ -80,52 +80,7 @@ request queue has explicit count and byte bounds.
 
 - **Done when:** the production command boundary passes every `execution_host` case above with exactly one store owner, bounded admission, and unchanged journal/idempotency behavior under the stable host gate.
 
-The coordinator adopts these shared elicitation and framing boundaries serially
-under task 8901 to complete the private stdio vertical path; task 8904 remains
-planned and its scheduling dependency is not released by this integration.
-
-The staged owned-input response wait now services cancellation, ping and EOF
-while the writer is occupied, retaining at most eight raw deferred frames and
-16 MiB of their allocation capacity; other requests remain in wire order for
-the ordinary dispatcher, and cancellation suppresses only known pending IDs.
-New fixtures cover EOF and cancellation before an owner turn, deferred
-cancellation, the eighth/ninth frame boundary, and capacity release.
-Verification is queued behind an independently running Cargo process; these
-fixtures have not yet been accepted as passing evidence, production stdio
-selection is unchanged, and this task remains in progress.
-
-The hosted adapter unwind boundary now requests original-control shutdown
-and retains the initiating failure instead of detaching its native owner; a
-fixture injects an adapter panic after original owner startup and asserts
-original control retirement and writer reopening, with verification pending
-in the same queued milestone run and no additional task completion claim.
-
-The coordinator adopts initial production stdio wiring and versioned discovery
-serially within this working-path integration: Linux CLI stdio now selects the
-owned host, and actual hosted executor discovery publishes v2/autonomous in
-the same change. Initialization guidance, prompts, tool descriptions, README,
-embedding guidance and affected instruction goldens follow the observed
-progress field; HTTP and borrowed helpers retain their legacy contract.
-A real-binary fixture leaves stdin open after creation and observes deadline
-completion solely through read-only inspection, then checks EOF writer release.
-The stable real-binary fixture passes after correcting its invalid empty handler
-table to a declared manual-effect table; broader verification remains pending
-and task 9001 stays planned
-until its scheduling dependency and full scenario inventory are accepted.
-
-The first working production path is extended with actual-binary quiet
-subscription output and broken-stdout cleanup while stdin remains open; both
-new scenarios are pending serial stable/MSRV verification, and the complete
-9001/native scenario inventory and all task dependencies remain open.
-
-The working-path integration now adopts embedded stdio poll-interval wiring
-from 8903: the actual CLI validates the finite interval before loading a table
-or opening a writer, passes it to the original native owner, and keeps native
-stop observation independent; 8903 remains planned pending its complete
-scheduling/fairness acceptance inventory, and verification is pending.
-
-The serial working-path integration now adopts change-feed publication guards
-from 8904 across hosted application responses, answered elicitation settlement
-and native decision passes, with a real hosted mutation/feed scope fixture;
-full commit-boundary, concurrency and guard-neutralization proof remains
-pending, and no task dependency is released.
+Acceptance is frozen at the steps, tests and Done when criterion above; sibling
+scheduling, channel and transport tasks retain their own acceptance inventories.
+Historical integration checkpoints are archived outside the repository by digest:
+`0b8e7256a62ea4a6408844397ba59539c97b28ceb6a7f2985a088241c391788e`.
