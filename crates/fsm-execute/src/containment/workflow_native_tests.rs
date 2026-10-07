@@ -257,6 +257,7 @@ pub(super) fn run() {
                 ("phase", b"active".as_slice()),
                 ("calls", b"".as_slice()),
                 (".work-template", b"".as_slice()),
+                (".memory-observed", b"".as_slice()),
             ] {
                 let path = resource.join(name);
                 fs::write(&path, bytes).unwrap();

@@ -137,6 +137,12 @@ fn workflow_handler() {
     else {
         return;
     };
+    let directory = PathBuf::from(
+        arguments
+            .iter()
+            .find_map(|argument| argument.strip_prefix("handler-directory="))
+            .expect("explicit workflow directory argument"),
+    );
     #[cfg(target_os = "linux")]
     if arguments
         .iter()
@@ -147,28 +153,19 @@ fn workflow_handler() {
             .lines()
             .find_map(|line| line.strip_prefix("0::"))
             .unwrap();
-        let directory = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
-        assert_eq!(
-            fs::read_to_string(directory.join("memory.max"))
-                .unwrap()
-                .trim(),
-            "1073741824"
-        );
-        assert_eq!(
-            fs::read_to_string(directory.join("memory.swap.max"))
-                .unwrap()
-                .trim(),
-            "0"
-        );
+        let cgroup = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
+        let memory = fs::read_to_string(cgroup.join("memory.max"));
+        let swap = fs::read_to_string(cgroup.join("memory.swap.max"));
+        fs::write(
+            directory.join(".memory-observed"),
+            format!("cgroup={group}\nmemory={memory:?}\nswap={swap:?}\n"),
+        )
+        .unwrap();
+        assert_eq!(memory.unwrap().trim(), "1073741824");
+        assert_eq!(swap.unwrap().trim(), "0");
     }
     assert!(arguments.contains(&format!("handler-resource={RESOURCE}")));
     assert!(arguments.contains(&"handler-run=run-1".to_owned()));
-    let directory = PathBuf::from(
-        arguments
-            .iter()
-            .find_map(|argument| argument.strip_prefix("handler-directory="))
-            .expect("explicit workflow directory argument"),
-    );
     let mut calls = OpenOptions::new()
         .create(true)
         .append(true)

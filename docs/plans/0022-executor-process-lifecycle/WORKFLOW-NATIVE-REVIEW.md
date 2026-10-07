@@ -411,3 +411,40 @@ controller limits. Actual native acceptance remains pending. The failed stage
 runtime drop-in; archival and matched retirement must include that drop-in
 before any fresh producer. The failed report/log remain in
 local-native-workflow-f096d50-stable and task 9401 stays in progress.
+
+
+## Corrected native launch and retained limit diagnostics
+
+The failed f096d50 fixture was archived before guarded retirement, including
+its original runtime drop-in; its sole prepared domain was unbound and empty,
+so removal matched prepared-1.json rather than assuming a binding existed.
+The installed authority was removed only by original device/inode/digest.
+
+Frozen cc974a3bc3563eed1284d19f79e421a40a1338f9 producer session 66204 ended
+with exit one (native test 101) after 2.02 seconds: the first workflow reached
+a rejected outcome, with no external operation logged. Its original native
+service journal records handler exit 101. Unlike the prior catalogue mismatch,
+a service actually launched; this failure does not identify the failed handler
+assertion and no scenario or race acceptance is claimed. The namespace was
+normally retired by the existing matched Fixture cleanup after settlement,
+while stage /usr/libexec/fsm-workflow-33e0d73f6799528506bb1c28acbd9013,
+resource/home and identity-tracked runtime drop-in remain retained in the
+protected inventory for namespace d20b5d58b48184bfe206cac1c49c8554.
+
+A tiny independent transient unit under that exact namespace reports the
+original DropInPaths and manager MemoryMax=1073741824, MemorySwapMax=0;
+a second bounded two-second probe with the handler's DynamicUser,
+ProtectControlGroups/ProtectHome/ProtectProc/RestrictNamespaces, no capabilities
+and no delegation reads those same values from its exact kernel cgroup path.
+These probes prove the configuration mechanism, not the failed actual handler's
+observations. The next fixture preprovisions a root-owned writable diagnostic
+file and the actual handler records kernel cgroup path and memory/swap read
+results before asserting limits; no operation log or workflow effect is added
+by diagnostic observation.
+
+Terminal session 87415 passes stable/MSRV executor/CLI all-target Clippy,
+format/file-size checks and three ordinary helper tests (five provisioned skips),
+recorded in workflow-memory-observation-check.log under verified controller
+limits. Actual handler diagnosis, limit guard sensitivity, provisioned race,
+full host/native and platform acceptance remain pending; task 9401 and plan
+0022 completion stay unchanged.
