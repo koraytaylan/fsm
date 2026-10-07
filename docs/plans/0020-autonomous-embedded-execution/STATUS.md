@@ -177,3 +177,8 @@ new result. Broader checks belong at production stdio activation; the frozen
 3ff97a7 gate does not cover these changes. Progress forwarding, complete egress,
 versioned discovery, HTTP integration and platform/native acceptance remain
 open, with no task completion or dependency release.
+
+The corrected private question path passes all 38 host cases and CLI Clippy on
+stable and MSRV, plus ten affected compatibility suites on both; four guard
+neutralizations fail and restore successfully, as recorded in
+HOST-OWNERSHIP-REVIEW.md, with production activation still pending.

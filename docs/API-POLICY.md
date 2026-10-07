@@ -1414,3 +1414,18 @@ completion, undo committed work, or release the
 writer. The composition still retains and reports the original uncertain owner.
 This internal control integration adds no public signature, error, journal,
 hash, dependency, wire version or production-backend selection.
+
+The private hosted elicitation path now prepares and settles on the store owner
+while the session adapter waits for the client outside that owner. The original
+session generation, RPC cancellation control, request key and admission slot
+remain reserved through the question; continuation and answer allocations grow
+that same host/session byte reservation before settlement. A replacement session
+cannot resume it. Accepted answers use the ordinary idempotent send path, with
+an instance-history guard that refuses a changed target while allowing unrelated
+commits; replay still checks deduplication before the sequence precondition.
+Decline, cancellation, retirement and rejected answer growth do not claim a
+journal key. Borrowed public helpers preserve their existing behavior.
+This advances the private stdio path without selecting a production backend or
+changing public signatures, error codes, wire versions, journal formats, hash
+domains, dependencies or MSRV; progress forwarding, complete egress accounting,
+versioned discovery and installed-handler acceptance remain pending.

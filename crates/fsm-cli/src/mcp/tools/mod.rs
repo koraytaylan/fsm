@@ -10,7 +10,7 @@ use crate::store::{ErrorObj, Store};
 
 use super::descriptions;
 
-mod dispatch;
+pub(in crate::mcp) mod dispatch;
 pub(crate) mod elicitation;
 mod handlers;
 mod schema_common;

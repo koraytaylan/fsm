@@ -307,27 +307,46 @@ impl<'a> SessionIo<'a> {
     // Borrowed readers have no idle variant on other platforms.
     #[cfg_attr(not(target_os = "linux"), allow(clippy::never_loop))]
     pub fn read_line(&mut self) -> std::io::Result<Option<String>> {
-        use super::framing::{LINE_CAP, Line, read_capped_line};
         loop {
-            match read_capped_line(self.input, LINE_CAP)? {
+            match self.read_line_interruptible() {
                 #[cfg(target_os = "linux")]
-                Line::Idle => continue,
-                Line::Eof => return Ok(None),
-                Line::TooLong => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("protocol line exceeds {LINE_CAP} bytes"),
-                    ));
+                Err(error)
+                    if error.get_ref().is_some_and(|source| {
+                        matches!(
+                            source.downcast_ref::<super::owned_input::FrameSignal>(),
+                            Some(super::owned_input::FrameSignal::Idle)
+                        )
+                    }) =>
+                {
+                    continue;
                 }
-                Line::Data(bytes) => {
-                    let mut line = String::from_utf8(bytes).map_err(|error| {
-                        std::io::Error::new(std::io::ErrorKind::InvalidData, error)
-                    })?;
-                    while line.ends_with('\r') {
-                        line.pop();
-                    }
-                    return Ok(Some(line));
+                result => return result,
+            }
+        }
+    }
+
+    /// Hosted conversations return idle to the adapter so original controls
+    /// and the client-answer deadline are checked between owned-input waits.
+    pub(crate) fn read_line_interruptible(&mut self) -> std::io::Result<Option<String>> {
+        use super::framing::{LINE_CAP, Line, read_capped_line};
+        match read_capped_line(self.input, LINE_CAP)? {
+            #[cfg(target_os = "linux")]
+            Line::Idle => Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                super::owned_input::FrameSignal::Idle,
+            )),
+            Line::Eof => Ok(None),
+            Line::TooLong => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("protocol line exceeds {LINE_CAP} bytes"),
+            )),
+            Line::Data(bytes) => {
+                let mut line = String::from_utf8(bytes)
+                    .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
+                while line.ends_with('\r') {
+                    line.pop();
                 }
+                Ok(Some(line))
             }
         }
     }

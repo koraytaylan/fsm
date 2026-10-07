@@ -18,11 +18,36 @@ pub(crate) struct PreparedElicitation {
     instance_id: String,
     event: String,
     request_id: String,
-    machine: fsm_core::machine::CompiledMachine,
+    machine_id: String,
     params: Value,
+    guarded_sequence: Option<(u64, u64)>,
 }
 
 impl PreparedElicitation {
+    pub(crate) fn request_id(&self) -> &str {
+        &self.request_id
+    }
+
+    /// History is derived from touched records, including the sealed base seed.
+    pub(crate) fn guard_sequence(&mut self, store: &Store) {
+        self.guarded_sequence = Some((
+            store.journal.last_seq,
+            instance_sequence(store, &self.instance_id),
+        ));
+    }
+
+    pub(crate) fn string_capacity(&self) -> usize {
+        self.instance_id
+            .capacity()
+            .saturating_add(self.event.capacity())
+            .saturating_add(self.request_id.capacity())
+            .saturating_add(self.machine_id.capacity())
+    }
+
+    pub(crate) fn params(&self) -> &Value {
+        &self.params
+    }
+
     /// Move the question to the session without retaining a duplicate wire value.
     pub(crate) fn take_params(&mut self) -> Value {
         std::mem::replace(&mut self.params, Value::Null)
@@ -77,14 +102,13 @@ pub(crate) fn prepare_elicitation(
         .get(&instance_id)
         .cloned()
         .unwrap_or_default();
-    let machine = store
+    let machine = &store
         .state
         .machines
         .get(&machine_id)
         .ok_or_else(|| ErrorObj::new("req/machine_not_found", machine_id.clone()))?
-        .compiled
-        .clone();
-    let schema = crate::mcp::elicit::schema_for_event(&machine, &event)?;
+        .compiled;
+    let schema = crate::mcp::elicit::schema_for_event(machine, &event)?;
     let message = str_arg(args, "message")
         .map(str::to_string)
         .unwrap_or_else(|| format!("{event} on {instance_id}"));
@@ -97,8 +121,9 @@ pub(crate) fn prepare_elicitation(
         instance_id,
         event,
         request_id,
-        machine,
+        machine_id,
         params,
+        guarded_sequence: None,
     })
 }
 
@@ -113,8 +138,9 @@ pub(crate) fn settle_elicitation(
         instance_id,
         event,
         request_id,
-        machine,
+        machine_id,
         params: _,
+        guarded_sequence,
     } = prepared;
     let action = answer
         .get("action")
@@ -134,33 +160,59 @@ pub(crate) fn settle_elicitation(
         ])));
     }
 
-    let content = answer
-        .get("content")
-        .cloned()
-        .unwrap_or(Value::Obj(BTreeMap::new()));
-    let payload = crate::mcp::elicit::payload_from_content(&machine, &event, &content)?;
+    let content = match answer {
+        Value::Obj(mut fields) => fields
+            .remove("content")
+            .unwrap_or(Value::Obj(BTreeMap::new())),
+        _ => Value::Obj(BTreeMap::new()),
+    };
+    // SPEC Evolution: definitions are immutable and retained under content hashes.
+    let machine = &store
+        .state
+        .machines
+        .get(&machine_id)
+        .ok_or_else(|| ErrorObj::new("req/machine_not_found", &machine_id))?
+        .compiled;
+    let payload = crate::mcp::elicit::payload_from_owned_content(machine, &event, content)?;
+    let expected = guarded_sequence.map(|(prefix, instance_prefix)| {
+        if instance_sequence(store, &instance_id) == instance_prefix {
+            store.journal.last_seq
+        } else {
+            prefix
+        }
+    });
     // The ordinary send path with the caller's key. There is no elicitation
     // record and no new record kind: what happened to the workflow is that
     // an event arrived.
-    let mut sent = run_instance_send(
-        store,
-        clock,
-        &Value::Obj(BTreeMap::from([
-            ("instance_id".to_string(), Value::Str(instance_id.clone())),
-            (
-                "event".to_string(),
-                Value::Obj(BTreeMap::from([
-                    ("name".to_string(), Value::Str(event.clone())),
-                    ("payload".to_string(), payload),
-                ])),
-            ),
-            ("request_id".to_string(), Value::Str(request_id)),
-        ])),
-    )?;
+    let mut arguments = BTreeMap::from([
+        ("instance_id".to_string(), Value::Str(instance_id.clone())),
+        (
+            "event".to_string(),
+            Value::Obj(BTreeMap::from([
+                ("name".to_string(), Value::Str(event.clone())),
+                ("payload".to_string(), payload),
+            ])),
+        ),
+        ("request_id".to_string(), Value::Str(request_id)),
+    ]);
+    if let Some(sequence) = expected {
+        arguments.insert("expect_seq".into(), Value::Num(sequence.to_string()));
+    }
+    // Ordinary send owns dedup-before-sequence ordering and enabledness checking.
+    let mut sent = run_instance_send(store, clock, &Value::Obj(arguments))?;
     if let Value::Obj(fields) = &mut sent {
         fields.insert("action".to_string(), Value::Str("accept".into()));
         fields.insert("event".to_string(), Value::Str(event));
         fields.insert("instance_id".to_string(), Value::Str(instance_id));
     }
     Ok(sent)
+}
+
+fn instance_sequence(store: &Store, instance_id: &str) -> u64 {
+    store
+        .history
+        .get(instance_id)
+        .and_then(|history| history.last())
+        .copied()
+        .unwrap_or(0)
 }

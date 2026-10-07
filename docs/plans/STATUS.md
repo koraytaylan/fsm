@@ -55,3 +55,8 @@ requires a recorded decision before dependent implementation. Plan 0023's
 live-model task requires real host access and human-reviewed transcripts;
 missing evidence is never a passed skip. Neither gate prevents authoring
 these plans, and neither is represented here as already resolved.
+
+Plan 0020 now has a verified private stdio question path that leaves the writer
+free during the client wait and revalidates settlement; focused stable/MSRV
+and compatibility evidence is recorded in its ownership review, while progress,
+egress and production activation remain open and completion stays 0/7.

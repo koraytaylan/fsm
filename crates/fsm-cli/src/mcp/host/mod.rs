@@ -16,12 +16,13 @@ use crate::clock::Clock;
 use crate::store::{ErrorObj, Store};
 use fsm_core::json::Value;
 
+pub(super) mod interaction;
 mod mailbox;
 pub(super) mod operation;
 use operation::{Operation, ReadCommand, ReadOperation};
 #[cfg(target_os = "linux")]
 pub(super) mod native;
-use mailbox::{Admitted, Mailbox};
+use mailbox::{Admitted, Mailbox, Reply};
 
 #[cfg(test)]
 mod tests;
@@ -87,6 +88,10 @@ impl Session {
     /// An adapter may retire its wait without waiting for the writer turn.
     pub(super) fn is_retired(&self) -> bool {
         if !self.original.is_open() {
+            return true;
+        }
+        if self.mailbox.is_stopped() {
+            self.close();
             return true;
         }
         #[cfg(target_os = "linux")]
@@ -194,7 +199,14 @@ fn apply_command(
 ) {
     // The charged admitted envelope remains alive through dispatch. No
     // transport output or client input occurs in this operation boundary.
-    if !admitted.session.is_open() || admitted.cancel.cancelled() {
+    if !admitted.session.is_open() {
+        return;
+    }
+    if admitted.cancel.cancelled() && !matches!(&admitted.command, Operation::Settle(_)) {
+        return;
+    }
+    if matches!(&admitted.command, Operation::Prepare(_)) {
+        interaction::prepare(store, admitted);
         return;
     }
     let before = store.journal.last_seq;
@@ -202,7 +214,7 @@ fn apply_command(
         cancel: std::mem::take(&mut admitted.cancel),
         ..Default::default()
     };
-    let result = match &admitted.command {
+    let result = match &mut admitted.command {
         Operation::Tool(command) => {
             super::tools::dispatch_with(store, clock, &command.tool, &command.arguments, &context)
         }
@@ -216,6 +228,27 @@ fn apply_command(
                     .map_err(|error| ErrorObj::new("req/args_invalid", error.0))
             }
         },
+        Operation::Settle(command) => {
+            let request_key = command
+                .prepared
+                .as_ref()
+                .expect("original prepared request")
+                .request_id()
+                .to_owned();
+            let result = if context.cancel.cancelled() {
+                Err(super::cancel::CancelFlag::refusal())
+            } else {
+                super::tools::elicitation::settle_elicitation(
+                    store,
+                    clock,
+                    *command.prepared.take().expect("original prepared request"),
+                    std::mem::replace(&mut command.answer, Value::Null),
+                )
+            };
+            result.map_err(|error| error.request_id(&request_key))
+        }
+        Operation::Prepare(_) => unreachable!("preparation has its own result"),
+        Operation::Awaiting { .. } => unreachable!("client-owned continuation is not queued"),
     };
     let committed_seq = store.journal.last_seq;
     let publication = (committed_seq > before).then_some(Publication {
@@ -232,7 +265,10 @@ fn apply_command(
         };
         // This channel has exactly one reserved slot. A lost receiver
         // cannot block the owner or reverse a committed operation.
-        let _ = admitted.reply.try_send(outcome);
+        let Reply::Outcome(reply) = &admitted.reply else {
+            unreachable!("operation reply")
+        };
+        let _ = reply.try_send(outcome);
     }
 }
 

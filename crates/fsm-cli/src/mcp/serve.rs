@@ -672,7 +672,12 @@ fn serve_session_core(
                 if line.is_empty() {
                     continue;
                 }
-                match parse_line(&line) {
+                let parsed = parse_line(&line);
+                // Parsed requests own their values; raw frames must not stay
+                // allocated throughout an owned command or client conversation.
+                drop(line);
+                drop(buf);
+                match parsed {
                     // An answer to a request this server made, arriving when
                     // nothing is waiting for it. A client bug, and dropping
                     // it is strictly better than ending a working session

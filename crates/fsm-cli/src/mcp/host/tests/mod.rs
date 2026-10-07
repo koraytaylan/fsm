@@ -1,8 +1,11 @@
 //! Independent callers drive the same private owner and admitted envelopes.
 
+mod interaction;
 mod protocol;
 #[cfg(target_os = "linux")]
 mod stdio;
+#[cfg(target_os = "linux")]
+mod stdio_interaction;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

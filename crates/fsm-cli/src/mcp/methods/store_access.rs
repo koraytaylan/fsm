@@ -5,6 +5,8 @@
 
 use std::{io, path::PathBuf};
 
+mod interaction;
+
 use fsm_core::json::Value;
 
 use crate::mcp::{
@@ -112,6 +114,11 @@ impl StoreAccess<'_> {
             }),
             Self::Hosted {
                 session, output, ..
+            } if name == "instance_elicit" && context.io.is_some() => {
+                interaction::call(session, output, clock, arguments, context)
+            }
+            Self::Hosted {
+                session, output, ..
             } => receive(
                 session,
                 output,
@@ -146,7 +153,11 @@ fn receive(
     output: &crate::mcp::notify::Notifier,
     admission: Result<std::sync::mpsc::Receiver<Outcome>, AdmissionError>,
 ) -> io::Result<Result<Value, ErrorObj>> {
-    let receiver = admission.map_err(|error| match error {
+    Ok(wait(session, output, admission)?.result)
+}
+
+fn admission_error(error: AdmissionError) -> io::Error {
+    match error {
         AdmissionError::Busy => io::Error::new(io::ErrorKind::WouldBlock, AdmissionBusy),
         AdmissionError::Closed | AdmissionError::Stopped => io::Error::new(
             io::ErrorKind::BrokenPipe,
@@ -155,13 +166,21 @@ fn receive(
         AdmissionError::GenerationExhausted => {
             io::Error::other("host command generation exhausted")
         }
-    })?;
+    }
+}
+
+fn wait<T>(
+    session: &Session,
+    output: &crate::mcp::notify::Notifier,
+    admission: Result<std::sync::mpsc::Receiver<T>, AdmissionError>,
+) -> io::Result<T> {
+    let receiver = admission.map_err(admission_error)?;
     loop {
         check_wait(session, output)?;
         match receiver.recv_timeout(std::time::Duration::from_millis(50)) {
             Ok(outcome) => {
                 check_wait(session, output)?;
-                return Ok(outcome.result);
+                return Ok(outcome);
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {

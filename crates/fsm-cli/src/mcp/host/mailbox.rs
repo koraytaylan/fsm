@@ -6,11 +6,18 @@ use std::sync::{Arc, Condvar, Mutex, mpsc};
 
 use fsm_core::json::Value;
 
+use super::interaction::{Continuation, PrepareFailure};
 use super::{
     AdmissionError, Command, Outcome,
     operation::{Operation, ReadOperation},
 };
 use crate::mcp::cancel::{CancelFlag, Cancellations};
+
+pub(super) enum Reply {
+    Outcome(mpsc::SyncSender<Outcome>),
+    Prepared(mpsc::SyncSender<Result<Continuation, PrepareFailure>>),
+    Retired,
+}
 
 pub(super) const HOST_COMMANDS: usize = 32;
 pub(super) const HOST_BYTES: usize = 32 * 1024 * 1024;
@@ -67,16 +74,50 @@ pub(super) struct Mailbox {
 pub(super) struct Admitted {
     pub session: Arc<SessionState>,
     pub command: Operation,
-    pub reply: mpsc::SyncSender<Outcome>,
+    pub reply: Reply,
     pub cancel: CancelFlag,
-    reservation: Reservation,
+    pub reservation: Reservation,
 }
 
-struct Reservation {
+pub(super) struct Reservation {
     mailbox: std::sync::Weak<Mailbox>,
     generation: u64,
     bytes: usize,
     request: u64,
+}
+
+impl Reservation {
+    pub(super) fn bytes(&self) -> usize {
+        self.bytes
+    }
+
+    /// Growth is checked atomically against both original charges; count is retained.
+    pub(super) fn grow(&mut self, extra: usize) -> Result<(), AdmissionError> {
+        let mailbox = self.mailbox.upgrade().ok_or(AdmissionError::Stopped)?;
+        let mut state = mailbox.state.lock().unwrap_or_else(|p| p.into_inner());
+        if state.stopped {
+            return Err(AdmissionError::Stopped);
+        }
+        if extra > HOST_BYTES.saturating_sub(state.host.bytes)
+            || extra
+                > SESSION_BYTES.saturating_sub(
+                    state
+                        .sessions
+                        .get(&self.generation)
+                        .map_or(0, |charge| charge.bytes),
+                )
+        {
+            return Err(AdmissionError::Busy);
+        }
+        state.host.bytes += extra;
+        state
+            .sessions
+            .get_mut(&self.generation)
+            .expect("original continuation charge")
+            .bytes += extra;
+        self.bytes += extra;
+        Ok(())
+    }
 }
 
 impl Drop for Reservation {
@@ -100,6 +141,10 @@ impl Drop for Reservation {
 }
 
 impl Mailbox {
+    pub(super) fn is_stopped(&self) -> bool {
+        self.state.lock().unwrap_or_else(|p| p.into_inner()).stopped
+    }
+
     pub(super) fn session(&self) -> Result<Arc<SessionState>, AdmissionError> {
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if state.stopped {
@@ -120,6 +165,27 @@ impl Mailbox {
         session: Arc<SessionState>,
         command: Operation,
     ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.admit_with(session, command, Reply::Outcome(reply))?;
+        Ok(receiver)
+    }
+
+    pub(super) fn prepare(
+        self: &Arc<Self>,
+        session: Arc<SessionState>,
+        command: Operation,
+    ) -> Result<mpsc::Receiver<Result<Continuation, PrepareFailure>>, AdmissionError> {
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.admit_with(session, command, Reply::Prepared(reply))?;
+        Ok(receiver)
+    }
+
+    fn admit_with(
+        self: &Arc<Self>,
+        session: Arc<SessionState>,
+        command: Operation,
+        reply: Reply,
+    ) -> Result<(), AdmissionError> {
         let bytes = operation_charge(&command);
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if state.stopped {
@@ -143,7 +209,6 @@ impl Mailbox {
         let internal_id = Value::Num(request.to_string());
         let cancellations = Cancellations::default();
         let cancel = cancellations.flag(&internal_id);
-        let (reply, receiver) = mpsc::sync_channel(1);
         state.last_request = request;
         state.controls.insert(
             request,
@@ -173,7 +238,23 @@ impl Mailbox {
             },
         });
         self.ready.notify_one();
-        Ok(receiver)
+        Ok(())
+    }
+
+    /// A prepared request already owns its slot and original cancellation control.
+    pub(super) fn resume(&self, admitted: Admitted) -> Result<(), AdmissionError> {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        if state.stopped {
+            drop(state);
+            return Err(AdmissionError::Stopped);
+        }
+        if !admitted.session.is_open() {
+            drop(state);
+            return Err(AdmissionError::Closed);
+        }
+        state.queue.push_back(admitted);
+        self.ready.notify_one();
+        Ok(())
     }
 
     pub(super) fn cancel(&self, generation: u64, rpc_id: &Value) -> usize {
@@ -270,6 +351,15 @@ pub(super) fn operation_charge(operation: &Operation) -> usize {
                 ReadOperation::Complete { parameters } => value_charge(parameters, 0),
             })
         }
+        Operation::Prepare(command) => envelope_charge(&command.rpc_id)
+            .saturating_add(value_charge(&command.arguments, 0))
+            .saturating_add(command.adapter_bytes)
+            .saturating_add(32 * 1024),
+        // Resumption grows the original reservation; it never allocates a new slot.
+        Operation::Settle(_) => unreachable!("settlement reuses original admission"),
+        Operation::Awaiting { .. } => {
+            unreachable!("client-owned continuation is not admitted again")
+        }
     }
 }
 
@@ -280,7 +370,7 @@ fn envelope_charge(rpc_id: &Value) -> usize {
         .saturating_add(value_charge(rpc_id, 0))
 }
 
-fn value_charge(value: &Value, depth: usize) -> usize {
+pub(super) fn value_charge(value: &Value, depth: usize) -> usize {
     if depth > 32 {
         return usize::MAX;
     }

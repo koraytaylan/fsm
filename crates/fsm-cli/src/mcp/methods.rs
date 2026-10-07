@@ -313,7 +313,10 @@ fn handle_request_with_access<'a>(
             let ctx = tools::ToolCtx {
                 notifier: Some(output),
                 request_id: Some(id.clone()),
-                meta: params.as_ref().and_then(|p| p.get("_meta")).cloned(),
+                meta: match params.as_mut() {
+                    Some(Value::Obj(fields)) => fields.remove("_meta"),
+                    _ => None,
+                },
                 cancel: live.cancellations.flag(&id),
                 // Both halves of the session, for the one tool that will ask
                 // the client a question and wait for the answer. Unused until
@@ -321,6 +324,7 @@ fn handle_request_with_access<'a>(
                 io,
                 client_elicitation: live.client_elicitation,
             };
+            drop(params);
             if name == "fsm_ping" {
                 send_line(output, &result_response(id, fsm_ping_result()))
             } else if !tools::names().contains(&name.as_str()) {

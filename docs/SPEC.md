@@ -3218,3 +3218,36 @@ completion, undo committed work, or release the
 writer. The composition still retains and reports the original uncertain owner.
 This internal control integration adds no public signature, error, journal,
 hash, dependency, wire version or production-backend selection.
+
+The staged hosted elicitation path MUST split preparation, client waiting and
+settlement: only preparation and settlement run on the writer owner. Its
+continuation MUST retain the original admitted count/byte reservation, session
+generation, RPC ID, journal request key and cancellation control until it is
+settled or dropped. Resuming an admitted continuation MUST reuse that slot,
+including at a full application count, and MUST NOT accept another session's
+continuation. Retained question/continuation allocations and the returned
+answer MUST be charged conservatively to the existing host/session byte limits;
+growth that cannot fit MUST refuse before settlement, with no mutation or key
+claim. Parser/operation temporaries remain independently bounded, and this
+staging does not claim the complete encoded-egress budget is finished.
+
+Preparation MUST retain the immutable original machine identity, not a cloned
+compiled machine or Store reference. It captures the journal prefix and the
+instance's latest touched-record sequence from the derived history index.
+Accepted settlement MUST use the original machine's payload typing and the
+ordinary send path: if the target history changed, pass the captured prefix as
+expect_seq; otherwise pass the current prefix, allowing unrelated writes.
+Ordinary dedup/fingerprint lookup MUST remain before the sequence precondition.
+A stale accepted answer therefore returns existing req/seq_mismatch without
+journaling or claiming its key; declined/cancelled answers remain unjournaled.
+The current instance/machine and enabledness checks still belong to ordinary
+send. Borrowed compatibility helpers retain their existing unchecked-prefix
+behavior and blocking-reader bounds.
+
+Client waiting MUST run in the adapter; original RPC cancellation, original
+session close and native stop MUST remain observable between finite owned-input
+waits without an application slot. Cancellation after preparation returns the
+existing req/cancelled tool outcome and cannot cancel an already committed
+workflow. EOF or an unanswered-client timeout MUST release the continuation
+reservation without changing durable workflow state. Production selection,
+full progress/egress integration and versioned discovery remain outstanding.

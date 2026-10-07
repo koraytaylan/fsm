@@ -184,8 +184,21 @@ pub fn payload_from_content(
     event: &str,
     content: &Value,
 ) -> Result<Value, ErrorObj> {
+    let owned = Value::Obj(content.as_obj().cloned().unwrap_or_default());
+    payload_from_owned_content(machine, event, owned)
+}
+
+/// The owned continuation moves the answer rather than duplicating its fields.
+pub(crate) fn payload_from_owned_content(
+    machine: &fsm_core::machine::CompiledMachine,
+    event: &str,
+    content: Value,
+) -> Result<Value, ErrorObj> {
     let declared = machine.spec.events.iter().find(|e| e.name == event);
-    let object = content.as_obj().cloned().unwrap_or_default();
+    let object = match content {
+        Value::Obj(fields) => fields,
+        _ => Default::default(),
+    };
     let mut payload = std::collections::BTreeMap::new();
     for (name, given) in object {
         let ty = declared
@@ -230,6 +243,30 @@ pub fn ask(
     request_and_await(&mut borrowed, method, params, clock)
 }
 
+/// The hosted adapter owns the client wait and the original admitted flag.
+pub(in crate::mcp) fn ask_hosted(
+    io: &std::cell::RefCell<SessionIo<'_>>,
+    params: Value,
+    clock: &mut dyn Clock,
+    session: &crate::mcp::host::Session,
+    cancel: &crate::mcp::cancel::CancelFlag,
+) -> Result<Value, ErrorObj> {
+    let Ok(mut borrowed) = io.try_borrow_mut() else {
+        return Err(ErrorObj::new(
+            "req/elicit_nested",
+            "this session is already waiting for an answer",
+        )
+        .hint("finish the outstanding elicitation before starting another"));
+    };
+    request_and_await_with(
+        &mut borrowed,
+        "elicitation/create",
+        params,
+        clock,
+        Some((session, cancel)),
+    )
+}
+
 /// Write one server-to-client request and read until its answer arrives.
 ///
 /// While waiting, the client keeps working: its notifications are handled,
@@ -250,6 +287,16 @@ pub fn request_and_await(
     params: Value,
     clock: &mut dyn Clock,
 ) -> Result<Value, ErrorObj> {
+    request_and_await_with(io, method, params, clock, None)
+}
+
+fn request_and_await_with(
+    io: &mut SessionIo<'_>,
+    method: &str,
+    params: Value,
+    clock: &mut dyn Clock,
+    controls: Option<(&crate::mcp::host::Session, &crate::mcp::cancel::CancelFlag)>,
+) -> Result<Value, ErrorObj> {
     let id = next_request_id();
     let request = Value::Obj(std::collections::BTreeMap::from([
         ("jsonrpc".to_string(), Value::Str("2.0".into())),
@@ -263,6 +310,14 @@ pub fn request_and_await(
 
     let deadline = clock.now_ms().saturating_add(DEFAULT_TIMEOUT_MS);
     loop {
+        if let Some((session, cancel)) = controls {
+            if session.is_retired() {
+                return Err(ErrorObj::new("io/read", "original hosted session retired"));
+            }
+            if cancel.cancelled() {
+                return Err(crate::mcp::cancel::CancelFlag::refusal());
+            }
+        }
         if clock.now_ms() > deadline {
             return Err(ErrorObj::new(
                 "req/elicit_timeout",
@@ -270,7 +325,11 @@ pub fn request_and_await(
             )
             .hint("ask again, or send the event directly with instance_send"));
         }
-        let line = match io.read_line() {
+        let line = match if controls.is_some() {
+            io.read_line_interruptible()
+        } else {
+            io.read_line()
+        } {
             Ok(line) => line,
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
             Err(error) => return Err(ErrorObj::new("io/read", error.to_string())),
@@ -309,6 +368,16 @@ pub fn request_and_await(
                 return Ok(result.unwrap_or(Value::Obj(Default::default())));
             }
             Ok(Incoming::Notification { method, params }) => {
+                if method == "notifications/cancelled" {
+                    if let Some((session, _)) = controls {
+                        if let Some(request_id) = params
+                            .as_ref()
+                            .and_then(|parameters| parameters.get("requestId"))
+                        {
+                            session.cancel(request_id);
+                        }
+                    }
+                }
                 if method == "notifications/cancelled"
                     && params
                         .as_ref()

@@ -382,3 +382,44 @@ new result. Broader checks belong at production stdio activation; the frozen
 3ff97a7 gate does not cover these changes. Progress forwarding, complete egress,
 versioned discovery, HTTP integration and platform/native acceptance remain
 open, with no task completion or dependency release.
+
+### Corrected private elicitation verification — 2026-10-07
+
+Terminal sessions 79389 and 72314 passed all 38 host cases and CLI all-target
+Clippy on stable and Rust 1.89; session 56518 passed the ten affected MCP and
+stdio compatibility suites on both toolchains. Initial session 96804 failed
+only the new invalid-answer assertion, which looked for request_id directly
+on error rather than the established error.details object; the assertion was
+corrected before these successful checks.
+
+Sensitivity session 89756 disabled target-history guarding, original-session
+identity, post-preparation cancellation and original request-key attachment
+one at a time. Each actual case executed and failed its assertion with exit
+101; exact source bytes were restored in finally and each healthy rerun passed.
+Actual kernel limits were checked as 1 GiB memory and zero swap, with one worker
+and a Cargo-idle wait before each stage. The cache evidence digests are:
+
+- `hosted-elicitation-corrected-path-check.log`: `760ca55352791fa306821131ab98ea5cebebd7c42ee6ba03d4cf9550c4e01e95`.
+- `hosted-elicitation-msrv-path-check.log`: `ea786d85fe3f1e59ebacbe7575d3b4ff5ca455a9480b891a08a919ddce8fc0b7`.
+- `hosted-elicitation-sensitivity.log`: `18a26eace0ac68820e891634467ac540d4c104a50d75c3dfe1858b35898e3441`.
+- `hosted-elicitation-compatibility.log`: `76d017b699023fafec95f2f54b8e2874846390dd0e8caefab5e890feb170fd5d`.
+
+Manual review confirms that the continuation has no Store borrow or compiled
+machine clone, keeps the original reservation/control through settle or drop,
+resumes at full count without a new slot, and charges retained question and
+answer growth before settlement. The owner performs no client I/O; ordinary
+send retains dedup-before-precondition ordering. Generic WouldBlock still
+reaches the borrowed timeout check; hosted idle input permits cancellation and
+independent stop. Full changed-source gate, progress forwarding, complete
+egress, production selection, preparation-growth wiring sensitivity and native
+macOS/Windows, installed-handler and live-client acceptance remain outstanding.
+No task is complete and no prerequisite is released.
+
+Reservation growth sensitivity session 71126 remained in its Cargo-idle wait
+behind an unrelated workspace test and started no Cargo stage; the coordinator
+interrupted only its exact original Python process to continue implementation.
+Its finally handler restored the original guard and terminal exit was 130;
+readback confirms both ordinary growth conditions are active. The two growth
+neutralizations and preparation-phase wiring sensitivity are deferred to the
+next integration milestone, with no passing evidence claimed for this attempt.
+Formatting, source-size and the complete staged diff check pass.

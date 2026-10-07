@@ -139,7 +139,11 @@ pub fn dispatch_with(
 /// store. A `dry_run` create is the documented exception: it validates a
 /// definition without writing anything, and that is exactly what an author
 /// wants from a monitoring session.
-fn read_only_refusal(store: &Store, name: &str, args: &Value) -> Option<ErrorObj> {
+pub(in crate::mcp) fn read_only_refusal(
+    store: &Store,
+    name: &str,
+    args: &Value,
+) -> Option<ErrorObj> {
     if !store.journal.is_read_only() || !MUTATING_TOOLS.contains(&name) {
         return None;
     }
@@ -163,7 +167,7 @@ fn read_only_refusal(store: &Store, name: &str, args: &Value) -> Option<ErrorObj
     )
 }
 
-fn attach_request_id(e: ErrorObj, args: &Value) -> ErrorObj {
+pub(in crate::mcp) fn attach_request_id(e: ErrorObj, args: &Value) -> ErrorObj {
     match args.get("request_id").and_then(Value::as_str) {
         Some(rid) if !rid.is_empty() => e.request_id(rid),
         _ => e,
