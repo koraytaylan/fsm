@@ -196,7 +196,7 @@ pub fn run(
 ) -> Result<(), ExecError> {
     let mut watcher = Watcher::with_handlers(config.data_dir.to_path_buf(), &config.table);
     let mut scheduler = Scheduler::new(config.table);
-    let mut runner = Runner::new()?;
+    let mut runner = Runner::new_native()?;
     let mut pipeline = Pipeline;
     let interval = std::time::Duration::from_millis(config.poll_interval_ms);
     let mut blocked_ticks = 0;

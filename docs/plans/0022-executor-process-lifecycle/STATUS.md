@@ -18,8 +18,9 @@ stable verification plus broader ownership/crash proof remain pending
 (see WORKFLOW-NATIVE-REVIEW.md for exact evidence).
 
 - Production standalone and ordinary embedded stdio select native owners;
-  borrowed embedding helpers, low-level service::run and HTTP ownership remain
-  incomplete.
+  low-level service::run now selects native shared-tick admission with actual
+  unavailable-authority refusal proof, but its provisioned execution and bounded
+  shutdown remain unverified, while borrowed embedding/HTTP remain incomplete.
 - Frozen 93a258f0ae08300b51a849394378296a632c13f5 passed the complete stable
   host gate in terminal session 98900, exit zero: formatting, file size, debug
   and release workspace tests, all-target Clippy, warning-free documentation,

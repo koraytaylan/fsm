@@ -2589,3 +2589,15 @@ broker reasons with their operation prefix, sanitized and capped to 1024 UTF-8
 bytes; malformed envelopes retain generic errors. These additive diagnostics
 change no error code, journal/hash format, control version, dependency or MSRV
 and grant no closure, ownership release or renewed deadline.
+
+The public low-level `service::run` loop now selects `Runner::new_native()`
+and uses the shared preparation, writer-held durable claim and one-shot entry
+sequence; unavailable native authority or unsupported platforms refuse fresh
+effects with `exec/mode`, without a direct-child fallback or synthetic ack.
+Explicit legacy Runner primitives remain available. The existing borrowed
+clock/emitter signature, polling and contention policy are unchanged, as are
+journal/hash formats and error codes; this is a provisional native
+host selection change, not completion of bounded shutdown or recovery.
+Its borrowed emitter still executes inline and this loop has no stop handle;
+callers requiring independent control should use the owned/paired lifecycle
+drivers, and full service-loop shutdown integration remains unfinished.

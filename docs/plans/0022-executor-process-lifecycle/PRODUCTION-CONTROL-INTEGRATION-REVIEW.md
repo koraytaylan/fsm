@@ -125,3 +125,24 @@ This is the required shared implementation extraction, not a completed paired
 driver or installed no-writer native control. Full changed-source stable gate
 and remaining paired/production/native/signal acceptance are still required;
 plan progress remains 3/7 and task states remain unchanged.
+
+## Public low-level run selection — 2026-10-07
+
+service::run now constructs Runner::new_native instead of the legacy direct
+child runner and drives the existing shared native tick sequence. Its public
+entry control creates a genuine pending effect with a real executable handler
+marker, runs the actual loop, captures its first non-observation refusal via
+controlled unwind, and verifies exec/mode, no handler marker, unchanged journal
+records and no unresolved claim when the authority is unavailable. This tests
+public loop wiring rather than only the Runner factory; actual provisioned
+happy-path service-loop execution and selection sensitivity remain pending.
+Stable/MSRV focused control and executor all-target Clippy passed in terminal
+session 68681 under verified one GiB/zero-swap limits. Initial checks exposed
+a moved Drop-owned Store field and then the initial observed-pending line; the
+test now clones records and observes the actual admission action before unwind.
+Formatting, size and diff checks pass; the prior complete host gate predates
+this production selection change and must be renewed before final review.
+The existing inline borrowed emitter and absence of a stop handle are still
+shutdown gaps; borrowed MCP/HTTP constructors remain legacy and task 9401
+stays in progress, plan 0022 3/7. No claim of completed ownership integration
+or native acceptance is made.

@@ -90,6 +90,49 @@ fn stub_handler() {
 }
 
 #[test]
+fn public_run_refuses_unavailable_authority_without_legacy_entry_or_ack() {
+    let (directory, _) = triggered_instance("public-run-authority-refusal");
+    let marker = directory.path().join("forbidden-handler-entry");
+    let mut table = stub_table();
+    table
+        .handlers
+        .get_mut("request_confirmation")
+        .unwrap()
+        .argv
+        .push(format!("stub:marker={}", marker.display()));
+    let before = Store::open_read_only(directory.path())
+        .unwrap()
+        .records
+        .clone();
+    let mut clock = FixedClock::new(1000, 1);
+    // This deliberately infinite borrowed loop has no stop handle yet; unwind
+    // from its first emitted action after exercising the actual public entry.
+    let stopped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        fsm_execute::service::run(
+            fsm_execute::service::RunConfig {
+                data_dir: directory.path(),
+                table,
+                poll_interval_ms: 0,
+                contention: fsm_execute::service::Contention::Retry,
+            },
+            &mut clock,
+            &mut |line| {
+                if !line.starts_with("observed pending ") {
+                    std::panic::panic_any(line.to_owned());
+                }
+            },
+        )
+        .unwrap();
+    }));
+    let line = stopped.unwrap_err().downcast::<String>().unwrap();
+    assert!(line.contains("exec/mode"), "{line}");
+    assert!(!marker.exists());
+    let after = Store::open_read_only(directory.path()).unwrap();
+    assert_eq!(after.records, before);
+    assert_eq!(after.state.execution.unresolved().count(), 0);
+}
+
+#[test]
 fn native_ticks_refuse_unavailable_authority_without_legacy_entry_or_ack() {
     for readonly in [false, true] {
         let (directory, effect) = triggered_instance("native-authority-refusal");
