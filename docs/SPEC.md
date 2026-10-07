@@ -3207,3 +3207,14 @@ release; unknown diagnostic loss is None, not a fabricated zero count.
 This private composition is not selected by the production process entry yet;
 interactive/progress forwarding, complete egress and fsm.executor/2 discovery
 remain required before that selection.
+
+The private hosted adapter's admitted-response wait also observes original
+session close, failed protocol output and native lifecycle stop at finite
+intervals, without requiring
+another owner turn. Retirement suppresses the response and cancels the original
+session; output failure retains its BrokenPipe classification instead of
+becoming a silent retirement or admission-busy reply. This does not prove
+completion, undo committed work, or release the
+writer. The composition still retains and reports the original uncertain owner.
+This internal control integration adds no public signature, error, journal,
+hash, dependency, wire version or production-backend selection.

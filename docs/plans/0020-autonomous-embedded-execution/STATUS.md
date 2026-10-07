@@ -145,3 +145,14 @@ HOST-OWNERSHIP-REVIEW.md. The combined milestone's broader stable gate will
 use a frozen isolated checkout so work can continue independently. Production
 process entry, interactive/progress forwarding, complete egress and versioned
 discovery remain open; task 8901 is in progress with completion still 0/7.
+
+The combined owned-stdio milestone at 3ff97a74850a9ffab39f5e41da1b908603cd97c4
+passes all eight stable host stages in terminal session 84455, using a frozen
+tracked-clean cache checkout, verified actual 1 GiB/zero-swap scope and serial
+jobs. Review and the exact log hash are in HOST-OWNERSHIP-REVIEW.md. Subsequent
+adapter wait retirement is outside that frozen proof; all 27 host cases and
+CLI all-target Clippy pass on stable/MSRV in terminal session 63238. Three
+actual protocol guard-removal cases fail as intended in session 15951, then
+pass after exact source restoration. This keeps stop, session close and failed
+output independent of owner response delivery, without claiming writer closure. Production selection
+and remaining transport/protocol/native acceptance stay open; completion is 0/7.

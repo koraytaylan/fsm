@@ -62,6 +62,8 @@ pub(super) enum AdmissionError {
 pub(super) struct Session {
     mailbox: Arc<Mailbox>,
     original: Arc<mailbox::SessionState>,
+    #[cfg(target_os = "linux")]
+    native_control: Option<fsm_execute::service::ExecutorControl>,
 }
 
 impl Session {
@@ -80,6 +82,21 @@ impl Session {
     ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
         self.mailbox
             .admit(Arc::clone(&self.original), Operation::Read(command))
+    }
+
+    /// An adapter may retire its wait without waiting for the writer turn.
+    pub(super) fn is_retired(&self) -> bool {
+        if !self.original.is_open() {
+            return true;
+        }
+        #[cfg(target_os = "linux")]
+        if self.native_control.as_ref().is_some_and(|control| {
+            control.report().phase != fsm_execute::service::ExecutorPhase::Running
+        }) {
+            self.close();
+            return true;
+        }
+        false
     }
 
     /// Close controls remain available when application admission is saturated.
@@ -108,6 +125,11 @@ impl Handle {
         Ok(Session {
             mailbox: Arc::clone(&self.mailbox),
             original,
+            #[cfg(target_os = "linux")]
+            native_control: self
+                .native_stop
+                .as_ref()
+                .map(|(control, _)| control.clone()),
         })
     }
 

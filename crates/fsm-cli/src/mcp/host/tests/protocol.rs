@@ -14,6 +14,214 @@ use crate::{
 use fsm_core::json::Value;
 
 #[test]
+fn execution_host_shared_protocol_failed_output_retires_wait_without_owner_turn() {
+    use std::{
+        io::{self, Write},
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
+    struct FailingOutput {
+        ready: Option<mpsc::Sender<()>>,
+        fail: mpsc::Receiver<()>,
+    }
+    impl Write for FailingOutput {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            self.ready.take().unwrap().send(()).unwrap();
+            self.fail.recv_timeout(Duration::from_secs(5)).unwrap();
+            Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "held writer failed",
+            ))
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 0));
+    let session = handle.session().unwrap();
+    let original = session.clone();
+    let data_dir = scratch.0.clone();
+    let (ready, blocked) = mpsc::channel();
+    let (fail, failing) = mpsc::channel();
+    let (output, queued) = Notifier::queued(Box::new(FailingOutput {
+        ready: Some(ready),
+        fail: failing,
+    }))
+    .unwrap();
+    output
+        .send(&crate::mcp::jsonrpc::result_response(
+            Value::Str("ready".into()),
+            Value::Obj(Default::default()),
+        ))
+        .unwrap();
+    blocked.recv_timeout(Duration::from_secs(5)).unwrap();
+    let (reply, observed) = mpsc::channel();
+    let caller = std::thread::spawn(move || {
+        reply.send(handle_request_hosted(
+            &output, &original, &data_dir, &mut FixedClock::new(9999, 0),
+            &mut true, &mut Live::default(), Value::Str("failed-output-wait".into()),
+            "tools/call", Some(value(r#"{"name":"instance_create","arguments":{"machine":"owner_case","request_id":"failed-output-wait-key"}}"#)),
+            "host integration", None, None,
+        )).unwrap();
+    });
+    let watchdog = Instant::now() + Duration::from_secs(5);
+    while session.cancel(&Value::Str("failed-output-wait".into())) == 0 {
+        assert!(Instant::now() < watchdog);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    fail.send(()).unwrap();
+    let result = observed.recv_timeout(Duration::from_millis(500));
+    let writer_held = Store::open(&scratch.0).is_err();
+    // Cleanup before assertions also unblocks a neutralized wait guard.
+    handle.stop();
+    owner.run();
+    caller.join().unwrap();
+    queued.close();
+    let error = result
+        .expect("failed output must retire wait before any owner turn")
+        .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    assert!(
+        writer_held,
+        "adapter retirement must not impersonate writer release"
+    );
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, 1);
+    assert!(
+        !reopened
+            .state
+            .instances
+            .contains_key("inst-failed-output-wait-key")
+    );
+}
+
+#[test]
+fn execution_host_shared_protocol_session_close_retires_read_wait_without_owner_turn() {
+    use std::{
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
+    let scratch = Scratch::new();
+    let (owner, handle) = Owner::new(seeded(&scratch.0), FixedClock::new(2000, 0));
+    let session = handle.session().unwrap();
+    let original = session.clone();
+    let data_dir = scratch.0.clone();
+    let buffer = SharedSink::new();
+    let output = Notifier::new(Box::new(buffer.writer()));
+    let (reply, observed) = mpsc::channel();
+    let caller = std::thread::spawn(move || {
+        reply
+            .send(handle_request_hosted(
+                &output,
+                &original,
+                &data_dir,
+                &mut FixedClock::new(9999, 0),
+                &mut true,
+                &mut Live::default(),
+                Value::Str("closed-read".into()),
+                "resources/list",
+                None,
+                "host integration",
+                None,
+                None,
+            ))
+            .unwrap();
+    });
+    let watchdog = Instant::now() + Duration::from_secs(5);
+    while session.cancel(&Value::Str("closed-read".into())) == 0 {
+        assert!(Instant::now() < watchdog);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    session.close();
+    let result = observed.recv_timeout(Duration::from_millis(500));
+    handle.stop();
+    owner.run();
+    caller.join().unwrap();
+    result
+        .expect("session close must retire its read wait without an owner turn")
+        .unwrap();
+    assert!(buffer.bytes().is_empty());
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 1);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn execution_host_shared_protocol_original_stop_retires_wait_without_owner_turn() {
+    use crate::mcp::{host::native::NativeOwner, notify::diagnostic_output::DiagnosticOutput};
+    use fsm_execute::{
+        config::HandlerTable,
+        service::{ExecutorPhase, OwnedNativeExecutor, ShutdownMode},
+    };
+    use std::{
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
+
+    let scratch = Scratch::new();
+    let driver = OwnedNativeExecutor::new(seeded(&scratch.0), HandlerTable::default()).unwrap();
+    let control = driver.control();
+    let (owner, handle) = NativeOwner::new(
+        driver,
+        FixedClock::new(2000, 0),
+        DiagnosticOutput::start(std::io::sink()).unwrap(),
+        Duration::from_millis(50),
+        1000,
+    )
+    .unwrap();
+    // Keep the original owner alive but give it no turn until the wait retires.
+    let session = handle.session().unwrap();
+    let original = session.clone();
+    let data_dir = scratch.0.clone();
+    let buffer = SharedSink::new();
+    let output = Notifier::new(Box::new(buffer.writer()));
+    let (reply, observed) = mpsc::channel();
+    let caller = std::thread::spawn(move || {
+        let result = handle_request_hosted(
+            &output,
+            &original,
+            &data_dir,
+            &mut FixedClock::new(9999, 0),
+            &mut true,
+            &mut Live::default(),
+            Value::Str("stop-wait".into()),
+            "tools/call",
+            Some(value(
+                r#"{"name":"instance_create","arguments":{"machine":"owner_case","request_id":"stop-wait-key"}}"#,
+            )),
+            "host integration",
+            None,
+            None,
+        );
+        reply.send(result).unwrap();
+    });
+    let watchdog = Instant::now() + Duration::from_secs(5);
+    // Cancellation proves this actual method request reached admission;
+    // cancellation alone must not manufacture writer closure.
+    while session.cancel(&Value::Str("stop-wait".into())) == 0 {
+        assert!(Instant::now() < watchdog);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    control.stop(ShutdownMode::Drain, 1000).unwrap();
+    let result = observed.recv_timeout(Duration::from_millis(500));
+    let before_owner = control.report();
+    // Cleanup first so a neutralized wait guard cannot leave the test hanging.
+    let exit = owner.run();
+    caller.join().unwrap();
+    result
+        .expect("original stop must retire adapter wait before any owner turn")
+        .unwrap();
+    assert!(buffer.bytes().is_empty());
+    assert!(!before_owner.writer_released);
+    assert_ne!(before_owner.phase, ExecutorPhase::Stopped);
+    assert_eq!(exit.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(exit.shutdown.writer_released);
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, 1);
+    assert!(!reopened.state.instances.contains_key("inst-stop-wait-key"));
+}
+
+#[test]
 fn execution_host_shared_protocol_output_backpressure_does_not_report_admission_busy() {
     use std::{
         io::{self, Write},

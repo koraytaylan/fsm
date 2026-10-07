@@ -24,6 +24,7 @@ pub(super) enum StoreAccess<'a> {
     Hosted {
         session: &'a Session,
         data_dir: &'a std::path::Path,
+        output: &'a crate::mcp::notify::Notifier,
     },
 }
 
@@ -38,7 +39,9 @@ impl StoreAccess<'_> {
     pub(super) fn resources_list(&self, id: &Value) -> io::Result<Value> {
         match self {
             Self::Borrowed(store) => Ok(crate::mcp::resources::list(store.as_deref())),
-            Self::Hosted { session, .. } => read(session, id, ReadOperation::ResourcesList)?
+            Self::Hosted {
+                session, output, ..
+            } => read(session, output, id, ReadOperation::ResourcesList)?
                 .map_err(|error| io::Error::other(error.message)),
         }
     }
@@ -55,9 +58,14 @@ impl StoreAccess<'_> {
                 store.as_deref(),
                 handlers,
             )),
-            Self::Hosted { session, .. } => {
-                read(session, id, ReadOperation::ResourceRead { uri: uri.into() })
-            }
+            Self::Hosted {
+                session, output, ..
+            } => read(
+                session,
+                output,
+                id,
+                ReadOperation::ResourceRead { uri: uri.into() },
+            ),
         }
     }
 
@@ -70,8 +78,11 @@ impl StoreAccess<'_> {
             Self::Borrowed(store) => {
                 Ok(crate::mcp::complete::complete(parameters, store.as_deref()))
             }
-            Self::Hosted { session, .. } => Ok(read(
+            Self::Hosted {
+                session, output, ..
+            } => Ok(read(
                 session,
+                output,
                 id,
                 ReadOperation::Complete {
                     parameters: parameters.cloned().unwrap_or(Value::Null),
@@ -99,27 +110,40 @@ impl StoreAccess<'_> {
                 }
                 None => Err(ErrorObj::new("io/read", "no store")),
             }),
-            Self::Hosted { session, .. } => receive(session.submit(Command {
-                rpc_id: context.request_id.clone().unwrap_or(Value::Null),
-                tool: name.into(),
-                arguments,
-            })),
+            Self::Hosted {
+                session, output, ..
+            } => receive(
+                session,
+                output,
+                session.submit(Command {
+                    rpc_id: context.request_id.clone().unwrap_or(Value::Null),
+                    tool: name.into(),
+                    arguments,
+                }),
+            ),
         }
     }
 }
 
 fn read(
     session: &Session,
+    output: &crate::mcp::notify::Notifier,
     id: &Value,
     operation: ReadOperation,
 ) -> io::Result<Result<Value, ErrorObj>> {
-    receive(session.read(ReadCommand {
-        rpc_id: id.clone(),
-        operation,
-    }))
+    receive(
+        session,
+        output,
+        session.read(ReadCommand {
+            rpc_id: id.clone(),
+            operation,
+        }),
+    )
 }
 
 fn receive(
+    session: &Session,
+    output: &crate::mcp::notify::Notifier,
     admission: Result<std::sync::mpsc::Receiver<Outcome>, AdmissionError>,
 ) -> io::Result<Result<Value, ErrorObj>> {
     let receiver = admission.map_err(|error| match error {
@@ -132,10 +156,33 @@ fn receive(
             io::Error::other("host command generation exhausted")
         }
     })?;
-    receiver
-        .recv()
-        .map(|outcome| outcome.result)
-        .map_err(|_| io::Error::new(io::ErrorKind::Interrupted, Retired))
+    loop {
+        check_wait(session, output)?;
+        match receiver.recv_timeout(std::time::Duration::from_millis(50)) {
+            Ok(outcome) => {
+                check_wait(session, output)?;
+                return Ok(outcome.result);
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(io::Error::new(io::ErrorKind::Interrupted, Retired));
+            }
+        }
+    }
+}
+
+fn check_wait(session: &Session, output: &crate::mcp::notify::Notifier) -> io::Result<()> {
+    if output.is_broken() {
+        session.close();
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "hosted protocol output failed while waiting",
+        ));
+    }
+    if session.is_retired() {
+        return Err(io::Error::new(io::ErrorKind::Interrupted, Retired));
+    }
+    Ok(())
 }
 
 #[derive(Debug)]

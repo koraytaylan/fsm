@@ -83,7 +83,11 @@ pub(in crate::mcp) fn handle_request_hosted<'a>(
     let refusal_id = id.clone();
     match handle_request_with_access(
         output,
-        StoreAccess::Hosted { session, data_dir },
+        StoreAccess::Hosted {
+            session,
+            data_dir,
+            output,
+        },
         clock,
         initialized,
         live,

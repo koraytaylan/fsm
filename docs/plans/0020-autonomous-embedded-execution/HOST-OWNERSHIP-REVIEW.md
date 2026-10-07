@@ -288,8 +288,8 @@ commit and introduces no wire or persistence change.
 The adapter and native owner share one bounded operator-output worker;
 each producer retains its own rejection count and the report combines them,
 avoiding synchronous adapter diagnostic writes during shutdown. This final
-sharing adjustment awaits the frozen milestone gate; the earlier 5017 result
-does not cover it.
+sharing adjustment is covered by the frozen milestone gate recorded below;
+the earlier 5017 focused result does not cover it.
 
 The manual coordinator adopts serve.rs, serve/ and notify/diagnostic_output.rs
 for this ownership/dispatch staging milestone; final process-entry selection remains task 9001's obligation
@@ -300,3 +300,64 @@ integration milestone; further active-worktree changes are not covered by it.
 Production selection, interactive/progress forwarding, complete egress,
 versioned discovery and real held-handler/native/platform acceptance remain
 unfinished, and no autonomous capability or task completion is claimed.
+
+## Admitted adapter wait retirement — 2026-10-07
+
+Review of the working stdio path found that an adapter blocked on a response
+could outlive the original stop deadline if the owner did not return from its
+current operation. The wait now checks original session close and original
+native lifecycle phase every 50 ms, suppresses the retired response and closes
+that session without claiming writer completion. A held owner/no-turn fixture
+will require the actual shared method caller to return before the owner is
+allowed to run, then verify that stop had not already proven writer release,
+that final owner shutdown releases it, and that the queued key stayed unclaimed.
+A second held-owner case covers original session close while a resource-list
+read waits. Both fixtures release the owner before failure assertions, so a
+neutralized adapter guard does not strand their waiting callers. Retirement
+is checked again after receipt, before returning the original response. A
+third held-owner case asynchronously fails the actual queued protocol writer
+after command admission and requires a BrokenPipe result before an owner
+turn, preserving that initiating I/O failure without a false busy response or
+writer-release claim. Both tool and protocol-read callers use this same wait. All 27 host cases and CLI all-target Clippy pass on stable and Rust 1.89
+in terminal session 63238, under verified actual 1 GiB/zero-swap limits with
+serial workers. The separate eight-stage gate at frozen
+3ff97a74850a9ffab39f5e41da1b908603cd97c4 does not cover this follow-up. No task completion or production acceptance follows.
+
+## Frozen owned-stdio milestone gate — 2026-10-07
+
+Terminal session 84455 passed all eight stable host stages (format, source size,
+debug and release workspace tests, all-target workspace Clippy, warning-denied
+rustdoc, zero-dependency and embedding acceptance) against detached checkout
+3ff97a74850a9ffab39f5e41da1b908603cd97c4. Each stage and final exit verified
+that exact HEAD and a clean tracked checkout; the active workspace advanced
+independently and its follow-up adapter wait changes are outside this proof.
+The task-cache log owned-stdio-integration-full-stable-gate.log has SHA-256
+`f05187c8930660c4fc4619d275a867ca1eaef4e8d1ded4d05aaa15fb19564d04`.
+Actual kernel limits were verified as 1073741824 memory.max and zero
+memory.swap.max before Cargo; in-flight readback also observed zero
+memory.swap.current and zero OOM/OOM-kill events. Heavy jobs ran serially.
+An initial automatic approval rejection prevented overlapping another Cargo
+job; verified job exit preceded the successful bounded gate launch.
+This is the working byte-stream integration milestone, not production process
+selection, authority/platform or real native handler-domain acceptance; those
+axes and all remaining plans stay open with no task marked complete.
+
+Terminal sensitivity session 15951 disabled original stop/session retirement,
+then separately disabled output-failure detection; each of the three actual
+protocol cases executed and failed its assertion with test exit 101. Both
+source files were restored byte-for-byte in finally before all three healthy
+reruns passed. Restored host/mod.rs SHA-256 is
+`f8cbececc071dc38a06b4e2cbe94c1e5c2aba50ac78e417808389432978eadb5`;
+methods/store_access.rs is
+`99c1d4ac130eaa566c308c85266c93e10ee9267b73988c6cda976476725d54fd`.
+The task-cache focused log owned-stdio-control-wait-focused.log has SHA-256
+`aa11d59c7257e937fb228078eb70742e62a2fce2cd7b33ce61b68e92f9d7c855`;
+owned-stdio-control-wait-sensitivity.log has SHA-256
+`9c7df769c78c80e8bb715a9549301db17d63f27fb0fd415d04cc1fb6a39d087a`.
+Formatting, source-size and complete diff checks pass. Native macOS/Windows,
+authority, installed/live client and held real handler-domain axes were not
+executed by these checks; the full changed-source gate belongs to the next
+integration milestone. Manual review retains original generation, cancellation
+and reservation behavior, performs no Store I/O in the wait control, keeps
+BrokenPipe distinct from silent retirement/admission busy, and makes no new
+closure claim. Production selection and task completion remain outstanding.

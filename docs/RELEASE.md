@@ -1350,3 +1350,14 @@ a live uncertain owner is retained instead of joined after its deadline. This
 is private integration evidence, with no production backend selection, public
 signature/error/wire-version/journal/hash/dependency/MSRV change; interactive
 and progress forwarding, complete egress and versioned discovery remain open.
+
+The private hosted adapter's admitted-response wait also observes original
+session close, failed protocol output and native lifecycle stop at finite
+intervals, without requiring
+another owner turn. Retirement suppresses the response and cancels the original
+session; output failure retains its BrokenPipe classification instead of
+becoming a silent retirement or admission-busy reply. This does not prove
+completion, undo committed work, or release the
+writer. The composition still retains and reports the original uncertain owner.
+This internal control integration adds no public signature, error, journal,
+hash, dependency, wire version or production-backend selection.
