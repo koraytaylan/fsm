@@ -18,7 +18,10 @@ use crate::mcp::jsonrpc::{
 };
 use crate::mcp::notify::Notifier;
 use crate::mcp::{logging, subscribe, tools};
-use crate::store::{ErrorObj, Store};
+use crate::store::Store;
+
+mod store_access;
+use store_access::StoreAccess;
 
 use super::serve::{
     Live, fsm_ping_result, initialize_result, negotiate, rpc_error, send_line, tool_error, tool_ok,
@@ -44,6 +47,75 @@ pub fn handle_request<'a>(
     // Where the change feed writes, when that is not where this request's
     // answer goes. Over stdio the two are the same stream; over HTTP the
     // answer goes into this POST's body and the feed must outlive it.
+    feed_out: Option<&Notifier>,
+) -> std::io::Result<()> {
+    handle_request_with_access(
+        output,
+        StoreAccess::Borrowed(store),
+        clock,
+        initialized,
+        live,
+        id,
+        method,
+        params,
+        mode_note,
+        io,
+        feed_out,
+    )
+}
+
+/// Staged transport entry: no writer borrow is handed to this session.
+#[allow(dead_code, clippy::too_many_arguments)] // Production adapter integration follows.
+pub(in crate::mcp) fn handle_request_hosted<'a>(
+    output: &'a Notifier,
+    session: &crate::mcp::host::Session,
+    data_dir: &std::path::Path,
+    clock: &mut dyn Clock,
+    initialized: &mut bool,
+    live: &mut Live,
+    id: Value,
+    method: &str,
+    params: Option<Value>,
+    mode_note: &'static str,
+    io: Option<&'a std::cell::RefCell<crate::mcp::notify::SessionIo<'a>>>,
+    feed_out: Option<&Notifier>,
+) -> std::io::Result<()> {
+    let refusal_id = id.clone();
+    match handle_request_with_access(
+        output,
+        StoreAccess::Hosted { session, data_dir },
+        clock,
+        initialized,
+        live,
+        id,
+        method,
+        params,
+        mode_note,
+        io,
+        feed_out,
+    ) {
+        Err(error) if store_access::is_busy(&error) => {
+            send_line(output, &rpc_error(refusal_id, -32004, "Server busy"))
+        }
+        // A cancelled command intentionally retires without a response. Closed
+        // admission is a different error and ends the original session.
+        Err(error) if store_access::is_retired(&error) => Ok(()),
+        result => result,
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // Preserve the existing protocol/session boundary.
+fn handle_request_with_access<'a>(
+    output: &'a Notifier,
+    mut store: StoreAccess<'_>,
+    clock: &mut dyn Clock,
+    initialized: &mut bool,
+    live: &mut Live,
+    id: Value,
+    method: &str,
+    mut params: Option<Value>,
+    mode_note: &'static str,
+    io: Option<&'a std::cell::RefCell<crate::mcp::notify::SessionIo<'a>>>,
     feed_out: Option<&Notifier>,
 ) -> std::io::Result<()> {
     match method {
@@ -93,14 +165,13 @@ pub fn handle_request<'a>(
             &rpc_error(id, NOT_INITIALIZED, "Server not initialized"),
         ),
         "tools/list" => send_line(output, &result_response(id, tools::tools_list_result())),
-        "completion/complete" => match super::complete::complete(params.as_ref(), store.as_deref())
-        {
+        "completion/complete" => match store.complete(&id, params.as_ref())? {
             Ok(result) => send_line(output, &result_response(id, result)),
             Err(invalid) => send_line(output, &rpc_error(id, INVALID_PARAMS, &invalid.0)),
         },
         "resources/list" => send_line(
             output,
-            &result_response(id, super::resources::list(store.as_deref())),
+            &result_response(id.clone(), store.resources_list(&id)?),
         ),
         "resources/templates/list" => {
             send_line(output, &result_response(id, super::resources::templates()))
@@ -121,7 +192,7 @@ pub fn handle_request<'a>(
             // Validated against the resolver rather than a prefix match, so a
             // subscription can never name something unreadable — and refused
             // with the code a read of the same URI would give.
-            if super::resources::read(uri, store.as_deref()).is_err() {
+            if store.resource_read(&id, uri, None)?.is_err() {
                 return send_line(
                     output,
                     &rpc_error(id, RESOURCE_NOT_FOUND, "Resource not found"),
@@ -149,10 +220,7 @@ pub fn handle_request<'a>(
             // before. It is never stopped when the last one goes: a session
             // that unsubscribes and resubscribes is common, and a parked feed
             // costs one integer comparison per interval.
-            live.ensure_feed(
-                store.as_ref().map(|st| st.data_dir.clone()),
-                feed_out.unwrap_or(output),
-            );
+            live.ensure_feed(store.data_dir(), feed_out.unwrap_or(output));
             send_line(output, &result_response(id, Value::Obj(Default::default())))
         }
         "resources/unsubscribe" => {
@@ -194,11 +262,7 @@ pub fn handle_request<'a>(
                 .and_then(|p| p.get("uri"))
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            match super::resources::read_with_executor(
-                uri,
-                store.as_deref(),
-                live.executor_handlers.as_ref(),
-            ) {
+            match store.resource_read(&id, uri, live.executor_handlers.as_ref())? {
                 Ok(v) => send_line(output, &result_response(id, v)),
                 Err(_) => send_line(
                     output,
@@ -224,7 +288,8 @@ pub fn handle_request<'a>(
                 .as_ref()
                 .and_then(|p| p.get("name"))
                 .and_then(Value::as_str)
-                .unwrap_or("");
+                .unwrap_or("")
+                .to_string();
             let raw_args = params.as_ref().and_then(|p| p.get("arguments"));
             if raw_args.is_some() && raw_args.and_then(Value::as_obj).is_none() {
                 return send_line(
@@ -232,7 +297,12 @@ pub fn handle_request<'a>(
                     &rpc_error(id, INVALID_PARAMS, "arguments must be an object"),
                 );
             }
-            let args = raw_args.cloned().unwrap_or(Value::Obj(Default::default()));
+            let args = match params.as_mut() {
+                Some(Value::Obj(fields)) => fields
+                    .remove("arguments")
+                    .unwrap_or(Value::Obj(Default::default())),
+                _ => Value::Obj(Default::default()),
+            };
             // What the call knows about its own request: the writer, the id
             // a cancellation would name, and the `_meta` a progress token
             // lives in. Threaded now; `6002` and `6003` are the consumers.
@@ -249,7 +319,7 @@ pub fn handle_request<'a>(
             };
             if name == "fsm_ping" {
                 send_line(output, &result_response(id, fsm_ping_result()))
-            } else if !tools::names().contains(&name) {
+            } else if !tools::names().contains(&name.as_str()) {
                 send_line(
                     output,
                     &rpc_error(
@@ -259,18 +329,9 @@ pub fn handle_request<'a>(
                     ),
                 )
             } else {
-                let called = match (store, live.degraded_dir.clone()) {
-                    (Some(st), _) => tools::dispatch_with(st, clock, name, &args, &ctx),
-                    // Degraded: the diagnostic tools answer from the
-                    // directory itself, and everything else is refused with
-                    // the diagnosis rather than with "unavailable".
-                    (None, Some(data_dir)) => {
-                        tools::dispatch_degraded(&data_dir, clock, name, &args, &ctx)
-                    }
-                    (None, None) => Err(ErrorObj::new("io/read", "no store")),
-                };
+                let called = store.tool(clock, &name, args, &ctx, live.degraded_dir.clone())?;
                 match called {
-                    Ok(v) => send_line(output, &result_response(id, tool_ok(name, v))),
+                    Ok(v) => send_line(output, &result_response(id, tool_ok(&name, v))),
                     Err(e) => send_line(output, &result_response(id, tool_error(&e))),
                 }
             }

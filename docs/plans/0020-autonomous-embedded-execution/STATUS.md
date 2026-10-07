@@ -118,3 +118,17 @@ Clippy pass on stable/Rust 1.89 in terminal session 87315; focused sensitivity
 and boundary evidence are recorded in HOST-OWNERSHIP-REVIEW.md. Production
 stdio routing and client-interaction/progress egress remain the working-path
 integration frontier; no task completion or autonomous capability is claimed.
+
+### Shared handler-to-owner workflow path — 2026-10-07
+
+The shared MCP method implementation now supports a private hosted entry with
+owned store commands and session-side response formatting. Integration cases
+create a workflow through that handler, resolve its resource/completion, and
+prove quiet native deadline progress with independent read-only inspection and
+actual writer release. Admission busy, cancelled retirement and output failure
+remain distinct so no committed mutation is mislabeled server-busy. Twenty-one
+host cases and CLI Clippy pass on stable/Rust 1.89; ten existing borrowed
+protocol suites pass on each toolchain, with detailed evidence and coordinator
+footprint adoption in HOST-OWNERSHIP-REVIEW.md. Production stdio entry,
+interactive/progress forwarding, complete egress and real-handler proof remain
+open; task 8901 stays in progress and completion remains 0/7.

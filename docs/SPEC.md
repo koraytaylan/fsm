@@ -3182,3 +3182,14 @@ before another owner command, return no appended interval, and use the existing
 resource/completion implementations. Native resource resolution uses the
 original driver's sanitized handler table; no transport obtains a writer
 borrow or installs a second writer through these commands.
+
+The staged hosted protocol entry MUST use the same method implementation as
+borrowed compatibility helpers, submitting store-backed tools and reads through
+owned host commands. Session-side response formatting and subscription state
+MUST remain outside the writer owner. Application admission exhaustion MUST
+return the existing JSON-RPC server-busy code -32004 before dispatch; output
+backpressure after a commit MUST NOT be reported as admission refusal. A
+pre-dispatch cancelled hosted request MUST remain unanswered with its journal
+key unclaimed; closed host admission MUST terminate the original session.
+This private entry is not yet selected by production transports; interactive
+continuations, progress forwarding and complete egress admission remain open.

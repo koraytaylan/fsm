@@ -210,3 +210,52 @@ in the task cache; restored mailbox SHA-256 is
 Broad gates remain assigned to the working-path milestone;
 production stdio wiring, interaction/progress egress, real held-handler proof
 and full lifecycle acceptance remain open, with task 8901 still in progress.
+
+## Shared protocol handler to native owner — 2026-10-07
+
+The existing method handler now shares its implementation between borrowed
+compatibility helpers and a private hosted entry. Store-dependent tools and
+resource/completion calls submit owned commands; response formatting, client
+state and subscriptions remain in the session. Tool arguments move out of
+the parsed params object instead of retaining a cloned argument body. Borrowed
+helper signatures remain unchanged. The manual coordinator adopts methods.rs
+and methods/ into task 8901's footprint for this dispatch-boundary extraction;
+no dependency/manifest owner or task landing OID changes.
+
+The actual shared entry now drives initialize, workflow creation, resource
+resolution and identifier completion through the owner. A second case submits
+creation through that entry to the native owner, stops sending client requests,
+advances injected logical time to the exact deadline and independently observes
+the durable completed state through a read-only Store. The adapter's separate
+clock cannot supply the writer timestamp. Native stop then permits actual
+writer reopening. This is a method-entry integration case, not a real binary
+stdio/process/MCP fixture or production lifetime proof.
+
+Review caught a material error in the initial hosted wrapper: mapping every
+WouldBlock to server-busy could send a false admission refusal after a committed
+mutation when output refused delivery. Internal AdmissionBusy and Retired
+types now distinguish that condition from output failure and closed admission.
+Named cases prove one failed output attempt leaves the committed instance
+recoverable, busy refusal leaves the journal unchanged, closed admission ends
+the session, and pre-dispatch cancellation suppresses the reply while allowing
+the same RPC and journal key to be reused. Initial new tests incorrectly
+expected isError=false on successful replies; they now assert the existing
+structuredContent instance handle, without changing the wire contract.
+
+All 21 host cases and CLI all-target Clippy pass on stable and Rust 1.89 in
+terminal session 22022. Ten existing unfiltered protocol suites (resources,
+completion, progress, cancellation, elicitation, structured parity, lifecycle,
+affordance goldens, embedded read-only and serve modes) pass on stable in
+terminal session 47217 and Rust 1.89 in terminal session 60350; later changes
+only tighten the new private hosted error classification. All checks assert
+actual 1 GiB RAM/zero-swap kernel limits and use serial workers.
+
+The isolated output/admission neutralization in terminal session 37980 restored
+the old over-broad WouldBlock mapping and failed the actual committed-output
+case with test exit 101; exact source restoration preceded the healthy rerun.
+Restored methods SHA-256 is
+`10d973e0da1438bf8d7967ba84ef7ce7315e5ad6c5a2ad0197d27bcb56460a6c`;
+the task-cache log is execution-host-output-admission-sensitivity.log. Full changed-source
+gates remain assigned to the requested working-path milestone. Production
+process entry, interactive continuations, progress forwarding, complete egress
+and real held-handler/lifecycle acceptance remain incomplete; no task is done.

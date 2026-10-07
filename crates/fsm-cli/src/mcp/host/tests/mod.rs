@@ -1,5 +1,7 @@
 //! Independent callers drive the same private owner and admitted envelopes.
 
+mod protocol;
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::clock::FixedClock;

@@ -1330,3 +1330,13 @@ committed prefix and charging URI/Value allocation capacities. They reuse the
 existing resolvers and the original native driver's sanitized handler table;
 this adds no public wire/error/journal/hash change and does not yet connect
 production stdio or HTTP to the command host.
+
+The shared MCP method handler now has a private hosted entry that submits tools
+and protocol reads to the owner, leaving response formatting and client waits
+in the session adapter. Borrowed public helper signatures and wire responses
+remain unchanged. Admission busy, cancelled-request retirement and transport
+output failures have distinct internal types, so a committed request cannot
+be mislabeled server-busy when output is saturated. Production transports do
+not select this entry yet; interactive/progress forwarding and full egress
+admission remain outstanding, with no shipped autonomous capability or new
+public error/journal/hash/version/dependency/MSRV claim.

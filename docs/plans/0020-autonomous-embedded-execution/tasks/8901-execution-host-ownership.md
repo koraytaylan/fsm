@@ -9,6 +9,8 @@ touches:
   - crates/fsm-cli/src/mcp/mod.rs
   - crates/fsm-cli/src/mcp/host/
   - crates/fsm-cli/src/mcp/tools/dispatch.rs
+  - crates/fsm-cli/src/mcp/methods.rs
+  - crates/fsm-cli/src/mcp/methods/
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
