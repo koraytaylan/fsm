@@ -806,19 +806,13 @@ fn run_scenario_mode(
 }
 
 #[test]
-#[cfg_attr(
-    target_os = "linux",
-    ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"
-)]
+#[ignore = "requires supported Linux native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"]
 fn discovered_handlers_complete_the_workflow_in_order() {
     run_scenario("", "succeeded", &OPERATIONS, "active");
 }
 
 #[test]
-#[cfg_attr(
-    target_os = "linux",
-    ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"
-)]
+#[ignore = "requires supported Linux native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"]
 fn each_failed_preflight_stops_before_external_changes() {
     for (index, operation) in OPERATIONS[..4].iter().enumerate() {
         run_scenario(operation, "rejected", &OPERATIONS[..=index], "active");
@@ -826,10 +820,7 @@ fn each_failed_preflight_stops_before_external_changes() {
 }
 
 #[test]
-#[cfg_attr(
-    target_os = "linux",
-    ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"
-)]
+#[ignore = "requires supported Linux native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"]
 fn failures_after_suspension_restore_the_resource() {
     for operation in ["suspend", "perform_work"] {
         let mut expected = OPERATIONS[..if operation == "suspend" { 5 } else { 6 }].to_vec();
@@ -839,10 +830,7 @@ fn failures_after_suspension_restore_the_resource() {
 }
 
 #[test]
-#[cfg_attr(
-    target_os = "linux",
-    ignore = "requires native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"
-)]
+#[ignore = "requires supported Linux native provisioning; plan 0022 WORKFLOW-NATIVE-REVIEW.md and mandatory native CI"]
 fn cleanup_failures_are_explicit_after_success_or_partial_work() {
     for failures in ["restore", "perform_work,restore"] {
         run_scenario(failures, "cleanup_failed", &OPERATIONS, "suspended");

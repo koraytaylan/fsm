@@ -45,6 +45,8 @@ touches:
   - crates/fsm-cli/src/mcp/executor.rs
   - crates/fsm-cli/tests/executor_ownership.rs
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
+  - crates/fsm-cli/tests/mcp_executor.rs
+  - crates/fsm-cli/tests/serve_modes.rs
   - crates/fsm-cli/tests/workflow_race/mod.rs
   - crates/fsm-cli/src/local_control/client.rs
   - crates/fsm-cli/src/local_control/protocol.rs

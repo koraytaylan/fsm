@@ -58,6 +58,12 @@ impl Drop for TestDirectory {
 /// ignores.
 #[test]
 fn stub_handler() {
+    for argument in std::env::args() {
+        if let Some(path) = argument.strip_prefix("stub:mark:") {
+            fs::write(path, b"handler ran").unwrap();
+            std::process::exit(0);
+        }
+    }
     if std::env::args().any(|argument| argument == "stub:ok") {
         std::process::exit(0);
     }
@@ -589,6 +595,71 @@ fn an_exclusive_loop_stops_the_moment_it_is_actually_blocked() {
 }
 
 #[test]
+#[cfg(not(target_os = "linux"))]
+fn unsupported_native_modes_refuse_without_running_handlers_or_changing_the_journal() {
+    let directory = TestDirectory::create("unsupported-native");
+    seeded(&directory);
+    let mut writer = open_writer(directory.path());
+    writer
+        .send_event_on(
+            &mut FixedClock::new(2_000, 1),
+            "order-1",
+            "submit",
+            &mut Value::Obj(BTreeMap::new()),
+            "req-submit",
+            None,
+            &[],
+        )
+        .unwrap();
+    let before = writer.records.clone();
+    assert!(!writer.state.instances["order-1"].pending.is_empty());
+    drop(writer);
+    let marker = directory.path().join("handler-ran");
+    let mut table = parse(stub_table_json().as_bytes(), &JsonLimits::DEFAULT).unwrap();
+    let Value::Obj(root) = &mut table else {
+        unreachable!()
+    };
+    let Value::Arr(handlers) = root.get_mut("handlers").unwrap() else {
+        unreachable!()
+    };
+    let Value::Obj(handler) = &mut handlers[0] else {
+        unreachable!()
+    };
+    let Value::Arr(arguments) = handler.get_mut("argv").unwrap() else {
+        unreachable!()
+    };
+    *arguments.last_mut().unwrap() = Value::Str(format!("stub:mark:{}", marker.display()));
+    let handlers = directory.path().join("handlers.json");
+    fs::write(&handlers, fsm_core::canon::canon_bytes(&table)).unwrap();
+    for mode in [vec!["execute"], vec!["serve", "--execute"]] {
+        let output = Command::new(binary())
+            .arg("--data-dir")
+            .arg(directory.path())
+            .args(mode)
+            .arg("--handlers")
+            .arg(&handlers)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let diagnostic = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            diagnostic.contains("unsupported on this platform"),
+            "{diagnostic}"
+        );
+        assert!(!marker.exists());
+        let reader = Store::open_read_only(directory.path()).unwrap();
+        assert_eq!(reader.records, before);
+        assert!(!reader.state.instances["order-1"].pending.is_empty());
+    }
+}
+
+#[test]
+#[cfg(target_os = "linux")]
 fn paired_keeps_retrying_instead_of_exiting_when_the_writer_is_held() {
     let directory = TestDirectory::create("paired-contention");
     seeded(&directory);

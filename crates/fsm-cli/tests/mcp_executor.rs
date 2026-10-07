@@ -231,7 +231,15 @@ fn durable_ownership_counts_are_read_only_and_do_not_invent_live_health() {
             if entry.file_type().unwrap().is_dir() {
                 result.extend(files(&entry.path()));
             } else {
-                result.insert(entry.path(), std::fs::read(entry.path()).unwrap());
+                // Windows denies reading the writer's exclusively locked,
+                // empty coordination file; retain its presence and size.
+                let bytes = if entry.file_name() == "LOCK" {
+                    assert_eq!(entry.metadata().unwrap().len(), 0);
+                    Vec::new()
+                } else {
+                    std::fs::read(entry.path()).unwrap()
+                };
+                result.insert(entry.path(), bytes);
             }
         }
         result
