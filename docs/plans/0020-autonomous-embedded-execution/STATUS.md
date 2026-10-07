@@ -465,3 +465,27 @@ confirmed while waiting for competing Cargo PID 1799180, so no passing result
 is recorded yet and the prior eight-stage milestone remains the last full gate.
 The installed containment helper remains owned by `nobody`, so genuine native
 handler acceptance remains outstanding; task completion stays 0/7.
+
+### Quiet native workflow acceptance path — 2026-10-07
+
+Commit `c83bbb59` updates the existing production workflow scenarios instead
+of adding another substitute driver: Linux embedded discovery requires
+`fsm.executor/2` and autonomous progress; after the begin event the client
+sends no observation requests until a read-only Store sees terminal completion.
+The existing success, preflight-refusal and compensating-failure assertions
+still check handler order, external resource state and verified history.
+The client then closes stdin, requires successful bounded process exit and
+valid remaining JSON-RPC output, and reopens the writer to check zero unresolved
+claims and acknowledged handoffs; borrowed helpers retain v1/request-driven
+acceptance and other native platforms retain their current contract.
+
+This is a test requirement, not a claim that native scenarios have passed:
+Linux cases remain explicitly provisioning-dependent and ignored by ordinary
+Cargo runs; the wrongly owned installed helper has not been altered.
+Session 95283 (`quiet-native-workflow-check.sh`, live PID 1835723) waits for
+session 30366's original script PID 1799728 to retire successfully before
+advancing the same isolated source worktree to frozen `c83bbb59`; stable/MSRV
+ordinary tests and both integration targets' Clippy are queued, with actual
+1 GiB memory and zero-swap limits checked at every build stage.
+Both handles were confirmed live while unrelated Cargo PID 1799180 remained
+running; no checks have been declared successful and completion stays 0/7.
