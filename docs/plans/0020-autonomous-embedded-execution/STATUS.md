@@ -450,3 +450,18 @@ acceptance; installed Root-handler success and native macOS/Windows/live-client
 axes remain unexecuted. HTTP and other plan obligations remain open, with
 tasks 8901/8902 still in progress and completion unchanged at 0/7; no
 prerequisite is released by this local host milestone.
+
+### Complete client submission in the quiet stdio path — 2026-10-07
+
+Commit `d1af4bf6` removes direct Store machine preloading from both real-binary
+quiet-deadline cases: the client now submits `machine_create` followed by
+`instance_create`, and the tests require successful replies before observing
+quiet durable completion, asynchronous subscription output and EOF retirement.
+This closes a submission-coverage gap without claiming native handler success.
+Focused stable/MSRV `autonomous_stdio` tests and target Clippy are queued in
+session 30366, script `stdio-client-submission-check.sh`, on frozen `d1af4bf6`
+in the existing isolated cache worktree; the live script PID 1799728 was
+confirmed while waiting for competing Cargo PID 1799180, so no passing result
+is recorded yet and the prior eight-stage milestone remains the last full gate.
+The installed containment helper remains owned by `nobody`, so genuine native
+handler acceptance remains outstanding; task completion stays 0/7.
