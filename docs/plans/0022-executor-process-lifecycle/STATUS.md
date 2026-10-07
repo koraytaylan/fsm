@@ -61,6 +61,10 @@ The existing elicitation handler now separates immutable store preparation,
 client interaction and event settlement as an HTTP owner prerequisite; stable/
 MSRV CLI Clippy and existing schema/tool tests pass, while adapters still hold
 their current references and HTTP ownership integration remains unfinished.
+HTTP-OWNERSHIP-REVIEW.md records additional production defects: reverse requests
+are buffered until handling finishes, quiet mailbox polls become EOF, and the
+response mailbox is unbounded; the next owner/transport boundary must address
+these together rather than relying on a lock-only elicitation special case.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,
