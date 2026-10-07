@@ -7,7 +7,8 @@ evidence are coordinator-owned.
 - **Status:** Registered by hand; execution-host-ownership is in progress;
   private Store ownership, bounded admission and reserved cancellation are
   implemented; a private native owner now retains executor state and drives
-  quiet decision passes; production transport integration remains outstanding.
+  quiet decision passes; initial Linux production stdio wiring is implemented
+  with v2 discovery, while actual-binary acceptance and HTTP remain outstanding.
 - **Goal:** accepted embedded workflows advance without client polling,
   with one writer and responsive, bounded stdio and HTTP sessions.
 - **Root cause:** stdio runs an executor tick only after requests and HTTP
@@ -28,7 +29,8 @@ evidence are coordinator-owned.
   No task has a landing OID or completed acceptance inventory; final
   integration still requires plan 0022's supervised lifecycle behavior.
 - **Exceptions:** none recorded.
-- **Outcome:** planned; no autonomous execution capability is claimed yet.
+- **Outcome:** production stdio integration is implemented but unverified;
+  no task or full autonomous acceptance is claimed.
 
 Registration makes the dependency-free ungated ownership task ready; it does
 not establish autonomous execution or release any cross-plan prerequisite.

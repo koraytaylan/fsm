@@ -246,9 +246,12 @@ fn apply_command(
         }
         Operation::Read(command) => match &command.operation {
             ReadOperation::ResourcesList => Ok(super::resources::list(Some(store))),
-            ReadOperation::ResourceRead { uri } => {
-                super::resources::read_with_executor(uri, Some(store), handlers)
-            }
+            ReadOperation::ResourceRead { uri } => super::resources::read_with_executor_mode(
+                uri,
+                Some(store),
+                handlers,
+                handlers.is_some(),
+            ),
             ReadOperation::Complete { parameters } => {
                 super::complete::complete(Some(parameters), Some(store))
                     .map_err(|error| ErrorObj::new("req/args_invalid", error.0))

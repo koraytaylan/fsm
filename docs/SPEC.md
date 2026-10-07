@@ -3143,9 +3143,10 @@ control and original-session close MUST remain available at saturation. Stop
 MUST reject queued commands before Store dispatch, finish any already executing
 operation, and reject further admission. The writer-only private owner has no executor. A staged Linux native owner
 retains the original OwnedNativeExecutor, including its sole writer, and uses
-the same complete command boundary. Interactive continuations and bounded
-egress remain outstanding, and neither production transport constructs it yet; the public
-autonomous execution capability remains unimplemented.
+the same complete command boundary. Production Linux embedded stdio constructs this owner; HTTP and borrowed
+helpers retain their existing contracts. Interactive continuations and bounded
+raw input/output are integrated; complete egress ordering and diagnostic
+isolation remain outstanding acceptance requirements.
 
 Private host cancellation MUST reserve control metadata for every admitted
 request, including the retained RPC-ID copy and a conservative 12 KiB allowance
@@ -3296,3 +3297,18 @@ request shutdown through the original native control and retain the adapter
 failure in the shutdown report; catching an adapter panic MUST NOT establish
 native containment, worker retirement or output delivery without their usual
 evidence, and MUST NOT join a live owner beyond the original shutdown deadline.
+
+Production Linux embedded stdio now constructs the original owned native host,
+with independently scheduled decision passes and bounded owned protocol input
+and output. The active host MUST expose `fsm.executor/2` with
+`progress: "autonomous"` at the unchanged `fsm://executor` URI, retaining
+sanitized handler fields and `external_executor: "unknown"`; the closed v1
+progress enum MUST NOT be extended. Polling observes this host rather than
+causing progress, and an open quiet stdin remains a live session. EOF and
+output refusal request original-control supervised shutdown; uncertainty
+remains explicit until native, endpoint and output retirement are proven.
+HTTP, contention/degraded fallback and borrowed helpers keep their existing
+contracts. This stdio capability and wire discriminator change has a pre-1.0
+minor-version consequence, with no core semantics, journal bytes, hash domains,
+public Rust signatures, dependency or MSRV changes. Production acceptance and
+complete bounded egress ordering remain pending in plans 20–23.

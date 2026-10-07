@@ -1,11 +1,8 @@
 //! Owned stdio composition over the shared framing and method implementation.
 //!
 //! The writer lives on its native owner worker; an uncertain shutdown retains
-//! that original worker in the report. Production selection awaits interactive
-//! continuations, progress/egress integration and versioned discovery.
-
-// This composition is staged until process-entry selection and protocol completion.
-#![allow(dead_code)]
+//! that original worker in the report. Linux production stdio selects this
+//! composition; complete egress and native acceptance remain plan obligations.
 
 use std::{
     io::{self, BufRead, Write},
@@ -53,7 +50,6 @@ impl Drop for Finished {
 }
 
 /// Compose actual bounded byte input/output with the owned command host.
-#[allow(dead_code)] // Process-entry selection follows the remaining protocol integration.
 pub(in crate::mcp) fn serve<C: Clock + Send + 'static, R: BufRead + 'static>(
     driver: OwnedNativeExecutor,
     clock: C,

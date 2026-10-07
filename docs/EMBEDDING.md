@@ -710,8 +710,9 @@ can correct the payload and resend under the same key.
 
 A model that wants to know when an instance advances has two options, and
 until this existed only one of them worked: call `instance_get` in a loop, or
-subscribe and be told. Subscribe when an external executor is driving work;
-in embedded mode keep sending requests as described below.
+subscribe and be told. Autonomous embedded stdio and external executors
+progress independently of observation requests; inspect `fsm://executor` for
+the active contract, since legacy `client_requests` helpers still require ticks.
 
 Two resource URIs describe an instance:
 
@@ -1637,14 +1638,18 @@ event before starting the executor, or from a terminal (`fsm machine add`,
 `fsm instance new`, `fsm instance send`) while it runs — those contend for one
 tick at worst — or use `embedded` mode.
 
-`embedded` (`fsm serve --execute --handlers ./handlers.json`) runs the same
-loop on the serve thread. Two limits, stated rather than papered over: a
-long-running handler blocks the protocol, and because the server blocks waiting
-for the next client line, **a tick happens only when the client speaks**.
-Embedded mode advances a workflow during a conversation, never overnight.
-Keep sending `instance_get` or `ping` until the workflow and its failure
-recovery settle. Subscribing alone does not drive executor ticks. Each tick
-runs after the request reply, so the next read observes its results.
+`embedded` (`fsm serve --execute --handlers ./handlers.json`) on Linux stdio
+retains one writer on an independent native owner. Effects, deadlines and
+recovery progress while stdin remains open, including during quiet intervals;
+`instance_get`, `ping`, and optional subscriptions observe that progress.
+EOF, failed output and egress refusal retire the session and request supervised
+shutdown using the original native control and its existing deadline.
+The resource publishes `fsm.executor/2` with `progress: "autonomous"`;
+clients must inspect its format discriminator rather than treating a new format
+as the closed v1 contract. HTTP and public borrowed helpers still use their
+legacy `client_requests` contract and require requests to drive ticks.
+Complete production acceptance, notification ordering and long-diagnostic
+isolation remain under plans 20–23; this integration is not their completion.
 
 Each process announces its mode once on stderr, and a non-default mode says so
 in the MCP `instructions` as well.

@@ -1420,3 +1420,18 @@ retires the original session and requests original-control shutdown while
 retaining the initiating panic as a report failure; native retirement and
 output delivery still require their independent evidence within the original
 deadline, with no new public API or wire/journal format.
+
+Production Linux embedded stdio now constructs the original owned native host,
+with independently scheduled decision passes and bounded owned protocol input
+and output. The active host MUST expose `fsm.executor/2` with
+`progress: "autonomous"` at the unchanged `fsm://executor` URI, retaining
+sanitized handler fields and `external_executor: "unknown"`; the closed v1
+progress enum MUST NOT be extended. Polling observes this host rather than
+causing progress, and an open quiet stdin remains a live session. EOF and
+output refusal request original-control supervised shutdown; uncertainty
+remains explicit until native, endpoint and output retirement are proven.
+HTTP, contention/degraded fallback and borrowed helpers keep their existing
+contracts. This stdio capability and wire discriminator change has a pre-1.0
+minor-version consequence, with no core semantics, journal bytes, hash domains,
+public Rust signatures, dependency or MSRV changes. Production acceptance and
+complete bounded egress ordering remain pending in plans 20–23.

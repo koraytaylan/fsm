@@ -113,15 +113,31 @@ fn execution_ownership(store: Option<&Store>) -> Value {
 }
 
 pub(crate) fn describe(store: Option<&Store>, handlers: Option<&Value>) -> Value {
+    describe_mode(store, handlers, false)
+}
+
+pub(crate) fn describe_mode(
+    store: Option<&Store>,
+    handlers: Option<&Value>,
+    autonomous: bool,
+) -> Value {
     let (mode, progress, external_executor) = match store {
         None => ("degraded", "unavailable", "unknown"),
         Some(store) if store.journal.is_read_only() => ("read-only", "external", "unknown"),
-        Some(_) if handlers.is_some() => ("embedded", "client_requests", "unknown"),
+        Some(_) if handlers.is_some() => (
+            "embedded",
+            if autonomous {
+                "autonomous"
+            } else {
+                "client_requests"
+            },
+            "unknown",
+        ),
         Some(_) => ("writer", "manual", "unknown"),
     };
     let embedded = mode == "embedded";
     Value::Obj(BTreeMap::from([
-        ("format".into(), Value::Str("fsm.executor/1".into())),
+        ("format".into(), Value::Str(if autonomous { "fsm.executor/2" } else { "fsm.executor/1" }.into())),
         ("execution_ownership".into(), execution_ownership(store)),
         ("mode".into(), Value::Str(mode.into())),
         ("executes_effects".into(), Value::Bool(embedded)),
@@ -131,6 +147,7 @@ pub(crate) fn describe(store: Option<&Store>, handlers: Option<&Value>) -> Value
         ("result_mapping".into(), Value::Str("Handlers acknowledge outcomes and send the configured static on_ok/on_failed event, payload, and clock stamps. Command stdout and MCP results are not copied into event payloads. Without an outcome event, an ack does not advance the machine.".into())),
         ("unhandled_effects".into(), Value::Str("Pending effects without a matching handler remain pending; they are not executed automatically.".into())),
         ("next".into(), Value::Str(match mode {
+            "embedded" if autonomous => "Match effect names and required_args to these handlers and declare their outcome events. Effects, recovery and deadlines progress while stdin remains open, including while the client is quiet. Polling and subscriptions observe progress; they do not drive it. Do not manually ack handled effects. Closing stdin stops admission and requests supervised shutdown.",
             "embedded" => "Match effect names and required_args to these handlers and declare their outcome events. Keep sending instance_get or ping requests while work is pending: each request drives one executor tick after its reply. Subscribing alone does not advance execution. Do not manually ack handled effects. The executor also polls deadlines on ticks.",
             "writer" => "This server does not execute effects. Execute and ack them manually, then send outcome events and poll deadlines; or restart with serve --execute --handlers <operator-owned-file> to author and run through one MCP connection. A separate fsm execute cannot journal outcomes while this writer holds the store.",
             "read-only" => "This connection cannot mutate workflows or verify an external executor's presence or handler table. Ask the operator for that table and execution status. If an external executor is running, subscribe to instances to observe it; otherwise nothing advances automatically.",

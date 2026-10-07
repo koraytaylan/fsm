@@ -48,12 +48,12 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
                 format!("native stdio publication failed: {error}"),
             ))
         })?;
-    let result = super::serve_owned_native_session_reporting(
-        &mut driver,
-        &mut crate::clock::SystemClock,
+    let result = super::hosted::serve(
+        driver,
+        crate::clock::SystemClock,
         || io::BufReader::new(io::stdin()),
         io::stdout(),
-        10000,
+        io::stderr(),
     );
     let report = match result {
         Ok(report) => report,
@@ -76,7 +76,9 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
         && shutdown.unclaimed_reservations == Some(0)
         && report.output_drained
         && report.operator_output_drained
-        && report.operator_lines_dropped == 0
+        && report.operator_lines_dropped == Some(0)
+        && report.worker.is_none()
+        && report.exit.is_some()
         && removed;
     if report.failure.is_none() && confirmed {
         return Ok(());
@@ -148,7 +150,9 @@ pub(super) fn run(dir: &Path, executor: ExecutorLoop) -> io::Result<()> {
             ),
             (
                 "operator_lines_dropped".into(),
-                Value::Str(report.operator_lines_dropped.to_string()),
+                report
+                    .operator_lines_dropped
+                    .map_or(Value::Null, |count| Value::Str(count.to_string())),
             ),
             (
                 "initiating_io_kind".into(),

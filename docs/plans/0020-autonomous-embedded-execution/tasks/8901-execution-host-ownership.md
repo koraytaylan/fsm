@@ -17,6 +17,13 @@ touches:
   - crates/fsm-cli/src/mcp/notify/output/
   - crates/fsm-cli/src/mcp/notify/encoded.rs
   - crates/fsm-cli/src/mcp/notify/pending_input.rs
+  - crates/fsm-cli/src/mcp/resources.rs
+  - crates/fsm-cli/src/mcp/executor.rs
+  - crates/fsm-cli/src/mcp/prompts.rs
+  - crates/fsm-cli/src/mcp/descriptions.rs
+  - crates/fsm-cli/tests/autonomous_stdio.rs
+  - crates/fsm-cli/tests/fixtures/
+  - README.md
   - crates/fsm-cli/src/mcp/methods.rs
   - crates/fsm-cli/src/mcp/methods/
   - crates/fsm-cli/src/mcp/serve.rs
@@ -89,3 +96,14 @@ and retains the initiating failure instead of detaching its native owner; a
 fixture injects an adapter panic after original owner startup and asserts
 original control retirement and writer reopening, with verification pending
 in the same queued milestone run and no additional task completion claim.
+
+The coordinator adopts initial production stdio wiring and versioned discovery
+serially within this working-path integration: Linux CLI stdio now selects the
+owned host, and actual hosted executor discovery publishes v2/autonomous in
+the same change. Initialization guidance, prompts, tool descriptions, README,
+embedding guidance and affected instruction goldens follow the observed
+progress field; HTTP and borrowed helpers retain their legacy contract.
+A real-binary fixture leaves stdin open after creation and observes deadline
+completion solely through read-only inspection, then checks EOF writer release.
+Execution of this production fixture remains pending; task 9001 stays planned
+until its scheduling dependency and full scenario inventory are accepted.

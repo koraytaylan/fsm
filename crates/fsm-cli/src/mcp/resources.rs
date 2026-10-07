@@ -178,11 +178,22 @@ pub(crate) fn read_with_executor(
     store: Option<&Store>,
     handlers: Option<&Value>,
 ) -> Result<Value, ErrorObj> {
+    read_with_executor_mode(uri, store, handlers, false)
+}
+
+pub(crate) fn read_with_executor_mode(
+    uri: &str,
+    store: Option<&Store>,
+    handlers: Option<&Value>,
+    autonomous: bool,
+) -> Result<Value, ErrorObj> {
     let (text, mime) = match uri {
         "fsm://executor" => (
-            String::from_utf8(fsm_core::canon::canon_bytes(&super::executor::describe(
-                store, handlers,
-            )))
+            String::from_utf8(fsm_core::canon::canon_bytes(&if autonomous {
+                super::executor::describe_mode(store, handlers, true)
+            } else {
+                super::executor::describe(store, handlers)
+            }))
             .unwrap_or_default(),
             "application/json",
         ),
