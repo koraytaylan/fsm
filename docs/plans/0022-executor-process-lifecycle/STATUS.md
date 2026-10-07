@@ -45,6 +45,10 @@ The feasibility fixture now checks actual kernel memory/swap limits before
 native operations, with per-process original-domain observations independently
 checked at handler barriers; stable/MSRV target Clippy and static checks pass,
 while actual native guard sensitivity and broader runtime gates remain pending.
+Actual stable systemd (six cases) and identity (ten cases) now pass at a8b11e9;
+the broker run exposed restrictive-umask memory-control read permissions,
+repaired in the private prototype with all ten broker cases passing on the
+working tree; frozen rerun, remaining suites and broader gates stay pending.
 
 The earlier intermittent uncertain-preparation failure remains unexplained:
 later passing native runs supply no failure reason, and broader ownership,

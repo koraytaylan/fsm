@@ -4,7 +4,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -369,6 +369,14 @@ pub(super) fn run(base: &Path, operation: &str) -> Result<(), String> {
             put(&counter_path, &format!("{id}\n"))?;
             let path = domain(namespace, id);
             fs::create_dir(&path).map_err(|e| e.to_string())?;
+            // A broker's restrictive socket umask also affects prepared cgroup
+            // controls; permit handler inspection without granting writes.
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
+            for name in ["memory.max", "memory.swap.max"] {
+                fs::set_permissions(path.join(name), fs::Permissions::from_mode(0o644))
+                    .map_err(|e| e.to_string())?;
+            }
             let events = read(&path.join("cgroup.events"))?;
             if !events.lines().any(|line| line == "populated 0") {
                 return Err("new domain is not empty".into());

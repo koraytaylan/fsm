@@ -1294,3 +1294,30 @@ formatting and file-size checks pass serially after actual controller kernel
 limit assertions. Python AST/syntax checks verify all sixteen guarded launch
 vectors. Native execution, guard sensitivity and renewed complete host/platform
 gates remain pending; plan/task statuses remain unchanged.
+
+### Native preflight execution and broker umask repair
+
+At clean frozen a8b11e9fa75ac3d5ae20f9fd3c46d11dbeddd84f, terminal session
+82950 passes all six systemd cases with independently verified original live
+handler kernel limits; report SHA-256 is
+79305f78ce332818cb2a102b7491d4f8850a9b49b5c519de96ab293f9a3fe597.
+Session 56772 passes all ten identity cases (report SHA-256
+3fdf8aeaba8bd7e25d4ef35210d7da161c66c0468de4987f43547a96b37e2f47)
+then terminates on the failed broker suite; subsequent suites were not run.
+Failed broker report SHA-256 is
+62bba88c15e00fed8ba07078a621cae4c1c07ce83711d0991fe6cee9a01445ca.
+The original journal identifies PermissionDenied reading memory.max before
+handler entry: the broker's restrictive socket umask also makes manually
+prepared cgroup controls unreadable to the dynamic handler identity.
+The private prototype now sets its own prepared directory to root-owned 0755
+and the two memory controls to root-owned 0644, allowing inspection while
+preserving write restrictions. No production authority policy changes.
+After adding the required PermissionsExt import, terminal session 20046 passes
+stable/MSRV target Clippy, formatting and all ten actual broker cases on the
+working-tree repair. Its report explicitly records source_dirty=true, so this
+is preliminary evidence requiring a frozen rerun; report SHA-256 is
+f7fc2bb8567911a19f490fb0c8d32f99fd3e63252c5c6bee61077281b11babbb,
+log SHA-256 is
+5960da7dee2768abc0ae671476cbf87fe77fbd4280e2baba6538022d550c6d8b.
+All evidence remains in the explicit task cache; scopes verify one GiB/zero
+swap, the retained authority helper is unchanged, and broader gates stay open.
