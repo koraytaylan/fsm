@@ -212,3 +212,29 @@ original five-second driver request deadline and continues to fail on transport
 uncertainty. It supplies missing shutdown facts before the owned child guard
 retires the exact parent, without accepting the failed drain or increasing its
 budget. Fresh execution and remaining ownership proof are still required.
+
+The diagnostic run at frozen 03e1aab (session 57769, terminal exit one) again
+passed all nine original scenarios and failed the new standalone drain transport;
+the one-second observer-only wait found no final JSON diagnostic beyond paired
+startup. Retained endpoint inspection found race-control empty after the exact
+competitor exited, while the embedded endpoint remained; this is not a stopped
+verdict or proof the control response arrived. Final rendering is best effort
+under the expired original deadline, so absent stderr cannot establish a phase.
+The exact report remains local-native-workflow-03e1aab-stable/workflow.json,
+with its authority and staged fixture retained by producer guards.
+
+The earlier 2976089 failed fixture was fully archived before matched test-only
+retirement. Cleanup initially refused an original empty allocation-three cgroup;
+protected prepared metadata matched its dev/inode and binding was absent, with
+an inactive original manager/no PID/job and no staged executable surviving.
+Only those matched empty fixture resources were retired, without manufacturing
+an execution closure. Archived journal readback independently counts seven
+ExecutionClaimed, seven ExecutionStopped and seven ExecutionSettled records;
+handler log counts were not used as a substitute for journal evidence.
+
+The next diagnosis needs bounded observation of actual local control inventory
+before its deadline, including original unclaimed reservations/helper retirement,
+while the mandatory stopped assertion stays intact. Existing stop-only transport
+and process activity counters cannot supply those facts. This is aligned with
+task 9401's bounded uncertainty health requirement, which remains unfinished;
+no native race or complete cancellation/shutdown acceptance is claimed.
