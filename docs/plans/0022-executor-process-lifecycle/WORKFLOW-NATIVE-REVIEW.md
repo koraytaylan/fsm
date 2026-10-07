@@ -335,3 +335,25 @@ native or platform acceptance. Matched archival/test teardown of that fixture
 must precede a new producer, and separate root-manager test services need
 explicit memory and swap limits before further native execution.
 Task 9401 remains in progress and plan 0022 remains 3/7.
+
+
+## Retained a1ba97c fixture archival and matched teardown
+
+The protected inventory identifies stage
+/usr/libexec/fsm-workflow-3fde1be75801f257140544daf35ca758 and namespace
+c1c8026bc78f29007df3f25145558da9; the original protected counter records eight
+allocations, with prepared-3.json the sole unbound prepared domain. The guarded
+retire-failed-workflow-a1ba97c.py completed successfully after verifying original
+store/authority/resource/home identities, staged executable digests, absence of
+live staged processes, matched inactive/failed units and empty unbound original
+cgroups. Namespace, resource, home and staging evidence, socket metadata and
+manager/cgroup inventories were archived under
+local-native-workflow-a1ba97c-stable/retained-fixture before teardown; removal of
+the installed test authority matched its original device, inode and digest.
+No domain closure or successful race verdict was manufactured by this cleanup.
+
+The retained fixture no longer prevents a fresh producer, but root-manager
+native services still require explicit verified memory/swap limits before any
+new native execution; the user-controller scope does not constrain them.
+No heavy build or native test ran during this teardown, and all scratch stayed
+in the existing dedicated home cache. Task and roll-up completion are unchanged.
