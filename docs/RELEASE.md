@@ -1539,3 +1539,5 @@ Binding, recovery and execution startup now preserve the original run's exact
 absolute deadline rather than extending it while preparing the next request.
 
 Pending-effect reconstruction now retains the historical emitting machine identity for subsequent contract admission across migration; the provisional Rust PendingEffect struct gains emitting_machine_id, requiring callers constructing literals to adapt, without changing journal bytes, hashes or runtime spawn policy.
+
+Added provisional read-only contract::check_pending evidence for shared service admission: incompatible later steps and current receiving outcomes are checked alongside concrete pending arguments, without changing journal bytes or runtime spawn policy; production wiring and admission caching remain pending.

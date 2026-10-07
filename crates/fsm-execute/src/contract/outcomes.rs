@@ -158,9 +158,9 @@ pub(super) fn analyze_resolved<'a>(
     Ok(report)
 }
 
-type Detail = (&'static str, &'static str, String, String, Option<Value>);
+pub(super) type Detail = (&'static str, &'static str, String, String, Option<Value>);
 
-fn check(machine: &CompiledMachine, advance: &Advance) -> (CheckStatus, Vec<Detail>) {
+pub(super) fn check(machine: &CompiledMachine, advance: &Advance) -> (CheckStatus, Vec<Detail>) {
     let mut payload = advance.payload.clone();
     let mut unknown = Vec::new();
     let event = machine

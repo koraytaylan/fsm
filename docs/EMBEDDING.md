@@ -2861,3 +2861,5 @@ material, including time spent preparing the request; a phase change does not
 grant extra startup time.
 
 PendingEffect::emitting_machine_id identifies the definition that actually emitted the effect, including after migration; obtain it through effect::resolve rather than substituting the current instance definition, and do not treat this evidence as execution authorization because shared runtime contract admission remains unfinished.
+
+contract::check_pending checks a reconstructed PendingEffect against a verified Store view and the full operator HandlerTable, including the current receiving definition closure and actual configured outcomes after migration; it never consumes an attempt or writes a request key, and service dispatch must still revalidate the writer and generation because the checker does not authorize a process.

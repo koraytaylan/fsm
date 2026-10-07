@@ -218,6 +218,7 @@ fn fsm_execute::config::substitute
 fn fsm_execute::config::substitute_arguments
 fn fsm_execute::contract::analyze_contract
 fn fsm_execute::contract::analyze_effects
+fn fsm_execute::contract::check_pending
 fn fsm_execute::dead::dead_letters
 fn fsm_execute::dead::horizon
 fn fsm_execute::dead::report

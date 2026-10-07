@@ -1389,6 +1389,18 @@ This reconstructed context MUST NOT enter journal bytes, hashes or replay state;
 it supplies evidence for separately integrated runtime contract admission and
 MUST NOT itself authorize an external start.
 
+An executor pending-contract check MUST revalidate running instance membership,
+the historical emitting definition and the concrete reconstructed effect,
+then analyze the current receiving definition's complete static invocation
+closure against the full loaded handler table. A pending effect's configured
+outcomes MUST also be checked against its current receiver even if that
+receiver no longer contains its original emit site. Known incompatibility
+uses `exec/contract_invalid`; unavailable or stale evidence uses
+`exec/contract_unknown` or `exec/contract_definition_unknown`. Refusal MUST
+leave the journal, pending work, retry ledgers and request-id inventory unchanged.
+This read-only check alone MUST NOT authorize a physical start: the shared
+service still needs final writer/generation validation and lifecycle control.
+
 ## CLI executor machine checks
 
 `fsm execute --check --handlers <file>` MAY select exactly one of
