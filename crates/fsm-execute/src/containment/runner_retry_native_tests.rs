@@ -7,31 +7,49 @@ pub(super) fn settle_retry(
     effect: &str,
     claim: &fsm_core::record::execution::Claim,
     completion: &fsm_execute::run::native_client::NativeCompletion,
+    mode: &str,
 ) {
     use fsm_core::record::execution::{PendingEffect, Settlement};
     let mut store = Store::open(&fixture.store).unwrap();
     let mut pipeline = fsm_execute::run::Pipeline;
     let mut clock = fsm_store::clock::FixedClock::new(1000, 1);
     let before = store.records.len();
-    pipeline
-        .stop_native(
-            &mut store,
-            &mut clock,
-            claim,
-            completion,
-            "native-retry-stop",
-        )
-        .unwrap();
-    assert_eq!(
-        store
-            .state
-            .execution
-            .settlement_for(claim, PendingEffect::Present)
-            .unwrap(),
-        Settlement::Attempted
-    );
-    let settled = settle_owned(fixture, &mut store, &mut clock, claim, completion);
-    assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
+    if mode == "retry-timeout-kill" {
+        drop(store);
+        super::stopped_host::kill_after_publication(fixture, mode);
+        store = Store::open(&fixture.store).unwrap();
+        assert_eq!(store.records.len(), before + 2);
+        assert_eq!(
+            store.records[before].kind,
+            fsm_core::record::RecordKind::ExecutionStopped
+        );
+        assert_eq!(
+            store.records[before + 1].kind,
+            fsm_core::record::RecordKind::ExecutionSettled
+        );
+        assert_eq!(store.records[before + 1].ts, 1001);
+        assert_eq!(store.state.execution_handoffs.outstanding().count(), 0);
+    } else {
+        pipeline
+            .stop_native(
+                &mut store,
+                &mut clock,
+                claim,
+                completion,
+                "native-retry-stop",
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .state
+                .execution
+                .settlement_for(claim, PendingEffect::Present)
+                .unwrap(),
+            Settlement::Attempted
+        );
+        let settled = settle_owned(fixture, &mut store, &mut clock, claim, completion);
+        assert_eq!(settled.get("duplicate"), Some(&Value::Bool(false)));
+    }
     let replay = pipeline
         .settle_stopped(
             &mut store,

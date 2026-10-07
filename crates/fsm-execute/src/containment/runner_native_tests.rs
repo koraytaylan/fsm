@@ -133,6 +133,7 @@ pub(super) fn run() {
         "protocol",
         "timeout",
         "retry-timeout",
+        "retry-timeout-kill",
         "process-exit",
         "process-recover-removed",
         "process-recover-changed",
@@ -222,13 +223,13 @@ pub(super) fn run() {
                 );
             }
         }
-        if matches!(mode, "timeout" | "retry-timeout") {
+        if matches!(mode, "timeout" | "retry-timeout" | "retry-timeout-kill") {
             let mut fields = table.as_obj().unwrap().clone();
             let mut handlers = fields.get("handlers").unwrap().as_arr().unwrap().to_vec();
             let mut handler = handlers[0].as_obj().unwrap().clone();
             let mut retry = handler.get("retry").unwrap().as_obj().unwrap().clone();
             retry.insert("on".into(), Value::Arr(vec![Value::Str("timeout".into())]));
-            if mode == "retry-timeout" {
+            if matches!(mode, "retry-timeout" | "retry-timeout-kill") {
                 retry.insert("attempts".into(), Value::Num("2".into()));
             }
             handler.insert("retry".into(), Value::Obj(retry));
@@ -440,7 +441,7 @@ pub(super) fn run() {
                 candidate.get("error"),
                 Some(&Value::Str("exec/cancelled".into()))
             );
-        } else if matches!(mode, "timeout" | "retry-timeout") {
+        } else if matches!(mode, "timeout" | "retry-timeout" | "retry-timeout-kill") {
             assert_eq!(
                 result.get("failure_class"),
                 Some(&Value::Str("timeout".into()))
@@ -494,7 +495,7 @@ pub(super) fn run() {
         let expected = match mode {
             "answer" => "mcp_error",
             "protocol" => "failed",
-            "timeout" | "retry-timeout" => "timeout",
+            "timeout" | "retry-timeout" | "retry-timeout-kill" => "timeout",
             "cancel-process" | "cancel-mcp" => "interrupted",
             "process-exit"
             | "process-recover-removed"
@@ -531,8 +532,8 @@ pub(super) fn run() {
                 .exists()
         );
         assert_unresolved(&fixture, &effect);
-        if mode == "retry-timeout" {
-            settle_retry(&mut fixture, &effect, &original_claim, &completion);
+        if matches!(mode, "retry-timeout" | "retry-timeout-kill") {
+            settle_retry(&mut fixture, &effect, &original_claim, &completion, mode);
         } else if mode == "process-failure" {
             settle_failure(&fixture, &effect, &original_claim, &completion);
         } else if matches!(mode, "cancel-process" | "cancel-mcp") {

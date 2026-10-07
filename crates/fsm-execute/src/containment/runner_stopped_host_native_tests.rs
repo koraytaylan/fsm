@@ -95,7 +95,11 @@ fn persist_then_wait() {
             &format!("exec-stop-{}-{}", claim.effect().1, claim.run_id()),
         )
         .unwrap();
-    if std::env::var("FSM_STOPPED_HOST_CUT").unwrap() == "process-recover-acked-kill" {
+    let cut = std::env::var("FSM_STOPPED_HOST_CUT").unwrap();
+    if matches!(
+        cut.as_str(),
+        "process-recover-acked-kill" | "retry-timeout-kill"
+    ) {
         Pipeline
             .settle_native_stopped(
                 &mut writer,
@@ -105,7 +109,29 @@ fn persist_then_wait() {
             )
             .unwrap();
         assert_eq!(writer.state.execution.unresolved().count(), 0);
-        assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
+        assert_eq!(
+            writer.state.execution_handoffs.outstanding().count(),
+            usize::from(cut == "process-recover-acked-kill")
+        );
+        if cut == "retry-timeout-kill" {
+            assert!(
+                writer.state.instances["instance"]
+                    .pending
+                    .contains(&claim.effect().1.to_owned())
+            );
+            assert_eq!(
+                writer
+                    .records
+                    .last()
+                    .unwrap()
+                    .body
+                    .get("execution")
+                    .unwrap()
+                    .get("disposition")
+                    .and_then(Value::as_str),
+                Some("attempted")
+            );
+        }
         assert_eq!(
             writer.state.instances["instance"]
                 .configuration
@@ -122,5 +148,5 @@ fn persist_then_wait() {
     ready.sync_all().unwrap();
     let mut release = [0];
     std::io::stdin().read_exact(&mut release).unwrap();
-    panic!("the parent must kill this host before settlement");
+    panic!("the parent must kill this host at the selected durable boundary");
 }
