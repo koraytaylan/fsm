@@ -1,7 +1,7 @@
 //! Production stdio owns progress while a real client remains open and quiet.
 #![cfg(target_os = "linux")]
 
-use fsm_cli::{clock::FixedClock, store::Store};
+use fsm_cli::store::Store;
 use fsm_core::json::{JsonLimits, Value, parse};
 use std::{
     io::{BufRead, BufReader, Write},
@@ -42,9 +42,7 @@ fn quiet_deadline(subscribed: bool) {
         std::process::id()
     ));
     std::fs::create_dir(&directory).unwrap();
-    let mut store = Store::open(&directory).unwrap();
-    store.define_machine_on(&mut FixedClock::new(1000, 0), value(r#"{"format":"fsm.machine/1","name":"quiet_deadline","context":[],"events":[],"effects":[],"states":[{"name":"waiting"},{"name":"done","terminal":true}],"initial":"waiting","transitions":[],"deadlines":[{"name":"due","from":"waiting","after":"dur(2000, ms)","to":"done"}]}"#), false, false).unwrap();
-    drop(store);
+    drop(Store::open(&directory).unwrap());
     let handlers = directory.join("handlers.json");
     std::fs::write(
         &handlers,
@@ -79,12 +77,14 @@ fn quiet_deadline(subscribed: bool) {
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#,
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
         r#"{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"fsm://executor"}}"#,
+        r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"machine_create","arguments":{"spec":{"format":"fsm.machine/1","name":"quiet_deadline","context":[],"events":[],"effects":[],"states":[{"name":"waiting"},{"name":"done","terminal":true}],"initial":"waiting","transitions":[],"deadlines":[{"name":"due","from":"waiting","after":"dur(2000, ms)","to":"done"}]}}}}"#,
         r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"instance_create","arguments":{"machine":"quiet_deadline","request_id":"quiet-owned"}}}"#,
     ] {
         writeln!(stdin, "{frame}").unwrap();
     }
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut discovery = None;
+    let mut machine_created = false;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
         let response = value(&replies.recv_timeout(remaining).unwrap_or_else(|error| {
@@ -108,6 +108,14 @@ fn quiet_deadline(subscribed: bool) {
                     .unwrap(),
             ));
         }
+        if response.get("id") == Some(&value("5")) {
+            assert!(response.get("error").is_none());
+            assert_ne!(
+                response.get("result").unwrap().get("isError"),
+                Some(&Value::Bool(true))
+            );
+            machine_created = true;
+        }
         if response.get("id") == Some(&value("3")) {
             assert!(response.get("error").is_none());
             assert_ne!(
@@ -117,6 +125,10 @@ fn quiet_deadline(subscribed: bool) {
             break;
         }
     }
+    assert!(
+        machine_created,
+        "the client must publish its machine before creating work"
+    );
     let discovery = discovery.unwrap();
     assert_eq!(
         discovery.get("format").and_then(Value::as_str),
