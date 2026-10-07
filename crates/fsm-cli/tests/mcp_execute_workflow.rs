@@ -773,7 +773,7 @@ fn run_scenario_mode(
                     |entry| entry.get("kind").and_then(Value::as_str) == Some("ExecutionSettled")
                 )
                 .count(),
-            acked
+            acked + usize::from(failures == "crash-launch")
         );
         acked
     } else {
