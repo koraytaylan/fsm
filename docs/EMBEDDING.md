@@ -2507,3 +2507,12 @@ Owned native MCP sessions enqueue action diagnostics to a separate bounded stder
 Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.
 
 Supported Linux native CLI hosts bound final error delivery by the original shutdown deadline: small pipe reports attempt separate atomic nonblocking writes, and other reports use a bounded worker without a blocking join; blocked stderr can lose the final report while the process exits with its failure code. Healthy reports preserve original error and cleanup details; delivery never substitutes for authenticated cleanup, and startup, borrowed and HTTP rendering retain their existing behavior.
+
+Native preparation cancellation retains its original finite transport deadline:
+when eligibility is lost or admission closes, an already requested preparation
+continues bounded observation so an authenticated delivered domain can be
+cleaned through the original prepared-domain protocol; no bind or execute is
+permitted after cancellation, and transport failure or unknown allocation
+retains uncertainty and capacity rather than treating helper death as closure.
+This changes cancellation cleanup only, with no journal format, hash domain,
+request key, dependency or MSRV change.

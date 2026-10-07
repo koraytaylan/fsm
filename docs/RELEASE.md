@@ -1181,3 +1181,12 @@ Owned native MCP action diagnostics now use the shared bounded operator output w
 Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.
 
 Supported Linux native standalone/owned stdio final error delivery now obeys the original shutdown deadline without joining blocked stderr workers; small pipe reports use separate atomic nonblocking writes, and undelivered reports do not prevent failure exit or imply successful cleanup, with no durable or wire format change.
+
+Native preparation cancellation retains its original finite transport deadline:
+when eligibility is lost or admission closes, an already requested preparation
+continues bounded observation so an authenticated delivered domain can be
+cleaned through the original prepared-domain protocol; no bind or execute is
+permitted after cancellation, and transport failure or unknown allocation
+retains uncertainty and capacity rather than treating helper death as closure.
+This changes cancellation cleanup only, with no journal format, hash domain,
+request key, dependency or MSRV change.

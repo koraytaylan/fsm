@@ -175,3 +175,21 @@ corrected archive preserves its metadata. This is test teardown and creates
 no closure receipt or successful native verdict. Corrected formatting/size,
 seven mocked producer tests and stable all-target Clippy pass; fresh execution
 and stronger observation proof remain required.
+
+Frozen be271fa passed the actual live-tree interval and completed all seven
+embedded operations, but failed the standalone private drain transport deadline;
+the producer correctly retained failed evidence and exact authority/staging.
+The original catalogue counter advanced to eight: seven genuinely claimed runs
+plus allocation two prepared by the competing executor, with no binding/closure
+for that unclaimed domain. Source review found refresh/observe cancelled its
+preparation helper immediately when a competing claim changed eligibility,
+losing the opportunity to receive the authenticated allocated domain and clean
+it. The corrected cancellation path retains the original finite preparation
+transport and polls for delivery; cancellation still forbids binding/entry,
+and only known delivery permits the existing prepared cleanup. Transport
+failure remains charged uncertainty. New code/gates and actual native cleanup
+execution remain pending; the retained failed fixture has not been retired.
+
+Corrected stable CLI/executor all-target Clippy, formatting, file size and
+seven mocked producer checks pass in terminal session 40244, retained as
+native-preparation-cancel-delivery-check.log; native acceptance remains pending.

@@ -157,11 +157,9 @@ impl NativeAdmissions {
         for pending in self.pending.values_mut() {
             let phase = std::mem::replace(&mut pending.phase, Phase::UnknownAllocation);
             pending.phase = match phase {
-                Phase::Preparing(mut preparation) if pending.cancelled => {
-                    let _ = preparation.cancel();
-                    let _ = preparation.reap();
-                    Phase::UncertainPreparation(preparation)
-                }
+                // Preparation alone cannot launch a handler: even cancellation
+                // must receive any original delivered domain before cleanup;
+                // killing its transport first would strand a known allocation.
                 Phase::Preparing(mut preparation) => match preparation.poll() {
                     Ok(Some(domain)) => Phase::Prepared(domain),
                     Ok(None) => Phase::Preparing(preparation),
@@ -229,8 +227,6 @@ impl NativeAdmissions {
                 pending.cancelled = true;
                 if matches!(pending.phase, Phase::Queued) {
                     pending.phase = Phase::Closed;
-                } else if let Phase::Preparing(preparation) = &mut pending.phase {
-                    let _ = preparation.cancel();
                 }
             }
         }

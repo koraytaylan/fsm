@@ -1223,3 +1223,12 @@ error frame; a startup transport refusal does not confirm native cleanup.
 Native owned MCP protocol warnings about requests preceding `notifications/initialized` use the same bounded operator diagnostic queue as executor action lines, with the same separate drainage and loss facts; borrowed sessions retain their existing warning behavior, and no journal or wire format changes.
 
 Final supported Linux native CLI error delivery shares the original owner shutdown deadline and may be lost under backpressure rather than blocking failure exit; codes, exit status, report schemas and durable formats stay unchanged, and the deadline carrier and renderer are crate-private.
+
+Native preparation cancellation retains its original finite transport deadline:
+when eligibility is lost or admission closes, an already requested preparation
+continues bounded observation so an authenticated delivered domain can be
+cleaned through the original prepared-domain protocol; no bind or execute is
+permitted after cancellation, and transport failure or unknown allocation
+retains uncertainty and capacity rather than treating helper death as closure.
+This changes cancellation cleanup only, with no journal format, hash domain,
+request key, dependency or MSRV change.
