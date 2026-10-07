@@ -3396,6 +3396,9 @@ the execution phase solely because the binding phase retains its reservation.
 Successor startup MUST require actual predecessor transport retirement and
 MUST preserve the original claim, claim hash and run deadline; this reuse
 MUST NOT authorize concurrent helpers, writer entry, closure or settlement.
+If the predecessor has no worker reservation, successor startup MUST honor
+the currently selected worker mode and reserve before dispatch, retaining
+synchronous standalone behavior when worker mode is absent.
 
 Hosted stdio MAY finish its retirement wait after the original owner has
 returned and operator diagnostics have drained when protocol output is

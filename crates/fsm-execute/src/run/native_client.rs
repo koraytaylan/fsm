@@ -202,7 +202,11 @@ impl NativeRequest {
         let prepared = PreparedRequest::prepare(namespace, generation, request, timeout)?;
         // Sequential phases of one original attempt share its reservation;
         // the retired predecessor cannot run concurrently with this helper.
-        Self::start_reserved(prepared, self.ticket.clone())
+        let ticket = match &self.ticket {
+            Some(ticket) => Some(std::sync::Arc::clone(ticket)),
+            None => worker::reserve_current()?,
+        };
+        Self::start_reserved(prepared, ticket)
     }
 
     fn start_reserved(

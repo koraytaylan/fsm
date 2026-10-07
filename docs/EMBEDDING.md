@@ -2852,3 +2852,5 @@ A bound NativeRun keeps its original reservation for execution startup after
 the binding helper has actually retired, including when all 128 slots are
 occupied; no new attempt capacity is required for this sequential phase, and
 the original writer checks, claim identity and run deadline still govern entry.
+Selecting worker mode after standalone binding also moves successor startup
+off the caller, acquiring its first reservation before dispatch.

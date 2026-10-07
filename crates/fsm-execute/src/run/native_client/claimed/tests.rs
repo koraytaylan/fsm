@@ -10,6 +10,34 @@ enum OriginalPhase {
 }
 
 #[test]
+fn native_bound_standalone_run_selects_worker_mode_before_successor_startup() {
+    let mut run = original_run(OriginalPhase::Execution);
+    assert!(run.request.ticket.is_none());
+    run.require_writer_entry();
+    let budget = Arc::new(worker::Budget::default());
+    let _scope = worker::Scope::enter(Some(&budget));
+    let _startup = crate::run::native_client::startup::FixtureFactory::install(|_| {
+        Err("fixture execution startup refused".into())
+    });
+    let claim = run.claim.clone();
+    let hash = run.journal_claim.clone();
+    run.launch_bound(&claim, &hash).unwrap();
+    assert!(run.request.worker.is_some() && run.request.inline.is_none());
+    assert_eq!(budget.reserved(), 1);
+    let until = Instant::now() + Duration::from_secs(5);
+    while !run.reap().unwrap() {
+        assert!(Instant::now() < until);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(
+        run.poll().err().unwrap(),
+        "fixture execution startup refused"
+    );
+    drop(run);
+    assert_eq!(budget.reserved(), 0);
+}
+
+#[test]
 fn native_bound_execution_reuses_its_original_slot_when_the_pool_is_full() {
     let budget = Arc::new(worker::Budget::default());
     let _scope = worker::Scope::enter(Some(&budget));

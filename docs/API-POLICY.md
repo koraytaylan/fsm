@@ -1587,3 +1587,5 @@ Sequential NativeRun binding/execution now reuses its original worker reservatio
 after actual binding transport retirement, so pool saturation cannot consume a
 second slot for the same attempt; this fixes provisional lifecycle behavior
 without a signature, format, hash-domain or MSRV change.
+An unreserved standalone predecessor still honors worker mode selected before
+successor startup rather than spawning that helper synchronously on its owner.

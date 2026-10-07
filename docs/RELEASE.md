@@ -1532,3 +1532,4 @@ allocation capacities; this changes no persistent format or public signature.
 Fixed owned native attempts requesting a second worker slot between binding
 and execution, which could refuse already-bound work at pool saturation;
 execution now reuses the original reservation after actual helper retirement.
+Worker mode selected after standalone binding applies to successor startup too.
