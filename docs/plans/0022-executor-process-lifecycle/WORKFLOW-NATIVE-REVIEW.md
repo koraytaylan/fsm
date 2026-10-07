@@ -1074,3 +1074,24 @@ controls pass with the twelve-scenario inventory (the first default-sandbox
 attempt could not write its cache directory). Actual provisioned borrowed
 execution, selection sensitivity, read-only constructor controls and renewed
 full host gate remain pending; task 9401 and plan 0022 status are unchanged.
+
+## Actual twelve-scenario borrowed execution at dd207d4
+
+Stable session 43209 and MSRV session 56712 both exited zero with all seven
+groups/twelve scenarios at clean frozen dd207d497f5baf117a47fde8782a20104754ea47.
+Independent checks verify exact source, complete markers/counts including the
+borrowed workflow, successful root status, no timeout, no retained installation
+or staging fields and complete log digests. The new borrowed public session
+executes all seven original handler effects and passes the existing durable
+settlement/acknowledgement, physical-store, native closure, resource restoration
+and kernel memory receipt assertions; both ownership races also pass.
+Stable/MSRV reports and logs remain in local-native-workflow-borrowed-* under
+the dedicated task cache; stable log SHA-256 is 54cbdbe5f7736d90ff0b1515039c9af328324eadd4272da60981f1d2731c8283
+and MSRV log SHA-256 is 5b41f45b260c438ce7f7e5fc75fb8e7332e47ffce333352e1d95fcf62e3d9d32.
+Sampled MSRV scope memory.current=343318528 and memory.swap.current=0, with
+verified one GiB/zero-swap controller and original service preflight limits.
+This proves borrowed happy-path execution; borrowed read-only controls, selector
+sensitivity, independent bounded output/EOF stop, HTTP hosting, complete native
+matrix and renewed full host gate remain pending. Earlier intermittent
+preparation uncertainty is still unexplained; repeated success does not prove
+its correction. Task 9401 remains in progress and plan 0022 3/7.
