@@ -89,3 +89,24 @@ construction requires adaptation and the pre-1.0 minor consequence is explicit.
 This supplies task 9103's historical evidence without integrating admission,
 persisting authorization, changing journal/hash bytes, or completing a task;
 focused verification and guard sensitivity remain pending.
+
+### Emitting-record coverage and migration fixture correction — 2026-10-07
+
+Commit `835befea` adds independent identity assertions for creation, transition,
+deadline and invoked-child emissions through resolve and Watcher; child
+identity is compared with the authored child definition, not its parent.
+The first frozen verification session 45085 at `376ff605` is terminal exit 101:
+the migration fixture was refused before reconstruction with
+`def/supersedes_target_terminal` because its supersedes mapping targeted the
+terminal `closed` state. This was a fixture error, not a passing regression or
+an implementation change; the original failed log remains retained.
+Commit `1187b05f` maps both historical leaves to continuing `intake`, following
+SPEC's terminal-target restriction; active pending work and original args
+remain the property under test. Corrected session 96331 now verifies frozen
+`1187b05f` in the same isolated worktree after the original run was confirmed
+terminal, using stable/MSRV executor unit and integration tests, all-target
+Clippy and a current-definition substitution that must fail the migration
+regression. The original log is historical-effect-definition-check.log and the
+new run uses historical-effect-definition-corrected-check.log in the task
+cache; results remain pending and no runtime admission or task completion is
+claimed.
