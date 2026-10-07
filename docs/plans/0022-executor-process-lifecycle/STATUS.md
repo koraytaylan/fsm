@@ -4939,3 +4939,11 @@ Protected recovery inventories and matched retained-artifact cleanup are
 recorded in WORKFLOW-NATIVE-REVIEW.md. Corrected stable/MSRV compilation,
 Clippy, size, producer and actual helper checks pass; actual native rerun and
 complete integration remain pending, with progress unchanged at 3/7.
+
+Frozen 9f744da passed all four original provisioned CLI workflow groups and
+their nine scenarios on stable and Rust 1.89, with native claim/closure/acked
+settlement assertions and exact physical-store checks; sessions 88622 and
+55823 are terminal zero, and independent source/count/marker/log-hash readback
+passes. WORKFLOW-NATIVE-REVIEW.md records both retained evidence sets and scope.
+Both reports keep gate_released=false; remaining ownership, shutdown, recovery,
+full host/CI and cross-plan requirements stay incomplete, with no task promotion.

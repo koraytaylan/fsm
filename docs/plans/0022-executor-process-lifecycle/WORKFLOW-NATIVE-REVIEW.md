@@ -77,3 +77,19 @@ Failed evidence remains local-native-workflow-9aa7c63-stable. Stable all-target
 Clippy, MSRV compilation, source size, seven producer tests and the real helper
 argument control pass after correction (native-workflow-settlement-resource-
 final-check.log); a fresh frozen native rerun remains required.
+
+## Exact registered ordinary workflow execution
+
+Frozen 9f744da663add6bb86480df27163492b3e6f5e1e passed all four original
+workflow groups and their nine scenarios on stable Rust 1.98.1 (session 88622)
+and MSRV 1.89.0 (session 55823), both terminal exit zero. Independent readback
+verifies exact clean source, all nine scenario counts, each unique verified-case
+marker and the complete log SHA-256 in local-native-workflow-9f744da-stable
+and local-native-workflow-9f744da-msrv. Root assertions execute after the actual
+ordinary CLI checks and require original native claims, matching closure
+receipts, acked settlements and physical store identity for every call; legacy
+effects cannot satisfy this verdict. Matched teardown completed without retained
+artifact fields. Both reports keep gate_released=false. Controllers/builds ran
+serially under asserted 1 GiB and zero swap; root-manager service units are
+outside those scopes. This accepts these registered embedded workflow scenarios,
+not standalone/signal/blockage races or full ownership integration.
