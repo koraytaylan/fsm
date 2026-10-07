@@ -795,3 +795,11 @@ Corrected session 56765 terminates with exit 0: stable/MSRV each pass all
 Its terminal log SHA-256 is `730e16d7c60908d059802ae2b3a87f4b22e531bbe70af4a2771e02b29483f36f`.
 New-source full acceptance, initialization/publication sensitivity and
 installed native acceptance remain open; no task or dependency is released.
+
+Initialization sensitivity session 35634 terminated with exit 0 at frozen
+`0dc9782`: individually neutralizing the original notification marker, wait
+warning emission and 512-character method cap each makes the actual held-owner
+input fixture fail; each mutation is restored and the clean baseline passes.
+The aggregate terminal log SHA-256 is `7fda4cf7f3cd71db50041266c0d0d1cc199f21968e73da1e48aae0aaccfa981c`.
+This proves those three guards are load-bearing at the real hosted method/input
+seam, without claiming publication-phase sensitivity or native acceptance.
