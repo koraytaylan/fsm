@@ -760,3 +760,35 @@ stable/MSRV native race execution and complete host/platform acceptance remain
 pending. The failed /usr/libexec/fsm-workflow-0c35f95795dcdb3070a0a405d122cf39 stage
 and its original protected inventory remain retained for guarded archival and
 teardown before a new producer. Task 9401 stays in progress; plan 0022 is 3/7.
+
+
+## Accepted ten-scenario stable and MSRV native workflow checkpoint
+
+The exact ae89aee remaining failed resources/stage/runtime configuration were
+archived before identity-matched teardown; protected inspection confirmed its
+namespace had already been retired by Fixture cleanup, without deriving any
+new closure from absence. Frozen 568ebf6 source then passed the complete
+provisioned producer on stable (terminal session 29935, exit zero) and Rust
+1.89.0 (terminal session 83776, exit zero). Each executed all ten scenarios,
+including the actual standalone/embedded live-tree exclusion interval, original
+workflow effects/journal/history, competing-owner stopped report, per-claimed
+original closure/store/memory verification and complete unused-domain cleanup
+verification. Both reports have clean exact source and no retained installation
+or staging fields. Independent verification matches complete log SHA-256, one
+exact root marker per case, all five groups totaling ten scenarios, terminal
+one-passed/zero-failed/zero-ignored fixture result and actual MSRV rustc identity.
+Evidence is local-native-workflow-568ebf6-stable and
+local-native-workflow-568ebf6-msrv, with their workflow.json/workflow.log and
+verified controller logs workflow-568ebf6-check.log and
+workflow-568ebf6-msrv-check.log. Controllers remain serial one-GiB/zero-swap;
+original native services separately verify their kernel limits before entry.
+
+This accepts that concrete race scenario on both toolchains, not completed
+ownership integration or general concurrency reliability. Earlier stalled
+prepublication/prelaunch windows remain historical observed failures; two green
+runs do not establish that every such window is fixed. Deterministic contention
+and new verifier guard sensitivity, standalone/standalone races, complete crash
+windows, remaining host routes, bounded shutdown/reconciliation, current-source
+full host and 81-case native gates, hosted macOS/Windows and live-model evidence
+remain required. Task 9401 stays in progress, plan 0022 remains 3/7 and plans
+20–23 remain incomplete; gate_released remains false.

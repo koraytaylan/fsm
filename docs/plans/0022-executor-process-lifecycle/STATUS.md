@@ -38,8 +38,11 @@ Historical live-handle notes below describe earlier observations only.
   Version-two observation now publishes coherent bounded phase counts, with
   twenty actual transport controls passing on stable/MSRV and legacy replies
   preserved; provisioned stable execution identifies the retained reservation
-  as uncertain cleanup, while all nine original scenarios pass with verified
-  one-GiB/zero-swap per-service receipts at 82bbde4; the race remains failed.
+  as uncertain cleanup; original-domain lock contention is now bounded within
+  the existing cleanup budget, and frozen 568ebf6 passes all ten actual native
+  workflow/race scenarios on stable and MSRV with complete unused-domain proof
+  and verified per-service memory limits, while broader concurrency/crash proof
+  and new guard sensitivity remain pending.
 - Actual standalone/standalone and standalone/embedded live-tree races, complete
   claim/launch/settlement crash windows, nonempty blocked-session shutdown,
   signal handling and uncertainty reconciliation remain required before 9401
