@@ -294,3 +294,50 @@ fn production_stdio_poll_interval_refuses_invalid_values_before_loading_or_openi
         assert!(String::from_utf8_lossy(&output.stderr).contains("--poll-interval-ms"));
     }
 }
+
+#[test]
+fn production_stdio_exact_poll_interval_boundaries_accept_and_eof_does_not_wait_for_timer() {
+    for interval in ["1", "86400000"] {
+        let directory = std::env::temp_dir().join(format!(
+            "fsm-serve-interval-boundary-{}-{interval}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let handlers = directory.join("handlers.json");
+        std::fs::write(
+            &handlers,
+            r#"{"format":"fsm.handlers/1","handlers":[],"manual_effects":["operator_review"]}"#,
+        )
+        .unwrap();
+        let diagnostics = directory.join("server.stderr");
+        let child = Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .arg("--data-dir")
+            .arg(&directory)
+            .args(["serve", "--execute", "--handlers"])
+            .arg(&handlers)
+            .args(["--poll-interval-ms", interval])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(std::fs::File::create(&diagnostics).unwrap()))
+            .spawn()
+            .unwrap();
+        let mut fixture = Fixture { child, directory };
+        let deadline = Instant::now() + Duration::from_secs(12);
+        let status = loop {
+            if let Some(status) = fixture.child.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "interval {interval}: EOF must not wait for a scheduler wake"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert!(
+            status.success(),
+            "interval {interval}: {}",
+            std::fs::read_to_string(&diagnostics).unwrap()
+        );
+        assert_eq!(Store::open(&fixture.directory).unwrap().journal.last_seq, 0);
+    }
+}
