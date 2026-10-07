@@ -11,6 +11,130 @@ use super::{AdmissionError, Command, Owner, Publication};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(target_os = "linux")]
+#[test]
+fn execution_host_native_due_deadline_completes_without_any_client_command() {
+    use crate::mcp::notify::diagnostic_output::DiagnosticOutput;
+    use fsm_execute::{
+        config::HandlerTable,
+        service::{ExecutorPhase, OwnedNativeExecutor},
+    };
+    use std::time::{Duration, Instant};
+
+    let scratch = Scratch::new();
+    let mut store = Store::open(&scratch.0).unwrap();
+    let mut clock = FixedClock::new(1000, 0);
+    store.define_machine_on(&mut clock, value(r#"{"format":"fsm.machine/1","name":"quiet_deadline","context":[],"events":[],"effects":[],"states":[{"name":"waiting"},{"name":"done","terminal":true}],"initial":"waiting","transitions":[],"deadlines":[{"name":"due","from":"waiting","after":"dur(1, ms)","to":"done"}]}"#), false, false).unwrap();
+    crate::mcp::tools::dispatch(
+        &mut store,
+        &mut clock,
+        "instance_create",
+        &value(r#"{"machine":"quiet_deadline","request_id":"create-quiet"}"#),
+    )
+    .unwrap();
+    let driver = OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap();
+    let diagnostics = DiagnosticOutput::start(std::io::sink()).unwrap();
+    let (owner, handle) = super::native::NativeOwner::new(
+        driver,
+        FixedClock::new(1001, 0),
+        diagnostics,
+        Duration::from_millis(10),
+        10000,
+    )
+    .unwrap();
+    let worker = std::thread::spawn(move || owner.run());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        // This independent read-only observer cannot run the executor or mutate
+        // the journal; no session or client command is created in this test.
+        let observed = Store::open_read_only(&scratch.0).unwrap();
+        let view = observed
+            .instance_view("inst-create-quiet", None, None)
+            .unwrap();
+        if view.get("status").and_then(Value::as_str) == Some("completed") {
+            assert_eq!(observed.journal.last_seq, 3);
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "quiet native owner must poll the due deadline"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    handle.stop();
+    let exit = worker.join().unwrap();
+    assert_eq!(exit.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(exit.shutdown.writer_released && exit.shutdown.inventory_complete);
+    assert_eq!(Store::open(&scratch.0).unwrap().journal.last_seq, 3);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn execution_host_native_idle_passes_keep_one_writer_and_stop_releases_it() {
+    use crate::mcp::notify::diagnostic_output::DiagnosticOutput;
+    use fsm_execute::{
+        config::HandlerTable,
+        service::{ExecutorPhase, OwnedNativeExecutor},
+    };
+    use std::{sync::mpsc, time::Duration};
+
+    struct ObservedClock(mpsc::Sender<()>, FixedClock);
+    impl crate::clock::Clock for ObservedClock {
+        fn now_ms(&mut self) -> i64 {
+            let _ = self.0.send(());
+            crate::clock::Clock::now_ms(&mut self.1)
+        }
+    }
+
+    let scratch = Scratch::new();
+    let driver = OwnedNativeExecutor::new(seeded(&scratch.0), HandlerTable::default()).unwrap();
+    let control = driver.control();
+    let (observed, passes) = mpsc::channel();
+    let diagnostics = DiagnosticOutput::start(std::io::sink()).unwrap();
+    let (owner, handle) = super::native::NativeOwner::new(
+        driver,
+        ObservedClock(observed, FixedClock::new(2000, 0)),
+        diagnostics,
+        Duration::from_millis(10),
+        10000,
+    )
+    .unwrap();
+    let session = handle.session().unwrap();
+    let worker = std::thread::spawn(move || owner.run());
+    // Scheduling occurs without a submitted command; the wait is only a test
+    // watchdog, never the source of the driver's logical timestamp.
+    for _ in 0..3 {
+        passes.recv_timeout(Duration::from_secs(5)).unwrap();
+    }
+    assert!(Store::open(&scratch.0).is_err());
+    let reply = session
+        .submit(command("machine_list", "{}"))
+        .unwrap()
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap();
+    assert!(reply.result.is_ok());
+    assert_eq!(reply.committed_seq, 1);
+    assert_eq!(reply.publication, None);
+    handle.stop();
+    assert!(control.report().admission_closed);
+    assert!(matches!(
+        session.submit(command("machine_list", "{}")),
+        Err(AdmissionError::Stopped)
+    ));
+    let mut exit = worker.join().unwrap();
+    assert!(exit.failure.is_none());
+    assert_eq!(exit.shutdown.phase, ExecutorPhase::Stopped);
+    assert!(
+        exit.shutdown.inventory_complete
+            && exit.shutdown.helpers_retired
+            && exit.shutdown.writer_released
+    );
+    assert!(exit.driver.store_mut().is_none());
+    assert_eq!(exit.diagnostics.dropped(), 0);
+    let reopened = Store::open(&scratch.0).unwrap();
+    assert_eq!(reopened.journal.last_seq, 1);
+}
+
 struct Scratch(std::path::PathBuf);
 
 impl Scratch {

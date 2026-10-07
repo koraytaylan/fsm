@@ -211,6 +211,28 @@ impl Mailbox {
         }
     }
 
+    /// Wait on a monotonic deadline without advancing the injected logical clock.
+    #[cfg(target_os = "linux")]
+    pub(super) fn next_until(&self, deadline: std::time::Instant) -> Next {
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        loop {
+            if state.stopped {
+                return Next::Stopped;
+            }
+            if let Some(command) = state.queue.pop_front() {
+                return Next::Command(command);
+            }
+            let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+                return Next::Due;
+            };
+            state = self
+                .ready
+                .wait_timeout(state, remaining)
+                .unwrap_or_else(|p| p.into_inner())
+                .0;
+        }
+    }
+
     pub(super) fn stop(&self) {
         let rejected = {
             let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
@@ -261,4 +283,22 @@ fn value_charge(value: &Value, depth: usize) -> usize {
         }),
     };
     base.saturating_add(content)
+}
+
+#[cfg(target_os = "linux")]
+pub(super) enum Next {
+    Command(Admitted),
+    Due,
+    Stopped,
+}
+
+/// Retire queued replies on normal return, an unused owner, or unwinding.
+#[cfg(target_os = "linux")]
+pub(super) struct Retirement(pub Arc<Mailbox>);
+
+#[cfg(target_os = "linux")]
+impl Drop for Retirement {
+    fn drop(&mut self) {
+        self.0.stop();
+    }
 }

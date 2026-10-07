@@ -2639,3 +2639,15 @@ not yet constructed by either transport. Existing coarse-loop tool dispatch
 also checks its cancellation flag without requiring progress metadata. A
 never-dispatched cancelled request produces no response or Store mutation;
 cancellation does not revoke a durable workflow already created.
+
+The staged private Linux native command owner now retains the existing
+OwnedNativeExecutor and drives its decision passes independently of client
+input, sharing the writer-only owner's complete command boundary. Stop fences
+original native admission before queue rejection and returns the original
+driver/report after supervised polling, retaining uncertain ownership for its
+caller. Operator diagnostics use the existing bounded output worker. This
+private integration changes no supported public signature, error code, wire
+discriminator, journal/hash format, dependency or MSRV; production transports
+do not construct it yet, so public autonomous execution remains unimplemented.
+Quiet deadline progress and writer release are focused host evidence, not
+real-process/MCP responsiveness or complete transport acceptance.

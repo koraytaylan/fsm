@@ -1311,3 +1311,15 @@ session-generation isolation and charged control/RPC allocations. Coarse-loop
 tool cancellation also remains active without progress metadata. This is a
 correction/preparation step, not autonomous stdio/HTTP execution or a new public
 API, error code, discovery version, journal format or hash domain.
+
+The staged private Linux native command owner now retains the existing
+OwnedNativeExecutor and drives its decision passes independently of client
+input, sharing the writer-only owner's complete command boundary. Stop fences
+original native admission before queue rejection and returns the original
+driver/report after supervised polling, retaining uncertain ownership for its
+caller. Operator diagnostics use the existing bounded output worker. This
+private integration changes no supported public signature, error code, wire
+discriminator, journal/hash format, dependency or MSRV; production transports
+do not construct it yet, so public autonomous execution remains unimplemented.
+Quiet deadline progress and writer release are focused host evidence, not
+real-process/MCP responsiveness or complete transport acceptance.

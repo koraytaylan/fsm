@@ -140,3 +140,42 @@ execution, a responsive request while a handler is held, and verified shutdown.
 Focused checks accompany development, with broader gates at meaningful
 integration milestones; no private primitive is treated as shipped autonomy.
 HTTP integration and the remaining plans stay in scope.
+
+## Native owner integration toward the working stdio path — 2026-10-07
+
+The Linux private owner now retains the existing OwnedNativeExecutor instead
+of placing a writer in a handler thread. Its command path calls the same
+apply_command boundary as the writer-only owner. A monotonic Condvar deadline
+bounds idle waits independently of injected logical time; native decision
+passes happen initially, on the configured interval, or after eight commands.
+A separate 50 ms control check prevents a long poll interval from hiding an
+independent original lifecycle stop. Host Handle::stop fences original native
+admission before rejecting queued applications. Existing lifecycle polling
+preserves the original shutdown deadline and report; the returned NativeExit
+retains the original driver even on uncertainty. A retirement guard disconnects
+queued replies on owner destruction/unwind, without calling transport I/O.
+Diagnostic publication uses the existing bounded DiagnosticOutput worker;
+dropped diagnostics and output-drain evidence remain available to the adapter.
+
+Independent tests cover quiet scheduling with a fixed logical clock and a due
+deadline reaching completed at exactly the supplied timestamp without creating
+any session or command. Inspection uses Store::open_read_only and therefore
+cannot tick the executor. The idle case proves repeated quiet passes add no
+records, an ordinary read still captures the original prefix, only one writer
+exists, stop closes native admission and rejects further commands, and actual
+verified shutdown permits a second writer to reopen the unchanged journal.
+All 13 execution_host cases and CLI all-target Clippy pass on stable in terminal
+session 93252 and Rust 1.89 in terminal session 97765, under asserted actual
+1 GiB RAM/zero-swap limits and serial workers; formatting and size checks pass.
+An initial focused compilation failed because the new test named a nonexistent
+Store::verify method; the test now uses authoritative reopening/folding instead.
+
+Review limitations: no production transport constructs this owner; interactive
+continuations, egress publication, completion-batch fairness, real process/MCP
+held-handler responsiveness, and uncertain-owner transport retention still
+require integration proof. No new journal/error/wire/public-library contract
+is introduced, and all four capability documents describe this private scope.
+The broader changed-source stable host gate is deferred to the working-path
+integration milestone at the user's direction; the prior frozen cancellation
+gate does not certify this new code. Platform CI remains unexecuted for this
+unit, task 8901 remains in progress, and no downstream task is released.

@@ -16,6 +16,8 @@ use crate::store::{ErrorObj, Store};
 use fsm_core::json::Value;
 
 mod mailbox;
+#[cfg(target_os = "linux")]
+mod native;
 use mailbox::{Admitted, Mailbox};
 
 #[cfg(test)]
@@ -83,6 +85,8 @@ impl Session {
 #[derive(Clone)]
 pub(super) struct Handle {
     mailbox: Arc<Mailbox>,
+    #[cfg(target_os = "linux")]
+    native_stop: Option<(fsm_execute::service::ExecutorControl, i64)>,
 }
 
 impl Handle {
@@ -96,6 +100,10 @@ impl Handle {
 
     /// A single coalesced stop bit has capacity independent of queued commands.
     pub(super) fn stop(&self) {
+        #[cfg(target_os = "linux")]
+        if let Some((control, timeout_ms)) = &self.native_stop {
+            let _ = control.stop(fsm_execute::service::ShutdownMode::Abort, *timeout_ms);
+        }
         self.mailbox.stop();
     }
 }
@@ -112,6 +120,8 @@ impl<C: Clock> Owner<C> {
         let mailbox = Arc::new(Mailbox::default());
         let handle = Handle {
             mailbox: Arc::clone(&mailbox),
+            #[cfg(target_os = "linux")]
+            native_stop: None,
         };
         (
             Self {
@@ -130,41 +140,46 @@ impl<C: Clock> Owner<C> {
         }
     }
 
-    fn apply(&mut self, mut admitted: Admitted) {
-        // The charged admitted envelope remains alive through dispatch. No
-        // transport output or client input occurs in this operation boundary.
-        if !admitted.session.is_open() || admitted.cancel.cancelled() {
-            return;
-        }
-        let before = self.store.journal.last_seq;
-        let context = super::tools::ToolCtx {
-            cancel: std::mem::take(&mut admitted.cancel),
-            ..Default::default()
+    fn apply(&mut self, admitted: Admitted) {
+        apply_command(&mut self.store, &mut self.clock, admitted);
+    }
+}
+
+// Both writer-only and native owners use exactly this committing boundary.
+fn apply_command(store: &mut Store, clock: &mut dyn Clock, mut admitted: Admitted) {
+    // The charged admitted envelope remains alive through dispatch. No
+    // transport output or client input occurs in this operation boundary.
+    if !admitted.session.is_open() || admitted.cancel.cancelled() {
+        return;
+    }
+    let before = store.journal.last_seq;
+    let context = super::tools::ToolCtx {
+        cancel: std::mem::take(&mut admitted.cancel),
+        ..Default::default()
+    };
+    let result = super::tools::dispatch_with(
+        store,
+        clock,
+        &admitted.command.tool,
+        &admitted.command.arguments,
+        &context,
+    );
+    let committed_seq = store.journal.last_seq;
+    let publication = (committed_seq > before).then_some(Publication {
+        first_seq: before.saturating_add(1),
+        last_seq: committed_seq,
+    });
+    if admitted.session.is_open() {
+        let outcome = Outcome {
+            session_generation: admitted.session.generation,
+            rpc_id: std::mem::replace(&mut admitted.command.rpc_id, Value::Null),
+            result,
+            committed_seq,
+            publication,
         };
-        let result = super::tools::dispatch_with(
-            &mut self.store,
-            &mut self.clock,
-            &admitted.command.tool,
-            &admitted.command.arguments,
-            &context,
-        );
-        let committed_seq = self.store.journal.last_seq;
-        let publication = (committed_seq > before).then_some(Publication {
-            first_seq: before.saturating_add(1),
-            last_seq: committed_seq,
-        });
-        if admitted.session.is_open() {
-            let outcome = Outcome {
-                session_generation: admitted.session.generation,
-                rpc_id: std::mem::replace(&mut admitted.command.rpc_id, Value::Null),
-                result,
-                committed_seq,
-                publication,
-            };
-            // This channel has exactly one reserved slot. A lost receiver
-            // cannot block the owner or reverse a committed operation.
-            let _ = admitted.reply.try_send(outcome);
-        }
+        // This channel has exactly one reserved slot. A lost receiver
+        // cannot block the owner or reverse a committed operation.
+        let _ = admitted.reply.try_send(outcome);
     }
 }
 

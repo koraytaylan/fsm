@@ -1364,3 +1364,15 @@ retains its existing cancellation flag, including calls without progress tokens;
 this corrects the existing cancellation behavior without adding an error code,
 wire capability, journal/hash format or supported Rust API. Executor state,
 interactive continuations, bounded egress and transport routing remain pending.
+
+The staged private Linux native command owner now retains the existing
+OwnedNativeExecutor and drives its decision passes independently of client
+input, sharing the writer-only owner's complete command boundary. Stop fences
+original native admission before queue rejection and returns the original
+driver/report after supervised polling, retaining uncertain ownership for its
+caller. Operator diagnostics use the existing bounded output worker. This
+private integration changes no supported public signature, error code, wire
+discriminator, journal/hash format, dependency or MSRV; production transports
+do not construct it yet, so public autonomous execution remains unimplemented.
+Quiet deadline progress and writer release are focused host evidence, not
+real-process/MCP responsiveness or complete transport acceptance.

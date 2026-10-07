@@ -6,7 +6,8 @@ evidence are coordinator-owned.
 
 - **Status:** Registered by hand; execution-host-ownership is in progress;
   private Store ownership, bounded admission and reserved cancellation are
-  implemented; executor state and transport integration remain outstanding.
+  implemented; a private native owner now retains executor state and drives
+  quiet decision passes; production transport integration remains outstanding.
 - **Goal:** accepted embedded workflows advance without client polling,
   with one writer and responsive, bounded stdio and HTTP sessions.
 - **Root cause:** stdio runs an executor tick only after requests and HTTP
@@ -91,3 +92,19 @@ and verified shutdown as end-to-end evidence; broader checks follow meaningful
 integration milestones. HTTP and plans 0021–0023 remain in scope; task 8901
 stays in progress, merged_as stays empty, and completion remains 0/7.
 This evidence-only change omits unchanged code gates and uses diff checks.
+
+### Native owner integration for the stdio path — 2026-10-07
+
+The private native owner retains the existing lifecycle driver and sole writer,
+uses the same committing command boundary, runs quiet decision passes, and
+fences native admission before queue rejection on stop. Monotonic waits never
+supply journal timestamps; bounded diagnostic output and the original driver
+are retained through shutdown reporting. An independent read-only observer
+proves a due deadline completes without any client command; an idle fixed-clock
+case proves no extra append, ordinary reads and actual writer release.
+Focused stable checks pass 13 host cases and CLI all-target Clippy in session
+93252; the same 13 cases and CLI all-target Clippy pass on Rust 1.89
+in terminal session 97765. Formatting and file-size checks also pass. This advances the working stdio integration
+milestone without releasing later tasks or claiming real-handler/transport
+acceptance; task 8901 remains in progress at 0/7, and the broader changed-source
+gate will run at the next integration milestone.

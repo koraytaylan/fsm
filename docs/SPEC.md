@@ -3141,9 +3141,10 @@ retirement. Charge Value storage, owned String/array capacities and a conservati
 allowance below; no original wire-frame copies are retained in this boundary. A separately reserved coalesced stop
 control and original-session close MUST remain available at saturation. Stop
 MUST reject queued commands before Store dispatch, finish any already executing
-operation, and reject further admission. This initial private owner does not
-yet carry executor state, interactive continuations or bounded
-egress, and neither production transport constructs it yet; the public
+operation, and reject further admission. The writer-only private owner has no executor. A staged Linux native owner
+retains the original OwnedNativeExecutor, including its sole writer, and uses
+the same complete command boundary. Interactive continuations and bounded
+egress remain outstanding, and neither production transport constructs it yet; the public
 autonomous execution capability remains unimplemented.
 
 Private host cancellation MUST reserve control metadata for every admitted
@@ -3157,3 +3158,17 @@ before dispatch MUST perform no Store operation, claim no journal request key
 and suppress the response. Cancellation after dispatch MUST retain the existing
 coarse-loop flag even without progress metadata; a single engine step remains
 noninterruptible and an already-created durable workflow is not cancelled.
+
+The staged private native host MUST drive native decisions without requiring
+a client command. Its wait deadlines MUST use a monotonic clock and MUST NOT
+supply journal timestamps; each decision pass samples the injected logical
+clock. Service a native pass after at most eight admitted commands or the
+configured finite poll interval. Independent lifecycle controls MUST be observed
+within 50 ms of an idle wait regardless of that interval. A host stop MUST close
+native admission through the original control before rejecting queued commands.
+Shutdown MUST poll the existing original lifecycle driver under its original
+deadline; return the driver and its report to the transport even when closure
+is uncertain, rather than treating owner exit as evidence of stopped work.
+Operator diagnostics MUST use the existing bounded output worker, with loss
+counted explicitly. Complete completion fairness, real-handler responsiveness
+and production transport integration remain acceptance obligations.
