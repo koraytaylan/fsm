@@ -192,3 +192,21 @@ in the task cache; verification is queued behind unrelated Cargo work using
 the existing serial 1 GiB/zero-swap scope. This component is not wired to
 service dispatch yet, so no before-spawn guarantee, native marker acceptance,
 admission-cache completion or task completion is claimed.
+
+### Manual-policy review and API inventory repair — 2026-10-07
+
+Review found that the pending checker required an automatic handler even for
+an explicitly manual effect; commit `f4e290b0` preserves manual compatibility
+without acknowledging work or granting spawn permission, with an independent
+pending/outbox and complete Store-state invariant case and matching normative
+documentation. Initial session 13715 at frozen `03187966` is terminal exit 101:
+the new checker cases reached execution, but the independent public-surface
+scanner found the intended check_pending re-export missing from its inventory.
+Commit `0fc018ea` adds that exact re-export entry; the original failure log is
+retained and not reported as a pass. Corrected session 44579 verifies frozen
+`0fc018ea` only after the original run retired, including all four pending
+checker cases, existing analyzer matrices, public inventory and stable/MSRV
+all-target Clippy, followed by concrete-argument guard neutralization and
+restoration under serial 1 GiB/zero-swap limits. The corrected log is
+pending-contract-evidence-corrected-check.log in the task cache; results are
+pending and production dispatch wiring remains unfinished.
