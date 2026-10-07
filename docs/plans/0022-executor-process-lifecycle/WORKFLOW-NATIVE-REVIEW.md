@@ -1140,3 +1140,18 @@ All four embedded_read_only tests and CLI all-target Clippy pass on stable/MSRV
 in terminal session 98800, with verified one GiB/zero-swap bounds; formatting
 and file-size checks pass. Renewed full gate, selector sensitivity, HTTP hosting,
 bounded borrowed stop and complete recovery/crash matrix remain pending.
+
+## Borrowed native selector sensitivity at 1513df5
+
+Terminal session 25108 exited zero: changing only ExecutorLoop::new's native
+runner selector to Runner::new makes the public borrowed refusal test fail
+with exit 101 at its exec/mode assertion, with an actual legacy spawned-handler
+diagnostic. A finally block restores exact serve.rs bytes, then the same test
+passes on stable/MSRV and tracked source is clean. Complete cache log
+borrowed-selection-sensitivity.log SHA-256 is
+3a0448952750cd73591d95e868e7b08d8a3dcfa4e95885f374f188086d94c1d6;
+restored source SHA-256 is
+27e6b24171996b0f333bffe11e3be27b9392b038ce80d8e5cff341f46e87696d.
+The scope asserts one GiB/zero-swap limits before mutation. This proves native
+selection through the borrowed public entry, not individual read-only guard
+sensitivity, bounded stop or current-source full platform acceptance.
