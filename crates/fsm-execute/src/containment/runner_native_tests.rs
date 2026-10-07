@@ -19,6 +19,8 @@ use advance::settle_owned;
 mod handoff_recovery;
 #[path = "runner_recovery_native_tests.rs"]
 mod recovery;
+#[path = "runner_stopped_host_native_tests.rs"]
+mod stopped_host;
 
 pub(super) const SERVER: &str = r#"import json,os,subprocess,sys,time
 from pathlib import Path
@@ -131,6 +133,7 @@ pub(super) fn run() {
         "process-exit",
         "process-recover-removed",
         "process-recover-changed",
+        "process-recover-stopped-kill",
         "process-failure",
         "process-signal",
         "cancel-mcp",
@@ -188,6 +191,7 @@ pub(super) fn run() {
             "process-exit"
                 | "process-recover-removed"
                 | "process-recover-changed"
+                | "process-recover-stopped-kill"
                 | "process-failure"
                 | "process-signal"
                 | "cancel-process"
@@ -526,7 +530,7 @@ pub(super) fn run() {
             settle_interrupted(&fixture, &effect, &original_claim, &completion);
         } else if mode == "process-exit" || mode.starts_with("process-recover-") {
             let (mut store, before) =
-                recovery::reopen_stopped(&fixture, &effect, &original_claim, &completion);
+                recovery::reopen_stopped(&fixture, &effect, &original_claim, &completion, mode);
             settle_owned(
                 &fixture,
                 &mut store,

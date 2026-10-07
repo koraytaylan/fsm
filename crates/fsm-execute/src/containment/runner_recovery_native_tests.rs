@@ -7,6 +7,7 @@ pub(super) fn reopen_stopped(
     effect: &str,
     claim: &fsm_core::record::execution::Claim,
     completion: &fsm_execute::run::native_client::NativeCompletion,
+    mode: &str,
 ) -> (Store, usize) {
     use fsm_core::record::RecordKind;
     use fsm_execute::run::Pipeline;
@@ -23,15 +24,21 @@ pub(super) fn reopen_stopped(
     let hash = store.current_execution_claim_hash(claim).unwrap();
     assert!(completion.proof().matches_claim(claim, &hash));
     completion.proof().check_store(&fixture.store).unwrap();
-    Pipeline
-        .stop_native(
-            &mut store,
-            &mut fsm_store::clock::FixedClock::new(1000, 1),
-            claim,
-            completion,
-            &format!("exec-stop-{effect}-{}", claim.run_id()),
-        )
-        .unwrap();
+    if mode == "process-recover-stopped-kill" {
+        drop(store);
+        super::stopped_host::kill_after_publication(fixture);
+        store = Store::open(&fixture.store).unwrap();
+    } else {
+        Pipeline
+            .stop_native(
+                &mut store,
+                &mut fsm_store::clock::FixedClock::new(1000, 1),
+                claim,
+                completion,
+                &format!("exec-stop-{effect}-{}", claim.run_id()),
+            )
+            .unwrap();
+    }
     assert_eq!(store.records.len(), before + 1);
     assert_eq!(
         store.records.last().unwrap().kind,
@@ -42,8 +49,8 @@ pub(super) fn reopen_stopped(
     let head = (store.journal.last_seq, store.journal.last_hash.clone());
     drop(store);
 
-    // This is a writer-reopen boundary, not an executor-kill assertion or a
-    // cache-cold replay claim; the privileged fixture supplied real closure.
+    // The dedicated killed-host case additionally proves process death after
+    // the append; other modes retain their writer-reopen boundary.
     let mut reopened = Store::open(&fixture.store).unwrap();
     assert_eq!(reopened.records, records);
     assert!(fsm_store::snapshot::store_states_eq(
