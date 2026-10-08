@@ -770,10 +770,10 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
         let mut ready = Some(ready);
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             let frame = json(line.as_bytes());
-            if frame.get("id") == Some(&json(b"2")) {
-                if let Some(ready) = ready.take() {
-                    ready.send(frame).unwrap();
-                }
+            if frame.get("id") == Some(&json(b"2"))
+                && let Some(ready) = ready.take()
+            {
+                ready.send(frame).unwrap();
             }
         }
     });
