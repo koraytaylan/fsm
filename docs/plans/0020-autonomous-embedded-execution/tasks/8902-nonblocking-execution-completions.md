@@ -70,23 +70,11 @@ owner from answering another eligible request.
 
 - **Done when:** real process and MCP fixtures pass the low-level `async_completion` and private CLI `execution_host` inventories without handler waits on the store owner, while existing executor recovery and public-surface gates pass under the stable host gate.
 
-Implementation checkpoint: owned stdio now selects original raw transport
-worker polling with reserved count/byte capacity and join-gated retirement;
-standalone defaults remain synchronous. Real held-child tests cover polling,
-cancellation, response storage and original worker retirement; stable/MSRV
-executor and stdio checks, all-target Clippy and four guard sensitivity cases
-pass at exact `80f1e5a` (see TRANSPORT-WORKER-REVIEW.md). New helper spawn is now dispatched on the original reserved transport worker
-with separate joined startup-refusal observations; its six new fixtures and
-executor unit/lifecycle/public API checks plus both-crate all-target Clippy pass
-on stable/MSRV at `0705bcb`. Original completion/recovery and shutdown receipt
-verification is now dispatched to reserved proof workers; stable executor unit
-(71), lifecycle/public surface and CLI/stdio/MCP checks pass at `635e933`.
-Original session 96881 continues for Clippy/MSRV; twelve new guard sensitivity
-cases are prepared but unexecuted. Route discovery, durable completion storage,
-installed-handler responsiveness and lifecycle fault acceptance remain open;
-no prerequisite is released and merged_as remains empty.
 
-Additional worker-fault checkpoint: internally scoped transport/proof unwind
-permission is composed with the installed CLI hook through an inventoried
-embedding filter; five new fixtures await runtime verification. This grants no
-native closure or original claim release, and owner/handler faults remain open.
+Acceptance remains incomplete: the required `async_completion` target is
+absent, and the private host ownership fixtures use an empty handler table,
+so they do not prove responsiveness while real process/MCP handlers are held.
+The written tests above remain the acceptance inventory; existing worker and
+empty-handler checks cannot replace it. Historical implementation checkpoints
+are preserved in the task cache under SHA-256
+`0d89e2ea236fa45e3e3b02f31038b82d3b1ba2de6b998fbf0a1cc034e60b18ac`.
