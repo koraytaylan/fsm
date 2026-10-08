@@ -31,6 +31,17 @@ A refusal or timeout leaves ownership retained; it is not permission to start
 another tree. Native termination signals use the supervisor's lease-EOF cleanup
 policy rather than graceful drain, and executor exit alone is not closure proof.
 
+The older broker protocol accepts `prepare`; current native admission requires
+`prepare-owned` and its original preparation lease, and operator reconciliation
+uses `reconcile-claimed`. An older installed broker may reject these requests:
+starting a newer executor does not upgrade the retained authority. Keep the
+original executable available to drain its runs and finish its retained outcome
+handoffs; replace the authority only after its original ownership is settled and
+the authority is retired through its provisioning procedure. If the original
+owner cannot finish, preserve its authority and journal for recovery rather than
+substituting a new helper or removing ownership files. The command sequence above
+is upgrade guidance; cross-implementation execution remains unverified.
+
 ## Reconcile the original interrupted run
 
 After the original owner has retired, select its exact recorded run ID:
