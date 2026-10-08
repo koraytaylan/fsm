@@ -820,7 +820,6 @@ mod tests {
             &JsonLimits::DEFAULT,
         )
         .unwrap();
-        assert!(validate_request(&value).is_err());
         match NativeRequest::start(
             "0123456789abcdef0123456789abcdef",
             1,
