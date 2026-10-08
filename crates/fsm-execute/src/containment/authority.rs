@@ -60,6 +60,8 @@ mod closure;
 
 #[path = "runner.rs"]
 mod runner;
+#[path = "runner_lease.rs"]
+mod runner_lease;
 
 #[path = "broker.rs"]
 mod broker;

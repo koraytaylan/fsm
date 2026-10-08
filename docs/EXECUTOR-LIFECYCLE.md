@@ -1184,6 +1184,11 @@ unavailable-inventory error without initialization. MCP health uses the same
 ownership counts; operator/startup reconciliation remains task 9403 work, so this listing
 does not provide closure proof or authorize retry.
 
+The claimed native runner holds a protected `runner-<allocation>.LOCK` file
+from binding validation through cleanup and original result publication;
+contention refuses entry, while an idle or missing lease proves neither owner
+death nor native closure, and reconciliation integration remains pending.
+
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not
 promise graceful drain. SIGINT (including terminal Ctrl-C), SIGTERM and

@@ -6,6 +6,9 @@ The additive `service::inspect_ownership` shares existing MCP ownership counts
 with the inspection report, without changing existing MCP field semantics.
 Inspection refuses an uninitialized directory using existing
 exec/inflight_deferred rather than asserting an empty verified inventory.
+The native authority now retains additive protected runner lease files through
+result publication; journal versions, claim/binding formats and hash domains are
+unchanged, and lease absence does not grant reconciliation compatibility.
 Implementation must preserve existing journal formats, hash domains and exact
 settlement keys; any additive public command or Rust surface must document its
 compatibility consequences and pass the task's native acceptance before release.

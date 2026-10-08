@@ -74,6 +74,8 @@ pub(super) fn execute_cancellable(
     allocation: u64,
     cancelled: &AtomicBool,
 ) -> Result<Value, String> {
+    // Keep original publication serialized even after native closure is visible.
+    let _execution_lease = super::runner_lease::acquire(directory, allocation)?;
     let binding = read_value(&directory.join(format!("binding-{allocation}.json")), true)?;
     let (claim, lock) = validate_binding(directory, &binding, None)
         .map_err(|error| format!("runner binding validation refused: {error}"))?;

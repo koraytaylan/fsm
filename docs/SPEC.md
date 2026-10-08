@@ -2792,6 +2792,18 @@ original claim. No force-clear, age threshold or kill-by-PID fallback is allowed
 
 ### Local native admission provenance
 
+The protected claimed runner MUST acquire an exclusive kernel-backed
+`runner-<allocation>.LOCK` lease before binding validation or handler entry and
+retain it until native cleanup and original completion publication have returned.
+The empty regular lock file MUST be root-owned with mode 0600 and one link,
+opened without following symlinks, and durably established before entry.
+Contention MUST refuse execution without launching or replacing that lease.
+An idle lease or missing lease is not closure proof; the planned reconciliation
+path still requires original binding, authority, physical store and authenticated
+closure checks. Missing lease material MUST NOT authorize fencing or settlement.
+This lease does not establish ownership before the runner starts; reconciliation
+of claim/binding phases remains unimplemented and cannot infer death from absence.
+
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT
 authorize that incarnation to request active cancellation or protected closure.
