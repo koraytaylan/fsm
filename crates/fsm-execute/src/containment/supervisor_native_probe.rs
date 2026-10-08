@@ -6,6 +6,9 @@ use fsm_execute::run::native_client::{NativeExecution, NativeRequest, NativeRun,
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
+#[path = "supervisor_owned_preparation_probe.rs"]
+mod owned_preparation;
+
 #[test]
 #[ignore = "invoked only as an unprivileged subprocess of native broker tests"]
 fn owned_request() {
@@ -619,26 +622,7 @@ fn prepare_domain() {
         std::thread::sleep(Duration::from_millis(5));
     };
     let domain = owner.domain();
-    let allocation = domain
-        .to_value()
-        .get("allocation")
-        .unwrap()
-        .as_num()
-        .unwrap()
-        .to_owned();
-    let path = std::path::Path::new("/var/lib/fsm-containment")
-        .join(&namespace)
-        .join("authority-1")
-        .join(format!("owner-{allocation}.LOCK"));
-    let probe = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)
-        .unwrap();
-    assert!(matches!(
-        probe.try_lock(),
-        Err(std::fs::TryLockError::WouldBlock)
-    ));
+    let probe = owned_preparation::held_lease(&namespace, domain);
     let progress = prepared.progress();
     assert_eq!(progress.phase, NativePreparationPhase::Prepared);
     assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);

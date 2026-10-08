@@ -361,6 +361,7 @@ each microstep's candidates and pipeline.
 | `req/field_scale` | decimal has too many fraction digits | — |
 | `req/number_token` | raw JSON number | quote it |
 
+
 ## Composition
 
 A machine MAY declare `invoke` on a state: a list of at most
@@ -2624,6 +2625,7 @@ writer opens. This selected host path is not yet provisioned-runtime accepted;
 default CLI/MCP/service host selection, shutdown, reconciliation and cold
 post-ack recovery remain unfinished, with production acceptance flags false.
 
+
 The additive pure `fsm_core::record::execution::AcknowledgedHandoff` value
 reserves `fsm.execution-handoff/1` candidate material for cold post-ack
 recovery: complete original Claim, lowercase original claim-record digest,
@@ -2647,6 +2649,7 @@ unchanged in this additive value-only change. Cold recovery and production
 acceptance remain incomplete, and decoding a candidate grants no execution or
 event permission.
 
+
 `AcknowledgedHandoff::matches_acknowledgement` MUST compare the complete
 original Claim, actual stopped result including omitted/null semantics,
 stopped closure run/domain binding, verified original claim-record hash,
@@ -2655,13 +2658,18 @@ alone MUST NOT pass. The caller must supply verified journal/evidence inputs:
 this pure comparison cannot authenticate arbitrary caller-owned values and
 does not itself publish a handoff or consume an event.
 
+
 In-memory journals MUST NOT write automatic or shutdown snapshot caches, including at the 10,000-record boundary; their checkpoint records and state roots retain the ordinary replay semantics.
+
 
 Verified execution replay MUST retain each unresolved claim’s original record hash as separate, bounded replay context, sourced from the verified ExecutionClaimed record or authenticated sealed-base claim index; snapshot caches MUST reconstruct this context from those sources and MUST NOT supply it from mutable cache metadata. Producers MUST replace provisional claim hashes with final published hashes at checkpoint boundaries. This context MUST NOT enter execution logical serialization or historical state roots, avoiding claim-record self-reference, and MUST disappear with settled ownership.
 
+
 VERSION 12 acknowledgement handoffs: an ExecutionSettled record MAY carry a bounded execution-handoff/1 only for disposition acked, matching its exact original owner, verified original claim hash, stopped outcome and acknowledgement identity. Replay MUST install the handoff atomically with acknowledgement and MUST remove it only in an accepted EventApplied transition matching its original instance, derived event key, original send fingerprint and payload including timestamp stamps; rejection, cancellation and missing observations MUST retain it. Each handoff is at most 128 KiB and the ordered collection at most 4096 entries and 8 MiB. New state-root/5 commits execution_handoffs separately, leaving historical root/4 bytes unchanged; snapshot/7 and base/3 carry the collection. Explicit historical base/1 and base/2 decoders retain their original root/3 and root/4 domains with empty handoffs. VERSION 1–11 migration never invents obligations for old acknowledgements or rewrites records.
 
+
 Matched native manager stop MUST tolerate the original cgroup retiring between its initial metadata observation and live revocation only when a fresh no-follow observation proves absence; that observation MUST NOT establish fencing or closure. The operation MUST still validate the complete original handoff and manager identity, durably revoke entry, and independently prove manager retirement before closure publication. Surviving, replaced or unreadable groups MUST preserve refusal.
+
 
 Cold native outcome-event recovery MUST adopt bounded authenticated execution_handoffs separately from execution ownership and capacity; it MUST require the original healthy physical-store writer, protected namespace/generation and authority device/inode, and the original checked handler contract. It MUST NOT prepare, bind, execute or acknowledge again. Only accepted-event fold retirement completes delivery; rejection, ignored responses, conflicting keys, disabled instances and cancellation retain the obligation. Ready event-only and ownership work MUST share bounded fair ticks, with failed event attempts parked until later journal progress; a retained warm original completion keeps its existing retry path.
 
@@ -2670,6 +2678,7 @@ healthy writer's verified handoff collection MUST also require the original
 acknowledgement request slot, sequence and execution-settlement fingerprint.
 A missing or changed original acknowledgement MUST park the retained local
 obligation without mutating the journal; absence alone is not reconciliation.
+
 
 ### Claim-bound native closure request
 
@@ -2702,6 +2711,7 @@ MUST NOT consume that claim. Production shutdown must implement all admission
 phases, local control authentication, report deadlines and quiet/blocked stdio
 progress separately before task 9402 can complete.
 
+
 ### Original binding before claimed closure
 
 The provisional NativeShutdown request uses the additive close-claimed action
@@ -2733,6 +2743,7 @@ refuse, never establish reconciliation through absence. Original stop and
 interrupted request-key derivations and persisted formats remain unchanged.
 Application MUST retain both owned transports and cannot alone release local
 capacity or establish a bounded production shutdown report.
+
 
 ### Planned uncertain-run inspection and reconciliation (task 9403)
 
@@ -2887,9 +2898,11 @@ failed matching MUST retain the admission and its reserved capacity. Repeated
 observation MUST NOT downgrade a locally admitted claim. Provenance authorizes
 no settlement without independently authenticated original closure evidence.
 
+
 ### Bounded queued protocol output
 
 Notifier::queued MUST atomically enqueue complete canonical frames, bounded by 256 retained frames and 8 MiB of retained Vec allocation capacity including in-flight writes; serialization temporaries are outside this accounting unit. Budget exhaustion MUST return WouldBlock without partial publication. Close MUST refuse further admission without waiting on the actual writer; drained MUST require successful write/flush of every admitted frame after close. Write failure MUST remain broken and MUST NOT report successful drainage. Drop grants no drainage guarantee.
+
 
 ### Shared bounded protocol input
 
@@ -2904,9 +2917,11 @@ retain its existing parse-error response for an oversized frame. Read failures
 during drainage MUST propagate rather than claim successful resynchronization.
 This blocking framing primitive establishes no silent-client or cleanup deadline.
 
+
 ### Admission-free native completion observation
 
 On supported Linux native runners, service::observe_admitted_with MUST observe retained native transport and recover original durable ownership without scheduling pending effects, new preparations, bound handler entry, retries or machine deadlines; it MAY apply at most one original completion or event-handoff action through the healthy original physical writer, and MUST refuse legacy runners, memory/read-only/poisoned writers and copied-store routes using existing exec/mode or exec/inflight_deferred errors. Recovery transport is permitted; it MUST NOT authorize handler entry. This writer-dependent pass grants no independent shutdown deadline or blocked-I/O progress guarantee.
+
 
 ### Original interrupted native retirement
 
@@ -2920,6 +2935,7 @@ keep its original settlement/event policy. It MUST NOT append a record, launch
 work, consume pending effects, clear unrelated reservations or infer closure
 from helper death. A false result means helper retirement remains incomplete.
 The caller retains NativeShutdown independently until its helper is retired.
+
 
 ### Shared native admission closure and local targets
 
@@ -2992,6 +3008,7 @@ actual successful output write/flush, separately. Input/feed detachment MUST
 NOT be advertised as proved I/O-worker retirement. The owned entry MUST NOT
 claim installed native tree acceptance or change production CLI selection.
 
+
 ### Opt-in local owned executor control
 
 On Linux, an explicit LocalControlEndpoint publisher MAY expose its actual
@@ -3029,6 +3046,7 @@ Drop MUST NOT claim native shutdown, cleanup or response-delivery guarantees.
 This opt-in publisher does not change production backend selection and requires
 the host to drive the owned executor independently.
 
+
 ### Operator local executor stop
 
 `fsm execute stop --data-dir <dir> --mode drain|abort --timeout-ms <n>` MUST
@@ -3049,6 +3067,7 @@ rendering remains synchronous. This command targets only the exact publisher
 incarnation and MUST NOT claim all durable data-directory ownership is closed.
 It MUST NOT activate native production selection or fabricate an endpoint for
 an executor that has not published one.
+
 
 ### Paired native lifecycle writer strategy
 
@@ -3186,6 +3205,7 @@ not grant cleanup, settlement or closure permission. Legacy observation /1
 and terminal stop reports keep their original twelve-field schema unchanged.
 local_control::observe now requests /2; this additive health API/protocol version
 changes no persisted format, hash domain, dependency or MSRV.
+
 
 Native prepared-cleanup failure diagnostics are best-effort lifecycle log lines
 beginning `native-prepared-cleanup-uncertain`, bounded to 1024 UTF-8 bytes with

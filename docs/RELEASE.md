@@ -8,6 +8,7 @@ preparation, retains its guard across
 prepared and uncertain claim states, and moves it into the original execution
 owner before dropping the admission reservation; native acceptance remains pending.
 
+
 Allocator-side `prepare-owned` leases and binding/closure checks are implemented;
 absent-binding reconciliation now reuses exact claim validation while holding both
 original leases, and production client guard transfer is wired, but native
@@ -135,6 +136,7 @@ and journal/receipt/attestation/hash/public response formats remain unchanged.
 The unreleased installed-helper permission profile requires reprovisioning and
 fresh native/portable/frozen acceptance before production routing.
 
+
 The provisional native runner adds a private one-shot exec-status stream bound
 to its original protected claim and enrolled gate before entry grant. A Root-only
 initial directory prevents socket-publication races; only the verified reserved
@@ -151,6 +153,7 @@ not release the production gate or finish task 9303. The inherited-input nonce
 and nondumpable-gate controls above replace the initial sender-exclusivity
 assumption; native execution and frozen acceptance remain required.
 
+
 Authenticated broker close now shares the runner's original-domain fencing:
 when matched manager stop refuses, it attempts verified original kernel
 freeze/kill while preserving that refusal and requiring independent complete
@@ -160,6 +163,7 @@ unresolved until exact original proof is available. The native fault control
 requires durable revocation, original-domain depopulation or actual absence,
 unchanged damaged handoff and no fabricated manager completion or closure.
 No journal, receipt, attestation, hash or request-format bytes change.
+
 
 Broker lifetime leadership and startup now validate protected configuration,
 authority/boot and lock identity independently of the current handler catalogue;
@@ -173,6 +177,7 @@ recovery without the catalogue. This repairs the broker access failure in CI run
 37339071702; current full native/portable/frozen acceptance remains pending.
 No journal, closure, broker configuration, epoch or attestation bytes change.
 
+
 A present verified original cgroup retains an unconditional admission-revocation
 path even when protected handoff corruption prevents matched manager stop;
 absent-domain revocation still requires the verified handoff and original manager
@@ -182,6 +187,7 @@ claiming closure, manager retirement or reusable capacity. Replacement identitie
 still refuse; later closure still requires exact original handoff and independent
 full retirement proof. This repairs the corrupted-handoff control failure in
 CI run 37336060083; full native/portable/frozen acceptance remains pending.
+
 
 After durable entry revocation and exact manager unit/job retirement, submitted
 native closure may remove an original protected residual empty cgroup using a
@@ -195,6 +201,7 @@ now performs the same matched residual cleanup, retaining actual absence and
 unrelated-process controls. Current native/portable/frozen acceptance remains
 pending; historical journal and closure bytes are unchanged.
 
+
 Native launch retains invocation-matched root status with `RemainAfterExit=yes`
 and `CollectMode=inactive`, without `systemd-run --collect`, until Root performs
 matched stop after durable entry revocation; fast success, failure and signal
@@ -207,6 +214,7 @@ actual cgroup absence, unloaded manager unit, no queued job and helper retiremen
 Native fixtures exercise fast true/false/signal handlers and reject closure while
 a successful exited unit remains retained; current compiled, native, portable and
 frozen acceptance remain pending under the unreleased provisional boundary.
+
 
 NativeCompletion now additionally authenticates the full bounded successful
 response using separate immutable Root-issued result attestation; a matching
@@ -235,6 +243,7 @@ matching original closure, plus missing/torn/symlink/writable attestation refusa
 unchanged fixture-owned bytes after restoration; current native/portable/frozen
 acceptance and automatic production routing remain pending.
 
+
 The provisional `Pipeline::claim_native_handler` derives instance/effect identity
 from journal replay, validates the original HandlerSpec and takes its fingerprint
 and retry snapshot from that same contract under a healthy durable writer.
@@ -247,6 +256,7 @@ Root binding still rechecks its approved catalogue; refusal retains unresolved
 ownership and permits no direct-child fallback. Existing formats, claim/hash
 bytes and retry/ack/event semantics are unchanged, and automatic service routing
 plus compiled/native acceptance remain pending.
+
 
 The provisional `run::native_client::NativeExecution` owns the original native
 run and retains checked completion across writer contention; `observe` polls
@@ -269,6 +279,7 @@ unchanged, with the provisional stopped key derived from effect and run identity
 This component is not yet automatic routing for service, scheduler or public
 ticks, and full native/portable/frozen acceptance remains pending.
 
+
 Native closure and legacy-quiescence file proofs now retain the physical store
 identity from the protected authority's immutable `store-identity.json`;
 new stop/admission writes reject a different directory device/inode with
@@ -282,6 +293,7 @@ older provisioned authorities lacking this metadata require operator-reviewed
 reprovisioning and cannot silently infer it from the caller's store.
 This provisional native boundary fix retains the unreleased API/version scope,
 and full compiled/native acceptance and production host routing remain pending.
+
 
 The provisional `run::native_client::NativeCompletion` now checks a successful
 broker response against the original full claim/hash, closed result envelope,
@@ -1032,6 +1044,7 @@ writer opens. This selected host path is not yet provisioned-runtime accepted;
 default CLI/MCP/service host selection, shutdown, reconciliation and cold
 post-ack recovery remain unfinished, with production acceptance flags false.
 
+
 The additive pure `fsm_core::record::execution::AcknowledgedHandoff` value
 reserves `fsm.execution-handoff/1` candidate material for cold post-ack
 recovery: complete original Claim, lowercase original claim-record digest,
@@ -1055,6 +1068,7 @@ unchanged in this additive value-only change. Cold recovery and production
 acceptance remain incomplete, and decoding a candidate grants no execution or
 event permission.
 
+
 `AcknowledgedHandoff::matches_acknowledgement` MUST compare the complete
 original Claim, actual stopped result including omitted/null semantics,
 stopped closure run/domain binding, verified original claim-record hash,
@@ -1063,13 +1077,18 @@ alone MUST NOT pass. The caller must supply verified journal/evidence inputs:
 this pure comparison cannot authenticate arbitrary caller-owned values and
 does not itself publish a handoff or consume an event.
 
+
 Fixed automatic snapshotting of in-memory stores accidentally writing to their placeholder data directory at 10,000 records; a boundary regression asserts no filesystem entries while checking the final published claim hash and complete replay equality, with no format or hash change.
+
 
 Plan 0022 replay now carries original unresolved claim hashes separately from logical execution bytes, corrects checkpoint projections to the final published record hash, and restores anchors from verified journal prefixes or authenticated base indices on cache/sealed reopen. Settlement removes the context with its owner; independently decoded execution blocks have no anchor. Atomic acknowledgement handoff persistence and cold event delivery remain unimplemented.
 
+
 Unreleased post-ack persistence work introduces VERSION 12, root/5, snapshot/7 and base/3 for atomic acknowledgement-to-event obligations, with explicit historical root/base verification and no journal rewriting; cold host delivery and installed production acceptance remain separate required gates.
 
+
 Corrected matched-stop inspection racing natural cgroup retirement: a confirmed absent group can reach the existing original-handoff revocation and manager checks, with no weakened closure proof, relaxed deadline or format change; new installed runtime acceptance remains pending.
+
 
 Added bounded cold native post-ack event recovery through shared tick paths, retaining original contract, result and physical authority identity across cache and sealed restarts; original warm completion retry semantics remain intact, and production native defaults await installed acceptance.
 
@@ -1093,6 +1112,7 @@ cannot establish reconciliation merely by omitting an obligation. The
 refusal parks without journal mutation and changes no persisted format,
 hash domain, public API or acknowledgement/event request-key derivation.
 
+
 ### Provisional native closure request
 
 Added a Linux NativeShutdown primitive that requests original-claim native
@@ -1102,6 +1122,7 @@ before returning opaque proof. It preserves ownership on uncertainty and
 changes no persisted format or production default. Full installed acceptance,
 all admission phases and the bounded production shutdown controls remain
 unfinished; the primitive alone does not complete task 9402.
+
 
 ### Original binding before claimed closure
 
@@ -1119,6 +1140,7 @@ recorded outcomes and original request keys without a synthetic completion or
 machine event. No persisted format changes; native runtime acceptance and the
 production lifecycle controls remain incomplete.
 
+
 ### Local native admission provenance
 
 Track local native admission provenance through uncertain publication and failed
@@ -1126,9 +1148,11 @@ binding, and refuse local helper cancellation of foreign observed claims without
 releasing their durable identity; no persisted formats change. This foundation
 does not establish native closure or a bounded production shutdown guarantee.
 
+
 ### Bounded queued protocol output
 
 Added opt-in bounded complete-frame notifier output with in-flight allocation accounting, explicit close/drain observation and write-failure preservation; production lifecycle integration remains incomplete.
+
 
 ### Shared bounded protocol input
 
@@ -1136,9 +1160,11 @@ Bound reverse-protocol reads and remove oversized stdio-frame tail accumulation
 using shared framing; preserve ordinary parse errors, exact-cap acceptance and
 next-frame synchronization. Native lifecycle deadlines remain a separate gate.
 
+
 ### Admission-free native completion observation
 
 Added a supported-Linux native completion-only service pass that excludes pending admission, preparation starts, bound entry, retries and machine deadline polling while retaining original completion/event-handoff delivery; production shutdown wiring and installed native acceptance remain pending.
+
 
 ### Original interrupted native retirement
 
@@ -1146,6 +1172,7 @@ Added exact original interrupted-run retirement after authenticated
 settlement and retirement of both native transports, preserving pending work
 and refusing foreign ownership or missing/pruned ledger evidence; production
 shutdown wiring and installed native acceptance remain incomplete.
+
 
 ### Shared native admission closure and local targets
 
@@ -1172,6 +1199,7 @@ Added shared native admission closure and original local shutdown-target iterati
   production CLI selection remain unchanged; native tree/production endpoint
   and signal acceptance are pending, and detached I/O is not claimed retired.
 
+
 - Added an opt-in Linux owner-only local control endpoint and bounded client
   for an actual owned native driver, with exact incarnation/physical-store
   discovery, bounded nonblocking connections and independent metadata responses;
@@ -1180,11 +1208,13 @@ Added shared native admission closure and original local shutdown-target iterati
   release; default selection and installed production acceptance remain
   pending, with no journal format or hash changes.
 
+
 - Added `execute stop` with explicit drain/abort, finite timeout and private
   control-root discovery, using the actual owned endpoint without taking the
   journal writer; confirmed stopped reports exit zero, uncertainty exits one
   with preserved native report or null unknown transport facts. Current executor
   defaults and production endpoint publication remain unchanged and unproved.
+
 
 - Added an opt-in paired native lifecycle actor with verified read-only
   snapshots, temporary writer leases and independent cloned control, reusing
@@ -1304,6 +1334,7 @@ not grant cleanup, settlement or closure permission. Legacy observation /1
 and terminal stop reports keep their original twelve-field schema unchanged.
 local_control::observe now requests /2; this additive health API/protocol version
 changes no persisted format, hash domain, dependency or MSRV.
+
 
 Native prepared-cleanup failure diagnostics are best-effort lifecycle log lines
 beginning `native-prepared-cleanup-uncertain`, bounded to 1024 UTF-8 bytes with

@@ -8,6 +8,7 @@ preparation, retains its guard across
 prepared and uncertain claim states, and moves it into the original execution
 owner before dropping the admission reservation; native acceptance remains pending.
 
+
 Planned pre-run ownership requires an owned lease guard spanning prepared-domain
 delivery, uncertain claim publication, binding and execution without an unlock
 gap; cloning `NativeDomain` cannot replace it, and production admission now moves
@@ -93,6 +94,7 @@ and journal/receipt/attestation/hash/public response formats remain unchanged.
 The unreleased installed-helper permission profile requires reprovisioning and
 fresh native/portable/frozen acceptance before production routing.
 
+
 The provisional native runner adds a private one-shot exec-status stream bound
 to its original protected claim and enrolled gate before entry grant. A Root-only
 initial directory prevents socket-publication races; only the verified reserved
@@ -109,6 +111,7 @@ not release the production gate or finish task 9303. The inherited-input nonce
 and nondumpable-gate controls above replace the initial sender-exclusivity
 assumption; native execution and frozen acceptance remain required.
 
+
 Authenticated broker close now shares the runner's original-domain fencing:
 when matched manager stop refuses, it attempts verified original kernel
 freeze/kill while preserving that refusal and requiring independent complete
@@ -118,6 +121,7 @@ unresolved until exact original proof is available. The native fault control
 requires durable revocation, original-domain depopulation or actual absence,
 unchanged damaged handoff and no fabricated manager completion or closure.
 No journal, receipt, attestation, hash or request-format bytes change.
+
 
 Broker lifetime leadership and startup now validate protected configuration,
 authority/boot and lock identity independently of the current handler catalogue;
@@ -131,6 +135,7 @@ recovery without the catalogue. This repairs the broker access failure in CI run
 37339071702; current full native/portable/frozen acceptance remains pending.
 No journal, closure, broker configuration, epoch or attestation bytes change.
 
+
 A present verified original cgroup retains an unconditional admission-revocation
 path even when protected handoff corruption prevents matched manager stop;
 absent-domain revocation still requires the verified handoff and original manager
@@ -140,6 +145,7 @@ claiming closure, manager retirement or reusable capacity. Replacement identitie
 still refuse; later closure still requires exact original handoff and independent
 full retirement proof. This repairs the corrupted-handoff control failure in
 CI run 37336060083; full native/portable/frozen acceptance remains pending.
+
 
 After durable entry revocation and exact manager unit/job retirement, submitted
 native closure may remove an original protected residual empty cgroup using a
@@ -153,6 +159,7 @@ now performs the same matched residual cleanup, retaining actual absence and
 unrelated-process controls. Current native/portable/frozen acceptance remains
 pending; historical journal and closure bytes are unchanged.
 
+
 Native launch retains invocation-matched root status with `RemainAfterExit=yes`
 and `CollectMode=inactive`, without `systemd-run --collect`, until Root performs
 matched stop after durable entry revocation; fast success, failure and signal
@@ -165,6 +172,7 @@ actual cgroup absence, unloaded manager unit, no queued job and helper retiremen
 Native fixtures exercise fast true/false/signal handlers and reject closure while
 a successful exited unit remains retained; current compiled, native, portable and
 frozen acceptance remain pending under the unreleased provisional boundary.
+
 
 NativeCompletion now additionally authenticates the full bounded successful
 response using separate immutable Root-issued result attestation; a matching
@@ -193,6 +201,7 @@ matching original closure, plus missing/torn/symlink/writable attestation refusa
 unchanged fixture-owned bytes after restoration; current native/portable/frozen
 acceptance and automatic production routing remain pending.
 
+
 The provisional `Pipeline::claim_native_handler` derives instance/effect identity
 from journal replay, validates the original HandlerSpec and takes its fingerprint
 and retry snapshot from that same contract under a healthy durable writer.
@@ -205,6 +214,7 @@ Root binding still rechecks its approved catalogue; refusal retains unresolved
 ownership and permits no direct-child fallback. Existing formats, claim/hash
 bytes and retry/ack/event semantics are unchanged, and automatic service routing
 plus compiled/native acceptance remain pending.
+
 
 The provisional `run::native_client::NativeExecution` owns the original native
 run and retains checked completion across writer contention; `observe` polls
@@ -227,6 +237,7 @@ unchanged, with the provisional stopped key derived from effect and run identity
 This component is not yet automatic routing for service, scheduler or public
 ticks, and full native/portable/frozen acceptance remains pending.
 
+
 Native closure and legacy-quiescence file proofs now retain the physical store
 identity from the protected authority's immutable `store-identity.json`;
 new stop/admission writes reject a different directory device/inode with
@@ -240,6 +251,7 @@ older provisioned authorities lacking this metadata require operator-reviewed
 reprovisioning and cannot silently infer it from the caller's store.
 This provisional native boundary fix retains the unreleased API/version scope,
 and full compiled/native acceptance and production host routing remain pending.
+
 
 `Pipeline::claim_native` requires supported native architecture and a healthy
 on-disk writer, refusing memory, read-only and poisoned journals before claim
@@ -2228,6 +2240,7 @@ writer opens. This selected host path is not yet provisioned-runtime accepted;
 default CLI/MCP/service host selection, shutdown, reconciliation and cold
 post-ack recovery remain unfinished, with production acceptance flags false.
 
+
 The additive pure `fsm_core::record::execution::AcknowledgedHandoff` value
 reserves `fsm.execution-handoff/1` candidate material for cold post-ack
 recovery: complete original Claim, lowercase original claim-record digest,
@@ -2251,6 +2264,7 @@ unchanged in this additive value-only change. Cold recovery and production
 acceptance remain incomplete, and decoding a candidate grants no execution or
 event permission.
 
+
 `AcknowledgedHandoff::matches_acknowledgement` MUST compare the complete
 original Claim, actual stopped result including omitted/null semantics,
 stopped closure run/domain binding, verified original claim-record hash,
@@ -2259,13 +2273,18 @@ alone MUST NOT pass. The caller must supply verified journal/evidence inputs:
 this pure comparison cannot authenticate arbitrary caller-owned values and
 does not itself publish a handoff or consume an event.
 
+
 An in-memory Store writes no snapshot cache when it reaches the automatic 10,000-record boundary or shuts down; checkpoint roots remain available in its records for replay verification.
+
 
 ExecutionState::claim_record_hash borrows the original hash for an exact unresolved claim after verified replay; decoding an execution value alone supplies none. Embedders attaching hashes through attach_claim_record_hash must verify the journal record or separately authenticated base claim index first, and replace provisional hashes after final checkpoint publication; the method grants no execution authority. Store reopen reconstructs this context from authenticated sources.
 
+
 Durable native acknowledgements with an original outcome event retain an execution_handoffs obligation in the same transaction; successful event delivery retires it atomically. The stored original contract and result supply recovery without current handler lookup or new execution authority. The new StoreState collection is separate from unresolved execution ownership and scheduler capacity, and current caches/bases advance to snapshot/7 and base/3 while older authoritative bases still decode under their original roots.
 
+
 A naturally retired native cgroup can disappear during stop inspection; the backend continues only after confirming absence and still requires the original handoff, matched manager identity and independent closure proof, retaining refusal for surviving or unreadable groups.
+
 
 On Linux, the shared tick paths discover durable acknowledged event obligations from the verified snapshot, recover the original checked contract without a current handler table, and apply only under the original healthy writer and protected authority identity. This event-only recovery occupies no execution slot, starts no helper and never acknowledges again; disabled or refused deliveries remain parked until journal progress.
 
@@ -2289,6 +2308,7 @@ cannot establish reconciliation merely by omitting an obligation. The
 refusal parks without journal mutation and changes no persisted format,
 hash domain, public API or acknowledgement/event request-key derivation.
 
+
 ### Provisional claim-bound native closure requests
 
 On Linux, NativeShutdown::start(&snapshot, &claim, timeout) requests closure
@@ -2305,6 +2325,7 @@ independent stdio progress or report deadlines; filesystem observation belongs
 on the lifecycle owner, separate from bounded control response handling.
 Published claims whose binding never completed still require a separate
 reconciliation path and cannot settle from prepared-domain retirement.
+
 
 ### Original binding before claimed closure
 
@@ -2325,6 +2346,7 @@ alone cannot discard a helper or release scheduler capacity. Exact original
 replay is required after consumption, and pruning may cause conservative refusal.
 The production lifecycle driver and bounded report remain unimplemented.
 
+
 ### Local native admission provenance
 
 Recovering original claims does not mean the recovering executor admitted their
@@ -2333,9 +2355,11 @@ actual authenticated completion, but explicit local stop must address the exact
 incarnation and its local admissions. Preserve an uncertain prepared reservation
 when the observed publication differs from its original route or contract.
 
+
 ### Bounded queued protocol output
 
 Use Notifier::queued when protocol emission must remain independent of actual writer blocking; retain its OutputControl, close admission explicitly and observe drained/is_broken under your own deadline without joining a blocked writer. This does not drive native execution or wire the production stdio lifecycle pump.
+
 
 ### Shared bounded protocol input
 
@@ -2345,9 +2369,11 @@ later frames stay readable. It still blocks on silent input or unfinished
 oversized-frame drainage, so independent lifecycle/control handling must not
 wait for it. The owned production lifecycle route remains unimplemented.
 
+
 ### Admission-free native completion observation
 
 Use service::observe_admitted_with with the original healthy durable writer and a supported native runner when pending execution and machine deadlines must stay idle while retained original completion work advances. Original completion events and durable handoffs remain eligible for delivery. Hosts still need independent transport progress and bounded lifecycle reporting when the writer or protocol I/O is unavailable.
+
 
 ### Original interrupted native retirement
 
@@ -2357,6 +2383,7 @@ observation against the original healthy writer. Ok(false) retains capacity;
 errors preserve ownership. Ok(true) releases only that original local owner.
 Already retained success/failure completion follows its original pipeline.
 This operation does not implement endpoint control or independent reporting.
+
 
 ### Shared native admission closure and local targets
 
@@ -2418,6 +2445,7 @@ acceptance remain unfinished. Native execution requires protected authority
 registration of the actual physical store; this library entry does not install
 that authority or register the store.
 
+
 ### Opt-in local owned control endpoint
 
 On Linux, create an existing private mode-0700 root and publish
@@ -2446,6 +2474,7 @@ false leaves cleanup unconfirmed and preserves replacements. Drop only requests
 listener admission closure. Keep the endpoint handle until serving finishes.
 This API is opt-in and does not change current CLI executor selectors.
 
+
 The operator command is `fsm execute stop --data-dir <dir> --mode drain|abort
 --timeout-ms <n>`, with `--control-dir <root>` when the explicit host publisher
 uses a root other than HOME/.cache/fsm/control. The command reads discovery
@@ -2460,6 +2489,7 @@ The command can control explicitly published library hosts while the current
 serve/execute production selectors still use their previous route and publish
 no native owned endpoint; installed production and signal acceptance remain
 pending, and stop never claims all ownership in the directory was terminated.
+
 
 ### Explicit paired native lifecycle host
 
@@ -2593,6 +2623,7 @@ not grant cleanup, settlement or closure permission. Legacy observation /1
 and terminal stop reports keep their original twelve-field schema unchanged.
 local_control::observe now requests /2; this additive health API/protocol version
 changes no persisted format, hash domain, dependency or MSRV.
+
 
 Native prepared-cleanup failure diagnostics are best-effort lifecycle log lines
 beginning `native-prepared-cleanup-uncertain`, bounded to 1024 UTF-8 bytes with
