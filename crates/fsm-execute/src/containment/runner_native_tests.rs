@@ -257,6 +257,17 @@ pub(super) fn run() {
         };
         let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
         let (binding, effect) = claim_binding(&fixture, &domain);
+        // Exercise the production entry before binding: neutralizing only the
+        // lease guard reaches the distinct missing-binding error without launch.
+        let held_lease = super::super::super::runner_lease::acquire(&fixture.directory, 1).unwrap();
+        let refusal = runner::execute(&fixture.directory, 1).unwrap_err();
+        assert_eq!(
+            refusal,
+            "original runner remains active or lease locking is unavailable"
+        );
+        assert!(!fixture.directory.join("launch-1.json").exists());
+        assert!(!fixture.directory.join("binding-1.json").exists());
+        drop(held_lease);
         bind(&fixture.directory, &binding).unwrap();
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         if mode.starts_with("cancel-") {
