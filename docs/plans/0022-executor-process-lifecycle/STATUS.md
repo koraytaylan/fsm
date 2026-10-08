@@ -110,3 +110,18 @@ checkpoint. Successor held-lock assertion and guard-neutralization evidence,
 actual PID reuse, current portable integration and the complete task acceptance
 audit remain outstanding, so 9403 stays in progress. This documentation-only
 milestone omits heavy gates; volatile evidence remains in the task cache.
+
+Frozen 314ab9f2..04bc21e2 verifies actual kernel PID reuse for original process
+and MCP trees on stable/MSRV: unrelated reused-PID sentinels survive public
+identity refusal and legitimate original-domain closure; scoped review digests
+`8c896e1275bc8bb452061425ba1194b4d4409a806a2fd3867b84268526270b8a`
+and `7ff50864f01269f042f5e0aee4f76a1f1a554f956fa8c7a5654906d4c7e7eddf`.
+Association-deadline sensitivity passes original/neutralized/restored at
+0/101/0 on both compilers (review digest
+`6d9594dde20ec36a4de170bc32e360ebcb28baf5818ab1bd9f126feaf22ac1ef`).
+The checkpoint fails: MSRV completes all workflow and historical upgrade
+cases, but stable stalls during embedded-abort successor recovery with an
+unresolved claim; the cause remains unproven. Successor a22a1b1e adds bounded
+actual-owner diagnostics without weakening recovery assertions. Current full
+integration and final acceptance review remain unverified, so 9403 stays in
+progress; this documentation-only verdict omits heavy gates.
