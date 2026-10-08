@@ -29,6 +29,13 @@ on:
         description: Verify the public preparation-owner refusal guard in isolation
         type: boolean
         default: false
+      sensitivity_guard:
+        description: Native guard selected for the isolated sensitivity proof
+        type: choice
+        options:
+          - preparation-owner
+          - association-deadline
+        default: preparation-owner
 
 # Preserve the running develop checkpoint and queue its latest successor.
 # Other branches and pull requests cancel superseded runs; tag gates remain
@@ -177,10 +184,11 @@ jobs:
           native_cache="$HOME/.cache/fsm-native-owner-${{ matrix.rust }}"
           mkdir -p "$native_cache"
           printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
-      - name: Original, neutralized and restored public owner refusal
+      - name: Original, neutralized and restored native guard refusal
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/owner_sensitivity.py
           --toolchain '${{ matrix.rust }}'
+          --guard '${{ inputs.sensitivity_guard }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/owner-sensitivity.json'
       - name: Retain native sensitivity evidence, including failures
         if: always()

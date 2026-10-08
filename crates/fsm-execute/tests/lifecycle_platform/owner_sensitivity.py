@@ -1,4 +1,4 @@
-"""Prove public pre-binding owner refusal is sensitive to its Root lock guard."""
+"""Prove native owner and association refusals depend on their selected guard."""
 import argparse
 import hashlib
 import json
@@ -25,6 +25,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline'),
+                        default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
         parser.error('enabled assertions are required for sensitivity evidence')
@@ -34,9 +36,20 @@ def main():
     cache = Path(os.environ['TMPDIR']).resolve()
     assert not cache.is_relative_to('/tmp')
     assert authority.authority_state_is_clear(), 'exclusive fresh native fixture required'
-    source = repo / 'crates/fsm-execute/src/containment/owner_lease.rs'
+    association = args.guard == 'association-deadline'
+    source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
+                     else 'crates/fsm-execute/src/containment/owner_lease.rs')
+    guard = (b'        let _lock = loop {\n            remaining(deadline)?;\n'
+             if association else GUARD)
+    replacement = b'        let _lock = loop {\n' if association else b''
+    case = 'authority::allocator::native_tests::private_exec_status' if association else CASE
+    named_refusal = case if association else 'authority::allocator::native_tests::' + CHILD
+    description = ('original association acquisition deadline' if association
+                   else 'Root preparation-owner exclusive acquisition')
+    scope = ('installed-gate association acquisition sensitivity; not a full integration gate'
+             if association else 'public live-owner refusal sensitivity; not a full integration gate')
     original = source.read_bytes()
-    assert original.count(GUARD) == 1, 'neutralize exactly one preparation-owner guard'
+    assert original.count(guard) == 1, 'neutralize exactly one selected guard'
     args.report.parent.mkdir(parents=True, exist_ok=True)
     artifacts = cache / 'owner-sensitivity-fixtures'
     artifacts.mkdir()
@@ -51,7 +64,7 @@ def main():
     error = None
     try:
         for phase in ('original', 'neutralized', 'restored'):
-            source.write_bytes(original.replace(GUARD, b'') if phase == 'neutralized' else original)
+            source.write_bytes(original.replace(guard, replacement) if phase == 'neutralized' else original)
             executable = authority.build_authority(repo, args.toolchain, 'test')
             frozen = artifacts / phase
             shutil.copy2(executable, frozen)
@@ -61,7 +74,7 @@ def main():
                        'FSM_NATIVE_FIXTURE_SHA256=' + helper_digest,
                        'FSM_NATIVE_WORKFLOW_CLI_ARTIFACT=' + str(cli),
                        'FSM_NATIVE_WORKFLOW_CLI_SHA256=' + cli_digest,
-                       str(frozen), '--exact', CASE, '--ignored', '--nocapture', '--color', 'never']
+                       str(frozen), '--exact', case, '--ignored', '--nocapture', '--color', 'never']
             timed_out = False
             try:
                 result = subprocess.run(command, cwd=repo, capture_output=True, timeout=90)
@@ -75,16 +88,19 @@ def main():
             expected_exit = 101 if phase == 'neutralized' else 0
             passed = result.returncode == expected_exit
             if phase == 'neutralized':
-                named_failure = ('test authority::allocator::native_tests::' + CHILD + ' ... FAILED').encode()
+                named_failure = ('test ' + named_refusal + ' ... FAILED').encode()
                 passed = passed and named_failure in output
-                passed = passed and b'unwrap_err()' in output and b'interrupted' in output
+                if association:
+                    passed = passed and b'association deadline must expire while its original authority lock is held' in output
+                else:
+                    passed = passed and b'unwrap_err()' in output and b'interrupted' in output
             else:
-                passed = passed and ('test ' + CASE + ' ... ok').encode() in output
+                passed = passed and ('test ' + case + ' ... ok').encode() in output
             rows.append(dict(phase=phase, exit_code=result.returncode, passed=passed,
                              timed_out=timed_out,
                              source_sha256=digest(source), fixture_sha256=digest(frozen),
                              log_sha256=digest(log)))
-            assert passed, 'public preparation-owner sensitivity phase failed: ' + phase
+            assert passed, description + ' sensitivity phase failed: ' + phase
     except BaseException as caught:
         error = caught
     finally:
@@ -107,12 +123,12 @@ def main():
         report = dict(source_commit=commit, source_dirty=not restored,
                       rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip(),
                       cli_sha256=cli_digest,
-                      command=CASE, named_public_refusal=CHILD, phases=rows,
-                      guard='Root preparation-owner exclusive acquisition',
+                      command=case, named_public_refusal=case if association else CHILD, phases=rows,
+                      guard=description,
                       source_restored=restored, gate_released=False,
                       installed_authority=installed, retained_authority=not retired,
                       authority_state_clear=clear,
-                      scope='public live-owner refusal sensitivity; not a full integration gate',
+                      scope=scope,
                       passed=error is None and restored and len(rows) == 3 and all(row['passed'] for row in rows))
         args.report.write_text(json.dumps(report, indent=2) + '\n')
     if error is not None:
