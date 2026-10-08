@@ -15,6 +15,57 @@ impl Daemon {
         assert_eq!(self.0.wait().unwrap().signal(), Some(9));
     }
 
+    pub(in super::super) fn pause(&mut self) {
+        self.signal(19);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            assert!(self.0.try_wait().unwrap().is_none());
+            let status = std::fs::read_to_string(format!("/proc/{}/status", self.0.id())).unwrap();
+            if status.lines().any(|line| line.starts_with("State:\tT")) {
+                return;
+            }
+            assert!(Instant::now() < deadline, "owned broker pause deadline");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    pub(in super::super) fn resume(&mut self) {
+        self.signal(18);
+    }
+
+    fn signal(&mut self, signal: u32) {
+        // An unreaped owned Child reserves this PID; never signal a discovered group.
+        assert!(self.0.try_wait().unwrap().is_none());
+        let mut sender = Command::new("/usr/bin/python3")
+            .args([
+                "-c",
+                "import os,sys;os.kill(int(sys.argv[1]),int(sys.argv[2]))",
+            ])
+            .arg(self.0.id().to_string())
+            .arg(signal.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            if let Some(status) = sender.try_wait().unwrap() {
+                assert!(status.success());
+                return;
+            }
+            if Instant::now() >= deadline {
+                sender.kill().unwrap();
+                let retirement = Instant::now() + Duration::from_secs(2);
+                while sender.try_wait().unwrap().is_none() && Instant::now() < retirement {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                panic!("owned broker signal sender deadline");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     fn start(directory: &Path) -> Self {
         if std::env::var_os("FSM_NATIVE_WORKFLOW_UPGRADE").is_some() {
             super::super::workflow_cases::stage_artifact(

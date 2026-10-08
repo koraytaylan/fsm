@@ -97,6 +97,9 @@ use host_cases::Host;
 #[path = "broker_claimed_closure_native_tests.rs"]
 mod claimed_closure_cases;
 
+#[path = "broker_shutdown_closure_native_tests.rs"]
+mod shutdown_closure_cases;
+
 fn run_case(timeout: bool, host: Host) {
     let table = fixture_table::handler_table(
         timeout,

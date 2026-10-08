@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim', 'execution-closure-claim', 'publication-closure-claim'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim', 'execution-closure-claim', 'publication-closure-claim', 'shutdown-closure-claim'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -43,7 +43,9 @@ def main():
     completion_closure = args.guard == 'completion-closure-claim'
     execution_closure = args.guard == 'execution-closure-claim'
     publication_closure = args.guard == 'publication-closure-claim'
-    source = repo / ('crates/fsm-execute/src/containment/completion_record.rs' if publication_closure
+    shutdown_closure = args.guard == 'shutdown-closure-claim'
+    source = repo / ('crates/fsm-execute/src/run/native_client/shutdown.rs' if shutdown_closure
+                     else 'crates/fsm-execute/src/containment/completion_record.rs' if publication_closure
                      else 'crates/fsm-execute/src/run/native_client/execution.rs' if execution_closure
                      else 'crates/fsm-execute/src/containment/exec_status.rs' if association
                      else 'crates/fsm-execute/src/run/native_client/completion.rs' if completion_closure
@@ -144,6 +146,16 @@ def main():
         named_refusal = case
         description = 'durable publication original journal-claim closure matching'
         scope = 'native result publication closure sensitivity only; not a full integration gate'
+    if shutdown_closure:
+        guard = (b'        if !proof.matches_claim(&self.claim, &self.journal_claim) {\n'
+                 b'            return Err("native shutdown receipt differs from original claim".into());\n'
+                 b'        }\n')
+        replacement = b'        let _ = &self.journal_claim;\n'
+        case = ('authority::allocator::native_tests::broker_cases::shutdown_closure_cases::'
+                'shutdown_refuses_closure_for_another_journal_claim')
+        named_refusal = case
+        description = 'shutdown original journal-claim closure matching'
+        scope = 'public native shutdown receipt sensitivity only; not a full integration gate'
     original = source.read_bytes()
     assert original.count(guard) == 1, 'neutralize exactly one selected guard'
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -194,6 +206,8 @@ def main():
                     caller = 'launch' if args.guard == 'claim-before-launch' else 'runner'
                     marker = ('native ' + caller + ' accepted a claim absent from the durable journal').encode()
                     passed = passed and marker in output
+                elif shutdown_closure:
+                    passed = passed and b'native shutdown accepted closure for another journal claim' in output
                 elif publication_closure:
                     passed = passed and b'native publication wrote attestation before refusing another journal claim' in output
                 elif execution_closure:
@@ -243,7 +257,7 @@ def main():
         report = dict(source_commit=commit, source_dirty=not restored,
                       rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip(),
                       cli_sha256=cli_digest,
-                      command=case, named_public_refusal=case if association or claim_binding or binding_identity or completion_closure or execution_closure or publication_closure else CHILD, phases=rows,
+                      command=case, named_public_refusal=case if association or claim_binding or binding_identity or completion_closure or execution_closure or publication_closure or shutdown_closure else CHILD, phases=rows,
                       guard=description,
                       source_restored=restored, gate_released=False,
                       installed_authority=installed, retained_authority=not retired,

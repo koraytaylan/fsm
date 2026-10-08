@@ -9,6 +9,9 @@ use std::time::{Duration, Instant};
 #[path = "supervisor_owned_preparation_probe.rs"]
 mod owned_preparation;
 
+#[path = "supervisor_shutdown_closure_probe.rs"]
+mod shutdown_closure;
+
 #[test]
 #[ignore = "invoked only as an unprivileged subprocess of native broker tests"]
 fn owned_request() {

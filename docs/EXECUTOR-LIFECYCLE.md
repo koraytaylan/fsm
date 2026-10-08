@@ -1526,3 +1526,10 @@ Failed native workflow artifacts also retain the final 64 KiB of the
 `after-active-stop` successor's stdout and stderr; a completed original drain
 does not establish successful successor startup, and quiet owner health output
 cannot explain an unresolved claim by itself.
+
+The `shutdown-closure-claim` sensitivity checkpoint exercises public
+`NativeShutdown` receipt matching after the actual original broker helper has
+retired, using an unprivileged caller and a Root-only handshake that corrupts
+and restores the same genuine protected receipt inode; the original durable
+claim and journal remain unchanged throughout, and native runtime verification
+of this new case remains pending.
