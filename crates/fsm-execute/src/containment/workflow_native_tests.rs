@@ -117,6 +117,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
     if failures.starts_with("crash-")
         || failures.starts_with("full-disk")
         || failures.starts_with("failed-stop")
+        || failures.starts_with("active-stop")
     {
         let Value::Obj(fields) = &mut table else {
             panic!("handler table")
@@ -133,6 +134,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
             || failures.ends_with("-int")
             || failures.starts_with("full-disk")
             || failures.starts_with("failed-stop")
+            || failures.starts_with("active-stop")
         {
             "30000"
         } else {
@@ -157,6 +159,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     let expected = if failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
+        || failure.starts_with("active-stop")
     {
         8
     } else if failure == "suspend" {
@@ -185,6 +188,10 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             | "full-disk-embedded"
             | "failed-stop"
             | "failed-stop-embedded"
+            | "active-stop-abort"
+            | "active-stop-abort-embedded"
+            | "active-stop-drain"
+            | "active-stop-drain-embedded"
     ) {
         assert!((expected as u64..=4096).contains(&last));
     } else {
@@ -213,7 +220,8 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         let disposition = record.body.get("disposition").and_then(Value::as_str);
         if (failure.starts_with("crash-")
             || failure.starts_with("full-disk")
-            || failure.starts_with("failed-stop"))
+            || failure.starts_with("failed-stop")
+            || failure.starts_with("active-stop"))
             && number(&record.body, "run_id").unwrap() == 1
         {
             assert!(matches!(disposition, Some("attempted" | "interrupted")));
@@ -224,6 +232,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     if failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
+        || failure.starts_with("active-stop")
     {
         let claims: Vec<_> = store
             .records
@@ -253,6 +262,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             || failure.ends_with("-int")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
+            || failure.starts_with("active-stop")
         {
             assert_eq!(
                 status, "interrupted",
@@ -491,6 +501,22 @@ pub(super) fn run() {
         (
             "workflow_race::failed_stop::embedded_failed_native_stop_preserves_claim_and_recovers",
             vec!["failed-stop-embedded"],
+        ),
+        (
+            "workflow_race::active_stop::standalone_abort_stops_a_live_tree_and_recovers",
+            vec!["active-stop-abort"],
+        ),
+        (
+            "workflow_race::active_stop::embedded_abort_stops_a_live_tree_and_recovers",
+            vec!["active-stop-abort-embedded"],
+        ),
+        (
+            "workflow_race::active_stop::standalone_drain_escalates_to_abort_on_a_live_tree",
+            vec!["active-stop-drain"],
+        ),
+        (
+            "workflow_race::active_stop::embedded_drain_escalates_to_abort_on_a_live_tree",
+            vec!["active-stop-drain-embedded"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];

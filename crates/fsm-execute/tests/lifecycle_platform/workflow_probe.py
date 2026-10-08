@@ -29,6 +29,10 @@ CASES = (
     ('workflow_race::full_disk::embedded_full_disk_stop_preserves_claim_and_recovers', 1),
     ('workflow_race::failed_stop::standalone_failed_native_stop_preserves_claim_and_recovers', 1),
     ('workflow_race::failed_stop::embedded_failed_native_stop_preserves_claim_and_recovers', 1),
+    ('workflow_race::active_stop::standalone_abort_stops_a_live_tree_and_recovers', 1),
+    ('workflow_race::active_stop::embedded_abort_stops_a_live_tree_and_recovers', 1),
+    ('workflow_race::active_stop::standalone_drain_escalates_to_abort_on_a_live_tree', 1),
+    ('workflow_race::active_stop::embedded_drain_escalates_to_abort_on_a_live_tree', 1),
     ('borrowed_embedded_handlers_complete_the_workflow', 1),
 )
 

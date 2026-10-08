@@ -18,6 +18,10 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
             | "full-disk-embedded"
             | "failed-stop"
             | "failed-stop-embedded"
+            | "active-stop-abort"
+            | "active-stop-abort-embedded"
+            | "active-stop-drain"
+            | "active-stop-drain-embedded"
     ) {
         return;
     }
@@ -36,6 +40,7 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
         || failures.ends_with("-int")
         || failures.starts_with("full-disk")
         || failures.starts_with("failed-stop")
+        || failures.starts_with("active-stop")
     {
         "30000"
     } else {
@@ -107,6 +112,7 @@ pub(in super::super) fn restart_at_cut(
         || failures.ends_with("-int")
         || failures.starts_with("full-disk")
         || failures.starts_with("failed-stop")
+        || failures.starts_with("active-stop")
     {
         assert!(
             identities.iter().all(still_live),

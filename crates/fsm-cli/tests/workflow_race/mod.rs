@@ -3,6 +3,7 @@ use super::*;
 use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
+mod active_stop;
 mod crash;
 mod failed_stop;
 mod fault_control;
@@ -15,7 +16,9 @@ pub(super) fn restart_after_fault(
     original: Option<&mut Competitor>,
     failures: &str,
 ) -> Competitor {
-    if failures.starts_with("full-disk") {
+    if failures.starts_with("active-stop") {
+        active_stop::restart_after_stop(directory, client, original, failures)
+    } else if failures.starts_with("full-disk") {
         full_disk::restart_after_full_disk(directory, client, original)
     } else if failures.starts_with("failed-stop") {
         failed_stop::restart_after_failed_stop(directory, client, original)
