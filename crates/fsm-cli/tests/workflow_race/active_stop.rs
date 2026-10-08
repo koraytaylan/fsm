@@ -12,6 +12,7 @@ pub(super) fn restart_after_stop(
 ) -> Competitor {
     assert!(directory.1.is_some(), "genuine native fixture required");
     let completes = failures.starts_with("active-stop-complete");
+    let times_out = failures.starts_with("active-stop-timeout");
     let marker = directory.resource().join("tree-live");
     let until = Instant::now() + Duration::from_secs(8);
     let identities = loop {
@@ -76,7 +77,11 @@ pub(super) fn restart_after_stop(
             "execute",
             "stop",
             "--mode",
-            if completes { "drain" } else { "abort" },
+            if completes || times_out {
+                "drain"
+            } else {
+                "abort"
+            },
             "--timeout-ms",
             "5000",
             "--control-dir",
@@ -170,6 +175,24 @@ pub(super) fn restart_after_stop(
     } else {
         assert_eq!(writer.state.instances["inst-run"], instance);
     }
+    if times_out {
+        assert_eq!(
+            writer.records[snapshot.records.len()]
+                .body
+                .get("outcome")
+                .unwrap()
+                .get("status")
+                .and_then(Value::as_str),
+            Some("timeout")
+        );
+        assert_eq!(
+            writer.records[snapshot.records.len() + 1]
+                .body
+                .get("disposition")
+                .and_then(Value::as_str),
+            Some("attempted")
+        );
+    }
     assert_eq!(writer.state.execution.unresolved().count(), 0);
     assert_eq!(
         fs::read_to_string(directory.resource().join("calls")).unwrap(),
@@ -261,5 +284,19 @@ fn completing_scenario(mode: ExecutionMode) {
         ],
         "active",
         mode,
+    );
+}
+
+#[test]
+#[ignore = "requires genuine root-provisioned native shutdown"]
+fn standalone_quiet_drain_enforces_original_handler_timeout() {
+    scenario("active-stop-timeout-drain", ExecutionMode::Standalone);
+}
+#[test]
+#[ignore = "requires genuine root-provisioned native shutdown"]
+fn embedded_quiet_drain_enforces_original_handler_timeout() {
+    scenario(
+        "active-stop-timeout-drain-embedded",
+        ExecutionMode::Embedded,
     );
 }

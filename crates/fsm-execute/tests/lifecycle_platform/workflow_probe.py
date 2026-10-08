@@ -35,6 +35,8 @@ CASES = (
     ('workflow_race::active_stop::embedded_drain_escalates_to_abort_on_a_live_tree', 1),
     ('workflow_race::active_stop::standalone_drain_allows_original_completion', 1),
     ('workflow_race::active_stop::embedded_drain_allows_original_completion', 1),
+    ('workflow_race::active_stop::standalone_quiet_drain_enforces_original_handler_timeout', 1),
+    ('workflow_race::active_stop::embedded_quiet_drain_enforces_original_handler_timeout', 1),
     ('borrowed_embedded_handlers_complete_the_workflow', 1),
 )
 

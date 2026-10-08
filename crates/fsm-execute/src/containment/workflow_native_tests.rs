@@ -134,7 +134,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
             || failures.ends_with("-int")
             || failures.starts_with("full-disk")
             || failures.starts_with("failed-stop")
-            || failures.starts_with("active-stop")
+            || (failures.starts_with("active-stop") && !failures.starts_with("active-stop-timeout"))
         {
             "30000"
         } else {
@@ -221,7 +221,9 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         if (failure.starts_with("crash-")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
-            || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete")))
+            || (failure.starts_with("active-stop")
+                && !failure.starts_with("active-stop-complete")
+                && !failure.starts_with("active-stop-timeout")))
             && number(&record.body, "run_id").unwrap() == 1
         {
             assert!(matches!(disposition, Some("attempted" | "interrupted")));
@@ -262,14 +264,18 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             || failure.ends_with("-int")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
-            || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete"))
+            || (failure.starts_with("active-stop")
+                && !failure.starts_with("active-stop-complete")
+                && !failure.starts_with("active-stop-timeout"))
         {
             assert_eq!(
                 status, "interrupted",
                 "signal cleanup cannot be a handler timeout"
             );
         }
-        if matches!(failure, "crash-stop" | "crash-embedded-stop") {
+        if matches!(failure, "crash-stop" | "crash-embedded-stop")
+            || failure.starts_with("active-stop-timeout")
+        {
             assert_eq!(status, "timeout");
         }
         let settled = store
@@ -525,6 +531,14 @@ pub(super) fn run() {
         (
             "workflow_race::active_stop::embedded_drain_allows_original_completion",
             vec!["active-stop-complete-drain-embedded"],
+        ),
+        (
+            "workflow_race::active_stop::standalone_quiet_drain_enforces_original_handler_timeout",
+            vec!["active-stop-timeout-drain"],
+        ),
+        (
+            "workflow_race::active_stop::embedded_quiet_drain_enforces_original_handler_timeout",
+            vec!["active-stop-timeout-drain-embedded"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];
