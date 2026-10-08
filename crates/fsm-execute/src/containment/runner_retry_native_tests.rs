@@ -8,6 +8,7 @@ pub(super) fn settle_retry(
     claim: &fsm_core::record::execution::Claim,
     completion: &fsm_execute::run::native_client::NativeCompletion,
     mode: &str,
+    barriers: &Barriers,
 ) {
     use fsm_core::record::execution::{PendingEffect, Settlement};
     let mut store = Store::open(&fixture.store).unwrap();
@@ -186,7 +187,12 @@ pub(super) fn settle_retry(
         .claim_native(&mut store, &mut due, request())
         .unwrap();
     assert_eq!(store.records.len(), before + 1);
-    let next = store.state.execution.claim_for("instance", effect).unwrap();
+    let next = store
+        .state
+        .execution
+        .claim_for("instance", effect)
+        .unwrap()
+        .clone();
     assert_eq!(next.run_id(), claim.run_id() + 1);
     let next_material = next.to_value();
     assert_eq!(next_material.get("attempt"), Some(&Value::Num("2".into())));
@@ -196,6 +202,20 @@ pub(super) fn settle_retry(
         material.get("handler_fingerprint")
     );
     assert_eq!(next_material.get("domain"), Some(&successor.to_value()));
+    if mode == "retry-timeout-kill" {
+        let records = store.records.clone();
+        let error = pipeline
+            .stop_native(
+                &mut store,
+                &mut due,
+                &next,
+                completion,
+                "stale-successor-stop",
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "exec/inflight_deferred");
+        assert_eq!(store.records, records);
+    }
     let retained = store.state.execution.clone();
     drop(store);
     assert_eq!(
@@ -204,5 +224,130 @@ pub(super) fn settle_retry(
             .state
             .execution,
         retained
+    );
+    if mode == "retry-timeout-kill" {
+        launch_successor(fixture, barriers, &next);
+    }
+}
+
+fn launch_successor(
+    fixture: &Fixture,
+    barriers: &Barriers,
+    claim: &fsm_core::record::execution::Claim,
+) {
+    use fsm_execute::run::{Pipeline, native_client::NativeCompletion};
+    assert_eq!(
+        identity(&fs::symlink_metadata(&barriers.path).unwrap()),
+        barriers.identity
+    );
+    for name in ["root-ready", "descendant-ready", "release"] {
+        let path = barriers.path.join(name);
+        let metadata = fs::symlink_metadata(&path).unwrap();
+        assert!(metadata.is_file());
+        fs::remove_file(path).unwrap();
+    }
+    let snapshot = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(
+        snapshot
+            .state
+            .execution
+            .claim_for("instance", claim.effect().1),
+        Some(claim)
+    );
+    let hash = snapshot.current_execution_claim_hash(claim).unwrap();
+    drop(snapshot);
+    let binding = object([
+        ("format", Value::Str("fsm.native-claim-binding/1".into())),
+        ("claim", claim.to_value()),
+        ("journal_claim", Value::Str(hash.clone())),
+    ]);
+    bind(&fixture.directory, &binding).unwrap();
+    let directory = fixture.directory.clone();
+    let execution = std::thread::spawn(move || runner::execute(&directory, 2));
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while !barriers.path.join("root-ready").exists() {
+        assert!(
+            !execution.is_finished(),
+            "successor ended before enrollment"
+        );
+        assert!(Instant::now() < deadline, "successor enrollment deadline");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let root = read_value(&barriers.path.join("root-ready"), false).unwrap();
+    let descendants = read_value(&barriers.path.join("descendant-ready"), false).unwrap();
+    let material = claim.to_value();
+    let namespace = text(material.get("domain").unwrap(), "namespace").unwrap();
+    let unit = format!("fsm-containment-{namespace}-1-2.service");
+    let old_unit = format!("fsm-containment-{namespace}-1-1.service");
+    assert!(
+        !Path::new("/sys/fs/cgroup/system.slice")
+            .join(old_unit)
+            .exists()
+    );
+    for pid in [
+        number(&root, "pid").unwrap(),
+        number(&descendants, "pid").unwrap(),
+        number(&descendants, "grandchild").unwrap(),
+    ] {
+        assert_eq!(
+            fs::read_to_string(format!("/proc/{pid}/cgroup")).unwrap(),
+            format!("0::/system.slice/{unit}\n")
+        );
+    }
+    let snapshot = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(
+        snapshot
+            .state
+            .execution
+            .claim_for("instance", claim.effect().1),
+        Some(claim)
+    );
+    assert_eq!(snapshot.current_execution_claim_hash(claim).unwrap(), hash);
+    drop(snapshot);
+    fs::write(
+        barriers.path.join("release"),
+        b"successor claim and enrollment verified",
+    )
+    .unwrap();
+    while !execution.is_finished() {
+        assert!(Instant::now() < deadline, "successor closure deadline");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let result = execution.join().unwrap().unwrap();
+    assert!(!Path::new("/sys/fs/cgroup/system.slice").join(unit).exists());
+    let response = object([
+        ("format", Value::Str("fsm.native-response/1".into())),
+        ("ok", Value::Bool(true)),
+        ("result", result),
+    ]);
+    let completion = NativeCompletion::verify(&response, claim, &hash).unwrap();
+    assert_eq!(completion.stopped_outcome().status(), "timeout");
+    let mut writer = Store::open(&fixture.store).unwrap();
+    let before = writer.records.len();
+    let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
+    Pipeline
+        .stop_native(
+            &mut writer,
+            &mut clock,
+            claim,
+            &completion,
+            "successor-stop",
+        )
+        .unwrap();
+    Pipeline
+        .settle_native_stopped(&mut writer, &mut clock, claim, &completion)
+        .unwrap();
+    assert_eq!(writer.records.len(), before + 2);
+    assert_eq!(writer.state.execution.unresolved().count(), 0);
+    assert!(
+        !writer.state.instances["instance"]
+            .pending
+            .contains(&claim.effect().1.to_owned())
+    );
+    let records = writer.records.clone();
+    drop(writer);
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
     );
 }

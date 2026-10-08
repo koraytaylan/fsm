@@ -533,7 +533,14 @@ pub(super) fn run() {
         );
         assert_unresolved(&fixture, &effect);
         if matches!(mode, "retry-timeout" | "retry-timeout-kill") {
-            settle_retry(&mut fixture, &effect, &original_claim, &completion, mode);
+            settle_retry(
+                &mut fixture,
+                &effect,
+                &original_claim,
+                &completion,
+                mode,
+                &barriers,
+            );
         } else if mode == "process-failure" {
             settle_failure(&fixture, &effect, &original_claim, &completion);
         } else if matches!(mode, "cancel-process" | "cancel-mcp") {
