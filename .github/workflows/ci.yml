@@ -45,6 +45,7 @@ on:
           - claim-before-launch
           - claim-before-runner
           - claim-before-enrolled-authorization
+          - binding-cgroup-identity
         default: preparation-owner
 
 # Preserve the running develop checkpoint and queue its latest successor.

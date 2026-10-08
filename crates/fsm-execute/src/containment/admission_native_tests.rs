@@ -7,6 +7,9 @@ use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
 
+#[path = "binding_identity_native_tests.rs"]
+mod binding_identity_cases;
+
 #[test]
 #[ignore = "requires installed production gate and writable provisioned root cgroups"]
 fn binding_refuses_claim_absent_from_durable_journal() {

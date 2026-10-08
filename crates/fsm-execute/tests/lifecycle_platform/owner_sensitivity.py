@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -39,8 +39,9 @@ def main():
     association = args.guard == 'association-deadline'
     claim_binding = args.guard in ('claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status',
                                    'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization')
+    binding_identity = args.guard == 'binding-cgroup-identity'
     source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
-                     else 'crates/fsm-execute/src/containment/authority.rs' if claim_binding
+                     else 'crates/fsm-execute/src/containment/authority.rs' if claim_binding or binding_identity
                      else 'crates/fsm-execute/src/containment/owner_lease.rs')
     guard = (b'        let _lock = loop {\n            remaining(deadline)?;\n'
              if association else b'    verify_claim(&store, &claim, text(binding, "journal_claim")?)?;\n'
@@ -84,6 +85,14 @@ def main():
             phase = 'enrolled authorization'
         description = 'durable claim validation before protected ' + phase
         scope = 'native ' + phase + ' claim-before-start sensitivity; not a full integration gate'
+    if binding_identity:
+        guard = b'        || domain.get("cgroup") != Some(&identity(&metadata))\n'
+        replacement = b''
+        case = ('authority::allocator::native_tests::admission_cases::binding_identity_cases::'
+                'binding_refuses_live_replacement_cgroup_identity')
+        named_refusal = case
+        description = 'physical recorded cgroup identity before binding'
+        scope = 'native binding cgroup identity sensitivity only; not a full integration gate'
     original = source.read_bytes()
     assert original.count(guard) == 1, 'neutralize exactly one selected guard'
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -134,6 +143,8 @@ def main():
                     caller = 'launch' if args.guard == 'claim-before-launch' else 'runner'
                     marker = ('native ' + caller + ' accepted a claim absent from the durable journal').encode()
                     passed = passed and marker in output
+                elif binding_identity:
+                    passed = passed and b'unwrap_err()' in output and b'on an `Ok` value: ()' in output
                 elif claim_binding:
                     passed = passed and b'unwrap_err()' in output and b'on an `Ok` value: ()' in output
                 else:
@@ -167,7 +178,7 @@ def main():
         report = dict(source_commit=commit, source_dirty=not restored,
                       rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip(),
                       cli_sha256=cli_digest,
-                      command=case, named_public_refusal=case if association or claim_binding else CHILD, phases=rows,
+                      command=case, named_public_refusal=case if association or claim_binding or binding_identity else CHILD, phases=rows,
                       guard=description,
                       source_restored=restored, gate_released=False,
                       installed_authority=installed, retained_authority=not retired,
