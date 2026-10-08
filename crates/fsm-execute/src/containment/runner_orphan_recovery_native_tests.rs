@@ -459,62 +459,101 @@ fn reconcile_orphan_cli(
     records: &[fsm_core::record::Record],
 ) {
     use std::process::{Command, Stdio};
-    let output_path = path.join("orphan-cli.stdout");
-    let error_path = path.join("orphan-cli.stderr");
-    let mut child = Command::new(cli)
-        .args(["--json", "--data-dir"])
-        .arg(path)
-        .args([
-            "execute",
-            "reconcile",
-            "--run-id",
-            &run_id.to_string(),
-            "--timeout-ms",
-            "8000",
-        ])
-        .stdin(Stdio::null())
-        .stdout(fs::File::create(&output_path).unwrap())
-        .stderr(fs::File::create(&error_path).unwrap())
-        .spawn()
-        .unwrap();
+
+    // Submit both production callers before observing either result; the store
+    // writer must serialize first closure with historical duplicate recovery.
+    let mut callers = [0, 1].map(|index| {
+        let output = path.join(format!("orphan-cli-{index}.stdout"));
+        let errors = path.join(format!("orphan-cli-{index}.stderr"));
+        let child = Command::new(cli)
+            .args(["--json", "--data-dir"])
+            .arg(path)
+            .args([
+                "execute",
+                "reconcile",
+                "--run-id",
+                &run_id.to_string(),
+                "--timeout-ms",
+                "8000",
+            ])
+            .stdin(Stdio::null())
+            .stdout(fs::File::create(&output).unwrap())
+            .stderr(fs::File::create(&errors).unwrap())
+            .spawn()
+            .unwrap();
+        (child, output, errors)
+    });
     let deadline = Instant::now() + Duration::from_secs(10);
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
+    let mut statuses = [None, None];
+    loop {
+        for (index, (child, _, _)) in callers.iter_mut().enumerate() {
+            if statuses[index].is_none() {
+                statuses[index] = child.try_wait().unwrap();
+            }
+        }
+        if statuses.iter().all(Option::is_some) {
+            break;
         }
         if Instant::now() >= deadline {
-            let _ = child.kill();
-            child.wait().unwrap();
-            panic!("orphan MCP CLI reconciliation exceeded its bound; authority retained");
+            // Reap only these fixture-owned callers; retain native authority
+            // because a caller timeout establishes no tree closure.
+            for (index, (child, _, _)) in callers.iter_mut().enumerate() {
+                if statuses[index].is_none() {
+                    let _ = child.kill();
+                    child.wait().unwrap();
+                }
+            }
+            panic!("orphan CLI race exceeded its bound; authority retained");
         }
         std::thread::sleep(Duration::from_millis(5));
-    };
-    assert!(fs::metadata(&output_path).unwrap().len() <= 8192);
-    assert!(fs::metadata(&error_path).unwrap().len() <= 8192);
-    assert!(
-        status.success(),
-        "orphan MCP CLI refused: {}",
-        String::from_utf8_lossy(&fs::read(&error_path).unwrap())
-    );
-    let response = fsm_core::json::parse(
-        &fs::read(&output_path).unwrap(),
-        &fsm_core::json::JsonLimits::DEFAULT,
-    )
-    .unwrap();
-    assert_eq!(response.get("duplicate"), Some(&Value::Bool(false)));
-    assert_eq!(
-        response.get("execution").unwrap().get("run_id"),
-        Some(&Value::Num(run_id.to_string()))
-    );
-    assert_eq!(
-        response.get("execution").unwrap().get("disposition"),
-        Some(&Value::Str("interrupted".into()))
-    );
+    }
+    let mut closure = None;
+    for ((_, output, errors), status) in callers.into_iter().zip(statuses) {
+        assert!(fs::metadata(&output).unwrap().len() <= 8192);
+        assert!(fs::metadata(&errors).unwrap().len() <= 8192);
+        let status = status.unwrap();
+        if !status.success() {
+            assert_eq!(status.code(), Some(4));
+            assert!(fs::read(&output).unwrap().is_empty());
+            let refusal = fsm_core::json::parse(
+                &fs::read(&errors).unwrap(),
+                &fsm_core::json::JsonLimits::DEFAULT,
+            )
+            .unwrap();
+            assert_eq!(refusal.get("code"), Some(&Value::Str("store/lock".into())));
+            continue;
+        }
+        assert!(fs::read(&errors).unwrap().is_empty());
+        let response = fsm_core::json::parse(
+            &fs::read(&output).unwrap(),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        assert_eq!(
+            response.get("execution").unwrap().get("run_id"),
+            Some(&Value::Num(run_id.to_string())),
+        );
+        assert_eq!(
+            response.get("execution").unwrap().get("disposition"),
+            Some(&Value::Str("interrupted".into())),
+        );
+        match response.get("duplicate") {
+            Some(Value::Bool(false)) => {
+                assert!(
+                    closure.replace(response).is_none(),
+                    "two callers committed first closure"
+                );
+            }
+            Some(Value::Bool(true)) => {}
+            other => panic!("orphan CLI race duplicate classification differs: {other:?}"),
+        }
+    }
+    let response = closure.expect("one production caller must commit first closure");
     let observed = Store::open_read_only(path).unwrap();
     assert_eq!(&observed.records[..records.len()], records);
     assert_eq!(observed.records.len(), records.len() + 2);
     assert_eq!(observed.state.execution.unresolved().count(), 0);
-    #[allow(clippy::print_stdout)] // Only the bounded, verified original CLI response is retained.
+    #[allow(clippy::print_stdout)] // Only the verified first-closure response is retained.
     {
         println!(
             "\nFSM_NATIVE_ORPHAN_CLI_RESPONSE {}",
