@@ -6,7 +6,14 @@ use std::os::unix::{fs::MetadataExt, process::ExitStatusExt};
 pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
     if !matches!(
         failures,
-        "crash-launch" | "crash-stop" | "crash-embedded-launch" | "crash-embedded-stop"
+        "crash-launch"
+            | "crash-stop"
+            | "crash-embedded-launch"
+            | "crash-embedded-stop"
+            | "crash-term"
+            | "crash-int"
+            | "crash-embedded-term"
+            | "crash-embedded-int"
     ) {
         return;
     }
@@ -96,6 +103,27 @@ pub(in super::super) fn restart_at_cut(
             );
             None
         }
+        "crash-term" | "crash-int" => {
+            terminate_owned(&mut original.as_deref_mut().unwrap().child, failures);
+            Some(start(directory, "after-signal"))
+        }
+        "crash-embedded-term" | "crash-embedded-int" => {
+            terminate_owned(&mut client.process, failures);
+            let until = Instant::now() + Duration::from_secs(3);
+            writer = loop {
+                match Store::open(&directory.store()) {
+                    Ok(held) => break held,
+                    Err(error) if error.code == "store/lock" => {
+                        assert!(Instant::now() < until, "signal exit retained writer");
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("signal recovery writer: {error:?}"),
+                }
+            };
+            assert_eq!(writer.records, records);
+            *client = Client::start_mode(directory, ExecutionMode::Standalone);
+            Some(start(directory, "after-signal"))
+        }
         "crash-stop" => None,
         _ => panic!("unknown crash cut"),
     };
@@ -165,6 +193,35 @@ pub(in super::super) fn restart_at_cut(
     fs::write(directory.resource().join("tree-release"), b"successor only").unwrap();
     drop(writer);
     replacement.unwrap()
+}
+
+// Deliver the actual OS signal to the fixture-owned incarnation and observe
+// its documented signal exit independently of native closure verification.
+fn terminate_owned(child: &mut std::process::Child, failures: &str) {
+    let signal = if failures.ends_with("-int") { 2 } else { 15 };
+    let pid = child.id();
+    let identity = process_identity(pid);
+    assert!(child.try_wait().unwrap().is_none());
+    assert_eq!(process_identity(pid), identity);
+    assert!(
+        Command::new("/bin/kill")
+            .args([format!("-{signal}"), pid.to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let until = Instant::now() + Duration::from_secs(2);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            assert_eq!(status.signal(), Some(signal));
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "owned executor signal exit exceeded bound"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn pause_embedded(client: &Client) {
@@ -320,6 +377,90 @@ fn killed_embedded_recovers_without_overlapping_trees() {
 fn killed_embedded_after_verified_stop_recovers_once() {
     run_scenario_mode(
         "crash-embedded-stop",
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        ExecutionMode::Embedded,
+    );
+}
+
+#[test]
+#[ignore = "requires registered native authority and independent tree observer"]
+fn terminated_standalone_recovers_without_overlapping_trees() {
+    run_scenario_mode(
+        "crash-term",
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        ExecutionMode::Standalone,
+    );
+}
+
+#[test]
+#[ignore = "requires registered native authority and independent tree observer"]
+fn interrupted_standalone_recovers_without_overlapping_trees() {
+    run_scenario_mode(
+        "crash-int",
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        ExecutionMode::Standalone,
+    );
+}
+
+#[test]
+#[ignore = "requires registered native authority and independent tree observer"]
+fn terminated_embedded_recovers_without_overlapping_trees() {
+    run_scenario_mode(
+        "crash-embedded-term",
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        ExecutionMode::Embedded,
+    );
+}
+
+#[test]
+#[ignore = "requires registered native authority and independent tree observer"]
+fn interrupted_embedded_recovers_without_overlapping_trees() {
+    run_scenario_mode(
+        "crash-embedded-int",
         "succeeded",
         &[
             "check_prerequisite",

@@ -152,7 +152,15 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     let last = number(&fixture.counter(), "last_allocation").unwrap();
     if matches!(
         failure,
-        "race" | "crash-launch" | "crash-stop" | "crash-embedded-launch" | "crash-embedded-stop"
+        "race"
+            | "crash-launch"
+            | "crash-stop"
+            | "crash-embedded-launch"
+            | "crash-embedded-stop"
+            | "crash-term"
+            | "crash-int"
+            | "crash-embedded-term"
+            | "crash-embedded-int"
     ) {
         assert!((expected as u64..=4096).contains(&last));
     } else {
@@ -410,6 +418,22 @@ pub(super) fn run() {
         (
             "workflow_race::crash::killed_embedded_after_verified_stop_recovers_once",
             vec!["crash-embedded-stop"],
+        ),
+        (
+            "workflow_race::crash::terminated_standalone_recovers_without_overlapping_trees",
+            vec!["crash-term"],
+        ),
+        (
+            "workflow_race::crash::interrupted_standalone_recovers_without_overlapping_trees",
+            vec!["crash-int"],
+        ),
+        (
+            "workflow_race::crash::terminated_embedded_recovers_without_overlapping_trees",
+            vec!["crash-embedded-term"],
+        ),
+        (
+            "workflow_race::crash::interrupted_embedded_recovers_without_overlapping_trees",
+            vec!["crash-embedded-int"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];

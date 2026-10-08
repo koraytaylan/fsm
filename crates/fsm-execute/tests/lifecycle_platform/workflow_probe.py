@@ -21,6 +21,10 @@ CASES = (
     ('workflow_race::crash::killed_embedded_recovers_without_overlapping_trees', 1),
     ('workflow_race::crash::killed_embedded_after_verified_stop_recovers_once', 1),
     ('workflow_race::crash::killed_standalone_after_verified_stop_recovers_once', 1),
+    ('workflow_race::crash::terminated_standalone_recovers_without_overlapping_trees', 1),
+    ('workflow_race::crash::interrupted_standalone_recovers_without_overlapping_trees', 1),
+    ('workflow_race::crash::terminated_embedded_recovers_without_overlapping_trees', 1),
+    ('workflow_race::crash::interrupted_embedded_recovers_without_overlapping_trees', 1),
     ('borrowed_embedded_handlers_complete_the_workflow', 1),
 )
 

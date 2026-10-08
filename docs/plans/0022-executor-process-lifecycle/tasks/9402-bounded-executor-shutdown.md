@@ -7,6 +7,10 @@ depends_on:
   - executor-ownership-integration
 gated: false
 touches:
+  - crates/fsm-cli/tests/workflow_race/crash.rs
+  - crates/fsm-cli/tests/workflow_race/mod.rs
+  - crates/fsm-execute/src/containment/workflow_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
   - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/src/service/
   - crates/fsm-execute/src/lib.rs
