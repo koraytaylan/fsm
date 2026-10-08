@@ -1,7 +1,8 @@
-//! Production binding and exec status refuse a live physical domain replacement.
+//! Production startup callers refuse a live physical domain replacement.
 
-use super::super::super::super::{bind, exec_status, identity};
+use super::super::super::super::{authorize, bind, exec_status, identity, object};
 use super::{Fixture, claim_binding};
+use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
@@ -21,15 +22,27 @@ fn exec_status_refuses_live_replacement_cgroup_identity() {
     refuse_replacement(Caller::ExecStatus);
 }
 
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn authorization_refuses_live_replacement_cgroup_identity() {
+    refuse_replacement(Caller::Authorization);
+}
+
 enum Caller {
     Binding,
     ExecStatus,
+    Authorization,
 }
 
 fn refuse_replacement(caller: Caller) {
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let (binding, _) = claim_binding(&fixture, &domain);
+    if matches!(caller, Caller::Authorization) {
+        bind(&fixture.directory, &binding).unwrap();
+    }
+    let binding_path = fixture.directory.join("binding-1.json");
+    let original_binding = fs::read(&binding_path).ok();
     let records = Store::open_read_only(&fixture.store)
         .unwrap()
         .records
@@ -66,6 +79,9 @@ fn refuse_replacement(caller: Caller) {
     assert_eq!(fs::read_to_string(&process_group).unwrap(), membership);
     let refusal = match caller {
         Caller::Binding => bind(&fixture.directory, &binding).unwrap_err(),
+        Caller::Authorization => {
+            authorize::publish(&fixture.directory, &grant_request(&binding)).unwrap_err()
+        }
         Caller::ExecStatus => match exec_status::Listener::create(
             &fixture.directory,
             1,
@@ -88,7 +104,6 @@ fn refuse_replacement(caller: Caller) {
         replacement_identity
     );
     for name in [
-        "binding-1.json",
         "launch-1.json",
         "entry-1.json",
         "closing-1.json",
@@ -98,6 +113,7 @@ fn refuse_replacement(caller: Caller) {
     ] {
         assert!(!fixture.directory.join(name).exists());
     }
+    assert_eq!(fs::read(&binding_path).ok(), original_binding);
     // Only the child and overlay created by this fixture are retired after
     // proving that production binding neither admitted nor targeted them.
     sentinel.kill().unwrap();
@@ -123,6 +139,11 @@ fn refuse_replacement(caller: Caller) {
     // no missing domain or fixture cleanup is promoted to closure.
     match caller {
         Caller::Binding => bind(&fixture.directory, &binding).unwrap(),
+        Caller::Authorization => {
+            authorize::publish(&fixture.directory, &grant_request(&binding)).unwrap();
+            assert!(fixture.directory.join("entry-1.json").exists());
+            assert_eq!(fs::read(&binding_path).ok(), original_binding);
+        }
         Caller::ExecStatus => {
             let listener = exec_status::Listener::create(
                 &fixture.directory,
@@ -157,4 +178,17 @@ fn mounted(executable: &str, arguments: &[&Path]) {
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+}
+
+fn grant_request(binding: &Value) -> Value {
+    let grant = object([
+        ("format", Value::Str("fsm.native-entry/1".into())),
+        ("claim", binding.get("claim").unwrap().clone()),
+        (
+            "journal_claim",
+            binding.get("journal_claim").unwrap().clone(),
+        ),
+        ("argv", Value::Arr(vec![Value::Str("/bin/true".into())])),
+    ]);
+    object([("grant", grant), ("group_id", Value::Num("1".into()))])
 }
