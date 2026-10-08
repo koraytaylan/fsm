@@ -299,7 +299,23 @@ cases, 48 repeated-resource observations and 97 containment cases on both
 compilers, scoped verdict
 `fefbd8ebc71f14d3c44ca31ad7d59f52e3ade207571022e9eb3994bedcfa26ef`.
 `3678a9ce` adds explicit partial-tail repair with original claim preservation;
-its native and full integration evidence remains unverified.
+its retained native checkpoint independently verifies all 60 crash cases,
+48 repeated-resource observations and 97 containment cases on both compilers,
+scoped verdict `f7e2dc583fcedeb4f84dcba101c932b499f7518007a11ad72937408db5cdc5f6`;
+full integration remains unverified.
 These scoped proofs do not establish full integration or task completion; 9404 remains
 in progress, detailed evidence stays in the task cache, and this documentation
 update omits heavy gates.
+
+Frozen `26ac590a..e3f8769f` independently verifies public shutdown receipt
+matching on Linux stable/MSRV, scoped verdict
+`27f1a73340c01cb12e36b53db3014475052e9e258c0942c9a3b1b503b913dcc0`.
+The unprivileged caller submits through the actual broker, observes helper reap
+and both EOFs, then reads the same genuine receipt inode after Root-only
+journal-claim corruption; exactly the receipt-matching guard is neutralized,
+and the named case passes/fails/passes at exits 0/101/0 with original journal
+ownership unchanged and exact receipt bytes restored for positive verification.
+Failed fixtures retain their original authority without reset-based clearance.
+Current full integration and the remaining closure-caller acceptance audit
+keep 9404 in progress; detailed evidence stays in the task cache, and this
+consolidated documentation milestone omits heavy gates.

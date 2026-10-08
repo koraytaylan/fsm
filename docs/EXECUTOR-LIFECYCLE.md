@@ -1531,5 +1531,7 @@ The `shutdown-closure-claim` sensitivity checkpoint exercises public
 `NativeShutdown` receipt matching after the actual original broker helper has
 retired, using an unprivileged caller and a Root-only handshake that corrupts
 and restores the same genuine protected receipt inode; the original durable
-claim and journal remain unchanged throughout, and native runtime verification
-of this new case remains pending.
+claim and journal remain unchanged throughout; frozen `e3f8769f` independently
+verifies original/neutralized/restored exits 0/101/0 on Linux stable/MSRV,
+scoped verdict `27f1a73340c01cb12e36b53db3014475052e9e258c0942c9a3b1b503b913dcc0`,
+without establishing full integration or task completion.
