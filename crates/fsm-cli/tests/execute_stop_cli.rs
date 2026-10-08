@@ -766,14 +766,17 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
     let mut input = owner.0.stdin.take().unwrap();
     let stdout = owner.0.stdout.take().unwrap();
     let (ready, observed) = std::sync::mpsc::channel();
+    let (progress, progressed) = std::sync::mpsc::channel();
     let reader = std::thread::spawn(move || {
         let mut ready = Some(ready);
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             let frame = json(line.as_bytes());
-            if frame.get("id") == Some(&json(b"2"))
-                && let Some(ready) = ready.take()
-            {
-                ready.send(frame).unwrap();
+            if frame.get("id") == Some(&json(b"2")) {
+                if let Some(ready) = ready.take() {
+                    ready.send(frame).unwrap();
+                } else {
+                    let _ = progress.send(());
+                }
             }
         }
     });
@@ -790,6 +793,13 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
     let feeder = std::thread::spawn(move || {
         for _ in 0..2000 {
             if input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n").is_err() { return; }
+            // Keep the bounded input queue out of this stderr-pressure test.
+            // The independently drained response confirms each request was
+            // handled before the next warning-producing request is sent.
+            if progressed.recv_timeout(Duration::from_secs(3)).is_err() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
         }
         let _ = input.flush();
         let _ = hold.recv();
