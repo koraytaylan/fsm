@@ -2792,6 +2792,12 @@ original claim. No force-clear, age threshold or kill-by-PID fallback is allowed
 
 ### Local native admission provenance
 
+The additive `NativePreparation::start_owned` / `poll_owned` path now returns
+a non-cloneable `NativePreparedOwner` only after acquiring the original operator
+lease and checking the protected authority, boot, route and lease inode; plain
+`poll` refuses owned requests. Admission-to-execution guard transfer remains
+unimplemented and native acceptance remains pending.
+
 The internal `prepare-owned` broker route now establishes both leases before
 publishing a `prepared-owned` domain, and binding requires its operator lease
 to be held; reconciliation retains that lease before considering closure.

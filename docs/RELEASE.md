@@ -1,5 +1,12 @@
 # Releasing
 
+The additive `NativePreparation::start_owned` / `poll_owned` path now returns
+a non-cloneable `NativePreparedOwner` only after acquiring the original operator
+lease and checking the protected authority, boot, route and lease inode; plain
+`poll` refuses owned requests. Admission-to-execution guard transfer remains
+unimplemented and native acceptance remains pending.
+
+
 Allocator-side `prepare-owned` leases and binding/closure checks are implemented;
 absent-binding reconciliation now reuses exact claim validation while holding both
 original leases, but client guard transfer remains unimplemented and native

@@ -181,6 +181,63 @@ pub(super) fn discover(store: &Path) -> Result<(String, u64), String> {
     Ok((namespace, generation))
 }
 
+pub(super) fn acquire_prepared_owner(
+    domain: &fsm_core::record::execution::NativeDomain,
+) -> Result<std::fs::File, String> {
+    let value = domain.to_value();
+    let name = value
+        .get("namespace")
+        .and_then(Value::as_str)
+        .filter(|name| namespace(name))
+        .ok_or("native owner namespace invalid")?;
+    let authority = Path::new(BASE)
+        .join(name)
+        .join(format!("authority-{}", number(&value, "generation")?));
+    for ancestor in authority.ancestors() {
+        directory(ancestor)?;
+    }
+    let original = directory(&authority)?;
+    if value.get("authority") != Some(&identity(&original)) {
+        return Err("native owner original authority differs".into());
+    }
+    if value.get("boot").and_then(Value::as_str)
+        != Some(
+            fs::read_to_string("/proc/sys/kernel/random/boot_id")
+                .map_err(super::message)?
+                .trim(),
+        )
+    {
+        return Err("native owner boot differs".into());
+    }
+    route(&authority)?;
+    let operator = fs::metadata("/proc/self").map_err(super::message)?.uid();
+    let path = authority.join(format!("owner-{}.LOCK", number(&value, "allocation")?));
+    let lease = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(0o400000 | 0o4000)
+        .open(&path)
+        .map_err(super::message)?;
+    lease
+        .try_lock()
+        .map_err(|_| "native preparation owner lease unavailable")?;
+    let captured = lease.metadata().map_err(super::message)?;
+    let observed = fs::symlink_metadata(&path).map_err(super::message)?;
+    if !captured.is_file()
+        || captured.uid() != operator
+        || captured.mode() & 0o7777 != 0o600
+        || captured.len() != 0
+        || captured.nlink() != 1
+        || observed.nlink() != 1
+        || snapshot(&captured) != snapshot(&observed)
+    {
+        return Err("native owner lease protection or identity differs".into());
+    }
+    unchanged_directory(&authority, &original)?;
+    route(&authority)?;
+    Ok(lease)
+}
+
 /// Match the original authority identity without allocating or launching work.
 pub(super) fn check_claim(
     store: &Path,

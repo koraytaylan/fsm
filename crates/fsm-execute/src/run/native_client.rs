@@ -19,6 +19,7 @@ mod discovery;
 mod execution;
 mod preparation;
 mod prepared_cleanup;
+mod prepared_owner;
 mod proof_worker;
 mod shutdown;
 mod startup;
@@ -31,6 +32,7 @@ pub use completion::NativeCompletion;
 pub use execution::{NativeExecution, NativeExecutionProgress};
 pub use preparation::{NativePreparation, NativePreparationPhase, NativePreparationProgress};
 pub use prepared_cleanup::NativePreparedCleanup;
+pub use prepared_owner::NativePreparedOwner;
 pub use shutdown::NativeShutdown;
 
 /// Wrap an embedding panic hook to allow only internally marked native workers to unwind.

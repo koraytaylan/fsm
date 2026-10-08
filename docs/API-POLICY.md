@@ -1,5 +1,12 @@
 # API and version policy
 
+The additive `NativePreparation::start_owned` / `poll_owned` path now returns
+a non-cloneable `NativePreparedOwner` only after acquiring the original operator
+lease and checking the protected authority, boot, route and lease inode; plain
+`poll` refuses owned requests. Admission-to-execution guard transfer remains
+unimplemented and native acceptance remains pending.
+
+
 The additive internal `prepare-owned` route publishes protected runner and
 operator owner leases before a `prepared-owned` domain; binding and closure
 check that owner lease, with no journal format, hash or error-code change.

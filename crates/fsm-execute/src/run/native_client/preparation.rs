@@ -34,6 +34,7 @@ pub struct NativePreparation {
     deadline: Instant,
     delivered: bool,
     error: Option<String>,
+    owned: bool,
 }
 
 impl NativePreparation {
@@ -46,12 +47,30 @@ impl NativePreparation {
 
     /// Request an empty prepared domain from the fixed provisioned authority.
     pub fn start(namespace: &str, generation: u64, timeout: Duration) -> Result<Self, String> {
+        Self::start_action(namespace, generation, timeout, "prepare")
+    }
+
+    /// Request a domain whose original operator lease must be collected with it.
+    pub fn start_owned(
+        namespace: &str,
+        generation: u64,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        Self::start_action(namespace, generation, timeout, "prepare-owned")
+    }
+
+    fn start_action(
+        namespace: &str,
+        generation: u64,
+        timeout: Duration,
+        action: &str,
+    ) -> Result<Self, String> {
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or("native preparation deadline exceeds clock range")?;
         let request = Value::Obj(BTreeMap::from([
             ("format".into(), Value::Str("fsm.native-request/1".into())),
-            ("action".into(), Value::Str("prepare".into())),
+            ("action".into(), Value::Str(action.into())),
             ("payload".into(), Value::Null),
         ]));
         Ok(Self {
@@ -61,11 +80,35 @@ impl NativePreparation {
             deadline,
             delivered: false,
             error: None,
+            owned: action == "prepare-owned",
         })
     }
 
     /// Collect one original-route domain only after helper success, reap and EOF.
     pub fn poll(&mut self) -> Result<Option<NativeDomain>, String> {
+        if self.owned {
+            return Err("owned preparation requires poll_owned".into());
+        }
+        self.collect()
+    }
+
+    /// Collect metadata only together with its exclusively held original lease.
+    pub fn poll_owned(&mut self) -> Result<Option<super::NativePreparedOwner>, String> {
+        if !self.owned {
+            return Err("legacy preparation has no owner lease".into());
+        }
+        let result = self
+            .collect()?
+            .map(super::NativePreparedOwner::acquire)
+            .transpose();
+        if let Err(error) = &result {
+            self.error = Some(error.clone());
+            self.delivered = false;
+        }
+        result
+    }
+
+    fn collect(&mut self) -> Result<Option<NativeDomain>, String> {
         if let Some(error) = &self.error {
             return Err(error.clone());
         }
