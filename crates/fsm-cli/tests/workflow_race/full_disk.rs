@@ -67,7 +67,7 @@ pub(super) fn restart_after_full_disk(
             "1000",
             "--control-dir",
         ])
-        .arg(root)
+        .arg(&root)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(fs::File::create(&output).unwrap())
@@ -91,11 +91,32 @@ pub(super) fn restart_after_full_disk(
         Some("exec/inflight_deferred")
     );
     let details = report.get("details").unwrap();
+    if details.get("phase").is_none() {
+        // The entire CLI exchange shares the caller's deadline, so a terminal
+        // owner report may arrive after that exchange retires; it must leave
+        // every unconfirmed transport fact unknown rather than fabricate it.
+        for fact in [
+            "admission_closed",
+            "native_cleanup_confirmed",
+            "writer_released",
+        ] {
+            assert_eq!(details.get(fact), Some(&Value::Null));
+        }
+    } else {
+        assert_eq!(
+            details.get("phase").and_then(Value::as_str),
+            Some("uncertain")
+        );
+        assert_eq!(details.get("admission_closed"), Some(&Value::Bool(true)));
+    }
+    // Independently interrogate the surviving original incarnation: a bounded
+    // transport refusal alone cannot prove that it accepted stop or closed admission.
+    let owner = fsm_cli::local_control::observe(&root, &directory.store(), 1000).unwrap();
     assert_eq!(
-        details.get("phase").and_then(Value::as_str),
+        owner.get("phase").and_then(Value::as_str),
         Some("uncertain")
     );
-    assert_eq!(details.get("admission_closed"), Some(&Value::Bool(true)));
+    assert_eq!(owner.get("admission_closed"), Some(&Value::Bool(true)));
     let domain = claim.domain().to_value();
     let receipt = PathBuf::from("/var/lib/fsm-containment")
         .join(text(&domain, "namespace"))
