@@ -19,7 +19,9 @@ pub(super) fn archive(fixture: &Fixture, staging: &Path) {
         let entry = entry.unwrap();
         let name = entry.file_name();
         let name = name.to_str().unwrap();
-        if !(name.starts_with("result-") || name.starts_with("exec-status-"))
+        if !(name.starts_with("result-")
+            || name.starts_with("completed-")
+            || name.starts_with("exec-status-"))
             || !name.ends_with(".json")
         {
             continue;
