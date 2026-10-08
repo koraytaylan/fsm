@@ -5,6 +5,7 @@ use fsm_store::store::Store;
 
 mod active_stop;
 mod crash;
+mod expired_drain;
 mod failed_stop;
 mod fault_control;
 mod full_disk;
@@ -16,7 +17,9 @@ pub(super) fn restart_after_fault(
     original: Option<&mut Competitor>,
     failures: &str,
 ) -> Competitor {
-    if failures.starts_with("active-stop") {
+    if failures.starts_with("expired-drain") {
+        expired_drain::restart_after_expiry(directory, client, original)
+    } else if failures.starts_with("active-stop") {
         active_stop::restart_after_stop(directory, client, original, failures)
     } else if failures.starts_with("full-disk") {
         full_disk::restart_after_full_disk(directory, client, original)
@@ -51,6 +54,8 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=active-stop-complete-drain-embedded"
             | "handler-failures=active-stop-timeout-drain"
             | "handler-failures=active-stop-timeout-drain-embedded"
+            | "handler-failures=expired-drain"
+            | "handler-failures=expired-drain-embedded"
     )
 }
 

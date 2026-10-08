@@ -117,6 +117,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
     if failures.starts_with("crash-")
         || failures.starts_with("full-disk")
         || failures.starts_with("failed-stop")
+        || failures.starts_with("expired-drain")
         || failures.starts_with("active-stop")
     {
         let Value::Obj(fields) = &mut table else {
@@ -134,6 +135,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
             || failures.ends_with("-int")
             || failures.starts_with("full-disk")
             || failures.starts_with("failed-stop")
+            || failures.starts_with("expired-drain")
             || (failures.starts_with("active-stop") && !failures.starts_with("active-stop-timeout"))
         {
             "30000"
@@ -159,6 +161,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     let expected = if failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
+        || failure.starts_with("expired-drain")
         || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete"))
     {
         8
@@ -192,6 +195,8 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             | "active-stop-abort-embedded"
             | "active-stop-drain"
             | "active-stop-drain-embedded"
+            | "expired-drain"
+            | "expired-drain-embedded"
     ) {
         assert!((expected as u64..=4096).contains(&last));
     } else {
@@ -221,6 +226,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         if (failure.starts_with("crash-")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
+            || failure.starts_with("expired-drain")
             || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete")))
             && number(&record.body, "run_id").unwrap() == 1
         {
@@ -232,6 +238,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     if failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
+        || failure.starts_with("expired-drain")
         || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete"))
     {
         let claims: Vec<_> = store
@@ -262,6 +269,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             || failure.ends_with("-int")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
+            || failure.starts_with("expired-drain")
             || (failure.starts_with("active-stop")
                 && !failure.starts_with("active-stop-complete")
                 && !failure.starts_with("active-stop-timeout"))
@@ -537,6 +545,14 @@ pub(super) fn run() {
         (
             "workflow_race::active_stop::embedded_quiet_drain_enforces_original_handler_timeout",
             vec!["active-stop-timeout-drain-embedded"],
+        ),
+        (
+            "workflow_race::expired_drain::standalone_expired_drain_preserves_pending_and_recovers",
+            vec!["expired-drain"],
+        ),
+        (
+            "workflow_race::expired_drain::embedded_expired_drain_preserves_pending_and_recovers",
+            vec!["expired-drain-embedded"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];

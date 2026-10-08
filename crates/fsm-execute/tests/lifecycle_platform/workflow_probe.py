@@ -37,6 +37,8 @@ CASES = (
     ('workflow_race::active_stop::embedded_drain_allows_original_completion', 1),
     ('workflow_race::active_stop::standalone_quiet_drain_enforces_original_handler_timeout', 1),
     ('workflow_race::active_stop::embedded_quiet_drain_enforces_original_handler_timeout', 1),
+    ('workflow_race::expired_drain::standalone_expired_drain_preserves_pending_and_recovers', 1),
+    ('workflow_race::expired_drain::embedded_expired_drain_preserves_pending_and_recovers', 1),
     ('borrowed_embedded_handlers_complete_the_workflow', 1),
 )
 

@@ -2,6 +2,14 @@
 use super::*;
 
 pub(super) fn abort_with_uncertainty(directory: &Directory, root: &Path, output: &Path) {
+    stop_with_uncertainty(directory, root, output, "abort");
+}
+
+pub(super) fn drain_with_uncertainty(directory: &Directory, root: &Path, output: &Path) {
+    stop_with_uncertainty(directory, root, output, "drain");
+}
+
+fn stop_with_uncertainty(directory: &Directory, root: &Path, output: &Path, mode: &str) {
     let entry = directory.1.as_ref().unwrap();
     let mut stop = Command::new(directory.executable())
         .env("HOME", text(entry, "home"))
@@ -11,7 +19,7 @@ pub(super) fn abort_with_uncertainty(directory: &Directory, root: &Path, output:
             "execute",
             "stop",
             "--mode",
-            "abort",
+            mode,
             "--timeout-ms",
             "1000",
             "--control-dir",
@@ -71,7 +79,7 @@ pub(super) fn abort_with_uncertainty(directory: &Directory, root: &Path, output:
     }
     assert!(matches!(
         observed_owner.get("phase").and_then(Value::as_str),
-        Some("stopping" | "uncertain")
+        Some("draining" | "stopping" | "uncertain")
     ));
     assert_eq!(
         observed_owner.get("admission_closed"),

@@ -7,6 +7,7 @@ depends_on:
   - executor-ownership-integration
 gated: false
 touches:
+  - crates/fsm-cli/tests/workflow_race/expired_drain.rs
   - crates/fsm-cli/tests/workflow_race/active_stop.rs
   - crates/fsm-cli/tests/workflow_race/classification.rs
   - crates/fsm-cli/tests/workflow_race/failed_stop.rs
