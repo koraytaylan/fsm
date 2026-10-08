@@ -613,7 +613,7 @@ fn shared_tick_handoff(case: Handoff) {
     ));
 }
 
-fn copy_store(source: &std::path::Path) -> std::path::PathBuf {
+pub(in super::super) fn copy_store(source: &std::path::Path) -> std::path::PathBuf {
     fn copy_entry(source: &std::path::Path, target: &std::path::Path, depth: usize) {
         assert!(depth < 32, "fixture directory depth exceeds bound");
         let metadata = std::fs::symlink_metadata(source).unwrap();

@@ -968,7 +968,7 @@ fn shared_tick_recovery() {
 }
 
 #[path = "supervisor_fresh_native_probe.rs"]
-mod fresh_handoff;
+pub(super) mod fresh_handoff;
 
 #[path = "supervisor_admission_native_probe.rs"]
 mod fresh_admission;

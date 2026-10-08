@@ -359,6 +359,27 @@ fn reconcile_original_completion_before_handoff(
             .stopped_for(claim.effect().0, claim.effect().1)
             .unwrap()
             .clone();
+        let copied = super::super::supervisor_probe::fresh_handoff::copy_store(path);
+        let mut foreign_writer = Store::open(&copied).unwrap();
+        assert_eq!(foreign_writer.records, records);
+        let foreign_state = foreign_writer.state.execution.clone();
+        let refusal = fsm_execute::service::reconcile_run(
+            &mut foreign_writer,
+            clock,
+            claim.run_id(),
+            Duration::from_secs(1),
+        )
+        .unwrap_err();
+        assert_eq!(refusal.code, "exec/inflight_deferred");
+        assert_eq!(
+            refusal.message,
+            "native discovery store registration missing"
+        );
+        assert_eq!(foreign_writer.records, records);
+        assert_eq!(foreign_writer.state.execution, foreign_state);
+        drop(foreign_writer);
+        assert_eq!(Store::open_read_only(&copied).unwrap().records, records);
+        assert_eq!(Store::open_read_only(path).unwrap().records, records);
         let response = fsm_execute::service::reconcile_run(
             &mut writer,
             clock,
