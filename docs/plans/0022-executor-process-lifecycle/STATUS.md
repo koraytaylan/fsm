@@ -14,6 +14,20 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 5/7 tasks completed.
 
+Frozen `5730f172..fd5affe2` passes all six portable full gates, the dependency/core-only
+check and both native jobs at code checkpoint `c7fc9e8d` in
+[CI 37803124306](https://github.com/koraytaylan/fsm/actions/runs/37803124306).
+Exact job/step inventory digest: `bf272707fbb4e3155d69a9e1b7b808a551cc271cd2f1b54c4269820f08a48a41`;
+independently verified native report/log digest: `1b529a1c57073c760e8886b8ee957ddff6b558175fa166841a4b77aa4c74d94d`.
+Both compilers cover 82 native cases, 34 production workflow scenarios and
+historical original-executor upgrade/drain; the successor through `fd5affe2`
+only corrects capability documentation. The 14-file requirement review matches
+the frozen worktree, but final task acceptance remains pending, so 9403 stays
+in progress. The earlier stable successor stall remains preserved with its
+cause unproven; passing successors do not establish a behavioral fix. This
+documentation-only verdict omits heavy gates; volatile evidence stays outside
+the repository, and the complete 9404 crash inventory remains outstanding.
+
 Frozen 26c68220 passes all six portable gates and both independently verified 82-case native matrices, plus twelve production workflow scenarios per toolchain, including competing live-tree exclusion and final drain; the frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. This establishes the production ownership path used by 8901, not completion of 9401's launch/settlement crash matrix or 9402's full shutdown inventory. Those remaining lifecycle requirements continue to gate final transport integration.
 
 Frozen 89cf8f0c..e501d571 passes genuine native acknowledged-event recovery through a reconstructed paired driver with removed and changed handler tables on stable/MSRV, plus focused lifecycle tests, all-target executor Clippy, formatting and size checks; disabling handoff adoption fails the new recovery assertion and restoration passes. The frozen review has task-cache digest `f11fef60205f63f2791ac541c68926c543b94b660515f4769b86c2b1e7ff3d84`, including the corrected uncertainty-observer race and retained failed evidence. This proves original-event delivery once without another allocation after writer reopen, not executor-kill cutpoints or the full host crash matrix; 9401 remains in progress.
