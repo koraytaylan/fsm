@@ -17,6 +17,10 @@ use fsm_core::json::{JsonLimits, Value, parse};
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(target_os = "linux")]
+#[path = "executor_lifecycle_crash/native.rs"]
+mod native;
+
 struct Fixture {
     directory: PathBuf,
     root: Child,

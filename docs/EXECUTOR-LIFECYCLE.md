@@ -1394,3 +1394,12 @@ root exit and pipe retention for both handler modes before releasing the tree.
 This proves the fixture's observable behavior, not native containment: the
 complete standalone/embedded production cutpoint and supervisor-death matrix,
 resource-use and guard-sensitivity acceptance remain outstanding.
+
+The dedicated target also contains an explicitly ignored Linux production-host
+candidate-result crash actor. A protected Root-coordinator manifest selects
+standalone/embedded and process/MCP artifacts; the actor kills only its owned
+executor, holds the original writer during immediate restart, independently
+checks original PID/start identities and a matched closure receipt, and requires
+original stopped/settled publication before a successor claim and final event
+completion. Provisioned coordinator wiring and native execution remain pending;
+compilation alone grants no crash or no-overlap acceptance.

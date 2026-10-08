@@ -7,6 +7,9 @@ noise; fixture tests independently observe root exit before descendant pipe
 retirement. Production crash cutpoints, supervisor death, native sensitivity
 and the complete frozen matrix remain outstanding; fixture acceptance alone
 does not establish native no-overlap recovery.
+The dedicated Linux candidate-result crash actor compiles but remains natively
+unexecuted and awaits protected coordinator staging; its explicitly ignored
+case does not count as passing native matrix evidence.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
