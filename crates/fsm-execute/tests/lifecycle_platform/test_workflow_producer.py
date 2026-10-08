@@ -69,6 +69,10 @@ class Retirement(unittest.TestCase):
                 self.assertEqual(run.call_count, 2)
                 self.assertIn('remove', run.call_args.args[0])
             evidence = json.loads(report.read_text())
+            # The outer deadline covers every unchanged root-runner group bound;
+            # it must not truncate the expanded inventory after 300 seconds.
+            self.assertEqual(run.call_args_list[0].kwargs['timeout'],
+                             60 + sum(30 * count + 20 for _, count in probe.CASES))
             self.assertFalse(evidence['gate_released'])
             self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing)
             self.assertEqual(evidence['exit_code'], None if timeout else 0)

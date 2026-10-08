@@ -45,11 +45,26 @@ class Export(unittest.TestCase):
         path = '/usr/libexec/fsm-workflow-aa'
         stage = SimpleNamespace(parent=Path('/usr/libexec'), name='fsm-workflow-aa',
                                 lstat=lambda: SimpleNamespace(st_mode=stat.S_IFDIR | 0o700, st_uid=0),
-                                iterdir=lambda: iter(Path(f'entry-{index}') for index in range(129)))
+                                iterdir=lambda: iter(Path(f'entry-{index}') for index in range(1025)))
         with patch.object(exporter, 'Path', side_effect=lambda value: stage if value == path else Path(value)):
             with patch.object(exporter.os, 'open') as opened:
                 with self.assertRaisesRegex(ValueError, 'entry count'):
                     exporter.read_stage(path)
+                opened.assert_not_called()
+
+    def test_completed_observations_fit_exact_directory_bound_without_being_exported(self):
+        path = '/usr/libexec/fsm-workflow-aa'
+        metadata = SimpleNamespace(st_mode=stat.S_IFDIR | 0o700, st_uid=0,
+                                   st_dev=1, st_ino=2)
+        stage = SimpleNamespace(parent=Path('/usr/libexec'), name='fsm-workflow-aa',
+                                lstat=lambda: metadata,
+                                iterdir=lambda: iter(Path(f'observation-{index}.json')
+                                                     for index in range(1024)))
+        with patch.object(exporter, 'Path', side_effect=lambda value: stage if value == path else Path(value)):
+            with patch.object(exporter.os, 'open') as opened:
+                record = exporter.read_stage(path)
+                self.assertEqual(record['files'], [])
+                self.assertEqual((record['device'], record['inode']), (1, 2))
                 opened.assert_not_called()
 
     def test_existing_export_is_never_overwritten(self):

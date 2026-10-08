@@ -8,6 +8,9 @@ import stat
 import subprocess
 import sys
 
+# Completed scenarios retain per-allocation observations alongside diagnostics;
+# cap the entire directory separately from the 64 exported diagnostic files.
+STAGE_ENTRY_CAP = 1024
 
 def read_stage(stage):
     stage = Path(stage)
@@ -19,7 +22,7 @@ def read_stage(stage):
     records = []
     entries = []
     for path in stage.iterdir():
-        if len(entries) == 128:
+        if len(entries) == STAGE_ENTRY_CAP:
             raise ValueError('retained stage entry count exceeds bound')
         entries.append(path)
     for path in sorted(entries):

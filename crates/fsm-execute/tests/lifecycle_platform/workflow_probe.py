@@ -42,6 +42,10 @@ CASES = (
     ('borrowed_embedded_handlers_complete_the_workflow', 1),
 )
 
+# Match the root runner's finite per-group bounds (30 seconds per scenario
+# plus 20 per group), with 60 seconds for provisioning and retirement.
+WORKFLOW_TIMEOUT_SECONDS = 60 + sum(30 * count + 20 for _, count in CASES)
+
 
 def build_cli(repo, toolchain, test):
     target = 'mcp_execute_workflow' if test else 'fsm'
@@ -114,7 +118,8 @@ def main():
                    'authority::allocator::native_tests::provisioned_cli_workflow',
                    '--ignored', '--nocapture', '--color', 'never']
         try:
-            result = subprocess.run(command, cwd=repo, capture_output=True, timeout=300)
+            result = subprocess.run(command, cwd=repo, capture_output=True,
+                                    timeout=WORKFLOW_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired as error:
             timeout_error = error
             result = subprocess.CompletedProcess(command, None, error.stdout or b'', error.stderr or b'')
