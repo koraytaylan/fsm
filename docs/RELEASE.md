@@ -14,6 +14,10 @@ stdin and marker-retirement failures remain retained. The overall checkpoint
 fails on a subsequent evidence-directory collision; crash evidence now has its
 own directory and `native-crash-*` artifact, preserving the containment probe's
 fresh-directory refusal. Full integration and remaining crash axes stay open.
+The successor adds quiet/noisy variants for each host and handler, emitting
+16 KiB of stderr before the held candidate barrier and checking the protected
+replacement's bounded prefix and complete-stream digest. The expanded native
+matrix and repeated-run resource-use acceptance remain unverified.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

@@ -1416,3 +1416,12 @@ The overall checkpoint still fails because the following containment probe
 requires a fresh evidence directory; crash evidence now uses a separate
 `native-crash-*` artifact. Broader cutpoints, supervisor death, resource-use and
 guard-sensitivity acceptance remain outstanding; task 9404 is incomplete.
+
+The successor matrix adds a noisy case beside each verified quiet case. The
+fixture writes 16 KiB of stderr before its held candidate barrier; Root then
+requires the successful replacement's protected response to contain the exact
+4-KiB diagnostic prefix and SHA-256 of the complete stream. Successful retired
+namespaces release their failure snapshots so a later failure retains bounded
+original evidence. These eight quiet/noisy cases are wired but remain natively
+unverified; they do not complete repeated-run resource-use acceptance or the
+remaining crash and supervisor boundaries.

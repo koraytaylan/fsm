@@ -6,6 +6,13 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[derive(Clone, Copy)]
+struct Scenario {
+    host: &'static str,
+    kind: &'static str,
+    behavior: &'static str,
+}
+
 #[test]
 #[ignore = "requires disposable native CI and exact staged lifecycle artifacts"]
 fn provisioned_lifecycle_candidate_matrix() {
@@ -32,13 +39,28 @@ fn provisioned_lifecycle_candidate_matrix() {
     }
     for host in ["standalone", "embedded"] {
         for kind in ["process", "mcp"] {
-            scenario(&staging, &nonce[..24], host, kind);
+            for behavior in ["hold-result", "noisy-result"] {
+                scenario(
+                    &staging,
+                    &nonce[..24],
+                    Scenario {
+                        host,
+                        kind,
+                        behavior,
+                    },
+                );
+            }
         }
     }
     fs::remove_dir_all(staging).unwrap();
 }
 
-fn scenario(staging: &Path, nonce: &str, host: &str, kind: &str) {
+fn scenario(staging: &Path, nonce: &str, case: Scenario) {
+    let Scenario {
+        host,
+        kind,
+        behavior,
+    } = case;
     let resource = PathBuf::from(format!("/dev/shm/fsm-crash-{nonce}-{host}-{kind}"));
     fs::DirBuilder::new().mode(0o777).create(&resource).unwrap();
     fs::set_permissions(&resource, fs::Permissions::from_mode(0o777)).unwrap();
@@ -67,7 +89,7 @@ fn scenario(staging: &Path, nonce: &str, host: &str, kind: &str) {
     fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
     std::os::unix::fs::chown(&home, Some(65534), Some(65534)).unwrap();
     let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
-    let catalogue = table(&staging.join("fixture"), &resource, kind);
+    let catalogue = table(&staging.join("fixture"), &resource, case);
     let mut fixture = Fixture::new_for_workflow(catalogue.clone());
     let limits = memory_limits::Limits::install(&fixture);
     super::broker_cases::disconnect_cases::permit_operator_store(&fixture.store);
@@ -93,7 +115,7 @@ fn scenario(staging: &Path, nonce: &str, host: &str, kind: &str) {
     )
     .unwrap();
     fs::set_permissions(&manifest, fs::Permissions::from_mode(0o444)).unwrap();
-    let log_path = staging.join(format!("{host}-{kind}.log"));
+    let log_path = staging.join(format!("{host}-{kind}-{behavior}.log"));
     let log = fs::File::create(&log_path).unwrap();
     let mut actor = Command::new("/usr/bin/python3")
         .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
@@ -133,11 +155,11 @@ fn scenario(staging: &Path, nonce: &str, host: &str, kind: &str) {
         String::from_utf8_lossy(&output)
     );
     assert!(String::from_utf8_lossy(&output).contains("1 passed; 0 failed; 0 ignored;"));
-    verify(&fixture);
+    verify(&fixture, behavior);
     memory_limits::archive(&fixture, staging);
     writeln!(
         std::io::stdout().lock(),
-        "FSM_NATIVE_CRASH_CASE candidate-result {host} {kind}"
+        "FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}"
     )
     .unwrap();
     drop(broker);
@@ -155,9 +177,27 @@ fn scenario(staging: &Path, nonce: &str, host: &str, kind: &str) {
     limits.retire();
     fs::remove_dir_all(resource).unwrap();
     fs::remove_dir_all(home).unwrap();
+    // Retired successful namespaces need no failure snapshot; keep the bounded
+    // export inventory available for a later failed scenario's original state.
+    let namespace = fixture
+        .directory
+        .parent()
+        .unwrap()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let prefix = format!("failure-{namespace}-");
+    for entry in fs::read_dir(staging).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name().to_str().unwrap().starts_with(&prefix) {
+            fs::remove_file(entry.path()).unwrap();
+        }
+    }
 }
 
-fn table(executable: &Path, resource: &Path, kind: &str) -> Value {
+fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
+    let Scenario { kind, behavior, .. } = case;
     let mut handler = BTreeMap::from([
         ("effect".into(), Value::Str("notify".into())),
         ("kind".into(), Value::Str(kind.into())),
@@ -168,7 +208,7 @@ fn table(executable: &Path, resource: &Path, kind: &str) -> Value {
                     executable.to_str().unwrap(),
                     kind,
                     resource.to_str().unwrap(),
-                    "hold-result",
+                    behavior,
                 ]
                 .into_iter()
                 .map(|value| Value::Str(value.into()))
@@ -199,7 +239,7 @@ fn table(executable: &Path, resource: &Path, kind: &str) -> Value {
     ])
 }
 
-fn verify(fixture: &Fixture) {
+fn verify(fixture: &Fixture, behavior: &str) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
     let store = Store::open_read_only(&fixture.store).unwrap();
@@ -249,5 +289,24 @@ fn verify(fixture: &Fixture) {
         .unwrap();
         assert!(proof.matches_claim(&claim, &format!("sha256:{}", record.hash)));
         proof.check_store(&fixture.store).unwrap();
+        if behavior == "noisy-result" && number(&claim.to_value(), "attempt").unwrap() == 2 {
+            let response = read_value(
+                &fixture.directory.join(format!(
+                    "completed-{}-{}.json",
+                    number(&domain, "allocation").unwrap(),
+                    claim.run_id()
+                )),
+                true,
+            )
+            .unwrap();
+            let candidate = response.get("result").unwrap().get("candidate").unwrap();
+            assert_eq!(candidate.get("stderr"), Some(&Value::Str("n".repeat(4096))));
+            assert_eq!(
+                candidate.get("stderr_sha256"),
+                Some(&Value::Str(fsm_core::sha256::to_hex(
+                    &fsm_core::sha256::sha256(&[b'n'; 16_384])
+                )))
+            );
+        }
     }
 }

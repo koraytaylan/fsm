@@ -28,8 +28,8 @@ def read_stage(stage):
     for path in sorted(entries):
         if not (path.name.endswith('.inventory.json') or
                 path.name.startswith('failure-') and path.suffix in ('.log', '.json') or
-                stage.name.startswith('fsm-crash-') and path.name in
-                ('standalone-process.log', 'standalone-mcp.log', 'embedded-process.log', 'embedded-mcp.log')):
+                stage.name.startswith('fsm-crash-') and re.fullmatch(
+                    r'(standalone|embedded)-(process|mcp)(-(hold-result|noisy-result))?\.log', path.name)):
             continue
         if len(records) >= 64:
             raise ValueError('retained diagnostic count exceeds bound')

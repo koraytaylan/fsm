@@ -1,4 +1,4 @@
-"""Run the four candidate-result crash cases only on disposable Linux CI."""
+"""Run quiet/noisy candidate-result crash cases only on disposable Linux CI."""
 import argparse
 import hashlib
 import json
@@ -57,7 +57,7 @@ def main():
                         'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix',
                         '--ignored', '--nocapture', '--color', 'never'])
         try:
-            result = subprocess.run(command, cwd=repo, capture_output=True, timeout=400)
+            result = subprocess.run(command, cwd=repo, capture_output=True, timeout=700)
             report['timed_out'] = False
         except subprocess.TimeoutExpired as error:
             result = subprocess.CompletedProcess(command, None, error.stdout or b'', error.stderr or b'')
@@ -67,9 +67,10 @@ def main():
         args.report.with_suffix('.log').write_bytes(output)
         report.update(exit_code=result.returncode, command=command,
                       log_sha256=hashlib.sha256(output).hexdigest())
-        report['cases'] = [dict(host=host, kind=kind, passed=result.stdout.splitlines().count(
-            f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind}'.encode()) == 1)
-            for host in ('standalone', 'embedded') for kind in ('process', 'mcp')]
+        report['cases'] = [dict(host=host, kind=kind, behavior=behavior, passed=result.stdout.splitlines().count(
+            f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
+            for host in ('standalone', 'embedded') for kind in ('process', 'mcp')
+            for behavior in ('hold-result', 'noisy-result')]
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))
@@ -93,7 +94,7 @@ def main():
         subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                         '--inode', str(installed['inode']), '--sha256', expected], check=True, timeout=10)
         args.report.write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(dict(report=str(args.report), passed=report['passed'], cases=4, gate_released=False)))
+    print(json.dumps(dict(report=str(args.report), passed=report['passed'], cases=8, gate_released=False)))
     return 0 if report['passed'] else 1
 
 

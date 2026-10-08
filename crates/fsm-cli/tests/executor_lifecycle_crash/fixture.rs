@@ -199,12 +199,12 @@ fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn s
                 return Err("fixture expected tools/call".into());
             }
         }
-        mark(directory, "root", "candidate")?;
-        if behavior == "hold-result" {
-            wait_for(&directory.join("root-release"))?;
-        }
         if behavior == "noisy-result" {
             io::stderr().lock().write_all(&[b'n'; 16_384])?;
+        }
+        mark(directory, "root", "candidate")?;
+        if behavior != "exit-root" {
+            wait_for(&directory.join("root-release"))?;
         }
         let result = object([("ok", Value::Bool(true))]);
         if mode == "mcp" {
