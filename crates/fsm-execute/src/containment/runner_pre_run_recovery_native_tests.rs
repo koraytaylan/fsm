@@ -176,4 +176,49 @@ fn refuse_unavailable_socket(
     assert_eq!(restored.ino(), original.ino());
     assert_eq!(restored.uid(), original.uid());
     assert_eq!(restored.mode(), original.mode());
+    refuse_missing_socket(fixture, session, effect, &socket);
+}
+
+fn refuse_missing_socket(
+    fixture: &Fixture,
+    session: &orphan_recovery::Session<'_>,
+    effect: &str,
+    socket: &Path,
+) {
+    let original = fs::symlink_metadata(socket).unwrap();
+    let preserved = socket.with_extension("preserved");
+    assert!(!preserved.exists());
+    // Withdraw the recorded native endpoint while preserving its physical
+    // socket and broker; endpoint absence cannot establish domain retirement.
+    fs::rename(socket, &preserved).unwrap();
+    assert_eq!(
+        fs::symlink_metadata(socket).unwrap_err().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    session.refuse_pre_run_missing_socket();
+    assert_unresolved(fixture, effect);
+    for name in [
+        "binding-1.json",
+        "launch-1.json",
+        "closing-1.json",
+        "closed-1.json",
+    ] {
+        assert!(fs::symlink_metadata(fixture.directory.join(name)).is_err());
+    }
+    fs::rename(&preserved, socket).unwrap();
+    let restored = fs::symlink_metadata(socket).unwrap();
+    assert_eq!(
+        (
+            restored.dev(),
+            restored.ino(),
+            restored.uid(),
+            restored.mode()
+        ),
+        (
+            original.dev(),
+            original.ino(),
+            original.uid(),
+            original.mode()
+        )
+    );
 }

@@ -111,6 +111,14 @@ impl<'fixture> Session<'fixture> {
         self.run("refuse_pre_run_socket", "FSM_NATIVE_PRE_RUN_SOCKET_REFUSED");
     }
 
+    pub(super) fn refuse_pre_run_missing_socket(&self) {
+        self.ensure_cli();
+        self.run(
+            "refuse_pre_run_missing_socket",
+            "FSM_NATIVE_MISSING_SOCKET_REFUSED",
+        );
+    }
+
     pub(super) fn refuse_changed_domain(&self) {
         self.ensure_cli();
         self.run("refuse_changed_domain", "FSM_NATIVE_CHANGED_DOMAIN_REFUSED");
@@ -238,6 +246,16 @@ fn refuse_pre_run_socket() {
     #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
     {
         println!("\nFSM_NATIVE_PRE_RUN_SOCKET_REFUSED");
+    }
+}
+
+#[test]
+#[ignore = "configured unprivileged operator with its recorded native endpoint absent"]
+fn refuse_pre_run_missing_socket() {
+    refuse_pre_run(&std::io::Error::from_raw_os_error(2).to_string());
+    #[allow(clippy::print_stdout)] // Frozen marker consumed by the Root fixture.
+    {
+        println!("\nFSM_NATIVE_MISSING_SOCKET_REFUSED");
     }
 }
 
