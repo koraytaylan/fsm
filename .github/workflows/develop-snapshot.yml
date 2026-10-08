@@ -18,7 +18,8 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Finish the current gate/publication and queue the latest successor.
+  cancel-in-progress: false
 
 permissions: {}
 
