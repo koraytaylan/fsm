@@ -331,6 +331,8 @@ fn shared_tick_admission() {
         .claim_for("instance", &effect)
         .unwrap()
         .clone();
+    let namespace = std::env::var("FSM_NATIVE_TEST_NAMESPACE").unwrap();
+    let lease_probe = super::owned_preparation::held_lease(&namespace, claim.domain());
     let claimed_records = writer.records.clone();
     let hash = writer.current_execution_claim_hash(&claim).unwrap();
     assert_eq!(
@@ -446,6 +448,7 @@ fn shared_tick_admission() {
             .is_none()
     );
     assert!(scheduler.inflight_effect(&effect).is_none());
+    lease_probe.try_lock().unwrap();
     let acknowledgement = fsm_execute::rid::ack_rid(&effect);
     let event = fsm_execute::rid::event_rid(&effect, "docs_ok");
     let acknowledgement_seq = writer
