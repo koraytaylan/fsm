@@ -10,9 +10,75 @@ use std::fs;
 #[test]
 #[ignore = "requires installed production gate and writable provisioned root cgroups"]
 fn binding_refuses_claim_absent_from_durable_journal() {
-    use super::super::super::{bind, catalogue, object};
-    use fsm_core::json::{JsonLimits, parse};
     let mut fixture = Fixture::new();
+    let binding = absent_claim_binding(&mut fixture);
+    let records = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
+    assert_eq!(
+        super::super::super::bind(&fixture.directory, &binding).unwrap_err(),
+        "claim is not current runnable ownership"
+    );
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    for prefix in ["binding", "launch", "handoff", "entry"] {
+        assert!(!fixture.directory.join(format!("{prefix}-1.json")).exists());
+    }
+    fixture.cleanup().unwrap();
+}
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn authorization_refuses_claim_absent_from_durable_journal() {
+    use super::super::super::{authorize, object, publish_once};
+    let mut fixture = Fixture::new();
+    let binding = absent_claim_binding(&mut fixture);
+    let records = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
+    // Root-only test arrangement bypasses binding publication so this case
+    // independently reaches the production grant caller's fresh claim check.
+    // This forged binding is not evidence of admitted or launched ownership.
+    let binding_path = fixture.directory.join("binding-1.json");
+    publish_once(&binding_path, &binding).unwrap();
+    let binding_bytes = fs::read(&binding_path).unwrap();
+    let grant = object([
+        ("format", Value::Str("fsm.native-entry/1".into())),
+        ("claim", binding.get("claim").unwrap().clone()),
+        (
+            "journal_claim",
+            binding.get("journal_claim").unwrap().clone(),
+        ),
+        ("argv", Value::Arr(vec![Value::Str("/bin/true".into())])),
+    ]);
+    let request = object([("grant", grant), ("group_id", Value::Num("1".into()))]);
+    assert_eq!(
+        authorize::publish(&fixture.directory, &request).unwrap_err(),
+        "claim is not current runnable ownership"
+    );
+    assert_eq!(fs::read(&binding_path).unwrap(), binding_bytes);
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    for name in [
+        "entry-1.json",
+        "entry-1.json.pending",
+        "launch-1.json",
+        "handoff-1.json",
+    ] {
+        assert!(!fixture.directory.join(name).exists());
+    }
+    fixture.cleanup().unwrap();
+}
+
+fn absent_claim_binding(fixture: &mut Fixture) -> Value {
+    use super::super::super::{catalogue, object};
+    use fsm_core::json::{JsonLimits, parse};
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let mut writer = Store::open(&fixture.store).unwrap();
     writer
@@ -64,20 +130,8 @@ fn binding_refuses_claim_absent_from_durable_journal() {
             Value::Str(format!("sha256:{}", "0".repeat(64))),
         ),
     ]);
-    let records = writer.records.clone();
     drop(writer);
-    assert_eq!(
-        bind(&fixture.directory, &binding).unwrap_err(),
-        "claim is not current runnable ownership"
-    );
-    assert_eq!(
-        Store::open_read_only(&fixture.store).unwrap().records,
-        records
-    );
-    for prefix in ["binding", "launch", "handoff", "entry"] {
-        assert!(!fixture.directory.join(format!("{prefix}-1.json")).exists());
-    }
-    fixture.cleanup().unwrap();
+    binding
 }
 
 pub(super) fn bound_claim(fixture: &Fixture, binding: &Value, effect: &str) {

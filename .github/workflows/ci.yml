@@ -40,6 +40,7 @@ on:
           - preparation-owner
           - association-deadline
           - claim-before-binding
+          - claim-before-authorization
         default: preparation-owner
 
 # Preserve the running develop checkpoint and queue its latest successor.

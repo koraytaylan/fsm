@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -37,7 +37,7 @@ def main():
     assert not cache.is_relative_to('/tmp')
     assert authority.authority_state_is_clear(), 'exclusive fresh native fixture required'
     association = args.guard == 'association-deadline'
-    claim_binding = args.guard == 'claim-before-binding'
+    claim_binding = args.guard in ('claim-before-binding', 'claim-before-authorization')
     source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
                      else 'crates/fsm-execute/src/containment/authority.rs' if claim_binding
                      else 'crates/fsm-execute/src/containment/owner_lease.rs')
@@ -52,8 +52,10 @@ def main():
         replacement = b'    let _ = verify_claim;\n'
     case = 'authority::allocator::native_tests::private_exec_status' if association else CASE
     if claim_binding:
-        case = ('authority::allocator::native_tests::admission_cases::'
-                'binding_refuses_claim_absent_from_durable_journal')
+        case = ('authority::allocator::native_tests::admission_cases::' +
+                ('authorization_refuses_claim_absent_from_durable_journal'
+                 if args.guard == 'claim-before-authorization'
+                 else 'binding_refuses_claim_absent_from_durable_journal'))
     named_refusal = case if association else 'authority::allocator::native_tests::' + CHILD
     if claim_binding:
         named_refusal = case
@@ -62,8 +64,9 @@ def main():
     scope = ('installed-gate association acquisition sensitivity; not a full integration gate'
              if association else 'public live-owner refusal sensitivity; not a full integration gate')
     if claim_binding:
-        description = 'durable claim validation before protected binding'
-        scope = 'native binding claim-before-start sensitivity; not a full integration gate'
+        phase = 'authorization' if args.guard == 'claim-before-authorization' else 'binding'
+        description = 'durable claim validation before protected ' + phase
+        scope = 'native ' + phase + ' claim-before-start sensitivity; not a full integration gate'
     original = source.read_bytes()
     assert original.count(guard) == 1, 'neutralize exactly one selected guard'
     args.report.parent.mkdir(parents=True, exist_ok=True)
