@@ -121,7 +121,14 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
         let Value::Obj(first) = &mut handlers[0] else {
             panic!("first handler")
         };
-        first.insert("timeout_ms".into(), Value::Num("3000".into()));
+        // Signal cases must close through lease EOF before the handler deadline;
+        // the eight-second closure observation cannot pass on this 30-second timeout.
+        let timeout = if failures.ends_with("-term") || failures.ends_with("-int") {
+            "30000"
+        } else {
+            "3000"
+        };
+        first.insert("timeout_ms".into(), Value::Num(timeout.into()));
         first.insert(
             "retry".into(),
             fsm_core::json::parse(
@@ -218,6 +225,12 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             .as_str()
             .unwrap();
         assert!(matches!(status, "timeout" | "interrupted"));
+        if failure.ends_with("-term") || failure.ends_with("-int") {
+            assert_eq!(
+                status, "interrupted",
+                "signal cleanup cannot be a handler timeout"
+            );
+        }
         if matches!(failure, "crash-stop" | "crash-embedded-stop") {
             assert_eq!(status, "timeout");
         }

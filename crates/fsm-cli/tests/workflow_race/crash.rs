@@ -26,7 +26,14 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
     let Value::Obj(first) = &mut handlers[0] else {
         panic!("first handler")
     };
-    first.insert("timeout_ms".into(), Value::Num("3000".into()));
+    // Signal cases must close through lease EOF before the handler deadline;
+    // the eight-second closure observation cannot pass on this 30-second timeout.
+    let timeout = if failures.ends_with("-term") || failures.ends_with("-int") {
+        "30000"
+    } else {
+        "3000"
+    };
+    first.insert("timeout_ms".into(), Value::Num(timeout.into()));
     first.insert(
         "retry".into(),
         value(r#"{"attempts":2,"backoff_ms":10,"max_backoff_ms":10,"on":["timeout"]}"#),
@@ -88,6 +95,12 @@ pub(in super::super) fn restart_at_cut(
             .stopped_for(claim.effect().0, claim.effect().1)
             .is_none()
     );
+    if failures.ends_with("-term") || failures.ends_with("-int") {
+        assert!(
+            identities.iter().all(still_live),
+            "signal must reach a live handler tree"
+        );
+    }
     let mut replacement = match failures {
         "crash-launch" => Some(kill_and_restart(directory, client, original.as_deref_mut())),
         "crash-embedded-launch" => {
