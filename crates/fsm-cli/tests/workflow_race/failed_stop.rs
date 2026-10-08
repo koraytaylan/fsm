@@ -72,7 +72,6 @@ pub(super) fn restart_after_failed_stop(
         fs::read_to_string(directory.resource().join("calls")).unwrap(),
         "check_prerequisite\n"
     );
-    request_fault(directory, b"restore", b"restored");
     if let Some(owner) = original {
         owner.child.kill().unwrap();
         owner.child.wait().unwrap();
@@ -80,6 +79,8 @@ pub(super) fn restart_after_failed_stop(
         client.process.kill().unwrap();
         client.process.wait().unwrap();
     }
+    refuse_reconciliation_before_repair(directory, &claim, &records);
+    request_fault(directory, b"restore", b"restored");
     let writer = reconcile_original_closure_via_cli(directory, &claim, &records);
     assert!(identities.iter().all(|identity| !live(identity)));
     let matched = fs::symlink_metadata(&marker).unwrap();
@@ -92,6 +93,71 @@ pub(super) fn restart_after_failed_stop(
     *client = Client::start_mode(directory, ExecutionMode::Standalone);
     drop(writer);
     start(directory, "after-failed-stop")
+}
+
+fn refuse_reconciliation_before_repair(
+    directory: &Directory,
+    claim: &fsm_core::record::execution::Claim,
+    records: &[fsm_core::record::Record],
+) {
+    let output_path = directory.0.join("unrepaired-reconcile-stdout");
+    let error_path = directory.0.join("unrepaired-reconcile-stderr");
+    let mut reconciliation = Command::new(directory.executable())
+        .args(["--json", "--data-dir"])
+        .arg(directory.store())
+        .args([
+            "execute",
+            "reconcile",
+            "--run-id",
+            &claim.run_id().to_string(),
+            "--timeout-ms",
+            "3000",
+        ])
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&output_path).unwrap())
+        .stderr(fs::File::create(&error_path).unwrap())
+        .spawn()
+        .unwrap();
+    let until = Instant::now() + Duration::from_secs(6);
+    let status = loop {
+        if let Some(status) = reconciliation.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= until {
+            let _ = reconciliation.kill();
+            reconciliation.wait().unwrap();
+            panic!("unrepaired original-run CLI reconciliation exceeded its bound");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(!status.success());
+    assert!(fs::read(&output_path).unwrap().is_empty());
+    assert!(fs::metadata(&error_path).unwrap().len() <= 8192);
+    let refusal = parse(&fs::read(&error_path).unwrap(), &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(
+        refusal.get("code").and_then(Value::as_str),
+        Some("exec/inflight_deferred")
+    );
+    assert_eq!(
+        refusal.get("hint").and_then(Value::as_str),
+        Some(
+            "retain the original run; recover original results or restore its authority facilities before retrying reconciliation"
+        )
+    );
+    let observed = Store::open_read_only(&directory.store()).unwrap();
+    assert_eq!(observed.records, records);
+    assert_eq!(observed.state.execution.unresolved().count(), 1);
+    assert!(
+        observed
+            .state
+            .execution
+            .stopped_for(claim.effect().0, claim.effect().1)
+            .is_none()
+    );
+    assert_eq!(
+        fs::read_to_string(directory.resource().join("calls")).unwrap(),
+        "check_prerequisite\n"
+    );
 }
 
 fn request_fault(directory: &Directory, command: &[u8], acknowledgement: &[u8]) {
