@@ -253,8 +253,10 @@ fn fill_owned_volume(path: &Path) {
 }
 
 fn live(identity: &(u32, String)) -> bool {
-    let Ok(stat) = fs::read_to_string(format!("/proc/{}/stat", identity.0)) else {
-        return false;
+    let stat = match fs::read_to_string(format!("/proc/{}/stat", identity.0)) {
+        Ok(stat) => stat,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
+        Err(error) => panic!("original process observation failed: {error}"),
     };
     let fields: Vec<_> = stat
         .rsplit_once(") ")

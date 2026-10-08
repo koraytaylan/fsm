@@ -14,6 +14,8 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
             | "crash-int"
             | "crash-embedded-term"
             | "crash-embedded-int"
+            | "full-disk"
+            | "full-disk-embedded"
     ) {
         return;
     }
@@ -28,7 +30,10 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
     };
     // Signal cases must close through lease EOF before the handler deadline;
     // the eight-second closure observation cannot pass on this 30-second timeout.
-    let timeout = if failures.ends_with("-term") || failures.ends_with("-int") {
+    let timeout = if failures.ends_with("-term")
+        || failures.ends_with("-int")
+        || failures.starts_with("full-disk")
+    {
         "30000"
     } else {
         "3000"
@@ -95,7 +100,10 @@ pub(in super::super) fn restart_at_cut(
             .stopped_for(claim.effect().0, claim.effect().1)
             .is_none()
     );
-    if failures.ends_with("-term") || failures.ends_with("-int") {
+    if failures.ends_with("-term")
+        || failures.ends_with("-int")
+        || failures.starts_with("full-disk")
+    {
         assert!(
             identities.iter().all(still_live),
             "signal must reach a live handler tree"

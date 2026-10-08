@@ -111,7 +111,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
             ),
         ),
     ]);
-    if failures.starts_with("crash-") {
+    if failures.starts_with("crash-") || failures.starts_with("full-disk") {
         let Value::Obj(fields) = &mut table else {
             panic!("handler table")
         };
@@ -123,7 +123,10 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
         };
         // Signal cases must close through lease EOF before the handler deadline;
         // the eight-second closure observation cannot pass on this 30-second timeout.
-        let timeout = if failures.ends_with("-term") || failures.ends_with("-int") {
+        let timeout = if failures.ends_with("-term")
+            || failures.ends_with("-int")
+            || failures.starts_with("full-disk")
+        {
             "30000"
         } else {
             "3000"
