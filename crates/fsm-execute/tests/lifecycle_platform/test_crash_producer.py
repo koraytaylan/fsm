@@ -33,7 +33,7 @@ class Retirement(unittest.TestCase):
             report = directory / 'crash.json'
             markers = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()
                        for host in ('standalone', 'embedded') for kind in ('process', 'mcp')
-                       for behavior in ('hold-result', 'noisy-result', 'collected-timeout', 'collected-result', 'supervisor-death', 'closed-result', 'stopped-result', 'acked-result', 'event-result', 'claimed-result', 'authorization', 'repeated-noisy')]
+                       for behavior in ('hold-result', 'signal-int', 'signal-term', 'noisy-result', 'collected-timeout', 'collected-result', 'supervisor-death', 'closed-result', 'stopped-result', 'acked-result', 'event-result', 'claimed-result', 'authorization', 'repeated-noisy')]
             if missing:
                 markers.pop()
             output = b'\n'.join(markers) + b'\n1 passed; 0 failed; 0 ignored;\n'

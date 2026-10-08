@@ -1240,6 +1240,12 @@ promise graceful drain. SIGINT (including terminal Ctrl-C), SIGTERM and
 SIGKILL terminate the executor; the
 protected supervisor observes lease EOF and closes the native domain, while
 durable ownership must survive until closure and settlement are verified.
+The production-host crash inventory includes separate `signal-int` and
+`signal-term` cases alongside forced kill for standalone/embedded and
+process/MCP execution. Each targets only the owned executor, checks its exact
+native terminating signal, and reuses the live-tree, immediate-restart and
+verified recovery assertions; these added axes remain pending disposable-CI
+evidence until the frozen checkpoint passes.
 Task 9402 must provide the separately requested, independently woken local
 drain/abort control and bounded report. It must not label native SIGTERM
 default termination as drain, invoke settlement from a signal handler, or

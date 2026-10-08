@@ -70,7 +70,7 @@ def main():
         report['cases'] = [dict(host=host, kind=kind, behavior=behavior, passed=result.stdout.splitlines().count(
             f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
             for host in ('standalone', 'embedded') for kind in ('process', 'mcp')
-            for behavior in ('hold-result', 'noisy-result', 'collected-timeout', 'collected-result', 'supervisor-death', 'closed-result', 'stopped-result', 'acked-result', 'event-result', 'claimed-result', 'authorization', 'repeated-noisy')]
+            for behavior in ('hold-result', 'signal-int', 'signal-term', 'noisy-result', 'collected-timeout', 'collected-result', 'supervisor-death', 'closed-result', 'stopped-result', 'acked-result', 'event-result', 'claimed-result', 'authorization', 'repeated-noisy')]
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))
@@ -94,7 +94,7 @@ def main():
         subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                         '--inode', str(installed['inode']), '--sha256', expected], check=True, timeout=10)
         args.report.write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(dict(report=str(args.report), passed=report['passed'], cases=48, gate_released=False)))
+    print(json.dumps(dict(report=str(args.report), passed=report['passed'], cases=len(report['cases']), gate_released=False)))
     return 0 if report['passed'] else 1
 
 

@@ -122,6 +122,49 @@ impl Host {
         assert_eq!(self.process.wait().unwrap().signal(), Some(9));
     }
 
+    fn terminate_and_wait(&mut self, signal: i32) {
+        assert!(matches!(signal, 2 | 15));
+        assert!(self.process.try_wait().unwrap().is_none());
+        // The unreaped owned child keeps its PID reserved; signal exactly this
+        // executor, never its group, descendants or an inferred process tree.
+        let mut sender = Command::new("/usr/bin/python3")
+            .args([
+                "-c",
+                "import os,sys;os.kill(int(sys.argv[1]),int(sys.argv[2]))",
+            ])
+            .arg(self.process.id().to_string())
+            .arg(signal.to_string())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = sender.try_wait().unwrap() {
+                assert!(status.success(), "native signal sender failed");
+                break;
+            }
+            if Instant::now() >= deadline {
+                sender.kill().unwrap();
+                sender.wait().unwrap();
+                panic!("native signal sender exceeded deadline");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        loop {
+            if let Some(status) = self.process.try_wait().unwrap() {
+                assert_eq!(status.signal(), Some(signal));
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "native signal did not terminate executor"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     fn diagnostics(&self) -> String {
         let mut bytes = Vec::new();
         fs::File::open(&self.errors)
@@ -394,7 +437,11 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         }
         assert_eq!(Store::open_read_only(&store).unwrap().records, records);
     }
-    original.kill_and_wait();
+    match field(&manifest, "behavior") {
+        "signal-int" => original.terminate_and_wait(2),
+        "signal-term" => original.terminate_and_wait(15),
+        _ => original.kill_and_wait(),
+    }
     let deadline = Instant::now() + Duration::from_secs(5);
     let held = loop {
         match Store::open(&store) {

@@ -41,6 +41,8 @@ fn provisioned_lifecycle_candidate_matrix() {
         for kind in ["process", "mcp"] {
             for behavior in [
                 "hold-result",
+                "signal-int",
+                "signal-term",
                 "noisy-result",
                 "collected-timeout",
                 "collected-result",
@@ -352,6 +354,8 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "event-result"
                             | "claimed-result"
                             | "authorization"
+                            | "signal-int"
+                            | "signal-term"
                     ) {
                         "hold-result"
                     } else {
