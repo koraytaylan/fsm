@@ -1398,6 +1398,14 @@ still checks the current original claim and all existing entry guards. This is
 not permission to retry an execute action, renew a host/handler/shutdown deadline,
 release ownership or infer closure, and changes no public or persistent format.
 
+Exec-status association MUST tolerate protected authority-lock contention only
+before changing socket or directory access: only `authority busy` acquisition may
+be retried, within the existing two-second monotonic association budget; lock
+acquisition, original handoff/domain revalidation and peer authentication share
+that budget. Other lock failures refuse immediately, exhaustion retains the
+claim without entry authorization, and no execution or shutdown deadline is
+renewed; public APIs and persistent formats are unchanged.
+
 Prepared-domain discard MUST retain the complete original domain while the
 protected authority lock is contended: only the `authority busy` refusal before
 revocation/native mutation may be retried, and acquisition plus retirement share

@@ -96,7 +96,18 @@ impl Listener {
         mut read: impl FnMut(&mut UnixStream, &mut [u8]) -> std::io::Result<usize>,
     ) -> Result<Status, String> {
         let deadline = Instant::now() + Duration::from_secs(2);
-        let _lock = super::authority_lock(&self.directory)?;
+        let _lock = loop {
+            remaining(deadline)?;
+            match super::authority_lock(&self.directory) {
+                Ok(lock) => break lock,
+                // Retry only acquisition before association changes any access;
+                // all subsequent checks share the original association budget.
+                Err(error) if error == "authority busy" => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => return Err(error),
+            }
+        };
         let handoff = read_value(
             &self
                 .directory

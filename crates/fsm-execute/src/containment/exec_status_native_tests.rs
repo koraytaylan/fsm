@@ -16,6 +16,7 @@ pub(super) fn run() {
     original_path_cleanup();
     same_identity_peer_cannot_authenticate();
     interrupted_association_retains_claim();
+    contended_association_retains_original_deadline();
     for mcp in [false, true] {
         for command in ["/fsm-native-exec-command-does-not-exist", "/etc/passwd"] {
             execution(vec![command.into()], mcp, "spawn", Some("exec/spawn"));
@@ -42,6 +43,95 @@ pub(super) fn run() {
         Some("exec/mcp_protocol"),
     );
     descriptor_retirement();
+}
+
+fn contended_association_retains_original_deadline() {
+    use super::super::super::{authority_lock, launch, stop};
+    use std::os::fd::OwnedFd;
+    use std::os::unix::net::UnixStream;
+    use std::process::Stdio;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    for hold in [Duration::from_millis(100), Duration::from_millis(2100)] {
+        let mut fixture = Fixture::new();
+        let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+        let (binding, _) = claim_binding(&fixture, &domain);
+        bind(&fixture.directory, &binding).unwrap();
+        let listener = exec_status::Listener::create(
+            &fixture.directory,
+            1,
+            &binding,
+            &fsm_execute::config::HandlerKind::Process,
+        )
+        .unwrap();
+        let (mut input, peer) = UnixStream::pair().unwrap();
+        listener.send_challenge(&mut input).unwrap();
+        let (mut child, _) = launch::begin(
+            &fixture.directory,
+            1,
+            [
+                Stdio::from(OwnedFd::from(peer)),
+                Stdio::null(),
+                Stdio::null(),
+            ],
+        )
+        .unwrap();
+        let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();
+        let gate = handoff.get("gate").unwrap().clone();
+        let before = Store::open_read_only(&fixture.store)
+            .unwrap()
+            .records
+            .clone();
+        let lock = authority_lock(&fixture.directory).unwrap();
+        let (entered, entering) = mpsc::channel();
+        let (returned, returning) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            entered.send(()).unwrap();
+            returned
+                .send(listener.associate(&domain.to_value(), &gate))
+                .unwrap();
+        });
+        entering.recv_timeout(Duration::from_secs(1)).unwrap();
+        let observed = returning.recv_timeout(hold);
+        assert!(!fixture.directory.join("entry-1.json").exists());
+        drop(lock);
+        let waited = matches!(&observed, Err(mpsc::RecvTimeoutError::Timeout));
+        let result = match observed {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                returning.recv_timeout(Duration::from_secs(2)).unwrap()
+            }
+            Err(error) => panic!("association worker disconnected: {error}"),
+        };
+        worker.join().unwrap();
+        if hold < Duration::from_secs(2) {
+            assert!(
+                waited,
+                "association must wait for its original authority lock"
+            );
+            assert!(
+                result.is_ok(),
+                "association refused after original lock release"
+            );
+        } else {
+            assert_eq!(result.err().unwrap(), "exec status association deadline");
+        }
+        assert_eq!(
+            Store::open_read_only(&fixture.store).unwrap().records,
+            before
+        );
+        assert!(!fixture.directory.join("entry-1.json").exists());
+        drop(input);
+        let _ = stop::fence(&fixture.directory, 1);
+        closure::complete(&fixture.directory, 1).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while child.try_wait().unwrap().is_none() {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        fixture.cleanup().unwrap();
+    }
 }
 
 fn interrupted_association_retains_claim() {
