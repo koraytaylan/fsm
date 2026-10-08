@@ -821,5 +821,14 @@ mod tests {
         )
         .unwrap();
         assert!(validate_request(&value).is_err());
+        match NativeRequest::start(
+            "0123456789abcdef0123456789abcdef",
+            1,
+            &value,
+            Duration::from_secs(3),
+        ) {
+            Err(error) => assert_eq!(error, "native request outside broker policy"),
+            Ok(_) => panic!("legacy preparation reached native transport startup"),
+        }
     }
 }

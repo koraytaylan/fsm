@@ -108,6 +108,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn broker_frame_refuses_legacy_preparation_before_dispatch() {
+        let request = object([
+            ("format", Value::Str("fsm.native-request/1".into())),
+            ("action", Value::Str("prepare".into())),
+            ("payload", Value::Null),
+        ]);
+        let (mut receiver, mut sender) = UnixStream::pair().unwrap();
+        let bytes = canon_bytes(&request);
+        sender
+            .write_all(&(bytes.len() as u32).to_be_bytes())
+            .unwrap();
+        sender.write_all(&bytes).unwrap();
+        assert_eq!(
+            read(&mut receiver).unwrap_err(),
+            "broker action or payload outside policy"
+        );
+    }
+
+    #[test]
     fn closed_policy_refuses_paths_commands_aliases_and_unbounded_frames() {
         let request = object([
             ("format", Value::Str("fsm.native-request/1".into())),
