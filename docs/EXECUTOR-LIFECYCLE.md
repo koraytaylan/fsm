@@ -1199,6 +1199,9 @@ reconciliation before fencing, retaining their bytes for authenticated recovery.
 Linux `service::reconcile_run` drives closure verification and helper retirement
 under a healthy writer before durable interrupted settlement without new entry;
 it refuses missing current run IDs and delegates result-bearing runs to recovery.
+Use `fsm execute reconcile --data-dir <original-dir> --run-id <id>` to select
+that shared path with an 8000-ms default bound or an explicit `--timeout-ms`;
+missing stores and unknown current IDs refuse before opening a writer.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not

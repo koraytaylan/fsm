@@ -16,6 +16,7 @@
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
 mod owner;
+mod reconcile;
 mod runs;
 mod stop;
 
@@ -37,6 +38,14 @@ use crate::store::ErrorObj;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 250;
 
 pub static SPECS: &[CmdSpec] = &[
+    CmdSpec {
+        path: &["execute", "reconcile"],
+        positionals: &[],
+        flags: &["run-id", "timeout-ms"],
+        switches: &[],
+        help: "Reconcile an exact original orphan with authenticated native closure",
+        run: reconcile::execute_reconcile,
+    },
     CmdSpec {
         path: &["execute", "runs"],
         positionals: &[],

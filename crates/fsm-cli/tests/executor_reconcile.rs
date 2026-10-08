@@ -28,6 +28,43 @@ fn directory(name: &str) -> PathBuf {
 }
 
 #[test]
+fn production_reconcile_refuses_missing_store_and_malformed_ids_without_initialization() {
+    let directory = directory("reconcile-missing");
+    for run_id in ["0", "01", "-1", "18446744073709551616", "1"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .args(["--json", "--data-dir"])
+            .arg(&directory)
+            .args(["execute", "reconcile", "--run-id", run_id])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!directory.exists());
+        assert!(!output.stderr.is_empty());
+    }
+}
+
+#[test]
+fn production_reconcile_unknown_run_refuses_before_writer_and_preserves_store_bytes() {
+    let directory = directory("reconcile-unknown");
+    let writer = Store::open(&directory).unwrap();
+    let before = files(&directory);
+    let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(["--json", "--data-dir"])
+        .arg(&directory)
+        .args(["execute", "reconcile", "--run-id", "1"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    #[cfg(target_os = "linux")]
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("original run is not currently retained")
+    );
+    assert_eq!(files(&directory), before);
+    drop(writer);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn production_runs_inspection_preserves_all_bytes_while_writer_is_held() {
     let directory = directory("held");
     let writer = Store::open(&directory).unwrap();

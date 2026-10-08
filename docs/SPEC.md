@@ -2748,7 +2748,7 @@ capacity or establish a bounded production shutdown report.
 ### Planned uncertain-run inspection and reconciliation (task 9403)
 
 Production `execute runs` implements the journal-only inspection portion;
-`execute reconcile` and shared startup reconciliation remain unimplemented.
+`execute reconcile` now selects the shared closure-only path; original-result recovery and shared startup reconciliation remain incomplete.
 The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
 inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
 effect_id, backend, phase, native_evidence and next. The execution_ownership
@@ -2807,7 +2807,7 @@ The internal `reconcile-claimed` broker action MUST exclusively hold an existing
 protected runner lease through original-binding validation, fencing and closure;
 it MUST refuse a held or missing lease before any closure side effect, MUST NOT
 publish or reinterpret a completion, and MUST NOT settle journal ownership.
-This primitive does not implement the operator command or pre-run owner recovery.
+The operator command uses this primitive; pre-run owner recovery remains incomplete.
 While holding that lease, reconciliation MUST refuse any original result
 attestation, completed response or pending completed response before fencing;
 unreadable or partial publication MUST remain uncertain rather than becoming
@@ -2820,6 +2820,10 @@ durable writer and its current exact run ID, authenticate closure and retire
 its helper before writing Stopped/Interrupted through the existing guarded
 settlement path. It MUST refuse absent runs, result material and active owners;
 it MUST NOT load a replacement handler table, launch work or fabricate an event.
+`execute reconcile --run-id <id>` MUST select that shared path for canonical
+positive run IDs, with an optional finite `--timeout-ms` (default 8000), and
+refuse missing stores or absent current runs before opening a writer; other
+platforms MUST report unsupported mode without native or journal mutation.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT

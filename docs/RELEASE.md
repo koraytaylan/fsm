@@ -1,5 +1,8 @@
 # Releasing
 
+Added `execute reconcile --run-id <id> [--timeout-ms <ms>]` for shared Linux
+closure-only recovery; original-result and startup integration remain pending.
+
 Task 9403 adds read-only `execute runs` and `service::inspect_runs`, exposing
 sanitized unresolved ownership with explicit unverified native state; release
 acceptance still requires secret/nonmutation coverage, live-owner-safe shared
@@ -15,7 +18,7 @@ transport; operator recovery and native acceptance remain pending.
 Closure-only reconciliation now refuses existing or partial original result
 publications, preserving them for authenticated recovery without interruption.
 Added Linux `service::reconcile_run` as the shared closure-only writer path;
-positive orphan acceptance and production CLI/startup wiring remain pending.
+positive orphan acceptance and production startup wiring remain pending.
 
 The native runner holds an allocation-specific protected execution lease through
 cleanup and result publication; genuine native acceptance and reconciliation

@@ -1,9 +1,13 @@
 # Embedding fsm as a library
 
+`execute reconcile --run-id <id>` selects shared Linux closure-only recovery
+with an 8000-ms default bound; original-result recovery, startup wiring and
+positive native orphan acceptance remain pending.
+
 `fsm_execute::service::inspect_runs(&store)` renders sanitized journal-derived
 unresolved ownership without native I/O or mutation, matching `execute runs`;
-native liveness remains unverified, and operator/startup reconciliation remains
-unimplemented under task 9403.
+native liveness remains unverified, and full operator/startup reconciliation remains
+incomplete under task 9403.
 `service::inspect_ownership(&store)` provides the same sanitized counts used by
 MCP health and the execution_ownership field of the CLI run report.
 The CLI requires an initialized format marker or observed journal prefix before
@@ -11,8 +15,8 @@ reporting a complete inventory; the renderer only summarizes the caller-supplied
 The native broker can serialize claimed closure against original result
 publication through `NativeShutdown::start_reconciliation`, which retains the
 original claim, physical store and authenticated receipt checks;
-the broker requires an existing protected runner lease, and the operator command,
-startup integration and recovery before runner startup remain unimplemented.
+the broker requires an existing protected runner lease, while startup integration
+and recovery before runner startup remain incomplete.
 Published attestations and complete or partial completed-response files refuse
 closure-only reconciliation so their original outcomes cannot become interruption.
 Linux `service::reconcile_run` takes a healthy durable writer, clock, current run

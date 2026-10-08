@@ -1,7 +1,11 @@
 # API and version policy
 
+Additive `execute reconcile --run-id <id> [--timeout-ms <ms>]` selects Linux
+closure-only recovery; missing/active leases and original result material refuse,
+with existing error codes and no journal format or hash changes.
+
 Task 9403 adds `execute runs` and `service::inspect_runs` as additive read-only
-inspection surfaces; reconciliation and shared recovery remain unimplemented.
+inspection surfaces; closure-only reconciliation is implemented, while original-result and startup recovery remain incomplete.
 The additive `service::inspect_ownership` shares existing MCP ownership counts
 with the inspection report, without changing existing MCP field semantics.
 Inspection refuses an uninitialized directory using existing
