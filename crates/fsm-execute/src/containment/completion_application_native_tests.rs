@@ -68,14 +68,39 @@ fn run(application: Application) {
     let attestation_identity = physical_identity(&attestation);
     let wrong_hash = format!("sha256:{}", "0".repeat(64));
     assert_ne!(hash, wrong_hash);
-    // Fault only genuine retired-run records, then use the public verifier;
+    // Fault genuine retired-run records and the captured response consistently,
+    // including its exact attestation digest, before using the public verifier;
     // no private proof construction or in-memory store mutation is involved.
     for path in [&closure, &attestation] {
         let mut material = read_value(path, true).unwrap().as_obj().unwrap().clone();
         material.insert("journal_claim".into(), Value::Str(wrong_hash.clone()));
         write_same_file(path, &canon_bytes(&Value::Obj(material)));
     }
-    let wrong = NativeCompletion::verify(&response, &claim, &wrong_hash).unwrap();
+    let mut wrong_response = response.as_obj().unwrap().clone();
+    let mut wrong_result = wrong_response
+        .get("result")
+        .unwrap()
+        .as_obj()
+        .unwrap()
+        .clone();
+    wrong_result.insert("journal_claim".into(), Value::Str(wrong_hash.clone()));
+    wrong_response.insert("result".into(), Value::Obj(wrong_result));
+    let wrong_response = Value::Obj(wrong_response);
+    let response_hash = format!(
+        "sha256:{}",
+        fsm_core::sha256::to_hex(&fsm_core::hashes::domain_hash(
+            "fsm:native-response:1",
+            &wrong_response
+        ))
+    );
+    let mut material = read_value(&attestation, true)
+        .unwrap()
+        .as_obj()
+        .unwrap()
+        .clone();
+    material.insert("response_hash".into(), Value::Str(response_hash));
+    write_same_file(&attestation, &canon_bytes(&Value::Obj(material)));
+    let wrong = NativeCompletion::verify(&wrong_response, &claim, &wrong_hash).unwrap();
     assert!(wrong.proof().matches_claim(&claim, &wrong_hash));
     assert!(!wrong.proof().matches_claim(&claim, hash));
     write_same_file(&closure, &original_closure);

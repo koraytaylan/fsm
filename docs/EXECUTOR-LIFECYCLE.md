@@ -1540,7 +1540,8 @@ The `application-closure-claim` and `settlement-closure-claim` checkpoints
 exercise retained `NativeExecution::settle` and direct
 `Pipeline::settle_native_stopped` using genuine completed and stopped runs;
 Root temporarily corrupts and restores actual retired receipt/attestation
-bytes, and the public verifier captures an opaque completion for the wrong
+bytes, faults the captured response hash field and matching attestation digest,
+and the public verifier captures an opaque completion for the wrong
 journal hash, so neither private proof construction nor store-memory mutation
 can substitute for these current-ownership checks; native runtime verification
 of both new cases remains pending.
