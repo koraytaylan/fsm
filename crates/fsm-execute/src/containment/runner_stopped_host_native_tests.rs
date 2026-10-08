@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::os::unix::process::ExitStatusExt;
 use std::process::{Child, Command, Stdio};
 
-struct Host(Child);
+pub(super) struct Host(pub(super) Child);
 
 impl Drop for Host {
     fn drop(&mut self) {

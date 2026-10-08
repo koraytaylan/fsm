@@ -589,7 +589,15 @@ fn genuine_claim_binding() {
 }
 
 fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
-    let mut store = Store::open(&fixture.store).unwrap();
+    claim_binding_paths(&fixture.directory, &fixture.store, domain)
+}
+
+fn claim_binding_paths(
+    directory: &Path,
+    store_path: &Path,
+    domain: &NativeDomain,
+) -> (Value, String) {
+    let mut store = Store::open(store_path).unwrap();
     store
         .define_machine(
             parse(
@@ -614,7 +622,7 @@ fn claim_binding(fixture: &Fixture, domain: &NativeDomain) -> (Value, String) {
         )
         .unwrap();
     let effect = store.state.instances["instance"].pending[0].clone();
-    let approved = super::super::catalogue::read(&fixture.directory).unwrap();
+    let approved = super::super::catalogue::read(directory).unwrap();
     let handler = &approved.handlers["notify"];
     let before = store.records.clone();
     let state = store.state.clone();

@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 #[path = "runner_advance_native_tests.rs"]
 mod advance;
 use advance::settle_owned;
+#[path = "runner_claim_host_native_tests.rs"]
+mod claim_host;
 #[path = "runner_handoff_recovery_native_tests.rs"]
 mod handoff_recovery;
 #[path = "runner_recovery_native_tests.rs"]
@@ -128,6 +130,7 @@ impl Drop for Barriers {
 }
 
 pub(super) fn run() {
+    claim_host::run();
     for mode in [
         "answer",
         "protocol",
