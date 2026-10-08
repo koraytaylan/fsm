@@ -50,7 +50,7 @@ impl Fixture {
                 Stdio::null()
             })
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(fs::File::create(directory.join("stderr")).unwrap())
             .spawn()
             .unwrap();
         Self { directory, root }
@@ -166,8 +166,8 @@ fn mcp_fixture_root_exit_keeps_descendant_pipes_open_until_release() {
     root_exit_retains_descendant_pipes("mcp");
 }
 
-fn candidate_result_waits_for_explicit_release(mode: &str) {
-    let mut fixture = Fixture::start(mode, "hold-result");
+fn candidate_result_waits_for_explicit_release(mode: &str, behavior: &str) {
+    let mut fixture = Fixture::start(mode, behavior);
     let stdout = fixture.root.stdout.take().unwrap();
     let (sender, receiver) = mpsc::channel();
     let reader = std::thread::spawn(move || {
@@ -198,6 +198,13 @@ fn candidate_result_waits_for_explicit_release(mode: &str) {
     }
     assert!(!fixture.directory.join("root-published").exists());
     assert!(!fixture.directory.join("root-retired").exists());
+    if behavior == "noisy-result" {
+        assert_eq!(
+            fs::read(fixture.directory.join("stderr")).unwrap(),
+            vec![b'n'; 16_384],
+            "the complete noise stream must precede the candidate barrier"
+        );
+    }
     assert!(
         matches!(
             receiver.recv_timeout(Duration::from_millis(100)),
@@ -239,10 +246,20 @@ fn candidate_result_waits_for_explicit_release(mode: &str) {
 
 #[test]
 fn process_candidate_result_is_held_until_explicit_release() {
-    candidate_result_waits_for_explicit_release("process");
+    candidate_result_waits_for_explicit_release("process", "hold-result");
 }
 
 #[test]
 fn mcp_candidate_result_is_held_until_explicit_release() {
-    candidate_result_waits_for_explicit_release("mcp");
+    candidate_result_waits_for_explicit_release("mcp", "hold-result");
+}
+
+#[test]
+fn process_noise_precedes_held_candidate_result() {
+    candidate_result_waits_for_explicit_release("process", "noisy-result");
+}
+
+#[test]
+fn mcp_noise_precedes_held_candidate_result() {
+    candidate_result_waits_for_explicit_release("mcp", "noisy-result");
 }
