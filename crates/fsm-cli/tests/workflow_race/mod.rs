@@ -9,7 +9,10 @@ pub(super) use crash::{configure_table, restart_at_cut};
 pub(super) fn holds_tree(argument: &str) -> bool {
     matches!(
         argument,
-        "handler-failures=race" | "handler-failures=crash-launch" | "handler-failures=crash-stop"
+        "handler-failures=race"
+            | "handler-failures=crash-launch"
+            | "handler-failures=crash-stop"
+            | "handler-failures=crash-embedded-launch"
     )
 }
 

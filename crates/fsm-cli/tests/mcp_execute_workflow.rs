@@ -699,7 +699,7 @@ fn run_scenario_mode(
         competitor = Some(workflow_race::restart_at_cut(
             &directory,
             &mut client,
-            first_owner.as_mut().unwrap(),
+            first_owner.as_mut(),
             failures,
         ));
         first_owner = None;

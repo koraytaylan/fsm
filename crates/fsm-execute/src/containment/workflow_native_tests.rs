@@ -150,7 +150,10 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     let store = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(store.state.execution.unresolved().count(), 0);
     let last = number(&fixture.counter(), "last_allocation").unwrap();
-    if matches!(failure, "race" | "crash-launch" | "crash-stop") {
+    if matches!(
+        failure,
+        "race" | "crash-launch" | "crash-stop" | "crash-embedded-launch"
+    ) {
         assert!((expected as u64..=4096).contains(&last));
     } else {
         assert_eq!(last, expected as u64);
@@ -399,6 +402,10 @@ pub(super) fn run() {
         (
             "workflow_race::crash::killed_standalone_after_verified_stop_recovers_once",
             vec!["crash-stop"],
+        ),
+        (
+            "workflow_race::crash::killed_embedded_recovers_without_overlapping_trees",
+            vec!["crash-embedded-launch"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];

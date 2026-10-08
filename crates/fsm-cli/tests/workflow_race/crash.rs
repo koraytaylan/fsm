@@ -4,7 +4,10 @@ use fsm_store::store::VerifiedClosure;
 use std::os::unix::{fs::MetadataExt, process::ExitStatusExt};
 
 pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
-    if !matches!(failures, "crash-launch" | "crash-stop") {
+    if !matches!(
+        failures,
+        "crash-launch" | "crash-stop" | "crash-embedded-launch"
+    ) {
         return;
     }
     let Value::Obj(table) = table else {
@@ -26,7 +29,7 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
 pub(in super::super) fn restart_at_cut(
     directory: &Directory,
     client: &mut Client,
-    original: &mut Competitor,
+    mut original: Option<&mut Competitor>,
     failures: &str,
 ) -> Competitor {
     let marker = directory.resource().join("tree-live");
@@ -75,7 +78,9 @@ pub(in super::super) fn restart_at_cut(
             .is_none()
     );
     let mut replacement = match failures {
-        "crash-launch" => Some(kill_and_restart(directory, original)),
+        "crash-launch" | "crash-embedded-launch" => {
+            Some(kill_and_restart(directory, client, original.as_deref_mut()))
+        }
         "crash-stop" => None,
         _ => panic!("unknown crash cut"),
     };
@@ -117,12 +122,20 @@ pub(in super::super) fn restart_at_cut(
         std::thread::sleep(Duration::from_millis(5));
     }
     if replacement.is_none() {
-        assert!(original.child.try_wait().unwrap().is_none());
+        assert!(
+            original
+                .as_mut()
+                .unwrap()
+                .child
+                .try_wait()
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
             Store::open_read_only(&directory.store()).unwrap().records,
             records
         );
-        replacement = Some(kill_and_restart(directory, original));
+        replacement = Some(kill_and_restart(directory, client, original.as_deref_mut()));
     }
     // A killed handler cannot unlink its marker; only matched closure and dead
     // original identities permit retiring that exact fixture-owned link.
@@ -137,9 +150,21 @@ pub(in super::super) fn restart_at_cut(
     replacement.unwrap()
 }
 
-fn kill_and_restart(directory: &Directory, original: &mut Competitor) -> Competitor {
-    original.child.kill().unwrap();
-    assert_eq!(original.child.wait().unwrap().signal(), Some(9));
+fn kill_and_restart(
+    directory: &Directory,
+    client: &mut Client,
+    original: Option<&mut Competitor>,
+) -> Competitor {
+    if let Some(original) = original {
+        original.child.kill().unwrap();
+        assert_eq!(original.child.wait().unwrap().signal(), Some(9));
+    } else {
+        assert!(matches!(client.mode, ExecutionMode::Embedded));
+        client.process.kill().unwrap();
+        assert_eq!(client.process.wait().unwrap().signal(), Some(9));
+        // The held writer makes this fresh plain session a read-only observer.
+        *client = Client::start_mode(directory, ExecutionMode::Standalone);
+    }
     start(directory, "after-kill")
 }
 
@@ -197,5 +222,26 @@ fn killed_standalone_after_verified_stop_recovers_once() {
         ],
         "active",
         ExecutionMode::Standalone,
+    );
+}
+
+#[test]
+#[ignore = "requires registered native authority and independent tree observer"]
+fn killed_embedded_recovers_without_overlapping_trees() {
+    run_scenario_mode(
+        "crash-embedded-launch",
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        ExecutionMode::Embedded,
     );
 }
