@@ -199,7 +199,17 @@ pub(super) fn run() {
                         "arguments",
                         object([("fixture", Value::Str("native".into()))]),
                     ),
-                    ("timeout_ms", Value::Num("3000".into())),
+                    (
+                        "timeout_ms",
+                        Value::Num(
+                            if mode.starts_with("uncertain-") {
+                                "30000"
+                            } else {
+                                "3000"
+                            }
+                            .into(),
+                        ),
+                    ),
                     (
                         "retry",
                         object([
@@ -238,7 +248,19 @@ pub(super) fn run() {
                 panic!("fixture handler is not an object")
             };
             handler.insert("kind".into(), Value::Str("process".into()));
-            handler.insert("timeout_ms".into(), Value::Num("10000".into()));
+            // The live-owner probe must finish before this fixture's original
+            // handler deadline; cancellation below still bounds actual cleanup.
+            handler.insert(
+                "timeout_ms".into(),
+                Value::Num(
+                    if mode.starts_with("uncertain-") {
+                        "30000"
+                    } else {
+                        "10000"
+                    }
+                    .into(),
+                ),
+            );
             handler.remove("tool");
             handler.remove("arguments");
             if mode.starts_with("process-recover-") {

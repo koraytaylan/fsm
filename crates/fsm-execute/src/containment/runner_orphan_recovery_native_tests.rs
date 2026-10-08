@@ -21,9 +21,12 @@ impl<'fixture> Session<'fixture> {
     }
 
     pub(super) fn refuse_live_runner(&self) {
+        let entry = self.fixture.directory.join("entry-1.json");
+        let original_entry = fs::read(&entry).unwrap();
         self.run("refuse_live_runner", "FSM_NATIVE_LIVE_RUNNER_REFUSED");
         assert_unresolved(self.fixture, self.fixture_effect().as_str());
-        for name in ["closing-1.json", "entry-1.json", "closed-1.json"] {
+        assert_eq!(fs::read(entry).unwrap(), original_entry);
+        for name in ["closing-1.json", "closed-1.json"] {
             assert!(fs::symlink_metadata(self.fixture.directory.join(name)).is_err());
         }
     }
