@@ -247,3 +247,16 @@ unresolved claim; the cause remains unproven. Successor a22a1b1e adds bounded
 actual-owner diagnostics without weakening recovery assertions. Current full
 integration and final acceptance review remain unverified, so 9403 stays in
 progress; this documentation-only verdict omits heavy gates.
+
+Frozen `422a5f0f..a2cedb82` independently verifies physical cgroup identity
+sensitivity through binding, exec-status listener and selected-group grant,
+and original journal-claim closure matching through public completion verification
+on Linux stable/MSRV; consolidated scoped verdict digest
+`08622d54e03aa8dd930af0bf9a0a2c5fe75ad01d0996daa9e2ce33be8cca6059`.
+Each named caller passes, fails at exit 101 after exactly its selected guard
+is removed, then passes after exact source restoration; identity fixtures
+preserve a live replacement sentinel and journal ownership, with no fabricated
+closure or environment-reset clearance. Launch, runner, enrolled-grant and
+remaining closure caller sensitivities, termination/crash axes and current full
+integration remain incomplete; 9404 stays in progress. This documentation-only
+update omits heavy gates; detailed evidence remains in the task cache.
