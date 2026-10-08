@@ -51,6 +51,35 @@ fn production_reconcile_refuses_missing_store_and_malformed_ids_without_initiali
 }
 
 #[test]
+fn production_reconcile_invalid_deadlines_have_bounded_non_mutating_diagnostics() {
+    let directory = directory("reconcile-deadline");
+    let oversized = "9".repeat(16_384);
+    for timeout in ["0", "-1", "86400001", "18446744073709551616", &oversized] {
+        let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .args(["--json", "--data-dir"])
+            .arg(&directory)
+            .args([
+                "execute",
+                "reconcile",
+                "--run-id",
+                "1",
+                "--timeout-ms",
+                timeout,
+            ])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.len() <= 4096);
+        let diagnostic = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            diagnostic.contains("reconcile requires a finite --timeout-ms within executor bounds")
+        );
+        assert!(!directory.exists());
+    }
+}
+
+#[test]
 fn production_reconcile_unknown_run_refuses_before_writer_and_preserves_store_bytes() {
     let directory = directory("reconcile-unknown");
     let writer = Store::open(&directory).unwrap();
