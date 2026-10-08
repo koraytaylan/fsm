@@ -371,6 +371,21 @@ fn table(path: &Path, mode: &str) -> Value {
     ])
 }
 
+fn broker_threads(pid: u32) -> std::collections::BTreeSet<u32> {
+    fs::read_dir(format!("/proc/{pid}/task"))
+        .unwrap()
+        .map(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap()
+        })
+        .collect()
+}
+
 pub(super) fn run() {
     for (mode, watch, supervisor) in [
         ("cancel-process", false, false),
@@ -388,6 +403,9 @@ pub(super) fn run() {
         broker_endpoint::provision(&fixture.directory, 65534).unwrap();
         let base = fixture.directory.join("broker");
         let mut daemon = Daemon::ready(&fixture.directory, 1);
+        // The frozen test binary retains its harness threads while serving;
+        // only connection and execution workers must disappear after closure.
+        let idle_threads = broker_threads(daemon.0.id());
         let preparation = request(&base, "prepare", Value::Null);
         assert_eq!(preparation.get("ok"), Some(&Value::Bool(true)));
         let domain = NativeDomain::from_value(preparation.get("result").unwrap()).unwrap();
@@ -500,6 +518,7 @@ pub(super) fn run() {
             number(binding.get("claim").unwrap(), "run_id").unwrap()
         ));
         assert!(VerifiedClosure::read(&receipt).is_err());
+        assert!(broker_threads(daemon.0.id()).len() > idle_threads.len());
         // No cancellation request is sent: either kill the helper or close
         // the only supervisor lifetime endpoint while leaving the helper alive.
         if watch {
@@ -518,23 +537,25 @@ pub(super) fn run() {
                 daemon.0.try_wait().unwrap().is_none(),
                 "broker died during cleanup"
             );
-            let single_thread = fs::read_to_string(format!("/proc/{}/status", daemon.0.id()))
-                .unwrap()
-                .lines()
-                .find_map(|line| line.strip_prefix("Threads:"))
-                .is_some_and(|raw| raw.trim() == "1");
-            if VerifiedClosure::read(&receipt).is_ok() && !group.exists() && single_thread {
+            let workers_retired = broker_threads(daemon.0.id()) == idle_threads;
+            if VerifiedClosure::read(&receipt).is_ok() && !group.exists() && workers_retired {
                 break;
             }
             assert!(
                 Instant::now() < deadline,
                 "client death did not retire broker workers and tree before timeout: \
                  mode={mode} watch={watch} supervisor={supervisor} \
-                 closure={:?} group_present={} single_thread={single_thread} \
+                 closure={:?} group_present={} workers_retired={workers_retired} \
                  completed_present={} manager_stop_present={}",
                 VerifiedClosure::read(&receipt).err(),
                 group.exists(),
-                fixture.directory.join("completed-1.json").exists(),
+                fixture
+                    .directory
+                    .join(format!(
+                        "completed-1-{}.json",
+                        number(binding.get("claim").unwrap(), "run_id").unwrap()
+                    ))
+                    .exists(),
                 fixture.directory.join("manager-stopped-1.json").exists(),
             );
             std::thread::sleep(Duration::from_millis(5));
