@@ -11,7 +11,7 @@ pub(super) fn run() {
         record::execution::{Claim, Settlement, StoppedOutcome},
     };
     use fsm_store::store::ExecutionStopRequest;
-    let table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","kind":"process","argv":["/fixture-must-never-launch"],"timeout_ms":100,"retry":{"attempts":2,"backoff_ms":10,"max_backoff_ms":10,"on":["timeout"]}}]}"#, &JsonLimits::DEFAULT).unwrap();
+    let table = parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","kind":"process","argv":["/usr/bin/true"],"timeout_ms":100,"retry":{"attempts":2,"backoff_ms":10,"max_backoff_ms":10,"on":["timeout"]}}]}"#, &JsonLimits::DEFAULT).unwrap();
     let mut fixture = Fixture::new_for_table(table);
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     super::super::broker_cases::disconnect_cases::install_fixture_binary(
@@ -160,7 +160,136 @@ pub(super) fn run() {
     for prefix in ["launch", "entry", "handoff"] {
         assert!(!fixture.directory.join(format!("{prefix}-1.json")).exists());
     }
+    let mut writer = Store::open(&fixture.store).unwrap();
+    let replay = fsm_execute::run::Pipeline
+        .settle_stopped(
+            &mut writer,
+            &mut fsm_store::clock::FixedClock::new(2000, 1),
+            &claim,
+            Settlement::Interrupted,
+            "claim-host-interrupted",
+        )
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(writer.records, settled);
+    let next = fsm_execute::run::Pipeline
+        .claim_native(
+            &mut writer,
+            &mut fsm_store::clock::FixedClock::new(2000, 1),
+            fsm_store::store::ExecutionClaimRequest {
+                instance_id: "instance",
+                effect_id: claim.effect().1,
+                handler_fingerprint: text(&material, "handler_fingerprint").unwrap(),
+                retry: &retry,
+                domain: &successor,
+                request_id: "claim-host-successor",
+                expected_seq: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(next.run_id(), claim.run_id() + 1);
+    assert_eq!(
+        next.to_value().get("attempt"),
+        Some(&Value::Num("1".into()))
+    );
+    let before_replay = writer.records.clone();
+    let replay = fsm_execute::run::Pipeline
+        .settle_stopped(
+            &mut writer,
+            &mut fsm_store::clock::FixedClock::new(3000, 1),
+            &claim,
+            Settlement::Interrupted,
+            "claim-host-interrupted",
+        )
+        .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(writer.records, before_replay);
+    assert_eq!(
+        writer
+            .state
+            .execution
+            .claim_for("instance", claim.effect().1),
+        Some(&next)
+    );
+    drop(writer);
+    finish_successor(&fixture, &next);
     fixture.cleanup().unwrap();
+}
+
+fn finish_successor(fixture: &Fixture, claim: &fsm_core::record::execution::Claim) {
+    use fsm_execute::run::{Pipeline, native_client::NativeCompletion};
+    let snapshot = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(
+        snapshot
+            .state
+            .execution
+            .claim_for("instance", claim.effect().1),
+        Some(claim)
+    );
+    let hash = snapshot.current_execution_claim_hash(claim).unwrap();
+    drop(snapshot);
+    let binding = object([
+        ("format", Value::Str("fsm.native-claim-binding/1".into())),
+        ("claim", claim.to_value()),
+        ("journal_claim", Value::Str(hash.clone())),
+    ]);
+    bind(&fixture.directory, &binding).unwrap();
+    let directory = fixture.directory.clone();
+    let execution = std::thread::spawn(move || runner::execute(&directory, 2));
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while !execution.is_finished() {
+        assert!(
+            Instant::now() < deadline,
+            "interrupted successor completion deadline"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let result = execution.join().unwrap().unwrap();
+    let completion = NativeCompletion::verify(
+        &object([
+            ("format", Value::Str("fsm.native-response/1".into())),
+            ("ok", Value::Bool(true)),
+            ("result", result),
+        ]),
+        claim,
+        &hash,
+    )
+    .unwrap();
+    assert_eq!(completion.stopped_outcome().status(), "ok");
+    let mut writer = Store::open(&fixture.store).unwrap();
+    let before = writer.records.len();
+    let mut clock = fsm_store::clock::FixedClock::new(4000, 1);
+    Pipeline
+        .stop_native(
+            &mut writer,
+            &mut clock,
+            claim,
+            &completion,
+            "claim-host-successor-stop",
+        )
+        .unwrap();
+    Pipeline
+        .settle_native_stopped(&mut writer, &mut clock, claim, &completion)
+        .unwrap();
+    assert_eq!(writer.records.len(), before + 2);
+    assert_eq!(writer.state.execution.unresolved().count(), 0);
+    assert!(
+        !writer.state.instances["instance"]
+            .pending
+            .contains(&claim.effect().1.to_owned())
+    );
+    assert!(
+        writer
+            .state
+            .dedup
+            .contains_key(&fsm_execute::rid::ack_rid(claim.effect().1))
+    );
+    let records = writer.records.clone();
+    drop(writer);
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
 }
 
 #[test]
