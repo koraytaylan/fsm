@@ -26,7 +26,10 @@ pub(super) fn reopen_stopped(
     completion.proof().check_store(&fixture.store).unwrap();
     if matches!(
         mode,
-        "process-recover-stopped-kill" | "process-recover-acked-kill"
+        "process-recover-stopped-kill"
+            | "process-recover-acked-kill"
+            | "process-recover-stopped-removed"
+            | "process-recover-stopped-changed"
     ) {
         drop(store);
         super::stopped_host::kill_after_publication(fixture, mode);

@@ -10,6 +10,7 @@ touches:
   - crates/fsm-execute/src/containment/runner_claim_host_native_tests.rs
   - crates/fsm-execute/src/containment/runner_native_tests.rs
   - crates/fsm-execute/src/containment/runner_retry_native_tests.rs
+  - crates/fsm-execute/src/containment/runner_stopped_recovery_native_tests.rs
   - crates/fsm-execute/src/containment/runner_recovery_native_tests.rs
   - crates/fsm-execute/src/containment/runner_stopped_host_native_tests.rs
   - crates/fsm-execute/src/containment/runner_handoff_recovery_native_tests.rs

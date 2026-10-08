@@ -216,12 +216,12 @@ fn recovered_event() {
     }
 }
 
-enum RecoveryDriver {
+pub(super) enum RecoveryDriver {
     Paired(Box<fsm_execute::service::PairedNativeExecutor>),
     Public(Box<PublicTick>),
 }
 
-struct PublicTick {
+pub(super) struct PublicTick {
     watcher: fsm_execute::watch::Watcher,
     scheduler: fsm_execute::sched::Scheduler,
     runner: fsm_execute::run::Runner,
@@ -230,7 +230,7 @@ struct PublicTick {
 }
 
 impl RecoveryDriver {
-    fn new(path: &Path, table: fsm_execute::config::HandlerTable, host: &str) -> Self {
+    pub(super) fn new(path: &Path, table: fsm_execute::config::HandlerTable, host: &str) -> Self {
         match host {
             "paired" => Self::Paired(Box::new(
                 fsm_execute::service::PairedNativeExecutor::new(path, table).unwrap(),
@@ -246,10 +246,12 @@ impl RecoveryDriver {
         }
     }
 
-    fn check_readonly(&mut self, path: &Path) {
+    pub(super) fn check_readonly(&mut self, path: &Path) {
         if let Self::Public(parts) = self {
             let mut readonly = Store::open_read_only(path).unwrap();
             let records = readonly.records.clone();
+            let owners = readonly.state.execution.unresolved().count();
+            let handoffs = readonly.state.execution_handoffs.outstanding().count();
             let lines = fsm_execute::service::tick_with(
                 &mut parts.watcher,
                 &mut parts.scheduler,
@@ -266,11 +268,15 @@ impl RecoveryDriver {
             );
             assert_eq!(readonly.records, records);
             assert_eq!(Store::open_read_only(path).unwrap().records, records);
-            assert_eq!(readonly.state.execution_handoffs.outstanding().count(), 1);
+            assert_eq!(
+                readonly.state.execution_handoffs.outstanding().count(),
+                handoffs
+            );
+            assert_eq!(readonly.state.execution.unresolved().count(), owners);
         }
     }
 
-    fn tick(
+    pub(super) fn tick(
         &mut self,
         path: &Path,
         clock: &mut dyn fsm_store::clock::Clock,
@@ -302,7 +308,7 @@ impl RecoveryDriver {
         }
     }
 
-    fn into_paired(self, path: &Path) -> fsm_execute::service::PairedNativeExecutor {
+    pub(super) fn into_paired(self, path: &Path) -> fsm_execute::service::PairedNativeExecutor {
         match self {
             Self::Paired(driver) => *driver,
             Self::Public(parts) => fsm_execute::service::PairedNativeExecutor::from_owned_parts(

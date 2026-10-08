@@ -25,6 +25,8 @@ mod recovery;
 mod retry;
 #[path = "runner_stopped_host_native_tests.rs"]
 mod stopped_host;
+#[path = "runner_stopped_recovery_native_tests.rs"]
+mod stopped_recovery;
 use retry::settle_retry;
 
 pub(super) const SERVER: &str = r#"import json,os,subprocess,sys,time
@@ -141,6 +143,8 @@ pub(super) fn run() {
         "process-recover-removed",
         "process-recover-changed",
         "process-recover-stopped-kill",
+        "process-recover-stopped-removed",
+        "process-recover-stopped-changed",
         "process-recover-acked-kill",
         "process-recover-public-tick",
         "process-recover-public-tick-with",
@@ -204,6 +208,8 @@ pub(super) fn run() {
                 | "process-recover-public-tick"
                 | "process-recover-public-tick-with"
                 | "process-recover-acked-kill"
+                | "process-recover-stopped-removed"
+                | "process-recover-stopped-changed"
                 | "process-recover-stopped-kill"
                 | "process-failure"
                 | "process-signal"
@@ -510,6 +516,8 @@ pub(super) fn run() {
             | "process-recover-public-tick"
             | "process-recover-public-tick-with"
             | "process-recover-acked-kill"
+            | "process-recover-stopped-removed"
+            | "process-recover-stopped-changed"
             | "process-recover-stopped-kill" => "ok",
             "process-failure" | "process-signal" => "nonzero_exit",
             _ => panic!("uncertain runner must not reach verified completion"),
@@ -557,6 +565,16 @@ pub(super) fn run() {
         } else if mode == "process-exit" || mode.starts_with("process-recover-") {
             let (mut store, before) =
                 recovery::reopen_stopped(&fixture, &effect, &original_claim, &completion, mode);
+            if matches!(
+                mode,
+                "process-recover-stopped-removed" | "process-recover-stopped-changed"
+            ) {
+                drop(store);
+                stopped_recovery::resume(&fixture, &completion, mode);
+                assert!(runner::execute(&fixture.directory, 1).is_err());
+                fixture.cleanup().unwrap();
+                continue;
+            }
             if mode != "process-recover-acked-kill" {
                 settle_owned(
                     &fixture,
