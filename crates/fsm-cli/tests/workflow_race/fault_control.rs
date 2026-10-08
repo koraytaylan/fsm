@@ -130,7 +130,8 @@ pub(super) fn reconcile_original_closure_via_cli(
     let instance = snapshot.state.instances[claim.effect().0].clone();
     drop(snapshot);
     let mut settled = None;
-    for ordinal in 0..2 {
+    let mut competing_writer = Some(Store::open(&directory.store()).unwrap());
+    for ordinal in 0..3 {
         let output_path = directory.0.join(format!("reconcile-stdout-{ordinal}"));
         let error_path = directory.0.join(format!("reconcile-stderr-{ordinal}"));
         let mut reconciliation = Command::new(directory.executable())
@@ -165,13 +166,26 @@ pub(super) fn reconcile_original_closure_via_cli(
         };
         assert!(fs::metadata(&output_path).unwrap().len() <= 8192);
         assert!(fs::metadata(&error_path).unwrap().len() <= 8192);
+        if ordinal == 0 {
+            assert!(!status.success());
+            let refusal = parse(&fs::read(&error_path).unwrap(), &JsonLimits::DEFAULT).unwrap();
+            assert_eq!(refusal.get("code"), Some(&Value::Str("store/lock".into())));
+            assert!(fs::read(&output_path).unwrap().is_empty());
+            assert_eq!(
+                Store::open_read_only(&directory.store()).unwrap().records,
+                records
+            );
+            assert_eq!(competing_writer.as_ref().unwrap().records, records);
+            drop(competing_writer.take());
+            continue;
+        }
         assert!(
             status.success(),
             "original-run CLI reconciliation refused: {}",
             String::from_utf8_lossy(&fs::read(&error_path).unwrap())
         );
         let response = parse(&fs::read(&output_path).unwrap(), &JsonLimits::DEFAULT).unwrap();
-        assert_eq!(response.get("duplicate"), Some(&Value::Bool(ordinal > 0)));
+        assert_eq!(response.get("duplicate"), Some(&Value::Bool(ordinal > 1)));
         assert_eq!(
             response.get("execution").unwrap().get("run_id"),
             Some(&Value::Num(claim.run_id().to_string()))
