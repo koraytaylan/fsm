@@ -14,7 +14,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 6/7 tasks completed.
 
-Frozen `0211231c..fe8478dc` passes all four host/handler candidate-result crash
+Frozen `0211231c..fe8478dc` passes all four host/handler pre-publication crash
 cases on Linux stable/MSRV in [CI 37818301657](https://github.com/koraytaylan/fsm/actions/runs/37818301657),
 with verified report/log digest
 `990dcc993657f104fe1ddff3c3263db7d4b9dbff256a8509243fd4d748e0e93c`.
@@ -23,6 +23,8 @@ replacement and final event completion, including immediate writer contention.
 The overall checkpoint fails because the subsequent containment probe requires
 a fresh evidence directory; separate crash evidence preserves that guard.
 Earlier stdin and marker-lifetime failures remain retained in the task cache.
+The fixture barrier precedes response publication and does not prove the native
+runner has collected a candidate; the actual candidate-result cut remains open.
 Full integration, other crash boundaries, supervisor death, resource-use and
 sensitivity acceptance remain outstanding, so 9404 stays in progress.
 

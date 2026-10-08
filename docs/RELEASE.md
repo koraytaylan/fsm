@@ -7,13 +7,17 @@ noise; fixture tests independently observe root exit before descendant pipe
 retirement. Production crash cutpoints, supervisor death, native sensitivity
 and the complete frozen matrix remain outstanding; fixture acceptance alone
 does not establish native no-overlap recovery.
-At `fe8478dc`, Linux stable/MSRV pass all four production-host candidate-result
+At `fe8478dc`, Linux stable/MSRV pass all four production-host pre-publication
 crash cases: original tree death and matched closure precede replacement and
 final event completion, including immediate writer contention. Earlier fixture
 stdin and marker-retirement failures remain retained. The overall checkpoint
 fails on a subsequent evidence-directory collision; crash evidence now has its
 own directory and `native-crash-*` artifact, preserving the containment probe's
 fresh-directory refusal. Full integration and remaining crash axes stay open.
+The held fixture barrier is reached before response publication, not after the
+native runner collects a candidate; actual candidate-result crash acceptance
+therefore remains outstanding.
+
 The successor adds quiet/noisy variants for each host and handler, emitting
 16 KiB of stderr before the held candidate barrier and checking the protected
 replacement's bounded prefix and complete-stream digest. The expanded native

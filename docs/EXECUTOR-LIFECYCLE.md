@@ -1396,7 +1396,7 @@ complete standalone/embedded production cutpoint and supervisor-death matrix,
 resource-use and guard-sensitivity acceptance remain outstanding.
 
 The dedicated target also contains an explicitly ignored Linux production-host
-candidate-result crash actor. A protected Root-coordinator manifest selects
+pre-publication crash actor. A protected Root-coordinator manifest selects
 standalone/embedded and process/MCP artifacts; the actor kills only its owned
 executor, holds the original writer during immediate restart, independently
 checks original PID/start identities and a matched closure receipt, and requires
@@ -1416,6 +1416,10 @@ The overall checkpoint still fails because the following containment probe
 requires a fresh evidence directory; crash evidence now uses a separate
 `native-crash-*` artifact. Broader cutpoints, supervisor death, resource-use and
 guard-sensitivity acceptance remain outstanding; task 9404 is incomplete.
+
+The held fixture barrier is reached before response publication, not after the
+native runner collects a candidate; actual candidate-result crash acceptance
+therefore remains outstanding.
 
 The successor matrix adds a noisy case beside each verified quiet case. The
 fixture writes 16 KiB of stderr before its held candidate barrier; Root then
