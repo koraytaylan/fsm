@@ -386,6 +386,14 @@ pub(super) fn run() {
             .starts_with("uncertain-")
             .then(|| orphan_recovery::Session::new(&fixture));
         if let Some(reconciliation) = &reconciliation {
+            // Enrollment is already independently proved; the live-owner CLI
+            // refusal must not consume the server's two-second setup barrier.
+            // Uncertain handlers remain live after release until cancellation.
+            fs::write(
+                barriers.path.join("release"),
+                b"owner refusal enrollment verified",
+            )
+            .unwrap();
             reconciliation.refuse_live_runner();
             assert!(!execution.is_finished());
             for pid in pids {
