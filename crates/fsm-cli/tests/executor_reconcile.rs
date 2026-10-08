@@ -261,6 +261,70 @@ fn production_runs_orders_claims_by_run_and_omits_original_native_material() {
         assert!(!text.contains(forbidden), "{forbidden}");
     }
     assert_eq!(files(&directory), before);
-    drop(writer);
+    refuse_unknown_backend(&directory, writer);
     fs::remove_dir_all(directory).unwrap();
+}
+
+fn refuse_unknown_backend(directory: &Path, writer: Store) {
+    use fsm_core::{
+        json::Value,
+        record::{RecordError, seal, verify_line},
+    };
+
+    let original = writer.records.last().unwrap().clone();
+    let segment = directory.join("journal").join(&writer.journal.seg_name);
+    let original_line = original.to_line();
+    verify_line(&original_line, original.seq, &original.prev).unwrap();
+    let Value::Obj(mut body) = original.body.clone() else {
+        unreachable!()
+    };
+    let Value::Obj(domain) = body.get_mut("domain").unwrap() else {
+        unreachable!()
+    };
+    domain.insert("backend".into(), Value::Str("unknown-test-backend".into()));
+    let unknown = seal(
+        original.seq,
+        original.ts,
+        original.kind,
+        Value::Obj(body),
+        &original.prev,
+    );
+    assert_eq!(
+        verify_line(&unknown.to_line(), unknown.seq, &unknown.prev),
+        Err(RecordError::BodyInvalid { seq: unknown.seq })
+    );
+    drop(writer);
+    // Fault only this fixture's final record, preserving a valid chain hash;
+    // an unknown backend must never be guessed into the supported domain.
+    let mut bytes = fs::read(&segment).unwrap();
+    assert!(bytes.ends_with(&original_line));
+    bytes.truncate(bytes.len() - original_line.len());
+    bytes.extend_from_slice(&unknown.to_line());
+    fs::write(&segment, &bytes).unwrap();
+    let before = files(directory);
+    for (arguments, expected_code) in [
+        (vec!["execute", "runs"], "store/chain_broken"),
+        (
+            vec!["execute", "reconcile", "--run-id", "1"],
+            if cfg!(target_os = "linux") {
+                "store/chain_broken"
+            } else {
+                "exec/mode"
+            },
+        ),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+            .args(["--json", "--data-dir"])
+            .arg(directory)
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(output.stderr.len() <= 4096);
+        let diagnostic = String::from_utf8(output.stderr).unwrap();
+        assert!(diagnostic.contains(expected_code), "{diagnostic}");
+        assert_eq!(files(directory), before);
+    }
+    assert_eq!(fs::read(segment).unwrap(), bytes);
 }
