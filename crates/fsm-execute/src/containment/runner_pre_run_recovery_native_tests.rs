@@ -51,6 +51,7 @@ pub(super) fn run() {
     assert_eq!(restored_lease.ino(), original_lease.ino());
     refuse_changed_boot(&fixture, &session, &effect);
     refuse_unavailable_socket(&fixture, &session, &effect);
+    refuse_reused_cgroup(&fixture, &session, &effect, &group);
     session.resume();
     assert_eq!(
         fs::read(fixture.directory.join("prepared-1.json")).unwrap(),
@@ -63,6 +64,60 @@ pub(super) fn run() {
     drop(session);
     fixture.groups.push((group, group_identity));
     fixture.cleanup().unwrap();
+}
+
+fn refuse_reused_cgroup(
+    fixture: &Fixture,
+    session: &orphan_recovery::Session<'_>,
+    effect: &str,
+    group: &Path,
+) {
+    let original = fs::symlink_metadata(group).unwrap();
+    let preserved = group.with_extension("original");
+    assert!(!preserved.exists());
+    // Preserve the actual empty kernel allocation, then reuse its recorded
+    // pathname for a distinct physical cgroup; protected claim bytes stay intact.
+    fs::rename(group, &preserved).unwrap();
+    fs::create_dir(group).unwrap();
+    let replacement = fs::symlink_metadata(group).unwrap();
+    assert_ne!(
+        (replacement.dev(), replacement.ino()),
+        (original.dev(), original.ino())
+    );
+    session.refuse_pre_run_reused_cgroup();
+    assert_unresolved(fixture, effect);
+    for name in [
+        "binding-1.json",
+        "launch-1.json",
+        "closing-1.json",
+        "closed-1.json",
+    ] {
+        assert!(fs::symlink_metadata(fixture.directory.join(name)).is_err());
+    }
+    let retained = fs::symlink_metadata(group).unwrap();
+    assert_eq!(
+        (retained.dev(), retained.ino()),
+        (replacement.dev(), replacement.ino())
+    );
+    // Remove only the independently identified empty fixture replacement and
+    // restore the same original allocation before legitimate recovery.
+    fs::remove_dir(group).unwrap();
+    fs::rename(&preserved, group).unwrap();
+    let restored = fs::symlink_metadata(group).unwrap();
+    assert_eq!(
+        (
+            restored.dev(),
+            restored.ino(),
+            restored.uid(),
+            restored.mode()
+        ),
+        (
+            original.dev(),
+            original.ino(),
+            original.uid(),
+            original.mode()
+        )
+    );
 }
 
 fn refuse_changed_boot(fixture: &Fixture, session: &orphan_recovery::Session<'_>, effect: &str) {

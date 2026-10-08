@@ -116,6 +116,14 @@ impl<'fixture> Session<'fixture> {
         self.run("refuse_changed_domain", "FSM_NATIVE_CHANGED_DOMAIN_REFUSED");
     }
 
+    pub(super) fn refuse_pre_run_reused_cgroup(&self) {
+        self.ensure_cli();
+        self.run(
+            "refuse_pre_run_reused_cgroup",
+            "FSM_NATIVE_REUSED_CGROUP_REFUSED",
+        );
+    }
+
     fn run(&self, case: &str, marker: &str) {
         use std::process::{Command, Stdio};
 
@@ -240,6 +248,16 @@ fn refuse_changed_domain() {
     #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
     {
         println!("\nFSM_NATIVE_CHANGED_DOMAIN_REFUSED");
+    }
+}
+
+#[test]
+#[ignore = "configured unprivileged operator inside a physically reused cgroup fixture"]
+fn refuse_pre_run_reused_cgroup() {
+    refuse_pre_run("native shutdown refused: native cgroup identity differs");
+    #[allow(clippy::print_stdout)] // Frozen marker consumed by the Root fixture.
+    {
+        println!("\nFSM_NATIVE_REUSED_CGROUP_REFUSED");
     }
 }
 
