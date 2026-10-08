@@ -201,7 +201,7 @@ def main(exercise_fn=exercise, scope="partial-native-identity-prototype"):
         parser.error("native Linux and enabled assertions are required")
     repo = Path(__file__).resolve().parents[4]
     environment = dict(os.environ, CARGO_INCREMENTAL="0", CARGO_PROFILE_DEV_DEBUG="0", CARGO_PROFILE_TEST_DEBUG="0",
-                       CARGO_TARGET_DIR=os.environ.get("CARGO_TARGET_DIR", "/tmp/fsm-native-proof-target"))
+                       CARGO_TARGET_DIR=os.environ.get("CARGO_TARGET_DIR", str(Path.home() / ".cache" / "fsm-native-proof-target")))
     output = command(["cargo", f"+{args.toolchain}", "test", "-p", "fsm-execute", "--test", "lifecycle_platform",
                       "--no-run", "--message-format=json"], cwd=repo, env=environment, timeout=120)
     artifacts = [json.loads(line) for line in output.splitlines() if line.startswith("{")]

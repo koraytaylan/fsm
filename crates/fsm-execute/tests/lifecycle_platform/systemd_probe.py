@@ -300,7 +300,7 @@ def main():
         parser.error("this backend requires native Linux; unsupported is not a pass")
     repo = Path(__file__).resolve().parents[4]
     environment = dict(os.environ, CARGO_INCREMENTAL="0", CARGO_PROFILE_DEV_DEBUG="0", CARGO_PROFILE_TEST_DEBUG="0",
-                       CARGO_TARGET_DIR=os.environ.get("CARGO_TARGET_DIR", "/tmp/fsm-plans-target"))
+                       CARGO_TARGET_DIR=os.environ.get("CARGO_TARGET_DIR", str(Path.home() / ".cache" / "fsm-plans-target")))
     output = command(["cargo", f"+{args.toolchain}", "test", "-p", "fsm-execute",
                       "--test", "lifecycle_platform", "--no-run", "--message-format=json"],
                      timeout=120, cwd=repo, env=environment)
