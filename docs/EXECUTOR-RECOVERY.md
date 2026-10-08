@@ -40,7 +40,7 @@ handoffs; replace the authority only after its original ownership is settled and
 the authority is retired through its provisioning procedure. If the original
 owner cannot finish, preserve its authority and journal for recovery rather than
 substituting a new helper or removing ownership files. The command sequence above
-is upgrade guidance; cross-implementation execution remains unverified.
+is verified for the historical executor and retained authority described below.
 
 The native workflow probe accepts `--upgrade-source <clean-9402-checkout>` to
 build the exact historical CLI, broker and transport helper from
@@ -52,7 +52,10 @@ is clear, before creating original authority, and stays installed throughout
 each fixture.
 This covers executor/operator interoperability with that retained authority,
 not replacement of an older installed authority or environment-reset clearance;
-execution of this new fixture remains pending under plan 0022.
+Both standalone and embedded fixtures passed on stable and MSRV at frozen
+operator source `9396d27334f34c02132df86f34c455152ce3f48c`, with read-only
+inspection before and after drain, original admission closed, helpers retired
+and the writer released; plan 0022 records the scoped frozen review.
 
 ## Reconcile the original interrupted run
 
