@@ -3,8 +3,9 @@
 # explicitly named prerelease, while the tag and release remain separate from
 # immutable release tags.
 #
-# The snapshot re-uses the same CI gate as ci.yml and the same build matrix as
-# release.yml, so a snapshot that succeeded is evidence for both. It does not
+# The snapshot re-uses the portable CI gate from ci.yml and the build matrix
+# from release.yml; native containment and explicit dependency checks remain
+# separate jobs in ci.yml and require their own successful evidence. It does not
 # run fuzz-smoke or the git-dep integration: those guard formal releases, and
 # adding them here would double nightly-toolchain runner time on every push to
 # develop.
@@ -26,7 +27,7 @@ env:
 
 jobs:
   # ── verify ────────────────────────────────────────────────────────────
-  # The same gate as ci.yml, run on the snapshot commit. A snapshot that
+  # The portable gate from ci.yml, run on the snapshot commit. A snapshot that
   # does not pass the gate is not published.
   verify:
     strategy:
