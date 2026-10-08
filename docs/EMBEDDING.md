@@ -9,7 +9,9 @@ MCP health and the execution_ownership field of the CLI run report.
 The CLI requires an initialized format marker or observed journal prefix before
 reporting a complete inventory; the renderer only summarizes the caller-supplied Store observation.
 The native broker can serialize claimed closure against original result
-publication through an existing protected runner lease; the operator command,
+publication through `NativeShutdown::start_reconciliation`, which retains the
+original claim, physical store and authenticated receipt checks;
+the broker requires an existing protected runner lease, and the operator command,
 startup integration and recovery before runner startup remain unimplemented.
 
 Native runner execution now holds a protected allocation lease through completion

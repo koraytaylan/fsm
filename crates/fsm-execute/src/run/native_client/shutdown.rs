@@ -39,6 +39,29 @@ impl NativeShutdown {
     /// verified record hash; copied stores and replaced authorities refuse.
     /// This operation never binds or launches work and never settles ownership.
     pub fn start(store: &Store, claim: &Claim, timeout: Duration) -> Result<Self, String> {
+        Self::start_action(store, claim, timeout, "close-claimed")
+    }
+
+    /// Request orphan closure while refusing an active or missing runner lease.
+    ///
+    /// Uses the same original claim, physical store and authenticated receipt
+    /// checks as shutdown, but never authorizes cancellation of a live runner.
+    /// Closure alone does not justify discarding an original completion result;
+    /// callers must recover that evidence before choosing any settlement.
+    pub fn start_reconciliation(
+        store: &Store,
+        claim: &Claim,
+        timeout: Duration,
+    ) -> Result<Self, String> {
+        Self::start_action(store, claim, timeout, "reconcile-claimed")
+    }
+
+    fn start_action(
+        store: &Store,
+        claim: &Claim,
+        timeout: Duration,
+        action: &str,
+    ) -> Result<Self, String> {
         if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64"))
             || store.journal.is_memory()
             || store.journal.poisoned
@@ -84,7 +107,7 @@ impl NativeShutdown {
         ]));
         let message = Value::Obj(BTreeMap::from([
             ("format".into(), Value::Str("fsm.native-request/1".into())),
-            ("action".into(), Value::Str("close-claimed".into())),
+            ("action".into(), Value::Str(action.into())),
             ("payload".into(), payload),
         ]));
         let remaining = deadline

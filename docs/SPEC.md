@@ -2808,6 +2808,9 @@ protected runner lease through original-binding validation, fencing and closure;
 it MUST refuse a held or missing lease before any closure side effect, MUST NOT
 publish or reinterpret a completion, and MUST NOT settle journal ownership.
 This primitive does not implement the operator command or pre-run owner recovery.
+`NativeShutdown::start_reconciliation` MUST select this guarded action while
+retaining shutdown's original claim, physical store and receipt verification;
+it MUST NOT treat the broker response alone as sufficient closure evidence.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT

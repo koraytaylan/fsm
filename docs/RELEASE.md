@@ -10,7 +10,8 @@ native liveness remains unverified and missing observations remain unavailable.
 Run inspection also refuses existing uninitialized directories without creating
 files, instead of reporting their synthetic empty read-only view as verified.
 Added a lease-serialized claimed closure broker primitive that refuses active
-or missing runner leases; operator recovery and native acceptance remain pending.
+or missing runner leases, with additive `NativeShutdown::start_reconciliation`
+transport; operator recovery and native acceptance remain pending.
 
 The native runner holds an allocation-specific protected execution lease through
 cleanup and result publication; genuine native acceptance and reconciliation

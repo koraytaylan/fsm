@@ -1191,6 +1191,9 @@ death nor native closure, and reconciliation integration remains pending.
 The internal `reconcile-claimed` broker primitive holds an existing lease while
 validating the original binding and closing its domain; it refuses missing or
 active leases, preserves completion records, and performs no journal settlement.
+`NativeShutdown::start_reconciliation` selects that guarded action using the
+same original claim, physical store and authenticated receipt checks as shutdown;
+callers must recover original completion evidence before choosing settlement.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not

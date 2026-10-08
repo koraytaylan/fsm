@@ -7,6 +7,7 @@ depends_on:
   - bounded-executor-shutdown
 gated: false
 touches:
+  - crates/fsm-execute/src/run/native_client/
   - crates/fsm-execute/src/containment/
   - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/src/service/
