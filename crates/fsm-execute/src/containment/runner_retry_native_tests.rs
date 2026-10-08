@@ -226,17 +226,21 @@ pub(super) fn settle_retry(
         retained
     );
     if mode == "retry-timeout-kill" {
-        launch_successor(fixture, barriers, &next, completion);
+        launch_successor(fixture, barriers, (claim, &next), completion);
     }
 }
 
 fn launch_successor(
     fixture: &Fixture,
     barriers: &Barriers,
-    claim: &fsm_core::record::execution::Claim,
+    claims: (
+        &fsm_core::record::execution::Claim,
+        &fsm_core::record::execution::Claim,
+    ),
     original_completion: &fsm_execute::run::native_client::NativeCompletion,
 ) {
     use fsm_execute::run::{Pipeline, native_client::NativeCompletion};
+    let (original_claim, claim) = claims;
     original_completion
         .proof()
         .check_store(&fixture.store)
@@ -296,6 +300,34 @@ fn launch_successor(
             .join(old_unit)
             .exists()
     );
+    let mut writer = Store::open(&fixture.store).unwrap();
+    let records = writer.records.clone();
+    let retained = writer.state.execution.clone();
+    let mut clock = fsm_store::clock::FixedClock::new(1500, 1);
+    let replay = fsm_execute::service::reconcile_run(
+        &mut writer,
+        &mut clock,
+        original_claim.run_id(),
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+    let execution_response = replay.get("execution").unwrap();
+    assert_eq!(
+        number(execution_response, "run_id").unwrap(),
+        original_claim.run_id()
+    );
+    assert_eq!(
+        text(execution_response, "disposition").unwrap(),
+        "attempted"
+    );
+    assert_eq!(writer.records, records);
+    assert_eq!(writer.state.execution, retained);
+    assert!(
+        !execution.is_finished(),
+        "stale reconciliation ended successor"
+    );
+    drop(writer);
     for pid in [
         number(&root, "pid").unwrap(),
         number(&descendants, "pid").unwrap(),
