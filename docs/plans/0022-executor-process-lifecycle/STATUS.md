@@ -80,6 +80,20 @@ complete guard sensitivity and current full portable integration keep 9404
 in progress; artifacts stay in the task cache, and this docs update omits
 heavy gates.
 
+Frozen `2ccf68dc..02404e7f` independently verifies claim-before-start
+sensitivity at protected binding and selected-group entry-grant publication
+on Linux stable/MSRV in [binding CI](https://github.com/koraytaylan/fsm/actions/runs/37837889950)
+and [authorization CI](https://github.com/koraytaylan/fsm/actions/runs/37839037105).
+Named cases pass, fail at exit 101 when only the shared durable-claim check
+is neutralized, then pass after exact source restoration; scoped verdict digests
+`06273fc4b9e32a88981c5b297ec8137ef2918197ef3e4b65d20de3e10be26632`
+and `36e47e2b27030ec518f4878d86aea6d05293c8c30d5dc16a8c71d08845308470`.
+The deliberately failed fixtures retain their authorities on disposable CI;
+this establishes no environment-reset clearance. Enrolled authorization,
+other claim-validation callers, identity/closure sensitivities, remaining
+crash/termination axes and current full integration remain unverified, so
+9404 stays in progress; this documentation-only milestone omits heavy gates.
+
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
 The six portable gates, dependency/core-only check and both verified native
