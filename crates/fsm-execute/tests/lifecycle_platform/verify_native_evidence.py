@@ -48,6 +48,15 @@ def common(report, commit, rustc):
     require(report['gate_released'] is False, 'partial evidence cannot release the gate')
 
 
+def authority_log_name(case, separator):
+    require(isinstance(case, str) and re.fullmatch(r'[a-z_]+(?:::[a-z_]+)*', case) is not None,
+            'invalid authority case name')
+    require(separator is None or separator == '--', 'invalid frozen authority log separator')
+    # Old frozen producers used literal Rust separators; never reinterpret an
+    # old checkpoint as evidence for the newer artifact-safe encoding.
+    return 'authority-' + (case if separator is None else case.replace('::', '--')) + '.log'
+
+
 def verify(repo, directory, commit, rustc):
     require(subprocess.check_output(['git', 'cat-file', '-t', commit], cwd=repo, text=True).strip()
             == 'commit', 'frozen source must identify a commit')
@@ -103,10 +112,9 @@ def verify(repo, directory, commit, rustc):
                     and report['production_backend'] is False, 'authority scope differs')
             if 'enrolled_gate_authorization' in cases:
                 require(digest(report['authority_sha256']), 'installed authority digest missing')
+            separator = literal(repo, commit, 'authority_probe', 'LOG_NAME_SEPARATOR', optional=True)
             for case in report['cases']:
-                require(re.fullmatch(r'[a-z_]+(?:::[a-z_]+)*', case['case']) is not None,
-                        'invalid authority case name')
-                log = bounded(directory / ('authority-' + case['case'] + '.log'))
+                log = bounded(directory / authority_log_name(case['case'], separator))
                 require(hashlib.sha256(log).hexdigest() == case['log_sha256'], 'authority log digest differs')
                 test = 'authority::allocator::native_tests::' + case['case']
                 require(('test ' + test + ' ... ok').encode() in log

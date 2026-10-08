@@ -170,8 +170,10 @@ jobs:
           native_cache="$HOME/.cache/fsm-native-${{ matrix.rust }}"
           mkdir -p "$native_cache"
           printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
-      - name: Native crash evidence producer checks
-        run: python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_crash_*.py'
+      - name: Native evidence producer checks
+        run: |
+          python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_crash_*.py'
+          python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_authority_*.py'
       - name: Provisioned lifecycle candidate crash matrix
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
@@ -189,6 +191,12 @@ jobs:
           python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
           --toolchain '${{ matrix.rust }}'
           --report-dir '${{ env.FSM_NATIVE_CACHE }}/native-evidence'
+      - name: Verify frozen native containment evidence
+        run: |
+          python3 crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py \
+            --source-commit "$GITHUB_SHA" \
+            --rustc "$(rustc +${{ matrix.rust }} --version)" \
+            --report-dir "$FSM_NATIVE_CACHE/native-evidence"
       - name: Provisioned original CLI workflow scenarios
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py

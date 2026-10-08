@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import stat
 from pathlib import Path
 import subprocess
@@ -11,6 +12,7 @@ import sys
 from cli_artifact import build_cli
 
 FIXTURE_TARGET = 'lifecycle_runner'
+LOG_NAME_SEPARATOR = '--'
 
 INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_domain_refusal',
          'counter_rollback_refusal', 'incomplete_intent_refusal',
@@ -31,6 +33,14 @@ INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_doma
          'admission_cases::enrolled_identity_cases::enrolled_authorization_refuses_live_replacement_cgroup_identity',
          'admission_cases::completion_proof_cases::completion_refuses_closure_for_another_journal_claim',
          'admission_cases::completion_proof_cases::execution_refuses_completion_for_another_journal_claim')
+
+
+def authority_log_name(case):
+    if not isinstance(case, str) or re.fullmatch(r'[a-z_]+(?:::[a-z_]+)*', case) is None:
+        raise ValueError('invalid authority case name')
+    # Hyphens never occur in canonical Rust case segments: this encoding is
+    # injective and contains none of the characters forbidden by artifact upload.
+    return 'authority-' + case.replace('::', LOG_NAME_SEPARATOR) + '.log'
 
 
 def build_authority(repo, toolchain, operation):
@@ -128,7 +138,7 @@ def main():
                 result = subprocess.CompletedProcess(command, None, error.stdout or b'', error.stderr or b'')
             diagnostics = result.stdout + result.stderr
             assert len(diagnostics) <= 1024 * 1024, 'authority diagnostics exceed bound'
-            log = args.report.with_name('authority-' + case + '.log')
+            log = args.report.with_name(authority_log_name(case))
             log.write_bytes(diagnostics)
             alive = unrelated.poll() is None
             passed = result.returncode == 0 and ('test ' + name + ' ... ok').encode() in diagnostics and alive

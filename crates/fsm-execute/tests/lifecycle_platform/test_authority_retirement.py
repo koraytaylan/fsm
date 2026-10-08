@@ -92,6 +92,7 @@ class AuthorityRetirementTests(unittest.TestCase):
             patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=
                          SimpleNamespace(toolchain='stable', report=report)),
             patch.object(probe, 'build_authority', return_value=artifact),
+            patch.object(probe, 'build_cli', return_value=artifact),
             patch.object(probe, 'authority_state_is_clear',
                          side_effect=[initially_clear, not retained]),
             patch.object(probe.subprocess, 'check_output', side_effect=output) as outputs,
