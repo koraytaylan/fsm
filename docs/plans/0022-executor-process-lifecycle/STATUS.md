@@ -42,9 +42,18 @@ compilers: the standalone/process after-claim observer passes, but Root
 verification wrongly requires a launched-domain memory receipt for the
 unlaunched original allocation; retained failure-verdict digest
 `54f2810b1e3654957547f7e5f95244660a05aaf160a71bd455af88ed5a1491b2`.
+Frozen `932ac99e..2be0109b` independently verifies all forty crash cases on
+Linux stable/MSRV in [CI 37831436777](https://github.com/koraytaylan/fsm/actions/runs/37831436777);
+scoped crash-verdict digest
+`79fdf539cbc2b41011e62eb5aa61a48fff7dc47c874388f7c0344b5f1125d6e0`.
 The correction matches the original repair binding, proves absent launch
-records and preserves launched-successor memory checks; its runtime remains
-unverified, so 9404 stays in progress.
+records and preserves launched-successor memory checks. The inventory covers
+supervisor death, verified domain closure, stopped/ack/event publication and
+pre-launch durable claims across both hosts and handler kinds. Broader native
+reports and executable bytes were not independently verified; authorization
+and remaining spawn/termination boundaries, repeated-run resource use, guard
+sensitivities and current full portable integration remain unverified, so
+9404 stays in progress. This documentation-only update omits heavy gates.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
