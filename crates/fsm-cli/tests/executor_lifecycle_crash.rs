@@ -23,7 +23,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn start(mode: &str) -> Self {
+    fn start(mode: &str, behavior: &str) -> Self {
         let cache = PathBuf::from(std::env::var_os("TMPDIR").expect("explicit task cache"));
         assert!(!cache.starts_with("/tmp"));
         let directory = cache.join(format!(
@@ -35,7 +35,7 @@ impl Fixture {
         let root = Command::new(env!("CARGO_BIN_EXE_fsm-lifecycle-fixture"))
             .arg(mode)
             .arg(&directory)
-            .arg("exit-root")
+            .arg(behavior)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -69,7 +69,7 @@ impl Drop for Fixture {
 }
 
 fn root_exit_retains_descendant_pipes(mode: &str) {
-    let mut fixture = Fixture::start(mode);
+    let mut fixture = Fixture::start(mode, "exit-root");
     let stdout = fixture.root.stdout.take().unwrap();
     let (sender, receiver) = mpsc::channel();
     let reader = std::thread::spawn(move || {
@@ -154,4 +154,87 @@ fn process_fixture_root_exit_keeps_descendant_pipes_open_until_release() {
 #[test]
 fn mcp_fixture_root_exit_keeps_descendant_pipes_open_until_release() {
     root_exit_retains_descendant_pipes("mcp");
+}
+
+fn candidate_result_waits_for_explicit_release(mode: &str) {
+    let mut fixture = Fixture::start(mode, "hold-result");
+    let stdout = fixture.root.stdout.take().unwrap();
+    let (sender, receiver) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            sender.send(line.unwrap()).unwrap();
+        }
+    });
+    let input = fixture.root.stdin.as_mut().unwrap();
+    if mode == "mcp" {
+        input
+            .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n")
+            .unwrap();
+        input.flush().unwrap();
+        let response = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        let response = parse(response.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+        assert_eq!(response.get("id"), Some(&Value::Num("1".into())));
+        input.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"run\",\"arguments\":{}}}\n").unwrap();
+    } else {
+        input.write_all(b"{}\n").unwrap();
+    }
+    input.flush().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !fixture.directory.join("root-candidate").is_file() {
+        assert!(fixture.root.try_wait().unwrap().is_none());
+        assert!(
+            Instant::now() < deadline,
+            "candidate barrier was never reached"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!fixture.directory.join("root-published").exists());
+    assert!(!fixture.directory.join("root-retired").exists());
+    assert!(
+        matches!(
+            receiver.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ),
+        "candidate result escaped its explicit barrier"
+    );
+    // Release only the root first: descendants remain observable and retain pipes.
+    fs::write(fixture.directory.join("root-release"), b"release").unwrap();
+    let response = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+    let response = parse(response.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+    let result = if mode == "mcp" {
+        assert_eq!(response.get("id"), Some(&Value::Num("2".into())));
+        response
+            .get("result")
+            .unwrap()
+            .get("structuredContent")
+            .unwrap()
+    } else {
+        &response
+    };
+    assert_eq!(result.get("ok"), Some(&Value::Bool(true)));
+    assert!(
+        fixture.root.try_wait().unwrap().is_none(),
+        "root must wait for its original child retirement"
+    );
+    assert!(!fixture.directory.join("child-retired").exists());
+    fixture.release_tree();
+    assert!(matches!(
+        receiver.recv_timeout(Duration::from_secs(5)),
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    ));
+    reader.join().unwrap();
+    assert!(fixture.root.wait().unwrap().success());
+    for role in ["root", "child", "grandchild"] {
+        assert!(fixture.directory.join(format!("{role}-retired")).is_file());
+    }
+}
+
+#[test]
+fn process_candidate_result_is_held_until_explicit_release() {
+    candidate_result_waits_for_explicit_release("process");
+}
+
+#[test]
+fn mcp_candidate_result_is_held_until_explicit_release() {
+    candidate_result_waits_for_explicit_release("mcp");
 }
