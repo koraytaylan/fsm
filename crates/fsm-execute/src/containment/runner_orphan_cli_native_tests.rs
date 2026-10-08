@@ -228,7 +228,10 @@ fn restart_after_closure(fixture: &mut Fixture, barriers: &Barriers, original_un
 }
 
 fn replay_original_while_successor_lives(fixture: &Fixture) {
-    let before = Store::open_read_only(&fixture.store).unwrap().records.clone();
+    let before = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
     let output = fixture.directory.join("stale-mcp-reconcile.stdout");
     let errors = fixture.directory.join("stale-mcp-reconcile.stderr");
     let mut child = Command::new("/usr/bin/python3")
