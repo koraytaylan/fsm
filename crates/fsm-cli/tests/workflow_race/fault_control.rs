@@ -25,7 +25,7 @@ pub(super) fn abort_with_uncertainty(directory: &Directory, root: &Path, output:
     let until = Instant::now() + Duration::from_secs(3);
     let mut observed_owner = Value::Null;
     loop {
-        if let Ok(owner) = fsm_cli::local_control::observe(&root, &directory.store(), 50)
+        if let Ok(owner) = fsm_cli::local_control::observe(root, &directory.store(), 50)
             && owner.get("admission_closed") == Some(&Value::Bool(true))
         {
             observed_owner = owner;
@@ -34,10 +34,7 @@ pub(super) fn abort_with_uncertainty(directory: &Directory, root: &Path, output:
             assert!(!status.success());
             break;
         }
-        assert!(
-            Instant::now() < until,
-            "full-disk control exceeded its bound"
-        );
+        assert!(Instant::now() < until, "fault control exceeded its bound");
         std::thread::sleep(Duration::from_millis(5));
     }
     let report = parse(&fs::read(output).unwrap(), &JsonLimits::DEFAULT).unwrap();
@@ -69,7 +66,7 @@ pub(super) fn abort_with_uncertainty(directory: &Directory, root: &Path, output:
     // Embedded shutdown may retire its endpoint as the terminal deadline
     // expires; retain a genuine in-flight observation rather than infer stop
     // acceptance from endpoint absence or the CLI's transport uncertainty.
-    if let Ok(owner) = fsm_cli::local_control::observe(&root, &directory.store(), 250) {
+    if let Ok(owner) = fsm_cli::local_control::observe(root, &directory.store(), 250) {
         observed_owner = owner;
     }
     assert!(matches!(
