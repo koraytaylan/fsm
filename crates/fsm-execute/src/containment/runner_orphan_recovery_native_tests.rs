@@ -6,17 +6,18 @@ use super::*;
 pub(super) struct Session<'fixture> {
     fixture: &'fixture Fixture,
     _daemon: Daemon,
+    operator_ready: std::cell::Cell<bool>,
 }
 
 impl<'fixture> Session<'fixture> {
     pub(super) fn new(fixture: &'fixture Fixture) -> Self {
-        disconnect_cases::permit_operator_store(&fixture.store);
         super::super::super::super::broker_endpoint::provision(&fixture.directory, 65534).unwrap();
         let daemon = Daemon::ready(&fixture.directory, 1);
         disconnect_cases::install_supervisor(&fixture.directory);
         Self {
             fixture,
             _daemon: daemon,
+            operator_ready: std::cell::Cell::new(false),
         }
     }
 
@@ -66,6 +67,12 @@ impl<'fixture> Session<'fixture> {
         use std::process::{Command, Stdio};
 
         let fixture = self.fixture;
+        // Finish root claim setup before granting this fixed fixture to its
+        // operator; repeated recovery calls must not re-grant operator files.
+        if !self.operator_ready.get() {
+            disconnect_cases::permit_operator_store(&fixture.store);
+            self.operator_ready.set(true);
+        }
         let counter = fixture.counter();
         let script = disconnect_cases::SUPERVISOR.replace(
             "supervisor_probe::owned_request",

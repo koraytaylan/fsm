@@ -11,11 +11,10 @@ pub(super) fn run() {
     // The session borrows the fixture; retain the exact cgroup after it retires.
     let group_identity = domain.get("cgroup").unwrap().clone();
     let domain = NativeDomain::from_value(&domain).unwrap();
-    let (_, effect) = claim_binding(&fixture, &domain);
-    super::super::broker_cases::disconnect_cases::permit_operator_store(&fixture.store);
-    let before = fs::read(fixture.directory.join("prepared-1.json")).unwrap();
     let guard =
         super::super::super::super::owner_lease::acquire(&fixture.directory, 1, 65534).unwrap();
+    let (_, effect) = claim_binding(&fixture, &domain);
+    let before = fs::read(fixture.directory.join("prepared-1.json")).unwrap();
     session.refuse_pre_run_owner();
     assert_unresolved(&fixture, &effect);
     for name in [
