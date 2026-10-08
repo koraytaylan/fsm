@@ -151,7 +151,9 @@ fn production_runs_inspection_preserves_a_torn_tail_and_reports_the_verified_pre
     assert_eq!(response.get("runs"), Some(&Value::Arr(Vec::new())));
     assert_eq!(files(&directory), before);
     assert!(Store::open(&directory).is_err());
-    assert_eq!(files(&directory), before);
+    // Writer open can refresh its advisory-lock diagnostics before refusal;
+    // its health check must still preserve the original torn journal bytes.
+    assert_eq!(fs::read(&segment).unwrap(), before[&segment]);
     fs::remove_dir_all(directory).unwrap();
 }
 
