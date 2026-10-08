@@ -150,6 +150,25 @@ fn refuse_live_runner() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(Store::open_read_only(&path).unwrap().records, records);
+    let mut writer = Store::open(&path).unwrap();
+    let ownership = writer.state.execution.clone();
+    let run_id = ownership.unresolved().next().unwrap().0.run_id();
+    let refusal = fsm_execute::service::reconcile_run(
+        &mut writer,
+        &mut clock,
+        run_id,
+        Duration::from_secs(3),
+    )
+    .unwrap_err();
+    assert_eq!(refusal.code, "exec/inflight_deferred");
+    assert_eq!(
+        refusal.message,
+        "native shutdown refused: original runner remains active or lease locking is unavailable"
+    );
+    assert_eq!(writer.records, records);
+    assert_eq!(writer.state.execution, ownership);
+    drop(writer);
+    assert_eq!(Store::open_read_only(&path).unwrap().records, records);
     #[allow(clippy::print_stdout)]
     {
         println!("\nFSM_NATIVE_LIVE_RUNNER_REFUSED");
