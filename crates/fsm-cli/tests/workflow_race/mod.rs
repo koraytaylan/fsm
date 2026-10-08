@@ -4,6 +4,7 @@ use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
 mod crash;
+mod fault_control;
 mod full_disk;
 pub(super) use crash::configure_table;
 
