@@ -133,6 +133,7 @@ fn refuse_pre_run_owner() {
         .unwrap()
         .0
         .run_id();
+    refuse_copied_pre_run_store(&path, run, &records);
     let error = fsm_execute::service::reconcile_run(
         &mut writer,
         &mut FixedClock::new(2000, 1),
@@ -153,6 +154,29 @@ fn refuse_pre_run_owner() {
     {
         println!("\nFSM_NATIVE_PRE_RUN_OWNER_REFUSED");
     }
+}
+
+fn refuse_copied_pre_run_store(path: &Path, run_id: u64, records: &[fsm_core::record::Record]) {
+    use fsm_store::clock::FixedClock;
+
+    let copied = super::super::supervisor_probe::fresh_handoff::copy_store(path);
+    let mut writer = Store::open(&copied).unwrap();
+    assert_eq!(writer.records, records);
+    let ownership = writer.state.execution.clone();
+    let error = fsm_execute::service::reconcile_run(
+        &mut writer,
+        &mut FixedClock::new(2000, 1),
+        run_id,
+        Duration::from_secs(3),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "exec/inflight_deferred");
+    assert_eq!(error.message, "native discovery store registration missing");
+    assert_eq!(writer.records, records);
+    assert_eq!(writer.state.execution, ownership);
+    drop(writer);
+    assert_eq!(Store::open_read_only(&copied).unwrap().records, records);
+    assert_eq!(Store::open_read_only(path).unwrap().records, records);
 }
 
 #[test]
