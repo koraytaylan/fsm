@@ -45,6 +45,11 @@ def main():
              if association else b'    verify_claim(&store, &claim, text(binding, "journal_claim")?)?;\n'
              if claim_binding else GUARD)
     replacement = b'        let _lock = loop {\n' if association else b''
+    if claim_binding:
+        # Cargo builds the ordinary binary as well as the test target: retain
+        # the function item without calling it so dead-code denial does not
+        # replace the intended named runtime failure with a compile failure.
+        replacement = b'    let _ = verify_claim;\n'
     case = 'authority::allocator::native_tests::private_exec_status' if association else CASE
     if claim_binding:
         case = ('authority::allocator::native_tests::admission_cases::'
