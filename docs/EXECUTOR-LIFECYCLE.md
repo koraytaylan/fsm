@@ -1227,6 +1227,10 @@ missing stores and IDs with neither current ownership nor recorded settlement
 refuse before opening a writer; historical eligibility is revalidated by exact
 request replay under that writer.
 
+The [operator recovery guide](EXECUTOR-RECOVERY.md) gives concrete upgrade,
+interruption, exact replay and refusal sequences, including retained handoffs
+and the still-incomplete pre-run ownership boundary.
+
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not
 promise graceful drain. SIGINT (including terminal Ctrl-C), SIGTERM and
