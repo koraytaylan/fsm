@@ -368,7 +368,7 @@ fn reconcile_original_completion_before_handoff(
         .unwrap();
         assert_eq!(
             response
-                .get("body")
+                .get("execution")
                 .and_then(|body| body.get("disposition"))
                 .and_then(Value::as_str),
             Some("acked")
