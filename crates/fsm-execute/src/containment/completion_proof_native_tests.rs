@@ -5,7 +5,7 @@ use super::{Fixture, claim_binding};
 use fsm_core::canon::canon_bytes;
 use fsm_core::json::Value;
 use fsm_core::record::execution::{Claim, NativeDomain};
-use fsm_execute::run::native_client::NativeCompletion;
+use fsm_execute::run::native_client::{NativeCompletion, NativeExecution};
 use fsm_store::store::Store;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -105,4 +105,58 @@ fn write_same_file(path: &Path, bytes: &[u8]) {
         .unwrap()
         .sync_all()
         .unwrap();
+}
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn execution_refuses_completion_for_another_journal_claim() {
+    let mut fixture = Fixture::new();
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let (binding, _) = claim_binding(&fixture, &domain);
+    let claim = Claim::from_value(binding.get("claim").unwrap()).unwrap();
+    let hash = binding.get("journal_claim").unwrap().as_str().unwrap();
+    bind(&fixture.directory, &binding).unwrap();
+    let records = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
+    let response = object([
+        ("format", Value::Str("fsm.native-response/1".into())),
+        ("ok", Value::Bool(true)),
+        ("result", runner::execute(&fixture.directory, 1).unwrap()),
+    ]);
+    let completion = NativeCompletion::verify(&response, &claim, hash).unwrap();
+    let wrong_hash = format!("sha256:{}", "0".repeat(64));
+    assert_ne!(hash, wrong_hash);
+    // The actual original closure has already been independently authenticated:
+    // transferring it into execution still requires the caller's exact hash.
+    match NativeExecution::from_completion(&claim, &wrong_hash, completion) {
+        Err(error) => assert_eq!(error.code, "exec/inflight_deferred"),
+        Ok(_) => panic!("native execution retained completion for another journal claim"),
+    }
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    let completion = NativeCompletion::verify(&response, &claim, hash).unwrap();
+    let execution = NativeExecution::from_completion(&claim, hash, completion).unwrap();
+    drop(execution);
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(store.records, records);
+    assert_eq!(
+        store
+            .state
+            .execution
+            .claim_for(claim.effect().0, claim.effect().1),
+        Some(&claim)
+    );
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for(claim.effect().0, claim.effect().1)
+            .is_none()
+    );
+    drop(store);
+    fixture.cleanup().unwrap();
 }

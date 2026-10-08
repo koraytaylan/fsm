@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim', 'execution-closure-claim'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -41,7 +41,9 @@ def main():
                                    'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization')
     binding_identity = args.guard in ('binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity')
     completion_closure = args.guard == 'completion-closure-claim'
-    source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
+    execution_closure = args.guard == 'execution-closure-claim'
+    source = repo / ('crates/fsm-execute/src/run/native_client/execution.rs' if execution_closure
+                     else 'crates/fsm-execute/src/containment/exec_status.rs' if association
                      else 'crates/fsm-execute/src/run/native_client/completion.rs' if completion_closure
                      else 'crates/fsm-execute/src/containment/authority.rs' if claim_binding or binding_identity
                      else 'crates/fsm-execute/src/containment/owner_lease.rs')
@@ -124,6 +126,14 @@ def main():
         named_refusal = case
         description = 'completion original journal-claim closure matching'
         scope = 'public native completion closure matching sensitivity only; not a full integration gate'
+    if execution_closure:
+        guard = b'            || !completion.proof().matches_claim(claim, journal_claim)\n'
+        replacement = b'            || { let _ = journal_claim; false }\n'
+        case = ('authority::allocator::native_tests::admission_cases::completion_proof_cases::'
+                'execution_refuses_completion_for_another_journal_claim')
+        named_refusal = case
+        description = 'execution original journal-claim completion matching'
+        scope = 'public native execution completion transfer sensitivity only; not a full integration gate'
     original = source.read_bytes()
     assert original.count(guard) == 1, 'neutralize exactly one selected guard'
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -174,6 +184,8 @@ def main():
                     caller = 'launch' if args.guard == 'claim-before-launch' else 'runner'
                     marker = ('native ' + caller + ' accepted a claim absent from the durable journal').encode()
                     passed = passed and marker in output
+                elif execution_closure:
+                    passed = passed and b'native execution retained completion for another journal claim' in output
                 elif completion_closure:
                     passed = passed and b'native completion accepted closure for another journal claim' in output
                 elif args.guard == 'exec-status-cgroup-identity':

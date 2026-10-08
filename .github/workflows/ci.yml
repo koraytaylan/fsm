@@ -52,6 +52,7 @@ on:
           - runner-cgroup-identity
           - enrolled-authorization-cgroup-identity
           - completion-closure-claim
+          - execution-closure-claim
         default: preparation-owner
 
 # Preserve the running develop checkpoint and queue its latest successor.
