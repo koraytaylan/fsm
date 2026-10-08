@@ -161,6 +161,7 @@ pub(super) fn run() {
         "cancel-process",
         "uncertain-mcp",
         "uncertain-mcp-cli",
+        "uncertain-process-cli",
         "uncertain-process",
     ];
     let selected = std::env::var("FSM_NATIVE_RUNNER_MODE_FILTER").ok();
@@ -194,6 +195,8 @@ pub(super) fn run() {
                                 barriers.path.to_str().unwrap(),
                                 if mode.starts_with("process-recover-") {
                                     "process-exit"
+                                } else if mode == "uncertain-process-cli" {
+                                    "uncertain-process"
                                 } else {
                                     mode
                                 },
@@ -246,6 +249,7 @@ pub(super) fn run() {
                 | "process-signal"
                 | "cancel-process"
                 | "uncertain-process"
+                | "uncertain-process-cli"
         ) {
             let Value::Obj(fields) = &mut table else {
                 panic!("fixture table is not an object")
@@ -313,7 +317,7 @@ pub(super) fn run() {
         assert!(!fixture.directory.join("binding-1.json").exists());
         drop(held_lease);
         bind(&fixture.directory, &binding).unwrap();
-        if mode == "uncertain-mcp-cli" {
+        if matches!(mode, "uncertain-mcp-cli" | "uncertain-process-cli") {
             orphan_cli::run(&mut fixture, &barriers, &domain);
             continue;
         }

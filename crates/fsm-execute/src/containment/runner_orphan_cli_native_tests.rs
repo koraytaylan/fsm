@@ -1,4 +1,4 @@
-//! CLI closure of an enrolled MCP tree after its fixture-owned runner dies.
+//! CLI closure of an enrolled native tree after its fixture-owned runner dies.
 
 use super::*;
 use std::process::{Command, Stdio};
@@ -25,12 +25,12 @@ pub(super) fn run(fixture: &mut Fixture, barriers: &Barriers, domain: &NativeDom
     {
         assert!(
             owner.try_wait().unwrap().is_none(),
-            "original MCP runner exited before enrollment"
+            "original native runner exited before enrollment"
         );
         if Instant::now() >= deadline {
             let _ = owner.kill();
             owner.wait().unwrap();
-            panic!("owned MCP runner enrollment timed out; authority retained");
+            panic!("owned native runner enrollment timed out; authority retained");
         }
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -60,7 +60,7 @@ pub(super) fn run(fixture: &mut Fixture, barriers: &Barriers, domain: &NativeDom
     let recovery = super::orphan_recovery::Session::new(fixture);
     recovery.refuse_live_runner();
     // Kill only this fixture's actual runner child; its independent enrolled
-    // MCP root, detached child and grandchild must survive until CLI closure.
+    // native root, detached child and grandchild must survive until CLI closure.
     owner.kill().unwrap();
     assert!(!owner.wait().unwrap().success());
     for pid in pids {
@@ -293,7 +293,7 @@ fn replay_original_while_successor_lives(fixture: &Fixture) {
 }
 
 #[test]
-#[ignore = "fixture-owned Root original runner for an enrolled MCP tree"]
+#[ignore = "fixture-owned Root original runner for an enrolled native tree"]
 fn original_runner() {
     assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
     let directory = PathBuf::from(std::env::var_os("FSM_NATIVE_ORPHAN_AUTHORITY").unwrap());
