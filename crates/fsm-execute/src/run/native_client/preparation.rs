@@ -45,6 +45,12 @@ impl NativePreparation {
         Self::start(&namespace, generation, timeout)
     }
 
+    /// Discover the original physical-store route and request owned preparation.
+    pub fn for_store_owned(store: &std::path::Path, timeout: Duration) -> Result<Self, String> {
+        let (namespace, generation) = super::discovery::discover(store)?;
+        Self::start_owned(&namespace, generation, timeout)
+    }
+
     /// Request an empty prepared domain from the fixed provisioned authority.
     pub fn start(namespace: &str, generation: u64, timeout: Duration) -> Result<Self, String> {
         Self::start_action(namespace, generation, timeout, "prepare")

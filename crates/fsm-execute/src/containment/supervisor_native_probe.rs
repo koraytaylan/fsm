@@ -606,13 +606,39 @@ fn prepare_domain() {
     let store =
         std::env::var("FSM_NATIVE_TEST_STORE").expect("discovery fixture requires physical store");
     let mut prepared =
-        NativePreparation::for_store(std::path::Path::new(&store), Duration::from_secs(3)).unwrap();
-    let domain = loop {
-        if let Some(domain) = prepared.poll().unwrap() {
-            break domain;
+        NativePreparation::for_store_owned(std::path::Path::new(&store), Duration::from_secs(3))
+            .unwrap();
+    assert_eq!(
+        prepared.poll().unwrap_err(),
+        "owned preparation requires poll_owned"
+    );
+    let owner = loop {
+        if let Some(owner) = prepared.poll_owned().unwrap() {
+            break owner;
         }
         std::thread::sleep(Duration::from_millis(5));
     };
+    let domain = owner.domain();
+    let allocation = domain
+        .to_value()
+        .get("allocation")
+        .unwrap()
+        .as_num()
+        .unwrap()
+        .to_owned();
+    let path = std::path::Path::new("/var/lib/fsm-containment")
+        .join(&namespace)
+        .join("authority-1")
+        .join(format!("owner-{allocation}.LOCK"));
+    let probe = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    assert!(matches!(
+        probe.try_lock(),
+        Err(std::fs::TryLockError::WouldBlock)
+    ));
     let progress = prepared.progress();
     assert_eq!(progress.phase, NativePreparationPhase::Prepared);
     assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);
@@ -622,6 +648,8 @@ fn prepare_domain() {
         "\nFSM_NATIVE_TEST_DOMAIN={}",
         std::str::from_utf8(&fsm_core::canon::canon_bytes(&domain.to_value())).unwrap()
     ));
+    drop(owner);
+    probe.try_lock().unwrap();
 }
 
 #[test]
