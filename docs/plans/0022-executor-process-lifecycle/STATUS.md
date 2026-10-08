@@ -98,3 +98,15 @@ Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cdcc311f66d08ae7b640731ed4a159d2aaf25863b59dd833afca7a99b3e9a9c9`.
 Volatile sessions, PIDs and intermediate logs stay in the task cache and do not establish completion.
+Frozen 1b6df856..314ab9f2 passes both 82-case native containment inventories,
+all 29 ordinary CLI workflow groups and historical executor upgrade inspection
+and drain on stable/MSRV in [CI](https://github.com/koraytaylan/fsm/actions/runs/37796660305);
+verified report/log/transcript digest
+`f32a2916a7ec011ad24d3c87e1ab48eee41b2e4a6239c6d5edf0a54e26450549`.
+This proves the live replacement-domain sentinel survives identity refusal,
+missing recorded-endpoint refusal and bounded association contention at that
+source; the prior MSRV workflow contention failure is retained as a failed
+checkpoint. Successor held-lock assertion and guard-neutralization evidence,
+actual PID reuse, current portable integration and the complete task acceptance
+audit remain outstanding, so 9403 stays in progress. This documentation-only
+milestone omits heavy gates; volatile evidence remains in the task cache.
