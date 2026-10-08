@@ -27,9 +27,18 @@ impl AcceptanceOwner {
 
 #[cfg(target_os = "linux")]
 pub(super) fn new(store: Store, clock: FixedClock) -> (AcceptanceOwner, Handle) {
+    with_handlers(store, clock, fsm_execute::config::HandlerTable::default())
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn with_handlers(
+    store: Store,
+    clock: FixedClock,
+    handlers: fsm_execute::config::HandlerTable,
+) -> (AcceptanceOwner, Handle) {
     use crate::mcp::notify::diagnostic_output::DiagnosticOutput;
-    use fsm_execute::{config::HandlerTable, service::OwnedNativeExecutor};
-    let driver = OwnedNativeExecutor::new(store, HandlerTable::default()).unwrap();
+    use fsm_execute::service::OwnedNativeExecutor;
+    let driver = OwnedNativeExecutor::new(store, handlers).unwrap();
     let diagnostics = DiagnosticOutput::start(std::io::sink()).unwrap();
     let (native, handle) = super::super::native::NativeOwner::new(
         driver,
