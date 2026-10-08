@@ -168,8 +168,12 @@ fn native_fixture() {
         fs::write(directory.join("ready"), b"ready").expect("ready barrier");
         let watchdog = Instant::now();
         while !directory.join("stop").exists() && watchdog.elapsed() < Duration::from_secs(10) {
-            if directory.join("challenge").exists() {
-                fs::write(directory.join("response"), b"alive").expect("liveness response");
+            if directory.join("challenge").exists() && !directory.join("response").exists() {
+                // Existence is the observer's barrier: never expose a partial
+                // response or truncate a response it may already be reading.
+                let pending = directory.join("response.pending");
+                fs::write(&pending, b"alive").expect("liveness response");
+                fs::rename(pending, directory.join("response")).expect("liveness publication");
             }
             std::thread::sleep(Duration::from_millis(5));
         }
