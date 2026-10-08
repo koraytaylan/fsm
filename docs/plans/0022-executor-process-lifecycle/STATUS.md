@@ -32,6 +32,8 @@ Frozen 8d5b705e..ad0ac436 passes actual SIGKILL of an independent public Pipelin
 
 Frozen b14c5d51..7d2954e2 passes actual SIGKILL of an independent public Pipeline caller after durable acknowledgement and before its original outcome event, then reconstructed configured-operator delivery once without another allocation on stable/MSRV; review digest `453f0b76fb31138cdd6bad8c75f1315db98a2e941f96910c02b68e82935e9797`. Reopened journal assertions, focused lifecycle tests, all-target executor Clippy, formatting and size checks pass. This proves the public Pipeline acknowledgement cut; after-claim and post-attempt process cuts, the remaining host matrix and full CI are unverified, so 9401 remains in progress.
 
+Frozen db5f6273..015efced passes actual SIGKILL of an independent public Pipeline caller after durable retry disposition, then exact nonmutating attempt replay and original backoff recovery on stable/MSRV; review digest `e1c7c19fb86aa1a1436fb00006c5d394d3bdf03934a4ff5c5d4fedc79473a58d`. The successor claim refuses at 1010, accepts as attempt two at 1011 and refuses changed contracts; focused lifecycle tests, all-target executor Clippy, formatting and size checks pass. The retained initial failure was a fixture assertion reading response-envelope fields from the journal body. This proves successor claim timing, not successor launch or the remaining host matrix; after-claim process cuts and full CI remain unverified, and 9401 stays in progress.
+
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cdcc311f66d08ae7b640731ed4a159d2aaf25863b59dd833afca7a99b3e9a9c9`.
