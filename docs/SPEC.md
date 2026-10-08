@@ -2527,7 +2527,8 @@ start binding through this method. Actual startup MUST use the existing
 writer-held current-claim/hash and launch-eligibility checks; this method MUST
 NOT claim, settle, release capacity, or fall back to a direct child. Constructing
 another retained object MUST NOT be interpreted as authority to retry an
-uncertain run. Fresh shared-tick admission and reconciliation remain pending.
+uncertain run. Fresh shared-tick admission and original-run reconciliation use
+these guarded operations; complete task acceptance remains pending.
 
 For installed-owner startup, observation MUST stop at `Bound` without requesting
 execution, even after repeated polls. `NativeExecution::launch_bound` MUST
@@ -2745,10 +2746,12 @@ Application MUST retain both owned transports and cannot alone release local
 capacity or establish a bounded production shutdown report.
 
 
-### Planned uncertain-run inspection and reconciliation (task 9403)
+### Uncertain-run inspection and reconciliation (task 9403)
 
 Production `execute runs` implements the journal-only inspection portion;
-`execute reconcile` selects shared authenticated result recovery or guarded closure; runner-phase startup reconciliation is implemented but native acceptance remains incomplete.
+`execute reconcile` selects shared authenticated result recovery or guarded
+closure; startup recovery covers owned pre-run and runner-phase claims with the
+same original identity and closure checks; complete task acceptance remains pending.
 The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
 inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
 effect_id, backend, phase, native_evidence and next. The execution_ownership
@@ -2851,7 +2854,8 @@ The internal `reconcile-claimed` broker action MUST exclusively hold an existing
 protected runner lease through original-binding validation, fencing and closure;
 it MUST refuse a held or missing lease before any closure side effect, MUST NOT
 publish or reinterpret a completion, and MUST NOT settle journal ownership.
-The operator command uses this primitive; pre-run owner recovery remains incomplete.
+The operator command and startup recovery use this primitive; owned pre-run
+recovery additionally retains both original leases as specified above.
 While holding that lease, reconciliation MUST refuse any original result
 attestation, completed response or pending completed response before fencing;
 unreadable or partial publication MUST remain uncertain rather than becoming
@@ -2892,8 +2896,8 @@ all closure helpers MUST remain included in transport retirement inventories.
 Shutdown and reconciliation MUST preserve a broker refusal's bounded, sanitized
 reason only from the closed native response envelope; malformed responses MUST
 remain protocol refusals and no refusal may establish closure or settlement.
-This implements runner-phase startup reconciliation; pre-run ownership recovery
-and complete native acceptance remain outstanding.
+This implements runner-phase and owned pre-run startup reconciliation;
+complete task acceptance remains pending.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT

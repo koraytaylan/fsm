@@ -20,8 +20,8 @@ owner before dropping the admission reservation; native acceptance remains pendi
 
 Allocator-side `prepare-owned` leases and binding/closure checks are implemented;
 absent-binding reconciliation now reuses exact claim validation while holding both
-original leases, and production client guard transfer is wired, but native
-acceptance of this recovery path remains unverified.
+original leases, and production client guard transfer is wired; complete task
+acceptance remains pending.
 Before claiming pre-run recovery support, acceptance must prove
 continuous guard transfer, public-entry enforcement and refusal of missing or
 legacy ownership material before claiming pre-run reconciliation support.
@@ -38,15 +38,15 @@ Startup now attempts guarded original-run closure once per observed orphan
 without completion, using operator reconciliation's authenticated primitive;
 active/missing leases and partial results remain unresolved, and later original
 completion recovery stays available after refusal; native startup acceptance
-and pre-run owner recovery remain pending, with no format or hash change.
+remains pending, with no format or hash change; owned pre-run recovery uses both original leases.
 
 Published original completions in `service::reconcile_run` now use the same
 authenticated recovery and original settlement as startup, without current
 handlers or outcome-event dispatch; partial publications remain unresolved,
-and shared startup orphan closure and native acceptance remain pending.
+and shared startup orphan closure is implemented; complete task acceptance remains pending.
 
 Added `execute reconcile --run-id <id> [--timeout-ms <ms>]` for shared Linux
-original-run recovery; startup orphan integration remains pending.
+original-run recovery; startup shares its original identity and closure checks.
 The client request policy now admits the exact claimed reconciliation action,
 fixing a refusal before broker dispatch found by genuine native acceptance.
 
@@ -61,15 +61,15 @@ Run inspection also refuses existing uninitialized directories without creating
 files, instead of reporting their synthetic empty read-only view as verified.
 Added a lease-serialized claimed closure broker primitive that refuses active
 or missing runner leases, with additive `NativeShutdown::start_reconciliation`
-transport; operator recovery and native acceptance remain pending.
+transport; operator and startup recovery use it, with complete task acceptance pending.
 Closure-only reconciliation now refuses existing or partial original result
 publications, preserving them for authenticated recovery without interruption.
 Added Linux `service::reconcile_run` as the shared closure-only writer path;
-positive orphan acceptance and production startup wiring remain pending.
+production startup uses the same guarded recovery, with complete task acceptance pending.
 
 The native runner holds an allocation-specific protected execution lease through
-cleanup and result publication; genuine native acceptance and reconciliation
-integration for this new lease remain pending under task 9403.
+cleanup and result publication; reconciliation retains its original lease
+through closure, with complete task acceptance pending under task 9403.
 
 OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
 selects it while standalone defaults remain synchronous. Original raw helper

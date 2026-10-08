@@ -23,7 +23,7 @@ operator owner leases before a `prepared-owned` domain; binding and closure
 check that owner lease, with no journal format, hash or error-code change.
 Absent-binding reconciliation validates the exact original claim under both
 leases before publication; production guard transfer is wired, while complete
-pre-run recovery acceptance remains outstanding; legacy allocations cannot be retrofitted to infer retirement.
+task acceptance remains pending; legacy allocations cannot be retrofitted to infer retirement.
 
 Repeated operator reconciliation may now return an exact original settlement
 replay through the existing request ledger, without native actions or journal
@@ -38,12 +38,12 @@ Startup now attempts guarded original-run closure once per observed orphan
 without completion, using operator reconciliation's authenticated primitive;
 active/missing leases and partial results remain unresolved, and later original
 completion recovery stays available after refusal; native startup acceptance
-and pre-run owner recovery remain pending, with no format or hash change.
+remains pending, with no format or hash change; owned pre-run recovery uses both original leases.
 
 Published original completions in `service::reconcile_run` now use the same
 authenticated recovery and original settlement as startup, without current
 handlers or outcome-event dispatch; partial publications remain unresolved,
-and shared startup orphan closure and native acceptance remain pending.
+and shared startup orphan closure is implemented; complete task acceptance remains pending.
 
 Additive `execute reconcile --run-id <id> [--timeout-ms <ms>]` selects Linux
 authenticated original-result recovery or guarded closure; missing/active leases
@@ -52,7 +52,8 @@ with existing error codes and no journal format or hash changes.
 
 Task 9403 adds `execute runs` and `service::inspect_runs` as additive read-only
 inspection surfaces; operator reconciliation is implemented, while startup
-orphan recovery remains incomplete.
+orphan recovery uses the same original claim, identity and closure checks;
+complete task acceptance remains pending.
 The additive `service::inspect_ownership` shares existing MCP ownership counts
 with the inspection report, without changing existing MCP field semantics.
 Inspection refuses an uninitialized directory using existing
