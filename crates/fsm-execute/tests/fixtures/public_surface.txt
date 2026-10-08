@@ -237,6 +237,7 @@ fn fsm_execute::run::native_client::filter_native_worker_panics
 fn fsm_execute::sched::backoff_for
 fn fsm_execute::sched::ready_at
 fn fsm_execute::service::advancing_effects
+fn fsm_execute::service::inspect_ownership
 fn fsm_execute::service::inspect_runs
 fn fsm_execute::service::observe_admitted_with
 fn fsm_execute::service::run
@@ -436,6 +437,7 @@ reexport fsm_execute::service::PairedNativeExecutor from lifecycle
 reexport fsm_execute::service::ShutdownMode from lifecycle
 reexport fsm_execute::service::ShutdownReport from lifecycle
 reexport fsm_execute::service::ShutdownRequest from lifecycle
+reexport fsm_execute::service::inspect_ownership from inspection
 reexport fsm_execute::service::inspect_runs from inspection
 reexport fsm_execute::service::observe_admitted_with from admitted
 struct fsm_execute::config::Advance

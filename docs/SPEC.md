@@ -2751,7 +2751,9 @@ Production `execute runs` implements the journal-only inspection portion;
 `execute reconcile` and shared startup reconciliation remain unimplemented.
 The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
 inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
-effect_id, backend, phase, native_evidence and next. Phase is unresolved or
+effect_id, backend, phase, native_evidence and next. The execution_ownership
+summary MUST match MCP health's enabled, unresolved_runs, stopped_runs and
+outstanding_handoffs counts from the same verified observation. Phase is unresolved or
 durably stopped; native_evidence is unverified because inspection performs no
 native query. Inventory completeness covers current unresolved ownership in
 the verified fold, not historical settled runs or native liveness.

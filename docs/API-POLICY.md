@@ -2,6 +2,8 @@
 
 Task 9403 adds `execute runs` and `service::inspect_runs` as additive read-only
 inspection surfaces; reconciliation and shared recovery remain unimplemented.
+The additive `service::inspect_ownership` shares existing MCP ownership counts
+with the inspection report, without changing existing MCP field semantics.
 Implementation must preserve existing journal formats, hash domains and exact
 settlement keys; any additive public command or Rust surface must document its
 compatibility consequences and pass the task's native acceptance before release.

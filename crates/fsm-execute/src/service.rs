@@ -21,7 +21,7 @@
 mod admitted;
 mod inspection;
 pub use admitted::observe_admitted_with;
-pub use inspection::inspect_runs;
+pub use inspection::{inspect_ownership, inspect_runs};
 #[cfg(target_os = "linux")]
 mod lifecycle;
 #[cfg(target_os = "linux")]

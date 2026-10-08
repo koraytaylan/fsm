@@ -47,5 +47,39 @@ pub fn inspect_runs(store: &Store) -> Value {
         ("inventory_complete".into(), Value::Bool(true)),
         ("inventory_limit".into(), Value::Num("4096".into())),
         ("runs".into(), Value::Arr(runs)),
+        ("execution_ownership".into(), inspect_ownership(store)),
+    ]))
+}
+
+/// Sanitized journal-derived counts shared by CLI inspection and MCP health.
+/// This reads no native state and grants no execution admission.
+pub fn inspect_ownership(store: &Store) -> Value {
+    let mut unresolved = 0usize;
+    let mut stopped = 0usize;
+    for (_, result) in store.state.execution.unresolved() {
+        unresolved += 1;
+        stopped += usize::from(result.is_some());
+    }
+    Value::Obj(BTreeMap::from([
+        (
+            "enabled".into(),
+            Value::Bool(
+                store.state.execution.admission()
+                    == fsm_core::record::execution::Admission::Enabled,
+            ),
+        ),
+        ("unresolved_runs".into(), Value::Num(unresolved.to_string())),
+        ("stopped_runs".into(), Value::Num(stopped.to_string())),
+        (
+            "outstanding_handoffs".into(),
+            Value::Num(
+                store
+                    .state
+                    .execution_handoffs
+                    .outstanding()
+                    .count()
+                    .to_string(),
+            ),
+        ),
     ]))
 }

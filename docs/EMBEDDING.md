@@ -4,6 +4,8 @@
 unresolved ownership without native I/O or mutation, matching `execute runs`;
 native liveness remains unverified, and operator/startup reconciliation remains
 unimplemented under task 9403.
+`service::inspect_ownership(&store)` provides the same sanitized counts used by
+MCP health and the execution_ownership field of the CLI run report.
 
 Instance event and deadline applications invalidate subscribed instance resources; list-changed notifications indicate listing membership changes from machine definition, instance creation or invocation, rather than each transition.
 

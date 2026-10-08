@@ -79,37 +79,7 @@ fn advance(advance: Option<&Advance>) -> Value {
 }
 
 fn execution_ownership(store: Option<&Store>) -> Value {
-    let Some(store) = store else {
-        return Value::Null;
-    };
-    let mut unresolved = 0usize;
-    let mut stopped = 0usize;
-    for (_, result) in store.state.execution.unresolved() {
-        unresolved += 1;
-        stopped += usize::from(result.is_some());
-    }
-    Value::Obj(BTreeMap::from([
-        (
-            "enabled".into(),
-            Value::Bool(
-                store.state.execution.admission()
-                    == fsm_core::record::execution::Admission::Enabled,
-            ),
-        ),
-        ("unresolved_runs".into(), Value::Num(unresolved.to_string())),
-        ("stopped_runs".into(), Value::Num(stopped.to_string())),
-        (
-            "outstanding_handoffs".into(),
-            Value::Num(
-                store
-                    .state
-                    .execution_handoffs
-                    .outstanding()
-                    .count()
-                    .to_string(),
-            ),
-        ),
-    ]))
+    store.map_or(Value::Null, fsm_execute::service::inspect_ownership)
 }
 
 pub(crate) fn describe(store: Option<&Store>, handlers: Option<&Value>) -> Value {

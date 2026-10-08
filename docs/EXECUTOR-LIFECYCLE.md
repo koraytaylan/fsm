@@ -1180,8 +1180,8 @@ ownership without loading handlers, acquiring the writer or contacting the
 native authority. Run IDs are ordered, phase distinguishes unresolved from
 durably stopped, and native evidence remains explicitly unverified; the report
 omits handler contracts, arguments and results. A missing directory returns an
-unavailable-inventory error without initialization. Shared MCP inspection counts
-and operator/startup reconciliation are still task 9403 work, so this listing
+unavailable-inventory error without initialization. MCP health uses the same
+ownership counts; operator/startup reconciliation remains task 9403 work, so this listing
 does not provide closure proof or authorize retry.
 
 The initial Linux backend uses an explicit project decision under the

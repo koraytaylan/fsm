@@ -5,6 +5,8 @@ sanitized unresolved ownership with explicit unverified native state; release
 acceptance still requires secret/nonmutation coverage, live-owner-safe shared
 recovery and genuine orphan/identity/race tests, with no journal format, hash
 domain or error-code change.
+CLI inspection and MCP health now share journal-derived ownership counts;
+native liveness remains unverified and missing observations remain unavailable.
 
 OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
 selects it while standalone defaults remain synchronous. Original raw helper
