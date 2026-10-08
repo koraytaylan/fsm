@@ -1,5 +1,12 @@
 # Executor lifecycle feasibility
 
+Local containment does not provide exactly-once external effects: a handler may
+submit remote work before its process tree is terminated, and recovery may
+repeat that operation after proved local closure. External operations remain
+at-least-once; handlers must provide domain-specific idempotency keys,
+reconciliation or compensation, and a local closure receipt never proves
+remote cancellation or rollback.
+
 Reconciliation of a settled run uses its exact original claim, disposition and
 settlement request ledger as a nonmutating duplicate; unavailable original
 history refuses, and replay never targets a successor native tree.

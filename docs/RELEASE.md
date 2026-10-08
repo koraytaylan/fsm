@@ -1,5 +1,12 @@
 # Releasing
 
+Plan 0022 proves local process ownership and closure, not exactly-once external
+effects: remote work submitted before termination can survive local closure,
+and recovery can repeat the operation. External effects remain at-least-once;
+handlers require domain-specific idempotency keys, reconciliation or
+compensation. Release acceptance must not describe a local closure receipt as
+proof of remote cancellation or rollback.
+
 Task 9404 now provides `fsm-lifecycle-fixture` and the dedicated
 `executor_lifecycle_crash` test target. The portable process/MCP fixture has
 explicit result barriers, an inherited-pipe child/grandchild tree and bounded
