@@ -272,13 +272,24 @@ log digests; scoped verdict digest
 `a084705b028d4dca80f10959f6756f233f55e5d7681243650db5ff7468d1236f`.
 The frozen reports incorrectly name an unrelated public refusal despite the
 correct named test passing, failing at exit 101 with only its guard removed,
-and passing after restoration; `83998a77` corrects that metadata, pending
-successor CI rather than retroactively relabeling historical evidence.
+and passing after restoration; `83998a77` corrects that metadata without
+retroactively relabeling historical evidence, and frozen successor `4b8992d8`
+independently verifies the corrected exact public refusal on both compilers,
+scoped verdict `be629a8c58f3132d8ca342518fb6f675cd8ec00320e2c5aea7bb4ce26b0ed764`.
+The same successor independently verifies durable publication closure matching
+before attestation, with the later completion verifier retained, scoped verdict
+`9050ef029b4a8afa2ca627747d576f1b6e04da61d51c61d6ecfe16cd926be785`.
+Actual retired-run records are restored after the original refusal; removing
+only the publication guard crosses the durable attestation boundary and makes
+the named test fail at exit 101, then restoration passes again.
 Integration checkpoint `d8125e9e` completed both native runtime suites but
 failed artifact retention because nested Rust test names introduced colons in
 log filenames; `f3dbedc9` uses portable filenames, preserves exact report test
 identities and adds frozen native evidence verification to CI, with focused
 Python checks passing and native successor evidence outstanding.
-Neither repair establishes full integration or task completion; 9404 remains
+`a47cd932` adds real SIGINT/SIGTERM production-host recovery axes for both hosts
+and handler kinds; focused compilation, all-target clippy, formatting, size and
+producer checks pass, while native runtime evidence remains outstanding.
+These scoped proofs do not establish full integration or task completion; 9404 remains
 in progress, detailed evidence stays in the task cache, and this documentation
 update omits heavy gates.
