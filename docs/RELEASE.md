@@ -24,8 +24,12 @@ only the root result, with descendants still live; restart must recover the
 original completion without another claim or handler entry. The collected-candidate
 barrier also holds closure until immediate restart begins, when the observer
 requires live original descendants and unchanged entry markers and journal
-before releasing closure. These sixteen cases remain natively unverified,
-and independent supervisor death remains open. Shipped binaries contain no barrier.
+before releasing closure. Frozen `d1b763e5` verifies the twelve-case
+pre-publication/collected-timeout inventory on both Linux compilers, but its
+stable integration fails the subsequent liveness-response assertion with
+cause unproven. Successful-candidate recovery and the strengthened restart
+barrier remain unverified, and independent supervisor death remains open.
+Shipped binaries contain no barrier.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

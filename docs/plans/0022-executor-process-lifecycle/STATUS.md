@@ -28,6 +28,18 @@ candidate collection, other crash boundaries, supervisor death, repeated-run
 resource use, sensitivities and the full portable checkpoint remain incomplete;
 9404 stays in progress.
 
+Frozen `29d68e03..d1b763e5` independently verifies all twelve crash cases on
+Linux stable/MSRV, including four native collected-timeout boundaries per
+compiler; verdict digest
+`cdd89d23c56f9b51759340b6fdb4e21de8fd1028f5686fb6d64afbe6d63e4886`.
+[CI 37822299250](https://github.com/koraytaylan/fsm/actions/runs/37822299250)
+fails subsequent stable containment acceptance at the liveness-response
+assertion; the original response bytes were not captured, so the cause is
+unproven. Successful-candidate recovery, the strengthened live-tree restart
+barrier, supervisor death and full integration remain unverified; 9404 stays
+in progress. This documentation-only verdict omits heavy gates, and original
+artifacts remain in the task cache.
+
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
 The six portable gates, dependency/core-only check and both verified native
