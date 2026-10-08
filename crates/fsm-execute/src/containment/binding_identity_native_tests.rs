@@ -159,11 +159,24 @@ fn refuse_replacement(caller: Caller) {
         identity(&fs::symlink_metadata(original).unwrap()),
         original_identity
     );
-    // Exact restoration permits genuine binding and non-launch caller replay;
-    // no missing domain or fixture cleanup is promoted to closure.
+    // Exact restoration permits genuine production admission and execution;
+    // existing binding publication is exclusive and must never be repeated.
     match caller {
-        Caller::Binding | Caller::Launch | Caller::Runner => {
-            bind(&fixture.directory, &binding).unwrap()
+        Caller::Binding => bind(&fixture.directory, &binding).unwrap(),
+        Caller::Launch | Caller::Runner => {
+            let result = runner::execute(&fixture.directory, 1).unwrap();
+            let proof = fsm_store::store::VerifiedClosure::read(Path::new(
+                result.get("receipt").unwrap().as_str().unwrap(),
+            ))
+            .unwrap();
+            let claim =
+                fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap())
+                    .unwrap();
+            assert!(proof.matches_claim(
+                &claim,
+                binding.get("journal_claim").unwrap().as_str().unwrap()
+            ));
+            assert_eq!(fs::read(&binding_path).ok(), original_binding);
         }
         Caller::Authorization => {
             authorize::publish(&fixture.directory, &grant_request(&binding)).unwrap();
