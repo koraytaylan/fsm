@@ -8,7 +8,6 @@ pub(super) fn resume(
     mode: &str,
 ) {
     use super::super::broker_cases::{Daemon, disconnect_cases};
-    use std::process::{Command, Stdio};
     let before = Store::open_read_only(&fixture.store).unwrap().records.len();
     let counter = fixture.counter();
     disconnect_cases::permit_operator_store(&fixture.store);
@@ -29,22 +28,7 @@ pub(super) fn resume(
             completion.handler().contract_value(),
         ),
     ]));
-    let output = Command::new("/usr/bin/python3")
-        .env("TMPDIR", &fixture.store)
-        .args(["-c", &script])
-        .arg(fixture.directory.join("broker"))
-        .arg(std::str::from_utf8(&parameters).unwrap())
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
-    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
-    assert!(
-        output.status.success(),
-        "cold stopped recovery: {} {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed; 0 failed; 0 ignored;"));
+    compete_processes(fixture, &script, &parameters);
     assert_eq!(fixture.counter(), counter);
     let reopened = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(reopened.records.len(), before + 2);
@@ -77,6 +61,96 @@ pub(super) fn resume(
     assert_eq!(writer.records, records);
     drop(writer);
     drop(daemon);
+}
+
+fn compete_processes(fixture: &Fixture, script: &str, parameters: &[u8]) {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let writer = Store::open(&fixture.store).unwrap();
+    let records = writer.records.clone();
+    let mut hosts: Vec<_> = (0..2)
+        .map(|ordinal| {
+            super::stopped_host::Host(
+                Command::new("/usr/bin/python3")
+                    .env("TMPDIR", &fixture.store)
+                    .env("FSM_STOPPED_RECOVERY_ORDINAL", ordinal.to_string())
+                    .args(["-c", script])
+                    .arg(fixture.directory.join("broker"))
+                    .arg(std::str::from_utf8(parameters).unwrap())
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            )
+        })
+        .collect();
+    let deadline = Instant::now() + Duration::from_secs(7);
+    while !(0..2).all(|ordinal| {
+        fixture
+            .store
+            .join(format!("stopped-recovery-ready-{ordinal}"))
+            .is_file()
+    }) {
+        for host in &mut hosts {
+            assert!(
+                host.0.try_wait().unwrap().is_none(),
+                "recovery host exited before barrier"
+            );
+        }
+        assert!(
+            Instant::now() < deadline,
+            "recovery hosts never reached barrier"
+        );
+        assert_eq!(
+            Store::open_read_only(&fixture.store).unwrap().records,
+            records
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    drop(writer);
+    fs::write(fixture.store.join("stopped-recovery-release"), b"release").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(12);
+    for host in &mut hosts {
+        let status = loop {
+            if let Some(status) = host.0.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "competing recovery host did not finish"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        host.0
+            .stdout
+            .take()
+            .unwrap()
+            .take(8193)
+            .read_to_end(&mut stdout)
+            .unwrap();
+        host.0
+            .stderr
+            .take()
+            .unwrap()
+            .take(8193)
+            .read_to_end(&mut stderr)
+            .unwrap();
+        assert!(stdout.len() <= 8192 && stderr.len() <= 8192);
+        assert!(
+            status.success(),
+            "cold stopped recovery: {} {}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        );
+        assert!(String::from_utf8_lossy(&stdout).contains("1 passed; 0 failed; 0 ignored;"));
+    }
 }
 
 #[test]
@@ -144,7 +218,7 @@ fn recover_stopped() {
     let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
     // A different healthy writer fences this reconstructed recovery host.
     // Helper recovery can progress, but the existing stopped owner must remain.
-    let held_writer = Store::open(&path).unwrap();
+    let held_writer = Store::open_read_only(&path).unwrap();
     let held_records = held_writer.records.clone();
     let held_execution = held_writer.state.execution.clone();
     let deadline = Instant::now() + Duration::from_secs(7);
@@ -195,6 +269,22 @@ fn recover_stopped() {
     }
     assert_eq!(held_writer.records, held_records);
     drop(held_writer);
+    let ordinal = std::env::var("FSM_STOPPED_RECOVERY_ORDINAL").unwrap();
+    assert!(matches!(ordinal.as_str(), "0" | "1"));
+    fs::write(
+        path.join(format!("stopped-recovery-ready-{ordinal}")),
+        b"ready",
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(7);
+    while !path.join("stopped-recovery-release").is_file() {
+        assert_eq!(Store::open_read_only(&path).unwrap().records, held_records);
+        assert!(
+            Instant::now() < deadline,
+            "parent did not release recovery barrier"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let deadline = Instant::now() + Duration::from_secs(7);
     loop {
         driver.tick(&path, &mut clock, 2000);
