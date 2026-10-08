@@ -224,7 +224,7 @@ fn record_reconciliation_transcript(
     // the command uses the original store and exact run with an 8000-ms bound.
     writeln!(
         std::io::stdout().lock(),
-        "FSM_NATIVE_RECONCILE_TRANSCRIPT {}",
+        "\nFSM_NATIVE_RECONCILE_TRANSCRIPT {}",
         String::from_utf8(canon_bytes(&transcript)).unwrap()
     )
     .unwrap();

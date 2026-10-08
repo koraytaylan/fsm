@@ -714,7 +714,7 @@ pub(super) fn run() {
             if let Some(transcript) = line.strip_prefix("FSM_NATIVE_RECONCILE_TRANSCRIPT ") {
                 writeln!(
                     report_output,
-                    "FSM_NATIVE_RECONCILE_TRANSCRIPT {case} {transcript}"
+                    "\nFSM_NATIVE_RECONCILE_TRANSCRIPT {case} {transcript}"
                 )
                 .unwrap();
             }
