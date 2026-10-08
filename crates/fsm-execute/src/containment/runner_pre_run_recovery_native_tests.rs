@@ -31,6 +31,18 @@ pub(super) fn run() {
         before
     );
     drop(guard);
+    let lease = fixture.directory.join("owner-1.LOCK");
+    let original_lease = fs::symlink_metadata(&lease).unwrap();
+    fs::set_permissions(&lease, fs::Permissions::from_mode(0o640)).unwrap();
+    session.refuse_pre_run_identity();
+    assert_unresolved(&fixture, &effect);
+    for name in ["binding-1.json", "closing-1.json", "closed-1.json"] {
+        assert!(fs::symlink_metadata(fixture.directory.join(name)).is_err());
+    }
+    fs::set_permissions(&lease, fs::Permissions::from_mode(0o600)).unwrap();
+    let restored_lease = fs::symlink_metadata(&lease).unwrap();
+    assert_eq!(restored_lease.dev(), original_lease.dev());
+    assert_eq!(restored_lease.ino(), original_lease.ino());
     session.resume();
     assert_eq!(
         fs::read(fixture.directory.join("prepared-1.json")).unwrap(),
