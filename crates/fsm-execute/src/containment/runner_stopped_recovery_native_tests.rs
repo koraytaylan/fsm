@@ -392,6 +392,18 @@ fn reconcile_original_completion_before_handoff(
             .unwrap();
         assert_eq!(handoff.claim(), claim);
         assert_eq!(handoff.outcome(), original.outcome());
+        let settled = writer.records.clone();
+        let replay = fsm_execute::service::reconcile_run(
+            &mut writer,
+            clock,
+            claim.run_id(),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+        assert_eq!(replay.get("execution"), response.get("execution"));
+        assert_eq!(writer.records, settled);
+        assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
         drop(writer);
         fs::write(marker, b"original authenticated result settled").unwrap();
     } else {

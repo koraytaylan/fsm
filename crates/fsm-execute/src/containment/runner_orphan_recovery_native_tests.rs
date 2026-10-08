@@ -251,6 +251,24 @@ fn recover_orphan() {
     let report = request.poll();
     assert_eq!(report.phase, ExecutorPhase::Stopped);
     assert!(report.inventory_complete && report.helpers_retired && report.writer_released);
+    let mut writer = Store::open(&path).unwrap();
+    for _ in 0..2 {
+        let replay = fsm_execute::service::reconcile_run(
+            &mut writer,
+            &mut clock,
+            original_run,
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
+        assert_eq!(
+            replay.get("execution").unwrap().get("disposition"),
+            Some(&Value::Str("interrupted".into()))
+        );
+        assert_eq!(writer.records, records);
+        assert_eq!(writer.state.execution.unresolved().count(), 0);
+    }
+    drop(writer);
     #[allow(clippy::print_stdout)]
     {
         println!("\nFSM_NATIVE_ORPHAN_RECOVERED");

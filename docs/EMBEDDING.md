@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+`service::reconcile_run` may replay an already settled run under a healthy writer
+using its original claim and settlement request ledger; replay returns the
+original response with `duplicate: true`, without helpers, appends or events.
+Missing original history or replay remains a refusal.
+
 `NativeShutdown` preserves bounded, sanitized broker refusal reasons for both
 shutdown and reconciliation; a refusal never supplies closure evidence.
 

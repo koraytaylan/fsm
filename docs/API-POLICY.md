@@ -1,5 +1,10 @@
 # API and version policy
 
+Repeated operator reconciliation may now return an exact original settlement
+replay through the existing request ledger, without native actions or journal
+mutation; unavailable original history still refuses, with no format, hash or
+error-code change.
+
 Shutdown and reconciliation now preserve bounded, sanitized closed-envelope
 broker refusal reasons; this changes diagnostic messages without adding error
 codes or changing native authorization, journal formats or hash domains.

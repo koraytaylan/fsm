@@ -1,5 +1,9 @@
 # Executor lifecycle feasibility
 
+Reconciliation of a settled run uses its exact original claim, disposition and
+settlement request ledger as a nonmutating duplicate; unavailable original
+history refuses, and replay never targets a successor native tree.
+
 Shutdown and reconciliation retain bounded, sanitized broker refusal reasons;
 an active-runner refusal remains unresolved and never authorizes termination.
 

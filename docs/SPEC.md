@@ -2816,17 +2816,25 @@ an interrupted outcome. Existing original results require authenticated recovery
 retaining shutdown's original claim, physical store and receipt verification;
 it MUST NOT treat the broker response alone as sufficient closure evidence.
 The shared `service::reconcile_run` path MUST require a healthy durable writer
-and its current exact run ID. When original completion is published, it MUST
+and either its current exact run ID or an exact original settlement replay.
+A settled run MUST replay only through the existing request ledger using its
+original claim, recorded disposition and settlement request ID from verified
+history; unavailable original history or replay MUST refuse. Historical replay
+MUST perform no native query, closure, append, event or successor mutation.
+When original completion is published, it MUST
 use the same authenticated `NativeExecution::recover` and original settlement
 path as startup, retire its helper before settlement, and preserve the original
 contract and outcome without loading current handlers. Otherwise it MUST
 authenticate closure and retire its helper before writing Stopped/Interrupted
 through the existing guarded settlement path. Partial result material MUST
-remain uncertain. It MUST refuse absent runs and active owners;
+remain uncertain. It MUST refuse runs without current ownership or exact
+original settlement replay, and refuse active owners;
 it MUST NOT load a replacement handler table, launch work or fabricate an event.
 `execute reconcile --run-id <id>` MUST select that shared path for canonical
 positive run IDs, with an optional finite `--timeout-ms` (default 8000), and
-refuse missing stores or absent current runs before opening a writer; other
+refuse missing stores or runs with neither current ownership nor recorded
+settlement before opening a writer; historical eligibility MUST be revalidated
+through exact request replay under that writer. Other
 platforms MUST report unsupported mode without native or journal mutation.
 
 Startup recovery MAY request the same guarded claimed reconciliation for an

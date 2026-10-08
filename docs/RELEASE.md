@@ -1,5 +1,9 @@
 # Releasing
 
+Repeated `execute reconcile --run-id <id>` and shared service reconciliation now
+replay the exact original settlement when verified claim/history and its request
+ledger remain available, without targeting a successor or issuing native work.
+
 Native shutdown and reconciliation now retain bounded, sanitized broker refusal
 reasons, including an active original runner, instead of reporting every valid
 refusal as a response-shape mismatch; malformed envelopes still refuse.

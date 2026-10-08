@@ -66,9 +66,14 @@ fn run(ctx: &Ctx, run_id: u64, timeout: u64) -> u8 {
         .execution
         .unresolved()
         .any(|(claim, _)| claim.run_id() == run_id)
+        && !snapshot.records.iter().any(|record| {
+            record.kind == fsm_core::record::RecordKind::ExecutionSettled
+                && record.body.get("run_id")
+                    == Some(&fsm_core::json::Value::Num(run_id.to_string()))
+        })
     {
         return super::report(ctx, &ExecError::new("exec/inflight_deferred", "original run is not currently retained")
-            .hint("use execute runs to select a retained original run; absent ownership cannot authorize closure"));
+            .hint("select a retained original run or an exact historical settlement; absent ownership cannot authorize closure"));
     }
     drop(snapshot);
     let mut writer = match Store::open(&ctx.data_dir) {
