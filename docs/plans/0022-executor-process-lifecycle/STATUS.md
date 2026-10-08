@@ -63,6 +63,23 @@ spawn/termination boundaries, repeated-run resource use, guard sensitivities
 and current full portable integration remain unverified, so 9404 stays in
 progress. This documentation-only update omits heavy gates.
 
+Frozen `8237c9b4..d5579943` independently verifies 48 crash cases, all 48
+resource observations and 82 containment cases per compiler on Linux
+stable/MSRV in [CI 37835587176](https://github.com/koraytaylan/fsm/actions/runs/37835587176);
+scoped verdict digest
+`1b8edf7a1e024e4147a649d62ab50d8acd01e23bc2f48045a861d5c761ef4796`.
+Twelve sequential noisy descendant trees run in each original host/handler
+pair, with prior matched closure and no live overlap; retained measurements
+meet the finite descriptor, thread and RSS bounds. Workflow/upgrade reports
+and executable bytes are not independently verified by this verdict.
+The separate `e7bf5f5f` integration checkpoint fails MSRV embedded historical
+upgrade recovery after original drain: its successor retains run 2 without
+launch or stopped evidence; cause remains unproven, and the passing successor
+checkpoint establishes no behavioral fix. Remaining crash/termination axes,
+complete guard sensitivity and current full portable integration keep 9404
+in progress; artifacts stay in the task cache, and this docs update omits
+heavy gates.
+
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
 The six portable gates, dependency/core-only check and both verified native
