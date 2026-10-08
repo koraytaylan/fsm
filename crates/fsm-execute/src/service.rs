@@ -135,10 +135,10 @@ pub fn tick_reporting(
             };
         }
     };
-    // Starting and stopping handlers writes nothing, so both happen before the
-    // writer is even considered. A kill in particular must not wait on the
-    // lock: a handler past its timeout has to stop whether or not this tick
-    // can journal the fact.
+    // Native preparation and stop observation run independently of the writer.
+    // Native launch waits for apply_native below, which persists the claim and
+    // rechecks eligibility under the writer before authorizing handler entry.
+    // A handler past its timeout must stop even when settlement cannot write.
     let settles = prepare(scheduler, runner, &mut plan, true);
     drop(plan.snapshot.take());
     let finished = runner.finished_effects();
@@ -155,11 +155,10 @@ pub fn tick_reporting(
             // Contention with another writer is expected in paired mode: back
             // off and let the next tick try, rather than failing the run.
             plan.lines.push(error_line(&ExecError::store(&error)));
-            // Nothing was journaled, so nothing may stay marked in flight:
-            // an entry no tick can clear is invisible to the start rule for
-            // the life of the process. Clearing it means the next tick runs
-            // the handler again — the at-least-once boundary, taken
-            // deliberately rather than wedging the loop.
+            // These primitive outcomes were not journaled, so release their
+            // scheduler entries for retry at the at-least-once boundary.
+            // Native ownership is retained separately until verified closure
+            // and durable disposition; this loop cannot release that claim.
             for settle in &settles {
                 scheduler.complete(&settle.effect.effect_id);
             }
@@ -361,8 +360,10 @@ struct PendingSettle {
     outcome: RunOutcome,
 }
 
-/// Start and stop handlers. This phase never writes, which is what lets a
-/// timed-out handler be stopped even on a tick that cannot take the writer.
+/// Prepare native admission and request stops without writing the journal.
+/// Native starts are authorized later under the writer in `apply_native`;
+/// primitive runners start here, and timed-out handlers stop without waiting
+/// for writer access.
 fn prepare(
     scheduler: &mut Scheduler,
     runner: &mut Runner,
