@@ -40,7 +40,11 @@ impl Fixture {
             .arg(mode)
             .arg(&directory)
             .arg(behavior)
-            .stdin(Stdio::piped())
+            .stdin(if mode == "mcp" {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -85,8 +89,8 @@ fn root_exit_retains_descendant_pipes(mode: &str) {
         }
         sender.send(None).unwrap();
     });
-    let input = fixture.root.stdin.as_mut().unwrap();
     if mode == "mcp" {
+        let input = fixture.root.stdin.as_mut().unwrap();
         input
             .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n")
             .unwrap();
@@ -101,10 +105,8 @@ fn root_exit_retains_descendant_pipes(mode: &str) {
             Some(&Value::Str("2025-06-18".into()))
         );
         input.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"run\",\"arguments\":{}}}\n").unwrap();
-    } else {
-        input.write_all(b"{}\n").unwrap();
+        input.flush().unwrap();
     }
-    input.flush().unwrap();
     let response = receiver
         .recv_timeout(Duration::from_secs(5))
         .unwrap()
@@ -169,8 +171,8 @@ fn candidate_result_waits_for_explicit_release(mode: &str) {
             sender.send(line.unwrap()).unwrap();
         }
     });
-    let input = fixture.root.stdin.as_mut().unwrap();
     if mode == "mcp" {
+        let input = fixture.root.stdin.as_mut().unwrap();
         input
             .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n")
             .unwrap();
@@ -179,10 +181,8 @@ fn candidate_result_waits_for_explicit_release(mode: &str) {
         let response = parse(response.as_bytes(), &JsonLimits::DEFAULT).unwrap();
         assert_eq!(response.get("id"), Some(&Value::Num("1".into())));
         input.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"run\",\"arguments\":{}}}\n").unwrap();
-    } else {
-        input.write_all(b"{}\n").unwrap();
+        input.flush().unwrap();
     }
-    input.flush().unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     while !fixture.directory.join("root-candidate").is_file() {
         assert!(fixture.root.try_wait().unwrap().is_none());

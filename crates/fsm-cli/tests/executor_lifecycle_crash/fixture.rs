@@ -140,7 +140,14 @@ fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn s
     mark(directory, "root", "entered")?;
     let stdin = io::stdin();
     let mut input = stdin.lock();
-    while let Some(request) = receive(&mut input)? {
+    loop {
+        // Production process handlers receive argv and closed stdin; only MCP
+        // waits for protocol invocation before producing its candidate.
+        let request = if mode == "process" {
+            object([])
+        } else {
+            receive(&mut input)?.ok_or("fixture input closed before invocation")?
+        };
         if mode == "mcp" {
             let Some(identifier) = request.get("id").cloned() else {
                 continue;
@@ -196,5 +203,4 @@ fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn s
         mark(directory, "root", "retired")?;
         return Ok(());
     }
-    Err("fixture input closed before invocation".into())
 }

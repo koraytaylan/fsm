@@ -13,6 +13,10 @@ unproven and the other three axes remain unexecuted. The coordinator retains
 original authority and bounded diagnostics, including protected result and
 exec-status records for diagnosis. CI runs this probe before the broader native
 matrix; no passing crash or no-overlap acceptance is claimed.
+Completed-response evidence at `f961f871` identifies the pre-barrier failure:
+the process fixture required invocation on stdin, which production closes.
+The fixture and its portable process checks now use argv with closed stdin;
+MCP retains request framing, and native verification remains outstanding.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

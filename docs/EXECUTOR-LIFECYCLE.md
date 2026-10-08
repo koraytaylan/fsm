@@ -1408,5 +1408,10 @@ stable/MSRV CI runs this matrix before broader native checks and retains
 bounded original-owner diagnostics and protected result/exec-status records on
 failure. Both first attempts at `6aacc3ea` failed before the standalone/process
 candidate barrier, with original authority retained; the cause remains unproven
-and the other three axes remain unexecuted. No passing crash or no-overlap
-acceptance is claimed.
+and the other three axes remain unexecuted. Subsequent completed-response
+evidence at `f961f871` identifies a fixture mismatch: production process
+handlers have closed stdin, while the fixture incorrectly waited for protocol
+invocation. Process mode now produces its candidate from argv with closed
+stdin; only MCP waits for framed requests, and portable process checks also
+close stdin. Native verification of this correction remains outstanding; no
+passing crash or no-overlap acceptance is claimed.

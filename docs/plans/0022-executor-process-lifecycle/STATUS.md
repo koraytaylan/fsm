@@ -22,6 +22,11 @@ authority; the cause remains unproven. Verified failure-evidence digest:
 `3ab624370874babafadc22c30c4b7c53467389475ca4ef073e4bf2d063f0adb3`.
 Successor diagnostics capture protected original result/exec-status records
 without changing execution behavior or weakening acceptance; 9404 remains open.
+The subsequent `f961f871` completed responses on both compilers identify the
+fixture's incorrect stdin requirement (`nonzero_exit`, status 1); verified
+diagnosis digest `a4e0ef2928aaa5003f5f796df905c6d1896219d0ccd38ad1958c6c0516122c85`.
+The corrected fixture uses argv and closed stdin for process mode, with MCP
+framing unchanged; native verification of that correction remains outstanding.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
