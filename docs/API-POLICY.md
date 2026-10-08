@@ -3,8 +3,9 @@
 The additive `NativePreparation::start_owned` / `poll_owned` path now returns
 a non-cloneable `NativePreparedOwner` only after acquiring the original operator
 lease and checking the protected authority, boot, route and lease inode; plain
-`poll` refuses owned requests. Admission-to-execution guard transfer remains
-unimplemented and native acceptance remains pending.
+`poll` refuses owned requests. Production admission now requests owned preparation, retains its guard across
+prepared and uncertain claim states, and moves it into the original execution
+owner before dropping the admission reservation; native acceptance remains pending.
 
 
 The additive internal `prepare-owned` route publishes protected runner and

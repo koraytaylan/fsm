@@ -33,6 +33,7 @@ struct Owner {
     requested: bool,
     entry_requested: bool,
     parked_at: Option<u64>,
+    _preparation_owner: Option<super::native_client::NativePreparedOwner>,
 }
 
 #[derive(Default)]
@@ -182,10 +183,14 @@ impl NativeOwners {
                     .execution
                     .stopped_for(claim.effect().0, claim.effect().1),
             )?;
-            self.owners
-                .get_mut(&claim.run_id())
-                .ok_or_else(deferred)?
-                .locally_admitted = true;
+            if !scheduler.retain_claim(&claim) {
+                return Err(deferred());
+            }
+            let owner = self.owners.get_mut(&claim.run_id()).ok_or_else(deferred)?;
+            owner.locally_admitted = true;
+            if let Some(guard) = self.admissions.transferred(&claim) {
+                owner._preparation_owner = Some(guard);
+            }
         }
         self.admissions.refresh(snapshot, scheduler);
         if self.admissions.uncertain() {
@@ -303,6 +308,7 @@ impl NativeOwners {
                 requested: false,
                 entry_requested: true,
                 parked_at: None,
+                _preparation_owner: None,
             },
         );
         Ok(())
@@ -443,10 +449,12 @@ impl NativeOwners {
             }
             let owner = self.owners.get_mut(&claim.run_id()).ok_or_else(deferred);
             match owner {
-                Ok(owner) if owner.claim == claim => owner.locally_admitted = true,
+                Ok(owner) if owner.claim == claim => {
+                    owner.locally_admitted = true;
+                    owner._preparation_owner = self.admissions.transferred(&claim);
+                }
                 _ => return Some(Err(deferred())),
             }
-            self.admissions.transferred(&claim);
             return Some(result.map(|()| {
                 format!(
                     "native-claimed {} run_id={}",

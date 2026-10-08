@@ -2795,14 +2795,15 @@ original claim. No force-clear, age threshold or kill-by-PID fallback is allowed
 The additive `NativePreparation::start_owned` / `poll_owned` path now returns
 a non-cloneable `NativePreparedOwner` only after acquiring the original operator
 lease and checking the protected authority, boot, route and lease inode; plain
-`poll` refuses owned requests. Admission-to-execution guard transfer remains
-unimplemented and native acceptance remains pending.
+`poll` refuses owned requests. Production admission now requests owned preparation, retains its guard across
+prepared and uncertain claim states, and moves it into the original execution
+owner before dropping the admission reservation; native acceptance remains pending.
 
 The internal `prepare-owned` broker route now establishes both leases before
 publishing a `prepared-owned` domain, and binding requires its operator lease
 to be held; reconciliation retains that lease before considering closure.
 Reconciliation can publish an absent original binding after exact claim validation
-while retaining both original leases; client guard transfer remains unimplemented,
+while retaining both original leases; production guard transfer is wired but native acceptance remains pending,
 so this route does not establish end-to-end pre-run reconciliation support.
 The planned pre-run ownership extension is not complete. Its allocator MUST
 establish both the protected runner lease and a separate owner lease before

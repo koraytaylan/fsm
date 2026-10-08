@@ -3,14 +3,15 @@
 The additive `NativePreparation::start_owned` / `poll_owned` path now returns
 a non-cloneable `NativePreparedOwner` only after acquiring the original operator
 lease and checking the protected authority, boot, route and lease inode; plain
-`poll` refuses owned requests. Admission-to-execution guard transfer remains
-unimplemented and native acceptance remains pending.
+`poll` refuses owned requests. Production admission now requests owned preparation, retains its guard across
+prepared and uncertain claim states, and moves it into the original execution
+owner before dropping the admission reservation; native acceptance remains pending.
 
 
 Planned pre-run ownership requires an owned lease guard spanning prepared-domain
 delivery, uncertain claim publication, binding and execution without an unlock
-gap; cloning `NativeDomain` cannot replace it, and client guard transfer remains
-unimplemented despite allocator-side `prepare-owned` leases and binding checks;
+gap; cloning `NativeDomain` cannot replace it, and production admission now moves
+that guard into the original execution owner after durable publication;
 absent-binding reconciliation retains both original leases through exact claim
 validation and protected binding publication, with native acceptance pending.
 

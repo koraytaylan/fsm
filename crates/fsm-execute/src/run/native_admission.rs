@@ -1,6 +1,6 @@
 //! Retained pre-claim admission; helper retirement never proves domain absence.
 
-use super::native_client::{NativePreparation, NativePreparedCleanup};
+use super::native_client::{NativePreparation, NativePreparedCleanup, NativePreparedOwner};
 use crate::{config::HandlerSpec, effect::PendingEffect, error::ExecError, sched::Scheduler};
 use fsm_core::record::execution::{Admission, Claim, NativeDomain};
 use fsm_store::store::Store;
@@ -33,6 +33,7 @@ struct Pending {
     generation: u64,
     cancelled: bool,
     phase: Phase,
+    owner: Option<NativePreparedOwner>,
 }
 
 #[derive(Default)]
@@ -106,6 +107,7 @@ impl NativeAdmissions {
                 generation,
                 cancelled: false,
                 phase: Phase::Queued,
+                owner: None,
             },
         );
         Ok(())
@@ -143,7 +145,7 @@ impl NativeAdmissions {
             if admission_closed.load(Ordering::Acquire) {
                 return;
             }
-            pending.phase = match NativePreparation::start(
+            pending.phase = match NativePreparation::start_owned(
                 &pending.namespace,
                 pending.generation,
                 TRANSPORT_TIMEOUT,
@@ -166,8 +168,12 @@ impl NativeAdmissions {
                 // Preparation alone cannot launch a handler: even cancellation
                 // must receive any original delivered domain before cleanup;
                 // killing its transport first would strand a known allocation.
-                Phase::Preparing(mut preparation) => match preparation.poll() {
-                    Ok(Some(domain)) => Phase::Prepared(domain),
+                Phase::Preparing(mut preparation) => match preparation.poll_owned() {
+                    Ok(Some(owner)) => {
+                        let domain = owner.domain().clone();
+                        pending.owner = Some(owner);
+                        Phase::Prepared(domain)
+                    }
                     Ok(None) => Phase::Preparing(preparation),
                     Err(error) => {
                         self.cleanup_diagnostic.get_or_insert_with(|| {
@@ -238,7 +244,10 @@ impl NativeAdmissions {
                     .execution
                     .claim_for(&pending.effect.instance_id, effect)
                 {
-                    if pending.matches_publication(claim) && scheduler.retain_claim(claim) {
+                    if pending.owner.is_none()
+                        && pending.matches_publication(claim)
+                        && scheduler.retain_claim(claim)
+                    {
                         transferred.push(effect.clone());
                     }
                 }
@@ -363,8 +372,13 @@ impl NativeAdmissions {
         }))
     }
 
-    pub(super) fn transferred(&mut self, claim: &Claim) {
-        self.pending.remove(claim.effect().1);
+    pub(super) fn transferred(&mut self, claim: &Claim) -> Option<NativePreparedOwner> {
+        if !self.matches_local_publication(claim) {
+            return None;
+        }
+        self.pending
+            .remove(claim.effect().1)
+            .and_then(|pending| pending.owner)
     }
 }
 
@@ -514,6 +528,7 @@ mod tests {
             generation: 1,
             cancelled: false,
             phase,
+            owner: None,
         };
         let admissions = NativeAdmissions {
             pending: BTreeMap::from([(effect.effect_id.clone(), pending)]),
