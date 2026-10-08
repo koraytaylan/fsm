@@ -49,6 +49,7 @@ fn provisioned_lifecycle_candidate_matrix() {
                 "stopped-result",
                 "acked-result",
                 "event-result",
+                "claimed-result",
             ] {
                 scenario(
                     &staging,
@@ -103,7 +104,7 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut fixture = Fixture::new_for_workflow(catalogue.clone());
     if let Some(cut) = behavior
         .strip_suffix("-result")
-        .filter(|cut| matches!(*cut, "stopped" | "acked" | "event"))
+        .filter(|cut| matches!(*cut, "stopped" | "acked" | "event" | "claimed"))
     {
         let physical = fs::metadata(&fixture.store).unwrap();
         let request = fixture.directory.join("crash-journal-barrier.json");
@@ -304,6 +305,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "stopped-result"
                             | "acked-result"
                             | "event-result"
+                            | "claimed-result"
                     ) && kind == "process"
                     {
                         "hold-exit"
@@ -316,6 +318,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "stopped-result"
                             | "acked-result"
                             | "event-result"
+                            | "claimed-result"
                     ) {
                         "hold-result"
                     } else {

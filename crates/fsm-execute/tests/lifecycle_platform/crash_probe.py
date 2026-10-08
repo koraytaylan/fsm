@@ -37,7 +37,7 @@ def main():
     args.report.parent.mkdir(parents=True, exist_ok=True)
     report = dict(schema='fsm.native-lifecycle-crash/1', source_commit=commit,
                   source_dirty=False, gate_released=False, passed=False,
-                  scope='pre-publication-collected-candidates-supervisor-death-domain-close-and-journal-cuts', authority_sha256=expected,
+                  scope='pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-and-host-claim', authority_sha256=expected,
                   fixture_sha256=digest(fixture), cli_strip='debuginfo',
                   artifacts={name: dict(path=str(path), sha256=digest(path))
                              for name, path in artifacts.items()},
@@ -57,7 +57,7 @@ def main():
                         'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix',
                         '--ignored', '--nocapture', '--color', 'never'])
         try:
-            result = subprocess.run(command, cwd=repo, capture_output=True, timeout=2940)
+            result = subprocess.run(command, cwd=repo, capture_output=True, timeout=3260)
             report['timed_out'] = False
         except subprocess.TimeoutExpired as error:
             result = subprocess.CompletedProcess(command, None, error.stdout or b'', error.stderr or b'')
@@ -70,7 +70,7 @@ def main():
         report['cases'] = [dict(host=host, kind=kind, behavior=behavior, passed=result.stdout.splitlines().count(
             f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()) == 1)
             for host in ('standalone', 'embedded') for kind in ('process', 'mcp')
-            for behavior in ('hold-result', 'noisy-result', 'collected-timeout', 'collected-result', 'supervisor-death', 'closed-result', 'stopped-result', 'acked-result', 'event-result')]
+            for behavior in ('hold-result', 'noisy-result', 'collected-timeout', 'collected-result', 'supervisor-death', 'closed-result', 'stopped-result', 'acked-result', 'event-result', 'claimed-result')]
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))
@@ -94,7 +94,7 @@ def main():
         subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                         '--inode', str(installed['inode']), '--sha256', expected], check=True, timeout=10)
         args.report.write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(dict(report=str(args.report), passed=report['passed'], cases=36, gate_released=False)))
+    print(json.dumps(dict(report=str(args.report), passed=report['passed'], cases=40, gate_released=False)))
     return 0 if report['passed'] else 1
 
 

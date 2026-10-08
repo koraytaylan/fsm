@@ -138,6 +138,8 @@ impl Pipeline {
         store
             .current_execution_claim_hash(&claim)
             .map_err(|error| ExecError::store(&error))?;
+        #[cfg(feature = "lifecycle-test-fixture")]
+        super::native_test_cut::hold_journal_cut(store, &claim, "claimed")?;
         Ok(claim)
     }
 

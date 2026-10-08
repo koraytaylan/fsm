@@ -1457,6 +1457,10 @@ bounded barriers using a Root-protected request bound to the physical store,
 original attempt and run; the independent observer checks the exact journal
 prefix, original closure and dead tree before killing its owned host, then
 requires original-result recovery and exactly one accepted event without
-another claim or handler entry. The thirty-six-case extension remains
-unverified until its disposable native checkpoint runs; default shipped
-binaries contain no barrier.
+another claim or handler entry. Four further cases hold each actual host after its first durable claim,
+before binding or handler entry; killing that host must preserve the exact
+claim-only prefix through a competing writer, then verified original
+unlaunched closure and interrupted settlement must precede the successor
+claim and its single successful event, without consuming the retry attempt.
+The forty-case extension remains unverified until its disposable native
+checkpoint runs; default shipped binaries contain no barrier.

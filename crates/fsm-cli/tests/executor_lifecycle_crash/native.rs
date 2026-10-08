@@ -222,6 +222,10 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         .unwrap();
     drop(writer);
     let mut original = Host::start(&manifest, "original");
+    if field(&manifest, "behavior") == "claimed-result" {
+        observe_claim_crash(&manifest, &store, &resource, &mut original);
+        return;
+    }
     let deadline = Instant::now() + Duration::from_secs(10);
     while !resource.join("root-candidate").is_file() {
         assert!(
@@ -533,10 +537,182 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     wait_for_completion(&store, &successor);
 }
 
+fn observe_claim_crash(manifest: &Value, store: &Path, resource: &Path, original: &mut Host) {
+    let ready = store.join("journal-cut-ready.json");
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while !ready.is_file() {
+        assert!(
+            original.process.try_wait().unwrap().is_none(),
+            "claim host exited: {}",
+            original.diagnostics()
+        );
+        assert!(
+            Instant::now() < deadline,
+            "claim cut absent: {}",
+            original.diagnostics()
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut encoded = Vec::new();
+    fs::File::open(ready)
+        .unwrap()
+        .take(65_537)
+        .read_to_end(&mut encoded)
+        .unwrap();
+    assert!(encoded.len() <= 65_536);
+    let observed = parse(&encoded, &JsonLimits::DEFAULT).unwrap();
+    let snapshot = Store::open_read_only(store).unwrap();
+    assert_eq!(snapshot.state.execution.unresolved().count(), 1);
+    let claim = snapshot
+        .state
+        .execution
+        .unresolved()
+        .next()
+        .unwrap()
+        .0
+        .clone();
+    let hash = snapshot.current_execution_claim_hash(&claim).unwrap();
+    let records = snapshot.records.clone();
+    assert_eq!(snapshot.state.instances["instance"].pending.len(), 1);
+    assert_eq!(
+        records
+            .iter()
+            .filter(|record| record.kind == RecordKind::ExecutionClaimed)
+            .count(),
+        1
+    );
+    assert_eq!(observed.get("claim"), Some(&claim.to_value()));
+    assert_eq!(observed.get("cut"), Some(&Value::Str("claimed".into())));
+    assert_eq!(
+        observed.get("pid"),
+        Some(&Value::Num(original.process.id().to_string()))
+    );
+    assert_eq!(
+        observed.get("seq"),
+        Some(&Value::Num(snapshot.journal.last_seq.to_string()))
+    );
+    assert!(!records.iter().any(|record| matches!(
+        record.kind,
+        RecordKind::ExecutionStopped | RecordKind::ExecutionSettled | RecordKind::EventApplied
+    )));
+    let domain = claim.domain().to_value();
+    let allocation = domain.get("allocation").unwrap().as_num().unwrap();
+    assert!(
+        !Path::new(field(manifest, "authority"))
+            .join(format!("binding-{allocation}.json"))
+            .exists()
+    );
+    assert_no_handler_entry(resource);
+    drop(snapshot);
+    original.kill_and_wait();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let held = loop {
+        match Store::open(store) {
+            Ok(writer) => break writer,
+            Err(error) if error.code == "store/lock" => {
+                assert!(
+                    Instant::now() < deadline,
+                    "claim host retained writer after SIGKILL"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("claim writer reopen: {error:?}"),
+        }
+    };
+    assert_eq!(held.records, records);
+    let blocked = Host::start(manifest, "immediate-restart");
+    assert_eq!(Store::open_read_only(store).unwrap().records, records);
+    assert_no_handler_entry(resource);
+    drop(blocked);
+    drop(held);
+    let successor = Host::start(manifest, "verified-restart");
+    let deadline = Instant::now() + Duration::from_secs(12);
+    while !resource.join("root-candidate").is_file() {
+        assert!(
+            Instant::now() < deadline,
+            "claim successor absent: {}",
+            successor.diagnostics()
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let receipt = Path::new(field(manifest, "authority"))
+        .join(format!("closure-{allocation}-{}.json", claim.run_id()));
+    let proof = VerifiedClosure::read(&receipt).unwrap();
+    assert!(proof.matches_claim(&claim, &hash));
+    proof.check_store(store).unwrap();
+    let snapshot = Store::open_read_only(store).unwrap();
+    assert!(snapshot.records.starts_with(&records));
+    let stopped = snapshot
+        .records
+        .iter()
+        .find(|record| record.kind == RecordKind::ExecutionStopped)
+        .unwrap();
+    let settled = snapshot
+        .records
+        .iter()
+        .find(|record| record.kind == RecordKind::ExecutionSettled)
+        .unwrap();
+    let next = snapshot
+        .records
+        .iter()
+        .find(|record| record.kind == RecordKind::ExecutionClaimed && record.seq > stopped.seq)
+        .unwrap();
+    assert!(stopped.seq < settled.seq && settled.seq < next.seq);
+    assert_eq!(
+        stopped.body.get("run_id"),
+        Some(&Value::Num(claim.run_id().to_string()))
+    );
+    assert_eq!(
+        settled.body.get("run_id"),
+        Some(&Value::Num(claim.run_id().to_string()))
+    );
+    assert_eq!(
+        settled.body.get("disposition"),
+        Some(&Value::Str("interrupted".into()))
+    );
+    assert_eq!(next.body.get("attempt"), claim.to_value().get("attempt"));
+    assert_ne!(
+        next.body.get("run_id"),
+        Some(&Value::Num(claim.run_id().to_string()))
+    );
+    assert!(
+        !snapshot
+            .records
+            .iter()
+            .any(|record| record.kind == RecordKind::EventApplied)
+    );
+    drop(snapshot);
+    for role in ["grandchild", "child", "root"] {
+        fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
+    }
+    wait_for_completion(store, &successor);
+    let snapshot = Store::open_read_only(store).unwrap();
+    assert_eq!(
+        snapshot
+            .records
+            .iter()
+            .filter(|record| record.kind == RecordKind::EventApplied)
+            .count(),
+        1
+    );
+}
+
+fn assert_no_handler_entry(resource: &Path) {
+    for role in ["root", "child", "grandchild"] {
+        assert!(
+            fs::read(resource.join(format!("{role}-entered")))
+                .unwrap()
+                .is_empty()
+        );
+    }
+    assert!(!resource.join("root-candidate").exists());
+    assert!(!resource.join("root-published").exists());
+}
+
 fn journal_cut(manifest: &Value) -> Option<&str> {
     field(manifest, "behavior")
         .strip_suffix("-result")
-        .filter(|cut| matches!(*cut, "stopped" | "acked" | "event"))
+        .filter(|cut| matches!(*cut, "stopped" | "acked" | "event" | "claimed"))
 }
 
 fn observe_journal_cut(
