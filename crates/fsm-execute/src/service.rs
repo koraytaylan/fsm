@@ -19,7 +19,9 @@
 //! and the golden session byte-compares this stream.
 
 mod admitted;
+mod inspection;
 pub use admitted::observe_admitted_with;
+pub use inspection::inspect_runs;
 #[cfg(target_os = "linux")]
 mod lifecycle;
 #[cfg(target_os = "linux")]

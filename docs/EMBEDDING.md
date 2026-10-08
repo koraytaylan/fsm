@@ -1,9 +1,9 @@
 # Embedding fsm as a library
 
-Uncertain-run inspection and shared operator/startup reconciliation are being
-implemented under task 9403 and are not yet available as production commands or
-a shared embedding API; the planned SPEC contract preserves read-only inspection,
-live-owner refusal and authenticated original-claim closure before settlement.
+`fsm_execute::service::inspect_runs(&store)` renders sanitized journal-derived
+unresolved ownership without native I/O or mutation, matching `execute runs`;
+native liveness remains unverified, and operator/startup reconciliation remains
+unimplemented under task 9403.
 
 Instance event and deadline applications invalidate subscribed instance resources; list-changed notifications indicate listing membership changes from machine definition, instance creation or invocation, rather than each transition.
 

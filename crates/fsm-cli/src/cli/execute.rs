@@ -16,6 +16,7 @@
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
 mod owner;
+mod runs;
 mod stop;
 
 use std::collections::BTreeMap;
@@ -36,6 +37,14 @@ use crate::store::ErrorObj;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 250;
 
 pub static SPECS: &[CmdSpec] = &[
+    CmdSpec {
+        path: &["execute", "runs"],
+        positionals: &[],
+        flags: &[],
+        switches: &[],
+        help: "Inspect unresolved execution ownership without native or journal mutation",
+        run: runs::execute_runs,
+    },
     CmdSpec {
         path: &["execute"],
         positionals: &[],

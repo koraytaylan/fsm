@@ -1175,6 +1175,15 @@ allocation namespace inspection or canonical domain-name validation fails
 the corresponding native restart case on both compilers. Negative controls
 retain dirty-source status and never release the gate.
 
+`fsm execute runs --data-dir <dir>` now reports journal-derived unresolved
+ownership without loading handlers, acquiring the writer or contacting the
+native authority. Run IDs are ordered, phase distinguishes unresolved from
+durably stopped, and native evidence remains explicitly unverified; the report
+omits handler contracts, arguments and results. A missing directory returns an
+unavailable-inventory error without initialization. Shared MCP inspection counts
+and operator/startup reconciliation are still task 9403 work, so this listing
+does not provide closure proof or authorize retry.
+
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not
 promise graceful drain. SIGINT (including terminal Ctrl-C), SIGTERM and

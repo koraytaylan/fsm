@@ -2747,8 +2747,14 @@ capacity or establish a bounded production shutdown report.
 
 ### Planned uncertain-run inspection and reconciliation (task 9403)
 
-This contract precedes implementation; the production `execute runs` and
-`execute reconcile` commands are not yet available.
+Production `execute runs` implements the journal-only inspection portion;
+`execute reconcile` and shared startup reconciliation remain unimplemented.
+The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
+inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
+effect_id, backend, phase, native_evidence and next. Phase is unresolved or
+durably stopped; native_evidence is unverified because inspection performs no
+native query. Inventory completeness covers current unresolved ownership in
+the verified fold, not historical settled runs or native liveness.
 
 Inspection MUST use the verified read-only journal fold without taking a writer,
 creating a directory, issuing a broker action or changing native metadata.

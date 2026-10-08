@@ -1,7 +1,7 @@
 # API and version policy
 
-Task 9403's planned inspection/reconciliation contract in SPEC is design only:
-the production commands and shared recovery surface remain unimplemented.
+Task 9403 adds `execute runs` and `service::inspect_runs` as additive read-only
+inspection surfaces; reconciliation and shared recovery remain unimplemented.
 Implementation must preserve existing journal formats, hash domains and exact
 settlement keys; any additive public command or Rust surface must document its
 compatibility consequences and pass the task's native acceptance before release.

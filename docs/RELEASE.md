@@ -1,10 +1,10 @@
 # Releasing
 
-Task 9403 now has a spec-first inspection/reconciliation contract, without a
-shipped command or API: release acceptance still requires production read-only
-listing, live-owner-safe shared recovery and genuine orphan/identity/race tests.
-This design-only documentation change omits heavy gates and changes no runtime,
-journal format, hash domain or error code.
+Task 9403 adds read-only `execute runs` and `service::inspect_runs`, exposing
+sanitized unresolved ownership with explicit unverified native state; release
+acceptance still requires secret/nonmutation coverage, live-owner-safe shared
+recovery and genuine orphan/identity/race tests, with no journal format, hash
+domain or error-code change.
 
 OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
 selects it while standalone defaults remain synchronous. Original raw helper

@@ -7,6 +7,7 @@ depends_on:
   - bounded-executor-shutdown
 gated: false
 touches:
+  - crates/fsm-execute/src/service.rs
   - crates/fsm-execute/src/service/
   - crates/fsm-execute/src/error.rs
   - crates/fsm-execute/tests/reconcile_runs.rs
