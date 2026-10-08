@@ -56,7 +56,26 @@ pub(super) fn resume(
             .sequential_leaf(),
         Some("risk_review")
     );
+    let records = reopened.records.clone();
     drop(reopened);
+    let binding = read_value(&fixture.directory.join("binding-1.json"), true).unwrap();
+    let claim =
+        fsm_core::record::execution::Claim::from_value(binding.get("claim").unwrap()).unwrap();
+    let mut writer = Store::open(&fixture.store).unwrap();
+    assert_eq!(
+        fsm_execute::run::Pipeline
+            .advance_native_settled(
+                &mut writer,
+                &mut fsm_store::clock::FixedClock::new(4000, 1),
+                &claim,
+                completion,
+                &fsm_execute::rid::ack_rid(claim.effect().1),
+            )
+            .unwrap(),
+        fsm_execute::run::SettleOutcome::AlreadySettled
+    );
+    assert_eq!(writer.records, records);
+    drop(writer);
     drop(daemon);
 }
 
@@ -110,6 +129,49 @@ fn recover_stopped() {
     );
     driver.check_readonly(&path);
     let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
+    // A different healthy writer fences this reconstructed recovery host.
+    // Helper recovery can progress, but the existing stopped owner must remain.
+    let held_writer = Store::open(&path).unwrap();
+    let held_records = held_writer.records.clone();
+    let held_execution = held_writer.state.execution.clone();
+    let deadline = Instant::now() + Duration::from_secs(7);
+    loop {
+        let outcome = driver.tick_without_writer(&path, &mut clock, 1800);
+        let snapshot = Store::open_read_only(&path).unwrap();
+        assert_eq!(snapshot.records, held_records);
+        assert_eq!(snapshot.state.execution, held_execution);
+        assert_eq!(
+            snapshot
+                .state
+                .execution
+                .claim_for("instance", claim.effect().1),
+            Some(&claim)
+        );
+        assert!(
+            snapshot
+                .state
+                .execution
+                .stopped_for("instance", claim.effect().1)
+                .is_some()
+        );
+        assert_eq!(snapshot.state.execution_handoffs.outstanding().count(), 0);
+        assert!(
+            !outcome
+                .lines
+                .iter()
+                .any(|line| line.starts_with("native-handoff advanced"))
+        );
+        if outcome.writer_unavailable {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "cold recovery never reached held writer"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(held_writer.records, held_records);
+    drop(held_writer);
     let deadline = Instant::now() + Duration::from_secs(7);
     loop {
         driver.tick(&path, &mut clock, 2000);

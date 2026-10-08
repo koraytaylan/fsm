@@ -308,6 +308,26 @@ impl RecoveryDriver {
         }
     }
 
+    pub(super) fn tick_without_writer(
+        &mut self,
+        path: &Path,
+        clock: &mut dyn fsm_store::clock::Clock,
+        now: i64,
+    ) -> fsm_execute::service::TickOutcome {
+        match self {
+            Self::Paired(driver) => driver.tick_reporting(clock, now),
+            Self::Public(parts) => fsm_execute::service::tick_reporting(
+                &mut parts.watcher,
+                &mut parts.scheduler,
+                &mut parts.runner,
+                &mut parts.pipeline,
+                path,
+                clock,
+                now,
+            ),
+        }
+    }
+
     pub(super) fn into_paired(self, path: &Path) -> fsm_execute::service::PairedNativeExecutor {
         match self {
             Self::Paired(driver) => *driver,
