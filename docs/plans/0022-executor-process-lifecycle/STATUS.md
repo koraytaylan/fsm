@@ -36,6 +36,8 @@ Frozen db5f6273..015efced passes actual SIGKILL of an independent public Pipelin
 
 Frozen b0e6712d..23ab4d96 extends post-attempt public-host recovery through genuine successor enrollment and final exhausted-timeout settlement on stable/MSRV; review digest `13b60c903e38c86b86088069d9d1e0f7e7da66f5dd40a6cbdf9ff209395bb63f`. The reopened attempt-two claim precedes entry, independent root/descendant membership matches allocation two while the original unit is absent, and stale original completion refuses without mutation. Focused lifecycle tests, all-target executor Clippy, formatting and size checks pass; fixture cleanup now accounts for already-retired DynamicUser IPC markers after verified closure. This closes the prior claim-only successor limit, not after-claim process cuts or the remaining host matrix; full CI is unverified and 9401 remains in progress.
 
+Frozen 5dd4aab8..86a32177 passes actual SIGKILL of an independent fresh-claim caller before binding or handler entry on stable/MSRV; review digest `69e998248970fe5b7d2141182847a5412d720411cc488640b2b9fd22c389c834`. The reopened original claim excludes a competitor, genuine unlaunched native closure permits durable interruption, and the pending effect remains unacknowledged with no launch or entry records. Focused lifecycle tests, all-target executor Clippy, formatting and size checks pass. This establishes the public claim-caller boundary, not every standalone/embedded/public-tick host cut or interrupted-successor launch; the remaining host matrix and full CI keep 9401 in progress.
+
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cdcc311f66d08ae7b640731ed4a159d2aaf25863b59dd833afca7a99b3e9a9c9`.
