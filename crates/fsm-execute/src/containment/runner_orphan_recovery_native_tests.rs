@@ -146,6 +146,18 @@ impl<'fixture> Session<'fixture> {
         );
         assert_eq!(stdout.matches(marker).count(), 1);
         assert_eq!(fixture.counter(), counter);
+        if case == "recover_orphan_cli" {
+            let responses: Vec<_> = stdout
+                .lines()
+                .filter_map(|line| line.strip_prefix("FSM_NATIVE_ORPHAN_CLI_RESPONSE "))
+                .collect();
+            assert_eq!(responses.len(), 1);
+            #[allow(clippy::print_stdout)]
+            // Verified public response retained by native acceptance logs.
+            {
+                println!("\nFSM_NATIVE_ORPHAN_CLI_RESPONSE {}", responses[0]);
+            }
+        }
     }
 }
 
@@ -387,6 +399,13 @@ fn reconcile_orphan_cli(
     assert_eq!(&observed.records[..records.len()], records);
     assert_eq!(observed.records.len(), records.len() + 2);
     assert_eq!(observed.state.execution.unresolved().count(), 0);
+    #[allow(clippy::print_stdout)] // Only the bounded, verified original CLI response is retained.
+    {
+        println!(
+            "\nFSM_NATIVE_ORPHAN_CLI_RESPONSE {}",
+            String::from_utf8(fsm_core::canon::canon_bytes(&response)).unwrap()
+        );
+    }
 }
 
 fn recover_orphan_with(cli: Option<PathBuf>) {
