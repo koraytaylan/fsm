@@ -73,12 +73,20 @@ fn refuse_reused_cgroup(
     group: &Path,
 ) {
     let original = fs::symlink_metadata(group).unwrap();
-    let preserved = group.with_extension("original");
-    assert!(!preserved.exists());
-    // Preserve the actual empty kernel allocation, then reuse its recorded
-    // pathname for a distinct physical cgroup; protected claim bytes stay intact.
-    fs::rename(group, &preserved).unwrap();
-    fs::create_dir(group).unwrap();
+    let substitute = group.with_extension("replacement");
+    assert!(!substitute.exists());
+    // Cgroup v2 forbids rename: overlay only this fixture's recorded pathname
+    // with a distinct empty kernel cgroup, preserving the original underneath.
+    fs::create_dir(&substitute).unwrap();
+    assert!(
+        std::process::Command::new("/usr/bin/mount")
+            .arg("--bind")
+            .arg(&substitute)
+            .arg(group)
+            .status()
+            .unwrap()
+            .success()
+    );
     let replacement = fs::symlink_metadata(group).unwrap();
     assert_ne!(
         (replacement.dev(), replacement.ino()),
@@ -99,10 +107,21 @@ fn refuse_reused_cgroup(
         (retained.dev(), retained.ino()),
         (replacement.dev(), replacement.ino())
     );
-    // Remove only the independently identified empty fixture replacement and
-    // restore the same original allocation before legitimate recovery.
-    fs::remove_dir(group).unwrap();
-    fs::rename(&preserved, group).unwrap();
+    // Unmount only the fixture overlay, then remove its independently identified
+    // empty cgroup; the original kernel allocation remains unchanged underneath.
+    assert!(
+        std::process::Command::new("/usr/bin/umount")
+            .arg(group)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let substitute_identity = fs::symlink_metadata(&substitute).unwrap();
+    assert_eq!(
+        (substitute_identity.dev(), substitute_identity.ino()),
+        (replacement.dev(), replacement.ino())
+    );
+    fs::remove_dir(&substitute).unwrap();
     let restored = fs::symlink_metadata(group).unwrap();
     assert_eq!(
         (
