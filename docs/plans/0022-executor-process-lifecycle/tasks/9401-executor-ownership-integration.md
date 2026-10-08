@@ -75,8 +75,8 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "2b580fd762d9afe54f844e18514387d72b6c6bd2"
 ---
 
 # Executor Ownership Integration

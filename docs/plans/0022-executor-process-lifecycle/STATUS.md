@@ -7,12 +7,12 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [lifecycle-containment-feasibility](tasks/9301-lifecycle-containment-feasibility.md) | done | 399ed6ed5636118151ffb7ad94140538f865d1a7 |
 | [durable-execution-claims](tasks/9302-durable-execution-claims.md) | done | cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb |
 | [contained-handler-runner](tasks/9303-contained-handler-runner.md) | done | 9f1f175ad91609359699e3a2d670119e8cbb506a |
-| [executor-ownership-integration](tasks/9401-executor-ownership-integration.md) | in_progress | — |
+| [executor-ownership-integration](tasks/9401-executor-ownership-integration.md) | done | 2b580fd762d9afe54f844e18514387d72b6c6bd2 |
 | [bounded-executor-shutdown](tasks/9402-bounded-executor-shutdown.md) | planned | — |
 | [uncertain-run-reconciliation](tasks/9403-uncertain-run-reconciliation.md) | planned | — |
 | [lifecycle-crash-matrix](tasks/9404-lifecycle-crash-matrix.md) | planned | — |
 
-Progress: 3/7 tasks completed.
+Progress: 4/7 tasks completed.
 
 Frozen 26c68220 passes all six portable gates and both independently verified 82-case native matrices, plus twelve production workflow scenarios per toolchain, including competing live-tree exclusion and final drain; the frozen review has task-cache digest `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`. This establishes the production ownership path used by 8901, not completion of 9401's launch/settlement crash matrix or 9402's full shutdown inventory. Those remaining lifecycle requirements continue to gate final transport integration.
 
@@ -53,6 +53,8 @@ Frozen f9172e3e..7b7b3992 passes genuine cold stopped-run public recovery behind
 Frozen 45c3beee..7ff302c5 passes genuine stopped-run recovery through two separate configured-operator processes on stable/MSRV; review digest `a291aa4610b87509112f6b1baf16dc5d257f80d3463d8eb01518a933e057a966`. Each reconstructs direct and borrowed public tick drivers with the original executable handler table competing against removed or changed configuration; both reach readiness behind the held physical writer, then consume one original settlement/event without another allocation, replay nonmutatingly and confirm both helper inventories drained. Focused lifecycle tests, all-target executor Clippy, formatting and size checks pass. Review corrected a release-observer race and expected borrowed-writer contention in the fixture, preserving the initial failed evidence. This replaces the earlier interleaved-only verdict, not the exhaustive 9404 matrix; full native/portable CI remains unverified and 9401 stays in progress.
 
 Frozen 3c295bf6..6216ae49 passes all six genuine broker client-death process/MCP routes on stable/MSRV; review digest `d1904061e9e3661521eeb58a5042598beb6febb67700fed883a116073bf8ebe2`. Both native CI axes exposed the fixture's obsolete single-thread expectation after adopting the frozen test-binary backend: closure and tree retirement had succeeded, but the test harness retains its main and test threads. Acceptance now requires live workers to appear and their exact retirement to the original idle thread identities, preserving independent closure, domain removal and the original deadline. Focused lifecycle tests, all-target executor Clippy, formatting and size checks pass; failed CI and local evidence remain retained, full CI is unverified, and 9401 remains in progress.
+
+Frozen 26c68220..2b580fd7 completes 9401 against its unchanged ownership inventory: all six stable/MSRV portable gates and both independently verified 82-case native matrices pass, with sixteen original production workflow scenarios per compiler and the explicit dependency/core-only graph check. Independent real-process crash and competition fixtures cover claim, launch, verified stop, stopped publication, attempt/ack and original-event recovery, including public direct/borrowed ticks, changed/removed handler tables, writer contention and stale completion. Review digest: `1d12bef64d598e422de8caaa09f667e2da4e34ff9a0d5f4cf9005f596438f584`; CI: [37713754061](https://github.com/koraytaylan/fsm/actions/runs/37713754061). Native capability remains approved Linux/systemd only; the full 9402 shutdown inventory, 9403 reconciliation and exhaustive 9404 matrix remain incomplete.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
