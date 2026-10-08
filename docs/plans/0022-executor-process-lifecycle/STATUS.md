@@ -285,11 +285,21 @@ the named test fail at exit 101, then restoration passes again.
 Integration checkpoint `d8125e9e` completed both native runtime suites but
 failed artifact retention because nested Rust test names introduced colons in
 log filenames; `f3dbedc9` uses portable filenames, preserves exact report test
-identities and adds frozen native evidence verification to CI, with focused
-Python checks passing and native successor evidence outstanding.
+identities and adds frozen native evidence verification to CI; retained successor
+`4b8992d8` independently verifies 48 crash cases, 48 repeated-resource observations
+and 97 containment cases on both compilers, scoped verdict
+`f0c16c57fdebd2bc83a99da79270c149a256ec74e6715c054753c24d23048787`,
+plus all 34 workflow and two preserved-authority historical upgrade scenarios,
+scoped verdict `a83d33f6d2a1dadac1c5eaf958051f37d4cfdad388cdbb7c87a8ea3527a5b093`.
+The latter verifies retained reconciliation and upgrade transcripts against their
+logs and frozen inventory; executable bytes are not independently retained.
 `a47cd932` adds real SIGINT/SIGTERM production-host recovery axes for both hosts
-and handler kinds; focused compilation, all-target clippy, formatting, size and
-producer checks pass, while native runtime evidence remains outstanding.
+and handler kinds; its retained checkpoint independently verifies all 56 crash
+cases, 48 repeated-resource observations and 97 containment cases on both
+compilers, scoped verdict
+`fefbd8ebc71f14d3c44ca31ad7d59f52e3ade207571022e9eb3994bedcfa26ef`.
+`3678a9ce` adds explicit partial-tail repair with original claim preservation;
+its native and full integration evidence remains unverified.
 These scoped proofs do not establish full integration or task completion; 9404 remains
 in progress, detailed evidence stays in the task cache, and this documentation
 update omits heavy gates.
