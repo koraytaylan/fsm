@@ -15,6 +15,9 @@ the broker requires an existing protected runner lease, and the operator command
 startup integration and recovery before runner startup remain unimplemented.
 Published attestations and complete or partial completed-response files refuse
 closure-only reconciliation so their original outcomes cannot become interruption.
+Linux `service::reconcile_run` takes a healthy durable writer, clock, current run
+ID and finite timeout; it requires verified closure and helper retirement before
+durable interrupted settlement, and never loads handlers or launches work.
 
 Native runner execution now holds a protected allocation lease through completion
 publication; it is internal authority state and provides no embedding recovery

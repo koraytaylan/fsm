@@ -240,6 +240,7 @@ fn fsm_execute::service::advancing_effects
 fn fsm_execute::service::inspect_ownership
 fn fsm_execute::service::inspect_runs
 fn fsm_execute::service::observe_admitted_with
+fn fsm_execute::service::reconcile_run
 fn fsm_execute::service::run
 fn fsm_execute::service::tick
 fn fsm_execute::service::tick_reporting
@@ -441,6 +442,7 @@ reexport fsm_execute::service::ShutdownRequest from lifecycle
 reexport fsm_execute::service::inspect_ownership from inspection
 reexport fsm_execute::service::inspect_runs from inspection
 reexport fsm_execute::service::observe_admitted_with from admitted
+reexport fsm_execute::service::reconcile_run from reconciliation
 struct fsm_execute::config::Advance
 struct fsm_execute::config::HandlerSpec
 struct fsm_execute::config::HandlerTable

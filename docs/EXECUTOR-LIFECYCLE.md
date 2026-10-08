@@ -1196,6 +1196,9 @@ same original claim, physical store and authenticated receipt checks as shutdown
 callers must recover original completion evidence before choosing settlement.
 Original attestations and complete or partial response files refuse closure-only
 reconciliation before fencing, retaining their bytes for authenticated recovery.
+Linux `service::reconcile_run` drives closure verification and helper retirement
+under a healthy writer before durable interrupted settlement without new entry;
+it refuses missing current run IDs and delegates result-bearing runs to recovery.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not

@@ -23,6 +23,10 @@ mod inspection;
 pub use admitted::observe_admitted_with;
 pub use inspection::{inspect_ownership, inspect_runs};
 #[cfg(target_os = "linux")]
+mod reconciliation;
+#[cfg(target_os = "linux")]
+pub use reconciliation::reconcile_run;
+#[cfg(target_os = "linux")]
 mod lifecycle;
 #[cfg(target_os = "linux")]
 pub use lifecycle::{

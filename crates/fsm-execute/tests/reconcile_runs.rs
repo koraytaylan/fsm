@@ -15,7 +15,7 @@ fn reconciliation_refuses_memory_store_without_changing_observed_journal() {
     )
     .unwrap();
     let claim = Claim::from_value(fixture.get("claim").unwrap()).unwrap();
-    let store = Store::open_memory().unwrap();
+    let mut store = Store::open_memory().unwrap();
     let observed = store.journal.last_seq;
     let result = NativeShutdown::start_reconciliation(&store, &claim, Duration::from_secs(1));
     assert_eq!(
@@ -24,4 +24,14 @@ fn reconciliation_refuses_memory_store_without_changing_observed_journal() {
     );
     assert_eq!(store.journal.last_seq, observed);
     assert!(store.state.execution.unresolved().next().is_none());
+    let mut clock = fsm_store::clock::FixedClock::new(0, 0);
+    let refusal = fsm_execute::service::reconcile_run(
+        &mut store,
+        &mut clock,
+        claim.run_id(),
+        Duration::from_secs(1),
+    )
+    .unwrap_err();
+    assert_eq!(refusal.code, "exec/mode");
+    assert_eq!(store.journal.last_seq, observed);
 }

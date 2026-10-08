@@ -14,6 +14,8 @@ or missing runner leases, with additive `NativeShutdown::start_reconciliation`
 transport; operator recovery and native acceptance remain pending.
 Closure-only reconciliation now refuses existing or partial original result
 publications, preserving them for authenticated recovery without interruption.
+Added Linux `service::reconcile_run` as the shared closure-only writer path;
+positive orphan acceptance and production CLI/startup wiring remain pending.
 
 The native runner holds an allocation-specific protected execution lease through
 cleanup and result publication; genuine native acceptance and reconciliation

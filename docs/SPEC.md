@@ -2815,6 +2815,11 @@ an interrupted outcome. Existing original results require authenticated recovery
 `NativeShutdown::start_reconciliation` MUST select this guarded action while
 retaining shutdown's original claim, physical store and receipt verification;
 it MUST NOT treat the broker response alone as sufficient closure evidence.
+The shared `service::reconcile_run` closure-only path MUST require a healthy
+durable writer and its current exact run ID, authenticate closure and retire
+its helper before writing Stopped/Interrupted through the existing guarded
+settlement path. It MUST refuse absent runs, result material and active owners;
+it MUST NOT load a replacement handler table, launch work or fabricate an event.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT
