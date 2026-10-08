@@ -51,6 +51,14 @@ The response's `execution.run_id` identifies the original run and
 The repeated command returns `duplicate: true` through the original request
 ledger, without another append or a native request targeting a successor.
 
+The interruption and duplicate-replay sequence has been executed with genuine
+standalone and embedded native fixtures on stable and MSRV at `ab66d203`;
+[the acceptance run](https://github.com/koraytaylan/fsm/actions/runs/37767981476)
+retains the actual bounded responses in each native artifact's
+`workflow-transcripts.json`, including refusal while the original writer holds
+the store. Upgrade compatibility and the remaining uncertain-state acceptance
+are still under plan 0022 review.
+
 An original completed publication follows authenticated result recovery instead;
 its original outcome and contract determine settlement, even if current handlers
 were removed or changed. Reconciliation does not deliver its outcome event:
