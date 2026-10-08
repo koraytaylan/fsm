@@ -28,7 +28,16 @@ before releasing closure. Frozen `6e7f0321` independently verifies all sixteen
 pre-publication, collected-timeout and successful-candidate cases on Linux
 stable/MSRV, alongside both complete native integration jobs; verdict digest
 `1150783cd57801b05d93f6036964335a228b66ed096e2395afe261968bd82029`.
-The later strengthened restart barrier remains unverified. Four additional standalone/embedded process/MCP
+Frozen `7767ffb0` independently verifies the strengthened live-tree restart
+barrier in the same sixteen cases on both compilers in
+[CI 37824386466](https://github.com/koraytaylan/fsm/actions/runs/37824386466);
+scoped crash-verdict digest
+`eac41bb8f6632e3016bf555dd4332adaeeebd083de1dc8aeddba15df3ad5101b`.
+The retained crash report and log can be checked with
+`verify_crash_evidence.py --source-commit <exact-commit> --rustc <exact-version> --report-dir <artifact-directory>`;
+the verifier derives the inventory from the frozen producer and grants no
+complete task or executable-byte verification claim.
+Four additional standalone/embedded process/MCP
 cases ask the Root coordinator to SIGKILL its owned broker while the executor
 and original tree remain alive; the observer then kills only its executor,
 requires unchanged ownership through immediate restart, and permits cold

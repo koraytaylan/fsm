@@ -25,11 +25,17 @@ hashes; executable bytes were not independently compared. Successful candidates
 recover their original completion without another claim or handler entry.
 Earlier failed checkpoint `d1b763e5` remains retained with verdict
 `cdd89d23c56f9b51759340b6fdb4e21de8fd1028f5686fb6d64afbe6d63e4886`;
-its stable liveness-response failure has no proved cause. The strengthened
-live-tree restart barrier, supervisor death, remaining crash boundaries,
-repeated-run resource use, sensitivities and current full portable checkpoint
-remain unverified; 9404 stays in progress. This documentation-only verdict
-omits heavy gates, and original artifacts remain in the task cache.
+its stable liveness-response failure has no proved cause. Frozen
+`6e7f0321..7767ffb0` independently verifies the strengthened live-tree restart
+barrier in all sixteen cases on both compilers in
+[CI 37824386466](https://github.com/koraytaylan/fsm/actions/runs/37824386466);
+scoped crash-verdict digest
+`eac41bb8f6632e3016bf555dd4332adaeeebd083de1dc8aeddba15df3ad5101b`.
+The frozen-source crash verifier rejects nine altered-evidence controls;
+broader reports from this successor have not been independently verified.
+Supervisor death, remaining crash boundaries, repeated-run resource use,
+sensitivities and current full portable checkpoint remain unverified;
+9404 stays in progress, and original artifacts remain in the task cache.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
