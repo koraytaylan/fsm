@@ -412,7 +412,15 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
 fn verify(fixture: &Fixture, behavior: &str) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
+    // The observer has exited, so no executor can still append a partial line;
+    // read-only replay alone would silently accept an unterminated suffix.
+    let verification = fsm_store::journal_io::verify(&fixture.store);
+    assert_eq!(
+        verification.health,
+        fsm_store::journal_io::JournalHealth::Ok
+    );
     let store = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(verification.records, store.records.len() as u64);
     assert_eq!(store.state.execution.unresolved().count(), 0);
     assert_eq!(store.state.execution_handoffs.outstanding().count(), 0);
     for kind in [
