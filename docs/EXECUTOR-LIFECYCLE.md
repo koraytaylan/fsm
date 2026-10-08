@@ -1496,3 +1496,7 @@ fixture permits two transient descriptors/tasks and 16 MiB RSS growth, and
 requires twelve claim/stop/settlement/event records. This extension remains
 unverified natively and does not complete 9404 or establish an unlimited-run
 resource bound.
+The retained-log verifier independently requires all twelve ordered measurements
+for each host/handler pair and checks those same finite bounds; focused negative
+controls reject missing or duplicate observations, invalid measurements and each
+limit-plus-one value, without establishing native acceptance by themselves.

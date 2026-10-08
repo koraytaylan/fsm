@@ -83,11 +83,41 @@ def verify(repo, directory, commit, rustc):
                 for host, kind, behavior in inventory]
     require([line for line in lines if line.startswith(b'FSM_NATIVE_CRASH_CASE ')] == expected,
             'crash runtime markers differ')
+    resources = verify_resources(lines, inventory)
     require(('test ' + test + ' ... ok').encode() in log
             and b'1 passed; 0 failed; 0 ignored;' in log, 'coordinator runtime pass missing')
     return dict(source_commit=commit, rustc=rustc, scope=scope, cases=len(inventory),
                 report_sha256=hashlib.sha256(encoded).hexdigest(), log_sha256=report['log_sha256'],
+                resource_observations=resources,
                 verified=True, gate_released=False, executable_bytes_verified=False)
+
+
+def verify_resources(lines, inventory):
+    """Check finite same-phase measurements independently of actor assertions."""
+    prefix = b'FSM_NATIVE_RESOURCE_OBSERVATION '
+    observations = [json.loads(line[len(prefix):]) for line in lines
+                    if line.startswith(prefix)]
+    expected = [(host, kind, run) for host, kind, behavior in inventory
+                if behavior == 'repeated-noisy' for run in range(12)]
+    require([(row['host'], row['kind'], row['run']) for row in observations] == expected,
+            'resource observation inventory differs')
+    baselines = {}
+    for row in observations:
+        require(set(row) == {'host', 'kind', 'run', 'descriptors', 'threads', 'rss_kib'}
+                and type(row['run']) is int
+                and all(type(row[name]) is int and row[name] > 0
+                        for name in ('descriptors', 'threads', 'rss_kib')),
+                'invalid resource measurement')
+        key = (row['host'], row['kind'])
+        if row['run'] == 1:
+            baselines[key] = row
+        if row['run'] >= 1:
+            baseline = baselines[key]
+            require(all(row[name] <= baseline[name] + allowance
+                        for name, allowance in [('descriptors', 2), ('threads', 2),
+                                                ('rss_kib', 16 * 1024)]),
+                    'repeated host resource bound exceeded')
+    return len(observations)
 
 
 def main():

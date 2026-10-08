@@ -157,7 +157,7 @@ jobs:
           mkdir -p "$native_cache"
           printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
       - name: Native crash evidence producer checks
-        run: python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_crash_producer.py'
+        run: python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_crash_*.py'
       - name: Provisioned lifecycle candidate crash matrix
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
