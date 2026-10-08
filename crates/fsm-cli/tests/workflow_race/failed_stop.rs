@@ -76,9 +76,13 @@ pub(super) fn restart_after_failed_stop(
         );
         std::thread::sleep(Duration::from_millis(5));
     };
-    assert!(
-        refusal.contains("broker response"),
-        "actual broker refusal required: {refusal}"
+    assert_eq!(
+        refusal,
+        format!(
+            "native shutdown refused: {}",
+            std::io::Error::from_raw_os_error(2)
+        ),
+        "hidden original handoff must produce the actual broker refusal"
     );
     while !failed.reap().unwrap() {
         assert!(
