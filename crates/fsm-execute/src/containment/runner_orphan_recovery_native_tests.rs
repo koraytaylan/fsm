@@ -115,11 +115,13 @@ fn refuse_live_runner() {
     let path = PathBuf::from(std::env::var_os("FSM_NATIVE_TEST_STORE").unwrap());
     let records = Store::open_read_only(&path).unwrap().records.clone();
     let mut driver =
-        super::handoff_recovery::RecoveryDriver::new(&path, HandlerTable::default(), "paired");
+        super::handoff_recovery::RecoveryDriver::new(&path, HandlerTable::default(), "paired")
+            .into_paired(&path);
     let mut clock = FixedClock::new(1500, 1);
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let lines = driver.tick(&path, &mut clock, 1500);
+        let mut lines = driver.tick(&mut clock, 1500);
+        lines.extend(driver.poll(&mut clock, 1500));
         assert_eq!(Store::open_read_only(&path).unwrap().records, records);
         if lines.iter().any(|line| {
             line.contains("original runner remains active or lease locking is unavailable")
@@ -132,7 +134,6 @@ fn refuse_live_runner() {
         );
         std::thread::sleep(Duration::from_millis(5));
     }
-    let mut driver = driver.into_paired(&path);
     let request = driver.control().stop(ShutdownMode::Drain, 1000).unwrap();
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
