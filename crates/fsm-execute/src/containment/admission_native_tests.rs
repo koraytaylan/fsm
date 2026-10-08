@@ -111,6 +111,90 @@ fn exec_status_refuses_claim_absent_from_durable_journal() {
     fixture.cleanup().unwrap();
 }
 
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn launch_refuses_claim_absent_from_durable_journal() {
+    use super::super::super::{launch, publish_once, termination};
+    use std::process::Stdio;
+    let mut fixture = Fixture::new();
+    let binding = absent_claim_binding(&mut fixture);
+    let records = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
+    // Bypass only the earlier binding caller in this Root-owned fixture;
+    // launch must independently require actual journal ownership.
+    publish_once(&fixture.directory.join("binding-1.json"), &binding).unwrap();
+    match launch::begin(
+        &fixture.directory,
+        1,
+        [Stdio::null(), Stdio::null(), Stdio::null()],
+    ) {
+        Err(error) => assert_eq!(error, "claim is not current runnable ownership"),
+        Ok((mut child, _)) => {
+            // Retire only the exact test-owned submitted gate before reporting
+            // the sensitivity failure; no stopped journal record is invented.
+            termination::request(&fixture.directory, 1).unwrap();
+            let _ = child.kill();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                if child.try_wait().unwrap().is_some() {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "test-owned launch transport did not retire"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("native launch accepted a claim absent from the durable journal");
+        }
+    }
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    for name in ["launch-1.json", "handoff-1.json", "entry-1.json"] {
+        assert!(!fixture.directory.join(name).exists());
+    }
+    fixture.cleanup().unwrap();
+}
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn runner_refuses_claim_absent_from_durable_journal() {
+    use super::super::super::{publish_once, runner};
+    let mut fixture = Fixture::new();
+    let binding = absent_claim_binding(&mut fixture);
+    let records = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
+    publish_once(&fixture.directory.join("binding-1.json"), &binding).unwrap();
+    match runner::execute(&fixture.directory, 1) {
+        Err(error) => assert_eq!(
+            error,
+            "runner binding validation refused: claim is not current runnable ownership"
+        ),
+        Ok(_) => panic!("native runner accepted a claim absent from the durable journal"),
+    }
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    for name in [
+        "exec-1",
+        "exec-status-1.json",
+        "launch-1.json",
+        "handoff-1.json",
+        "entry-1.json",
+        "result-1.json",
+    ] {
+        assert!(!fixture.directory.join(name).exists());
+    }
+    fixture.cleanup().unwrap();
+}
+
 fn absent_claim_binding(fixture: &mut Fixture) -> Value {
     use super::super::super::{catalogue, object};
     use fsm_core::json::{JsonLimits, parse};

@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -37,7 +37,8 @@ def main():
     assert not cache.is_relative_to('/tmp')
     assert authority.authority_state_is_clear(), 'exclusive fresh native fixture required'
     association = args.guard == 'association-deadline'
-    claim_binding = args.guard in ('claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status')
+    claim_binding = args.guard in ('claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status',
+                                   'claim-before-launch', 'claim-before-runner')
     source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
                      else 'crates/fsm-execute/src/containment/authority.rs' if claim_binding
                      else 'crates/fsm-execute/src/containment/owner_lease.rs')
@@ -59,6 +60,10 @@ def main():
     if args.guard == 'claim-before-exec-status':
         case = ('authority::allocator::native_tests::admission_cases::'
                 'exec_status_refuses_claim_absent_from_durable_journal')
+    if args.guard in ('claim-before-launch', 'claim-before-runner'):
+        caller = 'launch' if args.guard == 'claim-before-launch' else 'runner'
+        case = ('authority::allocator::native_tests::admission_cases::' + caller +
+                '_refuses_claim_absent_from_durable_journal')
     named_refusal = case if association else 'authority::allocator::native_tests::' + CHILD
     if claim_binding:
         named_refusal = case
@@ -70,6 +75,8 @@ def main():
         phase = 'authorization' if args.guard == 'claim-before-authorization' else 'binding'
         if args.guard == 'claim-before-exec-status':
             phase = 'exec-status listener creation'
+        if args.guard in ('claim-before-launch', 'claim-before-runner'):
+            phase = 'launch' if args.guard == 'claim-before-launch' else 'runner execution'
         description = 'durable claim validation before protected ' + phase
         scope = 'native ' + phase + ' claim-before-start sensitivity; not a full integration gate'
     original = source.read_bytes()
@@ -118,6 +125,10 @@ def main():
                     passed = passed and b'association deadline must expire while its original authority lock is held' in output
                 elif args.guard == 'claim-before-exec-status':
                     passed = passed and b'exec status listener accepted a claim absent from the durable journal' in output
+                elif args.guard in ('claim-before-launch', 'claim-before-runner'):
+                    caller = 'launch' if args.guard == 'claim-before-launch' else 'runner'
+                    marker = ('native ' + caller + ' accepted a claim absent from the durable journal').encode()
+                    passed = passed and marker in output
                 elif claim_binding:
                     passed = passed and b'unwrap_err()' in output and b'on an `Ok` value: ()' in output
                 else:
