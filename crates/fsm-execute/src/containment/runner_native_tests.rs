@@ -17,6 +17,8 @@ use advance::settle_owned;
 mod claim_host;
 #[path = "runner_handoff_recovery_native_tests.rs"]
 mod handoff_recovery;
+#[path = "runner_orphan_cli_native_tests.rs"]
+mod orphan_cli;
 #[path = "runner_orphan_recovery_native_tests.rs"]
 mod orphan_recovery;
 #[path = "runner_pre_run_recovery_native_tests.rs"]
@@ -311,6 +313,10 @@ pub(super) fn run() {
         assert!(!fixture.directory.join("binding-1.json").exists());
         drop(held_lease);
         bind(&fixture.directory, &binding).unwrap();
+        if mode == "uncertain-mcp-cli" {
+            orphan_cli::run(&mut fixture, &barriers, &domain);
+            continue;
+        }
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         if mode.starts_with("cancel-") {
             let already_cancelled = std::sync::atomic::AtomicBool::new(true);
@@ -470,11 +476,7 @@ pub(super) fn run() {
                 .unwrap()
                 .sync_all()
                 .unwrap();
-            if mode == "uncertain-mcp-cli" {
-                reconciliation.as_ref().unwrap().resume_via_cli();
-            } else {
-                reconciliation.as_ref().unwrap().resume();
-            }
+            reconciliation.as_ref().unwrap().resume();
             VerifiedClosure::read(&receipt).unwrap();
             drop(reconciliation);
             fixture.cleanup().unwrap();
