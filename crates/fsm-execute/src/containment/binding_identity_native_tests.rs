@@ -1,6 +1,6 @@
-//! Production binding refuses a live physical replacement at its recorded path.
+//! Production binding and exec status refuse a live physical domain replacement.
 
-use super::super::super::super::{bind, identity};
+use super::super::super::super::{bind, exec_status, identity};
 use super::{Fixture, claim_binding};
 use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
@@ -12,6 +12,21 @@ use std::time::{Duration, Instant};
 #[test]
 #[ignore = "requires installed production gate and writable provisioned root cgroups"]
 fn binding_refuses_live_replacement_cgroup_identity() {
+    refuse_replacement(Caller::Binding);
+}
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn exec_status_refuses_live_replacement_cgroup_identity() {
+    refuse_replacement(Caller::ExecStatus);
+}
+
+enum Caller {
+    Binding,
+    ExecStatus,
+}
+
+fn refuse_replacement(caller: Caller) {
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let (binding, _) = claim_binding(&fixture, &domain);
@@ -49,10 +64,19 @@ fn binding_refuses_live_replacement_cgroup_identity() {
     );
     let process_group = format!("/proc/{}/cgroup", sentinel.id());
     assert_eq!(fs::read_to_string(&process_group).unwrap(), membership);
-    assert_eq!(
-        bind(&fixture.directory, &binding).unwrap_err(),
-        "native cgroup identity differs"
-    );
+    let refusal = match caller {
+        Caller::Binding => bind(&fixture.directory, &binding).unwrap_err(),
+        Caller::ExecStatus => match exec_status::Listener::create(
+            &fixture.directory,
+            1,
+            &binding,
+            &fsm_execute::config::HandlerKind::Process,
+        ) {
+            Err(error) => error,
+            Ok(_) => panic!("exec status accepted live replacement cgroup identity"),
+        },
+    };
+    assert_eq!(refusal, "native cgroup identity differs");
     assert_eq!(
         Store::open_read_only(&fixture.store).unwrap().records,
         records
@@ -69,6 +93,8 @@ fn binding_refuses_live_replacement_cgroup_identity() {
         "entry-1.json",
         "closing-1.json",
         "closed-1.json",
+        "exec-1",
+        "exec-1.json",
     ] {
         assert!(!fixture.directory.join(name).exists());
     }

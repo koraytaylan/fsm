@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'completion-closure-claim'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'completion-closure-claim'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -39,7 +39,7 @@ def main():
     association = args.guard == 'association-deadline'
     claim_binding = args.guard in ('claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status',
                                    'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization')
-    binding_identity = args.guard == 'binding-cgroup-identity'
+    binding_identity = args.guard in ('binding-cgroup-identity', 'exec-status-cgroup-identity')
     completion_closure = args.guard == 'completion-closure-claim'
     source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
                      else 'crates/fsm-execute/src/run/native_client/completion.rs' if completion_closure
@@ -92,9 +92,12 @@ def main():
         replacement = b''
         case = ('authority::allocator::native_tests::admission_cases::binding_identity_cases::'
                 'binding_refuses_live_replacement_cgroup_identity')
+        if args.guard == 'exec-status-cgroup-identity':
+            case = ('authority::allocator::native_tests::admission_cases::binding_identity_cases::'
+                    'exec_status_refuses_live_replacement_cgroup_identity')
         named_refusal = case
-        description = 'physical recorded cgroup identity before binding'
-        scope = 'native binding cgroup identity sensitivity only; not a full integration gate'
+        description = 'physical recorded cgroup identity before ' + ('exec status' if args.guard == 'exec-status-cgroup-identity' else 'binding')
+        scope = 'native ' + ('exec status' if args.guard == 'exec-status-cgroup-identity' else 'binding') + ' cgroup identity sensitivity only; not a full integration gate'
     if completion_closure:
         guard = (b'        if !proof.matches_claim(claim, journal_claim) {\n'
                  b'            return Err("native completion closure does not match original claim".into());\n'
@@ -157,6 +160,8 @@ def main():
                     passed = passed and marker in output
                 elif completion_closure:
                     passed = passed and b'native completion accepted closure for another journal claim' in output
+                elif args.guard == 'exec-status-cgroup-identity':
+                    passed = passed and b'exec status accepted live replacement cgroup identity' in output
                 elif binding_identity:
                     passed = passed and b'unwrap_err()' in output and b'on an `Ok` value: ()' in output
                 elif claim_binding:

@@ -46,6 +46,7 @@ on:
           - claim-before-runner
           - claim-before-enrolled-authorization
           - binding-cgroup-identity
+          - exec-status-cgroup-identity
           - completion-closure-claim
         default: preparation-owner
 
