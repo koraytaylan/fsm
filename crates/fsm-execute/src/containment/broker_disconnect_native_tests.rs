@@ -528,7 +528,14 @@ pub(super) fn run() {
             }
             assert!(
                 Instant::now() < deadline,
-                "client death did not retire broker workers and tree before timeout"
+                "client death did not retire broker workers and tree before timeout: \
+                 mode={mode} watch={watch} supervisor={supervisor} \
+                 closure={:?} group_present={} single_thread={single_thread} \
+                 completed_present={} manager_stop_present={}",
+                VerifiedClosure::read(&receipt).err(),
+                group.exists(),
+                fixture.directory.join("completed-1.json").exists(),
+                fixture.directory.join("manager-stopped-1.json").exists(),
             );
             std::thread::sleep(Duration::from_millis(5));
         }
