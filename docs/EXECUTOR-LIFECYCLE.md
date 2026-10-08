@@ -1449,5 +1449,14 @@ retirement must precede a replacement claim. Four further cases hold after
 matched domain closure and owned-handle retirement but before completion
 publication; the observer verifies the original closure and dead tree before
 killing the executor, then requires original-result recovery without another
-claim or handler entry. This twenty-four-case extension remains unverified.
-Shipped binaries contain no barrier.
+claim or handler entry. The supervisor-death and domain-close extension remains unverified.
+Twelve further standalone/embedded process/MCP cases hold the actual host
+immediately after its stopped record, acknowledgement transaction or accepted
+event. An opt-in `lifecycle-test-fixture` dependency feature enables these
+bounded barriers using a Root-protected request bound to the physical store,
+original attempt and run; the independent observer checks the exact journal
+prefix, original closure and dead tree before killing its owned host, then
+requires original-result recovery and exactly one accepted event without
+another claim or handler entry. The thirty-six-case extension remains
+unverified until its disposable native checkpoint runs; default shipped
+binaries contain no barrier.

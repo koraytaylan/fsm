@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-lifecycle-test-fixture = []
+lifecycle-test-fixture = ["fsm-execute/lifecycle-test-fixture"]
 
 [[bin]]
 name = "fsm"

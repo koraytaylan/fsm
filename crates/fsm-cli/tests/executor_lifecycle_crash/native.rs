@@ -33,8 +33,15 @@ impl Host {
         let mut command = Command::new(field(manifest, "cli"));
         command
             .env("HOME", field(manifest, "home"))
+            .env_remove("FSM_LIFECYCLE_JOURNAL_CUT")
             .arg("--data-dir")
             .arg(&store);
+        if label == "original" && journal_cut(manifest).is_some() {
+            command.env(
+                "FSM_LIFECYCLE_JOURNAL_CUT",
+                Path::new(field(manifest, "authority")).join("crash-journal-barrier.json"),
+            );
+        }
         if embedded {
             command
                 .args(["serve", "--execute", "--handlers"])
@@ -257,7 +264,7 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         .0
         .clone();
     let hash = snapshot.current_execution_claim_hash(&claim).unwrap();
-    let records = snapshot.records.clone();
+    let mut records = snapshot.records.clone();
     drop(snapshot);
     let supervisor_death = field(&manifest, "behavior") == "supervisor-death";
     if supervisor_death {
@@ -276,9 +283,23 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         );
     }
     let closed_result = field(&manifest, "behavior") == "closed-result";
+    let journal_cut = journal_cut(&manifest);
     let collected_result = field(&manifest, "behavior") == "collected-result" || closed_result;
-    if collected_result {
+    if collected_result || journal_cut.is_some() {
         fs::write(resource.join("root-release"), b"release").unwrap();
+    }
+    if let Some(cut) = journal_cut {
+        let observed = observe_journal_cut(
+            &store,
+            &manifest,
+            &claim,
+            &hash,
+            cut,
+            &mut original,
+            &members,
+        );
+        assert!(observed.starts_with(&records));
+        records = observed;
     }
     if collected_result || field(&manifest, "behavior") == "collected-timeout" {
         let cut = if closed_result {
@@ -441,7 +462,7 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         drop(held);
         Host::start(&manifest, "verified-restart")
     };
-    if collected_result {
+    if collected_result || journal_cut.is_some() {
         wait_for_completion(&store, &successor);
         assert_eq!(
             fs::read(resource.join("root-entered")).unwrap(),
@@ -452,6 +473,7 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
             RecordKind::ExecutionClaimed,
             RecordKind::ExecutionStopped,
             RecordKind::ExecutionSettled,
+            RecordKind::EventApplied,
         ] {
             assert_eq!(
                 snapshot
@@ -509,6 +531,102 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
     }
     wait_for_completion(&store, &successor);
+}
+
+fn journal_cut(manifest: &Value) -> Option<&str> {
+    field(manifest, "behavior")
+        .strip_suffix("-result")
+        .filter(|cut| matches!(*cut, "stopped" | "acked" | "event"))
+}
+
+fn observe_journal_cut(
+    store: &Path,
+    manifest: &Value,
+    claim: &fsm_core::record::execution::Claim,
+    hash: &str,
+    cut: &str,
+    original: &mut Host,
+    members: &[(u32, String)],
+) -> Vec<fsm_core::record::Record> {
+    let ready = store.join("journal-cut-ready.json");
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while !ready.is_file() {
+        assert!(
+            original.process.try_wait().unwrap().is_none(),
+            "original exited: {}",
+            original.diagnostics()
+        );
+        assert!(
+            Instant::now() < deadline,
+            "journal cut {cut} absent: {}",
+            original.diagnostics()
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(ready)
+        .unwrap()
+        .take(65_537)
+        .read_to_end(&mut bytes)
+        .unwrap();
+    assert!(bytes.len() <= 65_536);
+    let observed = parse(&bytes, &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(observed.get("claim"), Some(&claim.to_value()));
+    assert_eq!(observed.get("cut"), Some(&Value::Str(cut.into())));
+    assert_eq!(
+        observed.get("pid"),
+        Some(&Value::Num(original.process.id().to_string()))
+    );
+    let snapshot = Store::open_read_only(store).unwrap();
+    assert_eq!(
+        observed.get("seq"),
+        Some(&Value::Num(snapshot.journal.last_seq.to_string()))
+    );
+    let count = |kind| {
+        snapshot
+            .records
+            .iter()
+            .filter(|record| record.kind == kind)
+            .count()
+    };
+    assert_eq!(count(RecordKind::ExecutionClaimed), 1);
+    assert_eq!(count(RecordKind::ExecutionStopped), 1);
+    assert_eq!(
+        count(RecordKind::ExecutionSettled),
+        usize::from(cut != "stopped")
+    );
+    assert_eq!(count(RecordKind::EventApplied), usize::from(cut == "event"));
+    assert_eq!(
+        snapshot.state.execution.unresolved().count(),
+        usize::from(cut == "stopped")
+    );
+    assert_eq!(
+        snapshot.state.execution_handoffs.outstanding().count(),
+        usize::from(cut == "acked")
+    );
+    assert_eq!(
+        snapshot.state.instances["instance"].pending.len(),
+        usize::from(cut == "stopped")
+    );
+    assert_eq!(
+        snapshot.state.instances["instance"].status,
+        if cut == "event" {
+            fsm_core::machine::Status::Completed
+        } else {
+            fsm_core::machine::Status::Running
+        }
+    );
+    assert!(members.iter().all(|member| !live(member)));
+    let domain = claim.domain().to_value();
+    let receipt = Path::new(field(manifest, "authority")).join(format!(
+        "closure-{}-{}.json",
+        domain.get("allocation").unwrap().as_num().unwrap(),
+        claim.run_id()
+    ));
+    let proof = VerifiedClosure::read(&receipt).unwrap();
+    assert!(proof.matches_claim(claim, hash));
+    proof.check_store(store).unwrap();
+    snapshot.records.clone()
 }
 
 fn wait_for_supervisor(manifest: &Value, phase: &str, epoch: u64) {

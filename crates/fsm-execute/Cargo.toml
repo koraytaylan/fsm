@@ -6,6 +6,9 @@ version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+lifecycle-test-fixture = []
+
 [dependencies]
 fsm-core = { path = "../fsm-core" }
 fsm-store = { path = "../fsm-store" }

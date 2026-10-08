@@ -46,6 +46,9 @@ fn provisioned_lifecycle_candidate_matrix() {
                 "collected-result",
                 "supervisor-death",
                 "closed-result",
+                "stopped-result",
+                "acked-result",
+                "event-result",
             ] {
                 scenario(
                     &staging,
@@ -98,6 +101,25 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
     let catalogue = table(&staging.join("fixture"), &resource, case);
     let mut fixture = Fixture::new_for_workflow(catalogue.clone());
+    if let Some(cut) = behavior
+        .strip_suffix("-result")
+        .filter(|cut| matches!(*cut, "stopped" | "acked" | "event"))
+    {
+        let physical = fs::metadata(&fixture.store).unwrap();
+        let request = fixture.directory.join("crash-journal-barrier.json");
+        fs::write(
+            &request,
+            canon_bytes(&object([
+                ("cut", Value::Str(cut.into())),
+                ("device", Value::Num(physical.dev().to_string())),
+                ("inode", Value::Num(physical.ino().to_string())),
+                ("attempt", Value::Num("1".into())),
+                ("run_id", Value::Num("1".into())),
+            ])),
+        )
+        .unwrap();
+        fs::set_permissions(request, fs::Permissions::from_mode(0o444)).unwrap();
+    }
     if matches!(
         behavior,
         "collected-timeout" | "collected-result" | "closed-result"
@@ -275,7 +297,14 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                     executable.to_str().unwrap(),
                     kind,
                     resource.to_str().unwrap(),
-                    if matches!(behavior, "collected-result" | "closed-result") && kind == "process"
+                    if matches!(
+                        behavior,
+                        "collected-result"
+                            | "closed-result"
+                            | "stopped-result"
+                            | "acked-result"
+                            | "event-result"
+                    ) && kind == "process"
                     {
                         "hold-exit"
                     } else if matches!(
@@ -284,6 +313,9 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "collected-result"
                             | "supervisor-death"
                             | "closed-result"
+                            | "stopped-result"
+                            | "acked-result"
+                            | "event-result"
                     ) {
                         "hold-result"
                     } else {
@@ -336,7 +368,14 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .iter()
                 .filter(|record| record.kind == kind)
                 .count(),
-            if matches!(behavior, "collected-result" | "closed-result") {
+            if matches!(
+                behavior,
+                "collected-result"
+                    | "closed-result"
+                    | "stopped-result"
+                    | "acked-result"
+                    | "event-result"
+            ) {
                 1
             } else {
                 2

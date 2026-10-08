@@ -339,7 +339,7 @@ impl Pipeline {
         } else {
             completion.handler().on_failed.as_ref()
         };
-        if disposition == Settlement::Acked && advance.is_some() {
+        let response = if disposition == Settlement::Acked && advance.is_some() {
             let sequence = store.journal.last_seq.checked_add(1).ok_or_else(unproven)?;
             let handoff = fsm_core::record::execution::AcknowledgedHandoff::new(
                 claim,
@@ -364,7 +364,10 @@ impl Pipeline {
                 .map_err(|error| ExecError::store(&error))
         } else {
             self.settle_stopped(store, clock, claim, disposition, &request_id)
-        }
+        }?;
+        #[cfg(feature = "lifecycle-test-fixture")]
+        super::native_test_cut::hold_journal_cut(store, claim, "acked")?;
+        Ok(response)
     }
 
     /// Persist verified native completion while retaining claim ownership.
@@ -377,7 +380,7 @@ impl Pipeline {
         completion: &super::native_client::NativeCompletion,
         request_id: &str,
     ) -> Result<Value, ExecError> {
-        store
+        let response = store
             .stop_execution_on(
                 clock,
                 fsm_store::store::ExecutionStopRequest {
@@ -388,7 +391,10 @@ impl Pipeline {
                     expected_seq: None,
                 },
             )
-            .map_err(|error| ExecError::store(&error))
+            .map_err(|error| ExecError::store(&error))?;
+        #[cfg(feature = "lifecycle-test-fixture")]
+        super::native_test_cut::hold_journal_cut(store, claim, "stopped")?;
+        Ok(response)
     }
 
     /// Ack one outcome, then send the declared advance event when the engine
@@ -692,6 +698,8 @@ impl Pipeline {
         {
             Ok(SettleOutcome::AckedNoAdvance)
         } else {
+            #[cfg(feature = "lifecycle-test-fixture")]
+            super::native_test_cut::hold_journal_cut(store, handoff.claim(), "event")?;
             Ok(SettleOutcome::Advanced)
         }
     }

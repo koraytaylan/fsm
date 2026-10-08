@@ -38,6 +38,8 @@ mod native_handoffs;
 mod native_host;
 #[cfg(target_os = "linux")]
 mod native_owners;
+#[cfg(all(target_os = "linux", feature = "lifecycle-test-fixture"))]
+mod native_test_cut;
 mod pipeline;
 #[cfg(target_os = "linux")]
 pub use native_admission_control::NativeAdmissionControl;
