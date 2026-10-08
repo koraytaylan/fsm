@@ -9,7 +9,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [contained-handler-runner](tasks/9303-contained-handler-runner.md) | done | 9f1f175ad91609359699e3a2d670119e8cbb506a |
 | [executor-ownership-integration](tasks/9401-executor-ownership-integration.md) | done | 2b580fd762d9afe54f844e18514387d72b6c6bd2 |
 | [bounded-executor-shutdown](tasks/9402-bounded-executor-shutdown.md) | done | 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06 |
-| [uncertain-run-reconciliation](tasks/9403-uncertain-run-reconciliation.md) | planned | — |
+| [uncertain-run-reconciliation](tasks/9403-uncertain-run-reconciliation.md) | in_progress | — |
 | [lifecycle-crash-matrix](tasks/9404-lifecycle-crash-matrix.md) | planned | — |
 
 Progress: 5/7 tasks completed.
