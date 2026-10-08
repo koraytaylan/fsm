@@ -231,7 +231,7 @@ def main():
         report = dict(source_commit=commit, source_dirty=not restored,
                       rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip(),
                       cli_sha256=cli_digest,
-                      command=case, named_public_refusal=case if association or claim_binding or binding_identity or completion_closure else CHILD, phases=rows,
+                      command=case, named_public_refusal=case if association or claim_binding or binding_identity or completion_closure or execution_closure else CHILD, phases=rows,
                       guard=description,
                       source_restored=restored, gate_released=False,
                       installed_authority=installed, retained_authority=not retired,
