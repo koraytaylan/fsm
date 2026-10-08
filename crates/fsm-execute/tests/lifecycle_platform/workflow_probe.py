@@ -141,10 +141,10 @@ def main():
                 _, case, response = line.split(b' ', 2)
                 transcripts.append(dict(case=case.decode(), **json.loads(response)))
         if report['passed']:
-            expected = [case for case, _ in CASES if 'failed_stop::' in case]
-            assert [row['case'] for row in transcripts] == [case for case in expected for _ in range(3)]
-            assert [row['ordinal'] for row in transcripts] == [0, 1, 2] * len(expected)
-            assert [row['success'] for row in transcripts] == [False, True, True] * len(expected)
+            expected_cases = [case for case, _ in CASES if 'failed_stop::' in case]
+            assert [row['case'] for row in transcripts] == [case for case in expected_cases for _ in range(3)]
+            assert [row['ordinal'] for row in transcripts] == [0, 1, 2] * len(expected_cases)
+            assert [row['success'] for row in transcripts] == [False, True, True] * len(expected_cases)
         transcript_path = args.report.with_name('workflow-transcripts.json')
         transcript_path.write_text(json.dumps(dict(
             source_commit=commit, source_dirty=False,
