@@ -1509,3 +1509,8 @@ unchanged. The dispatch removes only the shared durable-claim validation call,
 requires that named refusal to fail, restores the exact source and reruns it;
 this binding-phase preparation does not prove every launch/authorization caller
 or release the remaining lifecycle sensitivity inventory.
+
+Failed native workflow artifacts also retain the final 64 KiB of the
+`after-active-stop` successor's stdout and stderr; a completed original drain
+does not establish successful successor startup, and quiet owner health output
+cannot explain an unresolved claim by itself.

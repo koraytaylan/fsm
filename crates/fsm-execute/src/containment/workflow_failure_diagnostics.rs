@@ -59,6 +59,8 @@ pub(super) fn archive(fixture: &Fixture, staging: &Path) {
         "first-stdout",
         "after-kill-stderr",
         "after-kill-stdout",
+        "after-active-stop-stderr",
+        "after-active-stop-stdout",
         "original-stderr",
         "immediate-restart-stderr",
         "verified-restart-stderr",
