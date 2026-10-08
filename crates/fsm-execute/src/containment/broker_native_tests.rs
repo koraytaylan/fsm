@@ -386,7 +386,7 @@ fn run_case(timeout: bool, host: Host) {
     fs::rename(&catalogue, &saved_catalogue).unwrap();
     assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
     assert_eq!(
-        request(&base, "prepare", Value::Null).get("ok"),
+        request(&base, "prepare-owned", Value::Null).get("ok"),
         Some(&Value::Bool(false))
     );
     assert_eq!(
@@ -398,7 +398,7 @@ fn run_case(timeout: bool, host: Host) {
     fs::write(&catalogue, b"{").unwrap();
     assert_eq!(request(&base, "recover", Value::Num("1".into())), execution);
     assert_eq!(
-        request(&base, "prepare", Value::Null).get("ok"),
+        request(&base, "prepare-owned", Value::Null).get("ok"),
         Some(&Value::Bool(false))
     );
     assert_eq!(

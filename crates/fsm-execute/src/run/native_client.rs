@@ -575,7 +575,7 @@ fn validate_request(value: &Value) -> Result<(), String> {
         .get("payload")
         .ok_or("native request payload missing")?;
     match value.get("action").and_then(Value::as_str) {
-        Some("prepare" | "prepare-owned") if payload == &Value::Null => Ok(()),
+        Some("prepare-owned") if payload == &Value::Null => Ok(()),
         Some("discard-prepared") => fsm_core::record::execution::NativeDomain::from_value(payload)
             .map(|_| ())
             .map_err(|error| error.to_string()),
@@ -795,7 +795,7 @@ mod tests {
         .unwrap();
         assert!(validate_request(&value).is_err());
         let value = parse(
-            br#"{"action":"prepare","format":"fsm.native-request/1","payload":null}"#,
+            br#"{"action":"prepare-owned","format":"fsm.native-request/1","payload":null}"#,
             &JsonLimits::DEFAULT,
         )
         .unwrap();
@@ -811,5 +811,15 @@ mod tests {
             let value = parse(request.as_bytes(), &JsonLimits::DEFAULT).unwrap();
             assert_eq!(validate_request(&value).is_ok(), accepted);
         }
+    }
+
+    #[test]
+    fn host_request_policy_refuses_legacy_preparation_before_transport() {
+        let value = parse(
+            br#"{"action":"prepare","format":"fsm.native-request/1","payload":null}"#,
+            &JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        assert!(validate_request(&value).is_err());
     }
 }

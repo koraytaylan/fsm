@@ -51,7 +51,7 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
     }
     let payload = value.get("payload").ok_or("broker payload missing")?;
     match text(value, "action")? {
-        "prepare" | "prepare-owned" if payload == &Value::Null => Ok(()),
+        "prepare-owned" if payload == &Value::Null => Ok(()),
         "discard-prepared" => fsm_core::record::execution::NativeDomain::from_value(payload)
             .map(|_| ())
             .map_err(|error| error.to_string()),
@@ -111,7 +111,7 @@ mod tests {
     fn closed_policy_refuses_paths_commands_aliases_and_unbounded_frames() {
         let request = object([
             ("format", Value::Str("fsm.native-request/1".into())),
-            ("action", Value::Str("prepare".into())),
+            ("action", Value::Str("prepare-owned".into())),
             ("payload", Value::Null),
         ]);
         assert!(validate(&request).is_ok());

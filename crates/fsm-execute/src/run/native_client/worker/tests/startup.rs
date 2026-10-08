@@ -7,7 +7,7 @@ const NAMESPACE: &str = "00000000000000000000000000000000";
 
 fn prepare_message() -> Value {
     parse(
-        br#"{"format":"fsm.native-request/1","action":"prepare","payload":null}"#,
+        br#"{"format":"fsm.native-request/1","action":"prepare-owned","payload":null}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap()

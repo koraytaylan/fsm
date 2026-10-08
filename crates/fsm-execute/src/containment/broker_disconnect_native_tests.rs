@@ -77,27 +77,10 @@ os.execv(str(authority/'supervisor-test'),['supervisor-test','--exact','authorit
 "#;
 
 pub(super) fn prepare(directory: &Path) -> Value {
+    // Legacy recovery cases start from a controlled root allocation; public
+    // operator preparation must keep the new owner guard through claim entry.
     install_supervisor(directory);
-    let script = SUPERVISOR.replace("::owned_request", "::prepare_domain");
-    let output = Command::new("/usr/bin/python3")
-        .args(["-c", &script])
-        .arg(directory.join("broker"))
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
-    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
-    assert!(
-        output.status.success(),
-        "typed preparation failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = std::str::from_utf8(&output.stdout).unwrap();
-    let domains: Vec<_> = stdout
-        .lines()
-        .filter_map(|line| line.strip_prefix("FSM_NATIVE_TEST_DOMAIN="))
-        .collect();
-    assert_eq!(domains.len(), 1);
-    parse(domains[0].as_bytes(), &JsonLimits::DEFAULT).unwrap()
+    super::super::super::prepare(directory).unwrap()
 }
 
 pub(super) fn discard_prepared(directory: &Path, domain: &Value) {
@@ -406,7 +389,7 @@ pub(super) fn run() {
         // The frozen test binary retains its harness threads while serving;
         // only connection and execution workers must disappear after closure.
         let idle_threads = broker_threads(daemon.0.id());
-        let preparation = request(&base, "prepare", Value::Null);
+        let preparation = request(&base, "prepare-owned", Value::Null);
         assert_eq!(preparation.get("ok"), Some(&Value::Bool(true)));
         let domain = NativeDomain::from_value(preparation.get("result").unwrap()).unwrap();
         let group = cgroup(&origin(&fixture.directory).unwrap(), 1).unwrap();
@@ -414,6 +397,8 @@ pub(super) fn run() {
             group.clone(),
             domain.to_value().get("cgroup").unwrap().clone(),
         ));
+        let _preparation_owner =
+            super::super::super::super::owner_lease::acquire(&fixture.directory, 1, 65534).unwrap();
         let (binding, effect) = claim_binding(&fixture, &domain);
         assert_eq!(
             request(&base, "bind", binding.clone()).get("ok"),

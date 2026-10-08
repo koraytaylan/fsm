@@ -1,9 +1,18 @@
 # API and version policy
 
+Public native preparation MUST use owned allocations: `start` and `for_store`
+request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
+the guard and read metadata through `domain()`. The unprivileged broker and
+client MUST refuse legacy `prepare` allocation requests. Existing protected
+legacy allocations retain their original recovery rules and gain no ownership
+witness. This corrects the unreleased Rust preparation API before native release;
+its `poll` return type changes, with no journal format, hash or error-code change,
+and downstream native acceptance remains required.
+
+
 The additive `NativePreparation::start_owned` / `poll_owned` path now returns
 a non-cloneable `NativePreparedOwner` only after acquiring the original operator
-lease and checking the protected authority, boot, route and lease inode; plain
-`poll` refuses owned requests. Production admission now requests owned
+lease and checking the protected authority, boot, route and lease inode; `poll` and `poll_owned` both retain the original lease in their returned guard. Production admission now requests owned
 preparation, retains its guard across
 prepared and uncertain claim states, and moves it into the original execution
 owner before dropping the admission reservation; native acceptance remains pending.

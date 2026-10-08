@@ -100,7 +100,7 @@ fn native_successor_refuses_startup_before_original_helper_retirement() {
         Err("fixture successor startup refused".into())
     });
     let message = parse(
-        br#"{"format":"fsm.native-request/1","action":"prepare","payload":null}"#,
+        br#"{"format":"fsm.native-request/1","action":"prepare-owned","payload":null}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();
@@ -245,7 +245,7 @@ fn native_worker_public_start_refuses_the_next_slot_before_helper_startup() {
         .map(|_| reserve_current().unwrap().unwrap())
         .collect::<Vec<_>>();
     let request = parse(
-        br#"{"format":"fsm.native-request/1","action":"prepare","payload":null}"#,
+        br#"{"format":"fsm.native-request/1","action":"prepare-owned","payload":null}"#,
         &JsonLimits::DEFAULT,
     )
     .unwrap();

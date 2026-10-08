@@ -105,7 +105,7 @@ fn native_unwind_process_probe() {
         "transport" => {
             let _factory = FixtureFactory::install(|_| panic!("private fixture panic payload"));
             let message = fsm_core::json::parse(
-                br#"{"format":"fsm.native-request/1","action":"prepare","payload":null}"#,
+                br#"{"format":"fsm.native-request/1","action":"prepare-owned","payload":null}"#,
                 &fsm_core::json::JsonLimits::DEFAULT,
             )
             .unwrap();

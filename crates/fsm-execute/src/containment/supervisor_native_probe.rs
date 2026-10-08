@@ -610,12 +610,13 @@ fn prepare_domain() {
         std::env::var("FSM_NATIVE_TEST_STORE").expect("discovery fixture requires physical store");
     let mut prepared =
         NativePreparation::for_store(std::path::Path::new(&store), Duration::from_secs(3)).unwrap();
-    let domain = loop {
-        if let Some(domain) = prepared.poll().unwrap() {
-            break domain;
+    let owner = loop {
+        if let Some(owner) = prepared.poll().unwrap() {
+            break owner;
         }
         std::thread::sleep(Duration::from_millis(5));
     };
+    let domain = owner.domain();
     let progress = prepared.progress();
     assert_eq!(progress.phase, NativePreparationPhase::Prepared);
     assert!(progress.helper.reaped && progress.helper.stdout_eof && progress.helper.stderr_eof);

@@ -34,7 +34,6 @@ pub struct NativePreparation {
     deadline: Instant,
     delivered: bool,
     error: Option<String>,
-    owned: bool,
 }
 
 impl NativePreparation {
@@ -53,7 +52,7 @@ impl NativePreparation {
 
     /// Request an empty prepared domain from the fixed provisioned authority.
     pub fn start(namespace: &str, generation: u64, timeout: Duration) -> Result<Self, String> {
-        Self::start_action(namespace, generation, timeout, "prepare")
+        Self::start_owned(namespace, generation, timeout)
     }
 
     /// Request a domain whose original operator lease must be collected with it.
@@ -86,23 +85,16 @@ impl NativePreparation {
             deadline,
             delivered: false,
             error: None,
-            owned: action == "prepare-owned",
         })
     }
 
     /// Collect one original-route domain only after helper success, reap and EOF.
-    pub fn poll(&mut self) -> Result<Option<NativeDomain>, String> {
-        if self.owned {
-            return Err("owned preparation requires poll_owned".into());
-        }
-        self.collect()
+    pub fn poll(&mut self) -> Result<Option<super::NativePreparedOwner>, String> {
+        self.poll_owned()
     }
 
     /// Collect metadata only together with its exclusively held original lease.
     pub fn poll_owned(&mut self) -> Result<Option<super::NativePreparedOwner>, String> {
-        if !self.owned {
-            return Err("legacy preparation has no owner lease".into());
-        }
         let result = self
             .collect()?
             .map(super::NativePreparedOwner::acquire)

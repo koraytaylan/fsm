@@ -104,7 +104,6 @@ fn session(
             Err(error) => return Err(io(error)),
         }
         let result = match action {
-            "prepare" => allocator::prepare(&directory),
             "prepare-owned" => allocator::prepare_owned(&directory),
             "discard-prepared" => closure::discard_prepared(&directory, payload),
             "bind" => bind(&directory, payload).map(|_| Value::Null),
