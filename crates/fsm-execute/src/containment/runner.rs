@@ -350,13 +350,24 @@ fn hold_collected_candidate(
     )?;
     std::fs::set_permissions(&ready, std::fs::Permissions::from_mode(0o444)).map_err(io)?;
     // Only a protected test request enables this observation; production builds
-    // contain no barrier, and cancellation retains the ordinary closure path.
+    // contain no barrier; the observer can retain the original descendants
+    // across immediate restart before releasing the ordinary closure path.
     let deadline = Instant::now() + Duration::from_secs(10);
     while !cancelled.load(Ordering::Acquire) {
         if Instant::now() >= deadline {
             return Err("test candidate barrier expired without executor death".into());
         }
         std::thread::sleep(Duration::from_millis(5));
+    }
+    if let Some(release) = request.get("closure_release") {
+        let release = Path::new(release.as_str().ok_or("invalid test closure release")?);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !release.try_exists().map_err(io)? {
+            if Instant::now() >= deadline {
+                return Err("test candidate barrier expired before closure release".into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
     Ok(())
 }

@@ -100,7 +100,13 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         let request = fixture.directory.join("crash-candidate-barrier.json");
         fs::write(
             &request,
-            canon_bytes(&object([("attempt", Value::Num("1".into()))])),
+            canon_bytes(&object([
+                ("attempt", Value::Num("1".into())),
+                (
+                    "closure_release",
+                    Value::Str(resource.join("closure-release").to_str().unwrap().into()),
+                ),
+            ])),
         )
         .unwrap();
         fs::set_permissions(request, fs::Permissions::from_mode(0o444)).unwrap();

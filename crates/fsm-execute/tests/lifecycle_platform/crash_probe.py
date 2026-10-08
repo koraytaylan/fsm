@@ -1,4 +1,4 @@
-"""Run pre-publication and collected-timeout crashes on disposable Linux CI."""
+"""Run pre-publication and collected-candidate crashes on disposable Linux CI."""
 import argparse
 import hashlib
 import json

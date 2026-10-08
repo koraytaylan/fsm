@@ -313,6 +313,18 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     };
     assert_eq!(held.records, records);
     let blocked = Host::start(&manifest, "immediate-restart");
+    if collected_result || field(&manifest, "behavior") == "collected-timeout" {
+        assert!(
+            members[1..].iter().all(live),
+            "immediate restart must begin while original descendants are alive"
+        );
+        assert_eq!(
+            fs::read(resource.join("root-entered")).unwrap(),
+            original_marker
+        );
+        assert_eq!(Store::open_read_only(&store).unwrap().records, records);
+        fs::write(resource.join("closure-release"), b"restart observed").unwrap();
+    }
     let domain = claim.domain().to_value();
     let receipt = Path::new("/var/lib/fsm-containment")
         .join(field(&domain, "namespace"))
