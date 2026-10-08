@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 import authority_probe as authority
+from cli_artifact import build_cli
 
 CASE = 'authority::allocator::native_tests::genuine_claim_binding'
 CHILD = 'runner_cases::orphan_recovery::refuse_pre_run_owner'
@@ -39,6 +40,8 @@ def main():
     args.report.parent.mkdir(parents=True, exist_ok=True)
     artifacts = cache / 'owner-sensitivity-fixtures'
     artifacts.mkdir()
+    cli = build_cli(repo, args.toolchain, False)
+    cli_digest = digest(cli)
     helper = authority.build_authority(repo, args.toolchain, 'build')
     helper_digest = digest(helper)
     installer = ['sudo', '-n', sys.executable, str(Path(__file__).with_name('authority_install.py'))]
@@ -56,6 +59,8 @@ def main():
                        'FSM_NATIVE_FIXTURE_DEVICE=' + str(installed['device']),
                        'FSM_NATIVE_FIXTURE_INODE=' + str(installed['inode']),
                        'FSM_NATIVE_FIXTURE_SHA256=' + helper_digest,
+                       'FSM_NATIVE_WORKFLOW_CLI_ARTIFACT=' + str(cli),
+                       'FSM_NATIVE_WORKFLOW_CLI_SHA256=' + cli_digest,
                        str(frozen), '--exact', CASE, '--ignored', '--nocapture', '--color', 'never']
             timed_out = False
             try:
@@ -101,6 +106,7 @@ def main():
                     error = removal_error
         report = dict(source_commit=commit, source_dirty=not restored,
                       rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip(),
+                      cli_sha256=cli_digest,
                       command=CASE, named_public_refusal=CHILD, phases=rows,
                       guard='Root preparation-owner exclusive acquisition',
                       source_restored=restored, gate_released=False,
