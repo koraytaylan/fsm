@@ -26,8 +26,8 @@ touches:
   - .github/workflows/develop-snapshot.yml
   - docs/EXECUTOR-LIFECYCLE.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "66c785ba113a5fc1cea5f160ef12a2ed1903d0fa"
 ---
 # Lifecycle Crash Matrix
 

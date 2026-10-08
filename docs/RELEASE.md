@@ -29,9 +29,10 @@ scope is the approved Linux/systemd backend; macOS and Windows retain portable
 acceptance and unsupported-capability refusal. Default shipped binaries contain
 no crash barrier. The lifecycle guide describes the protected test protocol and
 retained-artifact verification; plan 0022 STATUS references the scoped verdicts.
-Full portable CI and final written-inventory review remain required before task
-9404 completion; native success alone does not complete the task, release a
-production gate or independently verify executable bytes retained only as digests.
+All six portable gates and both native jobs now pass at the frozen checkpoint;
+the final written-inventory review completes task 9404, as recorded in plan 0022
+STATUS. This does not release another production gate or independently verify
+executable bytes retained only as digests.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
@@ -41,7 +42,7 @@ legacy allocations retain their original recovery rules and gain no ownership
 witness. This corrects the unreleased Rust preparation API before native release;
 its `poll` return type changes, with no journal format, hash or error-code change,
 and task 9403 native acceptance passes for provisioned Linux/systemd;
-the exhaustive 9404 crash matrix remains required.
+the complete 9404 crash matrix passes at `66c785ba`.
 
 
 The additive `NativePreparation::start_owned` / `poll_owned` path now returns
@@ -55,7 +56,7 @@ owner before dropping the admission reservation; native acceptance passes under 
 Allocator-side `prepare-owned` leases and binding/closure checks are implemented;
 absent-binding reconciliation now reuses exact claim validation while holding both
 original leases, and production client guard transfer is wired; task 9403
-acceptance passes; the exhaustive 9404 matrix remains pending.
+acceptance passes; the complete 9404 matrix passes at `66c785ba`.
 Task 9403 acceptance proves continuous guard transfer, public-entry enforcement
 and refusal of missing or legacy ownership material on provisioned Linux/systemd.
 
@@ -77,7 +78,7 @@ Published original completions in `service::reconcile_run` now use the same
 authenticated recovery and original settlement as startup, without current
 handlers or outcome-event dispatch; partial publications remain unresolved,
 and shared startup orphan closure is implemented; task 9403 acceptance passes.
-The exhaustive 9404 matrix remains pending.
+The complete 9404 matrix passes at `66c785ba`.
 
 Added `execute reconcile --run-id <id> [--timeout-ms <ms>]` for shared Linux
 original-run recovery; startup shares its original identity and closure checks.

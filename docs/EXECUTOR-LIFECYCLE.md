@@ -1468,8 +1468,9 @@ Frozen `66c785ba` independently verifies this crash/resource inventory on Linux
 stable and MSRV, alongside 101 containment cases, 34 production workflow scenarios
 and two historical upgrade scenarios per compiler in
 [CI 37857295898](https://github.com/koraytaylan/fsm/actions/runs/37857295898).
-Plan 0022 STATUS references the retained scoped verdicts; full portable acceptance
-and final written-inventory review remain required before task 9404 completion.
+All six portable gates and both native jobs pass at this frozen checkpoint;
+the final written-inventory review completes task 9404, with the exact job/step
+verdict and requirement review referenced in plan 0022 STATUS.
 Native scope is the approved Linux/systemd backend; macOS/Windows require portable
 gates and capability refusal. Executable digests do not establish independent
 byte comparison when binaries are not retained, and native evidence alone does

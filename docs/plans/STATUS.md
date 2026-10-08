@@ -25,7 +25,7 @@ One row per plan. Task status is authored in each plan's `tasks/*.md` frontmatte
 | 0019 | Consolidation | ✅ Complete | 4/4 | The committed gate widens to `--all-targets` and passes there, the workspace's one performance signal becomes a guard with a measured ceiling, and `fsm-execute`'s provisional surface is enumerated so an addition is a decision. Lands before 0017. | [status](0019-consolidation/STATUS.md) |
 | 0020 | Autonomous Embedded Execution | In progress | 1/7 | Registered by hand at 41f9350; execution-host ownership lands at `26c68220` against its frozen inventory, with all six stable/MSRV portable gates, both verified 82-case native matrices and twelve production workflow scenarios per toolchain passing. Completion fairness, scheduling, channels, stdio/HTTP acceptance and final lifecycle integration remain incomplete. | [status](0020-autonomous-embedded-execution/STATUS.md) |
 | 0021 | Executor Contract Preflight | Unregistered | 0/6 | Bounded effect analysis and manual policy landed independently in `f0a489a` with reviewed Linux gates; outcome validation landed independently in `aa6fc90` with reviewed MSRV/Linux gates; CLI checks landed independently in `04dbb17` with seven reviewed MSRV/stable tests; shared execution admission and MCP checks remain incomplete. | [status](0021-executor-contract-preflight/STATUS.md) |
-| 0022 | Executor Process Lifecycle | In progress | 6/7 | Original-run inspection and reconciliation completes at `713c90e9` against its unchanged inventory, with six portable gates, both verified native matrices and original interruption/upgrade transcripts; native capability remains Linux/systemd only, and the complete lifecycle crash matrix remains outstanding. | [status](0022-executor-process-lifecycle/STATUS.md) |
+| 0022 | Executor Process Lifecycle | ✅ Complete | 7/7 | Durable ownership, bounded shutdown, original-run reconciliation and the complete crash matrix land through `66c785ba`, with six portable stable/MSRV gates and both independently verified native matrices passing; native capability remains Linux/systemd only, and external effects remain at least once. | [status](0022-executor-process-lifecycle/STATUS.md) |
 | 0023 | Operational Acceptance | Unregistered | 0/7 | Evidence reporter verified on its exact commit; portable fixtures landed in `7c8c49c` and passed the full Linux consumer-install suite. Independent observer landed in `9903ef3` with 13 reviewed fault/ledger tests; traced external fixtures landed in `20c67d5` with nine subprocess tests; independent MCP fixture in `fb4291f` adds seven reviewed tests (45 harness tests total). Integrated executor, sustained native and live-model evidence remain incomplete. | [status](0023-operational-acceptance/STATUS.md) |
 
 ## Review follow-up: plans 0020–0023
@@ -53,11 +53,12 @@ safe standard-library surface does not itself establish the required process
 tree guarantee, and any new runtime prerequisite or charter/platform change
 requires a recorded decision before dependent implementation. Plan 0023's
 live-model task requires real host access and human-reviewed transcripts;
-missing evidence is never a passed skip. Neither gate prevents authoring
-these plans, and neither is represented here as already resolved.
+missing evidence is never a passed skip. The lifecycle gate is resolved for
+the explicitly approved Linux/systemd scope; the live-model acceptance gate
+remains open and neither gate prevents plan authoring.
 
 Plan 0020 task 8901 is complete at `26c68220` against its original command-owner
 inventory; its independent frozen review has task-cache digest
 `24b207c7e2fd741f7d298a80c329778fad60d3c374787e5633a6300a18b16cc4`.
-The provisioned ownership path does not complete plan 0022's remaining crash
-and shutdown matrices or promote sibling transport and scheduling tasks.
+The provisioned ownership path does not promote sibling transport and scheduling
+tasks; plan 0022 separately completes its written lifecycle inventory at `66c785ba`.

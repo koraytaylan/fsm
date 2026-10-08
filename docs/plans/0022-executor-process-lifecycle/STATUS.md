@@ -1,4 +1,4 @@
-# Plan 0022 — Executor Process Lifecycle — In progress
+# Plan 0022 — Executor Process Lifecycle — Complete
 
 Task frontmatter is authoritative; the coordinator owns registration and completion.
 
@@ -10,9 +10,9 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [executor-ownership-integration](tasks/9401-executor-ownership-integration.md) | done | 2b580fd762d9afe54f844e18514387d72b6c6bd2 |
 | [bounded-executor-shutdown](tasks/9402-bounded-executor-shutdown.md) | done | 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06 |
 | [uncertain-run-reconciliation](tasks/9403-uncertain-run-reconciliation.md) | done | 713c90e92871efb3484b41fdd20ee211dd196569 |
-| [lifecycle-crash-matrix](tasks/9404-lifecycle-crash-matrix.md) | in_progress | — |
+| [lifecycle-crash-matrix](tasks/9404-lifecycle-crash-matrix.md) | done | 66c785ba113a5fc1cea5f160ef12a2ed1903d0fa |
 
-Progress: 6/7 tasks completed.
+Progress: 7/7 tasks completed.
 
 ## Frozen milestone verdicts
 
@@ -27,36 +27,29 @@ Progress: 6/7 tasks completed.
   inventory; six portable gates and both native matrices pass at `c7fc9e8d`,
   followed only by documentation corrections;
   review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
-- Crash-matrix integration predecessor: frozen `b856165e` passes six portable
-  gates, zero dependencies and both native jobs in
-  [CI 37852150138](https://github.com/koraytaylan/fsm/actions/runs/37852150138);
-  exact job/step verdict digest
-  `192d7fad22d16ca8b6b9fb6f3f917c23db0a2e43a1d802966359cfcab160d8c5`.
-  This predecessor does not prove the strict complete-journal assertion added
-  at `66c785ba`, and does not establish 9404 completion.
-- Current crash-matrix native checkpoint: frozen `66c785ba` independently
-  verifies 60 crash cases, 48 resource observations, 101 containment cases,
-  34 production workflow scenarios and two historical upgrade scenarios per
-  compiler in [CI 37857295898](https://github.com/koraytaylan/fsm/actions/runs/37857295898).
-  Stable crash/containment verdict:
-  `bf0fc2e52261f6aa40de8bfcfc58fc384b88b3121f29af6682e26c08ef2c0e39`;
-  MSRV crash verdict:
-  `4770d8328bc525266229f7028cf69d23f36e7b4b3b4ac1518edd11d93eb602e3`;
-  MSRV containment verdict:
-  `9dab51d0fdcc9a809936b96afe7568189ae60a8ea1c4d202ab5a65a7260a8232`;
-  both-compiler workflow/upgrade verdict:
-  `3947f3422e4e5c242d9b277a1d9740894e7c5ef77426d725f37ec9d94ce24367`.
-  Exact guard-source continuity with retained sensitivity runs is verified by
-  `e338cb395e8fd300ac774a513e3b39a5518af02ac271af4a1a1dc4110d6e62d9`.
-  Full portable checkpoint and final written-inventory review remain pending;
-  9404 remains in progress.
+- Crash matrix: `713c90e9..66c785ba` completes 9404 against its written
+  inventory; all six portable stable/MSRV gates, zero dependencies/embed
+  acceptance and both native jobs pass in
+  [CI 37857295898](https://github.com/koraytaylan/fsm/actions/runs/37857295898).
+  Exact job/step verdict:
+  `270a1f86c08117b58488d1fe379f00f95d0a479a8e2d38b7a5382efff217b2ef`;
+  final requirement review:
+  `3816027ceb5e623a489b3d1cf6e6094e0eddc610a0e3948fed4b01e9f3a0adcc`.
+  Each compiler independently verifies 60 crash cases, 48 finite resource
+  observations, 101 containment cases, 34 production workflow scenarios and
+  two historical upgrade scenarios; every supported recovery strictly verifies
+  the complete journal after observer reap. Unchanged production guard sources
+  retain the named neutralization/restore sensitivity evidence. Detailed native
+  verdicts, source bindings and artifacts are referenced by the final review.
+  Successors contain documentation only; omitted Cargo/native reruns do not
+  replace or broaden the frozen checkpoint.
 
 Native runtime scope is the explicitly approved Linux/systemd backend;
 macOS/Windows retain mandatory portable gates and capability refusal.
 Local closure provides no remote cancellation, rollback or exactly-once
 claim; effects remain at least once, with domain-specific reconciliation.
 Artifacts report executable digests but do not retain binaries for independent
-byte comparison; scoped verdicts do not release a gate or complete a task.
+byte comparison; native evidence alone does not release a gate or complete another task.
 
 ## Historical evidence
 
