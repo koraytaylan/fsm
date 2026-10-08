@@ -7,6 +7,9 @@ use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
 
+#[path = "completion_proof_native_tests.rs"]
+mod completion_proof_cases;
+
 #[path = "binding_identity_native_tests.rs"]
 mod binding_identity_cases;
 
