@@ -1,0 +1,121 @@
+"""Producer refusal and retirement checks; every privileged subprocess is mocked."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+import crash_probe as probe
+
+
+class Retirement(unittest.TestCase):
+    def test_non_ci_invocation_refuses_before_any_build_or_install(self):
+        with (
+            patch.dict(os.environ, GITHUB_ACTIONS='false', RUNNER_OS='Linux'),
+            patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable')),
+            patch.object(probe.authority, 'build_authority') as build,
+            patch.object(probe.subprocess, 'check_output') as command,
+        ):
+            with self.assertRaises(AssertionError):
+                probe.main()
+            build.assert_not_called()
+            command.assert_not_called()
+
+    def exercise(self, *, initial=True, clear=True, stages=False, timeout=False,
+                 missing=False, changed=False, export_error=False):
+        with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as scratch:
+            directory = Path(scratch)
+            artifact = directory / 'never-executed'
+            artifact.write_bytes(b'mocked artifact')
+            report = directory / 'crash.json'
+            markers = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind}'.encode()
+                       for host in ('standalone', 'embedded') for kind in ('process', 'mcp')]
+            if missing:
+                markers.pop()
+            output = b'\n'.join(markers) + b'\n1 passed; 0 failed; 0 ignored;\n'
+            installed = dict(device=1, inode=2)
+            commits = iter(['source', 'changed' if changed else 'source'])
+
+            def check_output(command, **_):
+                if command[0] == 'git':
+                    return b'' if command[1] == 'status' else next(commits)
+                if command[0] == 'rustc':
+                    return 'mock-rustc'
+                self.assertIn('install', command)
+                return json.dumps(installed).encode()
+
+            native = (subprocess.TimeoutExpired(['never-executed'], 400, output=output, stderr=b'partial')
+                      if timeout else subprocess.CompletedProcess([], 0, output, b''))
+            with (
+                patch.dict(os.environ, GITHUB_ACTIONS='true', RUNNER_OS='Linux'),
+                patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report)),
+                patch.object(probe.authority, 'build_authority', return_value=artifact),
+                patch.object(probe, 'build_crash_artifacts', return_value={name: artifact for name in ('TEST', 'FIXTURE', 'CLI')}),
+                patch.object(probe.authority, 'authority_state_is_clear', side_effect=[initial, clear] if initial else [False]),
+                patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/stage')} if stages else set()]),
+                patch.object(probe.subprocess, 'check_output', side_effect=check_output) as checked,
+                patch.object(probe.subprocess, 'run', side_effect=[native, subprocess.CompletedProcess([], 0)]) as run,
+                patch.object(probe.workflow_failure_export, 'export', return_value=[],
+                             side_effect=OSError('export unavailable') if export_error else None) as exported,
+            ):
+                if not initial:
+                    with self.assertRaises(AssertionError):
+                        probe.main()
+                    self.assertFalse(any('install' in call.args[0] for call in checked.call_args_list))
+                    run.assert_not_called()
+                    return
+                if not clear or stages:
+                    with self.assertRaisesRegex(RuntimeError, 'retain exact'):
+                        probe.main()
+                    self.assertEqual(run.call_count, 1)
+                    exported.assert_called_once()
+                elif changed:
+                    with self.assertRaises(AssertionError):
+                        probe.main()
+                else:
+                    self.assertEqual(probe.main(), 1 if timeout or missing else 0)
+                evidence = json.loads(report.read_text())
+                self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
+                self.assertFalse(evidence['gate_released'])
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 400)
+                self.assertEqual(report.with_suffix('.log').read_bytes(), output + (b'partial' if timeout else b''))
+                if clear and not stages:
+                    self.assertEqual(run.call_count, 2)
+                    self.assertIn('remove', run.call_args.args[0])
+                    self.assertIn(str(installed['inode']), run.call_args.args[0])
+                    exported.assert_not_called()
+                else:
+                    self.assertEqual(evidence['retained_authority'], installed)
+                    if export_error:
+                        self.assertIn('export unavailable', evidence['failure_export_error'])
+
+    def test_success_retires_only_the_installed_identity(self):
+        self.exercise()
+
+    def test_existing_authority_prevents_install(self):
+        self.exercise(initial=False)
+
+    def test_unresolved_namespace_retains_authority(self):
+        self.exercise(clear=False)
+
+    def test_retained_stage_prevents_helper_removal(self):
+        self.exercise(stages=True)
+
+    def test_timeout_preserves_partial_failed_evidence(self):
+        self.exercise(timeout=True)
+
+    def test_missing_axis_cannot_pass(self):
+        self.exercise(missing=True)
+
+    def test_changed_source_cannot_retain_a_passing_verdict(self):
+        self.exercise(changed=True)
+
+    def test_export_failure_cannot_retire_unresolved_authority(self):
+        self.exercise(clear=False, stages=True, timeout=True, export_error=True)
+
+
+if __name__ == '__main__':
+    unittest.main()
