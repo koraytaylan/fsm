@@ -135,7 +135,7 @@ pub(in super::super) fn restart_at_cut(
             Store::open_read_only(&directory.store()).unwrap().records,
             records
         );
-        replacement = Some(kill_and_restart(directory, client, original.as_deref_mut()));
+        replacement = Some(kill_and_restart(directory, client, original));
     }
     // A killed handler cannot unlink its marker; only matched closure and dead
     // original identities permit retiring that exact fixture-owned link.
