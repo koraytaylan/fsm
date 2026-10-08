@@ -41,23 +41,23 @@ pub fn reconcile_run(
         .checked_add(timeout)
         .filter(|_| !timeout.is_zero())
         .ok_or_else(|| deferred("run reconciliation deadline invalid".into()))?;
-    if completion_published(&store.data_dir, &claim).map_err(&deferred)? {
+    if completion_published(&store.data_dir, &claim).map_err(deferred)? {
         let mut original = NativeExecution::recover(store, &claim, timeout)?;
         loop {
-            if original.observe()? && original.reap().map_err(&deferred)? {
+            if original.observe()? && original.reap().map_err(deferred)? {
                 return original.settle(store, clock);
             }
-            wait_for_original(deadline).map_err(&deferred)?;
+            wait_for_original(deadline).map_err(deferred)?;
         }
     }
     let mut closure =
-        NativeShutdown::start_reconciliation(store, &claim, timeout).map_err(&deferred)?;
+        NativeShutdown::start_reconciliation(store, &claim, timeout).map_err(deferred)?;
     loop {
-        let proven = closure.poll().map_err(&deferred)?.is_some();
-        if proven && closure.reap().map_err(&deferred)? {
+        let proven = closure.poll().map_err(deferred)?.is_some();
+        if proven && closure.reap().map_err(deferred)? {
             return closure.settle_interrupted(store, clock);
         }
-        wait_for_original(deadline).map_err(&deferred)?;
+        wait_for_original(deadline).map_err(deferred)?;
     }
 }
 

@@ -15,7 +15,14 @@ fn files(directory: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
         if path.is_dir() {
             result.extend(files(&path));
         } else {
-            result.insert(path.clone(), fs::read(path).unwrap());
+            // Windows denies reading the original writer's locked advisory
+            // file; pin its presence and length while checking all other bytes.
+            let bytes = if cfg!(windows) && path.file_name().is_some_and(|name| name == "LOCK") {
+                fs::metadata(&path).unwrap().len().to_le_bytes().to_vec()
+            } else {
+                fs::read(&path).unwrap()
+            };
+            result.insert(path, bytes);
         }
     }
     result
