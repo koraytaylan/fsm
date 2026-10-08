@@ -74,6 +74,33 @@ pub(super) fn restart_after_expiry(
         );
         std::thread::sleep(Duration::from_millis(5));
     }
+    // Kernel exit precedes the broker's immutable proof publication; it cannot
+    // authorize journal settlement or imply that authority contention ended.
+    let domain = claim.domain().to_value();
+    let receipt = PathBuf::from("/var/lib/fsm-containment")
+        .join(text(&domain, "namespace"))
+        .join(format!(
+            "authority-{}",
+            domain.get("generation").unwrap().as_num().unwrap()
+        ))
+        .join(format!(
+            "closure-{}-{}.json",
+            domain.get("allocation").unwrap().as_num().unwrap(),
+            claim.run_id()
+        ));
+    let hash = snapshot.current_execution_claim_hash(&claim).unwrap();
+    loop {
+        if let Ok(proof) = fsm_store::store::VerifiedClosure::read(&receipt) {
+            assert!(proof.matches_claim(&claim, &hash));
+            proof.check_store(&directory.store()).unwrap();
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "expired drain never published original closure proof"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let observed = Store::open_read_only(&directory.store()).unwrap();
     assert_eq!(
         &observed.records[..snapshot.records.len()],
