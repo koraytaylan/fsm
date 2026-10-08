@@ -288,24 +288,36 @@ fn replay_original_while_successor_lives(fixture: &Fixture) {
         .clone();
     // Start both production callers before waiting for either: duplicate
     // reconciliation must remain idempotent while another run owns the tree.
-    let callers = [0, 1].map(|index| start_original_replay(fixture, index));
+    let mut callers = [0, 1].map(|index| start_original_replay(fixture, index));
     let deadline = Instant::now() + Duration::from_secs(3);
+    let mut statuses = [None, None];
+    loop {
+        for (index, (child, _, _)) in callers.iter_mut().enumerate() {
+            if statuses[index].is_none() {
+                statuses[index] = child.try_wait().unwrap();
+            }
+        }
+        if statuses.iter().all(Option::is_some) {
+            break;
+        }
+        if Instant::now() >= deadline {
+            // Reap every outstanding fixture-owned caller before retaining the
+            // authority; dropping a Child alone would leave its process alive.
+            for (index, (child, _, _)) in callers.iter_mut().enumerate() {
+                if statuses[index].is_none() {
+                    let _ = child.kill();
+                    child.wait().unwrap();
+                }
+            }
+            panic!("stale MCP CLI replay exceeded its bound; authority retained");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
     let mut responses = Vec::new();
-    for (mut child, output, errors) in callers {
-        let status = loop {
-            if let Some(status) = child.try_wait().unwrap() {
-                break status;
-            }
-            if Instant::now() >= deadline {
-                let _ = child.kill();
-                child.wait().unwrap();
-                panic!("stale MCP CLI replay exceeded its bound; authority retained");
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        };
+    for ((_, output, errors), status) in callers.into_iter().zip(statuses) {
         assert!(fs::metadata(&output).unwrap().len() <= 8192);
         assert!(fs::metadata(&errors).unwrap().len() <= 8192);
-        responses.push((status, output, errors));
+        responses.push((status.unwrap(), output, errors));
     }
     assert!(responses.iter().any(|(status, _, _)| status.success()));
     for (status, output, errors) in responses {
