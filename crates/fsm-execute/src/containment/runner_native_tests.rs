@@ -19,6 +19,8 @@ mod claim_host;
 mod handoff_recovery;
 #[path = "runner_orphan_recovery_native_tests.rs"]
 mod orphan_recovery;
+#[path = "runner_pre_run_recovery_native_tests.rs"]
+mod pre_run_recovery;
 #[path = "runner_recovery_native_tests.rs"]
 mod recovery;
 #[path = "runner_retry_native_tests.rs"]
@@ -129,6 +131,10 @@ impl Drop for Barriers {
             let _ = fs::remove_dir(&self.path);
         }
     }
+}
+
+pub(super) fn recover_pre_run() {
+    pre_run_recovery::run();
 }
 
 pub(super) fn run() {

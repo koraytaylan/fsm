@@ -58,6 +58,10 @@ impl<'fixture> Session<'fixture> {
         );
     }
 
+    pub(super) fn refuse_pre_run_owner(&self) {
+        self.run("refuse_pre_run_owner", "FSM_NATIVE_PRE_RUN_OWNER_REFUSED");
+    }
+
     fn run(&self, case: &str, marker: &str) {
         use std::process::{Command, Stdio};
 
@@ -101,6 +105,46 @@ impl<'fixture> Session<'fixture> {
         );
         assert_eq!(stdout.matches(marker).count(), 1);
         assert_eq!(fixture.counter(), counter);
+    }
+}
+
+#[test]
+#[ignore = "configured unprivileged supervisor child inside enrolled native fixture"]
+fn refuse_pre_run_owner() {
+    use fsm_store::clock::FixedClock;
+
+    assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 65534);
+    let path = PathBuf::from(std::env::var_os("FSM_NATIVE_TEST_STORE").unwrap());
+    let mut writer = Store::open(&path).unwrap();
+    let records = writer.records.clone();
+    let ownership = writer.state.execution.clone();
+    let run = writer
+        .state
+        .execution
+        .unresolved()
+        .next()
+        .unwrap()
+        .0
+        .run_id();
+    let error = fsm_execute::service::reconcile_run(
+        &mut writer,
+        &mut FixedClock::new(2000, 1),
+        run,
+        Duration::from_secs(3),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "exec/inflight_deferred");
+    assert_eq!(
+        error.message,
+        "native shutdown refused: original preparation owner remains active or lease locking is unavailable"
+    );
+    assert_eq!(writer.records, records);
+    assert_eq!(writer.state.execution, ownership);
+    drop(writer);
+    assert_eq!(Store::open_read_only(&path).unwrap().records, records);
+    #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
+    {
+        println!("\nFSM_NATIVE_PRE_RUN_OWNER_REFUSED");
     }
 }
 

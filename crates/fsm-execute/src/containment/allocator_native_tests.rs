@@ -477,6 +477,7 @@ fn incomplete_intent_refusal() {
 #[test]
 #[ignore = "requires writable provisioned root cgroups"]
 fn genuine_claim_binding() {
+    runner_cases::recover_pre_run();
     admission_cases::removed_pending();
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
