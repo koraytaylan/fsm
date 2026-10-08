@@ -20,7 +20,10 @@ fn failure(large: bool) -> NativeSessionFailure {
         )
         .hint("original hint")
         .details(fsm_core::json::Value::Bool(false)),
-        deadline: Instant::now() + Duration::from_millis(500),
+        // Rendering the two-MiB diagnostic is inside the caller's deadline;
+        // allow debug builds time to reach the actual blocked output worker.
+        // Expiry before worker dispatch would not exercise backpressure.
+        deadline: Instant::now() + Duration::from_secs(3),
     }
 }
 
@@ -68,7 +71,7 @@ fn blocked_exit(mut command: Command, socket: bool) {
             break;
         }
     }
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(5);
     let mut blocked = false;
     let status = loop {
         if let Some(status) = child.0.try_wait().unwrap() {
