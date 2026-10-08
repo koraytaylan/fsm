@@ -103,7 +103,7 @@ fn refuse_unavailable_socket(
     assert_eq!(original.mode() & 0o7777, 0o600);
     // Remove access only to this fixture's original endpoint; retain the broker
     // and inode so refusal cannot be mistaken for proof that the domain died.
-    fs::set_permissions(&socket, fs::Permissions::from_mode(0)).unwrap();
+    fs::set_permissions(&socket, fs::Permissions::from_mode(0o0)).unwrap();
     session.refuse_pre_run_socket();
     assert_unresolved(fixture, effect);
     for name in [
