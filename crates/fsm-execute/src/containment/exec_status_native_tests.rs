@@ -115,6 +115,10 @@ fn contended_association_retains_original_deadline() {
                 "association refused after original lock release"
             );
         } else {
+            assert!(
+                !waited,
+                "association deadline must expire while its original authority lock is held"
+            );
             assert_eq!(result.err().unwrap(), "exec status association deadline");
         }
         assert_eq!(
