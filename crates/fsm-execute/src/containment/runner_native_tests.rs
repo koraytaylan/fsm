@@ -343,6 +343,20 @@ pub(super) fn run() {
         );
         let handoff_path = fixture.directory.join("handoff-1.json");
         let saved_handoff = fs::read(&handoff_path).unwrap();
+        let reconciliation = mode
+            .starts_with("uncertain-")
+            .then(|| orphan_recovery::Session::new(&fixture));
+        if let Some(reconciliation) = &reconciliation {
+            reconciliation.refuse_live_runner();
+            assert!(!execution.is_finished());
+            for pid in pids {
+                assert_eq!(
+                    fs::read_to_string(format!("/proc/{pid}/cgroup")).unwrap(),
+                    membership
+                );
+            }
+            assert_eq!(fs::read(&handoff_path).unwrap(), saved_handoff);
+        }
         if mode.starts_with("uncertain-") {
             // Fixture-owned protected corruption is introduced only after
             // independent enrollment; cleanup cannot authenticate this data.
@@ -427,8 +441,9 @@ pub(super) fn run() {
                 .unwrap()
                 .sync_all()
                 .unwrap();
-            orphan_recovery::resume(&fixture);
+            reconciliation.as_ref().unwrap().resume();
             VerifiedClosure::read(&receipt).unwrap();
+            drop(reconciliation);
             fixture.cleanup().unwrap();
             continue;
         }
