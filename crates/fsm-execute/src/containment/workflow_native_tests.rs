@@ -6,6 +6,9 @@ use std::process::{Command, Stdio};
 #[path = "workflow_failure_diagnostics.rs"]
 mod failure_diagnostics;
 
+#[path = "failed_stop_native_tests.rs"]
+mod failed_stop;
+
 fn workflow_broker(directory: &Path, store: &Path) -> super::broker_cases::Daemon {
     super::broker_cases::disconnect_cases::permit_operator_store(store);
     super::super::super::broker_endpoint::provision(directory, 65534).unwrap();
@@ -111,7 +114,10 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
             ),
         ),
     ]);
-    if failures.starts_with("crash-") || failures.starts_with("full-disk") {
+    if failures.starts_with("crash-")
+        || failures.starts_with("full-disk")
+        || failures.starts_with("failed-stop")
+    {
         let Value::Obj(fields) = &mut table else {
             panic!("handler table")
         };
@@ -126,6 +132,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
         let timeout = if failures.ends_with("-term")
             || failures.ends_with("-int")
             || failures.starts_with("full-disk")
+            || failures.starts_with("failed-stop")
         {
             "30000"
         } else {
@@ -147,7 +154,10 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if failure.starts_with("crash-") || failure.starts_with("full-disk") {
+    let expected = if failure.starts_with("crash-")
+        || failure.starts_with("full-disk")
+        || failure.starts_with("failed-stop")
+    {
         8
     } else if failure == "suspend" {
         6
@@ -173,6 +183,8 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             | "crash-embedded-int"
             | "full-disk"
             | "full-disk-embedded"
+            | "failed-stop"
+            | "failed-stop-embedded"
     ) {
         assert!((expected as u64..=4096).contains(&last));
     } else {
@@ -199,7 +211,9 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         .filter(|record| record.kind == RecordKind::ExecutionSettled)
     {
         let disposition = record.body.get("disposition").and_then(Value::as_str);
-        if (failure.starts_with("crash-") || failure.starts_with("full-disk"))
+        if (failure.starts_with("crash-")
+            || failure.starts_with("full-disk")
+            || failure.starts_with("failed-stop"))
             && number(&record.body, "run_id").unwrap() == 1
         {
             assert!(matches!(disposition, Some("attempted" | "interrupted")));
@@ -207,7 +221,10 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             assert_eq!(disposition, Some("acked"));
         }
     }
-    if failure.starts_with("crash-") || failure.starts_with("full-disk") {
+    if failure.starts_with("crash-")
+        || failure.starts_with("full-disk")
+        || failure.starts_with("failed-stop")
+    {
         let claims: Vec<_> = store
             .records
             .iter()
@@ -235,6 +252,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         if failure.ends_with("-term")
             || failure.ends_with("-int")
             || failure.starts_with("full-disk")
+            || failure.starts_with("failed-stop")
         {
             assert_eq!(
                 status, "interrupted",
@@ -466,6 +484,14 @@ pub(super) fn run() {
             "workflow_race::full_disk::embedded_full_disk_stop_preserves_claim_and_recovers",
             vec!["full-disk-embedded"],
         ),
+        (
+            "workflow_race::failed_stop::standalone_failed_native_stop_preserves_claim_and_recovers",
+            vec!["failed-stop"],
+        ),
+        (
+            "workflow_race::failed_stop::embedded_failed_native_stop_preserves_claim_and_recovers",
+            vec!["failed-stop-embedded"],
+        ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];
     let selected = std::env::var("FSM_NATIVE_WORKFLOW_FILTER").ok();
@@ -485,6 +511,7 @@ pub(super) fn run() {
         let mut brokers = Vec::new();
         let mut resources = Vec::new();
         let mut manifest = Vec::new();
+        let mut faults = Vec::new();
         for (index, failure) in failures.iter().enumerate() {
             let resource = PathBuf::from(format!(
                 "/dev/shm/fsm-workflow-{}-{case}-{index}",
@@ -540,6 +567,11 @@ pub(super) fn run() {
                 ("home_identity", home_identity.clone()),
                 ("memory_limits", limits.inventory()),
             ]));
+            faults.push(
+                failure
+                    .starts_with("failed-stop")
+                    .then(|| failed_stop::FailedStop::new(&fixture, &resource)),
+            );
             fixtures.push(fixture);
             resources.push((resource, home, resource_identity, home_identity, limits));
         }
@@ -567,6 +599,11 @@ pub(super) fn run() {
             .spawn().unwrap();
         let deadline = Instant::now() + Duration::from_secs(30 * failures.len() as u64 + 20);
         let status = loop {
+            for (fault, fixture) in faults.iter_mut().zip(&fixtures) {
+                if let Some(fault) = fault {
+                    fault.poll(fixture);
+                }
+            }
             if let Some(status) = child.try_wait().unwrap() {
                 break status;
             }
@@ -598,6 +635,12 @@ pub(super) fn run() {
             String::from_utf8_lossy(&output)
         );
         assert!(String::from_utf8_lossy(&output).contains("1 passed; 0 failed; 0 ignored;"));
+        assert!(
+            faults
+                .iter()
+                .flatten()
+                .all(failed_stop::FailedStop::restored)
+        );
         // No absence is promoted into a production closure receipt: these are
         // matched test teardown guards after original workflow/journal assertions.
         for (fixture, failure) in fixtures.iter().zip(&failures) {

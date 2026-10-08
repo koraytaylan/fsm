@@ -4,6 +4,7 @@ use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
 mod crash;
+mod failed_stop;
 mod fault_control;
 mod full_disk;
 pub(super) use crash::configure_table;
@@ -16,6 +17,8 @@ pub(super) fn restart_after_fault(
 ) -> Competitor {
     if failures.starts_with("full-disk") {
         full_disk::restart_after_full_disk(directory, client, original)
+    } else if failures.starts_with("failed-stop") {
+        failed_stop::restart_after_failed_stop(directory, client, original)
     } else {
         crash::restart_at_cut(directory, client, original, failures)
     }
@@ -35,6 +38,8 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=crash-embedded-int"
             | "handler-failures=full-disk"
             | "handler-failures=full-disk-embedded"
+            | "handler-failures=failed-stop"
+            | "handler-failures=failed-stop-embedded"
     )
 }
 

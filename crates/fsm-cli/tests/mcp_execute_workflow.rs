@@ -20,6 +20,10 @@ mod workflow_race;
 
 #[path = "workflow_stdio/mod.rs"]
 mod workflow_stdio;
+
+#[path = "workflow_race/classification.rs"]
+mod workflow_classification;
+use workflow_classification::{interrupted_scenario, transition};
 const OPERATIONS: [&str; 7] = [
     "check_prerequisite",
     "check_identity",
@@ -495,14 +499,6 @@ fn emission(handler: &Value) -> Value {
     )])
 }
 
-fn transition(from: &str, event: &str, to: &str) -> Value {
-    object([
-        ("from", string(from)),
-        ("on", string(event)),
-        ("to", string(to)),
-    ])
-}
-
 fn machine(handlers: &BTreeMap<String, Value>) -> Value {
     let mut events = vec![value(r#"{"name":"begin","fields":[]}"#)];
     let mut effects = Vec::new();
@@ -694,7 +690,7 @@ fn run_scenario_mode(
     let mut competitor =
         (failures == "race").then(|| workflow_race::contend(&directory, &mut client));
     #[cfg(target_os = "linux")]
-    if failures.starts_with("crash-") || failures.starts_with("full-disk") {
+    if interrupted_scenario(failures) {
         competitor = Some(workflow_race::restart_after_fault(
             &directory,
             &mut client,
@@ -773,8 +769,7 @@ fn run_scenario_mode(
                     |entry| entry.get("kind").and_then(Value::as_str) == Some("ExecutionSettled")
                 )
                 .count(),
-            acked
-                + usize::from(failures.starts_with("crash-") || failures.starts_with("full-disk"))
+            acked + usize::from(interrupted_scenario(failures))
         );
         acked
     } else {
@@ -785,8 +780,7 @@ fn run_scenario_mode(
     };
     assert_eq!(
         acknowledgements,
-        expected_calls.len()
-            - usize::from(failures.starts_with("crash-") || failures.starts_with("full-disk"))
+        expected_calls.len() - usize::from(interrupted_scenario(failures))
     );
     assert_eq!(
         text(&client.call("journal_verify", object([])), "health"),

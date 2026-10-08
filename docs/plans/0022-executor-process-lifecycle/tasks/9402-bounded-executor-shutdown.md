@@ -7,6 +7,9 @@ depends_on:
   - executor-ownership-integration
 gated: false
 touches:
+  - crates/fsm-cli/tests/workflow_race/classification.rs
+  - crates/fsm-cli/tests/workflow_race/failed_stop.rs
+  - crates/fsm-execute/src/containment/failed_stop_native_tests.rs
   - crates/fsm-cli/tests/workflow_race/fault_control.rs
   - crates/fsm-cli/tests/mcp_execute_workflow.rs
   - crates/fsm-cli/tests/workflow_race/full_disk.rs

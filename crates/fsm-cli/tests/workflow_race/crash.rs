@@ -16,6 +16,8 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
             | "crash-embedded-int"
             | "full-disk"
             | "full-disk-embedded"
+            | "failed-stop"
+            | "failed-stop-embedded"
     ) {
         return;
     }
@@ -33,6 +35,7 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
     let timeout = if failures.ends_with("-term")
         || failures.ends_with("-int")
         || failures.starts_with("full-disk")
+        || failures.starts_with("failed-stop")
     {
         "30000"
     } else {
@@ -103,6 +106,7 @@ pub(in super::super) fn restart_at_cut(
     if failures.ends_with("-term")
         || failures.ends_with("-int")
         || failures.starts_with("full-disk")
+        || failures.starts_with("failed-stop")
     {
         assert!(
             identities.iter().all(still_live),
