@@ -16,7 +16,13 @@ INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_doma
          'counter_rollback_refusal', 'incomplete_intent_refusal',
          'enrolled_gate_authorization', 'private_exec_status', 'native_capture_bounds', 'genuine_claim_binding',
          'provisioned_broker_access', 'provisioned_broker_disconnect',
-         'provisioned_public_service_loop')
+         'provisioned_public_service_loop',
+         'admission_cases::binding_refuses_claim_absent_from_durable_journal',
+         'admission_cases::authorization_refuses_claim_absent_from_durable_journal',
+         'admission_cases::exec_status_refuses_claim_absent_from_durable_journal',
+         'admission_cases::launch_refuses_claim_absent_from_durable_journal',
+         'admission_cases::runner_refuses_claim_absent_from_durable_journal',
+         'enrollment_cases::enrolled_authorization_refuses_cancelled_durable_claim')
 
 
 def build_authority(repo, toolchain, operation):
