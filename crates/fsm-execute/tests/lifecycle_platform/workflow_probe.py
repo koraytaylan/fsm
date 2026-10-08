@@ -86,6 +86,7 @@ def main():
         try:
             original_cli = build_cli(baseline, args.toolchain, False)
             original_broker = authority.build_authority(baseline, args.toolchain, 'test')
+            original_authority = authority.build_authority(baseline, args.toolchain, 'build')
         finally:
             if strip is None:
                 os.environ.pop('CARGO_PROFILE_DEV_STRIP', None)
@@ -95,8 +96,12 @@ def main():
                 os.environ.pop('CARGO_TARGET_DIR', None)
             else:
                 os.environ['CARGO_TARGET_DIR'] = target
+        # The helper also validates transport requests: historical prepare must
+        # retain its historical helper, not pass through current prepare-owned policy.
+        executable = original_authority
         original = dict(source_commit=baseline_commit, cli_sha256=digest(original_cli),
-                        broker_sha256=digest(original_broker), authority_replaced=False)
+                        broker_sha256=digest(original_broker),
+                        authority_sha256=digest(original_authority), authority_replaced=False)
         cases = tuple((case, count) for case, count in CASES if case.endswith('drain_allows_original_completion'))
         assert len(cases) == 2
     assert authority.authority_state_is_clear()
