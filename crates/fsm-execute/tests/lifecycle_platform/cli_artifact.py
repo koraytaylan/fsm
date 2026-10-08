@@ -5,6 +5,28 @@ from pathlib import Path
 import subprocess
 
 
+def build_host_test(repo, toolchain):
+    """Select the private host harness without adding a public test API."""
+    command = ['cargo', '+' + toolchain, 'test', '-p', 'fsm-cli', '--lib',
+               '--features', 'lifecycle-test-fixture', '--no-run',
+               '--message-format=json']
+    result = subprocess.run(command, cwd=repo, capture_output=True, timeout=180,
+                            env=dict(os.environ, CARGO_BUILD_JOBS='1', CARGO_PROFILE_DEV_STRIP='debuginfo'))
+    messages = [json.loads(line) for line in result.stdout.splitlines()]
+    if result.returncode:
+        rendered = [row['message'].get('rendered', '') for row in messages
+                    if row.get('reason') == 'compiler-message']
+        raise RuntimeError('Private host build failed: ' + ''.join(rendered)
+                           + result.stderr.decode(errors='replace'))
+    matches = [row['executable'] for row in messages
+               if row.get('reason') == 'compiler-artifact'
+               and row['target']['name'] == 'fsm_cli'
+               and row['target']['kind'] == ['lib']
+               and row['profile']['test'] is True and row.get('executable')]
+    assert len(matches) == 1, ('private host library test', matches)
+    return Path(matches[0]).resolve()
+
+
 def build_crash_artifacts(repo, toolchain):
     """Select the feature-gated observer, fixture and production CLI together."""
     command = ['cargo', '+' + toolchain, 'test', '-p', 'fsm-cli', '--test',
