@@ -44,6 +44,7 @@ on:
           - claim-before-exec-status
           - claim-before-launch
           - claim-before-runner
+          - claim-before-enrolled-authorization
         default: preparation-owner
 
 # Preserve the running develop checkpoint and queue its latest successor.

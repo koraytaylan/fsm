@@ -35,6 +35,91 @@ impl Drop for Gate<'_> {
     }
 }
 
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn enrolled_authorization_refuses_cancelled_durable_claim() {
+    use super::super::super::{closure, exec_status, stop};
+    let mut fixture = Fixture::new();
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let (binding, effect) = claim_binding(&fixture, &domain);
+    bind(&fixture.directory, &binding).unwrap();
+    let listener = exec_status::Listener::create(
+        &fixture.directory,
+        1,
+        &binding,
+        &fsm_execute::config::HandlerKind::Process,
+    )
+    .unwrap();
+    let (mut input, peer) = UnixStream::pair().unwrap();
+    listener.send_challenge(&mut input).unwrap();
+    let (child, _) = launch::begin(
+        &fixture.directory,
+        1,
+        [
+            Stdio::from(OwnedFd::from(peer)),
+            Stdio::null(),
+            Stdio::null(),
+        ],
+    )
+    .unwrap();
+    let mut gate = Gate {
+        fixture: &fixture,
+        child,
+    };
+    let handoff = read_value(&fixture.directory.join("handoff-1.json"), true).unwrap();
+    let status = listener
+        .associate(&domain.to_value(), handoff.get("gate").unwrap())
+        .unwrap();
+    assert!(gate.child.try_wait().unwrap().is_none());
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    let mut writer = Store::open(&fixture.store).unwrap();
+    writer
+        .cancel_instance("instance", "cancel-before-enrolled-grant")
+        .unwrap();
+    assert!(writer.state.instances["instance"].pending.contains(&effect));
+    let records = writer.records.clone();
+    drop(writer);
+    let request = object([(
+        "grant",
+        object([
+            ("format", Value::Str("fsm.native-entry/1".into())),
+            ("claim", binding.get("claim").unwrap().clone()),
+            (
+                "journal_claim",
+                binding.get("journal_claim").unwrap().clone(),
+            ),
+            ("argv", Value::Arr(vec![Value::Str("/bin/true".into())])),
+        ]),
+    )]);
+    // Genuine journal ownership, protected handoff and authenticated live
+    // enrollment cannot authorize a claim whose instance is now cancelled.
+    assert_eq!(
+        authorize::publish_enrolled(&fixture.directory, &request).unwrap_err(),
+        "claim is not current runnable ownership"
+    );
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    assert!(!fixture.directory.join("entry-1.json").exists());
+    assert!(!fixture.directory.join("entry-1.json.pending").exists());
+    assert!(gate.child.try_wait().unwrap().is_none());
+    assert_eq!(
+        read_value(&fixture.directory.join("handoff-1.json"), true).unwrap(),
+        handoff
+    );
+    stop::request(&fixture.directory, 1).unwrap();
+    drop(gate);
+    drop(status);
+    drop(input);
+    closure::complete(&fixture.directory, 1).unwrap();
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    fixture.cleanup().unwrap();
+}
+
 pub(super) fn run() {
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
