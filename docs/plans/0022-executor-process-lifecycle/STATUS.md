@@ -14,19 +14,19 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 6/7 tasks completed.
 
-Frozen `0211231c..fe8478dc` passes all four host/handler pre-publication crash
-cases on Linux stable/MSRV in [CI 37818301657](https://github.com/koraytaylan/fsm/actions/runs/37818301657),
-with verified report/log digest
-`990dcc993657f104fe1ddff3c3263db7d4b9dbff256a8509243fd4d748e0e93c`.
-Independent original PID/start checks and matched closure precede sequential
-replacement and final event completion, including immediate writer contention.
-The overall checkpoint fails because the subsequent containment probe requires
-a fresh evidence directory; separate crash evidence preserves that guard.
-Earlier stdin and marker-lifetime failures remain retained in the task cache.
-The fixture barrier precedes response publication and does not prove the native
-runner has collected a candidate; the actual candidate-result cut remains open.
-Full integration, other crash boundaries, supervisor death, resource-use and
-sensitivity acceptance remain outstanding, so 9404 stays in progress.
+Frozen `0211231c..29d68e03` passes all eight quiet/noisy pre-publication crash
+cases on Linux stable/MSRV in [CI 37820446888](https://github.com/koraytaylan/fsm/actions/runs/37820446888),
+with independently verified report/log verdict
+`bb066a9499a0e7baf01db99eecacff01d6b2e95cf06abdab69b6a78b3b8175b9`.
+Each compiler also passes 82 containment cases, 34 production workflow scenarios
+and two historical upgrade scenarios; executable bytes were not independently
+compared. Original PID/start checks and matched closure precede sequential
+replacement and final event completion, including writer contention and the
+exact bounded stderr prefix/full-stream digest. Earlier fixture failures remain
+retained in the task cache. These barriers precede response publication, so
+candidate collection, other crash boundaries, supervisor death, repeated-run
+resource use, sensitivities and the full portable checkpoint remain incomplete;
+9404 stays in progress.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.

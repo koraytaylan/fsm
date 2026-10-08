@@ -1406,29 +1406,17 @@ observer to the operator identity, and independently checks both claims and
 closure receipts across all four host/handler combinations. Disposable Linux
 stable/MSRV CI runs this matrix before broader native checks and retains
 bounded original-owner diagnostics and protected result/exec-status records on
-failure. At `fe8478dc`, all four host/handler candidate-result cases pass on
-Linux stable/MSRV, including immediate writer contention, original tree death,
-matched closure, sequential replacement and final event completion. Process
-fixtures use argv and closed stdin; Root-owned entry slots survive DynamicUser
-retirement and parents match actual descendant PIDs before publishing entry.
-Earlier stdin and marker-lifetime failures remain retained in the task cache.
-The overall checkpoint still fails because the following containment probe
-requires a fresh evidence directory; crash evidence now uses a separate
-`native-crash-*` artifact. Broader cutpoints, supervisor death, resource-use and
-guard-sensitivity acceptance remain outstanding; task 9404 is incomplete.
-
-The held fixture barrier is reached before response publication, not after the
-native runner collects a candidate; actual candidate-result crash acceptance
-therefore remains outstanding.
-
-The successor matrix adds a noisy case beside each verified quiet case. The
-fixture writes 16 KiB of stderr before its held candidate barrier; Root then
-requires the successful replacement's protected response to contain the exact
-4-KiB diagnostic prefix and SHA-256 of the complete stream. Successful retired
-namespaces release their failure snapshots so a later failure retains bounded
-original evidence. These eight quiet/noisy cases are wired but remain natively
-unverified; they do not complete repeated-run resource-use acceptance or the
-remaining crash and supervisor boundaries.
+failure. At `29d68e03`, all eight quiet/noisy pre-publication cases pass on Linux
+stable/MSRV with independently verified artifacts, alongside the 82-case native
+matrix, 34 workflow scenarios and two historical upgrade scenarios per compiler.
+The fixture emits 16 KiB of stderr before its held barrier; the protected
+replacement response has the exact 4-KiB prefix and complete-stream SHA-256.
+Root-owned entry slots survive DynamicUser retirement and parents match actual
+descendant PIDs before publishing entry. Successful retired namespaces release
+failure snapshots while later failures retain bounded original evidence.
+Earlier failures remain retained outside the repository. These barriers precede
+response publication, so they do not prove native candidate collection;
+remaining crash boundaries and full task 9404 acceptance stay incomplete.
 
 The next test-only extension holds a Root-protected barrier after the native
 runner collects an attempt-one timeout candidate and before it closes the
