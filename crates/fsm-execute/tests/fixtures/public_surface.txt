@@ -319,15 +319,19 @@ method fsm_execute::run::native_client::NativeExecution::start_retained
 method fsm_execute::run::native_client::NativeHelperProgress::is_retired
 method fsm_execute::run::native_client::NativePreparation::cancel
 method fsm_execute::run::native_client::NativePreparation::for_store
+method fsm_execute::run::native_client::NativePreparation::for_store_owned
 method fsm_execute::run::native_client::NativePreparation::poll
+method fsm_execute::run::native_client::NativePreparation::poll_owned
 method fsm_execute::run::native_client::NativePreparation::progress
 method fsm_execute::run::native_client::NativePreparation::reap
 method fsm_execute::run::native_client::NativePreparation::start
+method fsm_execute::run::native_client::NativePreparation::start_owned
 method fsm_execute::run::native_client::NativePreparedCleanup::cancel
 method fsm_execute::run::native_client::NativePreparedCleanup::poll
 method fsm_execute::run::native_client::NativePreparedCleanup::progress
 method fsm_execute::run::native_client::NativePreparedCleanup::reap
 method fsm_execute::run::native_client::NativePreparedCleanup::start
+method fsm_execute::run::native_client::NativePreparedOwner::domain
 method fsm_execute::run::native_client::NativeRequest::cancel
 method fsm_execute::run::native_client::NativeRequest::poll
 method fsm_execute::run::native_client::NativeRequest::progress
@@ -428,6 +432,7 @@ reexport fsm_execute::run::native_client::NativePreparation from preparation
 reexport fsm_execute::run::native_client::NativePreparationPhase from preparation
 reexport fsm_execute::run::native_client::NativePreparationProgress from preparation
 reexport fsm_execute::run::native_client::NativePreparedCleanup from prepared_cleanup
+reexport fsm_execute::run::native_client::NativePreparedOwner from prepared_owner
 reexport fsm_execute::run::native_client::NativeRun from claimed
 reexport fsm_execute::run::native_client::NativeRunPhase from claimed
 reexport fsm_execute::run::native_client::NativeRunProgress from claimed
@@ -468,6 +473,7 @@ struct fsm_execute::run::native_client::NativeHelperProgress
 struct fsm_execute::run::native_client::NativePreparation
 struct fsm_execute::run::native_client::NativePreparationProgress
 struct fsm_execute::run::native_client::NativePreparedCleanup
+struct fsm_execute::run::native_client::NativePreparedOwner
 struct fsm_execute::run::native_client::NativeRequest
 struct fsm_execute::run::native_client::NativeRun
 struct fsm_execute::run::native_client::NativeRunProgress
