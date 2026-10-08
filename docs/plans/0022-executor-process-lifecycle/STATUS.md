@@ -265,3 +265,20 @@ authorities without environment-reset clearance. Remaining closure caller
 sensitivities, termination/crash axes and current full integration keep 9404
 in progress; detailed evidence stays in the task cache, and this docs update
 omits heavy gates.
+
+Frozen `9f15c883..83998a77` review independently verifies execution completion
+transfer runtime sensitivity on Linux stable/MSRV against exact source and
+log digests; scoped verdict digest
+`a084705b028d4dca80f10959f6756f233f55e5d7681243650db5ff7468d1236f`.
+The frozen reports incorrectly name an unrelated public refusal despite the
+correct named test passing, failing at exit 101 with only its guard removed,
+and passing after restoration; `83998a77` corrects that metadata, pending
+successor CI rather than retroactively relabeling historical evidence.
+Integration checkpoint `d8125e9e` completed both native runtime suites but
+failed artifact retention because nested Rust test names introduced colons in
+log filenames; `f3dbedc9` uses portable filenames, preserves exact report test
+identities and adds frozen native evidence verification to CI, with focused
+Python checks passing and native successor evidence outstanding.
+Neither repair establishes full integration or task completion; 9404 remains
+in progress, detailed evidence stays in the task cache, and this documentation
+update omits heavy gates.
