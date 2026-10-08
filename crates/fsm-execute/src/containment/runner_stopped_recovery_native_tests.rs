@@ -108,11 +108,9 @@ fn recover_stopped() {
     let material = claim.to_value();
     let fingerprint = text(&material, "handler_fingerprint").unwrap();
     drop(snapshot);
-    let original = HandlerSpec::from_contract(
-        parameters.get("replacement_template").unwrap(),
-        fingerprint,
-    )
-    .unwrap();
+    let original =
+        HandlerSpec::from_contract(parameters.get("replacement_template").unwrap(), fingerprint)
+            .unwrap();
     let mut competing_table = HandlerTable::default();
     competing_table
         .handlers
