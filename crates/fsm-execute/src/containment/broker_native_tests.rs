@@ -33,7 +33,15 @@ pub(super) struct Daemon(Child);
 
 impl Daemon {
     fn start(directory: &Path) -> Self {
-        disconnect_cases::install_fixture_binary(directory, "broker-test");
+        if std::env::var_os("FSM_NATIVE_WORKFLOW_UPGRADE").is_some() {
+            super::workflow_cases::stage_artifact(
+                &directory.join("broker-test"),
+                "FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_ARTIFACT",
+                "FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_SHA256",
+            );
+        } else {
+            disconnect_cases::install_fixture_binary(directory, "broker-test");
+        }
         Self(
             Command::new("/usr/bin/python3")
                 .args([

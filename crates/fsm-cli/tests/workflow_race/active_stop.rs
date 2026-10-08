@@ -41,6 +41,7 @@ pub(super) fn restart_after_stop(
         |owner| owner.root.clone(),
     );
     assert!(identities.iter().all(live));
+    super::upgrade::inspect(directory, "retained");
     // No protocol frames or EOF after admission: only the external control
     // transport may wake the production embedded lifecycle pump.
     assert!(client.input.is_some());
@@ -69,7 +70,7 @@ pub(super) fn restart_after_stop(
         }
     }
     let output = directory.resource().join("active-stop.json");
-    let mut stop = Command::new(directory.executable())
+    let mut stop = Command::new(super::upgrade::operator(directory))
         .env("HOME", text(entry, "home"))
         .args(["--json", "--data-dir"])
         .arg(directory.store())
@@ -120,6 +121,7 @@ pub(super) fn restart_after_stop(
     }
     assert_eq!(report.get("unresolved_run_ids"), Some(&value("[]")));
     assert_eq!(report.get("timed_out"), Some(&Value::Bool(false)));
+    super::upgrade::record_stop(directory, &report);
     if let Some(draining) = draining {
         assert!(
             draining.is_finished(),
@@ -145,6 +147,7 @@ pub(super) fn restart_after_stop(
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(identities.iter().all(|identity| !live(identity)));
+    super::upgrade::inspect(directory, "drained");
     let writer = Store::open(&directory.store()).unwrap();
     assert_eq!(&writer.records[..snapshot.records.len()], snapshot.records);
     assert_eq!(

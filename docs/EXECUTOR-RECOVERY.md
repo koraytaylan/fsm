@@ -42,6 +42,16 @@ owner cannot finish, preserve its authority and journal for recovery rather than
 substituting a new helper or removing ownership files. The command sequence above
 is upgrade guidance; cross-implementation execution remains unverified.
 
+The native workflow probe accepts `--upgrade-source <clean-9402-checkout>` to
+build the exact historical CLI and broker from
+`5730f17202cdeabd8c34f9b1c48fcf02f26b0e06`, while using current operator commands
+for read-only inspection and bounded drain of standalone and embedded original
+runs. Both artifact digests and bounded retained/drain responses are recorded;
+the original provisioned authority stays installed throughout each fixture.
+This covers executor/operator interoperability with that retained authority,
+not replacement of an older installed authority or environment-reset clearance;
+execution of this new fixture remains pending under plan 0022.
+
 ## Reconcile the original interrupted run
 
 After the original owner has retired, select its exact recorded run ID:

@@ -441,6 +441,18 @@ pub(super) fn run() {
         "FSM_NATIVE_WORKFLOW_CLI_ARTIFACT",
         "FSM_NATIVE_WORKFLOW_CLI_SHA256",
     );
+    let upgrade = std::env::var_os("FSM_NATIVE_WORKFLOW_UPGRADE").is_some();
+    let original_cli = if upgrade {
+        let original = staging.join("original-fsm");
+        stage_artifact(
+            &original,
+            "FSM_NATIVE_WORKFLOW_ORIGINAL_CLI_ARTIFACT",
+            "FSM_NATIVE_WORKFLOW_ORIGINAL_CLI_SHA256",
+        );
+        original
+    } else {
+        cli.clone()
+    };
     let cases = [
         (
             "discovered_handlers_complete_the_workflow_in_order",
@@ -563,6 +575,15 @@ pub(super) fn run() {
             .is_none_or(|selected| cases.iter().any(|(case, _)| *case == selected.as_str()))
     );
     for (group, (case, failures)) in cases.into_iter().enumerate() {
+        if upgrade
+            && !matches!(
+                case,
+                "workflow_race::active_stop::standalone_drain_allows_original_completion"
+                    | "workflow_race::active_stop::embedded_drain_allows_original_completion"
+            )
+        {
+            continue;
+        }
         if selected
             .as_ref()
             .is_some_and(|selected| selected.as_str() != case)
@@ -623,7 +644,9 @@ pub(super) fn run() {
                 ),
                 ("store", Value::Str(fixture.store.to_str().unwrap().into())),
                 ("resource", Value::Str(resource.to_str().unwrap().into())),
-                ("cli", Value::Str(cli.to_str().unwrap().into())),
+                ("cli", Value::Str(original_cli.to_str().unwrap().into())),
+                ("operator_cli", Value::Str(cli.to_str().unwrap().into())),
+                ("upgrade", Value::Bool(upgrade)),
                 ("home", Value::Str(home.to_str().unwrap().into())),
                 ("resource_identity", resource_identity.clone()),
                 ("home_identity", home_identity.clone()),
@@ -711,6 +734,13 @@ pub(super) fn run() {
         }
         let mut report_output = std::io::stdout().lock();
         for line in String::from_utf8_lossy(&output).lines() {
+            if let Some(transcript) = line.strip_prefix("FSM_NATIVE_UPGRADE_TRANSCRIPT ") {
+                writeln!(
+                    report_output,
+                    "\nFSM_NATIVE_UPGRADE_TRANSCRIPT {case} {transcript}"
+                )
+                .unwrap();
+            }
             if let Some(transcript) = line.strip_prefix("FSM_NATIVE_RECONCILE_TRANSCRIPT ") {
                 writeln!(
                     report_output,

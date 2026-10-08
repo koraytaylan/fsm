@@ -62,6 +62,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--upgrade-source', type=Path)
     args = parser.parse_args()
     assert __debug__
     repo = Path(__file__).resolve().parents[4]
@@ -71,6 +72,33 @@ def main():
     executable = authority.build_authority(repo, args.toolchain, 'build')
     workflow = build_cli(repo, args.toolchain, True)
     cli = build_cli(repo, args.toolchain, False)
+    cases = CASES
+    original = None
+    if args.upgrade_source:
+        baseline = args.upgrade_source.resolve()
+        baseline_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=baseline, text=True).strip()
+        assert baseline_commit == '5730f17202cdeabd8c34f9b1c48fcf02f26b0e06'
+        assert not subprocess.check_output(['git', 'status', '--porcelain'], cwd=baseline)
+        target = os.environ.get('CARGO_TARGET_DIR')
+        strip = os.environ.get('CARGO_PROFILE_DEV_STRIP')
+        os.environ['CARGO_PROFILE_DEV_STRIP'] = 'debuginfo'
+        os.environ['CARGO_TARGET_DIR'] = str(Path(os.environ['TMPDIR']) / 'upgrade-original-target')
+        try:
+            original_cli = build_cli(baseline, args.toolchain, False)
+            original_broker = authority.build_authority(baseline, args.toolchain, 'test')
+        finally:
+            if strip is None:
+                os.environ.pop('CARGO_PROFILE_DEV_STRIP', None)
+            else:
+                os.environ['CARGO_PROFILE_DEV_STRIP'] = strip
+            if target is None:
+                os.environ.pop('CARGO_TARGET_DIR', None)
+            else:
+                os.environ['CARGO_TARGET_DIR'] = target
+        original = dict(source_commit=baseline_commit, cli_sha256=digest(original_cli),
+                        broker_sha256=digest(original_broker), authority_replaced=False)
+        cases = tuple((case, count) for case, count in CASES if case.endswith('drain_allows_original_completion'))
+        assert len(cases) == 2
     assert authority.authority_state_is_clear()
     prior_stages = staging_paths()
     installer = ['sudo', '-n', sys.executable, str(Path(__file__).with_name('authority_install.py'))]
@@ -83,6 +111,8 @@ def main():
                   authority_sha256=expected, fixture_sha256=digest(fixture), cli_strip='debuginfo',
                   workflow_sha256=digest(workflow), cli_sha256=digest(cli),
                   rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip())
+    if original:
+        report['upgrade_original'] = original
     timeout_error = None
     try:
         command = ['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
@@ -96,9 +126,15 @@ def main():
                    str(fixture), '--exact',
                    'authority::allocator::native_tests::provisioned_cli_workflow',
                    '--ignored', '--nocapture', '--color', 'never']
+        if original:
+            command[3:3] = ['FSM_NATIVE_WORKFLOW_UPGRADE=1',
+                            'FSM_NATIVE_WORKFLOW_ORIGINAL_CLI_ARTIFACT=' + str(original_cli),
+                            'FSM_NATIVE_WORKFLOW_ORIGINAL_CLI_SHA256=' + original['cli_sha256'],
+                            'FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_ARTIFACT=' + str(original_broker),
+                            'FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_SHA256=' + original['broker_sha256']]
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True,
-                                    timeout=WORKFLOW_TIMEOUT_SECONDS)
+                                    timeout=60 + sum(30 * count + 20 for _, count in cases))
         except subprocess.TimeoutExpired as error:
             timeout_error = error
             result = subprocess.CompletedProcess(command, None, error.stdout or b'', error.stderr or b'')
@@ -110,7 +146,7 @@ def main():
         report['cases'] = [dict(case=case, scenarios=count,
                                passed=result.stdout.splitlines().count(
                                    f'FSM_NATIVE_WORKFLOW_CASE {case} {count}'.encode()) == 1)
-                           for case, count in CASES]
+                           for case, count in cases]
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))
@@ -120,16 +156,30 @@ def main():
                 _, case, response = line.split(b' ', 2)
                 transcripts.append(dict(case=case.decode(), **json.loads(response)))
         if report['passed']:
-            expected_cases = [case for case, _ in CASES if 'failed_stop::' in case]
+            expected_cases = [case for case, _ in cases if 'failed_stop::' in case]
             assert [row['case'] for row in transcripts] == [case for case in expected_cases for _ in range(3)]
             assert [row['ordinal'] for row in transcripts] == [0, 1, 2] * len(expected_cases)
             assert [row['success'] for row in transcripts] == [False, True, True] * len(expected_cases)
-        transcript_path = args.report.with_name('workflow-transcripts.json')
+        if original:
+            upgrade_transcripts = []
+            for line in result.stdout.splitlines():
+                if line.startswith(b'FSM_NATIVE_UPGRADE_TRANSCRIPT '):
+                    _, case, response = line.split(b' ', 2)
+                    upgrade_transcripts.append(dict(case=case.decode(), **json.loads(response)))
+            if report['passed']:
+                assert [row['phase'] for row in upgrade_transcripts] == ['retained', 'stop', 'drained'] * 2
+                assert [row['case'] for row in upgrade_transcripts] == [case for case, _ in cases for _ in range(3)]
+            report['upgrade_transcripts'] = upgrade_transcripts
+        transcript_path = args.report.with_name('upgrade-transcripts.json' if original else 'workflow-transcripts.json')
         transcript_path.write_text(json.dumps(dict(
             source_commit=commit, source_dirty=False,
-            command='fsm --json --data-dir "$data_directory" execute reconcile --run-id "$run_id" --timeout-ms 8000',
-            entries=transcripts), indent=2) + '\n')
+            command=('fsm execute runs; fsm execute stop --mode drain --timeout-ms 5000; fsm execute runs' if original else
+                     'fsm --json --data-dir "$data_directory" execute reconcile --run-id "$run_id" --timeout-ms 8000'),
+            entries=upgrade_transcripts if original else transcripts), indent=2) + '\n')
         report['transcripts_sha256'] = digest(transcript_path)
+        if original:
+            assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=baseline, text=True).strip() == baseline_commit
+            assert not subprocess.check_output(['git', 'status', '--porcelain'], cwd=baseline)
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == commit
         assert not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=repo)
     finally:
@@ -151,7 +201,7 @@ def main():
         subprocess.run([*installer, 'remove', '--device', str(installed['device']),
                         '--inode', str(installed['inode']), '--sha256', expected], check=True, timeout=10)
     args.report.write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(dict(report=str(args.report), passed=report['passed'], scenarios=sum(count for _, count in CASES), gate_released=False)))
+    print(json.dumps(dict(report=str(args.report), passed=report['passed'], scenarios=sum(count for _, count in cases), gate_released=False)))
     return 0 if report['passed'] else 1
 
 
