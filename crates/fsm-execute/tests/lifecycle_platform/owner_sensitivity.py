@@ -109,7 +109,7 @@ def main():
                 if association:
                     passed = passed and b'association deadline must expire while its original authority lock is held' in output
                 elif claim_binding:
-                    passed = passed and b'unwrap_err()' in output and b'Ok value: ()' in output
+                    passed = passed and b'unwrap_err()' in output and b'on an `Ok` value: ()' in output
                 else:
                     passed = passed and b'unwrap_err()' in output and b'interrupted' in output
             else:
