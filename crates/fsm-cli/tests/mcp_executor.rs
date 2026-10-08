@@ -224,16 +224,19 @@ fn durable_ownership_counts_are_read_only_and_do_not_invent_live_health() {
         handler_fingerprint: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         retry: &retry, domain: &domain, request_id: "claim", expected_seq: None,
     }).unwrap();
-    fn files(path: &std::path::Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+    fn files(
+        path: &std::path::Path,
+        locked_file: Option<&std::path::Path>,
+    ) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
         let mut result = std::collections::BTreeMap::new();
         for entry in std::fs::read_dir(path).unwrap() {
             let entry = entry.unwrap();
             if entry.file_type().unwrap().is_dir() {
-                result.extend(files(&entry.path()));
+                result.extend(files(&entry.path(), locked_file));
             } else {
                 // Windows denies reading the writer's exclusively locked
                 // advisory PID file; retain its presence and metadata length.
-                let bytes = if cfg!(windows) && entry.file_name() == "LOCK" {
+                let bytes = if cfg!(windows) && locked_file == Some(entry.path().as_path()) {
                     entry.metadata().unwrap().len().to_le_bytes().to_vec()
                 } else {
                     std::fs::read(entry.path()).unwrap()
@@ -243,7 +246,8 @@ fn durable_ownership_counts_are_read_only_and_do_not_invent_live_health() {
         }
         result
     }
-    let before = files(&directory.0);
+    let locked_file = directory.0.join("journal/LOCK");
+    let before = files(&directory.0, Some(&locked_file));
     let mut reader = Store::open_read_only(&directory.0).unwrap();
     let report = discover(Some(&mut reader), None);
     assert_eq!(
@@ -256,7 +260,7 @@ fn durable_ownership_counts_are_read_only_and_do_not_invent_live_health() {
         report.get("external_executor"),
         Some(&Value::Str("unknown".into()))
     );
-    assert_eq!(files(&directory.0), before);
+    assert_eq!(files(&directory.0, Some(&locked_file)), before);
     let encoded = String::from_utf8(fsm_core::canon::canon_bytes(
         report.get("execution_ownership").unwrap(),
     ))
@@ -267,4 +271,31 @@ fn durable_ownership_counts_are_read_only_and_do_not_invent_live_health() {
         discover(None, None).get("execution_ownership"),
         Some(&Value::Null)
     );
+    let sequence = reader.journal.last_seq;
+    let segment = directory.0.join("journal").join(&writer.journal.seg_name);
+    drop(reader);
+    drop(writer);
+    // SPEC Recovery permits inspection of the verified prefix without
+    // repairing an unterminated final append or inventing native health.
+    let mut bytes = std::fs::read(&segment).unwrap();
+    bytes.extend_from_slice(br#"{"seq":"#);
+    std::fs::write(&segment, &bytes).unwrap();
+    let before = files(&directory.0, None);
+    let mut reader = Store::open_read_only(&directory.0).unwrap();
+    assert_eq!(reader.journal.last_seq, sequence);
+    let prefix_report = discover(Some(&mut reader), None);
+    assert_eq!(
+        prefix_report.get("mode").and_then(Value::as_str),
+        Some("read-only")
+    );
+    assert_eq!(
+        prefix_report.get("execution_ownership"),
+        report.get("execution_ownership")
+    );
+    assert_eq!(
+        prefix_report.get("external_executor"),
+        Some(&Value::Str("unknown".into()))
+    );
+    assert_eq!(files(&directory.0, None), before);
+    assert_eq!(std::fs::read(&segment).unwrap(), bytes);
 }
