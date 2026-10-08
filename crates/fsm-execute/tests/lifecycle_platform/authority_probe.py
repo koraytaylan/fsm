@@ -34,7 +34,9 @@ INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_doma
          'admission_cases::completion_proof_cases::completion_refuses_closure_for_another_journal_claim',
          'admission_cases::completion_proof_cases::execution_refuses_completion_for_another_journal_claim',
          'admission_cases::completion_proof_cases::publication_refuses_closure_for_another_journal_claim_before_attestation',
-         'broker_cases::shutdown_closure_cases::shutdown_refuses_closure_for_another_journal_claim')
+         'broker_cases::shutdown_closure_cases::shutdown_refuses_closure_for_another_journal_claim',
+         'admission_cases::completion_proof_cases::application_cases::application_refuses_completion_for_another_journal_claim',
+         'admission_cases::completion_proof_cases::application_cases::settlement_refuses_completion_for_another_journal_claim')
 
 
 def authority_log_name(case):

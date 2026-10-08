@@ -12,6 +12,9 @@ use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
+#[path = "completion_application_native_tests.rs"]
+mod application_cases;
+
 #[test]
 #[ignore = "requires installed production gate and writable provisioned root cgroups"]
 fn completion_refuses_closure_for_another_journal_claim() {

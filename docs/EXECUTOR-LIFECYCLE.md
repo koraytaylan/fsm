@@ -1535,3 +1535,12 @@ claim and journal remain unchanged throughout; frozen `e3f8769f` independently
 verifies original/neutralized/restored exits 0/101/0 on Linux stable/MSRV,
 scoped verdict `27f1a73340c01cb12e36b53db3014475052e9e258c0942c9a3b1b503b913dcc0`,
 without establishing full integration or task completion.
+
+The `application-closure-claim` and `settlement-closure-claim` checkpoints
+exercise retained `NativeExecution::settle` and direct
+`Pipeline::settle_native_stopped` using genuine completed and stopped runs;
+Root temporarily corrupts and restores actual retired receipt/attestation
+bytes, and the public verifier captures an opaque completion for the wrong
+journal hash, so neither private proof construction nor store-memory mutation
+can substitute for these current-ownership checks; native runtime verification
+of both new cases remains pending.
