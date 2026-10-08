@@ -397,6 +397,12 @@ an absent one. `RUSTUP_TOOLCHAIN` is what makes the matrix real;
 `rust-toolchain.toml` pins 1.89.0 locally, and without that environment
 variable every "stable" leg would silently run the pinned toolchain.
 
+Full automatic gates run on develop pushes, tag pushes and pull requests.
+Preserved checkpoint branches use explicit workflow dispatch, including the
+native-only checkpoint mode, so preserving work does not repeat a full matrix
+after every focused change; frozen integration checkpoints still require the
+complete relevant matrix before final review.
+
 Before requesting review, every code change runs the stable host gate:
 
 ```console

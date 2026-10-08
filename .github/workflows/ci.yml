@@ -1,4 +1,4 @@
-# The gate from docs/RELEASE.md on every push and pull request: formatting,
+# The gate from docs/RELEASE.md on develop/tag pushes and pull requests: formatting,
 # both test profiles, clippy with warnings denied, and warning-free docs — on
 # Linux, macOS and Windows, at stable and the minimum supported Rust version.
 #
@@ -18,6 +18,10 @@ name: ci
 
 on:
   push:
+    branches:
+      - develop
+    tags:
+      - "*"
   pull_request:
   workflow_dispatch:
     inputs:
