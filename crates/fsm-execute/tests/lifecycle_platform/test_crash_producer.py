@@ -79,6 +79,7 @@ class Retirement(unittest.TestCase):
                 else:
                     self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 evidence = json.loads(report.read_text())
+                self.assertEqual(evidence['scope'], 'pre-publication')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
                 self.assertFalse(evidence['gate_released'])
                 self.assertEqual(run.call_args_list[0].kwargs['timeout'], 700)

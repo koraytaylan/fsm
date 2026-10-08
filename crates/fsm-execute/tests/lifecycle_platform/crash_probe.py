@@ -1,4 +1,4 @@
-"""Run quiet/noisy candidate-result crash cases only on disposable Linux CI."""
+"""Run quiet/noisy pre-publication crash cases only on disposable Linux CI."""
 import argparse
 import hashlib
 import json
@@ -37,7 +37,7 @@ def main():
     args.report.parent.mkdir(parents=True, exist_ok=True)
     report = dict(schema='fsm.native-lifecycle-crash/1', source_commit=commit,
                   source_dirty=False, gate_released=False, passed=False,
-                  scope='candidate-result', authority_sha256=expected,
+                  scope='pre-publication', authority_sha256=expected,
                   fixture_sha256=digest(fixture), cli_strip='debuginfo',
                   artifacts={name: dict(path=str(path), sha256=digest(path))
                              for name, path in artifacts.items()},
