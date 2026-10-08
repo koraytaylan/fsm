@@ -1,7 +1,9 @@
 # Releasing
 
 Allocator-side `prepare-owned` leases and binding/closure checks are implemented;
-client guard transfer and absent-binding recovery remain unimplemented and unverified.
+absent-binding reconciliation now reuses exact claim validation while holding both
+original leases, but client guard transfer remains unimplemented and native
+acceptance of this recovery path remains unverified.
 Before claiming pre-run recovery support, acceptance must prove
 continuous guard transfer, public-entry enforcement and refusal of missing or
 legacy ownership material before claiming pre-run reconciliation support.

@@ -24,6 +24,17 @@ pub(super) fn reconcile_claimed(directory: &Path, payload: &Value) -> Result<Val
     // Never create missing ownership material or race original publication.
     let _original_runner = super::super::runner_lease::acquire_existing(directory, allocation)?;
     refuse_completion_material(directory, allocation, claim.run_id())?;
+    if _owner.is_some() {
+        match std::fs::symlink_metadata(directory.join(format!("binding-{allocation}.json"))) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // Both original leases exclude preparation and entry while bind
+                // authenticates the current claim against the original store.
+                super::super::bind(directory, payload)?;
+            }
+            Err(error) => return Err(super::super::io(error)),
+        }
+    }
     close_claimed(directory, payload)
 }
 

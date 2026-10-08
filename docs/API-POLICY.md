@@ -3,7 +3,9 @@
 The additive internal `prepare-owned` route publishes protected runner and
 operator owner leases before a `prepared-owned` domain; binding and closure
 check that owner lease, with no journal format, hash or error-code change.
-Client guard transfer and complete pre-run recovery remain unimplemented;
+Absent-binding reconciliation validates the exact original claim under both
+leases before publication; client guard transfer and complete pre-run recovery
+remain unimplemented;
 legacy allocations cannot be retrofitted to infer retirement.
 
 Repeated operator reconciliation may now return an exact original settlement

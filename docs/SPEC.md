@@ -2795,8 +2795,9 @@ original claim. No force-clear, age threshold or kill-by-PID fallback is allowed
 The internal `prepare-owned` broker route now establishes both leases before
 publishing a `prepared-owned` domain, and binding requires its operator lease
 to be held; reconciliation retains that lease before considering closure.
-Client guard transfer and absent-binding recovery remain unimplemented, so this
-route does not establish end-to-end pre-run reconciliation support.
+Reconciliation can publish an absent original binding after exact claim validation
+while retaining both original leases; client guard transfer remains unimplemented,
+so this route does not establish end-to-end pre-run reconciliation support.
 The planned pre-run ownership extension is not complete. Its allocator MUST
 establish both the protected runner lease and a separate owner lease before
 delivering a domain that may be claimed. The owner lease MUST be created by the

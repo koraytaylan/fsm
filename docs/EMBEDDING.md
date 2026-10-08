@@ -3,7 +3,9 @@
 Planned pre-run ownership requires an owned lease guard spanning prepared-domain
 delivery, uncertain claim publication, binding and execution without an unlock
 gap; cloning `NativeDomain` cannot replace it, and client guard transfer remains
-unimplemented despite allocator-side `prepare-owned` leases and binding checks.
+unimplemented despite allocator-side `prepare-owned` leases and binding checks;
+absent-binding reconciliation retains both original leases through exact claim
+validation and protected binding publication, with native acceptance pending.
 
 `service::reconcile_run` may replay an already settled run under a healthy writer
 using its original claim and settlement request ledger; replay returns the
