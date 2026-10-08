@@ -134,38 +134,60 @@ pub(super) fn reconcile_original_closure_via_cli(
     for ordinal in 0..3 {
         let output_path = directory.0.join(format!("reconcile-stdout-{ordinal}"));
         let error_path = directory.0.join(format!("reconcile-stderr-{ordinal}"));
-        let mut reconciliation = Command::new(directory.executable())
-            .args(["--json", "--data-dir"])
-            .arg(directory.store())
-            .args([
-                "execute",
-                "reconcile",
-                "--run-id",
-                &claim.run_id().to_string(),
-                "--timeout-ms",
-                "8000",
-            ])
-            .stdin(Stdio::null())
-            .stdout(fs::File::create(&output_path).unwrap())
-            .stderr(fs::File::create(&error_path).unwrap())
-            .spawn()
-            .unwrap();
         let deadline = Instant::now() + Duration::from_secs(12);
         let status = loop {
-            if let Some(status) = reconciliation.try_wait().unwrap() {
-                break status;
+            let mut reconciliation = Command::new(directory.executable())
+                .args(["--json", "--data-dir"])
+                .arg(directory.store())
+                .args([
+                    "execute",
+                    "reconcile",
+                    "--run-id",
+                    &claim.run_id().to_string(),
+                    "--timeout-ms",
+                    "8000",
+                ])
+                .stdin(Stdio::null())
+                .stdout(fs::File::create(&output_path).unwrap())
+                .stderr(fs::File::create(&error_path).unwrap())
+                .spawn()
+                .unwrap();
+            let status = loop {
+                if let Some(status) = reconciliation.try_wait().unwrap() {
+                    break status;
+                }
+                if Instant::now() >= deadline {
+                    // Retire only the child owned by this fixture, retaining native
+                    // authority evidence for the supervisor's authenticated cleanup.
+                    let _ = reconciliation.kill();
+                    reconciliation.wait().unwrap();
+                    panic!("original-run CLI reconciliation exceeded its fixture deadline");
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            };
+            assert!(fs::metadata(&output_path).unwrap().len() <= 8192);
+            assert!(fs::metadata(&error_path).unwrap().len() <= 8192);
+            if ordinal == 1 && !status.success() {
+                let refusal = parse(&fs::read(&error_path).unwrap(), &JsonLimits::DEFAULT).unwrap();
+                if refusal.get("code").and_then(Value::as_str) == Some("exec/inflight_deferred")
+                    && refusal.get("message").and_then(Value::as_str)
+                        == Some("native shutdown refused: authority busy")
+                {
+                    assert!(fs::read(&output_path).unwrap().is_empty());
+                    assert_eq!(
+                        Store::open_read_only(&directory.store()).unwrap().records,
+                        records
+                    );
+                    assert!(
+                        Instant::now() < deadline,
+                        "original authority remained busy through the reconciliation deadline"
+                    );
+                    std::thread::sleep(Duration::from_millis(5));
+                    continue;
+                }
             }
-            if Instant::now() >= deadline {
-                // Retire only the child owned by this fixture, retaining native
-                // authority evidence for the supervisor's authenticated cleanup.
-                let _ = reconciliation.kill();
-                reconciliation.wait().unwrap();
-                panic!("original-run CLI reconciliation exceeded its fixture deadline");
-            }
-            std::thread::sleep(Duration::from_millis(5));
+            break status;
         };
-        assert!(fs::metadata(&output_path).unwrap().len() <= 8192);
-        assert!(fs::metadata(&error_path).unwrap().len() <= 8192);
         if ordinal == 0 {
             assert!(!status.success());
             let refusal = parse(&fs::read(&error_path).unwrap(), &JsonLimits::DEFAULT).unwrap();
