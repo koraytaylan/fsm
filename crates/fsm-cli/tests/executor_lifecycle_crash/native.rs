@@ -21,6 +21,9 @@ const MACHINE: &[u8] = br#"{
 #[path = "native/authorization.rs"]
 mod authorization;
 
+#[path = "native/repeated.rs"]
+mod repeated;
+
 struct Host {
     process: Child,
     input: Option<std::process::ChildStdin>,
@@ -216,6 +219,10 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     assert!(matches!(field(&manifest, "kind"), "process" | "mcp"));
     let store = PathBuf::from(field(&manifest, "store"));
     let resource = PathBuf::from(field(&manifest, "resource"));
+    if field(&manifest, "behavior") == "repeated-noisy" {
+        repeated::observe(&manifest, &store, &resource);
+        return;
+    }
     let mut writer = Store::open(&store).unwrap();
     writer
         .define_machine(parse(MACHINE, &JsonLimits::DEFAULT).unwrap(), false, false)

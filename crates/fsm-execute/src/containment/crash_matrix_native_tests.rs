@@ -51,6 +51,7 @@ fn provisioned_lifecycle_candidate_matrix() {
                 "event-result",
                 "claimed-result",
                 "authorization",
+                "repeated-noisy",
             ] {
                 scenario(
                     &staging,
@@ -82,6 +83,21 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         let path = resource.join(format!("{role}-entered"));
         fs::write(&path, b"").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
+    }
+    if behavior == "repeated-noisy" {
+        for index in 0..12 {
+            let directory = resource.join(format!("run-{index}"));
+            fs::DirBuilder::new()
+                .mode(0o777)
+                .create(&directory)
+                .unwrap();
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o777)).unwrap();
+            for role in ["root", "child", "grandchild"] {
+                let slot = directory.join(format!("{role}-entered"));
+                fs::write(&slot, b"").unwrap();
+                fs::set_permissions(slot, fs::Permissions::from_mode(0o666)).unwrap();
+            }
+        }
     }
     let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
     // Leave room for the longest control label and its private socket suffix.
@@ -240,6 +256,17 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     if behavior == "supervisor-death" {
         assert!(supervisor_killed && supervisor_restarted);
     }
+    if behavior == "repeated-noisy" {
+        let observations: Vec<_> = output
+            .split(|byte| *byte == b'\n')
+            .filter(|line| line.starts_with(b"FSM_NATIVE_RESOURCE_OBSERVATION "))
+            .collect();
+        assert_eq!(observations.len(), 12);
+        for observation in observations {
+            std::io::stdout().lock().write_all(observation).unwrap();
+            std::io::stdout().lock().write_all(b"\n").unwrap();
+        }
+    }
     verify(&fixture, behavior);
     memory_limits::archive(&fixture, staging);
     writeln!(
@@ -350,6 +377,22 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
             object([("event", Value::Str("done".into()))]),
         ),
     ]);
+    if behavior == "repeated-noisy" {
+        handler.insert(
+            "argv".into(),
+            Value::Arr(
+                [
+                    executable.to_str().unwrap(),
+                    kind,
+                    "{directory}",
+                    "noisy-exit",
+                ]
+                .into_iter()
+                .map(|value| Value::Str(value.into()))
+                .collect(),
+            ),
+        );
+    }
     if kind == "mcp" {
         handler.insert("tool".into(), Value::Str("run".into()));
         handler.insert("arguments".into(), object([]));
@@ -377,7 +420,9 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .iter()
                 .filter(|record| record.kind == kind)
                 .count(),
-            if matches!(
+            if behavior == "repeated-noisy" {
+                12
+            } else if matches!(
                 behavior,
                 "collected-result"
                     | "closed-result"

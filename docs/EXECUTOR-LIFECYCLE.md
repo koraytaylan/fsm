@@ -1485,3 +1485,14 @@ and exits while both descendants retain stdout and stderr until their own
 release. Independent portable observers require the complete noise stream,
 successful root exit and delayed pipe EOF; this prepares repeated-host native
 resource acceptance but does not establish that acceptance or native closure.
+
+The forty-eight-scenario crash/resource coordinator adds twelve sequential
+`noisy-exit` trees in each standalone/embedded process/MCP host. Each run uses
+a separate protected observation directory and effect-argument substitution;
+the observer pins one host PID/birth token, checks prior tree death and matched
+store/claim closure before successor entry, and compares host descriptor/thread
+counts and RSS at the same held-candidate phase after warm-up. The finite
+fixture permits two transient descriptors/tasks and 16 MiB RSS growth, and
+requires twelve claim/stop/settlement/event records. This extension remains
+unverified natively and does not complete 9404 or establish an unlimited-run
+resource bound.
