@@ -1,8 +1,6 @@
 //! Independent native process/MCP tree observer around production execution.
 
-use super::super::super::{
-    bind, closure, identity, number, object, read_value, runner, stop, text,
-};
+use super::super::super::{bind, closure, identity, number, object, read_value, runner, text};
 use super::{Fixture, claim_binding};
 use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
@@ -19,6 +17,8 @@ use advance::settle_owned;
 mod claim_host;
 #[path = "runner_handoff_recovery_native_tests.rs"]
 mod handoff_recovery;
+#[path = "runner_orphan_recovery_native_tests.rs"]
+mod orphan_recovery;
 #[path = "runner_recovery_native_tests.rs"]
 mod recovery;
 #[path = "runner_retry_native_tests.rs"]
@@ -262,7 +262,8 @@ pub(super) fn run() {
             fields.insert("handlers".into(), Value::Arr(handlers));
             table = Value::Obj(fields);
         }
-        let mut fixture = if mode.starts_with("process-recover-") {
+        let mut fixture = if mode.starts_with("process-recover-") || mode.starts_with("uncertain-")
+        {
             Fixture::new_for_operator(table)
         } else {
             Fixture::new_for_table(table)
@@ -418,18 +419,16 @@ pub(super) fn run() {
             assert_unresolved(&fixture, &effect);
             assert!(runner::recover(&fixture.directory, 1).is_err());
             assert!(runner::execute(&fixture.directory, 1).is_err());
-            // Restore only the exact fixture-owned fault, then independently
-            // close the domain; this cannot relabel the failed execution.
+            // Restore only the exact fixture-owned fault; startup must obtain
+            // its own original-domain proof before settling the interrupted run.
             fs::write(&handoff_path, saved_handoff).unwrap();
             fs::File::open(&handoff_path).unwrap().sync_all().unwrap();
             fs::File::open(&fixture.directory)
                 .unwrap()
                 .sync_all()
                 .unwrap();
-            let _ = stop::request(&fixture.directory, 1);
-            closure::complete(&fixture.directory, 1).unwrap();
+            orphan_recovery::resume(&fixture);
             VerifiedClosure::read(&receipt).unwrap();
-            assert_unresolved(&fixture, &effect);
             fixture.cleanup().unwrap();
             continue;
         }
