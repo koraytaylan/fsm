@@ -20,7 +20,6 @@ mod workflow_race;
 
 #[path = "workflow_stdio/mod.rs"]
 mod workflow_stdio;
-
 const OPERATIONS: [&str; 7] = [
     "check_prerequisite",
     "check_identity",
@@ -695,8 +694,8 @@ fn run_scenario_mode(
     let mut competitor =
         (failures == "race").then(|| workflow_race::contend(&directory, &mut client));
     #[cfg(target_os = "linux")]
-    if failures.starts_with("crash-") {
-        competitor = Some(workflow_race::restart_at_cut(
+    if failures.starts_with("crash-") || failures.starts_with("full-disk") {
+        competitor = Some(workflow_race::restart_after_fault(
             &directory,
             &mut client,
             first_owner.as_mut(),
@@ -774,7 +773,8 @@ fn run_scenario_mode(
                     |entry| entry.get("kind").and_then(Value::as_str) == Some("ExecutionSettled")
                 )
                 .count(),
-            acked + usize::from(failures.starts_with("crash-"))
+            acked
+                + usize::from(failures.starts_with("crash-") || failures.starts_with("full-disk"))
         );
         acked
     } else {
@@ -785,7 +785,8 @@ fn run_scenario_mode(
     };
     assert_eq!(
         acknowledgements,
-        expected_calls.len() - usize::from(failures.starts_with("crash-"))
+        expected_calls.len()
+            - usize::from(failures.starts_with("crash-") || failures.starts_with("full-disk"))
     );
     assert_eq!(
         text(&client.call("journal_verify", object([])), "health"),

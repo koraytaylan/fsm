@@ -25,6 +25,8 @@ CASES = (
     ('workflow_race::crash::interrupted_standalone_recovers_without_overlapping_trees', 1),
     ('workflow_race::crash::terminated_embedded_recovers_without_overlapping_trees', 1),
     ('workflow_race::crash::interrupted_embedded_recovers_without_overlapping_trees', 1),
+    ('workflow_race::full_disk::standalone_full_disk_stop_preserves_claim_and_recovers', 1),
+    ('workflow_race::full_disk::embedded_full_disk_stop_preserves_claim_and_recovers', 1),
     ('borrowed_embedded_handlers_complete_the_workflow', 1),
 )
 

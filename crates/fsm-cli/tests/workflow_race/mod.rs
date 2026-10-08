@@ -4,7 +4,21 @@ use fsm_core::record::RecordKind;
 use fsm_store::store::Store;
 
 mod crash;
-pub(super) use crash::{configure_table, restart_at_cut};
+mod full_disk;
+pub(super) use crash::configure_table;
+
+pub(super) fn restart_after_fault(
+    directory: &Directory,
+    client: &mut Client,
+    original: Option<&mut Competitor>,
+    failures: &str,
+) -> Competitor {
+    if failures.starts_with("full-disk") {
+        full_disk::restart_after_full_disk(directory, client, original)
+    } else {
+        crash::restart_at_cut(directory, client, original, failures)
+    }
+}
 
 pub(super) fn holds_tree(argument: &str) -> bool {
     matches!(
@@ -18,6 +32,8 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=crash-int"
             | "handler-failures=crash-embedded-term"
             | "handler-failures=crash-embedded-int"
+            | "handler-failures=full-disk"
+            | "handler-failures=full-disk-embedded"
     )
 }
 

@@ -66,6 +66,9 @@ mod broker_cases;
 #[path = "workflow_native_tests.rs"]
 mod workflow_cases;
 
+#[path = "full_disk_native_tests.rs"]
+mod full_disk;
+
 #[test]
 #[ignore = "requires exact staged CLI artifacts and provisioned root native authority"]
 fn provisioned_cli_workflow() {
@@ -99,6 +102,7 @@ struct Fixture {
     groups: Vec<(PathBuf, Value)>,
     created_base: bool,
     memory_limits: Option<(memory_limits::Limits, PathBuf)>,
+    full_disk_identity: Option<Value>,
 }
 
 impl Fixture {
@@ -125,6 +129,10 @@ impl Fixture {
     }
 
     fn new_for_table_location(table: Value, operator_store: bool) -> Self {
+        Self::new_for_storage(table, operator_store, full_disk::Storage::Ordinary)
+    }
+
+    fn new_for_storage(table: Value, operator_store: bool, storage: full_disk::Storage) -> Self {
         assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 0);
         protected_directory(Path::new(GROUPS)).unwrap();
         let seed = format!(
@@ -162,12 +170,14 @@ impl Fixture {
         } else {
             std::env::temp_dir().join(format!("fsm-native-authority-store-{namespace}"))
         };
+        let full_disk_identity = full_disk::install(&store, storage);
         let fixture = Self {
             directory,
             store,
             groups: Vec::new(),
             created_base,
             memory_limits: None,
+            full_disk_identity,
         };
         drop(Store::open(&fixture.store).unwrap());
         super::super::register(&fixture.directory, &fixture.store).unwrap();
@@ -265,6 +275,9 @@ impl Fixture {
         }
         if let Some((_, evidence)) = &self.memory_limits {
             memory_limits::archive(self, evidence);
+        }
+        if let Some(expected) = &self.full_disk_identity {
+            full_disk::retire(&self.store, expected)?;
         }
         fs::remove_dir_all(&self.store).map_err(io)?;
         fs::remove_dir_all(self.directory.parent().ok_or("namespace missing")?).map_err(io)?;

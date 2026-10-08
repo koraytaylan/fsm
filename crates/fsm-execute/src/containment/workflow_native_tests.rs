@@ -144,7 +144,7 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if failure.starts_with("crash-") {
+    let expected = if failure.starts_with("crash-") || failure.starts_with("full-disk") {
         8
     } else if failure == "suspend" {
         6
@@ -168,6 +168,8 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             | "crash-int"
             | "crash-embedded-term"
             | "crash-embedded-int"
+            | "full-disk"
+            | "full-disk-embedded"
     ) {
         assert!((expected as u64..=4096).contains(&last));
     } else {
@@ -194,13 +196,15 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         .filter(|record| record.kind == RecordKind::ExecutionSettled)
     {
         let disposition = record.body.get("disposition").and_then(Value::as_str);
-        if failure.starts_with("crash-") && number(&record.body, "run_id").unwrap() == 1 {
+        if (failure.starts_with("crash-") || failure.starts_with("full-disk"))
+            && number(&record.body, "run_id").unwrap() == 1
+        {
             assert!(matches!(disposition, Some("attempted" | "interrupted")));
         } else {
             assert_eq!(disposition, Some("acked"));
         }
     }
-    if failure.starts_with("crash-") {
+    if failure.starts_with("crash-") || failure.starts_with("full-disk") {
         let claims: Vec<_> = store
             .records
             .iter()
@@ -225,7 +229,10 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             .as_str()
             .unwrap();
         assert!(matches!(status, "timeout" | "interrupted"));
-        if failure.ends_with("-term") || failure.ends_with("-int") {
+        if failure.ends_with("-term")
+            || failure.ends_with("-int")
+            || failure.starts_with("full-disk")
+        {
             assert_eq!(
                 status, "interrupted",
                 "signal cleanup cannot be a handler timeout"
@@ -448,6 +455,14 @@ pub(super) fn run() {
             "workflow_race::crash::interrupted_embedded_recovers_without_overlapping_trees",
             vec!["crash-embedded-int"],
         ),
+        (
+            "workflow_race::full_disk::standalone_full_disk_stop_preserves_claim_and_recovers",
+            vec!["full-disk"],
+        ),
+        (
+            "workflow_race::full_disk::embedded_full_disk_stop_preserves_claim_and_recovers",
+            vec!["full-disk-embedded"],
+        ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];
     let selected = std::env::var("FSM_NATIVE_WORKFLOW_FILTER").ok();
@@ -499,7 +514,12 @@ pub(super) fn run() {
                     .len()
                     <= 107
             );
-            let fixture = Fixture::new_for_workflow(table(&helper, &resource, failure));
+            let catalogue = table(&helper, &resource, failure);
+            let fixture = if failure.starts_with("full-disk") {
+                Fixture::new_for_full_disk_workflow(catalogue)
+            } else {
+                Fixture::new_for_workflow(catalogue)
+            };
             let limits = memory_limits::Limits::install(&fixture);
             brokers.push(workflow_broker(&fixture.directory, &fixture.store));
             let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
