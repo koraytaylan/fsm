@@ -259,7 +259,11 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     let hash = snapshot.current_execution_claim_hash(&claim).unwrap();
     let records = snapshot.records.clone();
     drop(snapshot);
-    if field(&manifest, "behavior") == "collected-timeout" {
+    let collected_result = field(&manifest, "behavior") == "collected-result";
+    if collected_result {
+        fs::write(resource.join("root-release"), b"release").unwrap();
+    }
+    if collected_result || field(&manifest, "behavior") == "collected-timeout" {
         let ready = Path::new(field(&manifest, "authority"))
             .join(format!("crash-candidate-{}.json", claim.run_id()));
         let deadline = Instant::now() + Duration::from_secs(8);
@@ -280,9 +284,19 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         assert_eq!(observed.get("claim"), Some(&claim.to_value()));
         assert_eq!(
             observed.get("candidate"),
-            Some(&Value::Str("timeout".into()))
+            Some(&Value::Str(
+                if collected_result {
+                    field(&manifest, "kind")
+                } else {
+                    "timeout"
+                }
+                .into()
+            ))
         );
-        assert!(members.iter().all(live));
+        assert!(members[1..].iter().all(live));
+        if !collected_result || field(&manifest, "kind") == "mcp" {
+            assert!(live(&members[0]));
+        }
         assert_eq!(Store::open_read_only(&store).unwrap().records, records);
     }
     original.kill_and_wait();
@@ -335,6 +349,30 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     drop(blocked);
     drop(held);
     let successor = Host::start(&manifest, "verified-restart");
+    if collected_result {
+        wait_for_completion(&store, &successor);
+        assert_eq!(
+            fs::read(resource.join("root-entered")).unwrap(),
+            original_marker
+        );
+        let snapshot = Store::open_read_only(&store).unwrap();
+        for kind in [
+            RecordKind::ExecutionClaimed,
+            RecordKind::ExecutionStopped,
+            RecordKind::ExecutionSettled,
+        ] {
+            assert_eq!(
+                snapshot
+                    .records
+                    .iter()
+                    .filter(|record| record.kind == kind)
+                    .count(),
+                1
+            );
+        }
+        assert!(members.iter().all(|member| !live(member)));
+        return;
+    }
     let deadline = Instant::now() + Duration::from_secs(12);
     while fs::read(resource.join("root-entered")).unwrap() == original_marker {
         assert!(
@@ -375,9 +413,13 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     for role in ["grandchild", "child", "root"] {
         fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
     }
+    wait_for_completion(&store, &successor);
+}
+
+fn wait_for_completion(store: &Path, successor: &Host) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let snapshot = Store::open_read_only(&store).unwrap();
+        let snapshot = Store::open_read_only(store).unwrap();
         if snapshot.state.instances["instance"].pending.is_empty()
             && snapshot.state.execution.unresolved().count() == 0
             && snapshot.state.instances["instance"].status == fsm_core::machine::Status::Completed

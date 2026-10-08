@@ -154,7 +154,10 @@ fn object(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
 }
 
 fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if !matches!(behavior, "exit-root" | "hold-result" | "noisy-result") {
+    if !matches!(
+        behavior,
+        "exit-root" | "hold-exit" | "hold-result" | "noisy-result"
+    ) {
         return Err("unknown fixture behavior".into());
     }
     let mut child = spawn(directory, "child")?;
@@ -217,7 +220,7 @@ fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn s
             reply(&result)?;
         }
         mark(directory, "root", "published")?;
-        if behavior != "exit-root" {
+        if !matches!(behavior, "exit-root" | "hold-exit") {
             wait_for(&directory.join("root-release"))?;
             wait_for(&directory.join("child-retired"))?;
             child.wait()?;

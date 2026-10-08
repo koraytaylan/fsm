@@ -39,7 +39,12 @@ fn provisioned_lifecycle_candidate_matrix() {
     }
     for host in ["standalone", "embedded"] {
         for kind in ["process", "mcp"] {
-            for behavior in ["hold-result", "noisy-result", "collected-timeout"] {
+            for behavior in [
+                "hold-result",
+                "noisy-result",
+                "collected-timeout",
+                "collected-result",
+            ] {
                 scenario(
                     &staging,
                     &nonce[..24],
@@ -91,7 +96,7 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
     let catalogue = table(&staging.join("fixture"), &resource, case);
     let mut fixture = Fixture::new_for_workflow(catalogue.clone());
-    if behavior == "collected-timeout" {
+    if matches!(behavior, "collected-timeout" | "collected-result") {
         let request = fixture.directory.join("crash-candidate-barrier.json");
         fs::write(
             &request,
@@ -222,7 +227,9 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                     executable.to_str().unwrap(),
                     kind,
                     resource.to_str().unwrap(),
-                    if behavior == "collected-timeout" {
+                    if behavior == "collected-result" && kind == "process" {
+                        "hold-exit"
+                    } else if matches!(behavior, "collected-timeout" | "collected-result") {
                         "hold-result"
                     } else {
                         behavior
@@ -274,7 +281,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .iter()
                 .filter(|record| record.kind == kind)
                 .count(),
-            2
+            if behavior == "collected-result" { 1 } else { 2 }
         );
     }
     for record in store

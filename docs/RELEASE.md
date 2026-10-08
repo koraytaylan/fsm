@@ -27,10 +27,11 @@ The next test-only extension holds a Root-protected barrier after the native
 runner collects an attempt-one timeout candidate and before it closes the
 domain; the observer matches the original claim, confirms the tree remains
 live and the journal unchanged, then kills its executor and requires the same
-proved closure and sequential retry. This adds four collected-timeout cases
-to the eight pre-publication cases, but remains natively unverified; successful
-candidate collection and independent supervisor death remain open. Shipped
-binaries contain no barrier.
+proved closure and sequential retry. The matrix also observes successful process/MCP candidates after releasing
+only the root result, with descendants still live; restart must recover the
+original completion without another claim or handler entry. These sixteen
+cases remain natively unverified, and independent supervisor death remains
+open. Shipped binaries contain no barrier.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
