@@ -232,51 +232,57 @@ fn replay_original_while_successor_lives(fixture: &Fixture) {
         .unwrap()
         .records
         .clone();
-    let output = fixture.directory.join("stale-mcp-reconcile.stdout");
-    let errors = fixture.directory.join("stale-mcp-reconcile.stderr");
-    let mut child = Command::new("/usr/bin/python3")
-        .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-        .arg(fixture.directory.join("recovery-cli"))
-        .args(["--json", "--data-dir"])
-        .arg(&fixture.store)
-        .args(["execute", "reconcile", "--run-id", "1", "--timeout-ms", "1000"])
-        .stdin(Stdio::null())
-        .stdout(fs::File::create(&output).unwrap())
-        .stderr(fs::File::create(&errors).unwrap())
-        .spawn().unwrap();
+    // Start both production callers before waiting for either: duplicate
+    // reconciliation must remain idempotent while another run owns the tree.
+    let callers = [0, 1].map(|index| start_original_replay(fixture, index));
     let deadline = Instant::now() + Duration::from_secs(3);
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            break status;
+    let mut responses = Vec::new();
+    for (mut child, output, errors) in callers {
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                child.wait().unwrap();
+                panic!("stale MCP CLI replay exceeded its bound; authority retained");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert!(fs::metadata(&output).unwrap().len() <= 8192);
+        assert!(fs::metadata(&errors).unwrap().len() <= 8192);
+        responses.push((status, output, errors));
+    }
+    assert!(responses.iter().any(|(status, _, _)| status.success()));
+    for (status, output, errors) in responses {
+        if !status.success() {
+            // The store deliberately refuses simultaneous writers; contention
+            // is permitted only as the exact typed lock refusal.
+            assert_eq!(status.code(), Some(4));
+            assert!(fs::read(&output).unwrap().is_empty());
+            let refusal = fsm_core::json::parse(
+                &fs::read(&errors).unwrap(),
+                &fsm_core::json::JsonLimits::DEFAULT,
+            )
+            .unwrap();
+            assert_eq!(refusal.get("code"), Some(&Value::Str("store/lock".into())));
+            continue;
         }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            child.wait().unwrap();
-            panic!("stale MCP CLI replay exceeded its bound; authority retained");
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    };
-    assert!(fs::metadata(&output).unwrap().len() <= 8192);
-    assert!(fs::metadata(&errors).unwrap().len() <= 8192);
-    assert!(
-        status.success(),
-        "stale MCP CLI replay refused: {}",
-        String::from_utf8_lossy(&fs::read(&errors).unwrap())
-    );
-    let response = fsm_core::json::parse(
-        &fs::read(output).unwrap(),
-        &fsm_core::json::JsonLimits::DEFAULT,
-    )
-    .unwrap();
-    assert_eq!(response.get("duplicate"), Some(&Value::Bool(true)));
-    assert_eq!(
-        response.get("execution").unwrap().get("run_id"),
-        Some(&Value::Num("1".into()))
-    );
-    assert_eq!(
-        response.get("execution").unwrap().get("disposition"),
-        Some(&Value::Str("interrupted".into()))
-    );
+        let response = fsm_core::json::parse(
+            &fs::read(output).unwrap(),
+            &fsm_core::json::JsonLimits::DEFAULT,
+        )
+        .unwrap();
+        assert_eq!(response.get("duplicate"), Some(&Value::Bool(true)));
+        assert_eq!(
+            response.get("execution").unwrap().get("run_id"),
+            Some(&Value::Num("1".into()))
+        );
+        assert_eq!(
+            response.get("execution").unwrap().get("disposition"),
+            Some(&Value::Str("interrupted".into()))
+        );
+    }
     let observed = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(observed.records, before);
     assert_eq!(
@@ -290,6 +296,29 @@ fn replay_original_while_successor_lives(fixture: &Fixture) {
             .run_id(),
         2
     );
+}
+
+fn start_original_replay(
+    fixture: &Fixture,
+    index: usize,
+) -> (std::process::Child, PathBuf, PathBuf) {
+    let output = fixture
+        .directory
+        .join(format!("stale-reconcile-{index}.stdout"));
+    let errors = fixture
+        .directory
+        .join(format!("stale-reconcile-{index}.stderr"));
+    let child = Command::new("/usr/bin/python3")
+        .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
+        .arg(fixture.directory.join("recovery-cli"))
+        .args(["--json", "--data-dir"])
+        .arg(&fixture.store)
+        .args(["execute", "reconcile", "--run-id", "1", "--timeout-ms", "1000"])
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&output).unwrap())
+        .stderr(fs::File::create(&errors).unwrap())
+        .spawn().unwrap();
+    (child, output, errors)
 }
 
 #[test]
