@@ -16,7 +16,7 @@ and pre-run owner recovery remain pending, with no format or hash change.
 Published original completions in `service::reconcile_run` now use the same
 authenticated recovery and original settlement as startup, without current
 handlers or outcome-event dispatch; partial publications remain unresolved,
-and shared startup orphan closure and native acceptance remain pending.
+and native startup orphan-closure acceptance remains pending.
 
 The provisional `run::native_client::NativeCompletion` now checks a successful
 broker response against the original full claim/hash, closed result envelope,
@@ -1205,7 +1205,8 @@ does not provide closure proof or authorize retry.
 The claimed native runner holds a protected `runner-<allocation>.LOCK` file
 from binding validation through cleanup and original result publication;
 contention refuses entry, while an idle or missing lease proves neither owner
-death nor native closure, and reconciliation integration remains pending.
+death nor native closure; guarded reconciliation authenticates original closure
+separately, and pre-run owner recovery remains incomplete.
 The internal `reconcile-claimed` broker primitive holds an existing lease while
 validating the original binding and closing its domain; it refuses missing or
 active leases, preserves completion records, and performs no journal settlement.
@@ -1216,10 +1217,15 @@ Original attestations and complete or partial response files refuse closure-only
 reconciliation before fencing, retaining their bytes for authenticated recovery.
 Linux `service::reconcile_run` drives closure verification and helper retirement
 under a healthy writer before durable interrupted settlement without new entry;
-it refuses missing current run IDs and delegates result-bearing runs to recovery.
+it delegates result-bearing runs to recovery and replays settled runs only from
+their original verified claim, disposition and exact request-ledger entry.
+Unavailable original history refuses; replay performs no native query, append,
+event delivery or successor mutation.
 Use `fsm execute reconcile --data-dir <original-dir> --run-id <id>` to select
 that shared path with an 8000-ms default bound or an explicit `--timeout-ms`;
-missing stores and unknown current IDs refuse before opening a writer.
+missing stores and IDs with neither current ownership nor recorded settlement
+refuse before opening a writer; historical eligibility is revalidated by exact
+request replay under that writer.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not
