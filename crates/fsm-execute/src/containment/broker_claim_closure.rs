@@ -67,7 +67,34 @@ mod tests {
     use fsm_core::json::{JsonLimits, parse};
 
     #[test]
-    fn matching_original_binding_requires_full_claim_hash_and_domain() {
+    #[ignore = "requires a provisioned root-owned cache directory"]
+    fn reconciliation_refuses_live_or_missing_lease_before_authority_mutation() {
+        let root = std::path::PathBuf::from(
+            std::env::var_os("FSM_RUNNER_LEASE_NATIVE_ROOT")
+                .expect("native reconciliation test requires a protected cache root"),
+        );
+        assert!(!root.starts_with("/tmp"));
+        protected_directory(&root).unwrap();
+        let directory = root.join(format!("reconcile-entry-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        let binding = original_binding();
+        let missing = reconcile_claimed(&directory, &binding);
+        let missing_unchanged = std::fs::read_dir(&directory).unwrap().count() == 0;
+        let lease = super::super::super::runner_lease::acquire(&directory, 7).unwrap();
+        let active = reconcile_claimed(&directory, &binding);
+        let active_unchanged = std::fs::read_dir(&directory).unwrap().count() == 1;
+        drop(lease);
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert!(missing.is_err());
+        assert!(missing_unchanged);
+        assert_eq!(
+            active.unwrap_err(),
+            "original runner remains active or lease locking is unavailable"
+        );
+        assert!(active_unchanged);
+    }
+
+    fn original_binding() -> Value {
         let fixture = parse(
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -76,7 +103,7 @@ mod tests {
             &JsonLimits::DEFAULT,
         )
         .unwrap();
-        let original = Value::Obj(std::collections::BTreeMap::from([
+        Value::Obj(std::collections::BTreeMap::from([
             (
                 "format".into(),
                 Value::Str("fsm.native-claim-binding/1".into()),
@@ -86,7 +113,12 @@ mod tests {
                 "journal_claim".into(),
                 fixture.get("original_claim_hash").unwrap().clone(),
             ),
-        ]));
+        ]))
+    }
+
+    #[test]
+    fn matching_original_binding_requires_full_claim_hash_and_domain() {
+        let original = original_binding();
         let domain = claimed(&original).unwrap().domain().to_value();
         assert!(matches_original(&original, &original, &domain).is_ok());
         let Value::Obj(mut wrong_hash) = original.clone() else {
