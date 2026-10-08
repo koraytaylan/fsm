@@ -177,6 +177,7 @@ pub(super) fn reconcile_original_closure_via_cli(
             );
             assert_eq!(competing_writer.as_ref().unwrap().records, records);
             drop(competing_writer.take());
+            record_reconciliation_transcript(ordinal, claim.run_id(), status, refusal);
             continue;
         }
         assert!(
@@ -201,9 +202,32 @@ pub(super) fn reconcile_original_closure_via_cli(
             assert_eq!(observed.records.len(), records.len() + 2);
             settled = Some(observed.records.clone());
         }
+        record_reconciliation_transcript(ordinal, claim.run_id(), status, response);
     }
     let writer = Store::open(&directory.store()).unwrap();
     assert_original_interruption(writer, claim, records, instance)
+}
+
+fn record_reconciliation_transcript(
+    ordinal: u64,
+    run_id: u64,
+    status: std::process::ExitStatus,
+    response: Value,
+) {
+    let transcript = Value::Obj(BTreeMap::from([
+        ("ordinal".into(), Value::Num(ordinal.to_string())),
+        ("run_id".into(), Value::Num(run_id.to_string())),
+        ("success".into(), Value::Bool(status.success())),
+        ("response".into(), response),
+    ]));
+    // Only verified fixture responses reach the retained native transcript;
+    // the command uses the original store and exact run with an 8000-ms bound.
+    writeln!(
+        std::io::stdout().lock(),
+        "FSM_NATIVE_RECONCILE_TRANSCRIPT {}",
+        String::from_utf8(canon_bytes(&transcript)).unwrap()
+    )
+    .unwrap();
 }
 
 fn assert_original_interruption(

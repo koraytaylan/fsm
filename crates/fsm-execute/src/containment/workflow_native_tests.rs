@@ -710,6 +710,15 @@ pub(super) fn run() {
             verify_native_runs(fixture, failure, &staging);
         }
         let mut report_output = std::io::stdout().lock();
+        for line in String::from_utf8_lossy(&output).lines() {
+            if let Some(transcript) = line.strip_prefix("FSM_NATIVE_RECONCILE_TRANSCRIPT ") {
+                writeln!(
+                    report_output,
+                    "FSM_NATIVE_RECONCILE_TRANSCRIPT {case} {transcript}"
+                )
+                .unwrap();
+            }
+        }
         writeln!(
             report_output,
             "FSM_NATIVE_WORKFLOW_CASE {case} {}",

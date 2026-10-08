@@ -135,6 +135,22 @@ def main():
         report['passed'] = (result.returncode == 0
                             and b'1 passed; 0 failed; 0 ignored;' in result.stdout
                             and all(row['passed'] for row in report['cases']))
+        transcripts = []
+        for line in result.stdout.splitlines():
+            if line.startswith(b'FSM_NATIVE_RECONCILE_TRANSCRIPT '):
+                _, case, response = line.split(b' ', 2)
+                transcripts.append(dict(case=case.decode(), **json.loads(response)))
+        if report['passed']:
+            expected = [case for case, _ in CASES if 'failed_stop::' in case]
+            assert [row['case'] for row in transcripts] == [case for case in expected for _ in range(3)]
+            assert [row['ordinal'] for row in transcripts] == [0, 1, 2] * len(expected)
+            assert [row['success'] for row in transcripts] == [False, True, True] * len(expected)
+        transcript_path = args.report.with_name('workflow-transcripts.json')
+        transcript_path.write_text(json.dumps(dict(
+            source_commit=commit, source_dirty=False,
+            command='fsm --json --data-dir "$data_directory" execute reconcile --run-id "$run_id" --timeout-ms 8000',
+            entries=transcripts), indent=2) + '\n')
+        report['transcripts_sha256'] = digest(transcript_path)
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip() == commit
         assert not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=repo)
     finally:
