@@ -80,7 +80,7 @@ pub(super) fn check_claim_store(
     discovery::check_claim(store, claim)
 }
 
-pub(super) fn completion_published(
+pub(crate) fn completion_published(
     store: &Path,
     claim: &fsm_core::record::execution::Claim,
 ) -> Result<bool, String> {

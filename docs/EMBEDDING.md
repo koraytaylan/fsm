@@ -1,7 +1,12 @@
 # Embedding fsm as a library
 
-`execute reconcile --run-id <id>` selects shared Linux closure-only recovery
-with an 8000-ms default bound; original-result recovery, startup wiring and
+Published original completions in `service::reconcile_run` now use the same
+authenticated recovery and original settlement as startup, without current
+handlers or outcome-event dispatch; partial publications remain unresolved,
+and shared startup orphan closure and native acceptance remain pending.
+
+`execute reconcile --run-id <id>` selects shared Linux original-run recovery
+with an 8000-ms default bound; startup orphan wiring and
 positive native orphan acceptance remain pending.
 
 `fsm_execute::service::inspect_runs(&store)` renders sanitized journal-derived

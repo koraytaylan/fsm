@@ -1,7 +1,12 @@
 # Releasing
 
+Published original completions in `service::reconcile_run` now use the same
+authenticated recovery and original settlement as startup, without current
+handlers or outcome-event dispatch; partial publications remain unresolved,
+and shared startup orphan closure and native acceptance remain pending.
+
 Added `execute reconcile --run-id <id> [--timeout-ms <ms>]` for shared Linux
-closure-only recovery; original-result and startup integration remain pending.
+original-run recovery; startup orphan integration remains pending.
 The client request policy now admits the exact claimed reconciliation action,
 fixing a refusal before broker dispatch found by genuine native acceptance.
 

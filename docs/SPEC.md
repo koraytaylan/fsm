@@ -2748,7 +2748,7 @@ capacity or establish a bounded production shutdown report.
 ### Planned uncertain-run inspection and reconciliation (task 9403)
 
 Production `execute runs` implements the journal-only inspection portion;
-`execute reconcile` now selects the shared closure-only path; original-result recovery and shared startup reconciliation remain incomplete.
+`execute reconcile` selects shared authenticated result recovery or guarded closure; shared startup orphan reconciliation remains incomplete.
 The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
 inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
 effect_id, backend, phase, native_evidence and next. The execution_ownership
@@ -2815,10 +2815,14 @@ an interrupted outcome. Existing original results require authenticated recovery
 `NativeShutdown::start_reconciliation` MUST select this guarded action while
 retaining shutdown's original claim, physical store and receipt verification;
 it MUST NOT treat the broker response alone as sufficient closure evidence.
-The shared `service::reconcile_run` closure-only path MUST require a healthy
-durable writer and its current exact run ID, authenticate closure and retire
-its helper before writing Stopped/Interrupted through the existing guarded
-settlement path. It MUST refuse absent runs, result material and active owners;
+The shared `service::reconcile_run` path MUST require a healthy durable writer
+and its current exact run ID. When original completion is published, it MUST
+use the same authenticated `NativeExecution::recover` and original settlement
+path as startup, retire its helper before settlement, and preserve the original
+contract and outcome without loading current handlers. Otherwise it MUST
+authenticate closure and retire its helper before writing Stopped/Interrupted
+through the existing guarded settlement path. Partial result material MUST
+remain uncertain. It MUST refuse absent runs and active owners;
 it MUST NOT load a replacement handler table, launch work or fabricate an event.
 `execute reconcile --run-id <id>` MUST select that shared path for canonical
 positive run IDs, with an optional finite `--timeout-ms` (default 8000), and

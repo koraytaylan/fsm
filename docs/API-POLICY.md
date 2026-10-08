@@ -1,11 +1,18 @@
 # API and version policy
 
+Published original completions in `service::reconcile_run` now use the same
+authenticated recovery and original settlement as startup, without current
+handlers or outcome-event dispatch; partial publications remain unresolved,
+and shared startup orphan closure and native acceptance remain pending.
+
 Additive `execute reconcile --run-id <id> [--timeout-ms <ms>]` selects Linux
-closure-only recovery; missing/active leases and original result material refuse,
+authenticated original-result recovery or guarded closure; missing/active leases
+and partial original result material refuse,
 with existing error codes and no journal format or hash changes.
 
 Task 9403 adds `execute runs` and `service::inspect_runs` as additive read-only
-inspection surfaces; closure-only reconciliation is implemented, while original-result and startup recovery remain incomplete.
+inspection surfaces; operator reconciliation is implemented, while startup
+orphan recovery remains incomplete.
 The additive `service::inspect_ownership` shares existing MCP ownership counts
 with the inspection report, without changing existing MCP field semantics.
 Inspection refuses an uninitialized directory using existing
@@ -18,7 +25,8 @@ additive Linux `service::reconcile_run` supplies the shared closure-only writer
 path without a replacement handler table or journal-format change;
 existing or partial original completion material now refuses closure-only
 reconciliation and requires authenticated result recovery instead;
-it provides closure only, with no public operator command or settlement authority.
+the internal broker primitive provides closure only, with no journal settlement
+authority.
 
 The native authority now retains additive protected runner lease files through
 result publication; journal versions, claim/binding formats and hash domains are

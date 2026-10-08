@@ -1,5 +1,10 @@
 # Executor lifecycle feasibility
 
+Published original completions in `service::reconcile_run` now use the same
+authenticated recovery and original settlement as startup, without current
+handlers or outcome-event dispatch; partial publications remain unresolved,
+and shared startup orphan closure and native acceptance remain pending.
+
 The provisional `run::native_client::NativeCompletion` now checks a successful
 broker response against the original full claim/hash, closed result envelope,
 canonical derived receipt path and existing failure classes, preserving the
