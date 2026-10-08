@@ -28,6 +28,11 @@ class Retirement(unittest.TestCase):
                    for case, count in probe.CASES]
         if missing:
             markers.pop()
+        for case, _ in probe.CASES:
+            if 'failed_stop::' in case:
+                markers.extend(f'FSM_NATIVE_RECONCILE_TRANSCRIPT {case} '.encode()
+                               + json.dumps(dict(ordinal=ordinal, success=ordinal != 0)).encode()
+                               for ordinal in range(3))
         output = b'\n'.join(markers) + b'\n1 passed; 0 failed; 0 ignored;\n'
         state = [initial, clear] if initial else [False]
         installed = dict(device=1, inode=2, sha256=probe.digest(artifact))
@@ -42,7 +47,7 @@ class Retirement(unittest.TestCase):
         native = (subprocess.TimeoutExpired(['mock-native'], 300, output=output, stderr=b'partial')
                   if timeout else result)
         with (
-            patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report)),
+            patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, upgrade_source=None)),
             patch.object(probe.authority, 'build_authority', return_value=artifact),
             patch.object(probe, 'build_cli', return_value=artifact),
             patch.object(probe.authority, 'authority_state_is_clear', side_effect=state),
