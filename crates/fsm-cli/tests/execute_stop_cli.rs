@@ -766,7 +766,6 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
     let mut input = owner.0.stdin.take().unwrap();
     let stdout = owner.0.stdout.take().unwrap();
     let (ready, observed) = std::sync::mpsc::channel();
-    let (progress, progressed) = std::sync::mpsc::channel();
     let reader = std::thread::spawn(move || {
         let mut ready = Some(ready);
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
@@ -774,8 +773,6 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
             if frame.get("id") == Some(&json(b"2")) {
                 if let Some(ready) = ready.take() {
                     ready.send(frame).unwrap();
-                } else {
-                    let _ = progress.send(());
                 }
             }
         }
@@ -789,21 +786,30 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
         frame.get("result").is_some(),
         "owner readiness failed: {frame:?}"
     );
-    let (release, hold) = std::sync::mpsc::channel::<()>();
-    let feeder = std::thread::spawn(move || {
-        for _ in 0..2000 {
-            if input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n").is_err() { return; }
-            // Keep the bounded input queue out of this stderr-pressure test.
-            // The independently drained response confirms each request was
-            // handled before the next warning-producing request is sent.
-            if progressed.recv_timeout(Duration::from_secs(3)).is_err() {
-                return;
+    // Fill this owned child's actual stderr pipe without blocking the fixture
+    // or saturating protocol input; one subsequent warning must block the real
+    // production diagnostic worker, which is independently observed below.
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut pressure = fs::OpenOptions::new()
+        .write(true)
+        .custom_flags(0o4000) // Linux O_NONBLOCK, already a Linux-only fixture.
+        .open(format!("/proc/{}/fd/2", owner.0.id()))
+        .unwrap();
+    let mut written = 0;
+    loop {
+        match pressure.write(&[b'x'; 4096]) {
+            Ok(count) => {
+                assert!(count > 0);
+                written += count;
+                assert!(written <= 128 * 1024, "stderr pipe exceeds fixture bound");
             }
-            std::thread::sleep(Duration::from_millis(1));
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+            Err(error) => panic!("owned stderr pipe refused pressure: {error}"),
         }
-        let _ = input.flush();
-        let _ = hold.recv();
-    });
+    }
+    assert!(written > 0);
+    drop(pressure);
+    input.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"instance_get\",\"arguments\":{\"instance_id\":\"instance\"}}}\n").unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
         let blocked = fs::read_dir(format!("/proc/{}/task", owner.0.id()))
@@ -886,8 +892,7 @@ fn production_stderr_backpressure_does_not_hold_native_stop_or_writer() {
         .take(128 * 1024)
         .read_to_end(&mut stderr)
         .unwrap();
-    drop(release);
-    feeder.join().unwrap();
+    drop(input);
     reader.join().unwrap();
     assert!(!status.success());
     assert!(
