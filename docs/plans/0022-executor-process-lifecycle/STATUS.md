@@ -80,19 +80,31 @@ complete guard sensitivity and current full portable integration keep 9404
 in progress; artifacts stay in the task cache, and this docs update omits
 heavy gates.
 
-Frozen `2ccf68dc..02404e7f` independently verifies claim-before-start
-sensitivity at protected binding and selected-group entry-grant publication
-on Linux stable/MSRV in [binding CI](https://github.com/koraytaylan/fsm/actions/runs/37837889950)
-and [authorization CI](https://github.com/koraytaylan/fsm/actions/runs/37839037105).
-Named cases pass, fail at exit 101 when only the shared durable-claim check
-is neutralized, then pass after exact source restoration; scoped verdict digests
-`06273fc4b9e32a88981c5b297ec8137ef2918197ef3e4b65d20de3e10be26632`
-and `36e47e2b27030ec518f4878d86aea6d05293c8c30d5dc16a8c71d08845308470`.
-The deliberately failed fixtures retain their authorities on disposable CI;
-this establishes no environment-reset clearance. Enrolled authorization,
-other claim-validation callers, identity/closure sensitivities, remaining
-crash/termination axes and current full integration remain unverified, so
-9404 stays in progress; this documentation-only milestone omits heavy gates.
+Frozen `d5579943..4ffda761` independently verifies both Linux compilers'
+48 crash cases and resource observations, 82 containment cases, 34 ordinary
+workflow scenarios and two historical upgrade scenarios in
+[CI 37838320938](https://github.com/koraytaylan/fsm/actions/runs/37838320938);
+scoped verdict digest
+`ec22523aaa0aee016fdd83b85496ae069211708f2a80d4951e26854329f5a6a3`.
+Actual retained/stop/drained and refusal/interruption/duplicate transcripts
+match retained logs and frozen inventories; executable bytes and portable
+full integration are not independently verified. Passing historical recovery
+establishes no cause or behavioral fix for the earlier failed checkpoint.
+
+Frozen `2ccf68dc..30ca43a5` independently verifies claim-before-start
+sensitivity at all six shared-check callers: binding, selected-group grant,
+exec-status listener, launch, runner and enrolled grant after cancellation.
+Each named case passes, fails at exit 101 after only the shared durable-claim
+check is neutralized, then passes after exact restoration on Linux stable/MSRV;
+consolidated scoped verdict digest
+`e6ff9267130aa5a21a2d35ade38614e94def95171c0d9c968e3b5a570cb4d3b0`.
+The deliberately failed fixtures retain authorities on disposable CI and grant
+no environment-reset clearance. Successors `b6a57d44` and `422a5f0f` include
+these six cases in the full containment inventory and admit only canonical
+nested names in its verifier; successor inventory execution, identity/closure
+sensitivities, remaining crash/termination axes and current full integration
+remain unverified, so 9404 stays in progress. These documentation-only
+milestones omit heavy gates; original evidence stays in the task cache.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
