@@ -1500,3 +1500,12 @@ The retained-log verifier independently requires all twelve ordered measurements
 for each host/handler pair and checks those same finite bounds; focused negative
 controls reject missing or duplicate observations, invalid measurements and each
 limit-plus-one value, without establishing native acceptance by themselves.
+
+The isolated `claim-before-binding` sensitivity dispatch targets
+`binding_refuses_claim_absent_from_durable_journal`: a genuine prepared domain
+and approved handler with well-shaped claim metadata must not publish a binding
+without its durable journal claim; the journal and launch/grant paths stay
+unchanged. The dispatch removes only the shared durable-claim validation call,
+requires that named refusal to fail, restores the exact source and reruns it;
+this binding-phase preparation does not prove every launch/authorization caller
+or release the remaining lifecycle sensitivity inventory.

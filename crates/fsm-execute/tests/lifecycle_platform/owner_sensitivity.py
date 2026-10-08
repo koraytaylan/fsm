@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -37,17 +37,28 @@ def main():
     assert not cache.is_relative_to('/tmp')
     assert authority.authority_state_is_clear(), 'exclusive fresh native fixture required'
     association = args.guard == 'association-deadline'
+    claim_binding = args.guard == 'claim-before-binding'
     source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
+                     else 'crates/fsm-execute/src/containment/authority.rs' if claim_binding
                      else 'crates/fsm-execute/src/containment/owner_lease.rs')
     guard = (b'        let _lock = loop {\n            remaining(deadline)?;\n'
-             if association else GUARD)
+             if association else b'    verify_claim(&store, &claim, text(binding, "journal_claim")?)?;\n'
+             if claim_binding else GUARD)
     replacement = b'        let _lock = loop {\n' if association else b''
     case = 'authority::allocator::native_tests::private_exec_status' if association else CASE
+    if claim_binding:
+        case = ('authority::allocator::native_tests::admission_cases::'
+                'binding_refuses_claim_absent_from_durable_journal')
     named_refusal = case if association else 'authority::allocator::native_tests::' + CHILD
+    if claim_binding:
+        named_refusal = case
     description = ('original association acquisition deadline' if association
                    else 'Root preparation-owner exclusive acquisition')
     scope = ('installed-gate association acquisition sensitivity; not a full integration gate'
              if association else 'public live-owner refusal sensitivity; not a full integration gate')
+    if claim_binding:
+        description = 'durable claim validation before protected binding'
+        scope = 'native binding claim-before-start sensitivity; not a full integration gate'
     original = source.read_bytes()
     assert original.count(guard) == 1, 'neutralize exactly one selected guard'
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -92,6 +103,8 @@ def main():
                 passed = passed and named_failure in output
                 if association:
                     passed = passed and b'association deadline must expire while its original authority lock is held' in output
+                elif claim_binding:
+                    passed = passed and b'unwrap_err()' in output and b'Ok value: ()' in output
                 else:
                     passed = passed and b'unwrap_err()' in output and b'interrupted' in output
             else:
@@ -123,7 +136,7 @@ def main():
         report = dict(source_commit=commit, source_dirty=not restored,
                       rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip(),
                       cli_sha256=cli_digest,
-                      command=case, named_public_refusal=case if association else CHILD, phases=rows,
+                      command=case, named_public_refusal=case if association or claim_binding else CHILD, phases=rows,
                       guard=description,
                       source_restored=restored, gate_released=False,
                       installed_authority=installed, retained_authority=not retired,

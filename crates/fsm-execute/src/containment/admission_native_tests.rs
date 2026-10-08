@@ -7,6 +7,79 @@ use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
 
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn binding_refuses_claim_absent_from_durable_journal() {
+    use super::super::super::{bind, catalogue, object};
+    use fsm_core::json::{JsonLimits, parse};
+    let mut fixture = Fixture::new();
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let mut writer = Store::open(&fixture.store).unwrap();
+    writer
+        .define_machine(
+            parse(
+                include_bytes!("../../../fsm-core/tests/fixtures/machines/case_review.json"),
+                &JsonLimits::DEFAULT,
+            )
+            .unwrap(),
+            false,
+            false,
+        )
+        .unwrap();
+    writer
+        .create_instance("case_review", "instance", "create", None)
+        .unwrap();
+    writer
+        .send_event(
+            "instance",
+            "docs_ok",
+            Value::Obj(Default::default()),
+            "send",
+            None,
+        )
+        .unwrap();
+    let effect = writer.state.instances["instance"].pending[0].clone();
+    let handler = &catalogue::read(&fixture.directory).unwrap().handlers["notify"];
+    let retry = fsm_core::record::execution::RetryPolicy::from_value(
+        handler.contract_value().get("retry").unwrap(),
+    )
+    .unwrap();
+    // Well-shaped metadata is deliberately never submitted to claim_execution;
+    // the real prepared domain and approved handler cannot substitute for it.
+    let claim = object([
+        ("run_id", Value::Num("1".into())),
+        ("instance_id", Value::Str("instance".into())),
+        ("effect_id", Value::Str(effect)),
+        ("attempt", Value::Num("1".into())),
+        ("handler_fingerprint", Value::Str(handler.fingerprint())),
+        ("retry", retry.to_value()),
+        ("domain", domain.to_value()),
+    ]);
+    fsm_core::record::execution::Claim::from_value(&claim).unwrap();
+    let binding = object([
+        ("format", Value::Str("fsm.native-claim-binding/1".into())),
+        ("claim", claim),
+        (
+            "journal_claim",
+            Value::Str(format!("sha256:{}", "0".repeat(64))),
+        ),
+    ]);
+    let records = writer.records.clone();
+    drop(writer);
+    assert_eq!(
+        bind(&fixture.directory, &binding).unwrap_err(),
+        "claim is not current runnable ownership"
+    );
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    for prefix in ["binding", "launch", "handoff", "entry"] {
+        assert!(!fixture.directory.join(format!("{prefix}-1.json")).exists());
+    }
+    fixture.cleanup().unwrap();
+}
+
 pub(super) fn bound_claim(fixture: &Fixture, binding: &Value, effect: &str) {
     {
         let claim =

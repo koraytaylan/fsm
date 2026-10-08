@@ -39,6 +39,7 @@ on:
         options:
           - preparation-owner
           - association-deadline
+          - claim-before-binding
         default: preparation-owner
 
 # Preserve the running develop checkpoint and queue its latest successor.
