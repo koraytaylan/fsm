@@ -287,6 +287,9 @@ fn recover_stopped() {
         );
         std::thread::sleep(Duration::from_millis(5));
     }
+    if changed {
+        reconcile_original_completion_before_handoff(&path, &claim, &ordinal, &mut clock);
+    }
     let deadline = Instant::now() + Duration::from_secs(7);
     loop {
         driver.tick(&path, &mut clock, 2000);
@@ -335,4 +338,67 @@ fn recover_stopped() {
         assert!(report.inventory_complete && report.helpers_retired && report.writer_released);
     }
     assert_eq!(Store::open_read_only(&path).unwrap().records, records);
+}
+
+// The changed-table fixture exercises the operator service before either
+// startup host can consume the original result or dispatch its outcome event.
+fn reconcile_original_completion_before_handoff(
+    path: &Path,
+    claim: &fsm_core::record::execution::Claim,
+    ordinal: &str,
+    clock: &mut dyn fsm_store::clock::Clock,
+) {
+    let marker = path.join("original-result-reconciled");
+    if ordinal == "0" {
+        let mut writer = Store::open(path).unwrap();
+        let records = writer.records.clone();
+        let instance = writer.state.instances[claim.effect().0].clone();
+        let original = writer
+            .state
+            .execution
+            .stopped_for(claim.effect().0, claim.effect().1)
+            .unwrap()
+            .clone();
+        let response = fsm_execute::service::reconcile_run(
+            &mut writer,
+            clock,
+            claim.run_id(),
+            Duration::from_secs(3),
+        )
+        .unwrap();
+        assert_eq!(
+            response.get("disposition").and_then(Value::as_str),
+            Some("acked")
+        );
+        assert_eq!(&writer.records[..records.len()], records);
+        assert_eq!(writer.records.len(), records.len() + 1);
+        assert_eq!(
+            writer.records.last().unwrap().kind,
+            fsm_core::record::RecordKind::ExecutionSettled
+        );
+        assert_eq!(
+            writer.state.instances[claim.effect().0].configuration,
+            instance.configuration
+        );
+        assert_eq!(writer.state.execution.unresolved().count(), 0);
+        let handoff = writer
+            .state
+            .execution_handoffs
+            .outstanding()
+            .next()
+            .unwrap();
+        assert_eq!(handoff.claim(), claim);
+        assert_eq!(handoff.outcome(), original.outcome());
+        drop(writer);
+        fs::write(marker, b"original authenticated result settled").unwrap();
+    } else {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !marker.is_file() {
+            assert!(
+                Instant::now() < deadline,
+                "operator result recovery never completed"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
 }
