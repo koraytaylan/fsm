@@ -24,6 +24,7 @@ impl<'fixture> Session<'fixture> {
     }
 
     pub(super) fn refuse_live_runner(&self) {
+        self.ensure_cli();
         let entry = self.fixture.directory.join("entry-1.json");
         let original_entry = fs::read(&entry).unwrap();
         self.run("refuse_live_runner", "FSM_NATIVE_LIVE_RUNNER_REFUSED");
@@ -136,7 +137,13 @@ impl<'fixture> Session<'fixture> {
             .spawn()
             .unwrap();
         let deadline = Instant::now()
-            + Duration::from_secs(if case == "recover_orphan_cli" { 22 } else { 12 });
+            + Duration::from_secs(
+                if matches!(case, "recover_orphan_cli" | "refuse_live_runner") {
+                    22
+                } else {
+                    12
+                },
+            );
         let status = loop {
             if let Some(status) = child.try_wait().unwrap() {
                 break status;
@@ -404,6 +411,12 @@ fn refuse_live_runner() {
     assert_eq!(writer.state.execution, ownership);
     drop(writer);
     assert_eq!(Store::open_read_only(&path).unwrap().records, records);
+    refuse_original_cli(
+        &path,
+        run_id,
+        "native shutdown refused: original runner remains active or lease locking is unavailable",
+        &records,
+    );
     #[allow(clippy::print_stdout)]
     {
         println!("\nFSM_NATIVE_LIVE_RUNNER_REFUSED");
