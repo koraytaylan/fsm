@@ -159,7 +159,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     let expected = if failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
-        || failure.starts_with("active-stop")
+        || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete"))
     {
         8
     } else if failure == "suspend" {
@@ -221,7 +221,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         if (failure.starts_with("crash-")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
-            || failure.starts_with("active-stop"))
+            || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete")))
             && number(&record.body, "run_id").unwrap() == 1
         {
             assert!(matches!(disposition, Some("attempted" | "interrupted")));
@@ -232,7 +232,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     if failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
-        || failure.starts_with("active-stop")
+        || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete"))
     {
         let claims: Vec<_> = store
             .records
@@ -262,7 +262,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             || failure.ends_with("-int")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
-            || failure.starts_with("active-stop")
+            || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete"))
         {
             assert_eq!(
                 status, "interrupted",
@@ -517,6 +517,14 @@ pub(super) fn run() {
         (
             "workflow_race::active_stop::embedded_drain_escalates_to_abort_on_a_live_tree",
             vec!["active-stop-drain-embedded"],
+        ),
+        (
+            "workflow_race::active_stop::standalone_drain_allows_original_completion",
+            vec!["active-stop-complete-drain"],
+        ),
+        (
+            "workflow_race::active_stop::embedded_drain_allows_original_completion",
+            vec!["active-stop-complete-drain-embedded"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];

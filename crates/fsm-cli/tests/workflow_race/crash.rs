@@ -22,6 +22,8 @@ pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
             | "active-stop-abort-embedded"
             | "active-stop-drain"
             | "active-stop-drain-embedded"
+            | "active-stop-complete-drain"
+            | "active-stop-complete-drain-embedded"
     ) {
         return;
     }

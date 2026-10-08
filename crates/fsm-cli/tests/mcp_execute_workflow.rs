@@ -690,7 +690,7 @@ fn run_scenario_mode(
     let mut competitor =
         (failures == "race").then(|| workflow_race::contend(&directory, &mut client));
     #[cfg(target_os = "linux")]
-    if interrupted_scenario(failures) {
+    if interrupted_scenario(failures) || failures.starts_with("active-stop-complete") {
         competitor = Some(workflow_race::restart_after_fault(
             &directory,
             &mut client,

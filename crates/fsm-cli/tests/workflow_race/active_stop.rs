@@ -11,6 +11,7 @@ pub(super) fn restart_after_stop(
     failures: &str,
 ) -> Competitor {
     assert!(directory.1.is_some(), "genuine native fixture required");
+    let completes = failures.starts_with("active-stop-complete");
     let marker = directory.resource().join("tree-live");
     let until = Instant::now() + Duration::from_secs(8);
     let identities = loop {
@@ -75,7 +76,7 @@ pub(super) fn restart_after_stop(
             "execute",
             "stop",
             "--mode",
-            "abort",
+            if completes { "drain" } else { "abort" },
             "--timeout-ms",
             "5000",
             "--control-dir",
@@ -86,6 +87,13 @@ pub(super) fn restart_after_stop(
         .stderr(fs::File::create(directory.resource().join("active-stop.stderr")).unwrap())
         .spawn()
         .unwrap();
+    if completes {
+        fs::write(
+            directory.resource().join("tree-release"),
+            b"original completion",
+        )
+        .unwrap();
+    }
     let until = Instant::now() + Duration::from_secs(7);
     loop {
         if let Some(status) = stop.try_wait().unwrap() {
@@ -134,7 +142,10 @@ pub(super) fn restart_after_stop(
     assert!(identities.iter().all(|identity| !live(identity)));
     let writer = Store::open(&directory.store()).unwrap();
     assert_eq!(&writer.records[..snapshot.records.len()], snapshot.records);
-    assert_eq!(writer.records.len(), snapshot.records.len() + 2);
+    assert_eq!(
+        writer.records.len(),
+        snapshot.records.len() + if completes { 3 } else { 2 }
+    );
     assert_eq!(
         writer.records[snapshot.records.len()].kind,
         RecordKind::ExecutionStopped
@@ -143,18 +154,37 @@ pub(super) fn restart_after_stop(
         writer.records[snapshot.records.len() + 1].kind,
         RecordKind::ExecutionSettled
     );
-    assert_eq!(writer.state.instances["inst-run"], instance);
+    if completes {
+        assert_eq!(
+            writer.records[snapshot.records.len() + 2].kind,
+            RecordKind::EventApplied
+        );
+        assert_eq!(
+            writer.records[snapshot.records.len() + 1]
+                .body
+                .get("disposition")
+                .and_then(Value::as_str),
+            Some("acked")
+        );
+        assert_ne!(writer.state.instances["inst-run"], instance);
+    } else {
+        assert_eq!(writer.state.instances["inst-run"], instance);
+    }
     assert_eq!(writer.state.execution.unresolved().count(), 0);
     assert_eq!(
         fs::read_to_string(directory.resource().join("calls")).unwrap(),
         "check_prerequisite\n"
     );
-    let matched = fs::symlink_metadata(&marker).unwrap();
-    assert_eq!(
-        (matched.dev(), matched.ino()),
-        (marker_identity.dev(), marker_identity.ino())
-    );
-    fs::remove_file(marker).unwrap();
+    if completes {
+        assert!(!marker.try_exists().unwrap());
+    } else {
+        let matched = fs::symlink_metadata(&marker).unwrap();
+        assert_eq!(
+            (matched.dev(), matched.ino()),
+            (marker_identity.dev(), marker_identity.ino())
+        );
+        fs::remove_file(marker).unwrap();
+    }
     fs::write(directory.resource().join("tree-release"), b"successor only").unwrap();
     *client = Client::start_mode(directory, ExecutionMode::Standalone);
     drop(writer);
@@ -199,4 +229,37 @@ fn standalone_drain_escalates_to_abort_on_a_live_tree() {
 #[ignore = "requires genuine root-provisioned native shutdown"]
 fn embedded_drain_escalates_to_abort_on_a_live_tree() {
     scenario("active-stop-drain-embedded", ExecutionMode::Embedded);
+}
+
+#[test]
+#[ignore = "requires genuine root-provisioned native shutdown"]
+fn standalone_drain_allows_original_completion() {
+    completing_scenario(ExecutionMode::Standalone);
+}
+#[test]
+#[ignore = "requires genuine root-provisioned native shutdown"]
+fn embedded_drain_allows_original_completion() {
+    completing_scenario(ExecutionMode::Embedded);
+}
+fn completing_scenario(mode: ExecutionMode) {
+    let failures = if matches!(mode, ExecutionMode::Embedded) {
+        "active-stop-complete-drain-embedded"
+    } else {
+        "active-stop-complete-drain"
+    };
+    run_scenario_mode(
+        failures,
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        mode,
+    );
 }

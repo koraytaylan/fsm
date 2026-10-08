@@ -47,6 +47,8 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=active-stop-abort-embedded"
             | "handler-failures=active-stop-drain"
             | "handler-failures=active-stop-drain-embedded"
+            | "handler-failures=active-stop-complete-drain"
+            | "handler-failures=active-stop-complete-drain-embedded"
     )
 }
 
