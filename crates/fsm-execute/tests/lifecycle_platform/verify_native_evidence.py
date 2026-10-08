@@ -104,7 +104,8 @@ def verify(repo, directory, commit, rustc):
             if 'enrolled_gate_authorization' in cases:
                 require(digest(report['authority_sha256']), 'installed authority digest missing')
             for case in report['cases']:
-                require(re.fullmatch(r'[a-z_]+', case['case']) is not None, 'invalid authority case name')
+                require(re.fullmatch(r'[a-z_]+(?:::[a-z_]+)*', case['case']) is not None,
+                        'invalid authority case name')
                 log = bounded(directory / ('authority-' + case['case'] + '.log'))
                 require(hashlib.sha256(log).hexdigest() == case['log_sha256'], 'authority log digest differs')
                 test = 'authority::allocator::native_tests::' + case['case']
