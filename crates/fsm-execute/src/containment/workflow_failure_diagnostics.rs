@@ -12,6 +12,43 @@ pub(super) fn archive(fixture: &Fixture, staging: &Path) {
         .unwrap()
         .to_str()
         .unwrap();
+    // A handler can fail and settle before the observer reaches its barrier;
+    // retain the protected original result, not only the host's quiet stderr.
+    let mut captured = 0;
+    for entry in fs::read_dir(&fixture.directory).unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name();
+        let name = name.to_str().unwrap();
+        if !(name.starts_with("result-") || name.starts_with("exec-status-"))
+            || !name.ends_with(".json")
+        {
+            continue;
+        }
+        if captured == 8 {
+            break;
+        }
+        captured += 1;
+        let source = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(super::super::super::super::NOFOLLOW_NONBLOCK)
+            .open(entry.path())
+            .unwrap();
+        let metadata = source.metadata().unwrap();
+        assert!(metadata.is_file() && metadata.uid() == 0);
+        let suffix = if metadata.len() > 65536 {
+            ".truncated.log"
+        } else {
+            ""
+        };
+        let mut destination = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(staging.join(format!("failure-{namespace}-{name}{suffix}")))
+            .unwrap();
+        std::io::copy(&mut source.take(65536), &mut destination).unwrap();
+        destination.sync_all().unwrap();
+    }
     for name in [
         "stderr",
         "race-stderr",

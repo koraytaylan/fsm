@@ -14,6 +14,15 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 6/7 tasks completed.
 
+Frozen `0211231c..6aacc3ea` fails the first provisioned 9404 candidate-result
+attempt on stable/MSRV in [CI 37814351864](https://github.com/koraytaylan/fsm/actions/runs/37814351864):
+the standalone/process candidate barrier is absent after original execution has
+settled, and the other three axes remain unexecuted. Both retain original
+authority; the cause remains unproven. Verified failure-evidence digest:
+`3ab624370874babafadc22c30c4b7c53467389475ca4ef073e4bf2d063f0adb3`.
+Successor diagnostics capture protected original result/exec-status records
+without changing execution behavior or weakening acceptance; 9404 remains open.
+
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
 The six portable gates, dependency/core-only check and both verified native

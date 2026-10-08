@@ -7,11 +7,12 @@ noise; fixture tests independently observe root exit before descendant pipe
 retirement. Production crash cutpoints, supervisor death, native sensitivity
 and the complete frozen matrix remain outstanding; fixture acceptance alone
 does not establish native no-overlap recovery.
-The dedicated Linux candidate-result crash actor compiles but remains natively
-unexecuted; protected coordinator staging and disposable Linux stable/MSRV CI
-wiring now cover all four host/handler combinations, retaining original-owner
-diagnostics on failure. Its explicitly ignored case does not count as passing
-native matrix evidence until the provisioned CI probe actually executes it.
+The first provisioned Linux stable/MSRV candidate-result crash attempts failed
+before the standalone/process candidate barrier at `6aacc3ea`; the cause remains
+unproven and the other three axes remain unexecuted. The coordinator retains
+original authority and bounded diagnostics, including protected result and
+exec-status records for diagnosis. CI runs this probe before the broader native
+matrix; no passing crash or no-overlap acceptance is claimed.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

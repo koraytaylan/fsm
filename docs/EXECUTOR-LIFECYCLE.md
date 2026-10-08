@@ -1404,6 +1404,9 @@ original stopped/settled publication before a successor claim and final event
 completion. The protected coordinator stages digest-checked binaries, drops the
 observer to the operator identity, and independently checks both claims and
 closure receipts across all four host/handler combinations. Disposable Linux
-stable/MSRV CI runs this matrix before historical upgrade tests and retains
-bounded original-owner diagnostics on failure; native execution remains
-unverified, and compilation alone grants no crash or no-overlap acceptance.
+stable/MSRV CI runs this matrix before broader native checks and retains
+bounded original-owner diagnostics and protected result/exec-status records on
+failure. Both first attempts at `6aacc3ea` failed before the standalone/process
+candidate barrier, with original authority retained; the cause remains unproven
+and the other three axes remain unexecuted. No passing crash or no-overlap
+acceptance is claimed.
