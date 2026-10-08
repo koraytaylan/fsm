@@ -49,14 +49,18 @@ pub(in super::super) fn restart_at_cut(
         .map(|pid| process_identity(pid.parse().unwrap()))
         .collect();
     let identity = fs::symlink_metadata(&marker).unwrap();
-    let writer = loop {
-        match Store::open(&directory.store()) {
-            Ok(writer) => break writer,
-            Err(error) if error.code == "store/lock" => {
-                assert!(Instant::now() < deadline, "writer never became available");
-                std::thread::sleep(Duration::from_millis(5));
+    let mut writer = if original.is_none() {
+        Store::open_read_only(&directory.store()).unwrap()
+    } else {
+        loop {
+            match Store::open(&directory.store()) {
+                Ok(writer) => break writer,
+                Err(error) if error.code == "store/lock" => {
+                    assert!(Instant::now() < deadline, "writer never became available");
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("original writer: {error:?}"),
             }
-            Err(error) => panic!("original writer: {error:?}"),
         }
     };
     assert_eq!(writer.state.execution.unresolved().count(), 1);
@@ -78,8 +82,26 @@ pub(in super::super) fn restart_at_cut(
             .is_none()
     );
     let mut replacement = match failures {
-        "crash-launch" | "crash-embedded-launch" => {
-            Some(kill_and_restart(directory, client, original.as_deref_mut()))
+        "crash-launch" => Some(kill_and_restart(directory, client, original.as_deref_mut())),
+        "crash-embedded-launch" => {
+            client.process.kill().unwrap();
+            assert_eq!(client.process.wait().unwrap().signal(), Some(9));
+            writer = loop {
+                match Store::open(&directory.store()) {
+                    Ok(writer) => break writer,
+                    Err(error) if error.code == "store/lock" => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "killed embedded writer did not release"
+                        );
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("embedded recovery writer: {error:?}"),
+                }
+            };
+            assert_eq!(writer.records, records);
+            *client = Client::start_mode(directory, ExecutionMode::Standalone);
+            Some(start(directory, "after-kill"))
         }
         "crash-stop" => None,
         _ => panic!("unknown crash cut"),
