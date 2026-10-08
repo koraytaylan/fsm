@@ -1478,3 +1478,10 @@ requires absent grants and handler entry across immediate restart, then
 permits sequential recovery only after matched closure and interruption.
 The forty-four-case extension remains unverified; default shipped binaries
 contain no barrier.
+
+The portable lifecycle fixture also provides `noisy-exit`: it emits 16 KiB
+of stderr, publishes its process/MCP result after the explicit root barrier,
+and exits while both descendants retain stdout and stderr until their own
+release. Independent portable observers require the complete noise stream,
+successful root exit and delayed pipe EOF; this prepares repeated-host native
+resource acceptance but does not establish that acceptance or native closure.

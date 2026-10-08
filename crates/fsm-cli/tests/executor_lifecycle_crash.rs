@@ -80,8 +80,8 @@ impl Drop for Fixture {
     }
 }
 
-fn root_exit_retains_descendant_pipes(mode: &str) {
-    let mut fixture = Fixture::start(mode, "exit-root");
+fn root_exit_retains_descendant_pipes(mode: &str, behavior: &str) {
+    let mut fixture = Fixture::start(mode, behavior);
     let stdout = fixture.root.stdout.take().unwrap();
     let (sender, receiver) = mpsc::channel();
     let reader = std::thread::spawn(move || {
@@ -111,6 +111,9 @@ fn root_exit_retains_descendant_pipes(mode: &str) {
         input.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"run\",\"arguments\":{}}}\n").unwrap();
         input.flush().unwrap();
     }
+    if behavior == "noisy-exit" {
+        fs::write(fixture.directory.join("root-release"), b"release").unwrap();
+    }
     let response = receiver
         .recv_timeout(Duration::from_secs(5))
         .unwrap()
@@ -138,6 +141,13 @@ fn root_exit_retains_descendant_pipes(mode: &str) {
         std::thread::sleep(Duration::from_millis(5));
     };
     assert!(status.success());
+    if behavior == "noisy-exit" {
+        assert_eq!(
+            fs::read(fixture.directory.join("stderr")).unwrap(),
+            vec![b'n'; 16_384],
+            "root noise must be retained while descendants still own the pipes"
+        );
+    }
     for role in ["child", "grandchild"] {
         assert!(fixture.directory.join(format!("{role}-entered")).is_file());
         assert!(!fixture.directory.join(format!("{role}-retired")).exists());
@@ -158,12 +168,12 @@ fn root_exit_retains_descendant_pipes(mode: &str) {
 
 #[test]
 fn process_fixture_root_exit_keeps_descendant_pipes_open_until_release() {
-    root_exit_retains_descendant_pipes("process");
+    root_exit_retains_descendant_pipes("process", "exit-root");
 }
 
 #[test]
 fn mcp_fixture_root_exit_keeps_descendant_pipes_open_until_release() {
-    root_exit_retains_descendant_pipes("mcp");
+    root_exit_retains_descendant_pipes("mcp", "exit-root");
 }
 
 fn candidate_result_waits_for_explicit_release(mode: &str, behavior: &str) {
@@ -262,4 +272,14 @@ fn process_noise_precedes_held_candidate_result() {
 #[test]
 fn mcp_noise_precedes_held_candidate_result() {
     candidate_result_waits_for_explicit_release("mcp", "noisy-result");
+}
+
+#[test]
+fn noisy_process_root_exit_keeps_descendant_pipes_open_until_release() {
+    root_exit_retains_descendant_pipes("process", "noisy-exit");
+}
+
+#[test]
+fn noisy_mcp_root_exit_keeps_descendant_pipes_open_until_release() {
+    root_exit_retains_descendant_pipes("mcp", "noisy-exit");
 }

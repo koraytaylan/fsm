@@ -156,7 +156,7 @@ fn object(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
 fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn std::error::Error>> {
     if !matches!(
         behavior,
-        "exit-root" | "hold-exit" | "hold-result" | "noisy-result"
+        "exit-root" | "hold-exit" | "hold-result" | "noisy-result" | "noisy-exit"
     ) {
         return Err("unknown fixture behavior".into());
     }
@@ -202,7 +202,7 @@ fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn s
                 return Err("fixture expected tools/call".into());
             }
         }
-        if behavior == "noisy-result" {
+        if matches!(behavior, "noisy-result" | "noisy-exit") {
             io::stderr().lock().write_all(&[b'n'; 16_384])?;
         }
         mark(directory, "root", "candidate")?;
@@ -220,7 +220,7 @@ fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn s
             reply(&result)?;
         }
         mark(directory, "root", "published")?;
-        if !matches!(behavior, "exit-root" | "hold-exit") {
+        if !matches!(behavior, "exit-root" | "hold-exit" | "noisy-exit") {
             wait_for(&directory.join("root-release"))?;
             wait_for(&directory.join("child-retired"))?;
             child.wait()?;

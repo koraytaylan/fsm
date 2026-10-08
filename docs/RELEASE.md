@@ -1744,3 +1744,10 @@ Native execution refusal diagnostics now distinguish original binding validation
 Corrected warm completion delivery to preserve its existing verified physical-writer authorization while sharing accepted-event fold retirement checks with cold recovery; cold operator-route validation remains mandatory for cold adoption.
 
 Fixed native retry scheduling after recovered timeout settlement: watcher observations now count native attempted settlements and preserve their original timestamps instead of reusing a consumed attempt key and leaving the pending effect stalled.
+
+The portable lifecycle fixture also provides `noisy-exit`: it emits 16 KiB
+of stderr, publishes its process/MCP result after the explicit root barrier,
+and exits while both descendants retain stdout and stderr until their own
+release. Independent portable observers require the complete noise stream,
+successful root exit and delayed pipe EOF; this prepares repeated-host native
+resource acceptance but does not establish that acceptance or native closure.
