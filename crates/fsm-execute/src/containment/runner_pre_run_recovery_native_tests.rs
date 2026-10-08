@@ -11,8 +11,14 @@ pub(super) fn run() {
     // The session borrows the fixture; retain the exact cgroup after it retires.
     let group_identity = domain.get("cgroup").unwrap().clone();
     let domain = NativeDomain::from_value(&domain).unwrap();
-    let guard =
-        super::super::super::super::owner_lease::acquire(&fixture.directory, 1, 65534).unwrap();
+    // Keep fixture ownership independent of the production acquisition guard
+    // so neutralizing that guard cannot also remove the arranged live owner.
+    let guard = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(fixture.directory.join("owner-1.LOCK"))
+        .unwrap();
+    guard.try_lock().unwrap();
     let (_, effect) = claim_binding(&fixture, &domain);
     let before = fs::read(fixture.directory.join("prepared-1.json")).unwrap();
     session.refuse_pre_run_owner();

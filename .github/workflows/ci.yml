@@ -25,6 +25,10 @@ on:
         description: Verify a native acceptance checkpoint without repeating portable gates
         type: boolean
         default: false
+      owner_sensitivity_only:
+        description: Verify the public preparation-owner refusal guard in isolation
+        type: boolean
+        default: false
 
 # Preserve the running develop checkpoint and queue its latest successor.
 # Other branches and pull requests cancel superseded runs; tag gates remain
@@ -40,7 +44,7 @@ env:
 
 jobs:
   gate:
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.native_only }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.native_only && !inputs.owner_sensitivity_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -115,6 +119,7 @@ jobs:
   # runtime. These are real administrative fault probes, separate from the
   # portable six-leg Rust gate; missing facilities fail rather than skip.
   native-containment:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.owner_sensitivity_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -146,6 +151,37 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-containment-${{ matrix.rust }}
+          path: ${{ env.FSM_NATIVE_CACHE }}/native-evidence
+          if-no-files-found: error
+
+  owner-sensitivity:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.owner_sensitivity_only }}
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, "1.89.0"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Prepare native sensitivity cache
+        run: |
+          native_cache="$HOME/.cache/fsm-native-owner-${{ matrix.rust }}"
+          mkdir -p "$native_cache"
+          printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
+      - name: Original, neutralized and restored public owner refusal
+        run: >-
+          python3 crates/fsm-execute/tests/lifecycle_platform/owner_sensitivity.py
+          --toolchain '${{ matrix.rust }}'
+          --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/owner-sensitivity.json'
+      - name: Retain native sensitivity evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-owner-sensitivity-${{ matrix.rust }}
           path: ${{ env.FSM_NATIVE_CACHE }}/native-evidence
           if-no-files-found: error
 
