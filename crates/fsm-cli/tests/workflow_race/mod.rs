@@ -13,6 +13,7 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=crash-launch"
             | "handler-failures=crash-stop"
             | "handler-failures=crash-embedded-launch"
+            | "handler-failures=crash-embedded-stop"
     )
 }
 

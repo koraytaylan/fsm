@@ -1,4 +1,4 @@
-//! Forced standalone death at launch/verified-stop cuts, with an independent observer.
+//! Forced executor death at launch/verified-stop cuts, with an independent observer.
 use super::*;
 use fsm_store::store::VerifiedClosure;
 use std::os::unix::{fs::MetadataExt, process::ExitStatusExt};
@@ -6,7 +6,7 @@ use std::os::unix::{fs::MetadataExt, process::ExitStatusExt};
 pub(in super::super) fn configure_table(table: &mut Value, failures: &str) {
     if !matches!(
         failures,
-        "crash-launch" | "crash-stop" | "crash-embedded-launch"
+        "crash-launch" | "crash-stop" | "crash-embedded-launch" | "crash-embedded-stop"
     ) {
         return;
     }
@@ -84,24 +84,17 @@ pub(in super::super) fn restart_at_cut(
     let mut replacement = match failures {
         "crash-launch" => Some(kill_and_restart(directory, client, original.as_deref_mut())),
         "crash-embedded-launch" => {
-            client.process.kill().unwrap();
-            assert_eq!(client.process.wait().unwrap().signal(), Some(9));
-            writer = loop {
-                match Store::open(&directory.store()) {
-                    Ok(writer) => break writer,
-                    Err(error) if error.code == "store/lock" => {
-                        assert!(
-                            Instant::now() < deadline,
-                            "killed embedded writer did not release"
-                        );
-                        std::thread::sleep(Duration::from_millis(5));
-                    }
-                    Err(error) => panic!("embedded recovery writer: {error:?}"),
-                }
-            };
-            assert_eq!(writer.records, records);
-            *client = Client::start_mode(directory, ExecutionMode::Standalone);
-            Some(start(directory, "after-kill"))
+            let (held, replacement) = kill_embedded_and_restart(directory, client, &records);
+            writer = held;
+            Some(replacement)
+        }
+        "crash-embedded-stop" => {
+            pause_embedded(client);
+            assert!(client.process.try_wait().unwrap().is_none());
+            assert!(
+                matches!(Store::open(&directory.store()), Err(error) if error.code == "store/lock")
+            );
+            None
         }
         "crash-stop" => None,
         _ => panic!("unknown crash cut"),
@@ -144,20 +137,22 @@ pub(in super::super) fn restart_at_cut(
         std::thread::sleep(Duration::from_millis(5));
     }
     if replacement.is_none() {
-        assert!(
-            original
-                .as_mut()
-                .unwrap()
-                .child
-                .try_wait()
-                .unwrap()
-                .is_none()
-        );
         assert_eq!(
             Store::open_read_only(&directory.store()).unwrap().records,
             records
         );
-        replacement = Some(kill_and_restart(directory, client, original));
+        if let Some(original) = original {
+            assert!(original.child.try_wait().unwrap().is_none());
+            replacement = Some(kill_and_restart(directory, client, Some(original)));
+        } else {
+            assert!(client.process.try_wait().unwrap().is_none());
+            assert!(
+                matches!(Store::open(&directory.store()), Err(error) if error.code == "store/lock")
+            );
+            let (held, restarted) = kill_embedded_and_restart(directory, client, &records);
+            writer = held;
+            replacement = Some(restarted);
+        }
     }
     // A killed handler cannot unlink its marker; only matched closure and dead
     // original identities permit retiring that exact fixture-owned link.
@@ -170,6 +165,58 @@ pub(in super::super) fn restart_at_cut(
     fs::write(directory.resource().join("tree-release"), b"successor only").unwrap();
     drop(writer);
     replacement.unwrap()
+}
+
+fn pause_embedded(client: &Client) {
+    let pid = client.process.id();
+    let original = process_identity(pid);
+    assert!(
+        Command::new("/bin/kill")
+            .args(["-STOP", &pid.to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert_eq!(process_identity(pid), original);
+        let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+        if stat.rsplit_once(") ").unwrap().1.split_whitespace().next() == Some("T") {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "owned embedded server did not stop"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn kill_embedded_and_restart(
+    directory: &Directory,
+    client: &mut Client,
+    records: &[fsm_core::record::Record],
+) -> (Store, Competitor) {
+    assert!(matches!(client.mode, ExecutionMode::Embedded));
+    client.process.kill().unwrap();
+    assert_eq!(client.process.wait().unwrap().signal(), Some(9));
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let writer = loop {
+        match Store::open(&directory.store()) {
+            Ok(writer) => break writer,
+            Err(error) if error.code == "store/lock" => {
+                assert!(
+                    Instant::now() < deadline,
+                    "killed embedded writer did not release"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("embedded recovery writer: {error:?}"),
+        }
+    };
+    assert_eq!(writer.records, records);
+    *client = Client::start_mode(directory, ExecutionMode::Standalone);
+    (writer, start(directory, "after-kill"))
 }
 
 fn kill_and_restart(
@@ -252,6 +299,27 @@ fn killed_standalone_after_verified_stop_recovers_once() {
 fn killed_embedded_recovers_without_overlapping_trees() {
     run_scenario_mode(
         "crash-embedded-launch",
+        "succeeded",
+        &[
+            "check_prerequisite",
+            "check_prerequisite",
+            "check_identity",
+            "check_access",
+            "check_target",
+            "suspend",
+            "perform_work",
+            "restore",
+        ],
+        "active",
+        ExecutionMode::Embedded,
+    );
+}
+
+#[test]
+#[ignore = "requires registered native authority and independent tree observer"]
+fn killed_embedded_after_verified_stop_recovers_once() {
+    run_scenario_mode(
+        "crash-embedded-stop",
         "succeeded",
         &[
             "check_prerequisite",

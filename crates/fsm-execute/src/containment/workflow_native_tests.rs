@@ -152,7 +152,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     let last = number(&fixture.counter(), "last_allocation").unwrap();
     if matches!(
         failure,
-        "race" | "crash-launch" | "crash-stop" | "crash-embedded-launch"
+        "race" | "crash-launch" | "crash-stop" | "crash-embedded-launch" | "crash-embedded-stop"
     ) {
         assert!((expected as u64..=4096).contains(&last));
     } else {
@@ -210,7 +210,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
             .as_str()
             .unwrap();
         assert!(matches!(status, "timeout" | "interrupted"));
-        if failure == "crash-stop" {
+        if matches!(failure, "crash-stop" | "crash-embedded-stop") {
             assert_eq!(status, "timeout");
         }
         let settled = store
@@ -406,6 +406,10 @@ pub(super) fn run() {
         (
             "workflow_race::crash::killed_embedded_recovers_without_overlapping_trees",
             vec!["crash-embedded-launch"],
+        ),
+        (
+            "workflow_race::crash::killed_embedded_after_verified_stop_recovers_once",
+            vec!["crash-embedded-stop"],
         ),
         ("borrowed_embedded_handlers_complete_the_workflow", vec![""]),
     ];
