@@ -50,10 +50,15 @@ native crash boundaries, not only a runner state-machine assertion.
 
 **Tests:**
 
-- `cargo test -p fsm-cli --test executor_lifecycle_crash` covers both handler
-  kinds and both execution hosts at every documented crash cutpoint, including
+- The `executor_lifecycle_crash` target must cover both handler kinds and both
+  execution hosts at every documented crash cutpoint, including
   concurrent executors, writer contention, spawning descendants and partial
   durable writes; journal verification succeeds after each supported recovery.
+  `cargo test -p fsm-cli --test executor_lifecycle_crash --features lifecycle-test-fixture`
+  checks the portable fixture; provisioned native
+  cutpoints require the protected disposable-CI coordinator, which invokes the
+  ignored production-host observer with exact staged binaries and a manifest.
+  A skipped target or an ignored native test cannot establish this inventory.
 - Retained-pipe and noisy-output fixtures prove bounded stop duration and
   repeated-run resource use; uncooperative descendants cannot authorize a
   replacement simply because the direct child has exited.
