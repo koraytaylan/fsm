@@ -47,7 +47,7 @@ pub(super) fn restart_after_full_disk(
     drop(snapshot);
     let filler = directory.store().join("owned-enospc-filler");
     fill_owned_volume(&filler);
-    assert!(identities.iter().all(|identity| live(identity)));
+    assert!(identities.iter().all(live));
     let entry = directory.1.as_ref().unwrap();
     let root = original.as_ref().map_or_else(
         || PathBuf::from(text(entry, "home")).join(".cache/fsm/control"),
@@ -204,7 +204,7 @@ fn align_journal(directory: &Directory, client: &mut Client, standalone: bool) {
             .unwrap()
             .journal
             .seg_bytes;
-        if after % 4096 == 0 {
+        if after.is_multiple_of(4096) {
             return;
         }
         let overhead = after - before - padding as u64;
