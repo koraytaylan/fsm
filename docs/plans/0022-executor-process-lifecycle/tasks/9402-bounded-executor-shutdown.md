@@ -39,8 +39,8 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "5730f17202cdeabd8c34f9b1c48fcf02f26b0e06"
 ---
 
 # Bounded Executor Shutdown
