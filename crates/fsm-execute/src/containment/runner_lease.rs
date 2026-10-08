@@ -86,6 +86,15 @@ mod tests {
         protected_directory(&root).unwrap();
         let directory = root.join(format!("runner-entry-{}", std::process::id()));
         fs::create_dir(&directory).unwrap();
+        super::super::owner_lease::publish(&directory, 7, 65534).unwrap();
+        assert!(super::super::owner_lease::publish(&directory, 7, 65534).is_err());
+        assert!(super::super::owner_lease::require_held(&directory, 7, 65534).is_err());
+        let owner = super::super::owner_lease::acquire(&directory, 7, 65534).unwrap();
+        super::super::owner_lease::require_held(&directory, 7, 65534).unwrap();
+        assert!(super::super::owner_lease::acquire(&directory, 7, 65534).is_err());
+        assert!(super::super::owner_lease::acquire(&directory, 7, 65533).is_err());
+        drop(owner);
+        assert!(super::super::owner_lease::require_held(&directory, 7, 65534).is_err());
         let lease = acquire(&directory, 1).unwrap();
         let result = super::super::runner::execute(&directory, 1);
         let launched = directory.join("launch-1.json").exists();

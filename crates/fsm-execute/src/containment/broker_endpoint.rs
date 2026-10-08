@@ -129,7 +129,7 @@ fn publish_route(path: &Path, value: &Value) -> Result<(), String> {
         .map_err(io)
 }
 
-pub(super) fn open(directory: &Path) -> Result<Endpoint, String> {
+pub(super) fn operator(directory: &Path) -> Result<u32, String> {
     protected_directory(directory)?;
     let base = directory.join("broker");
     protected_directory(&base)?;
@@ -143,6 +143,13 @@ pub(super) fn open(directory: &Path) -> Result<Endpoint, String> {
     if configuration_value != configuration(directory, uid)? {
         return Err("broker provisioned configuration differs".into());
     }
+    Ok(uid)
+}
+
+pub(super) fn open(directory: &Path) -> Result<Endpoint, String> {
+    let uid = operator(directory)?;
+    let base = directory.join("broker");
+    let configuration_value = configuration(directory, uid)?;
     let lock = OpenOptions::new()
         .read(true)
         .write(true)

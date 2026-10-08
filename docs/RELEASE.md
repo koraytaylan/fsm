@@ -1,6 +1,8 @@
 # Releasing
 
-The specified pre-run owner lease remains unimplemented; acceptance must prove
+Allocator-side `prepare-owned` leases and binding/closure checks are implemented;
+client guard transfer and absent-binding recovery remain unimplemented and unverified.
+Before claiming pre-run recovery support, acceptance must prove
 continuous guard transfer, public-entry enforcement and refusal of missing or
 legacy ownership material before claiming pre-run reconciliation support.
 

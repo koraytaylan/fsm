@@ -122,7 +122,7 @@ pub(super) fn recorded_domain(directory: &Path, allocation: u64) -> Result<Value
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
     closed(&prepared, &["format", "phase", "domain"])?;
     if text(&prepared, "format")? != "fsm.native-prepared/1"
-        || text(&prepared, "phase")? != "prepared"
+        || !matches!(text(&prepared, "phase")?, "prepared" | "prepared-owned")
     {
         return Err("closing requires a protected prepared allocation".into());
     }

@@ -105,6 +105,7 @@ fn session(
         }
         let result = match action {
             "prepare" => allocator::prepare(&directory),
+            "prepare-owned" => allocator::prepare_owned(&directory),
             "discard-prepared" => closure::discard_prepared(&directory, payload),
             "bind" => bind(&directory, payload).map(|_| Value::Null),
             "close-claimed" => claim_closure::close_claimed(&directory, payload),

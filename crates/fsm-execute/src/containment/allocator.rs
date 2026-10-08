@@ -186,7 +186,7 @@ fn inventory(directory: &Path, origin: &Value, last: u64) -> Result<(), String> 
             .map_err(|error| error.to_string())?
             .to_value();
         if text(&prepared, "format")? != "fsm.native-prepared/1"
-            || text(&prepared, "phase")? != "prepared"
+            || !matches!(text(&prepared, "phase")?, "prepared" | "prepared-owned")
             || number(&domain, "allocation")? != allocation
             || ["namespace", "generation", "boot", "authority"]
                 .iter()
@@ -264,6 +264,19 @@ pub(super) fn prepare(directory: &Path) -> Result<Value, String> {
 
 fn prepare_with_contention_probe(
     directory: &Path,
+    contention: impl FnMut(),
+) -> Result<Value, String> {
+    prepare_with_owner(directory, None, contention)
+}
+
+pub(super) fn prepare_owned(directory: &Path) -> Result<Value, String> {
+    let operator = super::broker_endpoint::operator(directory)?;
+    prepare_with_owner(directory, Some(operator), || {})
+}
+
+fn prepare_with_owner(
+    directory: &Path,
+    operator: Option<u32>,
     mut contention: impl FnMut(),
 ) -> Result<Value, String> {
     let acquisition_deadline = Instant::now() + Duration::from_secs(2);
@@ -363,11 +376,25 @@ fn prepare_with_contention_probe(
     )
     .map_err(|error| error.to_string())?
     .to_value();
+    if let Some(operator) = operator {
+        drop(super::runner_lease::acquire(directory, next)?);
+        super::owner_lease::publish(directory, next, operator)?;
+    }
     publish_once(
         &directory.join(format!("prepared-{next}.json")),
         &object([
             ("format", Value::Str("fsm.native-prepared/1".into())),
-            ("phase", Value::Str("prepared".into())),
+            (
+                "phase",
+                Value::Str(
+                    if operator.is_some() {
+                        "prepared-owned"
+                    } else {
+                        "prepared"
+                    }
+                    .into(),
+                ),
+            ),
             ("domain", domain.clone()),
         ]),
     )?;

@@ -51,7 +51,7 @@ pub(super) fn validate(value: &Value) -> Result<(), String> {
     }
     let payload = value.get("payload").ok_or("broker payload missing")?;
     match text(value, "action")? {
-        "prepare" if payload == &Value::Null => Ok(()),
+        "prepare" | "prepare-owned" if payload == &Value::Null => Ok(()),
         "discard-prepared" => fsm_core::record::execution::NativeDomain::from_value(payload)
             .map(|_| ())
             .map_err(|error| error.to_string()),

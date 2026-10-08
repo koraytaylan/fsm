@@ -9,6 +9,18 @@ use std::path::Path;
 pub(super) fn reconcile_claimed(directory: &Path, payload: &Value) -> Result<Value, String> {
     let claim = claimed(payload)?;
     let allocation = number(&claim.domain().to_value(), "allocation")?;
+    let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true);
+    let _owner = if prepared.as_ref().is_ok_and(|prepared| {
+        prepared.get("phase").and_then(Value::as_str) == Some("prepared-owned")
+    }) {
+        Some(super::super::owner_lease::acquire(
+            directory,
+            allocation,
+            super::super::broker_endpoint::operator(directory)?,
+        )?)
+    } else {
+        None
+    };
     // Never create missing ownership material or race original publication.
     let _original_runner = super::super::runner_lease::acquire_existing(directory, allocation)?;
     refuse_completion_material(directory, allocation, claim.run_id())?;

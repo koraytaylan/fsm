@@ -1,8 +1,10 @@
 # API and version policy
 
-SPEC defines a planned pre-run owner lease with continuous guard transfer and
-entry exclusion; it is not implemented and introduces no shipped API, journal
-format, hash or error-code change, and legacy allocations cannot be retrofitted.
+The additive internal `prepare-owned` route publishes protected runner and
+operator owner leases before a `prepared-owned` domain; binding and closure
+check that owner lease, with no journal format, hash or error-code change.
+Client guard transfer and complete pre-run recovery remain unimplemented;
+legacy allocations cannot be retrofitted to infer retirement.
 
 Repeated operator reconciliation may now return an exact original settlement
 replay through the existing request ledger, without native actions or journal

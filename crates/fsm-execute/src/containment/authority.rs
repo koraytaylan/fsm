@@ -58,6 +58,8 @@ mod stop;
 #[path = "closure.rs"]
 mod closure;
 
+#[path = "owner_lease.rs"]
+mod owner_lease;
 #[path = "runner.rs"]
 mod runner;
 #[path = "runner_lease.rs"]
@@ -503,10 +505,13 @@ fn validate_binding_with_contention_probe(
     let prepared = read_value(&directory.join(format!("prepared-{allocation}.json")), true)?;
     closed(&prepared, &["format", "phase", "domain"])?;
     if text(&prepared, "format")? != "fsm.native-prepared/1"
-        || text(&prepared, "phase")? != "prepared"
+        || !matches!(text(&prepared, "phase")?, "prepared" | "prepared-owned")
         || prepared.get("domain") != Some(&domain)
     {
         return Err("allocation is not prepared under this authority".into());
+    }
+    if text(&prepared, "phase")? == "prepared-owned" {
+        owner_lease::require_held(directory, allocation, broker_endpoint::operator(directory)?)?;
     }
     if fs::read_to_string("/proc/sys/kernel/random/boot_id")
         .map_err(io)?
