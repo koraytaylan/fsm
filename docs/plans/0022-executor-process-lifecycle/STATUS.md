@@ -49,11 +49,19 @@ scoped crash-verdict digest
 The correction matches the original repair binding, proves absent launch
 records and preserves launched-successor memory checks. The inventory covers
 supervisor death, verified domain closure, stopped/ack/event publication and
-pre-launch durable claims across both hosts and handler kinds. Broader native
-reports and executable bytes were not independently verified; authorization
-and remaining spawn/termination boundaries, repeated-run resource use, guard
-sensitivities and current full portable integration remain unverified, so
-9404 stays in progress. This documentation-only update omits heavy gates.
+pre-launch durable claims across both hosts and handler kinds. Successor
+`2be0109b..8237c9b4` independently verifies all forty-four crash cases and both
+82-case containment inventories in
+[CI 37832992442](https://github.com/koraytaylan/fsm/actions/runs/37832992442);
+scoped verdict digest
+`9b9ae178dc1e76e84422b7478607c5ac4c373c67c0032edfdee8373c4e899ed8`.
+The added authorization boundary pins the real enrolled gate before grant,
+proves no handler entry, excludes a competing restart and permits sequential
+recovery only after matched closure. Workflow/upgrade reports and executable
+bytes from this successor were not independently verified; remaining
+spawn/termination boundaries, repeated-run resource use, guard sensitivities
+and current full portable integration remain unverified, so 9404 stays in
+progress. This documentation-only update omits heavy gates.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
