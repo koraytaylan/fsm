@@ -108,6 +108,20 @@ fn recover_stopped() {
     let material = claim.to_value();
     let fingerprint = text(&material, "handler_fingerprint").unwrap();
     drop(snapshot);
+    let original = HandlerSpec::from_contract(
+        parameters.get("replacement_template").unwrap(),
+        fingerprint,
+    )
+    .unwrap();
+    let mut competing_table = HandlerTable::default();
+    competing_table
+        .handlers
+        .insert(original.effect.clone(), original);
+    let mut competitor = super::handoff_recovery::RecoveryDriver::new(
+        &path,
+        competing_table,
+        if changed { "tick" } else { "tick_with" },
+    );
     let mut table = HandlerTable::default();
     if changed {
         let mut replacement = HandlerSpec::from_contract(
@@ -128,6 +142,7 @@ fn recover_stopped() {
         if changed { "tick_with" } else { "tick" },
     );
     driver.check_readonly(&path);
+    competitor.check_readonly(&path);
     let mut clock = fsm_store::clock::FixedClock::new(2000, 1);
     // A different healthy writer fences this reconstructed recovery host.
     // Helper recovery can progress, but the existing stopped owner must remain.
@@ -135,8 +150,12 @@ fn recover_stopped() {
     let held_records = held_writer.records.clone();
     let held_execution = held_writer.state.execution.clone();
     let deadline = Instant::now() + Duration::from_secs(7);
+    let mut writer_refused = [false; 2];
     loop {
         let outcome = driver.tick_without_writer(&path, &mut clock, 1800);
+        let competing_outcome = competitor.tick_without_writer(&path, &mut clock, 1800);
+        writer_refused[0] |= outcome.writer_unavailable;
+        writer_refused[1] |= competing_outcome.writer_unavailable;
         let snapshot = Store::open_read_only(&path).unwrap();
         assert_eq!(snapshot.records, held_records);
         assert_eq!(snapshot.state.execution, held_execution);
@@ -161,7 +180,13 @@ fn recover_stopped() {
                 .iter()
                 .any(|line| line.starts_with("native-handoff advanced"))
         );
-        if outcome.writer_unavailable {
+        assert!(
+            !competing_outcome
+                .lines
+                .iter()
+                .any(|line| line.starts_with("native-handoff advanced"))
+        );
+        if writer_refused.iter().all(|refused| *refused) {
             break;
         }
         assert!(
@@ -175,6 +200,7 @@ fn recover_stopped() {
     let deadline = Instant::now() + Duration::from_secs(7);
     loop {
         driver.tick(&path, &mut clock, 2000);
+        competitor.tick(&path, &mut clock, 2000);
         let snapshot = Store::open_read_only(&path).unwrap();
         if snapshot.state.execution.unresolved().count() == 0
             && snapshot.state.execution_handoffs.outstanding().count() == 0
@@ -201,18 +227,22 @@ fn recover_stopped() {
     }
     let records = Store::open_read_only(&path).unwrap().records.clone();
     driver.tick(&path, &mut clock, 2001);
+    competitor.tick(&path, &mut clock, 2001);
     assert_eq!(Store::open_read_only(&path).unwrap().records, records);
-    let mut driver = driver.into_paired(&path);
-    let request = driver.control().stop(ShutdownMode::Drain, 1000).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while request.poll().phase != ExecutorPhase::Stopped {
-        driver.poll(&mut clock, 2002);
-        assert!(
-            Instant::now() < deadline,
-            "recovered public components did not drain"
-        );
-        std::thread::sleep(Duration::from_millis(5));
+    for host in [driver, competitor] {
+        let mut host = host.into_paired(&path);
+        let request = host.control().stop(ShutdownMode::Drain, 1000).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while request.poll().phase != ExecutorPhase::Stopped {
+            host.poll(&mut clock, 2002);
+            assert!(
+                Instant::now() < deadline,
+                "recovered public components did not drain"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let report = request.poll();
+        assert!(report.inventory_complete && report.helpers_retired && report.writer_released);
     }
-    let report = request.poll();
-    assert!(report.inventory_complete && report.helpers_retired && report.writer_released);
+    assert_eq!(Store::open_read_only(&path).unwrap().records, records);
 }
