@@ -10,13 +10,14 @@ an active-runner refusal remains unresolved and never authorizes termination.
 Startup now attempts guarded original-run closure once per observed orphan
 without completion, using operator reconciliation's authenticated primitive;
 active/missing leases and partial results remain unresolved, and later original
-completion recovery stays available after refusal; native startup acceptance
-and pre-run owner recovery remain pending, with no format or hash change.
+completion recovery stays available after refusal; native startup and owned
+pre-binding recovery pass on stable/MSRV at `d705fc4f`, with no format or hash
+change and task 9403's remaining acceptance requirements still open.
 
 Published original completions in `service::reconcile_run` now use the same
 authenticated recovery and original settlement as startup, without current
 handlers or outcome-event dispatch; partial publications remain unresolved,
-and native startup orphan-closure acceptance remains pending.
+and native startup orphan-closure acceptance passes at that same checkpoint.
 
 The provisional `run::native_client::NativeCompletion` now checks a successful
 broker response against the original full claim/hash, closed result envelope,
@@ -1206,7 +1207,9 @@ The claimed native runner holds a protected `runner-<allocation>.LOCK` file
 from binding validation through cleanup and original result publication;
 contention refuses entry, while an idle or missing lease proves neither owner
 death nor native closure; guarded reconciliation authenticates original closure
-separately, and pre-run owner recovery remains incomplete.
+separately. Owned preparations retain an allocator-created operator lease from
+preparation through execution ownership; recovery acquires both original leases
+before authenticating and publishing an absent original binding, without entry.
 The internal `reconcile-claimed` broker primitive holds an existing lease while
 validating the original binding and closing its domain; it refuses missing or
 active leases, preserves completion records, and performs no journal settlement.
@@ -1229,7 +1232,7 @@ request replay under that writer.
 
 The [operator recovery guide](EXECUTOR-RECOVERY.md) gives concrete upgrade,
 interruption, exact replay and refusal sequences, including retained handoffs
-and the still-incomplete pre-run ownership boundary.
+and the owned pre-run recovery path alongside legacy missing-witness refusals.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not

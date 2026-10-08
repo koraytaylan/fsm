@@ -64,9 +64,15 @@ check `execution_ownership.outstanding_handoffs` as well.
   it before retrying, while inspection remains available.
 - Active runner lease: use the original executor's bounded stop control and
   wait for its authenticated retirement before reconciling.
-- Missing runner lease or binding before entry: retain the claim and original
-  authority; pre-run owner recovery is incomplete, so do not create replacement
-  ownership files or treat an empty domain as evidence.
+- Active preparation owner lease: wait for the original owner to retire;
+  reconciliation refuses while that lease remains held.
+- Missing binding before entry: an original `prepared-owned` allocation can
+  recover through the same command after both original leases are acquired and
+  the durable claim is authenticated; no handler is launched, and interrupted
+  settlement preserves the pending effect.
+- Missing original lease, or missing binding on a legacy `prepared` allocation:
+  retain the claim and authority; do not create replacement ownership files or
+  treat an empty domain as evidence.
 - Partial original result: preserve its bytes and original authority for
   authenticated result recovery; closure-only reconciliation refuses them.
 - Changed physical store, boot, authority or domain identity, or missing native
