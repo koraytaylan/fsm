@@ -285,7 +285,15 @@ impl RecoveryDriver {
         match self {
             Self::Paired(driver) => driver.tick(clock, now),
             Self::Public(parts) if parts.borrowed => {
-                let mut writer = Store::open(path).unwrap();
+                let mut writer = match Store::open(path) {
+                    Ok(writer) => writer,
+                    Err(error) => {
+                        // A borrowed tick cannot be called without a writer;
+                        // keep its original components for the next turn.
+                        assert_eq!(error.code, "store/lock");
+                        return Vec::new();
+                    }
+                };
                 fsm_execute::service::tick_with(
                     &mut parts.watcher,
                     &mut parts.scheduler,
