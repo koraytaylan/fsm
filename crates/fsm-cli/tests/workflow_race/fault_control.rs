@@ -129,7 +129,9 @@ pub(super) fn reconcile_original_closure_via_cli(
     assert_eq!(snapshot.records, records);
     let instance = snapshot.state.instances[claim.effect().0].clone();
     drop(snapshot);
-    let output = Command::new(directory.executable())
+    let output_path = directory.0.join("reconcile-stdout");
+    let error_path = directory.0.join("reconcile-stderr");
+    let mut reconciliation = Command::new(directory.executable())
         .args(["--json", "--data-dir"])
         .arg(directory.store())
         .args([
@@ -141,13 +143,30 @@ pub(super) fn reconcile_original_closure_via_cli(
             "8000",
         ])
         .stdin(Stdio::null())
-        .output()
+        .stdout(fs::File::create(&output_path).unwrap())
+        .stderr(fs::File::create(&error_path).unwrap())
+        .spawn()
         .unwrap();
-    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    let deadline = Instant::now() + Duration::from_secs(12);
+    let status = loop {
+        if let Some(status) = reconciliation.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            // Retire only the child owned by this fixture, retaining native
+            // authority evidence for the supervisor's authenticated cleanup.
+            let _ = reconciliation.kill();
+            reconciliation.wait().unwrap();
+            panic!("original-run CLI reconciliation exceeded its fixture deadline");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(fs::metadata(&output_path).unwrap().len() <= 8192);
+    assert!(fs::metadata(&error_path).unwrap().len() <= 8192);
     assert!(
-        output.status.success(),
+        status.success(),
         "original-run CLI reconciliation refused: {}",
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&fs::read(&error_path).unwrap())
     );
     let writer = Store::open(&directory.store()).unwrap();
     assert_original_interruption(writer, claim, records, instance)
