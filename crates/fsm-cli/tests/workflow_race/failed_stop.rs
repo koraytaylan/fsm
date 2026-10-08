@@ -57,40 +57,7 @@ pub(super) fn restart_after_failed_stop(
     );
     // Independently reach the actual native closure entry while its original
     // protected handoff is unavailable: no mock supplies this broker refusal.
-    let mut failed = fsm_execute::run::native_client::NativeShutdown::start(
-        &snapshot,
-        &claim,
-        Duration::from_secs(3),
-    )
-    .unwrap();
-    let until = Instant::now() + Duration::from_secs(4);
-    let refusal = loop {
-        match failed.poll() {
-            Err(message) => break message,
-            Ok(None) => {}
-            Ok(Some(_)) => panic!("failed native stop fabricated authenticated closure"),
-        }
-        assert!(
-            Instant::now() < until,
-            "failed native stop exceeded its bound"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    };
-    assert_eq!(
-        refusal,
-        format!(
-            "native shutdown refused: {}",
-            std::io::Error::from_raw_os_error(2)
-        ),
-        "hidden original handoff must produce the actual broker refusal"
-    );
-    while !failed.reap().unwrap() {
-        assert!(
-            Instant::now() < until,
-            "failed native helper did not retire"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    }
+    require_hidden_handoff_refusal(&snapshot, &claim);
     let observed = Store::open_read_only(&directory.store()).unwrap();
     assert_eq!(observed.records, records);
     assert_eq!(observed.state.execution.unresolved().count(), 1);
@@ -184,4 +151,55 @@ fn embedded_failed_native_stop_preserves_claim_and_recovers() {
         "active",
         ExecutionMode::Embedded,
     );
+}
+
+fn require_hidden_handoff_refusal(snapshot: &Store, claim: &fsm_core::record::execution::Claim) {
+    let until = Instant::now() + Duration::from_secs(4);
+    loop {
+        let remaining = until.saturating_duration_since(Instant::now());
+        assert!(
+            !remaining.is_zero(),
+            "hidden handoff refusal deadline expired"
+        );
+        let mut failed = fsm_execute::run::native_client::NativeShutdown::start(
+            snapshot,
+            claim,
+            remaining.min(Duration::from_secs(3)),
+        )
+        .unwrap();
+        let refusal = loop {
+            match failed.poll() {
+                Err(message) => break message,
+                Ok(None) => {}
+                Ok(Some(_)) => panic!("failed native stop fabricated authenticated closure"),
+            }
+            assert!(
+                Instant::now() < until,
+                "failed native stop exceeded its bound"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        while !failed.reap().unwrap() {
+            assert!(
+                Instant::now() < until,
+                "failed native helper did not retire"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // A concurrent original cleanup can briefly hold the authority lock;
+        // retire that request before retrying the same protected fault.
+        if refusal == "native shutdown refused: authority busy" {
+            std::thread::sleep(Duration::from_millis(5));
+            continue;
+        }
+        assert_eq!(
+            refusal,
+            format!(
+                "native shutdown refused: {}",
+                std::io::Error::from_raw_os_error(2)
+            ),
+            "hidden original handoff must produce the actual broker refusal"
+        );
+        break;
+    }
 }
