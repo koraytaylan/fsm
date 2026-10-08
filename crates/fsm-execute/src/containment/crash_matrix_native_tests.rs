@@ -42,6 +42,13 @@ fn scenario(staging: &Path, nonce: &str, host: &str, kind: &str) {
     let resource = PathBuf::from(format!("/dev/shm/fsm-crash-{nonce}-{host}-{kind}"));
     fs::DirBuilder::new().mode(0o777).create(&resource).unwrap();
     fs::set_permissions(&resource, fs::Permissions::from_mode(0o777)).unwrap();
+    // DynamicUser RemoveIPC can unlink files owned by the departing identity;
+    // Root-owned observation slots survive closure and remain writable by runs.
+    for role in ["root", "child", "grandchild"] {
+        let path = resource.join(format!("{role}-entered"));
+        fs::write(&path, b"").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
+    }
     let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
     // Leave room for the longest control label and its private socket suffix.
     let home = PathBuf::from(format!(

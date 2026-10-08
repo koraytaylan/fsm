@@ -27,6 +27,11 @@ fixture's incorrect stdin requirement (`nonzero_exit`, status 1); verified
 diagnosis digest `a4e0ef2928aaa5003f5f796df905c6d1896219d0ccd38ad1958c6c0516122c85`.
 The corrected fixture uses argv and closed stdin for process mode, with MCP
 framing unchanged; native verification of that correction remains outstanding.
+Frozen `6f0c1b1b` reaches the live candidate tree on both compilers, then fails
+when its entry marker disappears after executor kill; verified failure digest
+`3be6517781545ba5671776035bb4a7240ba14d9a328116cd33b216daba6312ac`.
+Root-owned observation slots and PID-matched readiness address fixture
+retirement without changing production behavior; native acceptance stays open.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.

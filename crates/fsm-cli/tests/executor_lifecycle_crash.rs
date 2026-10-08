@@ -36,6 +36,10 @@ impl Fixture {
             NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed),
         ));
         fs::create_dir(&directory).unwrap();
+        // Existing slots must never satisfy a new descendant's ready barrier.
+        for role in ["root", "child", "grandchild"] {
+            fs::write(directory.join(format!("{role}-entered")), b"0").unwrap();
+        }
         let root = Command::new(env!("CARGO_BIN_EXE_fsm-lifecycle-fixture"))
             .arg(mode)
             .arg(&directory)

@@ -17,6 +17,10 @@ Completed-response evidence at `f961f871` identifies the pre-barrier failure:
 the process fixture required invocation on stdin, which production closes.
 The fixture and its portable process checks now use argv with closed stdin;
 MCP retains request framing, and native verification remains outstanding.
+At `6f0c1b1b`, both compilers reach the live tree but lose its entry marker
+after executor kill. The coordinator now preserves Root-owned entry slots
+across DynamicUser retirement, with PID-matched descendant readiness and
+stale-slot portable checks; native verification remains outstanding.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

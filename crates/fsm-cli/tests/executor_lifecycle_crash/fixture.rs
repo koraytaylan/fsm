@@ -78,12 +78,35 @@ fn spawn(directory: &Path, role: &str) -> io::Result<Child> {
         .spawn()
 }
 
+fn wait_for_entry(directory: &Path, role: &str, process: &mut Child) -> io::Result<()> {
+    let expected = process.id().to_string();
+    let path = directory.join(format!("{role}-entered"));
+    let deadline = Instant::now() + Duration::from_secs(180);
+    loop {
+        if fs::read_to_string(&path).is_ok_and(|observed| observed == expected) {
+            return Ok(());
+        }
+        if process.try_wait()?.is_some() {
+            return Err(io::Error::other(
+                "descendant exited before its entry marker",
+            ));
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "descendant entry"));
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn descendant(directory: &Path, role: &str) -> io::Result<()> {
     let mut grandchild = match role {
         "child" => Some(spawn(directory, "grandchild")?),
         "grandchild" => None,
         _ => return Err(io::Error::other("unknown descendant role")),
     };
+    if let Some(grandchild) = grandchild.as_mut() {
+        wait_for_entry(directory, "grandchild", grandchild)?;
+    }
     mark(directory, role, "entered")?;
     wait_for(&directory.join(format!("{role}-release")))?;
     if let Some(grandchild) = grandchild.as_mut() {
@@ -135,8 +158,7 @@ fn handler(directory: &Path, mode: &str, behavior: &str) -> Result<(), Box<dyn s
         return Err("unknown fixture behavior".into());
     }
     let mut child = spawn(directory, "child")?;
-    wait_for(&directory.join("child-entered"))?;
-    wait_for(&directory.join("grandchild-entered"))?;
+    wait_for_entry(directory, "child", &mut child)?;
     mark(directory, "root", "entered")?;
     let stdin = io::stdin();
     let mut input = stdin.lock();

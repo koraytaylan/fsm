@@ -1415,3 +1415,10 @@ invocation. Process mode now produces its candidate from argv with closed
 stdin; only MCP waits for framed requests, and portable process checks also
 close stdin. Native verification of this correction remains outstanding; no
 passing crash or no-overlap acceptance is claimed.
+Both `6f0c1b1b` attempts reach the live candidate tree, then fail because the
+entry marker disappears during original closure, consistent with DynamicUser
+IPC retirement. The coordinator now precreates Root-owned writable entry slots
+so observation survives closure; each parent waits for its actual child's PID
+before publishing entry, and portable checks seed stale slots. This fixture
+correction changes no production profile or acceptance assertion and remains
+unverified natively.
