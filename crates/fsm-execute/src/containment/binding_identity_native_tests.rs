@@ -94,7 +94,7 @@ fn refuse_replacement(caller: Caller) {
         "closing-1.json",
         "closed-1.json",
         "exec-1",
-        "exec-1.json",
+        "exec-status-1.json",
     ] {
         assert!(!fixture.directory.join(name).exists());
     }
@@ -119,9 +119,23 @@ fn refuse_replacement(caller: Caller) {
         identity(&fs::symlink_metadata(original).unwrap()),
         original_identity
     );
-    // Restoring the same original resource permits genuine journal ownership
-    // to bind; no missing domain or fixture cleanup is promoted to closure.
-    bind(&fixture.directory, &binding).unwrap();
+    // Restoring the same original resource permits the same production caller;
+    // no missing domain or fixture cleanup is promoted to closure.
+    match caller {
+        Caller::Binding => bind(&fixture.directory, &binding).unwrap(),
+        Caller::ExecStatus => {
+            let listener = exec_status::Listener::create(
+                &fixture.directory,
+                1,
+                &binding,
+                &fsm_execute::config::HandlerKind::Process,
+            )
+            .unwrap();
+            assert!(fixture.directory.join("exec-1/s").exists());
+            assert!(fixture.directory.join("exec-status-1.json").exists());
+            drop(listener);
+        }
+    }
     assert_eq!(
         Store::open_read_only(&fixture.store).unwrap().records,
         records
