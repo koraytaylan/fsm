@@ -26,6 +26,10 @@ struct Owner {
     locally_admitted: bool,
     stopped: Option<Stopped>,
     execution: NativeExecution,
+    reconciliation: Option<super::native_client::NativeShutdown>,
+    reconciliation_attempted: bool,
+    reconciliation_ready: bool,
+    reconciliation_retired: bool,
     requested: bool,
     entry_requested: bool,
     parked_at: Option<u64>,
@@ -62,6 +66,9 @@ impl NativeOwners {
                     .progress()
                     .helper
                     .is_none_or(|helper| helper.is_retired())
+                    && owner.reconciliation.as_ref().is_none_or(|closure| {
+                        owner.reconciliation_retired && closure.progress().is_retired()
+                    })
             });
         (
             self.local_claims().map(Claim::run_id).collect(),
@@ -84,6 +91,9 @@ impl NativeOwners {
                     .progress()
                     .helper
                     .is_none_or(|helper| helper.is_retired())
+                && owner.reconciliation.as_ref().is_none_or(|closure| {
+                    owner.reconciliation_retired && closure.progress().is_retired()
+                })
         })
     }
 
@@ -206,6 +216,10 @@ impl NativeOwners {
                 .progress()
                 .helper
                 .is_some_and(|helper| !helper.is_retired())
+                || owner
+                    .reconciliation
+                    .as_ref()
+                    .is_some_and(|_| !owner.reconciliation_retired)
         });
         if !busy {
             for owner in self.owners.values_mut().filter(|owner| !owner.requested) {
@@ -217,11 +231,31 @@ impl NativeOwners {
                 // Keep its one recovery request available for later evidence.
                 match super::native_client::completion_published(&snapshot.data_dir, &owner.claim) {
                     Ok(true) => {}
-                    Ok(false) => continue,
+                    Ok(false) => {
+                        if !owner.locally_admitted && !owner.reconciliation_attempted {
+                            owner.reconciliation_attempted = true;
+                            match super::native_client::NativeShutdown::start_reconciliation(
+                                snapshot,
+                                &owner.claim,
+                                RECOVERY_TIMEOUT,
+                            ) {
+                                Ok(closure) => owner.reconciliation = Some(closure),
+                                Err(_) => observation.unresolved.push(deferred()),
+                            }
+                            break;
+                        }
+                        continue;
+                    }
                     Err(_) => {
                         observation.unresolved.push(deferred());
                         continue;
                     }
+                }
+                if let Some(closure) = owner.reconciliation.as_mut() {
+                    if owner.reconciliation_ready || !closure.reap().unwrap_or(false) {
+                        continue;
+                    }
+                    owner.reconciliation = None;
                 }
                 owner.requested = true;
                 if let Ok(execution) =
@@ -262,6 +296,10 @@ impl NativeOwners {
                 locally_admitted: false,
                 stopped: stopped.cloned(),
                 execution: NativeExecution::retain_uncertain(claim),
+                reconciliation: None,
+                reconciliation_attempted: false,
+                reconciliation_ready: false,
+                reconciliation_retired: false,
                 requested: false,
                 entry_requested: true,
                 parked_at: None,
@@ -550,6 +588,24 @@ impl NativeOwners {
         }
         self.admissions.observe();
         for owner in self.owners.values_mut() {
+            if let Some(closure) = owner.reconciliation.as_mut() {
+                match closure.poll() {
+                    Ok(Some(_)) => {
+                        owner.reconciliation_retired = closure.reap().unwrap_or(false);
+                        owner.reconciliation_ready = owner.reconciliation_retired;
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        owner.reconciliation_retired = closure.reap().unwrap_or(false);
+                        self.execution_diagnostic.get_or_insert_with(|| {
+                            super::native_admission::bounded_diagnostic(
+                                "native-reconciliation-uncertain ",
+                                &error,
+                            )
+                        });
+                    }
+                }
+            }
             if owner.execution.progress().phase == NativeRunPhase::Uncertain {
                 let _ = owner.execution.reap();
             } else if let Err(error) = owner.execution.observe() {
@@ -612,7 +668,8 @@ impl Owner {
     }
 
     fn settlement_ready(&self, seq: u64) -> bool {
-        self.execution.completion().is_some() && self.parked_at != Some(seq)
+        (self.execution.completion().is_some() || self.reconciliation_ready)
+            && self.parked_at != Some(seq)
     }
 
     fn apply(
@@ -654,6 +711,21 @@ impl Owner {
         clock: &mut dyn Clock,
         pipeline: &mut Pipeline,
     ) -> Result<(String, bool), ExecError> {
+        if self.reconciliation_ready {
+            let closure = self.reconciliation.as_mut().ok_or_else(deferred)?;
+            closure.settle_interrupted(store, clock)?;
+            if !self.execution.retire_interrupted(store)? {
+                return Err(deferred());
+            }
+            return Ok((
+                format!(
+                    "native-settled {} run_id={} disposition=interrupted advance=none",
+                    self.claim.effect().1,
+                    self.claim.run_id(),
+                ),
+                true,
+            ));
+        }
         let response = self.execution.settle(store, clock)?;
         let disposition = response
             .get("execution")

@@ -2748,7 +2748,7 @@ capacity or establish a bounded production shutdown report.
 ### Planned uncertain-run inspection and reconciliation (task 9403)
 
 Production `execute runs` implements the journal-only inspection portion;
-`execute reconcile` selects shared authenticated result recovery or guarded closure; shared startup orphan reconciliation remains incomplete.
+`execute reconcile` selects shared authenticated result recovery or guarded closure; runner-phase startup reconciliation is implemented but native acceptance remains incomplete.
 The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
 inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
 effect_id, backend, phase, native_evidence and next. The execution_ownership
@@ -2828,6 +2828,17 @@ it MUST NOT load a replacement handler table, launch work or fabricate an event.
 positive run IDs, with an optional finite `--timeout-ms` (default 8000), and
 refuse missing stores or absent current runs before opening a writer; other
 platforms MUST report unsupported mode without native or journal mutation.
+
+Startup recovery MAY request the same guarded claimed reconciliation for an
+observed original run without a published completion, at most once per retained
+run per incarnation. It MUST NOT bypass an active or missing protected runner
+lease, reinterpret result material, or infer closure from transport retirement.
+It MUST retain the original run until authenticated closure and helper retirement
+permit writer-revalidated interrupted settlement. A refused closure attempt MUST
+NOT prevent later authenticated recovery of an original completed publication;
+all closure helpers MUST remain included in transport retirement inventories.
+This implements runner-phase startup reconciliation; pre-run ownership recovery
+and complete native acceptance remain outstanding.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT

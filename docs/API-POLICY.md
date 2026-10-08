@@ -1,5 +1,11 @@
 # API and version policy
 
+Startup now attempts guarded original-run closure once per observed orphan
+without completion, using operator reconciliation's authenticated primitive;
+active/missing leases and partial results remain unresolved, and later original
+completion recovery stays available after refusal; native startup acceptance
+and pre-run owner recovery remain pending, with no format or hash change.
+
 Published original completions in `service::reconcile_run` now use the same
 authenticated recovery and original settlement as startup, without current
 handlers or outcome-event dispatch; partial publications remain unresolved,
