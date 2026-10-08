@@ -535,11 +535,25 @@ There are no shell commands, third-party crates, unsafe blocks or OS exclusions
 in the probe. Passing these negative tests proves a limitation, not the
 positive native matrix required to release the gate.
 
-Run with:
+Run the following probe commands only in a fresh disposable CI environment;
+protected native probes require its provisioned authority and systemd backend.
+Create one task cache and export it before invoking any probe or Cargo command:
 
 ```sh
-CARGO_TARGET_DIR=/tmp/fsm-plans-target cargo test -p fsm-execute --test lifecycle_platform
-CARGO_TARGET_DIR=/tmp/fsm-plans-target cargo +stable test -p fsm-execute --test lifecycle_platform
+mkdir -p "$HOME/.cache"
+export TMPDIR="$(mktemp -d "$HOME/.cache/fsm-lifecycle-probes.XXXXXX")"
+export CARGO_TARGET_DIR="$TMPDIR/target"
+```
+
+Remove that owned task cache after retiring the probe resources and preserving
+the required evidence; historical report paths below identify old evidence and
+do not instruct new runs to reuse those directories.
+
+Run the negative probe with:
+
+```sh
+cargo test -p fsm-execute --test lifecycle_platform
+cargo +stable test -p fsm-execute --test lifecycle_platform
 ```
 
 Observed host: Linux x86_64, kernel `7.0.0-31-generic`.
@@ -650,8 +664,8 @@ A killed service may be failed after closure; that status is neither success
 nor proof of a live tree. Closure checks the actual domain and pipe evidence.
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/systemd_probe.py --toolchain 1.89.0 --report /tmp/fsm-systemd-native-msrv.json
-python3 crates/fsm-execute/tests/lifecycle_platform/systemd_probe.py --toolchain stable --report /tmp/fsm-systemd-native-stable.json
+python3 crates/fsm-execute/tests/lifecycle_platform/systemd_probe.py --toolchain 1.89.0 --report "$TMPDIR/fsm-systemd-native-msrv.json"
+python3 crates/fsm-execute/tests/lifecycle_platform/systemd_probe.py --toolchain stable --report "$TMPDIR/fsm-systemd-native-stable.json"
 ```
 
 Both toolchains passed these four cases on Linux 7.0.0-31-generic with systemd
@@ -768,8 +782,8 @@ Unrelated-process survival is checked through cleanup. This proves recovery
 at the stated barrier, not death before utility handoff or queued launches.
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/identity_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-identity-msrv.json
-python3 crates/fsm-execute/tests/lifecycle_platform/identity_probe.py --toolchain stable --report /tmp/fsm-native-identity-stable.json
+python3 crates/fsm-execute/tests/lifecycle_platform/identity_probe.py --toolchain 1.89.0 --report "$TMPDIR/fsm-native-identity-msrv.json"
+python3 crates/fsm-execute/tests/lifecycle_platform/identity_probe.py --toolchain stable --report "$TMPDIR/fsm-native-identity-stable.json"
 ```
 
 Ten cases currently pass at both toolchains: empty preallocation, unprivileged
@@ -832,8 +846,8 @@ of a copied armed grant in another domain and of a captured submission
 replayed after durable closure, without protected-record mutation.
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/broker_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-broker-msrv.json
-python3 crates/fsm-execute/tests/lifecycle_platform/broker_probe.py --toolchain stable --report /tmp/fsm-native-broker-stable.json
+python3 crates/fsm-execute/tests/lifecycle_platform/broker_probe.py --toolchain 1.89.0 --report "$TMPDIR/fsm-native-broker-msrv.json"
+python3 crates/fsm-execute/tests/lifecycle_platform/broker_probe.py --toolchain stable --report "$TMPDIR/fsm-native-broker-stable.json"
 ```
 
 This remains private feasibility preparation. It does not bind grants to
@@ -882,8 +896,8 @@ native state without a receipt remains unknown and cannot authorize reuse.
 These are private /run probe records, not a production journal format.
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/window_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-window-msrv.json
-python3 crates/fsm-execute/tests/lifecycle_platform/window_probe.py --toolchain stable --report /tmp/fsm-native-window-stable.json
+python3 crates/fsm-execute/tests/lifecycle_platform/window_probe.py --toolchain 1.89.0 --report "$TMPDIR/fsm-native-window-msrv.json"
+python3 crates/fsm-execute/tests/lifecycle_platform/window_probe.py --toolchain stable --report "$TMPDIR/fsm-native-window-stable.json"
 ```
 
 Eleven named cases cover pending start, controller death, pending-job close,
@@ -931,8 +945,8 @@ removal remain the authority. The probe is sequential with one held lease
 and a five-second safety watchdog, not a production multi-resource budget.
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/signal_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-signal-msrv.json
-python3 crates/fsm-execute/tests/lifecycle_platform/signal_probe.py --toolchain stable --report /tmp/fsm-native-signal-stable.json
+python3 crates/fsm-execute/tests/lifecycle_platform/signal_probe.py --toolchain 1.89.0 --report "$TMPDIR/fsm-native-signal-msrv.json"
+python3 crates/fsm-execute/tests/lifecycle_platform/signal_probe.py --toolchain stable --report "$TMPDIR/fsm-native-signal-stable.json"
 ```
 
 Separate real SIGTERM and SIGKILL cases kill only the operator client's main
@@ -975,8 +989,8 @@ inspection errors refuse startup. The lock is held independently of the
 short-lived native run writer lock. These remain private probe formats.
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/restart_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-restart-msrv.json
-python3 crates/fsm-execute/tests/lifecycle_platform/restart_probe.py --toolchain stable --report /tmp/fsm-native-restart-stable.json
+python3 crates/fsm-execute/tests/lifecycle_platform/restart_probe.py --toolchain 1.89.0 --report "$TMPDIR/fsm-native-restart-msrv.json"
+python3 crates/fsm-execute/tests/lifecycle_platform/restart_probe.py --toolchain stable --report "$TMPDIR/fsm-native-restart-stable.json"
 ```
 
 Nine cases prove exclusive supervisor ownership, uncatchable broker death
@@ -1068,8 +1082,8 @@ entry point builds and records exact source/toolchain evidence using the
 same native reporter as the identity suite:
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/facility_probe.py --toolchain 1.89.0 --report /tmp/fsm-native-facility-msrv.json
-python3 crates/fsm-execute/tests/lifecycle_platform/facility_probe.py --toolchain stable --report /tmp/fsm-native-facility-stable.json
+python3 crates/fsm-execute/tests/lifecycle_platform/facility_probe.py --toolchain 1.89.0 --report "$TMPDIR/fsm-native-facility-msrv.json"
+python3 crates/fsm-execute/tests/lifecycle_platform/facility_probe.py --toolchain stable --report "$TMPDIR/fsm-native-facility-stable.json"
 ```
 
 This tests loss of access to a running manager, not manager/kernel death or
@@ -1090,8 +1104,8 @@ It never releases the task gate automatically or counts unsupported facilities
 as successful skips.
 
 ```sh
-python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py --toolchain 1.89.0 --report-dir /path/to/new/msrv-evidence
-python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py --toolchain stable --report-dir /path/to/new/stable-evidence
+python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py --toolchain 1.89.0 --report-dir "$TMPDIR/msrv-evidence"
+python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py --toolchain stable --report-dir "$TMPDIR/stable-evidence"
 ```
 
 The CI `native-containment` job runs this inventory on provisioned Ubuntu at
