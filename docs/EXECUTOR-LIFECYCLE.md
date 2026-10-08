@@ -1404,8 +1404,8 @@ other modes hold the candidate result or emit bounded stderr noise. Every wait
 has a finite fixture bound. `executor_lifecycle_crash` independently verifies
 root exit and pipe retention for both handler modes before releasing the tree.
 This proves the fixture's observable behavior, not native containment: the
-complete standalone/embedded production cutpoint and supervisor-death matrix,
-resource-use and guard-sensitivity acceptance remain outstanding.
+native containment evidence comes from the separately provisioned production
+cutpoint, supervisor-death, resource-use and guard-sensitivity runs below.
 
 The dedicated target also contains an explicitly ignored Linux production-host
 pre-publication crash actor. A protected Root-coordinator manifest selects
@@ -1461,7 +1461,8 @@ retirement must precede a replacement claim. Four further cases hold after
 matched domain closure and owned-handle retirement but before completion
 publication; the observer verifies the original closure and dead tree before
 killing the executor, then requires original-result recovery without another
-claim or handler entry. The supervisor-death and domain-close extension remains unverified.
+claim or handler entry. The retained `3678a9ce` native checkpoint independently
+verifies these supervisor-death and domain-close cases on stable/MSRV.
 Twelve further standalone/embedded process/MCP cases hold the actual host
 immediately after its stopped record, acknowledgement transaction or accepted
 event. An opt-in `lifecycle-test-fixture` dependency feature enables these
@@ -1488,7 +1489,9 @@ grant publication. The observer authenticates the protected handoff and
 original claim/hash, matches the live gate PID/start token and kernel cgroup,
 requires absent grants and handler entry across immediate restart, then
 permits sequential recovery only after matched closure and interruption.
-The forty-four-case extension remains unverified; default shipped binaries
+The retained `3678a9ce` checkpoint independently verifies the claim,
+authorization, stopped-record, acknowledgement and event cuts on stable/MSRV;
+default shipped binaries
 contain no barrier.
 
 The portable lifecycle fixture also provides `noisy-exit`: it emits 16 KiB
@@ -1505,9 +1508,10 @@ the observer pins one host PID/birth token, checks prior tree death and matched
 store/claim closure before successor entry, and compares host descriptor/thread
 counts and RSS at the same held-candidate phase after warm-up. The finite
 fixture permits two transient descriptors/tasks and 16 MiB RSS growth, and
-requires twelve claim/stop/settlement/event records. This extension remains
-unverified natively and does not complete 9404 or establish an unlimited-run
-resource bound.
+requires twelve claim/stop/settlement/event records. The retained `3678a9ce`
+checkpoint independently verifies all 48 measurements on stable/MSRV, scoped
+verdict `f7e2dc583fcedeb4f84dcba101c932b499f7518007a11ad72937408db5cdc5f6`;
+this does not complete 9404 or establish an unlimited-run resource bound.
 The retained-log verifier independently requires all twelve ordered measurements
 for each host/handler pair and checks those same finite bounds; focused negative
 controls reject missing or duplicate observations, invalid measurements and each
@@ -1543,12 +1547,28 @@ Root temporarily corrupts and restores actual retired receipt/attestation
 bytes, faults the captured response hash field and matching attestation digest,
 and the public verifier captures an opaque completion for the wrong
 journal hash, so neither private proof construction nor store-memory mutation
-can substitute for these current-ownership checks; native runtime verification
-of both new cases remains pending.
+can substitute for these current-ownership checks; frozen `3de6d73d`
+independently verifies both cases at original/neutralized/restored exits
+0/101/0 on Linux stable/MSRV.
 
 The `handoff-closure-claim` checkpoint exercises
 `Pipeline::advance_native_settled` against a genuine durable acknowledged
 handoff and an opaque wrong-hash completion captured through the public
 verifier; refusal preserves the journal and outstanding event obligation,
-while the original matching completion accepts the event once, and native
-runtime verification of this new case remains pending.
+while the original matching completion accepts the event once; frozen
+`3de6d73d` independently verifies original/neutralized/restored exits 0/101/0
+on Linux stable/MSRV, combined application/settlement/handoff scoped verdict
+`8a499b17e45f37379f1252bdf94dea51499986980ac9fd98b112f2a47c15a152`.
+These proofs do not establish current full integration or complete task 9404.
+
+`NativeShutdown::settle_interrupted` repeats the original-claim match for its
+cached proof: all claim/hash/proof fields are private, construction starts with
+no proof, and the only production assignment caches `poll_once` success after
+`OriginalClosure::verify` authenticates that same immutable claim/hash pair.
+Both synchronous and worker verification use that entry; polling returns proof
+clones and exposes no replacement setter. Consequently a mismatched cached
+proof cannot reach settlement through the public API with receipt ingress
+enabled; this source invariant is distinct from the receipt-ingress sensitivity
+and the caller-supplied completion proofs above, and is not a separate native
+fault-test claim. Settlement still checks physical store identity and the
+current durable claim hash before publishing interruption.
