@@ -168,6 +168,16 @@ fn restart_after_closure(fixture: &mut Fixture, barriers: &Barriers, original_un
         "fsm-containment-{}-1-2.service",
         text(&successor.to_value(), "namespace").unwrap()
     );
+    fs::write(
+        barriers.path.join("release"),
+        b"sequential MCP enrollment verified",
+    )
+    .unwrap();
+    replay_original_while_successor_lives(fixture);
+    assert!(
+        !execution.is_finished(),
+        "stale CLI reconciliation ended the MCP successor"
+    );
     for pid in [
         number(&root, "pid").unwrap(),
         number(&descendants, "pid").unwrap(),
@@ -183,11 +193,6 @@ fn restart_after_closure(fixture: &mut Fixture, barriers: &Barriers, original_un
             .join(original_unit)
             .exists()
     );
-    fs::write(
-        barriers.path.join("release"),
-        b"sequential MCP enrollment verified",
-    )
-    .unwrap();
     cancelled.store(true, std::sync::atomic::Ordering::Release);
     while !execution.is_finished() {
         assert!(Instant::now() < deadline, "successor MCP closure deadline");
@@ -220,6 +225,68 @@ fn restart_after_closure(fixture: &mut Fixture, barriers: &Barriers, original_un
         .unwrap();
     assert_eq!(writer.state.execution.unresolved().count(), 0);
     assert!(!Path::new("/sys/fs/cgroup/system.slice").join(unit).exists());
+}
+
+fn replay_original_while_successor_lives(fixture: &Fixture) {
+    let before = Store::open_read_only(&fixture.store).unwrap().records;
+    let output = fixture.directory.join("stale-mcp-reconcile.stdout");
+    let errors = fixture.directory.join("stale-mcp-reconcile.stderr");
+    let mut child = Command::new("/usr/bin/python3")
+        .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
+        .arg(fixture.directory.join("recovery-cli"))
+        .args(["--json", "--data-dir"])
+        .arg(&fixture.store)
+        .args(["execute", "reconcile", "--run-id", "1", "--timeout-ms", "1000"])
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&output).unwrap())
+        .stderr(fs::File::create(&errors).unwrap())
+        .spawn().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            child.wait().unwrap();
+            panic!("stale MCP CLI replay exceeded its bound; authority retained");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(fs::metadata(&output).unwrap().len() <= 8192);
+    assert!(fs::metadata(&errors).unwrap().len() <= 8192);
+    assert!(
+        status.success(),
+        "stale MCP CLI replay refused: {}",
+        String::from_utf8_lossy(&fs::read(&errors).unwrap())
+    );
+    let response = fsm_core::json::parse(
+        &fs::read(output).unwrap(),
+        &fsm_core::json::JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(response.get("duplicate"), Some(&Value::Bool(true)));
+    assert_eq!(
+        response.get("execution").unwrap().get("run_id"),
+        Some(&Value::Num("1".into()))
+    );
+    assert_eq!(
+        response.get("execution").unwrap().get("disposition"),
+        Some(&Value::Str("interrupted".into()))
+    );
+    let observed = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(observed.records, before);
+    assert_eq!(
+        observed
+            .state
+            .execution
+            .unresolved()
+            .next()
+            .unwrap()
+            .0
+            .run_id(),
+        2
+    );
 }
 
 #[test]
