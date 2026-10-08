@@ -26,4 +26,3 @@ def build_cli(repo, toolchain, test):
                  and row['profile']['test'] is test and row.get('executable')]
     assert len(artifacts) == 1
     return Path(artifacts[0]).resolve()
-
