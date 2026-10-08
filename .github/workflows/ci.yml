@@ -19,6 +19,12 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      native_only:
+        description: Verify a native acceptance checkpoint without repeating portable gates
+        type: boolean
+        default: false
 
 # Preserve the running develop checkpoint and queue its latest successor.
 # Other branches and pull requests cancel superseded runs; tag gates remain
@@ -34,6 +40,7 @@ env:
 
 jobs:
   gate:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.native_only }}
     strategy:
       fail-fast: false
       matrix:
