@@ -13,7 +13,7 @@ pub(super) fn acquire(directory: &Path, allocation: u64) -> Result<File, String>
         return Err("runner lease allocation invalid".into());
     }
     let path = directory.join(format!("runner-{allocation}.LOCK"));
-    let lease = open(&path, 0)?;
+    let lease = open(&path, 0, Creation::Allowed)?;
     lease.sync_all().map_err(io)?;
     File::open(directory).map_err(io)?.sync_all().map_err(io)?;
     protected_directory(directory)?;
@@ -25,11 +25,32 @@ pub(super) fn acquire(directory: &Path, allocation: u64) -> Result<File, String>
     Ok(lease)
 }
 
-fn open(path: &Path, owner: u32) -> Result<File, String> {
+enum Creation {
+    Allowed,
+    Forbidden,
+}
+
+pub(super) fn acquire_existing(directory: &Path, allocation: u64) -> Result<File, String> {
+    protected_directory(directory)?;
+    if allocation == 0 {
+        return Err("runner lease allocation invalid".into());
+    }
+    let path = directory.join(format!("runner-{allocation}.LOCK"));
+    let lease = open(&path, 0, Creation::Forbidden)?;
+    let observed = fs::symlink_metadata(&path).map_err(io)?;
+    let captured = lease.metadata().map_err(io)?;
+    if observed.dev() != captured.dev() || observed.ino() != captured.ino() {
+        return Err("runner lease identity changed".into());
+    }
+    protected_directory(directory)?;
+    Ok(lease)
+}
+
+fn open(path: &Path, owner: u32, creation: Creation) -> Result<File, String> {
     let lease = OpenOptions::new()
         .read(true)
         .write(true)
-        .create(true)
+        .create(matches!(creation, Creation::Allowed))
         .truncate(false)
         .mode(0o600)
         .custom_flags(NOFOLLOW_NONBLOCK)
@@ -88,10 +109,12 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         let owner = fs::metadata(&directory).unwrap().uid();
         let path = directory.join("runner-1.LOCK");
-        let original = open(&path, owner).unwrap();
-        assert!(open(&path, owner).is_err());
+        assert!(open(&path, owner, Creation::Forbidden).is_err());
+        assert!(!path.exists());
+        let original = open(&path, owner, Creation::Allowed).unwrap();
+        assert!(open(&path, owner, Creation::Forbidden).is_err());
         drop(original);
-        let successor = open(&path, owner).unwrap();
+        let successor = open(&path, owner, Creation::Forbidden).unwrap();
         drop(successor);
         fs::remove_dir_all(directory).unwrap();
     }

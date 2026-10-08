@@ -1188,6 +1188,9 @@ The claimed native runner holds a protected `runner-<allocation>.LOCK` file
 from binding validation through cleanup and original result publication;
 contention refuses entry, while an idle or missing lease proves neither owner
 death nor native closure, and reconciliation integration remains pending.
+The internal `reconcile-claimed` broker primitive holds an existing lease while
+validating the original binding and closing its domain; it refuses missing or
+active leases, preserves completion records, and performs no journal settlement.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not

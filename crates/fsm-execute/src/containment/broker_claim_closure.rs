@@ -6,6 +6,14 @@ use super::super::{
 use fsm_core::{json::Value, record::execution::Claim};
 use std::path::Path;
 
+pub(super) fn reconcile_claimed(directory: &Path, payload: &Value) -> Result<Value, String> {
+    let claim = claimed(payload)?;
+    let allocation = number(&claim.domain().to_value(), "allocation")?;
+    // Never create missing ownership material or race original publication.
+    let _original_runner = super::super::runner_lease::acquire_existing(directory, allocation)?;
+    close_claimed(directory, payload)
+}
+
 pub(super) fn close_claimed(directory: &Path, payload: &Value) -> Result<Value, String> {
     protected_directory(directory)?;
     let claim = claimed(payload)?;

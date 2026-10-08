@@ -108,6 +108,7 @@ fn session(
             "discard-prepared" => closure::discard_prepared(&directory, payload),
             "bind" => bind(&directory, payload).map(|_| Value::Null),
             "close-claimed" => claim_closure::close_claimed(&directory, payload),
+            "reconcile-claimed" => claim_closure::reconcile_claimed(&directory, payload),
             "recover" => runner::recover(&directory, broker_frame::allocation(payload)?),
             "observe" => observation::read(&directory, broker_frame::allocation(payload)?),
             "close" => {

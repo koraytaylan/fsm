@@ -2803,6 +2803,11 @@ path still requires original binding, authority, physical store and authenticate
 closure checks. Missing lease material MUST NOT authorize fencing or settlement.
 This lease does not establish ownership before the runner starts; reconciliation
 of claim/binding phases remains unimplemented and cannot infer death from absence.
+The internal `reconcile-claimed` broker action MUST exclusively hold an existing
+protected runner lease through original-binding validation, fencing and closure;
+it MUST refuse a held or missing lease before any closure side effect, MUST NOT
+publish or reinterpret a completion, and MUST NOT settle journal ownership.
+This primitive does not implement the operator command or pre-run owner recovery.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT

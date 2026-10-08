@@ -6,6 +6,10 @@ The additive `service::inspect_ownership` shares existing MCP ownership counts
 with the inspection report, without changing existing MCP field semantics.
 Inspection refuses an uninitialized directory using existing
 exec/inflight_deferred rather than asserting an empty verified inventory.
+The additive `reconcile-claimed` native broker action requires existing protected
+runner lease material and preserves original claim/binding and journal formats;
+it provides closure only, with no public operator command or settlement authority.
+
 The native authority now retains additive protected runner lease files through
 result publication; journal versions, claim/binding formats and hash domains are
 unchanged, and lease absence does not grant reconciliation compatibility.
