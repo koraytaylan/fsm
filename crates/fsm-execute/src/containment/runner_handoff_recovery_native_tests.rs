@@ -232,9 +232,9 @@ struct PublicTick {
 impl RecoveryDriver {
     fn new(path: &Path, table: fsm_execute::config::HandlerTable, host: &str) -> Self {
         match host {
-            "paired" => {
-                Self::Paired(fsm_execute::service::PairedNativeExecutor::new(path, table).unwrap())
-            }
+            "paired" => Self::Paired(Box::new(
+                fsm_execute::service::PairedNativeExecutor::new(path, table).unwrap(),
+            )),
             "tick" | "tick_with" => Self::Public(Box::new(PublicTick {
                 watcher: fsm_execute::watch::Watcher::with_handlers(path.to_path_buf(), &table),
                 scheduler: fsm_execute::sched::Scheduler::new(table),
