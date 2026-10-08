@@ -6,6 +6,8 @@ native liveness remains unverified, and operator/startup reconciliation remains
 unimplemented under task 9403.
 `service::inspect_ownership(&store)` provides the same sanitized counts used by
 MCP health and the execution_ownership field of the CLI run report.
+The CLI requires an initialized format marker or observed journal prefix before
+reporting a complete inventory; the renderer only summarizes the caller-supplied Store observation.
 
 Instance event and deadline applications invalidate subscribed instance resources; list-changed notifications indicate listing membership changes from machine definition, instance creation or invocation, rather than each transition.
 

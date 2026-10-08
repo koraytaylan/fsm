@@ -19,6 +19,19 @@ pub(super) fn execute_runs(ctx: &mut Ctx, _args: &Args) -> u8 {
     }
     match Store::open_read_only(&ctx.data_dir) {
         Ok(store) => {
+            if store.journal.last_seq == 0
+                && !std::fs::metadata(ctx.data_dir.join("VERSION"))
+                    .is_ok_and(|metadata| metadata.is_file())
+            {
+                return super::report(
+                    ctx,
+                    &fsm_execute::error::ExecError::new(
+                        "exec/inflight_deferred",
+                        "execution inventory is unavailable: no initialized format marker or verified journal prefix exists",
+                    )
+                    .hint("inspect the original initialized store; an empty directory proves no execution inventory"),
+                );
+            }
             emit_success(ctx, &fsm_execute::service::inspect_runs(&store));
             0
         }

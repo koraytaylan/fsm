@@ -2757,6 +2757,9 @@ outstanding_handoffs counts from the same verified observation. Phase is unresol
 durably stopped; native_evidence is unverified because inspection performs no
 native query. Inventory completeness covers current unresolved ownership in
 the verified fold, not historical settled runs or native liveness.
+CLI inspection MUST refuse missing/uninitialized directories with neither an
+initialized format marker nor a verified journal prefix as exec/inflight_deferred,
+without initializing or migrating them; an initialized empty store remains valid.
 
 Inspection MUST use the verified read-only journal fold without taking a writer,
 creating a directory, issuing a broker action or changing native metadata.

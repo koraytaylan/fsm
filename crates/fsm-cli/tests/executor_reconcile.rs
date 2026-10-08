@@ -62,6 +62,27 @@ fn production_runs_inspection_does_not_initialize_missing_store() {
 }
 
 #[test]
+fn production_runs_inspection_refuses_uninitialized_directory_without_mutation() {
+    let directory = directory("uninitialized");
+    fs::create_dir(&directory).unwrap();
+    let before = files(&directory);
+    let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(["--json", "--data-dir"])
+        .arg(&directory)
+        .args(["execute", "runs"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("exec/inflight_deferred")
+    );
+    assert_eq!(files(&directory), before);
+    fs::remove_dir(directory).unwrap();
+}
+
+#[test]
 fn production_runs_orders_claims_by_run_and_omits_original_native_material() {
     use fsm_core::{
         json::{JsonLimits, Value, parse},
