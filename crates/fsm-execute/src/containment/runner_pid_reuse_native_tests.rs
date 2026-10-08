@@ -29,7 +29,7 @@ else:
     raise AssertionError('kernel did not allocate the original PID within eight attempts')
 try:
     pending=ready.with_suffix('.pending')
-    pending.write_text(json.dumps(dict(pid=child)))
+    pending.write_text(json.dumps(dict(pid=child),sort_keys=True,separators=(',',':')))
     pending.replace(ready)
     sys.stdin.buffer.read()
 finally:
