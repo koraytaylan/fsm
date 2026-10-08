@@ -70,6 +70,10 @@ impl<'fixture> Session<'fixture> {
         );
     }
 
+    pub(super) fn refuse_pre_run_boot(&self) {
+        self.run("refuse_pre_run_boot", "FSM_NATIVE_PRE_RUN_BOOT_REFUSED");
+    }
+
     fn run(&self, case: &str, marker: &str) {
         use std::process::{Command, Stdio};
 
@@ -125,7 +129,9 @@ impl<'fixture> Session<'fixture> {
 #[test]
 #[ignore = "configured unprivileged supervisor child inside enrolled native fixture"]
 fn refuse_pre_run_owner() {
-    refuse_pre_run("original preparation owner remains active or lease locking is unavailable");
+    refuse_pre_run(
+        "native shutdown refused: original preparation owner remains active or lease locking is unavailable",
+    );
     #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
     {
         println!("\nFSM_NATIVE_PRE_RUN_OWNER_REFUSED");
@@ -135,14 +141,24 @@ fn refuse_pre_run_owner() {
 #[test]
 #[ignore = "configured unprivileged supervisor child inside enrolled native fixture"]
 fn refuse_pre_run_identity() {
-    refuse_pre_run("native owner lease protection or identity differs");
+    refuse_pre_run("native shutdown refused: native owner lease protection or identity differs");
     #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
     {
         println!("\nFSM_NATIVE_PRE_RUN_IDENTITY_REFUSED");
     }
 }
 
-fn refuse_pre_run(reason: &str) {
+#[test]
+#[ignore = "configured unprivileged supervisor child inside enrolled native fixture"]
+fn refuse_pre_run_boot() {
+    refuse_pre_run("native discovery operator, boot or authority differs");
+    #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
+    {
+        println!("\nFSM_NATIVE_PRE_RUN_BOOT_REFUSED");
+    }
+}
+
+fn refuse_pre_run(expected_message: &str) {
     use fsm_store::clock::FixedClock;
 
     assert_eq!(fs::metadata("/proc/self").unwrap().uid(), 65534);
@@ -158,7 +174,9 @@ fn refuse_pre_run(reason: &str) {
         .unwrap()
         .0
         .run_id();
-    if reason == "original preparation owner remains active or lease locking is unavailable" {
+    if expected_message
+        == "native shutdown refused: original preparation owner remains active or lease locking is unavailable"
+    {
         refuse_copied_pre_run_store(&path, run, &records);
     }
     let error = fsm_execute::service::reconcile_run(
@@ -169,7 +187,7 @@ fn refuse_pre_run(reason: &str) {
     )
     .unwrap_err();
     assert_eq!(error.code, "exec/inflight_deferred");
-    assert_eq!(error.message, format!("native shutdown refused: {reason}"));
+    assert_eq!(error.message, expected_message);
     assert_eq!(writer.records, records);
     assert_eq!(writer.state.execution, ownership);
     drop(writer);

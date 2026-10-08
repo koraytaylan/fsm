@@ -43,6 +43,7 @@ pub(super) fn run() {
     let restored_lease = fs::symlink_metadata(&lease).unwrap();
     assert_eq!(restored_lease.dev(), original_lease.dev());
     assert_eq!(restored_lease.ino(), original_lease.ino());
+    refuse_changed_boot(&fixture, &session, &effect);
     session.resume();
     assert_eq!(
         fs::read(fixture.directory.join("prepared-1.json")).unwrap(),
@@ -55,4 +56,30 @@ pub(super) fn run() {
     drop(session);
     fixture.groups.push((group, group_identity));
     fixture.cleanup().unwrap();
+}
+
+fn refuse_changed_boot(fixture: &Fixture, session: &orphan_recovery::Session<'_>, effect: &str) {
+    let route = fixture.directory.join("broker/route.json");
+    let original_bytes = fs::read(&route).unwrap();
+    let original_identity = fs::symlink_metadata(&route).unwrap();
+    let Value::Obj(mut changed) = read_value(&route, true).unwrap() else {
+        unreachable!()
+    };
+    let Value::Obj(configuration) = changed.get_mut("configuration").unwrap() else {
+        unreachable!()
+    };
+    let wrong_boot = Value::Str("00000000-0000-0000-0000-000000000000".into());
+    assert_ne!(configuration.get("boot"), Some(&wrong_boot));
+    configuration.insert("boot".into(), wrong_boot);
+    fs::write(&route, fsm_core::canon::canon_bytes(&Value::Obj(changed))).unwrap();
+    session.refuse_pre_run_boot();
+    assert_unresolved(fixture, effect);
+    for name in ["binding-1.json", "closing-1.json", "closed-1.json"] {
+        assert!(fs::symlink_metadata(fixture.directory.join(name)).is_err());
+    }
+    fs::write(&route, &original_bytes).unwrap();
+    let restored_identity = fs::symlink_metadata(&route).unwrap();
+    assert_eq!(restored_identity.dev(), original_identity.dev());
+    assert_eq!(restored_identity.ino(), original_identity.ino());
+    assert_eq!(fs::read(&route).unwrap(), original_bytes);
 }
