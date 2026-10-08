@@ -43,6 +43,10 @@ pub(super) fn holds_tree(argument: &str) -> bool {
             | "handler-failures=full-disk-embedded"
             | "handler-failures=failed-stop"
             | "handler-failures=failed-stop-embedded"
+            | "handler-failures=active-stop-abort"
+            | "handler-failures=active-stop-abort-embedded"
+            | "handler-failures=active-stop-drain"
+            | "handler-failures=active-stop-drain-embedded"
     )
 }
 
