@@ -367,7 +367,10 @@ fn reconcile_original_completion_before_handoff(
         )
         .unwrap();
         assert_eq!(
-            response.get("disposition").and_then(Value::as_str),
+            response
+                .get("body")
+                .and_then(|body| body.get("disposition"))
+                .and_then(Value::as_str),
             Some("acked")
         );
         assert_eq!(&writer.records[..records.len()], records);
