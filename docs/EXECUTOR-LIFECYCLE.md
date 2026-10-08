@@ -1177,7 +1177,8 @@ retain dirty-source status and never release the gate.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not
-promise graceful drain. SIGTERM and SIGKILL terminate the executor; the
+promise graceful drain. SIGINT (including terminal Ctrl-C), SIGTERM and
+SIGKILL terminate the executor; the
 protected supervisor observes lease EOF and closes the native domain, while
 durable ownership must survive until closure and settlement are verified.
 Task 9402 must provide the separately requested, independently woken local
@@ -1186,6 +1187,14 @@ default termination as drain, invoke settlement from a signal handler, or
 clear ownership merely because the executor exited. This decision avoids
 assuming a safe standard-library signal callback that the API inventory did
 not establish; safe Rust, zero dependencies and MSRV remain unchanged.
+
+Repeated native termination signals do not request drain, renew a cleanup
+deadline or implement drain-to-abort escalation: the executor uses the native
+termination action, and closure proceeds through the protected supervisor.
+To drain and then escalate to abort, use the explicit local control; repeated
+controls retain the original lifecycle deadline. SIGKILL cannot be
+caught and produces no executor report, so recovery must verify native closure
+before settling the retained durable claim.
 
 For the excluded macOS and Windows contained capability, neither Unix signal
 tests nor cross-compilation establish native lifecycle support. Windows
