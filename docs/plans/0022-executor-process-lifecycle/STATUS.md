@@ -319,3 +319,19 @@ Failed fixtures retain their original authority without reset-based clearance.
 Current full integration and the remaining closure-caller acceptance audit
 keep 9404 in progress; detailed evidence stays in the task cache, and this
 consolidated documentation milestone omits heavy gates.
+
+Frozen `76d78ed0..3de6d73d` independently verifies current journal-claim
+closure matching at application, settlement and acknowledged handoff on
+Linux stable/MSRV, scoped verdict
+`8a499b17e45f37379f1252bdf94dea51499986980ac9fd98b112f2a47c15a152`.
+Each production-facing case passes, fails at exit 101 with exactly its
+selected guard removed, and passes after restoration; source and log digests
+and named runtime failures were independently checked, with later guards
+retained. The original application/settlement and `d84597b4` handoff fixtures
+failed before reaching their selected guard because captured response identity
+disagreed with the faulted receipt; `3de6d73d` keeps the response and attestation
+internally consistent before restoring genuine receipt bytes for application.
+Historical failures remain retained evidence, not passing proofs; executable
+bytes are not independently retained. Full integration and the remaining
+acceptance audit keep 9404 in progress; details stay in the task cache and
+this documentation milestone omits heavy gates.
