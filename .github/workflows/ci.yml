@@ -157,8 +157,9 @@ jobs:
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
           --toolchain '${{ matrix.rust }}'
-          --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/crash.json'
+          --report '${{ env.FSM_NATIVE_CACHE }}/crash-evidence/crash.json'
       - name: Provisioned native containment matrix
+        id: native_matrix
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
           --toolchain '${{ matrix.rust }}'
@@ -174,11 +175,18 @@ jobs:
           git worktree add --detach "$FSM_NATIVE_CACHE/upgrade-source" 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06
           python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py --toolchain '${{ matrix.rust }}' --upgrade-source "$FSM_NATIVE_CACHE/upgrade-source" --report "$FSM_NATIVE_CACHE/native-evidence/upgrade.json"
       - name: Retain exact native evidence, including failures
-        if: always()
+        if: ${{ always() && steps.native_matrix.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
           name: native-containment-${{ matrix.rust }}
           path: ${{ env.FSM_NATIVE_CACHE }}/native-evidence
+          if-no-files-found: error
+      - name: Retain exact lifecycle crash evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-crash-${{ matrix.rust }}
+          path: ${{ env.FSM_NATIVE_CACHE }}/crash-evidence
           if-no-files-found: error
 
   owner-sensitivity:

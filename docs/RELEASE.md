@@ -7,20 +7,13 @@ noise; fixture tests independently observe root exit before descendant pipe
 retirement. Production crash cutpoints, supervisor death, native sensitivity
 and the complete frozen matrix remain outstanding; fixture acceptance alone
 does not establish native no-overlap recovery.
-The first provisioned Linux stable/MSRV candidate-result crash attempts failed
-before the standalone/process candidate barrier at `6aacc3ea`; the cause remains
-unproven and the other three axes remain unexecuted. The coordinator retains
-original authority and bounded diagnostics, including protected result and
-exec-status records for diagnosis. CI runs this probe before the broader native
-matrix; no passing crash or no-overlap acceptance is claimed.
-Completed-response evidence at `f961f871` identifies the pre-barrier failure:
-the process fixture required invocation on stdin, which production closes.
-The fixture and its portable process checks now use argv with closed stdin;
-MCP retains request framing, and native verification remains outstanding.
-At `6f0c1b1b`, both compilers reach the live tree but lose its entry marker
-after executor kill. The coordinator now preserves Root-owned entry slots
-across DynamicUser retirement, with PID-matched descendant readiness and
-stale-slot portable checks; native verification remains outstanding.
+At `fe8478dc`, Linux stable/MSRV pass all four production-host candidate-result
+crash cases: original tree death and matched closure precede replacement and
+final event completion, including immediate writer contention. Earlier fixture
+stdin and marker-retirement failures remain retained. The overall checkpoint
+fails on a subsequent evidence-directory collision; crash evidence now has its
+own directory and `native-crash-*` artifact, preserving the containment probe's
+fresh-directory refusal. Full integration and remaining crash axes stay open.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

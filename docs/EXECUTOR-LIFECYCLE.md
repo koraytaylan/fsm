@@ -1406,19 +1406,13 @@ observer to the operator identity, and independently checks both claims and
 closure receipts across all four host/handler combinations. Disposable Linux
 stable/MSRV CI runs this matrix before broader native checks and retains
 bounded original-owner diagnostics and protected result/exec-status records on
-failure. Both first attempts at `6aacc3ea` failed before the standalone/process
-candidate barrier, with original authority retained; the cause remains unproven
-and the other three axes remain unexecuted. Subsequent completed-response
-evidence at `f961f871` identifies a fixture mismatch: production process
-handlers have closed stdin, while the fixture incorrectly waited for protocol
-invocation. Process mode now produces its candidate from argv with closed
-stdin; only MCP waits for framed requests, and portable process checks also
-close stdin. Native verification of this correction remains outstanding; no
-passing crash or no-overlap acceptance is claimed.
-Both `6f0c1b1b` attempts reach the live candidate tree, then fail because the
-entry marker disappears during original closure, consistent with DynamicUser
-IPC retirement. The coordinator now precreates Root-owned writable entry slots
-so observation survives closure; each parent waits for its actual child's PID
-before publishing entry, and portable checks seed stale slots. This fixture
-correction changes no production profile or acceptance assertion and remains
-unverified natively.
+failure. At `fe8478dc`, all four host/handler candidate-result cases pass on
+Linux stable/MSRV, including immediate writer contention, original tree death,
+matched closure, sequential replacement and final event completion. Process
+fixtures use argv and closed stdin; Root-owned entry slots survive DynamicUser
+retirement and parents match actual descendant PIDs before publishing entry.
+Earlier stdin and marker-lifetime failures remain retained in the task cache.
+The overall checkpoint still fails because the following containment probe
+requires a fresh evidence directory; crash evidence now uses a separate
+`native-crash-*` artifact. Broader cutpoints, supervisor death, resource-use and
+guard-sensitivity acceptance remain outstanding; task 9404 is incomplete.

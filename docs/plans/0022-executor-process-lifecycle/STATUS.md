@@ -14,24 +14,17 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 6/7 tasks completed.
 
-Frozen `0211231c..6aacc3ea` fails the first provisioned 9404 candidate-result
-attempt on stable/MSRV in [CI 37814351864](https://github.com/koraytaylan/fsm/actions/runs/37814351864):
-the standalone/process candidate barrier is absent after original execution has
-settled, and the other three axes remain unexecuted. Both retain original
-authority; the cause remains unproven. Verified failure-evidence digest:
-`3ab624370874babafadc22c30c4b7c53467389475ca4ef073e4bf2d063f0adb3`.
-Successor diagnostics capture protected original result/exec-status records
-without changing execution behavior or weakening acceptance; 9404 remains open.
-The subsequent `f961f871` completed responses on both compilers identify the
-fixture's incorrect stdin requirement (`nonzero_exit`, status 1); verified
-diagnosis digest `a4e0ef2928aaa5003f5f796df905c6d1896219d0ccd38ad1958c6c0516122c85`.
-The corrected fixture uses argv and closed stdin for process mode, with MCP
-framing unchanged; native verification of that correction remains outstanding.
-Frozen `6f0c1b1b` reaches the live candidate tree on both compilers, then fails
-when its entry marker disappears after executor kill; verified failure digest
-`3be6517781545ba5671776035bb4a7240ba14d9a328116cd33b216daba6312ac`.
-Root-owned observation slots and PID-matched readiness address fixture
-retirement without changing production behavior; native acceptance stays open.
+Frozen `0211231c..fe8478dc` passes all four host/handler candidate-result crash
+cases on Linux stable/MSRV in [CI 37818301657](https://github.com/koraytaylan/fsm/actions/runs/37818301657),
+with verified report/log digest
+`990dcc993657f104fe1ddff3c3263db7d4b9dbff256a8509243fd4d748e0e93c`.
+Independent original PID/start checks and matched closure precede sequential
+replacement and final event completion, including immediate writer contention.
+The overall checkpoint fails because the subsequent containment probe requires
+a fresh evidence directory; separate crash evidence preserves that guard.
+Earlier stdin and marker-lifetime failures remain retained in the task cache.
+Full integration, other crash boundaries, supervisor death, resource-use and
+sensitivity acceptance remain outstanding, so 9404 stays in progress.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
