@@ -226,7 +226,7 @@ pub(super) fn settle_retry(
         retained
     );
     if mode == "retry-timeout-kill" {
-        launch_successor(fixture, barriers, &next);
+        launch_successor(fixture, barriers, &next, completion);
     }
 }
 
@@ -234,17 +234,29 @@ fn launch_successor(
     fixture: &Fixture,
     barriers: &Barriers,
     claim: &fsm_core::record::execution::Claim,
+    original_completion: &fsm_execute::run::native_client::NativeCompletion,
 ) {
     use fsm_execute::run::{Pipeline, native_client::NativeCompletion};
+    original_completion
+        .proof()
+        .check_store(&fixture.store)
+        .unwrap();
     assert_eq!(
         identity(&fs::symlink_metadata(&barriers.path).unwrap()),
         barriers.identity
     );
     for name in ["root-ready", "descendant-ready", "release"] {
         let path = barriers.path.join(name);
-        let metadata = fs::symlink_metadata(&path).unwrap();
-        assert!(metadata.is_file());
-        fs::remove_file(path).unwrap();
+        // DynamicUser RemoveIPC may already retire its /dev/shm markers;
+        // the caller verified native closure before reaching this fixture cleanup.
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) => {
+                assert!(metadata.is_file());
+                fs::remove_file(path).unwrap();
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("successor marker inspection failed: {error}"),
+        }
     }
     let snapshot = Store::open_read_only(&fixture.store).unwrap();
     assert_eq!(
