@@ -92,8 +92,21 @@ fn refuse_reused_cgroup(
         (replacement.dev(), replacement.ino()),
         (original.dev(), original.ino())
     );
+    let mut sentinel = std::process::Command::new("/usr/bin/sleep")
+        .arg("300")
+        .spawn()
+        .unwrap();
+    fs::write(substitute.join("cgroup.procs"), sentinel.id().to_string()).unwrap();
+    let membership = format!(
+        "0::/system.slice/{}\n",
+        substitute.file_name().unwrap().to_str().unwrap()
+    );
+    let process_group = format!("/proc/{}/cgroup", sentinel.id());
+    assert_eq!(fs::read_to_string(&process_group).unwrap(), membership);
     session.refuse_pre_run_reused_cgroup();
     assert_unresolved(fixture, effect);
+    assert!(sentinel.try_wait().unwrap().is_none());
+    assert_eq!(fs::read_to_string(&process_group).unwrap(), membership);
     for name in [
         "binding-1.json",
         "launch-1.json",
@@ -107,6 +120,10 @@ fn refuse_reused_cgroup(
         (retained.dev(), retained.ino()),
         (replacement.dev(), replacement.ino())
     );
+    // Retire only the child owned by this fixture after independently proving
+    // production reconciliation did not target the live replacement domain.
+    sentinel.kill().unwrap();
+    sentinel.wait().unwrap();
     // Unmount only the fixture overlay, then remove its independently identified
     // empty cgroup; the original kernel allocation remains unchanged underneath.
     assert!(
