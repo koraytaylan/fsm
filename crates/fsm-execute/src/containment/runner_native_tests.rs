@@ -132,8 +132,7 @@ impl Drop for Barriers {
 }
 
 pub(super) fn run() {
-    claim_host::run();
-    for mode in [
+    let modes = [
         "answer",
         "protocol",
         "timeout",
@@ -154,7 +153,20 @@ pub(super) fn run() {
         "cancel-process",
         "uncertain-mcp",
         "uncertain-process",
-    ] {
+    ];
+    let selected = std::env::var("FSM_NATIVE_RUNNER_MODE_FILTER").ok();
+    if let Some(selected) = selected.as_deref() {
+        assert!(
+            modes.contains(&selected),
+            "unknown native runner fixture mode"
+        );
+    } else {
+        claim_host::run();
+    }
+    for mode in modes
+        .into_iter()
+        .filter(|mode| selected.as_deref().is_none_or(|selected| selected == *mode))
+    {
         let barriers = Barriers::new();
         let mut table = object([
             ("format", Value::Str("fsm.handlers/1".into())),
