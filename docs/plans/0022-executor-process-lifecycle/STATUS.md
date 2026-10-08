@@ -38,6 +38,8 @@ Frozen b0e6712d..23ab4d96 extends post-attempt public-host recovery through genu
 
 Frozen 5dd4aab8..86a32177 passes actual SIGKILL of an independent fresh-claim caller before binding or handler entry on stable/MSRV; review digest `69e998248970fe5b7d2141182847a5412d720411cc488640b2b9fd22c389c834`. The reopened original claim excludes a competitor, genuine unlaunched native closure permits durable interruption, and the pending effect remains unacknowledged with no launch or entry records. Focused lifecycle tests, all-target executor Clippy, formatting and size checks pass. This establishes the public claim-caller boundary, not every standalone/embedded/public-tick host cut or interrupted-successor launch; the remaining host matrix and full CI keep 9401 in progress.
 
+Frozen 7d337545..50597d61 extends fresh-claim crash recovery through a genuine successful successor on stable/MSRV; review digest `a374736b318ce1a2d6a031fedd586d135b296600f6d2d29e5afd9f14c776ff00`. Original interruption replay remains duplicate and nonmutating before and after successor ownership, the run ID advances while attempt one is preserved, and verified successor completion settles once and clears the pending effect. Focused lifecycle tests, all-target executor Clippy, formatting and size checks pass; the initial fixture type error was corrected before native execution. This closes the earlier interrupted-successor omission for the public claim-caller path, not the remaining standalone/embedded/public-tick host matrix or full CI; 9401 remains in progress.
+
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cdcc311f66d08ae7b640731ed4a159d2aaf25863b59dd833afca7a99b3e9a9c9`.
