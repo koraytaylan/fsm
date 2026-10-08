@@ -1,5 +1,5 @@
 //! Production stop refusal retains the original claim until authenticated repair.
-use super::fault_control::{abort_with_uncertainty, live, reconcile_original_closure};
+use super::fault_control::{abort_with_uncertainty, live, reconcile_original_closure_via_cli};
 use super::*;
 use std::os::unix::fs::MetadataExt;
 
@@ -109,7 +109,7 @@ pub(super) fn restart_after_failed_stop(
         client.process.kill().unwrap();
         client.process.wait().unwrap();
     }
-    let writer = reconcile_original_closure(directory, &claim, &records);
+    let writer = reconcile_original_closure_via_cli(directory, &claim, &records);
     assert!(identities.iter().all(|identity| !live(identity)));
     let matched = fs::symlink_metadata(&marker).unwrap();
     assert_eq!(

@@ -117,6 +117,48 @@ pub(super) fn reconcile_original_closure(
     shutdown
         .settle_interrupted(&mut writer, &mut fsm_store::clock::GlobalClock)
         .unwrap();
+    assert_original_interruption(writer, claim, records, instance)
+}
+
+pub(super) fn reconcile_original_closure_via_cli(
+    directory: &Directory,
+    claim: &fsm_core::record::execution::Claim,
+    records: &[fsm_core::record::Record],
+) -> Store {
+    let snapshot = Store::open_read_only(&directory.store()).unwrap();
+    assert_eq!(snapshot.records, records);
+    let instance = snapshot.state.instances[claim.effect().0].clone();
+    drop(snapshot);
+    let output = Command::new(directory.executable())
+        .args(["--json", "--data-dir"])
+        .arg(directory.store())
+        .args([
+            "execute",
+            "reconcile",
+            "--run-id",
+            &claim.run_id().to_string(),
+            "--timeout-ms",
+            "8000",
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(output.stdout.len() <= 8192 && output.stderr.len() <= 8192);
+    assert!(
+        output.status.success(),
+        "original-run CLI reconciliation refused: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let writer = Store::open(&directory.store()).unwrap();
+    assert_original_interruption(writer, claim, records, instance)
+}
+
+fn assert_original_interruption(
+    writer: Store,
+    claim: &fsm_core::record::execution::Claim,
+    records: &[fsm_core::record::Record],
+    instance: fsm_core::machine::InstanceState,
+) -> Store {
     assert_eq!(&writer.records[..records.len()], records);
     assert_eq!(writer.records.len(), records.len() + 2);
     assert_eq!(
