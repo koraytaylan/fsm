@@ -31,10 +31,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn mark(directory: &Path, role: &str, phase: &str) -> io::Result<()> {
     // Separate files avoid shared append ordering and preserve explicit barriers.
-    fs::write(
-        directory.join(format!("{role}-{phase}")),
-        std::process::id().to_string(),
-    )
+    let path = directory.join(format!("{role}-{phase}"));
+    let mut output = match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+    {
+        Ok(file) => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                // Consecutive contained runs use distinct DynamicUser identities.
+                file.set_permissions(fs::Permissions::from_mode(0o666))?;
+            }
+            file
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(path)?,
+        Err(error) => return Err(error),
+    };
+    output.write_all(std::process::id().to_string().as_bytes())
 }
 
 fn wait_for(path: &Path) -> io::Result<()> {

@@ -161,6 +161,11 @@ jobs:
           python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
           --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/workflow.json'
+      - name: Provisioned lifecycle candidate crash matrix
+        run: >-
+          python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
+          --toolchain '${{ matrix.rust }}'
+          --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/crash.json'
       - name: Original executor upgrade inspection and drain
         run: |
           git fetch --depth=1 origin 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06

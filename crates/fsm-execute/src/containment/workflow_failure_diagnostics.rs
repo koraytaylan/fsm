@@ -20,6 +20,9 @@ pub(super) fn archive(fixture: &Fixture, staging: &Path) {
         "first-stdout",
         "after-kill-stderr",
         "after-kill-stdout",
+        "original-stderr",
+        "immediate-restart-stderr",
+        "verified-restart-stderr",
     ] {
         let path = fixture.store.join(name);
         let mut source = match fs::OpenOptions::new()

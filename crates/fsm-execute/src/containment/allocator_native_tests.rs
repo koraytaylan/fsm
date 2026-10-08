@@ -57,17 +57,16 @@ fn private_exec_status() {
 #[path = "enrollment_native_tests.rs"]
 mod enrollment_cases;
 
-#[path = "runner_native_tests.rs"]
-mod runner_cases;
-
 #[path = "broker_native_tests.rs"]
 mod broker_cases;
-
-#[path = "workflow_native_tests.rs"]
-mod workflow_cases;
-
+#[path = "crash_matrix_native_tests.rs"]
+mod crash_matrix;
 #[path = "full_disk_native_tests.rs"]
 mod full_disk;
+#[path = "runner_native_tests.rs"]
+mod runner_cases;
+#[path = "workflow_native_tests.rs"]
+mod workflow_cases;
 
 #[test]
 #[ignore = "requires exact staged CLI artifacts and provisioned root native authority"]

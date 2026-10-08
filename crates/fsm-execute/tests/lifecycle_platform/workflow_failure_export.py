@@ -14,7 +14,7 @@ STAGE_ENTRY_CAP = 1024
 
 def read_stage(stage):
     stage = Path(stage)
-    if stage.parent != Path('/usr/libexec') or not re.fullmatch(r'fsm-workflow-[0-9a-f]{1,64}', stage.name):
+    if stage.parent != Path('/usr/libexec') or not re.fullmatch(r'fsm-(workflow|crash)-[0-9a-f]{1,64}', stage.name):
         raise ValueError('unexpected retained workflow stage')
     before = stage.lstat()
     if not stat.S_ISDIR(before.st_mode) or before.st_uid != 0 or before.st_mode & 0o022:
@@ -27,7 +27,9 @@ def read_stage(stage):
         entries.append(path)
     for path in sorted(entries):
         if not (path.name.endswith('.inventory.json') or
-                path.name.startswith('failure-') and path.suffix in ('.log', '.json')):
+                path.name.startswith('failure-') and path.suffix in ('.log', '.json') or
+                stage.name.startswith('fsm-crash-') and path.name in
+                ('standalone-process.log', 'standalone-mcp.log', 'embedded-process.log', 'embedded-mcp.log')):
             continue
         if len(records) >= 64:
             raise ValueError('retained diagnostic count exceeds bound')
@@ -61,7 +63,8 @@ def export(stages, destination):
             raise ValueError('retained diagnostic export exceeds bound')
         record = json.loads(encoded)
         # Preserve the original paths and identities in the exported snapshot.
-        path = destination / f'workflow-failure-{index}.json'
+        prefix = 'crash' if stage.name.startswith('fsm-crash-') else 'workflow'
+        path = destination / f'{prefix}-failure-{index}.json'
         with path.open('xb') as target:
             target.write(encoded)
         results.append(dict(stage=str(stage), snapshot=path.name,

@@ -10,6 +10,10 @@ touches:
   - crates/fsm-cli/Cargo.toml
   - crates/fsm-cli/tests/executor_lifecycle_crash.rs
   - crates/fsm-cli/tests/executor_lifecycle_crash/
+  - crates/fsm-execute/src/containment/allocator_native_tests.rs
+  - crates/fsm-execute/src/containment/crash_matrix_native_tests.rs
+  - crates/fsm-execute/src/containment/workflow_native_tests.rs
+  - crates/fsm-execute/src/containment/workflow_failure_diagnostics.rs
   - crates/fsm-execute/tests/lifecycle_platform.rs
   - crates/fsm-execute/tests/lifecycle_platform/
   - .github/workflows/ci.yml

@@ -6,6 +6,10 @@ use std::process::{Command, Stdio};
 #[path = "workflow_failure_diagnostics.rs"]
 mod failure_diagnostics;
 
+pub(super) fn archive_failure(fixture: &Fixture, staging: &Path) {
+    failure_diagnostics::archive(fixture, staging);
+}
+
 #[path = "failed_stop_native_tests.rs"]
 mod failed_stop;
 

@@ -5,6 +5,32 @@ from pathlib import Path
 import subprocess
 
 
+def build_crash_artifacts(repo, toolchain):
+    """Select the feature-gated observer, fixture and production CLI together."""
+    command = ['cargo', '+' + toolchain, 'test', '-p', 'fsm-cli', '--test',
+               'executor_lifecycle_crash', '--features', 'lifecycle-test-fixture',
+               '--no-run', '--message-format=json']
+    result = subprocess.run(command, cwd=repo, capture_output=True, timeout=180,
+                            env=dict(os.environ, CARGO_BUILD_JOBS='1', CARGO_PROFILE_DEV_STRIP='debuginfo'))
+    messages = [json.loads(line) for line in result.stdout.splitlines()]
+    if result.returncode:
+        rendered = [row['message'].get('rendered', '') for row in messages
+                    if row.get('reason') == 'compiler-message']
+        raise RuntimeError('Crash fixture build failed: ' + ''.join(rendered)
+                           + result.stderr.decode(errors='replace'))
+    artifacts = {}
+    for variable, target, test in [('TEST', 'executor_lifecycle_crash', True),
+                                   ('FIXTURE', 'fsm-lifecycle-fixture', False),
+                                   ('CLI', 'fsm', False)]:
+        matches = [row['executable'] for row in messages
+                   if row.get('reason') == 'compiler-artifact'
+                   and row['target']['name'] == target
+                   and row['profile']['test'] is test and row.get('executable')]
+        assert len(matches) == 1, (target, matches)
+        artifacts[variable] = Path(matches[0]).resolve()
+    return artifacts
+
+
 def build_cli(repo, toolchain, test):
     target = 'mcp_execute_workflow' if test else 'fsm'
     command = ['cargo', '+' + toolchain, 'test' if test else 'build',

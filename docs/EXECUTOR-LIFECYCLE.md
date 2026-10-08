@@ -1401,5 +1401,9 @@ standalone/embedded and process/MCP artifacts; the actor kills only its owned
 executor, holds the original writer during immediate restart, independently
 checks original PID/start identities and a matched closure receipt, and requires
 original stopped/settled publication before a successor claim and final event
-completion. Provisioned coordinator wiring and native execution remain pending;
-compilation alone grants no crash or no-overlap acceptance.
+completion. The protected coordinator stages digest-checked binaries, drops the
+observer to the operator identity, and independently checks both claims and
+closure receipts across all four host/handler combinations. Disposable Linux
+stable/MSRV CI runs this matrix before historical upgrade tests and retains
+bounded original-owner diagnostics on failure; native execution remains
+unverified, and compilation alone grants no crash or no-overlap acceptance.
