@@ -203,7 +203,7 @@ fn refuse_replacement(caller: Caller) {
     fixture.cleanup().unwrap();
 }
 
-fn mounted(executable: &str, arguments: &[&Path]) {
+pub(super) fn mounted(executable: &str, arguments: &[&Path]) {
     let mut child = Command::new(executable).args(arguments).spawn().unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {

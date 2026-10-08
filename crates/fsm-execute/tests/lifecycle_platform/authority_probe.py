@@ -28,6 +28,7 @@ INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_doma
          'admission_cases::binding_identity_cases::authorization_refuses_live_replacement_cgroup_identity',
          'admission_cases::binding_identity_cases::launch_refuses_live_replacement_cgroup_identity',
          'admission_cases::binding_identity_cases::runner_refuses_live_replacement_cgroup_identity',
+         'admission_cases::enrolled_identity_cases::enrolled_authorization_refuses_live_replacement_cgroup_identity',
          'admission_cases::completion_proof_cases::completion_refuses_closure_for_another_journal_claim')
 
 

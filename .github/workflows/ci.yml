@@ -50,6 +50,7 @@ on:
           - authorization-cgroup-identity
           - launch-cgroup-identity
           - runner-cgroup-identity
+          - enrolled-authorization-cgroup-identity
           - completion-closure-claim
         default: preparation-owner
 
