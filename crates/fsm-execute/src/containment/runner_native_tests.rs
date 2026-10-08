@@ -142,6 +142,8 @@ pub(super) fn run() {
         "process-recover-changed",
         "process-recover-stopped-kill",
         "process-recover-acked-kill",
+        "process-recover-public-tick",
+        "process-recover-public-tick-with",
         "process-failure",
         "process-signal",
         "cancel-mcp",
@@ -199,6 +201,8 @@ pub(super) fn run() {
             "process-exit"
                 | "process-recover-removed"
                 | "process-recover-changed"
+                | "process-recover-public-tick"
+                | "process-recover-public-tick-with"
                 | "process-recover-acked-kill"
                 | "process-recover-stopped-kill"
                 | "process-failure"
@@ -503,6 +507,8 @@ pub(super) fn run() {
             "process-exit"
             | "process-recover-removed"
             | "process-recover-changed"
+            | "process-recover-public-tick"
+            | "process-recover-public-tick-with"
             | "process-recover-acked-kill"
             | "process-recover-stopped-kill" => "ok",
             "process-failure" | "process-signal" => "nonzero_exit",
@@ -587,12 +593,7 @@ pub(super) fn run() {
             );
             drop(reopened);
             if mode.starts_with("process-recover-") {
-                handoff_recovery::resume_original_event(
-                    &fixture,
-                    &effect,
-                    &completion,
-                    mode == "process-recover-changed",
-                );
+                handoff_recovery::resume_original_event(&fixture, &effect, &completion, mode);
             }
         }
         assert!(runner::execute(&fixture.directory, 1).is_err());

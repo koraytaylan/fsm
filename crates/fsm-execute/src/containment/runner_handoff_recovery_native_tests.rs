@@ -6,7 +6,7 @@ pub(super) fn resume_original_event(
     fixture: &Fixture,
     effect: &str,
     completion: &fsm_execute::run::native_client::NativeCompletion,
-    changed: bool,
+    mode: &str,
 ) {
     use super::super::broker_cases::{Daemon, disconnect_cases};
     use fsm_execute::rid::event_rid;
@@ -46,7 +46,24 @@ pub(super) fn resume_original_event(
     );
     let parameters = fsm_core::canon::canon_bytes(&object([
         ("effect", Value::Str(effect.into())),
-        ("changed", Value::Bool(changed)),
+        (
+            "changed",
+            Value::Bool(matches!(
+                mode,
+                "process-recover-changed" | "process-recover-public-tick-with"
+            )),
+        ),
+        (
+            "host",
+            Value::Str(
+                match mode {
+                    "process-recover-public-tick" => "tick",
+                    "process-recover-public-tick-with" => "tick_with",
+                    _ => "paired",
+                }
+                .into(),
+            ),
+        ),
     ]));
     let output = Command::new("/usr/bin/python3")
         .env("TMPDIR", &fixture.store)
@@ -107,7 +124,7 @@ fn recovered_event() {
     use fsm_execute::{
         config::{HandlerSpec, HandlerTable},
         rid::event_rid,
-        service::{ExecutorPhase, PairedNativeExecutor, ShutdownMode},
+        service::{ExecutorPhase, ShutdownMode},
     };
     use fsm_store::clock::FixedClock;
 
@@ -117,6 +134,7 @@ fn recovered_event() {
     let parameters = parse(encoded.as_bytes(), &JsonLimits::DEFAULT).unwrap();
     let effect = parameters.get("effect").and_then(Value::as_str).unwrap();
     let changed = parameters.get("changed").and_then(Value::as_bool).unwrap();
+    let host = parameters.get("host").and_then(Value::as_str).unwrap();
     let path = PathBuf::from(std::env::var_os("FSM_NATIVE_TEST_STORE").unwrap());
     let snapshot = Store::open_read_only(&path).unwrap();
     let before = snapshot.records.len();
@@ -145,9 +163,10 @@ fn recovered_event() {
     }
     // Reconstruct the real standalone paired driver from durable state, with
     // no retained completion object supplied to it and no original table.
-    let mut driver = PairedNativeExecutor::new(&path, table).unwrap();
+    let mut driver = RecoveryDriver::new(&path, table, host);
+    driver.check_readonly(&path);
     let mut clock = FixedClock::new(2000, 1);
-    let lines = driver.tick(&mut clock, 2000);
+    let lines = driver.tick(&path, &mut clock, 2000);
     assert!(
         lines
             .iter()
@@ -181,8 +200,9 @@ fn recovered_event() {
     assert_eq!(settled.state.execution_handoffs.outstanding().count(), 0);
     let records = settled.records.clone();
     drop(settled);
-    driver.tick(&mut clock, 2001);
+    driver.tick(&path, &mut clock, 2001);
     assert_eq!(Store::open_read_only(&path).unwrap().records, records);
+    let mut driver = driver.into_paired(&path);
     let request = driver.control().stop(ShutdownMode::Drain, 1000).unwrap();
     driver.poll(&mut clock, 2002);
     let report = request.poll();
@@ -193,5 +213,105 @@ fn recovered_event() {
     #[allow(clippy::print_stdout)]
     {
         println!("\nFSM_NATIVE_HANDOFF_RECOVERED");
+    }
+}
+
+enum RecoveryDriver {
+    Paired(Box<fsm_execute::service::PairedNativeExecutor>),
+    Public(Box<PublicTick>),
+}
+
+struct PublicTick {
+    watcher: fsm_execute::watch::Watcher,
+    scheduler: fsm_execute::sched::Scheduler,
+    runner: fsm_execute::run::Runner,
+    pipeline: fsm_execute::run::Pipeline,
+    borrowed: bool,
+}
+
+impl RecoveryDriver {
+    fn new(path: &Path, table: fsm_execute::config::HandlerTable, host: &str) -> Self {
+        match host {
+            "paired" => {
+                Self::Paired(fsm_execute::service::PairedNativeExecutor::new(path, table).unwrap())
+            }
+            "tick" | "tick_with" => Self::Public(Box::new(PublicTick {
+                watcher: fsm_execute::watch::Watcher::with_handlers(path.to_path_buf(), &table),
+                scheduler: fsm_execute::sched::Scheduler::new(table),
+                runner: fsm_execute::run::Runner::new_native().unwrap(),
+                pipeline: fsm_execute::run::Pipeline,
+                borrowed: host == "tick_with",
+            })),
+            _ => panic!("unknown native recovery host"),
+        }
+    }
+
+    fn check_readonly(&mut self, path: &Path) {
+        if let Self::Public(parts) = self {
+            let mut readonly = Store::open_read_only(path).unwrap();
+            let records = readonly.records.clone();
+            let lines = fsm_execute::service::tick_with(
+                &mut parts.watcher,
+                &mut parts.scheduler,
+                &mut parts.runner,
+                &mut parts.pipeline,
+                &mut readonly,
+                &mut fsm_store::clock::FixedClock::new(1500, 1),
+                1500,
+            );
+            assert!(
+                !lines
+                    .iter()
+                    .any(|line| line.starts_with("native-handoff advanced"))
+            );
+            assert_eq!(readonly.records, records);
+            assert_eq!(Store::open_read_only(path).unwrap().records, records);
+            assert_eq!(readonly.state.execution_handoffs.outstanding().count(), 1);
+        }
+    }
+
+    fn tick(
+        &mut self,
+        path: &Path,
+        clock: &mut dyn fsm_store::clock::Clock,
+        now: i64,
+    ) -> Vec<String> {
+        match self {
+            Self::Paired(driver) => driver.tick(clock, now),
+            Self::Public(parts) if parts.borrowed => {
+                let mut writer = Store::open(path).unwrap();
+                fsm_execute::service::tick_with(
+                    &mut parts.watcher,
+                    &mut parts.scheduler,
+                    &mut parts.runner,
+                    &mut parts.pipeline,
+                    &mut writer,
+                    clock,
+                    now,
+                )
+            }
+            Self::Public(parts) => fsm_execute::service::tick(
+                &mut parts.watcher,
+                &mut parts.scheduler,
+                &mut parts.runner,
+                &mut parts.pipeline,
+                path,
+                clock,
+                now,
+            ),
+        }
+    }
+
+    fn into_paired(self, path: &Path) -> fsm_execute::service::PairedNativeExecutor {
+        match self {
+            Self::Paired(driver) => *driver,
+            Self::Public(parts) => fsm_execute::service::PairedNativeExecutor::from_owned_parts(
+                Store::open_read_only(path).unwrap(),
+                parts.watcher,
+                parts.scheduler,
+                parts.runner,
+            )
+            .unwrap(),
+        }
     }
 }
