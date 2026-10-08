@@ -67,8 +67,14 @@ correction matches that binding to the exact original claim/hash and requires
 absent launch, handoff, entry, exec-status, completion and memory records for
 that allocation, while preserving matched closure and memory/swap-limit
 checks for every launched successor.
-The corrected forty-case inventory remains unverified; default shipped
-binaries contain no barrier.
+Four further standalone/embedded process/MCP cases hold the actual Root
+runner after private association with the enrolled gate and before native
+grant publication. The observer authenticates the protected handoff and
+original claim/hash, matches the live gate PID/start token and kernel cgroup,
+requires absent grants and handler entry across immediate restart, then
+permits sequential recovery only after matched closure and interruption.
+The forty-four-case extension remains unverified; default shipped binaries
+contain no barrier.
 
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain

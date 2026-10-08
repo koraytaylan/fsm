@@ -50,6 +50,7 @@ fn provisioned_lifecycle_candidate_matrix() {
                 "acked-result",
                 "event-result",
                 "claimed-result",
+                "authorization",
             ] {
                 scenario(
                     &staging,
@@ -123,16 +124,19 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     }
     if matches!(
         behavior,
-        "collected-timeout" | "collected-result" | "closed-result"
+        "collected-timeout" | "collected-result" | "closed-result" | "authorization"
     ) {
         let request = fixture.directory.join("crash-candidate-barrier.json");
         let mut fields = BTreeMap::from([
             ("attempt".into(), Value::Num("1".into())),
+            ("run_id".into(), Value::Num("1".into())),
             (
                 "cut".into(),
                 Value::Str(
                     if behavior == "closed-result" {
                         "domain-closed"
+                    } else if behavior == "authorization" {
+                        "authorization"
                     } else {
                         "candidate"
                     }
@@ -306,6 +310,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "acked-result"
                             | "event-result"
                             | "claimed-result"
+                            | "authorization"
                     ) && kind == "process"
                     {
                         "hold-exit"
@@ -319,6 +324,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "acked-result"
                             | "event-result"
                             | "claimed-result"
+                            | "authorization"
                     ) {
                         "hold-result"
                     } else {

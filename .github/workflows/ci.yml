@@ -142,7 +142,7 @@ jobs:
       matrix:
         rust: [stable, "1.89.0"]
     runs-on: ubuntu-latest
-    # 40 bounded crash cases plus containment/workflow/upgrade evidence.
+    # 44 bounded crash cases plus containment/workflow/upgrade evidence.
     timeout-minutes: 75
     env:
       CARGO_BUILD_JOBS: "1"

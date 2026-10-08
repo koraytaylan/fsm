@@ -11,6 +11,8 @@ use fsm_execute::mcp_client::McpOutcome;
 use fsm_execute::run::native_io::{NativeCapture, NativeProtocol};
 use fsm_execute::run::{KillReason, RunOutcome};
 use fsm_store::store::{Store, VerifiedClosure};
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -172,6 +174,8 @@ pub(super) fn execute_cancellable(
         drop(input);
     }
 
+    #[cfg(test)]
+    hold_native_crash_cut(directory, &claim, None, cancelled, "authorization")?;
     if !cancelled.load(Ordering::Acquire) {
         authorize::publish_enrolled(directory, &object([("grant", grant)]))
             .map_err(|error| format!("runner enrolled entry refused: {error}"))?;
@@ -224,7 +228,7 @@ pub(super) fn execute_cancellable(
         std::thread::sleep(Duration::from_millis(5));
     };
     #[cfg(test)]
-    hold_native_crash_cut(directory, &claim, &candidate, cancelled, "candidate")?;
+    hold_native_crash_cut(directory, &claim, Some(&candidate), cancelled, "candidate")?;
     if let Some(worker) = &owned.worker {
         worker.cancel();
     }
@@ -257,7 +261,13 @@ pub(super) fn execute_cancellable(
         std::thread::sleep(Duration::from_millis(5));
     }
     #[cfg(test)]
-    hold_native_crash_cut(directory, &claim, &candidate, cancelled, "domain-closed")?;
+    hold_native_crash_cut(
+        directory,
+        &claim,
+        Some(&candidate),
+        cancelled,
+        "domain-closed",
+    )?;
     let stderr = stderr.finish();
     let outcome = match candidate {
         Candidate::Spawn => RunOutcome::SpawnFailed { argv0 },
@@ -323,7 +333,7 @@ pub(super) fn execute_cancellable(
 fn hold_native_crash_cut(
     directory: &Path,
     claim: &fsm_core::record::execution::Claim,
-    candidate: &Candidate,
+    candidate: Option<&Candidate>,
     cancelled: &AtomicBool,
     cut: &str,
 ) -> Result<(), String> {
@@ -343,22 +353,39 @@ fn hold_native_crash_cut(
     if number(&request, "attempt")? != number(&claim.to_value(), "attempt")? {
         return Ok(());
     }
-    let kind = match candidate {
+    if request.get("run_id").is_some() && number(&request, "run_id")? != claim.run_id() {
+        return Ok(());
+    }
+    let kind = candidate.map(|candidate| match candidate {
         Candidate::Process(_) => "process",
         Candidate::Mcp(_) => "mcp",
         Candidate::Spawn => "spawn",
         Candidate::Timeout => "timeout",
         Candidate::Cancelled => "cancelled",
-    };
+    });
     let ready = directory.join(format!("crash-{cut}-{}.json", claim.run_id()));
-    super::publish_once(
-        &ready,
-        &object([
-            ("claim", claim.to_value()),
-            ("candidate", Value::Str(kind.into())),
-            ("cut", Value::Str(cut.into())),
-        ]),
-    )?;
+    let mut observation = BTreeMap::from([
+        ("claim".into(), claim.to_value()),
+        ("cut".into(), Value::Str(cut.into())),
+    ]);
+    if let Some(kind) = kind {
+        observation.insert("candidate".into(), Value::Str(kind.into()));
+    }
+    if cut == "authorization" {
+        let allocation = number(&claim.domain().to_value(), "allocation")?;
+        observation.insert(
+            "handoff".into(),
+            read_value(&directory.join(format!("handoff-{allocation}.json")), true)?,
+        );
+        if directory
+            .join(format!("entry-{allocation}.json"))
+            .try_exists()
+            .map_err(io)?
+        {
+            return Err("test authorization cut already published its grant".into());
+        }
+    }
+    super::publish_once(&ready, &Value::Obj(observation))?;
     std::fs::set_permissions(&ready, std::fs::Permissions::from_mode(0o444)).map_err(io)?;
     // Only a protected test request enables this observation; production builds
     // contain no barrier; the observer can retain the original descendants

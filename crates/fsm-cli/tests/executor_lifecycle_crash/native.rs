@@ -18,6 +18,9 @@ const MACHINE: &[u8] = br#"{
  "initial":"running","transitions":[{"from":"running","on":"done","to":"finished"}]
 }"#;
 
+#[path = "native/authorization.rs"]
+mod authorization;
+
 struct Host {
     process: Child,
     input: Option<std::process::ChildStdin>,
@@ -222,6 +225,10 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         .unwrap();
     drop(writer);
     let mut original = Host::start(&manifest, "original");
+    if field(&manifest, "behavior") == "authorization" {
+        authorization::observe(&manifest, &store, &resource, &mut original);
+        return;
+    }
     if field(&manifest, "behavior") == "claimed-result" {
         observe_claim_crash(&manifest, &store, &resource, &mut original);
         return;
