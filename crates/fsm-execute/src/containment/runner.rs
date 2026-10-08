@@ -224,7 +224,7 @@ pub(super) fn execute_cancellable(
         std::thread::sleep(Duration::from_millis(5));
     };
     #[cfg(test)]
-    hold_collected_candidate(directory, &claim, &candidate, cancelled)?;
+    hold_native_crash_cut(directory, &claim, &candidate, cancelled, "candidate")?;
     if let Some(worker) = &owned.worker {
         worker.cancel();
     }
@@ -256,6 +256,8 @@ pub(super) fn execute_cancellable(
         }
         std::thread::sleep(Duration::from_millis(5));
     }
+    #[cfg(test)]
+    hold_native_crash_cut(directory, &claim, &candidate, cancelled, "domain-closed")?;
     let stderr = stderr.finish();
     let outcome = match candidate {
         Candidate::Spawn => RunOutcome::SpawnFailed { argv0 },
@@ -318,11 +320,12 @@ pub(super) fn execute_cancellable(
 }
 
 #[cfg(test)]
-fn hold_collected_candidate(
+fn hold_native_crash_cut(
     directory: &Path,
     claim: &fsm_core::record::execution::Claim,
     candidate: &Candidate,
     cancelled: &AtomicBool,
+    cut: &str,
 ) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     let request = directory.join("crash-candidate-barrier.json");
@@ -330,6 +333,13 @@ fn hold_collected_candidate(
         return Ok(());
     }
     let request = read_value(&request, true)?;
+    let requested_cut = match request.get("cut") {
+        Some(value) => value.as_str().ok_or("invalid test crash cut")?,
+        None => "candidate",
+    };
+    if requested_cut != cut {
+        return Ok(());
+    }
     if number(&request, "attempt")? != number(&claim.to_value(), "attempt")? {
         return Ok(());
     }
@@ -340,12 +350,13 @@ fn hold_collected_candidate(
         Candidate::Timeout => "timeout",
         Candidate::Cancelled => "cancelled",
     };
-    let ready = directory.join(format!("crash-candidate-{}.json", claim.run_id()));
+    let ready = directory.join(format!("crash-{cut}-{}.json", claim.run_id()));
     super::publish_once(
         &ready,
         &object([
             ("claim", claim.to_value()),
             ("candidate", Value::Str(kind.into())),
+            ("cut", Value::Str(cut.into())),
         ]),
     )?;
     std::fs::set_permissions(&ready, std::fs::Permissions::from_mode(0o444)).map_err(io)?;

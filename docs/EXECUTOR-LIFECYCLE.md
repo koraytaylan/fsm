@@ -1436,5 +1436,9 @@ cases ask the Root coordinator to SIGKILL its owned broker while the executor
 and original tree remain alive; the observer then kills only its executor,
 requires unchanged ownership through immediate restart, and permits cold
 recovery only after a new broker epoch. Matched closure and original-tree
-retirement must precede a replacement claim. This twenty-case extension is
-unverified. Shipped binaries contain no barrier.
+retirement must precede a replacement claim. Four further cases hold after
+matched domain closure and owned-handle retirement but before completion
+publication; the observer verifies the original closure and dead tree before
+killing the executor, then requires original-result recovery without another
+claim or handler entry. This twenty-four-case extension remains unverified.
+Shipped binaries contain no barrier.

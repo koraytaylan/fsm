@@ -275,13 +275,19 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
             original_marker
         );
     }
-    let collected_result = field(&manifest, "behavior") == "collected-result";
+    let closed_result = field(&manifest, "behavior") == "closed-result";
+    let collected_result = field(&manifest, "behavior") == "collected-result" || closed_result;
     if collected_result {
         fs::write(resource.join("root-release"), b"release").unwrap();
     }
     if collected_result || field(&manifest, "behavior") == "collected-timeout" {
+        let cut = if closed_result {
+            "domain-closed"
+        } else {
+            "candidate"
+        };
         let ready = Path::new(field(&manifest, "authority"))
-            .join(format!("crash-candidate-{}.json", claim.run_id()));
+            .join(format!("crash-{cut}-{}.json", claim.run_id()));
         let deadline = Instant::now() + Duration::from_secs(8);
         while !fs::symlink_metadata(&ready).is_ok_and(|metadata| {
             metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o7777 == 0o444
@@ -298,6 +304,7 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         assert!(metadata.is_file());
         assert_eq!((metadata.uid(), metadata.mode() & 0o7777), (0, 0o444));
         assert_eq!(observed.get("claim"), Some(&claim.to_value()));
+        assert_eq!(observed.get("cut"), Some(&Value::Str(cut.into())));
         assert_eq!(
             observed.get("candidate"),
             Some(&Value::Str(
@@ -309,8 +316,41 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
                 .into()
             ))
         );
-        assert!(members[1..].iter().all(live));
-        if !collected_result || field(&manifest, "kind") == "mcp" {
+        if closed_result {
+            assert!(members.iter().all(|member| !live(member)));
+            assert!(
+                !Path::new(field(&manifest, "authority"))
+                    .join(format!(
+                        "completed-{}-{}.json",
+                        claim
+                            .domain()
+                            .to_value()
+                            .get("allocation")
+                            .unwrap()
+                            .as_num()
+                            .unwrap(),
+                        claim.run_id()
+                    ))
+                    .exists()
+            );
+            let receipt = Path::new(field(&manifest, "authority")).join(format!(
+                "closure-{}-{}.json",
+                claim
+                    .domain()
+                    .to_value()
+                    .get("allocation")
+                    .unwrap()
+                    .as_num()
+                    .unwrap(),
+                claim.run_id()
+            ));
+            let proof = VerifiedClosure::read(&receipt).unwrap();
+            assert!(proof.matches_claim(&claim, &hash));
+            proof.check_store(&store).unwrap();
+        } else {
+            assert!(members[1..].iter().all(live));
+        }
+        if !closed_result && (!collected_result || field(&manifest, "kind") == "mcp") {
             assert!(live(&members[0]));
         }
         assert_eq!(Store::open_read_only(&store).unwrap().records, records);
@@ -330,10 +370,14 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     assert_eq!(held.records, records);
     let blocked = Host::start(&manifest, "immediate-restart");
     if collected_result || field(&manifest, "behavior") == "collected-timeout" {
-        assert!(
-            members[1..].iter().all(live),
-            "immediate restart must begin while original descendants are alive"
-        );
+        if closed_result {
+            assert!(members.iter().all(|member| !live(member)));
+        } else {
+            assert!(
+                members[1..].iter().all(live),
+                "immediate restart must begin while original descendants are alive"
+            );
+        }
         assert_eq!(
             fs::read(resource.join("root-entered")).unwrap(),
             original_marker

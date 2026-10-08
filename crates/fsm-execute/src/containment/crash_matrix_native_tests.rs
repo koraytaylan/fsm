@@ -45,6 +45,7 @@ fn provisioned_lifecycle_candidate_matrix() {
                 "collected-timeout",
                 "collected-result",
                 "supervisor-death",
+                "closed-result",
             ] {
                 scenario(
                     &staging,
@@ -97,19 +98,30 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
     let catalogue = table(&staging.join("fixture"), &resource, case);
     let mut fixture = Fixture::new_for_workflow(catalogue.clone());
-    if matches!(behavior, "collected-timeout" | "collected-result") {
+    if matches!(
+        behavior,
+        "collected-timeout" | "collected-result" | "closed-result"
+    ) {
         let request = fixture.directory.join("crash-candidate-barrier.json");
-        fs::write(
-            &request,
-            canon_bytes(&object([
-                ("attempt", Value::Num("1".into())),
-                (
-                    "closure_release",
-                    Value::Str(resource.join("closure-release").to_str().unwrap().into()),
+        let mut fields = BTreeMap::from([
+            ("attempt".into(), Value::Num("1".into())),
+            (
+                "cut".into(),
+                Value::Str(
+                    if behavior == "closed-result" {
+                        "domain-closed"
+                    } else {
+                        "candidate"
+                    }
+                    .into(),
                 ),
-            ])),
-        )
-        .unwrap();
+            ),
+        ]);
+        fields.insert(
+            "closure_release".into(),
+            Value::Str(resource.join("closure-release").to_str().unwrap().into()),
+        );
+        fs::write(&request, canon_bytes(&Value::Obj(fields))).unwrap();
         fs::set_permissions(request, fs::Permissions::from_mode(0o444)).unwrap();
     }
     let limits = memory_limits::Limits::install(&fixture);
@@ -263,11 +275,15 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                     executable.to_str().unwrap(),
                     kind,
                     resource.to_str().unwrap(),
-                    if behavior == "collected-result" && kind == "process" {
+                    if matches!(behavior, "collected-result" | "closed-result") && kind == "process"
+                    {
                         "hold-exit"
                     } else if matches!(
                         behavior,
-                        "collected-timeout" | "collected-result" | "supervisor-death"
+                        "collected-timeout"
+                            | "collected-result"
+                            | "supervisor-death"
+                            | "closed-result"
                     ) {
                         "hold-result"
                     } else {
@@ -320,7 +336,11 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .iter()
                 .filter(|record| record.kind == kind)
                 .count(),
-            if behavior == "collected-result" { 1 } else { 2 }
+            if matches!(behavior, "collected-result" | "closed-result") {
+                1
+            } else {
+                2
+            }
         );
     }
     for record in store
