@@ -11,7 +11,31 @@ pub(super) fn reconcile_claimed(directory: &Path, payload: &Value) -> Result<Val
     let allocation = number(&claim.domain().to_value(), "allocation")?;
     // Never create missing ownership material or race original publication.
     let _original_runner = super::super::runner_lease::acquire_existing(directory, allocation)?;
+    refuse_completion_material(directory, allocation, claim.run_id())?;
     close_claimed(directory, payload)
+}
+
+fn refuse_completion_material(
+    directory: &Path,
+    allocation: u64,
+    run_id: u64,
+) -> Result<(), String> {
+    for name in [
+        format!("result-{allocation}-{run_id}.json"),
+        format!("completed-{allocation}-{run_id}.json"),
+        format!("completed-{allocation}-{run_id}.json.pending"),
+    ] {
+        match std::fs::symlink_metadata(directory.join(name)) {
+            Ok(_) => {
+                return Err(
+                    "original completion material requires authenticated result recovery".into(),
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(super::super::io(error)),
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn close_claimed(directory: &Path, payload: &Value) -> Result<Value, String> {
@@ -65,6 +89,38 @@ fn matches_original(request: &Value, original: &Value, domain: &Value) -> Result
 mod tests {
     use super::*;
     use fsm_core::json::{JsonLimits, parse};
+
+    #[test]
+    #[ignore = "requires a provisioned root-owned cache directory"]
+    fn reconciliation_preserves_complete_and_partial_original_result_material() {
+        let root =
+            std::path::PathBuf::from(std::env::var_os("FSM_RUNNER_LEASE_NATIVE_ROOT").unwrap());
+        assert!(!root.starts_with("/tmp"));
+        protected_directory(&root).unwrap();
+        let directory = root.join(format!("reconcile-result-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        drop(super::super::super::runner_lease::acquire(&directory, 7).unwrap());
+        let binding = original_binding();
+        for name in [
+            "result-7-1.json",
+            "completed-7-1.json",
+            "completed-7-1.json.pending",
+        ] {
+            let path = directory.join(name);
+            std::fs::write(&path, b"partial original result").unwrap();
+            let refusal = reconcile_claimed(&directory, &binding);
+            let preserved = std::fs::read(&path).unwrap();
+            let unchanged = std::fs::read_dir(&directory).unwrap().count() == 2;
+            std::fs::remove_file(path).unwrap();
+            assert_eq!(
+                refusal.unwrap_err(),
+                "original completion material requires authenticated result recovery"
+            );
+            assert_eq!(preserved, b"partial original result");
+            assert!(unchanged);
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     #[ignore = "requires a provisioned root-owned cache directory"]

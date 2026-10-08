@@ -12,6 +12,8 @@ files, instead of reporting their synthetic empty read-only view as verified.
 Added a lease-serialized claimed closure broker primitive that refuses active
 or missing runner leases, with additive `NativeShutdown::start_reconciliation`
 transport; operator recovery and native acceptance remain pending.
+Closure-only reconciliation now refuses existing or partial original result
+publications, preserving them for authenticated recovery without interruption.
 
 The native runner holds an allocation-specific protected execution lease through
 cleanup and result publication; genuine native acceptance and reconciliation

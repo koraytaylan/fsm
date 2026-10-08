@@ -1194,6 +1194,8 @@ active leases, preserves completion records, and performs no journal settlement.
 `NativeShutdown::start_reconciliation` selects that guarded action using the
 same original claim, physical store and authenticated receipt checks as shutdown;
 callers must recover original completion evidence before choosing settlement.
+Original attestations and complete or partial response files refuse closure-only
+reconciliation before fencing, retaining their bytes for authenticated recovery.
 
 The initial Linux backend uses an explicit project decision under the
 delegated authority recorded above: ordinary signal termination does not

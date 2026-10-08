@@ -13,6 +13,8 @@ publication through `NativeShutdown::start_reconciliation`, which retains the
 original claim, physical store and authenticated receipt checks;
 the broker requires an existing protected runner lease, and the operator command,
 startup integration and recovery before runner startup remain unimplemented.
+Published attestations and complete or partial completed-response files refuse
+closure-only reconciliation so their original outcomes cannot become interruption.
 
 Native runner execution now holds a protected allocation lease through completion
 publication; it is internal authority state and provides no embedding recovery

@@ -10,6 +10,8 @@ The additive `reconcile-claimed` native broker action requires existing protecte
 runner lease material; additive `NativeShutdown::start_reconciliation` requests
 that action with the existing shutdown proof checks, while the action preserves
 original claim/binding and journal formats;
+existing or partial original completion material now refuses closure-only
+reconciliation and requires authenticated result recovery instead;
 it provides closure only, with no public operator command or settlement authority.
 
 The native authority now retains additive protected runner lease files through
