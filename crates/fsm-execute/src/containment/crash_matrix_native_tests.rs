@@ -406,7 +406,40 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .to_str()
                 .unwrap()
         );
-        memory_limits::verify(fixture, &domain, number(&domain, "allocation").unwrap());
+        let allocation = number(&domain, "allocation").unwrap();
+        if behavior == "claimed-result" && claim.run_id() == 1 {
+            // This cut never submitted a manager launch: missing memory evidence
+            // is required here, while every actually launched successor retains
+            // the unchanged positive memory/swap-limit verification below.
+            assert_eq!(
+                read_value(
+                    &fixture.directory.join(format!("binding-{allocation}.json")),
+                    true
+                )
+                .unwrap(),
+                object([
+                    ("format", Value::Str("fsm.native-claim-binding/1".into())),
+                    ("claim", claim.to_value()),
+                    (
+                        "journal_claim",
+                        Value::Str(format!("sha256:{}", record.hash))
+                    ),
+                ])
+            );
+            for name in [
+                format!("launch-{allocation}.json"),
+                format!("handoff-{allocation}.json"),
+                format!("entry-{allocation}.json"),
+                format!("entry-{allocation}.json.pending"),
+                format!("exec-status-{allocation}.json"),
+                format!("fixture-memory-{allocation}.json"),
+                format!("completed-{allocation}-{}.json", claim.run_id()),
+            ] {
+                assert!(!fixture.directory.join(name).try_exists().unwrap());
+            }
+        } else {
+            memory_limits::verify(fixture, &domain, allocation);
+        }
         let proof = VerifiedClosure::read(&fixture.directory.join(format!(
             "closure-{}-{}.json",
             number(&domain, "allocation").unwrap(),

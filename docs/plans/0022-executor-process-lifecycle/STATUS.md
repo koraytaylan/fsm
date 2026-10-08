@@ -37,6 +37,15 @@ Supervisor death, remaining crash boundaries, repeated-run resource use,
 sensitivities and current full portable checkpoint remain unverified;
 9404 stays in progress, and original artifacts remain in the task cache.
 
+Frozen `8ac4d8d0..932ac99e` fails its forty-case native checkpoint on both
+compilers: the standalone/process after-claim observer passes, but Root
+verification wrongly requires a launched-domain memory receipt for the
+unlaunched original allocation; retained failure-verdict digest
+`54f2810b1e3654957547f7e5f95244660a05aaf160a71bd455af88ed5a1491b2`.
+The correction matches the original repair binding, proves absent launch
+records and preserves launched-successor memory checks; its runtime remains
+unverified, so 9404 stays in progress.
+
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
 The six portable gates, dependency/core-only check and both verified native

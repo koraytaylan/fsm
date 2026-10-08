@@ -1462,5 +1462,13 @@ before binding or handler entry; killing that host must preserve the exact
 claim-only prefix through a competing writer, then verified original
 unlaunched closure and interrupted settlement must precede the successor
 claim and its single successful event, without consuming the retry attempt.
-The forty-case extension remains unverified until its disposable native
-checkpoint runs; default shipped binaries contain no barrier.
+The first forty-case checkpoint at `932ac99e` fails on both compilers:
+its standalone/process claim observer passes, but the Root verifier wrongly
+requires a launched-domain memory receipt for the intentionally unlaunched
+original allocation. Cold repair legitimately publishes the original binding for closure; the
+correction matches that binding to the exact original claim/hash and requires
+absent launch, handoff, entry, exec-status, completion and memory records for
+that allocation, while preserving matched closure and memory/swap-limit
+checks for every launched successor.
+The corrected forty-case inventory remains unverified; default shipped
+binaries contain no barrier.
