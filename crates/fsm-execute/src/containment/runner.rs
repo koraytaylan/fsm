@@ -29,6 +29,17 @@ pub(super) fn recover(directory: &Path, allocation: u64) -> Result<Value, String
     completion_record::recover(directory, allocation)
 }
 
+// The native fixture supplies actual retired-run material to the production
+// publisher; this adapter adds no publication or verification behavior.
+#[cfg(test)]
+pub(super) fn fixture_publish_completion(
+    directory: &Path,
+    claim: &fsm_core::record::execution::Claim,
+    result: &Value,
+) -> Result<(), String> {
+    completion_record::publish(directory, claim, result)
+}
+
 struct OwnedRun {
     directory: PathBuf,
     allocation: u64,

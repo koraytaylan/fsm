@@ -160,3 +160,86 @@ fn execution_refuses_completion_for_another_journal_claim() {
     drop(store);
     fixture.cleanup().unwrap();
 }
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn publication_refuses_closure_for_another_journal_claim_before_attestation() {
+    let mut fixture = Fixture::new();
+    let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
+    let (binding, _) = claim_binding(&fixture, &domain);
+    let claim = Claim::from_value(binding.get("claim").unwrap()).unwrap();
+    let hash = binding.get("journal_claim").unwrap().as_str().unwrap();
+    bind(&fixture.directory, &binding).unwrap();
+    let result = runner::execute(&fixture.directory, 1).unwrap();
+    let records = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
+    let closure = fixture.directory.join("closure-1-1.json");
+    let attestation = fixture.directory.join("result-1-1.json");
+    let completed = fixture.directory.join("completed-1-1.json");
+    let original_closure = fs::read(&closure).unwrap();
+    let original_attestation = fs::read(&attestation).unwrap();
+    let original_completed = fs::read(&completed).unwrap();
+    let closure_identity = physical_identity(&closure);
+    // Remove only this fixture's already authenticated retired-run publications
+    // to exercise publication anew; durable journal ownership remains intact.
+    fs::remove_file(&attestation).unwrap();
+    fs::remove_file(&completed).unwrap();
+    File::open(&fixture.directory).unwrap().sync_all().unwrap();
+    let wrong_hash = Value::Str(format!("sha256:{}", "0".repeat(64)));
+    assert_ne!(binding.get("journal_claim"), Some(&wrong_hash));
+    let mut material = read_value(&closure, true)
+        .unwrap()
+        .as_obj()
+        .unwrap()
+        .clone();
+    material.insert("journal_claim".into(), wrong_hash);
+    write_same_file(&closure, &canon_bytes(&Value::Obj(material)));
+    let refusal = runner::fixture_publish_completion(&fixture.directory, &claim, &result);
+    // A later completion verifier must not excuse crossing the publisher's
+    // earlier durable attestation boundary with mismatched closure evidence.
+    assert!(
+        !attestation.exists(),
+        "native publication wrote attestation before refusing another journal claim"
+    );
+    assert_eq!(
+        refusal.unwrap_err(),
+        "completed response differs from original closed claim"
+    );
+    assert!(!completed.exists());
+    assert!(!completed.with_extension("json.pending").exists());
+    assert_eq!(physical_identity(&closure), closure_identity);
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    write_same_file(&closure, &original_closure);
+    runner::fixture_publish_completion(&fixture.directory, &claim, &result).unwrap();
+    assert_eq!(fs::read(&attestation).unwrap(), original_attestation);
+    assert_eq!(fs::read(&completed).unwrap(), original_completed);
+    let response = object([
+        ("format", Value::Str("fsm.native-response/1".into())),
+        ("ok", Value::Bool(true)),
+        ("result", result),
+    ]);
+    NativeCompletion::verify(&response, &claim, hash).unwrap();
+    let store = Store::open_read_only(&fixture.store).unwrap();
+    assert_eq!(store.records, records);
+    assert_eq!(
+        store
+            .state
+            .execution
+            .claim_for(claim.effect().0, claim.effect().1),
+        Some(&claim)
+    );
+    assert!(
+        store
+            .state
+            .execution
+            .stopped_for(claim.effect().0, claim.effect().1)
+            .is_none()
+    );
+    drop(store);
+    fixture.cleanup().unwrap();
+}
