@@ -9,10 +9,26 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [contained-handler-runner](tasks/9303-contained-handler-runner.md) | done | 9f1f175ad91609359699e3a2d670119e8cbb506a |
 | [executor-ownership-integration](tasks/9401-executor-ownership-integration.md) | done | 2b580fd762d9afe54f844e18514387d72b6c6bd2 |
 | [bounded-executor-shutdown](tasks/9402-bounded-executor-shutdown.md) | done | 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06 |
-| [uncertain-run-reconciliation](tasks/9403-uncertain-run-reconciliation.md) | in_progress | — |
+| [uncertain-run-reconciliation](tasks/9403-uncertain-run-reconciliation.md) | done | 713c90e92871efb3484b41fdd20ee211dd196569 |
 | [lifecycle-crash-matrix](tasks/9404-lifecycle-crash-matrix.md) | planned | — |
 
-Progress: 5/7 tasks completed.
+Progress: 6/7 tasks completed.
+
+Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
+final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.
+The six portable gates, dependency/core-only check and both verified native
+matrices pass at `c7fc9e8d`; subsequent changes only correct documentation and
+record the frozen verdict. Production process/MCP orphan closure, original
+owner exclusion, concurrent/idempotent reconciliation, stale-run isolation,
+actual PID reuse and copied/changed/missing identity refusals are verified,
+with stopped publication before retry and preserved original results. Both
+compilers retain interruption/replay and historical executor upgrade/drain
+transcripts. The selected backend grants no environment-reset clearance;
+missing evidence retains ownership. The earlier stable successor stall remains
+preserved with cause unproven; subsequent passes establish no behavioral fix.
+The complete 9404 crash inventory and non-Linux native capability remain
+unimplemented. This documentation-only completion passes diff and size checks
+and omits heavy gates; detailed evidence remains in the task cache.
 
 Frozen `5730f172..fd5affe2` passes all six portable full gates, the dependency/core-only
 check and both native jobs at code checkpoint `c7fc9e8d` in

@@ -82,8 +82,9 @@ standalone and embedded native fixtures on stable and MSRV at `ab66d203`;
 [the acceptance run](https://github.com/koraytaylan/fsm/actions/runs/37767981476)
 retains the actual bounded responses in each native artifact's
 `workflow-transcripts.json`, including refusal while the original writer holds
-the store. Upgrade compatibility and the remaining uncertain-state acceptance
-are still under plan 0022 review.
+the store. Task 9403 acceptance at `713c90e9` verifies upgrade compatibility and
+original uncertain-state recovery on provisioned Linux/systemd; the complete
+9404 crash matrix remains outstanding under plan 0022.
 
 An original completed publication follows authenticated result recovery instead;
 its original outcome and contract determine settlement, even if current handlers

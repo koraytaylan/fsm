@@ -23,8 +23,8 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: in_progress
-merged_as: ""
+status: done
+merged_as: "713c90e92871efb3484b41fdd20ee211dd196569"
 ---
 # Uncertain Run Reconciliation
 

@@ -7,7 +7,8 @@ client MUST refuse legacy `prepare` allocation requests. Existing protected
 legacy allocations retain their original recovery rules and gain no ownership
 witness. This corrects the unreleased Rust preparation API before native release;
 its `poll` return type changes, with no journal format, hash or error-code change,
-and downstream native acceptance remains required.
+and task 9403 native acceptance passes for provisioned Linux/systemd;
+the exhaustive 9404 crash matrix remains required.
 
 
 The additive `NativePreparation::start_owned` / `poll_owned` path now returns
@@ -15,7 +16,7 @@ a non-cloneable `NativePreparedOwner` only after acquiring the original operator
 lease and checking the protected authority, boot, route and lease inode; `poll` and `poll_owned` both retain the original lease in their returned guard. Production admission now requests owned
 preparation, retains its guard across
 prepared and uncertain claim states, and moves it into the original execution
-owner before dropping the admission reservation; native acceptance remains pending.
+owner before dropping the admission reservation; native acceptance passes under task 9403.
 
 
 Pre-run ownership requires an owned lease guard spanning prepared-domain
@@ -23,7 +24,7 @@ delivery, uncertain claim publication, binding and execution without an unlock
 gap; cloning `NativeDomain` cannot replace it, and production admission now moves
 that guard into the original execution owner after durable publication;
 absent-binding reconciliation retains both original leases through exact claim
-validation and protected binding publication, with native acceptance pending.
+validation and protected binding publication, with native acceptance passing under task 9403.
 
 `service::reconcile_run` may replay an already settled run under a healthy writer
 using its original claim and settlement request ledger; replay returns the
@@ -37,22 +38,23 @@ Startup now attempts guarded original-run closure once per observed orphan
 without completion, using operator reconciliation's authenticated primitive;
 active/missing leases and partial results remain unresolved, and later original
 completion recovery stays available after refusal; native startup acceptance
-remains pending, with no format or hash change; owned pre-run recovery uses both original leases.
+passes under task 9403, with no format or hash change; owned pre-run recovery uses both original leases.
 
 Published original completions in `service::reconcile_run` now use the same
 authenticated recovery and original settlement as startup, without current
 handlers or outcome-event dispatch; partial publications remain unresolved,
-and shared startup orphan closure is implemented; complete task acceptance remains pending.
+and shared startup orphan closure is implemented; task 9403 acceptance passes.
+The exhaustive 9404 matrix remains pending.
 
 `execute reconcile --run-id <id>` selects shared Linux original-run recovery
 with an 8000-ms default bound; startup uses the same original identity and
-closure acceptance, including guarded owned pre-run recovery; complete task
-acceptance remains pending.
+closure acceptance, including guarded owned pre-run recovery; task 9403
+acceptance passes; the exhaustive 9404 matrix remains pending.
 
 `fsm_execute::service::inspect_runs(&store)` renders sanitized journal-derived
 unresolved ownership without native I/O or mutation, matching `execute runs`;
-native liveness remains unverified, and complete operator/startup reconciliation
-acceptance remains pending under task 9403.
+native liveness remains unverified, and operator/startup reconciliation
+acceptance passes under task 9403 for provisioned Linux/systemd.
 `service::inspect_ownership(&store)` provides the same sanitized counts used by
 MCP health and the execution_ownership field of the CLI run report.
 The CLI requires an initialized format marker or observed journal prefix before

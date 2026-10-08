@@ -2528,7 +2528,8 @@ writer-held current-claim/hash and launch-eligibility checks; this method MUST
 NOT claim, settle, release capacity, or fall back to a direct child. Constructing
 another retained object MUST NOT be interpreted as authority to retry an
 uncertain run. Fresh shared-tick admission and original-run reconciliation use
-these guarded operations; complete task acceptance remains pending.
+these guarded operations; task 9403 acceptance passes for provisioned
+Linux/systemd; the exhaustive 9404 crash matrix remains pending.
 
 For installed-owner startup, observation MUST stop at `Bound` without requesting
 execution, even after repeated polls. `NativeExecution::launch_bound` MUST
@@ -2751,7 +2752,8 @@ capacity or establish a bounded production shutdown report.
 Production `execute runs` implements the journal-only inspection portion;
 `execute reconcile` selects shared authenticated result recovery or guarded
 closure; startup recovery covers owned pre-run and runner-phase claims with the
-same original identity and closure checks; complete task acceptance remains pending.
+same original identity and closure checks; task 9403 acceptance passes for provisioned
+Linux/systemd; the exhaustive 9404 crash matrix remains pending.
 The `fsm.execution-runs/1` report contains observed_seq, inventory_complete,
 inventory_limit (4096), and run-ID-ordered runs with run_id, instance_id,
 effect_id, backend, phase, native_evidence and next. The execution_ownership
@@ -2897,7 +2899,8 @@ Shutdown and reconciliation MUST preserve a broker refusal's bounded, sanitized
 reason only from the closed native response envelope; malformed responses MUST
 remain protocol refusals and no refusal may establish closure or settlement.
 This implements runner-phase and owned pre-run startup reconciliation;
-complete task acceptance remains pending.
+task 9403 acceptance passes for provisioned
+Linux/systemd; the exhaustive 9404 crash matrix remains pending.
 
 An executor incarnation MUST distinguish its own admissions from journal claims
 retained only through observation or recovery. An observed claim alone MUST NOT
