@@ -64,6 +64,12 @@ jobs:
       - run: cargo test --workspace --no-fail-fast
       - run: cargo test --workspace --release --no-fail-fast
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Portable lifecycle fixture acceptance
+        run: cargo test -p fsm-cli --test executor_lifecycle_crash --features lifecycle-test-fixture
+      - name: Portable lifecycle fixture release acceptance
+        run: cargo test -p fsm-cli --test executor_lifecycle_crash --release --features lifecycle-test-fixture
+      - name: Lifecycle fixture target lints
+        run: cargo clippy -p fsm-cli --test executor_lifecycle_crash --bin fsm-lifecycle-fixture --features lifecycle-test-fixture -- -D warnings
       - run: cargo doc --workspace --no-deps
       - name: Fuzz targets still compile
         if: runner.os == 'Linux'

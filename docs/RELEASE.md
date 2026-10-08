@@ -1,5 +1,13 @@
 # Releasing
 
+Task 9404 now provides `fsm-lifecycle-fixture` and the dedicated
+`executor_lifecycle_crash` test target. The portable process/MCP fixture has
+explicit result barriers, an inherited-pipe child/grandchild tree and bounded
+noise; fixture tests independently observe root exit before descendant pipe
+retirement. Production crash cutpoints, supervisor death, native sensitivity
+and the complete frozen matrix remain outstanding; fixture acceptance alone
+does not establish native no-overlap recovery.
+
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
 the guard and read metadata through `domain()`. The unprivileged broker and

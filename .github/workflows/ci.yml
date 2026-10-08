@@ -96,6 +96,12 @@ jobs:
       # `print_stderr` deny sat green for eight plans. CONTRIBUTING.md and
       # docs/RELEASE.md carry the same command; keep all three in step.
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Portable lifecycle fixture acceptance
+        run: cargo test -p fsm-cli --test executor_lifecycle_crash --features lifecycle-test-fixture
+      - name: Portable lifecycle fixture release acceptance
+        run: cargo test -p fsm-cli --test executor_lifecycle_crash --release --features lifecycle-test-fixture
+      - name: Lifecycle fixture target lints
+        run: cargo clippy -p fsm-cli --test executor_lifecycle_crash --bin fsm-lifecycle-fixture --features lifecycle-test-fixture -- -D warnings
       - run: cargo doc --workspace --no-deps
       # The fuzz crate is its own workspace, so `--workspace` above never
       # touches it and its targets drift out of the API they call. Two had:

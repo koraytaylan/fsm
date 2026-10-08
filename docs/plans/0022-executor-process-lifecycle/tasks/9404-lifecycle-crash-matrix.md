@@ -7,14 +7,16 @@ depends_on:
   - uncertain-run-reconciliation
 gated: false
 touches:
+  - crates/fsm-cli/Cargo.toml
   - crates/fsm-cli/tests/executor_lifecycle_crash.rs
   - crates/fsm-cli/tests/executor_lifecycle_crash/
   - crates/fsm-execute/tests/lifecycle_platform.rs
   - crates/fsm-execute/tests/lifecycle_platform/
   - .github/workflows/ci.yml
+  - .github/workflows/develop-snapshot.yml
   - docs/EXECUTOR-LIFECYCLE.md
   - docs/RELEASE.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Lifecycle Crash Matrix

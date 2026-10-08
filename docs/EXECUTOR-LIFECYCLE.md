@@ -1378,3 +1378,19 @@ retiring descriptors and worker threads; process and MCP failure streams share
 these expectations. This control supplements the earlier legacy capture tests;
 registration/compilation does not establish runtime acceptance or release task
 9303, production service routing, or the native gate.
+
+### Dedicated crash-matrix fixture (task 9404)
+
+`fsm-lifecycle-fixture` is a portable, shell-free process/MCP test executable,
+enabled only by the `lifecycle-test-fixture` Cargo feature. The dedicated target
+is tested and linted explicitly on all six portable CI legs; ordinary CLI
+installation does not include the fixture.
+It spawns a child and grandchild that inherit protocol pipes, publishes separate
+entry/candidate/result/retirement markers, and waits at explicit release files.
+Its root can exit after a response while descendants retain stdout and stderr;
+other modes hold the candidate result or emit bounded stderr noise. Every wait
+has a finite fixture bound. `executor_lifecycle_crash` independently verifies
+root exit and pipe retention for both handler modes before releasing the tree.
+This proves the fixture's observable behavior, not native containment: the
+complete standalone/embedded production cutpoint and supervisor-death matrix,
+resource-use and guard-sensitivity acceptance remain outstanding.

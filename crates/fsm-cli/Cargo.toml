@@ -6,9 +6,25 @@ version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+lifecycle-test-fixture = []
+
 [[bin]]
 name = "fsm"
 path = "src/main.rs"
+
+# A separate executable keeps libtest banners off handler protocol streams.
+[[bin]]
+name = "fsm-lifecycle-fixture"
+path = "tests/executor_lifecycle_crash/fixture.rs"
+test = false
+doc = false
+required-features = ["lifecycle-test-fixture"]
+
+[[test]]
+name = "executor_lifecycle_crash"
+path = "tests/executor_lifecycle_crash.rs"
+required-features = ["lifecycle-test-fixture"]
 
 [dependencies]
 fsm-core = { path = "../fsm-core" }
