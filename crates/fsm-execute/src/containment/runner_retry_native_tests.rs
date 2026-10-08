@@ -213,7 +213,7 @@ pub(super) fn settle_retry(
                 "stale-successor-stop",
             )
             .unwrap_err();
-        assert_eq!(error.code, "exec/inflight_deferred");
+        assert_eq!(error.store_code(), Some("store/execution_evidence"));
         assert_eq!(store.records, records);
     }
     let retained = store.state.execution.clone();
