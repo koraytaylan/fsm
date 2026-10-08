@@ -76,6 +76,41 @@ fn authorization_refuses_claim_absent_from_durable_journal() {
     fixture.cleanup().unwrap();
 }
 
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn exec_status_refuses_claim_absent_from_durable_journal() {
+    use super::super::super::exec_status;
+    let mut fixture = Fixture::new();
+    let binding = absent_claim_binding(&mut fixture);
+    let records = Store::open_read_only(&fixture.store)
+        .unwrap()
+        .records
+        .clone();
+    match exec_status::Listener::create(
+        &fixture.directory,
+        1,
+        &binding,
+        &fsm_execute::config::HandlerKind::Process,
+    ) {
+        Err(error) => assert_eq!(error, "claim is not current runnable ownership"),
+        Ok(_) => panic!("exec status listener accepted a claim absent from the durable journal"),
+    }
+    assert_eq!(
+        Store::open_read_only(&fixture.store).unwrap().records,
+        records
+    );
+    for name in [
+        "exec-1",
+        "exec-status-1.json",
+        "binding-1.json",
+        "launch-1.json",
+        "entry-1.json",
+    ] {
+        assert!(!fixture.directory.join(name).exists());
+    }
+    fixture.cleanup().unwrap();
+}
+
 fn absent_claim_binding(fixture: &mut Fixture) -> Value {
     use super::super::super::{catalogue, object};
     use fsm_core::json::{JsonLimits, parse};
