@@ -577,7 +577,7 @@ fn validate_request(value: &Value) -> Result<(), String> {
         Some("discard-prepared") => fsm_core::record::execution::NativeDomain::from_value(payload)
             .map(|_| ())
             .map_err(|error| error.to_string()),
-        Some("bind" | "close-claimed") => {
+        Some("bind" | "close-claimed" | "reconcile-claimed") => {
             let binding = payload.as_obj().ok_or("native binding is not an object")?;
             if binding.len() == 3
                 && ["format", "claim", "journal_claim"]
@@ -694,6 +694,37 @@ mod tests {
             .is_err()
         );
         assert!(decode_response(&vec![0; RESPONSE_LIMIT + 1]).is_err());
+    }
+
+    #[test]
+    fn reconciliation_request_reaches_transport_only_with_closed_claim_binding_shape() {
+        use std::collections::BTreeMap;
+        let binding = BTreeMap::from([
+            (
+                "format".into(),
+                Value::Str("fsm.native-claim-binding/1".into()),
+            ),
+            ("claim".into(), Value::Null),
+            (
+                "journal_claim".into(),
+                Value::Str(format!("sha256:{}", "a".repeat(64))),
+            ),
+        ]);
+        let mut request = BTreeMap::from([
+            ("format".into(), Value::Str("fsm.native-request/1".into())),
+            ("action".into(), Value::Str("reconcile-claimed".into())),
+            ("payload".into(), Value::Obj(binding.clone())),
+        ]);
+        // Shape permission only; the authority independently parses and matches
+        // the actual original claim before closure can have any effect.
+        assert!(validate_request(&Value::Obj(request.clone())).is_ok());
+        let mut changed = binding.clone();
+        changed.insert("path".into(), Value::Str("arbitrary".into()));
+        request.insert("payload".into(), Value::Obj(changed));
+        assert!(validate_request(&Value::Obj(request.clone())).is_err());
+        request.insert("payload".into(), Value::Obj(binding));
+        request.insert("action".into(), Value::Str("force-reconcile".into()));
+        assert!(validate_request(&Value::Obj(request)).is_err());
     }
 
     #[test]

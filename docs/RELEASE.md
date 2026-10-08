@@ -2,6 +2,8 @@
 
 Added `execute reconcile --run-id <id> [--timeout-ms <ms>]` for shared Linux
 closure-only recovery; original-result and startup integration remain pending.
+The client request policy now admits the exact claimed reconciliation action,
+fixing a refusal before broker dispatch found by genuine native acceptance.
 
 Task 9403 adds read-only `execute runs` and `service::inspect_runs`, exposing
 sanitized unresolved ownership with explicit unverified native state; release
