@@ -50,6 +50,7 @@ pub(super) fn run() {
     assert_eq!(restored_lease.dev(), original_lease.dev());
     assert_eq!(restored_lease.ino(), original_lease.ino());
     refuse_changed_boot(&fixture, &session, &effect);
+    refuse_unavailable_socket(&fixture, &session, &effect);
     session.resume();
     assert_eq!(
         fs::read(fixture.directory.join("prepared-1.json")).unwrap(),
@@ -88,4 +89,36 @@ fn refuse_changed_boot(fixture: &Fixture, session: &orphan_recovery::Session<'_>
     assert_eq!(restored_identity.dev(), original_identity.dev());
     assert_eq!(restored_identity.ino(), original_identity.ino());
     assert_eq!(fs::read(&route).unwrap(), original_bytes);
+}
+
+fn refuse_unavailable_socket(
+    fixture: &Fixture,
+    session: &orphan_recovery::Session<'_>,
+    effect: &str,
+) {
+    let route = read_value(&fixture.directory.join("broker/route.json"), true).unwrap();
+    let epoch = number(&route, "epoch").unwrap();
+    let socket = fixture.directory.join(format!("broker/s-{epoch}"));
+    let original = fs::symlink_metadata(&socket).unwrap();
+    assert_eq!(original.mode() & 0o7777, 0o600);
+    // Remove access only to this fixture's original endpoint; retain the broker
+    // and inode so refusal cannot be mistaken for proof that the domain died.
+    fs::set_permissions(&socket, fs::Permissions::from_mode(0)).unwrap();
+    session.refuse_pre_run_socket();
+    assert_unresolved(fixture, effect);
+    for name in [
+        "binding-1.json",
+        "launch-1.json",
+        "entry-1.json",
+        "closing-1.json",
+        "closed-1.json",
+    ] {
+        assert!(fs::symlink_metadata(fixture.directory.join(name)).is_err());
+    }
+    fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)).unwrap();
+    let restored = fs::symlink_metadata(&socket).unwrap();
+    assert_eq!(restored.dev(), original.dev());
+    assert_eq!(restored.ino(), original.ino());
+    assert_eq!(restored.uid(), original.uid());
+    assert_eq!(restored.mode(), original.mode());
 }

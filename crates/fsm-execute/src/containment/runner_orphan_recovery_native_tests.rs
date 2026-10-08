@@ -106,6 +106,11 @@ impl<'fixture> Session<'fixture> {
         self.run("refuse_pre_run_boot", "FSM_NATIVE_PRE_RUN_BOOT_REFUSED");
     }
 
+    pub(super) fn refuse_pre_run_socket(&self) {
+        self.ensure_cli();
+        self.run("refuse_pre_run_socket", "FSM_NATIVE_PRE_RUN_SOCKET_REFUSED");
+    }
+
     fn run(&self, case: &str, marker: &str) {
         use std::process::{Command, Stdio};
 
@@ -210,6 +215,16 @@ fn refuse_pre_run_boot() {
     #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
     {
         println!("\nFSM_NATIVE_PRE_RUN_BOOT_REFUSED");
+    }
+}
+
+#[test]
+#[ignore = "configured unprivileged supervisor child inside enrolled native fixture"]
+fn refuse_pre_run_socket() {
+    refuse_pre_run("native discovery socket identity or access differs");
+    #[allow(clippy::print_stdout)] // Frozen marker consumed by the root fixture.
+    {
+        println!("\nFSM_NATIVE_PRE_RUN_SOCKET_REFUSED");
     }
 }
 
