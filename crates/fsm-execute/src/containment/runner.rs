@@ -223,6 +223,8 @@ pub(super) fn execute_cancellable(
         }
         std::thread::sleep(Duration::from_millis(5));
     };
+    #[cfg(test)]
+    hold_collected_candidate(directory, &claim, &candidate, cancelled)?;
     if let Some(worker) = &owned.worker {
         worker.cancel();
     }
@@ -313,4 +315,48 @@ pub(super) fn execute_cancellable(
     }
     completion_record::publish(directory, &claim, &result)?;
     Ok(result)
+}
+
+#[cfg(test)]
+fn hold_collected_candidate(
+    directory: &Path,
+    claim: &fsm_core::record::execution::Claim,
+    candidate: &Candidate,
+    cancelled: &AtomicBool,
+) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let request = directory.join("crash-candidate-barrier.json");
+    if !request.try_exists().map_err(io)? {
+        return Ok(());
+    }
+    let request = read_value(&request, true)?;
+    if number(&request, "attempt")? != number(&claim.to_value(), "attempt")? {
+        return Ok(());
+    }
+    let kind = match candidate {
+        Candidate::Process(_) => "process",
+        Candidate::Mcp(_) => "mcp",
+        Candidate::Spawn => "spawn",
+        Candidate::Timeout => "timeout",
+        Candidate::Cancelled => "cancelled",
+    };
+    let ready = directory.join(format!("crash-candidate-{}.json", claim.run_id()));
+    super::publish_once(
+        &ready,
+        &object([
+            ("claim", claim.to_value()),
+            ("candidate", Value::Str(kind.into())),
+        ]),
+    )?;
+    std::fs::set_permissions(&ready, std::fs::Permissions::from_mode(0o444)).map_err(io)?;
+    // Only a protected test request enables this observation; production builds
+    // contain no barrier, and cancellation retains the ordinary closure path.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !cancelled.load(Ordering::Acquire) {
+        if Instant::now() >= deadline {
+            return Err("test candidate barrier expired without executor death".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    Ok(())
 }

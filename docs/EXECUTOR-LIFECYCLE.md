@@ -1429,3 +1429,12 @@ namespaces release their failure snapshots so a later failure retains bounded
 original evidence. These eight quiet/noisy cases are wired but remain natively
 unverified; they do not complete repeated-run resource-use acceptance or the
 remaining crash and supervisor boundaries.
+
+The next test-only extension holds a Root-protected barrier after the native
+runner collects an attempt-one timeout candidate and before it closes the
+domain; the observer matches the original claim, confirms the tree remains
+live and the journal unchanged, then kills its executor and requires the same
+proved closure and sequential retry. This adds four collected-timeout cases
+to the eight pre-publication cases, but remains natively unverified; successful
+candidate collection and independent supervisor death remain open. Shipped
+binaries contain no barrier.

@@ -23,6 +23,15 @@ The successor adds quiet/noisy variants for each host and handler, emitting
 replacement's bounded prefix and complete-stream digest. The expanded native
 matrix and repeated-run resource-use acceptance remain unverified.
 
+The next test-only extension holds a Root-protected barrier after the native
+runner collects an attempt-one timeout candidate and before it closes the
+domain; the observer matches the original claim, confirms the tree remains
+live and the journal unchanged, then kills its executor and requires the same
+proved closure and sequential retry. This adds four collected-timeout cases
+to the eight pre-publication cases, but remains natively unverified; successful
+candidate collection and independent supervisor death remain open. Shipped
+binaries contain no barrier.
+
 Public native preparation MUST use owned allocations: `start` and `for_store`
 request `prepare-owned`, and `poll` returns `NativePreparedOwner`; callers retain
 the guard and read metadata through `domain()`. The unprivileged broker and

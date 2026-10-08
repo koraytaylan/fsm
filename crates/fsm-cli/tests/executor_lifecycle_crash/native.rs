@@ -259,6 +259,32 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     let hash = snapshot.current_execution_claim_hash(&claim).unwrap();
     let records = snapshot.records.clone();
     drop(snapshot);
+    if field(&manifest, "behavior") == "collected-timeout" {
+        let ready = Path::new(field(&manifest, "authority"))
+            .join(format!("crash-candidate-{}.json", claim.run_id()));
+        let deadline = Instant::now() + Duration::from_secs(8);
+        while !fs::symlink_metadata(&ready).is_ok_and(|metadata| {
+            metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o7777 == 0o444
+        }) {
+            assert!(original.process.try_wait().unwrap().is_none());
+            assert!(
+                Instant::now() < deadline,
+                "native candidate was never collected"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let observed = parse(&fs::read(&ready).unwrap(), &JsonLimits::DEFAULT).unwrap();
+        let metadata = fs::symlink_metadata(&ready).unwrap();
+        assert!(metadata.is_file());
+        assert_eq!((metadata.uid(), metadata.mode() & 0o7777), (0, 0o444));
+        assert_eq!(observed.get("claim"), Some(&claim.to_value()));
+        assert_eq!(
+            observed.get("candidate"),
+            Some(&Value::Str("timeout".into()))
+        );
+        assert!(members.iter().all(live));
+        assert_eq!(Store::open_read_only(&store).unwrap().records, records);
+    }
     original.kill_and_wait();
     let deadline = Instant::now() + Duration::from_secs(5);
     let held = loop {

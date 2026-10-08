@@ -33,7 +33,7 @@ class Retirement(unittest.TestCase):
             report = directory / 'crash.json'
             markers = [f'FSM_NATIVE_CRASH_CASE candidate-result {host} {kind} {behavior}'.encode()
                        for host in ('standalone', 'embedded') for kind in ('process', 'mcp')
-                       for behavior in ('hold-result', 'noisy-result')]
+                       for behavior in ('hold-result', 'noisy-result', 'collected-timeout')]
             if missing:
                 markers.pop()
             output = b'\n'.join(markers) + b'\n1 passed; 0 failed; 0 ignored;\n'
@@ -48,7 +48,7 @@ class Retirement(unittest.TestCase):
                 self.assertIn('install', command)
                 return json.dumps(installed).encode()
 
-            native = (subprocess.TimeoutExpired(['never-executed'], 700, output=output, stderr=b'partial')
+            native = (subprocess.TimeoutExpired(['never-executed'], 1020, output=output, stderr=b'partial')
                       if timeout else subprocess.CompletedProcess([], 0, output, b''))
             with (
                 patch.dict(os.environ, GITHUB_ACTIONS='true', RUNNER_OS='Linux'),
@@ -79,10 +79,10 @@ class Retirement(unittest.TestCase):
                 else:
                     self.assertEqual(probe.main(), 1 if timeout or missing else 0)
                 evidence = json.loads(report.read_text())
-                self.assertEqual(evidence['scope'], 'pre-publication')
+                self.assertEqual(evidence['scope'], 'pre-publication-and-collected-timeout')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
                 self.assertFalse(evidence['gate_released'])
-                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 700)
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 1020)
                 self.assertEqual(report.with_suffix('.log').read_bytes(), output + (b'partial' if timeout else b''))
                 if clear and not stages:
                     self.assertEqual(run.call_count, 2)

@@ -39,7 +39,7 @@ fn provisioned_lifecycle_candidate_matrix() {
     }
     for host in ["standalone", "embedded"] {
         for kind in ["process", "mcp"] {
-            for behavior in ["hold-result", "noisy-result"] {
+            for behavior in ["hold-result", "noisy-result", "collected-timeout"] {
                 scenario(
                     &staging,
                     &nonce[..24],
@@ -91,6 +91,15 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
     let catalogue = table(&staging.join("fixture"), &resource, case);
     let mut fixture = Fixture::new_for_workflow(catalogue.clone());
+    if behavior == "collected-timeout" {
+        let request = fixture.directory.join("crash-candidate-barrier.json");
+        fs::write(
+            &request,
+            canon_bytes(&object([("attempt", Value::Num("1".into()))])),
+        )
+        .unwrap();
+        fs::set_permissions(request, fs::Permissions::from_mode(0o444)).unwrap();
+    }
     let limits = memory_limits::Limits::install(&fixture);
     super::broker_cases::disconnect_cases::permit_operator_store(&fixture.store);
     super::super::super::broker_endpoint::provision(&fixture.directory, 65534).unwrap();
@@ -111,6 +120,11 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
             ),
             ("host", Value::Str(host.into())),
             ("kind", Value::Str(kind.into())),
+            ("behavior", Value::Str(behavior.into())),
+            (
+                "authority",
+                Value::Str(fixture.directory.to_str().unwrap().into()),
+            ),
         ])),
     )
     .unwrap();
@@ -208,7 +222,11 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                     executable.to_str().unwrap(),
                     kind,
                     resource.to_str().unwrap(),
-                    behavior,
+                    if behavior == "collected-timeout" {
+                        "hold-result"
+                    } else {
+                        behavior
+                    },
                 ]
                 .into_iter()
                 .map(|value| Value::Str(value.into()))
