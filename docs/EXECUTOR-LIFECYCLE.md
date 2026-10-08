@@ -1544,3 +1544,10 @@ bytes, and the public verifier captures an opaque completion for the wrong
 journal hash, so neither private proof construction nor store-memory mutation
 can substitute for these current-ownership checks; native runtime verification
 of both new cases remains pending.
+
+The `handoff-closure-claim` checkpoint exercises
+`Pipeline::advance_native_settled` against a genuine durable acknowledged
+handoff and an opaque wrong-hash completion captured through the public
+verifier; refusal preserves the journal and outstanding event obligation,
+while the original matching completion accepts the event once, and native
+runtime verification of this new case remains pending.

@@ -57,6 +57,7 @@ on:
           - shutdown-closure-claim
           - application-closure-claim
           - settlement-closure-claim
+          - handoff-closure-claim
         default: preparation-owner
 
 # Preserve the running develop checkpoint and queue its latest successor.

@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim', 'execution-closure-claim', 'publication-closure-claim', 'shutdown-closure-claim', 'application-closure-claim', 'settlement-closure-claim'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'enrolled-authorization-cgroup-identity', 'completion-closure-claim', 'execution-closure-claim', 'publication-closure-claim', 'shutdown-closure-claim', 'application-closure-claim', 'settlement-closure-claim', 'handoff-closure-claim'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -46,7 +46,8 @@ def main():
     shutdown_closure = args.guard == 'shutdown-closure-claim'
     application_closure = args.guard == 'application-closure-claim'
     settlement_closure = args.guard == 'settlement-closure-claim'
-    source = repo / ('crates/fsm-execute/src/run/pipeline.rs' if settlement_closure
+    handoff_closure = args.guard == 'handoff-closure-claim'
+    source = repo / ('crates/fsm-execute/src/run/pipeline.rs' if settlement_closure or handoff_closure
                      else 'crates/fsm-execute/src/run/native_client/execution.rs' if application_closure
                      else 'crates/fsm-execute/src/run/native_client/shutdown.rs' if shutdown_closure
                      else 'crates/fsm-execute/src/containment/completion_record.rs' if publication_closure
@@ -175,6 +176,16 @@ def main():
         named_refusal = case
         description = 'current journal-claim closure matching before ' + ('application' if application_closure else 'settlement')
         scope = 'public native current ownership closure sensitivity only; not a full integration gate'
+    if handoff_closure:
+        guard = (b'                || !completion\n'
+                 b'                    .proof()\n'
+                 b'                    .matches_claim(claim, original.original_claim_hash())\n')
+        replacement = b''
+        case = ('authority::allocator::native_tests::admission_cases::completion_proof_cases::application_cases::'
+                'handoff_refuses_completion_for_another_journal_claim')
+        named_refusal = case
+        description = 'acknowledged handoff original journal-claim closure matching'
+        scope = 'public native acknowledged handoff replay sensitivity only; not a full integration gate'
     original = source.read_bytes()
     assert original.count(guard) == 1, 'neutralize exactly one selected guard'
     args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -225,6 +236,8 @@ def main():
                     caller = 'launch' if args.guard == 'claim-before-launch' else 'runner'
                     marker = ('native ' + caller + ' accepted a claim absent from the durable journal').encode()
                     passed = passed and marker in output
+                elif handoff_closure:
+                    passed = passed and b'native handoff advanced closure for another journal claim' in output
                 elif application_closure:
                     passed = passed and b'native application deferred mismatched closure to downstream settlement' in output
                 elif settlement_closure:
@@ -280,7 +293,7 @@ def main():
         report = dict(source_commit=commit, source_dirty=not restored,
                       rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip(),
                       cli_sha256=cli_digest,
-                      command=case, named_public_refusal=case if association or claim_binding or binding_identity or completion_closure or execution_closure or publication_closure or shutdown_closure or application_closure or settlement_closure else CHILD, phases=rows,
+                      command=case, named_public_refusal=case if association or claim_binding or binding_identity or completion_closure or execution_closure or publication_closure or shutdown_closure or application_closure or settlement_closure or handoff_closure else CHILD, phases=rows,
                       guard=description,
                       source_restored=restored, gate_released=False,
                       installed_authority=installed, retained_authority=not retired,

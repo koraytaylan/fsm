@@ -16,13 +16,27 @@ fn settlement_refuses_completion_for_another_journal_claim() {
     run(Application::PipelineSettlement);
 }
 
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn handoff_refuses_completion_for_another_journal_claim() {
+    run(Application::HandoffReplay);
+}
+
+#[derive(Clone, Copy)]
 enum Application {
     RetainedExecution,
     PipelineSettlement,
+    HandoffReplay,
 }
 
 fn run(application: Application) {
-    let mut fixture = Fixture::new();
+    let mut fixture = if matches!(application, Application::HandoffReplay) {
+        let table = fsm_core::json::parse(br#"{"format":"fsm.handlers/1","handlers":[{"effect":"notify","argv":["/bin/true"],"timeout_ms":100,"on_ok":{"event":"docs_ok"},"retry":{"attempts":1,"backoff_ms":10,"max_backoff_ms":10,"on":[]}}]}"#,
+            &fsm_core::json::JsonLimits::DEFAULT).unwrap();
+        Fixture::new_for_table(table)
+    } else {
+        Fixture::new()
+    };
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let (binding, _) = claim_binding(&fixture, &domain);
     let claim = Claim::from_value(binding.get("claim").unwrap()).unwrap();
@@ -45,8 +59,7 @@ fn run(application: Application) {
             "application-proof-stop",
         )
         .unwrap();
-    let records = writer.records.clone();
-    let state = writer.state.clone();
+
     let closure = fixture.directory.join("closure-1-1.json");
     let attestation = fixture.directory.join("result-1-1.json");
     let original_closure = fs::read(&closure).unwrap();
@@ -70,6 +83,21 @@ fn run(application: Application) {
     assert_eq!(physical_identity(&closure), closure_identity);
     assert_eq!(physical_identity(&attestation), attestation_identity);
     assert_eq!(writer.current_execution_claim_hash(&claim).unwrap(), hash);
+    let acknowledgement = fsm_execute::rid::ack_rid(claim.effect().1);
+    if matches!(application, Application::HandoffReplay) {
+        Pipeline
+            .settle_native_stopped(&mut writer, &mut clock, &claim, &original)
+            .unwrap();
+        assert_eq!(writer.state.execution_handoffs.outstanding().count(), 1);
+        assert!(
+            !writer
+                .state
+                .dedup
+                .contains_key(&fsm_execute::rid::event_rid(claim.effect().1, "docs_ok"))
+        );
+    }
+    let records = writer.records.clone();
+    let state = writer.state.clone();
     match application {
         Application::RetainedExecution => {
             let mut execution =
@@ -88,6 +116,24 @@ fn run(application: Application) {
             }
             assert!(execution.progress().retained);
         }
+        Application::HandoffReplay => {
+            match Pipeline.advance_native_settled(
+                &mut writer,
+                &mut clock,
+                &claim,
+                &wrong,
+                &acknowledgement,
+            ) {
+                Err(error) => {
+                    assert_eq!(error.code, "exec/inflight_deferred");
+                    assert_eq!(
+                        error.message,
+                        "original native terminal settlement is not proven"
+                    );
+                }
+                Ok(_) => panic!("native handoff advanced closure for another journal claim"),
+            }
+        }
         Application::PipelineSettlement => {
             match Pipeline.settle_native_stopped(&mut writer, &mut clock, &claim, &wrong) {
                 Err(error) => {
@@ -105,9 +151,31 @@ fn run(application: Application) {
     assert!(fsm_store::snapshot::store_states_eq(&writer.state, &state));
     // The exact genuine completion still settles the same original stopped
     // outcome once the mismatched opaque candidate has been refused.
-    Pipeline
-        .settle_native_stopped(&mut writer, &mut clock, &claim, &original)
-        .unwrap();
+    if matches!(application, Application::HandoffReplay) {
+        assert_eq!(
+            Pipeline
+                .advance_native_settled(
+                    &mut writer,
+                    &mut clock,
+                    &claim,
+                    &original,
+                    &acknowledgement
+                )
+                .unwrap(),
+            fsm_execute::run::SettleOutcome::Advanced
+        );
+        assert_eq!(writer.state.execution_handoffs.outstanding().count(), 0);
+        assert!(
+            writer
+                .state
+                .dedup
+                .contains_key(&fsm_execute::rid::event_rid(claim.effect().1, "docs_ok"))
+        );
+    } else {
+        Pipeline
+            .settle_native_stopped(&mut writer, &mut clock, &claim, &original)
+            .unwrap();
+    }
     assert!(
         writer
             .state
