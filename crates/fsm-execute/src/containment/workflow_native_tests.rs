@@ -25,7 +25,7 @@ const OPERATIONS: [&str; 7] = [
     "restore",
 ];
 
-fn stage_artifact(destination: &Path, source_variable: &str, digest_variable: &str) {
+pub(super) fn stage_artifact(destination: &Path, source_variable: &str, digest_variable: &str) {
     use std::os::unix::fs::OpenOptionsExt;
     let source = PathBuf::from(std::env::var_os(source_variable).expect("exact built artifact"));
     let expected = std::env::var(digest_variable).expect("frozen artifact digest");

@@ -158,6 +158,7 @@ pub(super) fn run() {
         "cancel-mcp",
         "cancel-process",
         "uncertain-mcp",
+        "uncertain-mcp-cli",
         "uncertain-process",
     ];
     let selected = std::env::var("FSM_NATIVE_RUNNER_MODE_FILTER").ok();
@@ -469,7 +470,11 @@ pub(super) fn run() {
                 .unwrap()
                 .sync_all()
                 .unwrap();
-            reconciliation.as_ref().unwrap().resume();
+            if mode == "uncertain-mcp-cli" {
+                reconciliation.as_ref().unwrap().resume_via_cli();
+            } else {
+                reconciliation.as_ref().unwrap().resume();
+            }
             VerifiedClosure::read(&receipt).unwrap();
             drop(reconciliation);
             fixture.cleanup().unwrap();

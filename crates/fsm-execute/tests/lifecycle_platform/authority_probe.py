@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from cli_artifact import build_cli
+
 FIXTURE_TARGET = 'lifecycle_runner'
 
 INVENTORY = ('empty_domain_preparation', 'native_profile_refusal', 'unknown_domain_refusal',
@@ -75,6 +77,8 @@ def main():
     rustc = subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip()
     executable = build_authority(repo, args.toolchain, 'test')
     authority = build_authority(repo, args.toolchain, 'build')
+    cli = build_cli(repo, args.toolchain, False)
+    cli_digest = hashlib.sha256(cli.read_bytes()).hexdigest()
     authority_digest = hashlib.sha256(authority.read_bytes()).hexdigest()
     assert authority_state_is_clear(), 'exclusive native fixture requires clear authority state'
     installer = ['sudo', '-n', sys.executable, str(Path(__file__).with_name('authority_install.py'))]
@@ -92,6 +96,8 @@ def main():
                        'FSM_NATIVE_FIXTURE_DEVICE=' + str(installed['device']),
                        'FSM_NATIVE_FIXTURE_INODE=' + str(installed['inode']),
                        'FSM_NATIVE_FIXTURE_SHA256=' + authority_digest,
+                       'FSM_NATIVE_WORKFLOW_CLI_ARTIFACT=' + str(cli),
+                       'FSM_NATIVE_WORKFLOW_CLI_SHA256=' + cli_digest,
                        str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never']
             # Enrollment also runs many sequential real handler fixtures;
             # each now includes service-limit setup and matched retirement.
@@ -142,7 +148,7 @@ def main():
               'evidence_schema': 'fsm.native-authority-allocation/1', 'source_commit': commit, 'source_dirty': dirty,
               'rustc': rustc, 'fixture_sha256': hashlib.sha256(executable.read_bytes()).hexdigest(),
               'fixture_target': FIXTURE_TARGET,
-              'authority_sha256': authority_digest,
+              'authority_sha256': authority_digest, 'cli_sha256': cli_digest,
               'authority_strip': 'debuginfo',
               'scope': 'production-authority-allocation', 'production_allocator': True, 'production_backend': False,
               'cases': rows, 'passed': len(rows) == len(INVENTORY) and all(row['passed'] for row in rows),

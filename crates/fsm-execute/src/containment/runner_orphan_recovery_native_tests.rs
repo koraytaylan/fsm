@@ -59,6 +59,24 @@ impl<'fixture> Session<'fixture> {
         );
     }
 
+    pub(super) fn resume_via_cli(&self) {
+        super::super::workflow_cases::stage_artifact(
+            &self.fixture.directory.join("recovery-cli"),
+            "FSM_NATIVE_WORKFLOW_CLI_ARTIFACT",
+            "FSM_NATIVE_WORKFLOW_CLI_SHA256",
+        );
+        self.run("recover_orphan_cli", "FSM_NATIVE_ORPHAN_RECOVERED");
+        assert_eq!(
+            Store::open_read_only(&self.fixture.store)
+                .unwrap()
+                .state
+                .execution
+                .unresolved()
+                .count(),
+            0
+        );
+    }
+
     pub(super) fn refuse_pre_run_owner(&self) {
         self.run("refuse_pre_run_owner", "FSM_NATIVE_PRE_RUN_OWNER_REFUSED");
     }
@@ -93,6 +111,10 @@ impl<'fixture> Session<'fixture> {
         let stderr_path = fixture.store.join(format!("{case}.stderr"));
         let mut child = Command::new("/usr/bin/python3")
             .env("TMPDIR", &fixture.store)
+            .env(
+                "FSM_NATIVE_ORPHAN_CLI",
+                fixture.directory.join("recovery-cli"),
+            )
             .args(["-c", &script])
             .arg(fixture.directory.join("broker"))
             .stdin(Stdio::null())
@@ -100,7 +122,8 @@ impl<'fixture> Session<'fixture> {
             .stderr(Stdio::from(fs::File::create(&stderr_path).unwrap()))
             .spawn()
             .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(12);
+        let deadline = Instant::now()
+            + Duration::from_secs(if case == "recover_orphan_cli" { 22 } else { 12 });
         let status = loop {
             if let Some(status) = child.try_wait().unwrap() {
                 break status;
@@ -291,6 +314,82 @@ fn refuse_live_runner() {
 #[test]
 #[ignore = "configured unprivileged supervisor child inside enrolled native fixture"]
 fn recover_orphan() {
+    recover_orphan_with(None);
+}
+
+#[test]
+#[ignore = "configured unprivileged supervisor child inside enrolled native fixture"]
+fn recover_orphan_cli() {
+    recover_orphan_with(Some(PathBuf::from(
+        std::env::var_os("FSM_NATIVE_ORPHAN_CLI").unwrap(),
+    )));
+}
+
+fn reconcile_orphan_cli(
+    cli: &Path,
+    path: &Path,
+    run_id: u64,
+    records: &[fsm_core::record::Record],
+) {
+    use std::process::{Command, Stdio};
+    let output_path = path.join("orphan-cli.stdout");
+    let error_path = path.join("orphan-cli.stderr");
+    let mut child = Command::new(cli)
+        .args(["--json", "--data-dir"])
+        .arg(path)
+        .args([
+            "execute",
+            "reconcile",
+            "--run-id",
+            &run_id.to_string(),
+            "--timeout-ms",
+            "8000",
+        ])
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&output_path).unwrap())
+        .stderr(fs::File::create(&error_path).unwrap())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            child.wait().unwrap();
+            panic!("orphan MCP CLI reconciliation exceeded its bound; authority retained");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(fs::metadata(&output_path).unwrap().len() <= 8192);
+    assert!(fs::metadata(&error_path).unwrap().len() <= 8192);
+    assert!(
+        status.success(),
+        "orphan MCP CLI refused: {}",
+        String::from_utf8_lossy(&fs::read(&error_path).unwrap())
+    );
+    let response = fsm_core::json::parse(
+        &fs::read(&output_path).unwrap(),
+        &fsm_core::json::JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(response.get("duplicate"), Some(&Value::Bool(false)));
+    assert_eq!(
+        response.get("execution").unwrap().get("run_id"),
+        Some(&Value::Num(run_id.to_string()))
+    );
+    assert_eq!(
+        response.get("execution").unwrap().get("disposition"),
+        Some(&Value::Str("interrupted".into()))
+    );
+    let observed = Store::open_read_only(path).unwrap();
+    assert_eq!(&observed.records[..records.len()], records);
+    assert_eq!(observed.records.len(), records.len() + 2);
+    assert_eq!(observed.state.execution.unresolved().count(), 0);
+}
+
+fn recover_orphan_with(cli: Option<PathBuf>) {
     use fsm_core::record::RecordKind;
     use fsm_execute::config::HandlerTable;
     use fsm_execute::service::{ExecutorPhase, ShutdownMode};
@@ -321,6 +420,9 @@ fn recover_orphan() {
             .is_none()
     );
     drop(snapshot);
+    if let Some(cli) = cli {
+        reconcile_orphan_cli(&cli, &path, original_run, &records);
+    }
     let mut driver =
         super::handoff_recovery::RecoveryDriver::new(&path, HandlerTable::default(), "paired");
     let mut clock = FixedClock::new(2000, 1);
