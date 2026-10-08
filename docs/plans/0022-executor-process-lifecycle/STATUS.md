@@ -14,31 +14,22 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 6/7 tasks completed.
 
-Frozen `0211231c..29d68e03` passes all eight quiet/noisy pre-publication crash
-cases on Linux stable/MSRV in [CI 37820446888](https://github.com/koraytaylan/fsm/actions/runs/37820446888),
-with independently verified report/log verdict
-`bb066a9499a0e7baf01db99eecacff01d6b2e95cf06abdab69b6a78b3b8175b9`.
+Frozen `0211231c..6e7f0321` independently verifies all sixteen executor-crash
+cases on Linux stable/MSRV in [CI 37822729330](https://github.com/koraytaylan/fsm/actions/runs/37822729330),
+including quiet/noisy pre-publication, collected-timeout and successful
+process/MCP candidates through standalone and embedded hosts; verdict digest
+`1150783cd57801b05d93f6036964335a228b66ed096e2395afe261968bd82029`.
 Each compiler also passes 82 containment cases, 34 production workflow scenarios
-and two historical upgrade scenarios; executable bytes were not independently
-compared. Original PID/start checks and matched closure precede sequential
-replacement and final event completion, including writer contention and the
-exact bounded stderr prefix/full-stream digest. Earlier fixture failures remain
-retained in the task cache. These barriers precede response publication, so
-candidate collection, other crash boundaries, supervisor death, repeated-run
-resource use, sensitivities and the full portable checkpoint remain incomplete;
-9404 stays in progress.
-
-Frozen `29d68e03..d1b763e5` independently verifies all twelve crash cases on
-Linux stable/MSRV, including four native collected-timeout boundaries per
-compiler; verdict digest
-`cdd89d23c56f9b51759340b6fdb4e21de8fd1028f5686fb6d64afbe6d63e4886`.
-[CI 37822299250](https://github.com/koraytaylan/fsm/actions/runs/37822299250)
-fails subsequent stable containment acceptance at the liveness-response
-assertion; the original response bytes were not captured, so the cause is
-unproven. Successful-candidate recovery, the strengthened live-tree restart
-barrier, supervisor death and full integration remain unverified; 9404 stays
-in progress. This documentation-only verdict omits heavy gates, and original
-artifacts remain in the task cache.
+and two historical upgrade scenarios, with matched report/log/transcript
+hashes; executable bytes were not independently compared. Successful candidates
+recover their original completion without another claim or handler entry.
+Earlier failed checkpoint `d1b763e5` remains retained with verdict
+`cdd89d23c56f9b51759340b6fdb4e21de8fd1028f5686fb6d64afbe6d63e4886`;
+its stable liveness-response failure has no proved cause. The strengthened
+live-tree restart barrier, supervisor death, remaining crash boundaries,
+repeated-run resource use, sensitivities and current full portable checkpoint
+remain unverified; 9404 stays in progress. This documentation-only verdict
+omits heavy gates, and original artifacts remain in the task cache.
 
 Frozen `5730f172..713c90e9` completes 9403 against its unchanged acceptance inventory;
 final review digest `22c2aa44638766b727dc041bfd62d914fc26365d69288454e5c2df347502211a`.

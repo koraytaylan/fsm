@@ -15,7 +15,7 @@ the exact bounded prefix and full-stream digest. Earlier failures remain
 retained outside the repository. Candidate collection, supervisor death and the
 remaining full task 9404 acceptance inventory stay incomplete.
 
-The next test-only extension holds a Root-protected barrier after the native
+The test-only matrix holds a Root-protected barrier after the native
 runner collects an attempt-one timeout candidate and before it closes the
 domain; the observer matches the original claim, confirms the tree remains
 live and the journal unchanged, then kills its executor and requires the same
@@ -24,11 +24,11 @@ only the root result, with descendants still live; restart must recover the
 original completion without another claim or handler entry. The collected-candidate
 barrier also holds closure until immediate restart begins, when the observer
 requires live original descendants and unchanged entry markers and journal
-before releasing closure. Frozen `d1b763e5` verifies the twelve-case
-pre-publication/collected-timeout inventory on both Linux compilers, but its
-stable integration fails the subsequent liveness-response assertion with
-cause unproven. Successful-candidate recovery and the strengthened restart
-barrier remain unverified. Four additional standalone/embedded process/MCP
+before releasing closure. Frozen `6e7f0321` independently verifies all sixteen
+pre-publication, collected-timeout and successful-candidate cases on Linux
+stable/MSRV, alongside both complete native integration jobs; verdict digest
+`1150783cd57801b05d93f6036964335a228b66ed096e2395afe261968bd82029`.
+The later strengthened restart barrier remains unverified. Four additional standalone/embedded process/MCP
 cases ask the Root coordinator to SIGKILL its owned broker while the executor
 and original tree remain alive; the observer then kills only its executor,
 requires unchanged ownership through immediate restart, and permits cold
