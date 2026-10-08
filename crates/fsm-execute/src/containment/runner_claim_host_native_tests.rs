@@ -172,7 +172,7 @@ pub(super) fn run() {
         .unwrap();
     assert_eq!(replay.get("duplicate"), Some(&Value::Bool(true)));
     assert_eq!(writer.records, settled);
-    let next = fsm_execute::run::Pipeline
+    fsm_execute::run::Pipeline
         .claim_native(
             &mut writer,
             &mut fsm_store::clock::FixedClock::new(2000, 1),
@@ -187,6 +187,12 @@ pub(super) fn run() {
             },
         )
         .unwrap();
+    let next = writer
+        .state
+        .execution
+        .claim_for("instance", claim.effect().1)
+        .unwrap()
+        .clone();
     assert_eq!(next.run_id(), claim.run_id() + 1);
     assert_eq!(
         next.to_value().get("attempt"),
