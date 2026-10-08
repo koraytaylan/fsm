@@ -1,6 +1,6 @@
 //! Production startup callers refuse a live physical domain replacement.
 
-use super::super::super::super::{authorize, bind, exec_status, identity, object};
+use super::super::super::super::{authorize, bind, exec_status, identity, launch, object, runner};
 use super::{Fixture, claim_binding};
 use fsm_core::json::Value;
 use fsm_core::record::execution::NativeDomain;
@@ -28,17 +28,34 @@ fn authorization_refuses_live_replacement_cgroup_identity() {
     refuse_replacement(Caller::Authorization);
 }
 
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn launch_refuses_live_replacement_cgroup_identity() {
+    refuse_replacement(Caller::Launch);
+}
+
+#[test]
+#[ignore = "requires installed production gate and writable provisioned root cgroups"]
+fn runner_refuses_live_replacement_cgroup_identity() {
+    refuse_replacement(Caller::Runner);
+}
+
 enum Caller {
     Binding,
     ExecStatus,
     Authorization,
+    Launch,
+    Runner,
 }
 
 fn refuse_replacement(caller: Caller) {
     let mut fixture = Fixture::new();
     let domain = NativeDomain::from_value(&fixture.prepare()).unwrap();
     let (binding, _) = claim_binding(&fixture, &domain);
-    if matches!(caller, Caller::Authorization) {
+    if matches!(
+        caller,
+        Caller::Authorization | Caller::Launch | Caller::Runner
+    ) {
         bind(&fixture.directory, &binding).unwrap();
     }
     let binding_path = fixture.directory.join("binding-1.json");
@@ -79,6 +96,8 @@ fn refuse_replacement(caller: Caller) {
     assert_eq!(fs::read_to_string(&process_group).unwrap(), membership);
     let refusal = match caller {
         Caller::Binding => bind(&fixture.directory, &binding).unwrap_err(),
+        Caller::Launch => launch_refusal(&fixture.directory),
+        Caller::Runner => runner_refusal(&fixture.directory),
         Caller::Authorization => {
             authorize::publish(&fixture.directory, &grant_request(&binding)).unwrap_err()
         }
@@ -92,7 +111,12 @@ fn refuse_replacement(caller: Caller) {
             Ok(_) => panic!("exec status accepted live replacement cgroup identity"),
         },
     };
-    assert_eq!(refusal, "native cgroup identity differs");
+    let expected = if matches!(caller, Caller::Runner) {
+        "runner binding validation refused: native cgroup identity differs"
+    } else {
+        "native cgroup identity differs"
+    };
+    assert_eq!(refusal, expected);
     assert_eq!(
         Store::open_read_only(&fixture.store).unwrap().records,
         records
@@ -135,10 +159,12 @@ fn refuse_replacement(caller: Caller) {
         identity(&fs::symlink_metadata(original).unwrap()),
         original_identity
     );
-    // Restoring the same original resource permits the same production caller;
+    // Exact restoration permits genuine binding and non-launch caller replay;
     // no missing domain or fixture cleanup is promoted to closure.
     match caller {
-        Caller::Binding => bind(&fixture.directory, &binding).unwrap(),
+        Caller::Binding | Caller::Launch | Caller::Runner => {
+            bind(&fixture.directory, &binding).unwrap()
+        }
         Caller::Authorization => {
             authorize::publish(&fixture.directory, &grant_request(&binding)).unwrap();
             assert!(fixture.directory.join("entry-1.json").exists());
@@ -191,4 +217,46 @@ fn grant_request(binding: &Value) -> Value {
         ("argv", Value::Arr(vec![Value::Str("/bin/true".into())])),
     ]);
     object([("grant", grant), ("group_id", Value::Num("1".into()))])
+}
+
+fn launch_refusal(directory: &Path) -> String {
+    let result = launch::begin(directory, 1, [Stdio::null(), Stdio::null(), Stdio::null()]);
+    let refusal = match result {
+        Err(error) => error,
+        Ok((mut child, _)) => {
+            // Retire only this fixture-owned transport; a replacement domain
+            // cannot authorize any native termination or closure operation.
+            let _ = child.kill();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while child.try_wait().unwrap().is_none() {
+                assert!(
+                    Instant::now() < deadline,
+                    "launch transport retirement deadline"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            panic!("native launch submitted replaced domain before refusing identity");
+        }
+    };
+    // Enrollment has an independent later identity check: its refusal cannot
+    // excuse submitting an unverified domain or durable launch intent.
+    assert!(
+        !directory.join("launch-1.json").exists(),
+        "native launch submitted replaced domain before refusing identity"
+    );
+    refusal
+}
+
+fn runner_refusal(directory: &Path) -> String {
+    let result = runner::execute(directory, 1);
+    // Later enrollment refusal cannot excuse publishing private exec status
+    // or submitting a manager launch for an already mismatched domain.
+    assert!(
+        !directory.join("exec-status-1.json").exists(),
+        "native runner advanced past replaced domain identity"
+    );
+    match result {
+        Err(error) => error,
+        Ok(_) => panic!("native runner advanced past replaced domain identity"),
+    }
 }

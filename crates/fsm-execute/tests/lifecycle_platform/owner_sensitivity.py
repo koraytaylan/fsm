@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
-    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'completion-closure-claim'),
+    parser.add_argument('--guard', choices=('preparation-owner', 'association-deadline', 'claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status', 'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization', 'binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity', 'completion-closure-claim'),
                         default='preparation-owner')
     args = parser.parse_args()
     if not __debug__:
@@ -39,7 +39,7 @@ def main():
     association = args.guard == 'association-deadline'
     claim_binding = args.guard in ('claim-before-binding', 'claim-before-authorization', 'claim-before-exec-status',
                                    'claim-before-launch', 'claim-before-runner', 'claim-before-enrolled-authorization')
-    binding_identity = args.guard in ('binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity')
+    binding_identity = args.guard in ('binding-cgroup-identity', 'exec-status-cgroup-identity', 'authorization-cgroup-identity', 'launch-cgroup-identity', 'runner-cgroup-identity')
     completion_closure = args.guard == 'completion-closure-claim'
     source = repo / ('crates/fsm-execute/src/containment/exec_status.rs' if association
                      else 'crates/fsm-execute/src/run/native_client/completion.rs' if completion_closure
@@ -98,9 +98,16 @@ def main():
         if args.guard == 'authorization-cgroup-identity':
             case = ('authority::allocator::native_tests::admission_cases::binding_identity_cases::'
                     'authorization_refuses_live_replacement_cgroup_identity')
+        if args.guard == 'launch-cgroup-identity':
+            case = ('authority::allocator::native_tests::admission_cases::binding_identity_cases::'
+                    'launch_refuses_live_replacement_cgroup_identity')
+        if args.guard == 'runner-cgroup-identity':
+            case = ('authority::allocator::native_tests::admission_cases::binding_identity_cases::'
+                    'runner_refuses_live_replacement_cgroup_identity')
         named_refusal = case
         caller = {'binding-cgroup-identity': 'binding', 'exec-status-cgroup-identity': 'exec status',
-                  'authorization-cgroup-identity': 'selected-group authorization'}[args.guard]
+                  'authorization-cgroup-identity': 'selected-group authorization',
+                  'launch-cgroup-identity': 'launch', 'runner-cgroup-identity': 'runner'}[args.guard]
         description = 'physical recorded cgroup identity before ' + caller
         scope = 'native ' + caller + ' cgroup identity sensitivity only; not a full integration gate'
     if completion_closure:
@@ -167,6 +174,10 @@ def main():
                     passed = passed and b'native completion accepted closure for another journal claim' in output
                 elif args.guard == 'exec-status-cgroup-identity':
                     passed = passed and b'exec status accepted live replacement cgroup identity' in output
+                elif args.guard == 'launch-cgroup-identity':
+                    passed = passed and b'native launch submitted replaced domain before refusing identity' in output
+                elif args.guard == 'runner-cgroup-identity':
+                    passed = passed and b'native runner advanced past replaced domain identity' in output
                 elif binding_identity:
                     passed = passed and b'unwrap_err()' in output and b'on an `Ok` value: ()' in output
                 elif claim_binding:

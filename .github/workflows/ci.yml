@@ -48,6 +48,8 @@ on:
           - binding-cgroup-identity
           - exec-status-cgroup-identity
           - authorization-cgroup-identity
+          - launch-cgroup-identity
+          - runner-cgroup-identity
           - completion-closure-claim
         default: preparation-owner
 
