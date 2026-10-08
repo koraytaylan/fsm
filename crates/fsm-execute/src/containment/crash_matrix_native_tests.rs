@@ -43,6 +43,7 @@ fn provisioned_lifecycle_candidate_matrix() {
                 "hold-result",
                 "signal-int",
                 "signal-term",
+                "torn-tail",
                 "noisy-result",
                 "collected-timeout",
                 "collected-result",
@@ -356,6 +357,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "authorization"
                             | "signal-int"
                             | "signal-term"
+                            | "torn-tail"
                     ) {
                         "hold-result"
                     } else {

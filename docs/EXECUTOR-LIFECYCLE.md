@@ -1246,6 +1246,12 @@ process/MCP execution. Each targets only the owned executor, checks its exact
 native terminating signal, and reuses the live-tree, immediate-restart and
 verified recovery assertions; these added axes remain pending disposable-CI
 evidence until the frozen checkpoint passes.
+The `torn-tail` native case appends half of an actual journal record under the
+writer lease after executor death, proves `store/torn_tail` writer refusal and
+unchanged read-only claim history, then explicitly quarantines and truncates
+only those bytes before the existing production restart/recovery assertions.
+It does not treat repair as native closure or claim settlement; its four
+host/handler combinations remain pending frozen disposable-CI evidence.
 Task 9402 must provide the separately requested, independently woken local
 drain/abort control and bounded report. It must not label native SIGTERM
 default termination as drain, invoke settlement from a signal handler, or

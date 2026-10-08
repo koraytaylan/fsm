@@ -24,6 +24,9 @@ mod authorization;
 #[path = "native/repeated.rs"]
 mod repeated;
 
+#[path = "native/torn_tail.rs"]
+mod torn_tail;
+
 struct Host {
     process: Child,
     input: Option<std::process::ChildStdin>,
@@ -454,6 +457,11 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         }
     };
     assert_eq!(held.records, records);
+    let held = if field(&manifest, "behavior") == "torn-tail" {
+        torn_tail::repair_original_tail(&store, held, &claim, &hash)
+    } else {
+        held
+    };
     let blocked = Host::start(&manifest, "immediate-restart");
     if collected_result || field(&manifest, "behavior") == "collected-timeout" {
         if closed_result {
