@@ -6,7 +6,7 @@ use fsm_core::record::execution::NativeDomain;
 use fsm_store::store::Store;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[test]
@@ -35,7 +35,13 @@ fn binding_refuses_live_replacement_cgroup_identity() {
         identity(&fs::symlink_metadata(original).unwrap()),
         replacement_identity
     );
-    let mut sentinel = Command::new("/usr/bin/sleep").arg("300").spawn().unwrap();
+    let mut sentinel = Command::new("/usr/bin/sleep")
+        .arg("300")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
     fs::write(replacement.join("cgroup.procs"), sentinel.id().to_string()).unwrap();
     let membership = format!(
         "0::/system.slice/{}\n",
