@@ -558,7 +558,7 @@ mod tests {
         assert_eq!(status.poll().unwrap(), None);
         assert_eq!(status.poll().unwrap(), None);
         drop(writer);
-        assert_eq!(status.poll().unwrap(), Some(Some(2)));
+        assert_eq!(wait_for_terminal_status(&mut status).unwrap(), Some(2));
         assert_eq!(status.poll().unwrap(), Some(Some(2)));
     }
 
@@ -585,12 +585,30 @@ mod tests {
                 assert!(status.refuse_partial().is_err());
                 drop(writer);
                 if count == 12 {
-                    assert_eq!(status.poll().unwrap(), Some(Some(2)));
+                    assert_eq!(wait_for_terminal_status(&mut status).unwrap(), Some(2));
                     status.refuse_partial().unwrap();
                 } else {
-                    assert!(status.poll().unwrap_err().contains("partial or malformed"));
+                    assert!(
+                        wait_for_terminal_status(&mut status)
+                            .unwrap_err()
+                            .contains("partial or malformed")
+                    );
                 }
             }
+        }
+    }
+
+    fn wait_for_terminal_status(status: &mut Status) -> Result<Option<i32>, String> {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if let Some(observed) = status.poll()? {
+                return Ok(observed);
+            }
+            assert!(
+                Instant::now() < deadline,
+                "private exec status EOF deadline"
+            );
+            std::thread::sleep(Duration::from_millis(1));
         }
     }
 
