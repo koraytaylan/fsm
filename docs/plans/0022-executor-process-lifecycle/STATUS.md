@@ -8,7 +8,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 | [durable-execution-claims](tasks/9302-durable-execution-claims.md) | done | cf3f6003963d057b7bfdb6d1bc26ea29a15ad0fb |
 | [contained-handler-runner](tasks/9303-contained-handler-runner.md) | done | 9f1f175ad91609359699e3a2d670119e8cbb506a |
 | [executor-ownership-integration](tasks/9401-executor-ownership-integration.md) | done | 2b580fd762d9afe54f844e18514387d72b6c6bd2 |
-| [bounded-executor-shutdown](tasks/9402-bounded-executor-shutdown.md) | planned | — |
+| [bounded-executor-shutdown](tasks/9402-bounded-executor-shutdown.md) | in_progress | — |
 | [uncertain-run-reconciliation](tasks/9403-uncertain-run-reconciliation.md) | planned | — |
 | [lifecycle-crash-matrix](tasks/9404-lifecycle-crash-matrix.md) | planned | — |
 

@@ -25,7 +25,7 @@ touches:
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
   - docs/RELEASE.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 
