@@ -90,6 +90,16 @@ pub(super) struct Competitor {
     root: PathBuf,
     errors: PathBuf,
 }
+
+pub(super) fn failure_observation(
+    owner: Option<&Competitor>,
+    directory: &Directory,
+) -> (Value, String) {
+    owner.map_or((Value::Null, String::new()), |owner| {
+        owner.failure_observation(directory)
+    })
+}
+
 impl Drop for Competitor {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -97,6 +107,13 @@ impl Drop for Competitor {
     }
 }
 impl Competitor {
+    pub(super) fn failure_observation(&self, directory: &Directory) -> (Value, String) {
+        (
+            self.observation(directory),
+            bounded_executor_errors(&self.errors),
+        )
+    }
+
     pub(super) fn observation(&self, directory: &Directory) -> Value {
         fsm_cli::local_control::observe(&self.root, &directory.store(), 250).unwrap_or(Value::Null)
     }

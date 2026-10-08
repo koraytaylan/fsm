@@ -727,16 +727,13 @@ fn run_scenario_mode(
             break;
         }
         #[cfg(target_os = "linux")]
-        let failure_inventory = || {
-            competitor
-                .as_ref()
-                .map_or(Value::Null, |owner| owner.observation(&directory))
-        };
+        let failure_inventory =
+            || workflow_race::failure_observation(competitor.as_ref(), &directory);
         #[cfg(not(target_os = "linux"))]
-        let failure_inventory = || Value::Null;
+        let failure_inventory = || (Value::Null, String::new());
         assert!(
             Instant::now() < deadline,
-            "workflow stalled: {instance:?}; executor stderr: {}; competitor inventory: {:?}",
+            "workflow stalled: {instance:?}; executor stderr: {}; competitor inventory and stderr: {:?}",
             bounded_executor_errors(&client.errors),
             failure_inventory()
         );
