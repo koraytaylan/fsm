@@ -79,6 +79,7 @@ pub(super) fn run(fixture: &mut Fixture, barriers: &Barriers, domain: &NativeDom
         .lines()
         .any(|line| line == "populated 1")
     );
+    refuse_changed_domain(fixture, &recovery, &membership, &pids);
     recovery.resume_via_cli();
     for pid in pids {
         assert!(
@@ -89,6 +90,59 @@ pub(super) fn run(fixture: &mut Fixture, barriers: &Barriers, domain: &NativeDom
     drop(recovery);
     restart_after_closure(fixture, barriers, &unit);
     fixture.cleanup().unwrap();
+}
+
+fn refuse_changed_domain(
+    fixture: &Fixture,
+    recovery: &super::orphan_recovery::Session<'_>,
+    membership: &str,
+    pids: &[u64],
+) {
+    let path = fixture.directory.join("prepared-1.json");
+    let original = fs::read(&path).unwrap();
+    let original_metadata = fs::symlink_metadata(&path).unwrap();
+    let mut prepared = read_value(&path, true).unwrap().as_obj().unwrap().clone();
+    let mut domain = prepared["domain"].as_obj().unwrap().clone();
+    let mut group = domain["cgroup"].as_obj().unwrap().clone();
+    let inode = number(&Value::Obj(group.clone()), "inode").unwrap();
+    group.insert(
+        "inode".into(),
+        Value::Num(inode.checked_add(1).unwrap().to_string()),
+    );
+    domain.insert("cgroup".into(), Value::Obj(group));
+    prepared.insert("domain".into(), Value::Obj(domain));
+    // Alter only fixture-owned protected evidence, preserving the original
+    // physical allocation; this is an identity-mismatch case, not PID reuse.
+    fs::write(&path, fsm_core::canon::canon_bytes(&Value::Obj(prepared))).unwrap();
+    fs::File::open(&path).unwrap().sync_all().unwrap();
+    recovery.refuse_changed_domain();
+    for pid in pids {
+        assert_eq!(
+            fs::read_to_string(format!("/proc/{pid}/cgroup")).unwrap(),
+            membership
+        );
+    }
+    for name in ["closing-1.json", "closed-1.json", "manager-stopped-1.json"] {
+        assert!(fs::symlink_metadata(fixture.directory.join(name)).is_err());
+    }
+    fs::write(&path, &original).unwrap();
+    fs::File::open(&path).unwrap().sync_all().unwrap();
+    let restored = fs::symlink_metadata(&path).unwrap();
+    assert_eq!(
+        (
+            restored.dev(),
+            restored.ino(),
+            restored.uid(),
+            restored.mode()
+        ),
+        (
+            original_metadata.dev(),
+            original_metadata.ino(),
+            original_metadata.uid(),
+            original_metadata.mode()
+        )
+    );
+    assert_eq!(fs::read(path).unwrap(), original);
 }
 
 fn restart_after_closure(fixture: &mut Fixture, barriers: &Barriers, original_unit: &str) {
