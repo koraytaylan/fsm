@@ -106,7 +106,16 @@ impl NativePreparation {
         let result = self
             .collect()?
             .map(super::NativePreparedOwner::acquire)
-            .transpose();
+            .transpose()
+            .and_then(|owner| {
+                // Lease authentication must not extend the original request
+                // deadline or expose a late domain for claim publication.
+                if owner.is_some() && Instant::now() >= self.deadline {
+                    Err("native preparation deadline; allocation remains uncertain".into())
+                } else {
+                    Ok(owner)
+                }
+            });
         if let Err(error) = &result {
             self.error = Some(error.clone());
             self.delivered = false;
