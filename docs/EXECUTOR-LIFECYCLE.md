@@ -1415,124 +1415,68 @@ registration/compilation does not establish runtime acceptance or release task
 ### Dedicated crash-matrix fixture (task 9404)
 
 `fsm-lifecycle-fixture` is a portable, shell-free process/MCP test executable,
-enabled only by the `lifecycle-test-fixture` Cargo feature. The dedicated target
-is tested and linted explicitly on all six portable CI legs; ordinary CLI
-installation does not include the fixture.
-It spawns a child and grandchild that inherit protocol pipes, publishes separate
-entry/candidate/result/retirement markers, and waits at explicit release files.
-Its root can exit after a response while descendants retain stdout and stderr;
-other modes hold the candidate result or emit bounded stderr noise. Every wait
-has a finite fixture bound. `executor_lifecycle_crash` independently verifies
-root exit and pipe retention for both handler modes before releasing the tree.
-This proves the fixture's observable behavior, not native containment: the
-native containment evidence comes from the separately provisioned production
-cutpoint, supervisor-death, resource-use and guard-sensitivity runs below.
+enabled only by the `lifecycle-test-fixture` Cargo feature. All six portable CI
+legs explicitly test and lint the dedicated `executor_lifecycle_crash` target;
+ordinary CLI installation does not include the fixture. Explicit release files
+control a child/grandchild tree with inherited protocol pipes, held candidates,
+external entry/result/retirement markers and bounded stderr noise. Independent
+observers require root exit before descendant pipe retirement; `noisy-exit`
+additionally requires the complete 16-KiB noise stream before delayed pipe EOF.
+All fixture waits are bounded; portable fixture tests establish observable
+fixture behavior, while native containment requires the production-host matrix.
 
-The dedicated target also contains an explicitly ignored Linux production-host
-pre-publication crash actor. A protected Root-coordinator manifest selects
-standalone/embedded and process/MCP artifacts; the actor kills only its owned
-executor, holds the original writer during immediate restart, independently
-checks original PID/start identities and a matched closure receipt, and requires
-original stopped/settled publication before a successor claim and final event
-completion. The protected coordinator stages digest-checked binaries, drops the
-observer to the operator identity, and independently checks both claims and
-closure receipts across all four host/handler combinations. Disposable Linux
-stable/MSRV CI runs this matrix before broader native checks and retains
-bounded original-owner diagnostics and protected result/exec-status records on
-failure. At `29d68e03`, all eight quiet/noisy pre-publication cases pass on Linux
-stable/MSRV with independently verified artifacts, alongside the 82-case native
-matrix, 34 workflow scenarios and two historical upgrade scenarios per compiler.
-The fixture emits 16 KiB of stderr before its held barrier; the protected
-replacement response has the exact 4-KiB prefix and complete-stream SHA-256.
-Root-owned entry slots survive DynamicUser retirement and parents match actual
-descendant PIDs before publishing entry. Successful retired namespaces release
-failure snapshots while later failures retain bounded original evidence.
-Earlier failures remain retained outside the repository. These barriers precede
-response publication, so they do not prove native candidate collection;
-remaining crash boundaries and full task 9404 acceptance stay incomplete.
+Disposable Linux/systemd CI runs the explicitly ignored production-host observer
+through a protected Root coordinator; an ignored or skipped observer by itself
+establishes nothing. The coordinator stages digest-checked binaries and a
+protected manifest, drops the observer to the operator identity, and independently
+matches the physical store, durable claim/hash, PID/start identities and closure
+receipts. Root-protected requests bind opt-in crash barriers to the original
+store, run and attempt; default shipped binaries contain no barrier.
 
-The test-only matrix holds a Root-protected barrier after the native
-runner collects an attempt-one timeout candidate and before it closes the
-domain; the observer matches the original claim, confirms the tree remains
-live and the journal unchanged, then kills its executor and requires the same
-proved closure and sequential retry. The matrix also observes successful process/MCP candidates after releasing
-only the root result, with descendants still live; restart must recover the
-original completion without another claim or handler entry. The collected-candidate
-barrier also holds closure until immediate restart begins, when the observer
-requires live original descendants and unchanged entry markers and journal
-before releasing closure. Frozen `6e7f0321` independently verifies all sixteen
-pre-publication, collected-timeout and successful-candidate cases on Linux
-stable/MSRV, alongside both complete native integration jobs; verdict digest
-`1150783cd57801b05d93f6036964335a228b66ed096e2395afe261968bd82029`.
-Frozen `7767ffb0` independently verifies the strengthened live-tree restart
-barrier in the same sixteen cases on both compilers in
-[CI 37824386466](https://github.com/koraytaylan/fsm/actions/runs/37824386466);
-scoped crash-verdict digest
-`eac41bb8f6632e3016bf555dd4332adaeeebd083de1dc8aeddba15df3ad5101b`.
-The retained crash report and log can be checked with
+The 60-case inventory crosses standalone/embedded hosts and process/MCP handlers
+with fifteen declared scenarios: held and noisy pre-publication results, actual
+SIGINT and SIGTERM, torn durable writes, collected timeout and successful
+candidates, supervisor death, matched domain closure, stopped-record,
+acknowledgement, accepted event, first durable claim, enrolled authorization,
+and repeated noisy trees. Forced termination uses actual SIGKILL of the owned
+host or broker. Immediate restart contends with the original writer and live
+tree; entry markers and the journal must remain unchanged until matching original
+closure proves retirement. Interrupted settlement precedes a successor claim;
+a successful original candidate instead recovers without another handler entry
+or accepted event. Supervisor death requires a new broker epoch before recovery.
+
+Claim-only recovery requires absent launch, handoff, entry, exec-status,
+completion and memory records for the intentionally unlaunched original
+allocation; every launched successor retains its native memory/swap-limit checks.
+Authorization recovery matches the enrolled gate's live PID/start token and kernel
+cgroup while grants and handler entry remain absent. Partial durable writes
+refuse mutation before the exact torn segment is quarantined and restored.
+After each supported recovery the observer exits and the coordinator requires
+strict journal health and a verified record count equal to the complete read-only
+fold, so a valid prefix with an unterminated suffix cannot pass.
+
+Repeated `noisy-exit` scenarios run twelve sequential trees per host/handler pair
+with separate protected observation directories and effect-argument substitution.
+Observers pin one host PID/birth token, require prior tree death and matched
+store/claim closure before successor entry, and compare descriptor/thread counts
+and RSS at the held-candidate phase after warm-up. The finite bounds permit two
+transient descriptors/tasks and 16 MiB RSS growth and require twelve
+claim/stop/settlement/event records, yielding 48 resource observations.
+This does not establish an unlimited-run resource bound.
+
+Frozen `66c785ba` independently verifies this crash/resource inventory on Linux
+stable and MSRV, alongside 101 containment cases, 34 production workflow scenarios
+and two historical upgrade scenarios per compiler in
+[CI 37857295898](https://github.com/koraytaylan/fsm/actions/runs/37857295898).
+Plan 0022 STATUS references the retained scoped verdicts; full portable acceptance
+and final written-inventory review remain required before task 9404 completion.
+Native scope is the approved Linux/systemd backend; macOS/Windows require portable
+gates and capability refusal. Executable digests do not establish independent
+byte comparison when binaries are not retained, and native evidence alone does
+not release a production gate or prove remote cancellation or exactly-once effects.
+Retained artifacts can be checked with
 `verify_crash_evidence.py --source-commit <exact-commit> --rustc <exact-version> --report-dir <artifact-directory>`;
-the verifier derives the inventory from the frozen producer and grants no
-complete task or executable-byte verification claim.
-Four additional standalone/embedded process/MCP
-cases ask the Root coordinator to SIGKILL its owned broker while the executor
-and original tree remain alive; the observer then kills only its executor,
-requires unchanged ownership through immediate restart, and permits cold
-recovery only after a new broker epoch. Matched closure and original-tree
-retirement must precede a replacement claim. Four further cases hold after
-matched domain closure and owned-handle retirement but before completion
-publication; the observer verifies the original closure and dead tree before
-killing the executor, then requires original-result recovery without another
-claim or handler entry. The retained `3678a9ce` native checkpoint independently
-verifies these supervisor-death and domain-close cases on stable/MSRV.
-Twelve further standalone/embedded process/MCP cases hold the actual host
-immediately after its stopped record, acknowledgement transaction or accepted
-event. An opt-in `lifecycle-test-fixture` dependency feature enables these
-bounded barriers using a Root-protected request bound to the physical store,
-original attempt and run; the independent observer checks the exact journal
-prefix, original closure and dead tree before killing its owned host, then
-requires original-result recovery and exactly one accepted event without
-another claim or handler entry. Four further cases hold each actual host after its first durable claim,
-before binding or handler entry; killing that host must preserve the exact
-claim-only prefix through a competing writer, then verified original
-unlaunched closure and interrupted settlement must precede the successor
-claim and its single successful event, without consuming the retry attempt.
-The first forty-case checkpoint at `932ac99e` fails on both compilers:
-its standalone/process claim observer passes, but the Root verifier wrongly
-requires a launched-domain memory receipt for the intentionally unlaunched
-original allocation. Cold repair legitimately publishes the original binding for closure; the
-correction matches that binding to the exact original claim/hash and requires
-absent launch, handoff, entry, exec-status, completion and memory records for
-that allocation, while preserving matched closure and memory/swap-limit
-checks for every launched successor.
-Four further standalone/embedded process/MCP cases hold the actual Root
-runner after private association with the enrolled gate and before native
-grant publication. The observer authenticates the protected handoff and
-original claim/hash, matches the live gate PID/start token and kernel cgroup,
-requires absent grants and handler entry across immediate restart, then
-permits sequential recovery only after matched closure and interruption.
-The retained `3678a9ce` checkpoint independently verifies the claim,
-authorization, stopped-record, acknowledgement and event cuts on stable/MSRV;
-default shipped binaries
-contain no barrier.
-
-The portable lifecycle fixture also provides `noisy-exit`: it emits 16 KiB
-of stderr, publishes its process/MCP result after the explicit root barrier,
-and exits while both descendants retain stdout and stderr until their own
-release. Independent portable observers require the complete noise stream,
-successful root exit and delayed pipe EOF; this prepares repeated-host native
-resource acceptance but does not establish that acceptance or native closure.
-
-The forty-eight-scenario crash/resource coordinator adds twelve sequential
-`noisy-exit` trees in each standalone/embedded process/MCP host. Each run uses
-a separate protected observation directory and effect-argument substitution;
-the observer pins one host PID/birth token, checks prior tree death and matched
-store/claim closure before successor entry, and compares host descriptor/thread
-counts and RSS at the same held-candidate phase after warm-up. The finite
-fixture permits two transient descriptors/tasks and 16 MiB RSS growth, and
-requires twelve claim/stop/settlement/event records. The retained `3678a9ce`
-checkpoint independently verifies all 48 measurements on stable/MSRV, scoped
-verdict `f7e2dc583fcedeb4f84dcba101c932b499f7518007a11ad72937408db5cdc5f6`;
-this does not complete 9404 or establish an unlimited-run resource bound.
+the verifier derives the inventory from the frozen producer.
 The retained-log verifier independently requires all twelve ordered measurements
 for each host/handler pair and checks those same finite bounds; focused negative
 controls reject missing or duplicate observations, invalid measurements and each
