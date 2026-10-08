@@ -121,6 +121,41 @@ fn production_runs_inspection_preserves_all_bytes_while_writer_is_held() {
 }
 
 #[test]
+fn production_runs_inspection_preserves_a_torn_tail_and_reports_the_verified_prefix() {
+    use fsm_core::json::{JsonLimits, Value, parse};
+
+    // SPEC Recovery: inspection omits only the final unterminated append;
+    // strict writer open still refuses it, and inspection must not repair it.
+    let directory = directory("torn-tail");
+    let writer = Store::open(&directory).unwrap();
+    let sequence = writer.journal.last_seq;
+    let segment = directory.join("journal").join(&writer.journal.seg_name);
+    drop(writer);
+    let mut bytes = fs::read(&segment).unwrap();
+    bytes.extend_from_slice(br#"{"seq":"#);
+    fs::write(&segment, bytes).unwrap();
+    assert!(Store::open(&directory).is_err());
+    let before = files(&directory);
+    let output = Command::new(env!("CARGO_BIN_EXE_fsm"))
+        .args(["--json", "--data-dir"])
+        .arg(&directory)
+        .args(["execute", "runs"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let response = parse(&output.stdout, &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(
+        response.get("observed_seq"),
+        Some(&Value::Num(sequence.to_string()))
+    );
+    assert_eq!(response.get("runs"), Some(&Value::Arr(Vec::new())));
+    assert_eq!(files(&directory), before);
+    assert!(Store::open(&directory).is_err());
+    assert_eq!(files(&directory), before);
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
 fn production_runs_inspection_does_not_initialize_missing_store() {
     let directory = directory("missing");
     assert!(!directory.exists());
