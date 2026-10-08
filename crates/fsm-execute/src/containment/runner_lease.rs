@@ -55,6 +55,29 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore = "requires a provisioned root-owned cache directory"]
+    fn claimed_runner_refuses_held_lease_before_binding_without_launch() {
+        let root = std::path::PathBuf::from(
+            std::env::var_os("FSM_RUNNER_LEASE_NATIVE_ROOT")
+                .expect("native lease test requires a protected cache root"),
+        );
+        assert!(!root.starts_with("/tmp"));
+        protected_directory(&root).unwrap();
+        let directory = root.join(format!("runner-entry-{}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
+        let lease = acquire(&directory, 1).unwrap();
+        let result = super::super::runner::execute(&directory, 1);
+        let launched = directory.join("launch-1.json").exists();
+        drop(lease);
+        fs::remove_dir_all(&directory).unwrap();
+        assert_eq!(
+            result.unwrap_err(),
+            "original runner remains active or lease locking is unavailable"
+        );
+        assert!(!launched);
+    }
+
+    #[test]
     fn independent_open_refuses_held_lease_and_accepts_after_original_retirement() {
         let temporary_root = std::path::PathBuf::from(
             std::env::var_os("TMPDIR")
