@@ -163,6 +163,14 @@ mod tests {
         let active = reconcile_claimed(&directory, &binding);
         let active_unchanged = std::fs::read_dir(&directory).unwrap().count() == 1;
         drop(lease);
+        // A retired legacy runner has no preparation-owner witness: absence
+        // of a binding must never cause reconciliation to manufacture one.
+        let legacy = reconcile_claimed(&directory, &binding);
+        let legacy_unchanged = std::fs::read_dir(&directory).unwrap().count() == 1
+            && !directory.join("binding-7.json").exists()
+            && !directory.join("owner-7.LOCK").exists()
+            && !directory.join("closing-7.json").exists()
+            && !directory.join("closed-7.json").exists();
         std::fs::remove_dir_all(&directory).unwrap();
         assert!(missing.is_err());
         assert!(missing_unchanged);
@@ -171,6 +179,8 @@ mod tests {
             "original runner remains active or lease locking is unavailable"
         );
         assert!(active_unchanged);
+        assert!(legacy.is_err());
+        assert!(legacy_unchanged);
     }
 
     fn original_binding() -> Value {
