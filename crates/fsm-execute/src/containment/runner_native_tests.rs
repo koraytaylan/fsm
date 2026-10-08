@@ -21,6 +21,8 @@ mod handoff_recovery;
 mod orphan_cli;
 #[path = "runner_orphan_recovery_native_tests.rs"]
 mod orphan_recovery;
+#[path = "runner_pid_reuse_native_tests.rs"]
+mod pid_reuse;
 #[path = "runner_pre_run_recovery_native_tests.rs"]
 mod pre_run_recovery;
 #[path = "runner_recovery_native_tests.rs"]

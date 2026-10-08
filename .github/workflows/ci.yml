@@ -135,6 +135,8 @@ jobs:
     timeout-minutes: 45
     env:
       CARGO_BUILD_JOBS: "1"
+      # Numeric PID allocation is manipulated only on this disposable runner.
+      FSM_NATIVE_FIXTURE_PID_REUSE: "1"
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal

@@ -80,7 +80,15 @@ pub(super) fn run(fixture: &mut Fixture, barriers: &Barriers, domain: &NativeDom
         .any(|line| line == "populated 1")
     );
     refuse_changed_domain(fixture, &recovery, &membership, &pids);
+    let mut reused = super::pid_reuse::Sentinel::new(fixture, &unit, pids[0]);
+    // The original numeric gate PID now belongs to a different live process;
+    // it cannot supply missing domain identity or authorize claim clearance.
+    refuse_changed_domain(fixture, &recovery, &membership, &pids[1..]);
+    reused.assert_live();
     recovery.resume_via_cli();
+    reused.assert_live();
+    reused.report();
+    reused.retire();
     for pid in pids {
         assert!(
             !fs::read_to_string(format!("/proc/{pid}/cgroup"))

@@ -96,6 +96,7 @@ def main():
                        'FSM_NATIVE_FIXTURE_DEVICE=' + str(installed['device']),
                        'FSM_NATIVE_FIXTURE_INODE=' + str(installed['inode']),
                        'FSM_NATIVE_FIXTURE_SHA256=' + authority_digest,
+                       'FSM_NATIVE_FIXTURE_PID_REUSE=' + os.environ.get('FSM_NATIVE_FIXTURE_PID_REUSE', '0'),
                        'FSM_NATIVE_WORKFLOW_CLI_ARTIFACT=' + str(cli),
                        'FSM_NATIVE_WORKFLOW_CLI_SHA256=' + cli_digest,
                        str(executable), '--exact', name, '--ignored', '--nocapture', '--color', 'never']
