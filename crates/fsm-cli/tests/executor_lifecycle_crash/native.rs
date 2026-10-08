@@ -259,6 +259,22 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
     let hash = snapshot.current_execution_claim_hash(&claim).unwrap();
     let records = snapshot.records.clone();
     drop(snapshot);
+    let supervisor_death = field(&manifest, "behavior") == "supervisor-death";
+    if supervisor_death {
+        fs::write(
+            resource.join("supervisor-death-request"),
+            b"kill owned broker",
+        )
+        .unwrap();
+        wait_for_supervisor(&manifest, "dead", 1);
+        assert!(original.process.try_wait().unwrap().is_none());
+        assert!(members.iter().all(live));
+        assert_eq!(Store::open_read_only(&store).unwrap().records, records);
+        assert_eq!(
+            fs::read(resource.join("root-entered")).unwrap(),
+            original_marker
+        );
+    }
     let collected_result = field(&manifest, "behavior") == "collected-result";
     if collected_result {
         fs::write(resource.join("root-release"), b"release").unwrap();
@@ -337,30 +353,50 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
             domain.get("allocation").unwrap().as_num().unwrap(),
             claim.run_id()
         ));
-    let deadline = Instant::now() + Duration::from_secs(10);
-    loop {
+    let successor = if supervisor_death {
+        assert!(members.iter().all(live));
         assert_eq!(Store::open_read_only(&store).unwrap().records, records);
         assert_eq!(
             fs::read(resource.join("root-entered")).unwrap(),
-            original_marker,
-            "replacement entered while original ownership was retained"
+            original_marker
         );
-        if let Ok(proof) = VerifiedClosure::read(&receipt) {
-            assert!(proof.matches_claim(&claim, &hash));
-            proof.check_store(&store).unwrap();
-            assert!(members.iter().all(|member| !live(member)));
-            break;
+        fs::write(
+            resource.join("supervisor-restart-request"),
+            b"restart owned broker",
+        )
+        .unwrap();
+        wait_for_supervisor(&manifest, "restarted", 2);
+        assert!(members.iter().all(live));
+        assert!(VerifiedClosure::read(&receipt).is_err());
+        drop(blocked);
+        drop(held);
+        Host::start(&manifest, "verified-restart")
+    } else {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            assert_eq!(Store::open_read_only(&store).unwrap().records, records);
+            assert_eq!(
+                fs::read(resource.join("root-entered")).unwrap(),
+                original_marker,
+                "replacement entered while original ownership was retained"
+            );
+            if let Ok(proof) = VerifiedClosure::read(&receipt) {
+                assert!(proof.matches_claim(&claim, &hash));
+                proof.check_store(&store).unwrap();
+                assert!(members.iter().all(|member| !live(member)));
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "original closure absent: {}",
+                blocked.diagnostics()
+            );
+            std::thread::sleep(Duration::from_millis(5));
         }
-        assert!(
-            Instant::now() < deadline,
-            "original closure absent: {}",
-            blocked.diagnostics()
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    drop(blocked);
-    drop(held);
-    let successor = Host::start(&manifest, "verified-restart");
+        drop(blocked);
+        drop(held);
+        Host::start(&manifest, "verified-restart")
+    };
     if collected_result {
         wait_for_completion(&store, &successor);
         assert_eq!(
@@ -395,6 +431,9 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(members.iter().all(|member| !live(member)));
+    let proof = VerifiedClosure::read(&receipt).unwrap();
+    assert!(proof.matches_claim(&claim, &hash));
+    proof.check_store(&store).unwrap();
     let snapshot = Store::open_read_only(&store).unwrap();
     let stopped = snapshot
         .records
@@ -426,6 +465,20 @@ fn production_candidate_result_crash_retains_original_tree_until_verified_closur
         fs::write(resource.join(format!("{role}-release")), b"release").unwrap();
     }
     wait_for_completion(&store, &successor);
+}
+
+fn wait_for_supervisor(manifest: &Value, phase: &str, epoch: u64) {
+    let ready =
+        Path::new(field(manifest, "authority")).join(format!("crash-supervisor-{phase}.json"));
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while !fs::symlink_metadata(&ready).is_ok_and(|metadata| {
+        metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o7777 == 0o444
+    }) {
+        assert!(Instant::now() < deadline, "supervisor {phase} absent");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let observed = parse(&fs::read(ready).unwrap(), &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(observed.get("epoch"), Some(&Value::Num(epoch.to_string())));
 }
 
 fn wait_for_completion(store: &Path, successor: &Host) {

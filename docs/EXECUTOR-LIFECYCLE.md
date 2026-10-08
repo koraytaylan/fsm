@@ -1431,5 +1431,10 @@ before releasing closure. Frozen `d1b763e5` verifies the twelve-case
 pre-publication/collected-timeout inventory on both Linux compilers, but its
 stable integration fails the subsequent liveness-response assertion with
 cause unproven. Successful-candidate recovery and the strengthened restart
-barrier remain unverified, and independent supervisor death remains open.
-Shipped binaries contain no barrier.
+barrier remain unverified. Four additional standalone/embedded process/MCP
+cases ask the Root coordinator to SIGKILL its owned broker while the executor
+and original tree remain alive; the observer then kills only its executor,
+requires unchanged ownership through immediate restart, and permits cold
+recovery only after a new broker epoch. Matched closure and original-tree
+retirement must precede a replacement claim. This twenty-case extension is
+unverified. Shipped binaries contain no barrier.

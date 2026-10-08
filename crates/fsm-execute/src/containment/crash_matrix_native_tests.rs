@@ -44,6 +44,7 @@ fn provisioned_lifecycle_candidate_matrix() {
                 "noisy-result",
                 "collected-timeout",
                 "collected-result",
+                "supervisor-death",
             ] {
                 scenario(
                     &staging,
@@ -114,7 +115,7 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let limits = memory_limits::Limits::install(&fixture);
     super::broker_cases::disconnect_cases::permit_operator_store(&fixture.store);
     super::super::super::broker_endpoint::provision(&fixture.directory, 65534).unwrap();
-    let broker = super::broker_cases::Daemon::ready(&fixture.directory, 1);
+    let mut broker = Some(super::broker_cases::Daemon::ready(&fixture.directory, 1));
     let handlers = fixture.store.join("handlers.json");
     fs::write(&handlers, canon_bytes(&catalogue)).unwrap();
     fs::set_permissions(&handlers, fs::Permissions::from_mode(0o444)).unwrap();
@@ -149,9 +150,26 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .env("FSM_LIFECYCLE_NATIVE_MANIFEST", &manifest).env("TMPDIR", &fixture.store)
         .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log).spawn().unwrap();
     let deadline = Instant::now() + Duration::from_secs(80);
+    let mut supervisor_killed = false;
+    let mut supervisor_restarted = false;
     let status = loop {
         if let Some(status) = actor.try_wait().unwrap() {
             break status;
+        }
+        if behavior == "supervisor-death" {
+            if !supervisor_killed && resource.join("supervisor-death-request").is_file() {
+                broker.take().unwrap().kill_and_wait();
+                publish_supervisor_observation(&fixture, "dead", 1);
+                supervisor_killed = true;
+            }
+            if supervisor_killed
+                && !supervisor_restarted
+                && resource.join("supervisor-restart-request").is_file()
+            {
+                broker = Some(super::broker_cases::Daemon::ready(&fixture.directory, 2));
+                publish_supervisor_observation(&fixture, "restarted", 2);
+                supervisor_restarted = true;
+            }
         }
         if Instant::now() >= deadline {
             let _ = actor.kill();
@@ -180,6 +198,9 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         String::from_utf8_lossy(&output)
     );
     assert!(String::from_utf8_lossy(&output).contains("1 passed; 0 failed; 0 ignored;"));
+    if behavior == "supervisor-death" {
+        assert!(supervisor_killed && supervisor_restarted);
+    }
     verify(&fixture, behavior);
     memory_limits::archive(&fixture, staging);
     writeln!(
@@ -221,6 +242,15 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     }
 }
 
+fn publish_supervisor_observation(fixture: &Fixture, phase: &str, epoch: u64) {
+    let path = fixture
+        .directory
+        .join(format!("crash-supervisor-{phase}.json"));
+    super::super::super::publish_once(&path, &object([("epoch", Value::Num(epoch.to_string()))]))
+        .unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o444)).unwrap();
+}
+
 fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
     let Scenario { kind, behavior, .. } = case;
     let mut handler = BTreeMap::from([
@@ -235,7 +265,10 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                     resource.to_str().unwrap(),
                     if behavior == "collected-result" && kind == "process" {
                         "hold-exit"
-                    } else if matches!(behavior, "collected-timeout" | "collected-result") {
+                    } else if matches!(
+                        behavior,
+                        "collected-timeout" | "collected-result" | "supervisor-death"
+                    ) {
                         "hold-result"
                     } else {
                         behavior

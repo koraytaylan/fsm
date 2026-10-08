@@ -32,6 +32,12 @@ use client_script::CLIENT;
 pub(super) struct Daemon(Child);
 
 impl Daemon {
+    pub(super) fn kill_and_wait(&mut self) {
+        use std::os::unix::process::ExitStatusExt;
+        self.0.kill().unwrap();
+        assert_eq!(self.0.wait().unwrap().signal(), Some(9));
+    }
+
     fn start(directory: &Path) -> Self {
         if std::env::var_os("FSM_NATIVE_WORKFLOW_UPGRADE").is_some() {
             super::workflow_cases::stage_artifact(
