@@ -2745,6 +2745,40 @@ Application MUST retain both owned transports and cannot alone release local
 capacity or establish a bounded production shutdown report.
 
 
+### Planned uncertain-run inspection and reconciliation (task 9403)
+
+This contract precedes implementation; the production `execute runs` and
+`execute reconcile` commands are not yet available.
+
+Inspection MUST use the verified read-only journal fold without taking a writer,
+creating a directory, issuing a broker action or changing native metadata.
+It MUST enumerate unresolved claims in run-ID order with an explicit bounded
+result inventory and journal horizon, expose run/effect identity and recorded
+backend, and distinguish durable stopped state from unverified native state.
+It MUST omit original handler contracts, arguments, command lines and results.
+MCP health counts MUST derive from that same unresolved inventory; unavailable
+or degraded observation MUST NOT be represented as an empty verified inventory.
+
+Operator reconciliation and automatic startup recovery MUST share the original
+claim/hash, physical-store and protected authority/domain validation and the
+same authenticated closure acceptance. Neither missing completion publication,
+missing native metadata, elapsed time nor a PID observation proves death.
+Reconciliation MUST refuse a live original owner across claim publication,
+binding and execution; a transiently free journal writer or an idle runner is
+insufficient. This refusal MUST precede any domain fencing or termination, and
+authorization MUST prevent a concurrent owner from entering after the check.
+Uncertain owner observation MUST refuse without native or journal mutation.
+
+After proved original closure, a healthy original writer MUST revalidate current
+ownership and commit the matching stopped record before consuming ownership or
+admitting a retry. Authentic original completion MUST retain its original
+outcome and event semantics; closure without a result permits only the existing
+Interrupted disposition, preserving pending effects without fabricated events.
+Repeated or concurrent application MUST use existing exact transaction replay;
+a stale run ID MUST NOT target its successor. Changed handlers, copied stores,
+unknown backends and unavailable facilities MUST NOT reinterpret or clear the
+original claim. No force-clear, age threshold or kill-by-PID fallback is allowed.
+
 ### Local native admission provenance
 
 An executor incarnation MUST distinguish its own admissions from journal claims

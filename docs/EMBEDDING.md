@@ -1,5 +1,10 @@
 # Embedding fsm as a library
 
+Uncertain-run inspection and shared operator/startup reconciliation are being
+implemented under task 9403 and are not yet available as production commands or
+a shared embedding API; the planned SPEC contract preserves read-only inspection,
+live-owner refusal and authenticated original-claim closure before settlement.
+
 Instance event and deadline applications invalidate subscribed instance resources; list-changed notifications indicate listing membership changes from machine definition, instance creation or invocation, rather than each transition.
 
 Owned stdio continues processing initialization notifications and emitting bounded initialization warnings while waiting for owner replies, without repeating warnings on deferred dispatch; broken stderr allows return after owner retirement while operator drainage remains false.

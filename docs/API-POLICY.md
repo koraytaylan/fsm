@@ -1,5 +1,11 @@
 # API and version policy
 
+Task 9403's planned inspection/reconciliation contract in SPEC is design only:
+the production commands and shared recovery surface remain unimplemented.
+Implementation must preserve existing journal formats, hash domains and exact
+settlement keys; any additive public command or Rust surface must document its
+compatibility consequences and pass the task's native acceptance before release.
+
 The hosted publication contract now explicitly preserves existing membership-based resource-list invalidation: an event application invalidates subscribed instance resources without a list-changed notification by itself; this clarification changes no wire behavior, API, format or hash domain.
 
 Owned stdio initialization warnings and notifications now retain their session semantics during owner-response waits; broken stderr permits return after original-owner retirement without claiming delivery, with no public API, error-code, format or hash-domain change.

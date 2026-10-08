@@ -1,5 +1,11 @@
 # Releasing
 
+Task 9403 now has a spec-first inspection/reconciliation contract, without a
+shipped command or API: release acceptance still requires production read-only
+listing, live-owner-safe shared recovery and genuine orphan/identity/race tests.
+This design-only documentation change omits heavy gates and changes no runtime,
+journal format, hash domain or error code.
+
 OwnedNativeExecutor adds explicit enable_worker_polling; Linux owned stdio
 selects it while standalone defaults remain synchronous. Original raw helper
 requests move to reserved worker polling for socket exchange, reap and final
