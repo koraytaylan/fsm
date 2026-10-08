@@ -1,5 +1,9 @@
 # API and version policy
 
+SPEC defines a planned pre-run owner lease with continuous guard transfer and
+entry exclusion; it is not implemented and introduces no shipped API, journal
+format, hash or error-code change, and legacy allocations cannot be retrofitted.
+
 Repeated operator reconciliation may now return an exact original settlement
 replay through the existing request ledger, without native actions or journal
 mutation; unavailable original history still refuses, with no format, hash or

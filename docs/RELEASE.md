@@ -1,5 +1,9 @@
 # Releasing
 
+The specified pre-run owner lease remains unimplemented; acceptance must prove
+continuous guard transfer, public-entry enforcement and refusal of missing or
+legacy ownership material before claiming pre-run reconciliation support.
+
 Repeated `execute reconcile --run-id <id>` and shared service reconciliation now
 replay the exact original settlement when verified claim/history and its request
 ledger remain available, without targeting a successor or issuing native work.

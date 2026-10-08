@@ -2792,6 +2792,28 @@ original claim. No force-clear, age threshold or kill-by-PID fallback is allowed
 
 ### Local native admission provenance
 
+The planned pre-run ownership extension is not implemented. Its allocator MUST
+establish both the protected runner lease and a separate owner lease before
+delivering a domain that may be claimed. The owner lease MUST be created by the
+authority in its non-writable namespace, accessible only to its configured
+operator, empty, single-linked and opened without following symlinks; its inode,
+operator and authority identity MUST be revalidated before use. Operator access
+MUST NOT permit replacing the lease inode or its parent namespace.
+The preparation owner MUST exclusively retain this kernel lease before exposing
+the domain, across claim publication (including uncertain append), binding and
+execution, until authenticated retirement and settlement or proved unclaimed
+cleanup. Transfer between admission and execution MUST move the owned guard
+without an unlock interval; a cloned domain or observed PID is not that guard.
+Public admission/entry paths MUST NOT bypass the same ownership requirement.
+Pre-run reconciliation MUST exclusively retain both original leases through
+original claim/hash and prepared-domain validation, any original binding
+publication, fencing and authenticated closure. A held, missing, replaced or
+unverifiable lease MUST refuse before mutation; legacy allocations MUST NOT be
+retrofitted with ownership material to infer retirement. An absent binding may
+be published only after proving the exact current durable original claim under
+the healthy writer and original authority, while both guards exclude entry;
+absence alone MUST NOT authorize that publication or settlement.
+
 The protected claimed runner MUST acquire an exclusive kernel-backed
 `runner-<allocation>.LOCK` lease before binding validation or handler entry and
 retain it until native cleanup and original completion publication have returned.
