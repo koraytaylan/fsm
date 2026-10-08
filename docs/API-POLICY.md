@@ -1,5 +1,9 @@
 # API and version policy
 
+Shutdown and reconciliation now preserve bounded, sanitized closed-envelope
+broker refusal reasons; this changes diagnostic messages without adding error
+codes or changing native authorization, journal formats or hash domains.
+
 Startup now attempts guarded original-run closure once per observed orphan
 without completion, using operator reconciliation's authenticated primitive;
 active/missing leases and partial results remain unresolved, and later original

@@ -1,5 +1,9 @@
 # Releasing
 
+Native shutdown and reconciliation now retain bounded, sanitized broker refusal
+reasons, including an active original runner, instead of reporting every valid
+refusal as a response-shape mismatch; malformed envelopes still refuse.
+
 Startup now attempts guarded original-run closure once per observed orphan
 without completion, using operator reconciliation's authenticated primitive;
 active/missing leases and partial results remain unresolved, and later original

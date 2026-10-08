@@ -1,5 +1,8 @@
 # Embedding fsm as a library
 
+`NativeShutdown` preserves bounded, sanitized broker refusal reasons for both
+shutdown and reconciliation; a refusal never supplies closure evidence.
+
 Startup now attempts guarded original-run closure once per observed orphan
 without completion, using operator reconciliation's authenticated primitive;
 active/missing leases and partial results remain unresolved, and later original

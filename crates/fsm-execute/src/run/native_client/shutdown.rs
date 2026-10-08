@@ -234,6 +234,9 @@ impl OriginalClosure {
 }
 
 fn validate_response(response: &Value) -> Result<(), String> {
+    if let Some(reason) = super::refusal(response, "native shutdown refused: ") {
+        return Err(reason);
+    }
     if response.as_obj().is_some_and(|fields| fields.len() == 3)
         && response.get("format").and_then(Value::as_str) == Some("fsm.native-response/1")
         && response.get("ok") == Some(&Value::Bool(true))
@@ -337,6 +340,34 @@ impl NativeShutdown {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shutdown_refusal_preserves_reason_without_accepting_closure() {
+        let mut fields = BTreeMap::from([
+            ("format".into(), Value::Str("fsm.native-response/1".into())),
+            ("ok".into(), Value::Bool(false)),
+            (
+                "result".into(),
+                Value::Str("original runner remains active\nretain ownership".into()),
+            ),
+        ]);
+        assert_eq!(
+            validate_response(&Value::Obj(fields.clone())).unwrap_err(),
+            "native shutdown refused: original runner remains active retain ownership"
+        );
+        fields.insert("result".into(), Value::Str("x".repeat(4096)));
+        assert_eq!(
+            validate_response(&Value::Obj(fields.clone()))
+                .unwrap_err()
+                .len(),
+            1024
+        );
+        fields.insert("extra".into(), Value::Null);
+        assert_eq!(
+            validate_response(&Value::Obj(fields)).unwrap_err(),
+            "native shutdown broker response differs"
+        );
+    }
 
     fn original_claim() -> Claim {
         let fixture = fsm_core::json::parse(

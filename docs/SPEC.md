@@ -2837,6 +2837,9 @@ It MUST retain the original run until authenticated closure and helper retiremen
 permit writer-revalidated interrupted settlement. A refused closure attempt MUST
 NOT prevent later authenticated recovery of an original completed publication;
 all closure helpers MUST remain included in transport retirement inventories.
+Shutdown and reconciliation MUST preserve a broker refusal's bounded, sanitized
+reason only from the closed native response envelope; malformed responses MUST
+remain protocol refusals and no refusal may establish closure or settlement.
 This implements runner-phase startup reconciliation; pre-run ownership recovery
 and complete native acceptance remain outstanding.
 
