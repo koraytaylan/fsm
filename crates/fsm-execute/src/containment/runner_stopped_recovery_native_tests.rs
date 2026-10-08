@@ -278,7 +278,9 @@ fn recover_stopped() {
     .unwrap();
     let deadline = Instant::now() + Duration::from_secs(7);
     while !path.join("stopped-recovery-release").is_file() {
-        assert_eq!(Store::open_read_only(&path).unwrap().records, held_records);
+        // The parent checks the journal while holding the writer through both
+        // readiness markers. Once released, another child may already settle
+        // before this child observes the release marker.
         assert!(
             Instant::now() < deadline,
             "parent did not release recovery barrier"
