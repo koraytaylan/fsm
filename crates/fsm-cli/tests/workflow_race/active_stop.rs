@@ -99,11 +99,14 @@ pub(super) fn restart_after_stop(
     assert_eq!(report.get("phase").and_then(Value::as_str), Some("stopped"));
     for fact in [
         "admission_closed",
-        "native_cleanup_confirmed",
+        "helpers_retired",
+        "inventory_complete",
         "writer_released",
     ] {
         assert_eq!(report.get(fact), Some(&Value::Bool(true)));
     }
+    assert_eq!(report.get("unresolved_run_ids"), Some(&value("[]")));
+    assert_eq!(report.get("timed_out"), Some(&Value::Bool(false)));
     if let Some(draining) = draining {
         assert!(
             draining.is_finished(),
