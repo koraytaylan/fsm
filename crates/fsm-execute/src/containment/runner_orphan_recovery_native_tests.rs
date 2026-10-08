@@ -7,6 +7,7 @@ pub(super) struct Session<'fixture> {
     fixture: &'fixture Fixture,
     _daemon: Daemon,
     operator_ready: std::cell::Cell<bool>,
+    cli_ready: std::cell::Cell<bool>,
 }
 
 impl<'fixture> Session<'fixture> {
@@ -18,6 +19,7 @@ impl<'fixture> Session<'fixture> {
             fixture,
             _daemon: daemon,
             operator_ready: std::cell::Cell::new(false),
+            cli_ready: std::cell::Cell::new(false),
         }
     }
 
@@ -59,12 +61,20 @@ impl<'fixture> Session<'fixture> {
         );
     }
 
-    pub(super) fn resume_via_cli(&self) {
+    fn ensure_cli(&self) {
+        if self.cli_ready.get() {
+            return;
+        }
         super::super::workflow_cases::stage_artifact(
             &self.fixture.directory.join("recovery-cli"),
             "FSM_NATIVE_WORKFLOW_CLI_ARTIFACT",
             "FSM_NATIVE_WORKFLOW_CLI_SHA256",
         );
+        self.cli_ready.set(true);
+    }
+
+    pub(super) fn resume_via_cli(&self) {
+        self.ensure_cli();
         self.run("recover_orphan_cli", "FSM_NATIVE_ORPHAN_RECOVERED");
         assert_eq!(
             Store::open_read_only(&self.fixture.store)
@@ -78,10 +88,12 @@ impl<'fixture> Session<'fixture> {
     }
 
     pub(super) fn refuse_pre_run_owner(&self) {
+        self.ensure_cli();
         self.run("refuse_pre_run_owner", "FSM_NATIVE_PRE_RUN_OWNER_REFUSED");
     }
 
     pub(super) fn refuse_pre_run_identity(&self) {
+        self.ensure_cli();
         self.run(
             "refuse_pre_run_identity",
             "FSM_NATIVE_PRE_RUN_IDENTITY_REFUSED",
@@ -89,6 +101,7 @@ impl<'fixture> Session<'fixture> {
     }
 
     pub(super) fn refuse_pre_run_boot(&self) {
+        self.ensure_cli();
         self.run("refuse_pre_run_boot", "FSM_NATIVE_PRE_RUN_BOOT_REFUSED");
     }
 
@@ -227,6 +240,7 @@ fn refuse_pre_run(expected_message: &str) {
     assert_eq!(writer.state.execution, ownership);
     drop(writer);
     assert_eq!(Store::open_read_only(&path).unwrap().records, records);
+    refuse_original_cli(&path, run, expected_message, &records);
 }
 
 fn refuse_copied_pre_run_store(path: &Path, run_id: u64, records: &[fsm_core::record::Record]) {
@@ -249,7 +263,80 @@ fn refuse_copied_pre_run_store(path: &Path, run_id: u64, records: &[fsm_core::re
     assert_eq!(writer.state.execution, ownership);
     drop(writer);
     assert_eq!(Store::open_read_only(&copied).unwrap().records, records);
+    refuse_original_cli(
+        &copied,
+        run_id,
+        "native discovery store registration missing",
+        records,
+    );
     assert_eq!(Store::open_read_only(path).unwrap().records, records);
+}
+
+fn refuse_original_cli(
+    path: &Path,
+    run_id: u64,
+    expected_message: &str,
+    records: &[fsm_core::record::Record],
+) {
+    use std::process::{Command, Stdio};
+
+    let ownership = Store::open_read_only(path).unwrap().state.execution.clone();
+    let output = path.join("identity-reconcile.stdout");
+    let errors = path.join("identity-reconcile.stderr");
+    let executable = PathBuf::from(std::env::var_os("FSM_NATIVE_ORPHAN_CLI").unwrap());
+    let mut child = Command::new(executable)
+        .args(["--json", "--data-dir"])
+        .arg(path)
+        .args([
+            "execute",
+            "reconcile",
+            "--run-id",
+            &run_id.to_string(),
+            "--timeout-ms",
+            "1000",
+        ])
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&output).unwrap())
+        .stderr(fs::File::create(&errors).unwrap())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            child.wait().unwrap();
+            panic!("original identity CLI refusal exceeded its bound; authority retained");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(!status.success());
+    assert!(fs::metadata(output).unwrap().len() == 0);
+    assert!(fs::metadata(&errors).unwrap().len() <= 8192);
+    let response = fsm_core::json::parse(
+        &fs::read(errors).unwrap(),
+        &fsm_core::json::JsonLimits::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(
+        response.get("code").and_then(Value::as_str),
+        Some("exec/inflight_deferred")
+    );
+    assert_eq!(
+        response.get("message").and_then(Value::as_str),
+        Some(expected_message)
+    );
+    assert_eq!(
+        response.get("hint").and_then(Value::as_str),
+        Some(
+            "retain the original run; recover original results or restore its authority facilities before retrying reconciliation"
+        )
+    );
+    let observed = Store::open_read_only(path).unwrap();
+    assert_eq!(observed.records, records);
+    assert_eq!(observed.state.execution, ownership);
 }
 
 #[test]
