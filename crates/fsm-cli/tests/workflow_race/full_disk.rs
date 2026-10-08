@@ -154,7 +154,7 @@ pub(super) fn restart_after_full_disk(
         std::thread::sleep(Duration::from_millis(5));
     }
     // Retire only the original fixture-owned process, before freeing space;
-    // the successor must recover the unchanged unresolved claim itself.
+    // its unresolved claim requires authenticated operator reconciliation.
     if let Some(owner) = original {
         owner.child.kill().unwrap();
         owner.child.wait().unwrap();
@@ -163,6 +163,7 @@ pub(super) fn restart_after_full_disk(
         client.process.wait().unwrap();
     }
     fs::remove_file(filler).unwrap();
+    let writer = reconcile_original_closure(directory, &claim, &records);
     let matched = fs::symlink_metadata(&marker).unwrap();
     assert_eq!(
         (matched.dev(), matched.ino()),
@@ -170,10 +171,61 @@ pub(super) fn restart_after_full_disk(
     );
     fs::remove_file(marker).unwrap();
     fs::write(directory.resource().join("tree-release"), b"successor only").unwrap();
-    let writer = Store::open(&directory.store()).unwrap();
+    assert_eq!(writer.state.execution.unresolved().count(), 0);
     *client = Client::start_mode(directory, ExecutionMode::Standalone);
     drop(writer);
     start(directory, "after-full-disk")
+}
+
+fn reconcile_original_closure(
+    directory: &Directory,
+    claim: &fsm_core::record::execution::Claim,
+    records: &[fsm_core::record::Record],
+) -> Store {
+    let snapshot = Store::open_read_only(&directory.store()).unwrap();
+    assert_eq!(snapshot.records, records);
+    let instance = snapshot.state.instances[claim.effect().0].clone();
+    let mut shutdown = fsm_execute::run::native_client::NativeShutdown::start(
+        &snapshot,
+        claim,
+        Duration::from_secs(3),
+    )
+    .unwrap();
+    let until = Instant::now() + Duration::from_secs(3);
+    loop {
+        let proof = shutdown.poll().unwrap();
+        if proof.is_some() && shutdown.reap().unwrap() {
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "original closure reconciliation exceeded its bound"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let mut writer = Store::open(&directory.store()).unwrap();
+    shutdown
+        .settle_interrupted(&mut writer, &mut fsm_store::clock::GlobalClock)
+        .unwrap();
+    assert_eq!(&writer.records[..records.len()], records);
+    assert_eq!(writer.records.len(), records.len() + 2);
+    assert_eq!(
+        writer.records[records.len()].kind,
+        RecordKind::ExecutionStopped
+    );
+    assert_eq!(
+        writer.records[records.len() + 1].kind,
+        RecordKind::ExecutionSettled
+    );
+    assert_eq!(writer.state.instances[claim.effect().0], instance);
+    assert!(
+        writer.state.instances[claim.effect().0]
+            .pending
+            .iter()
+            .any(|effect| effect == claim.effect().1)
+    );
+    assert_eq!(writer.state.execution.unresolved().count(), 0);
+    writer
 }
 
 fn align_journal(directory: &Directory, client: &mut Client, standalone: bool) {
