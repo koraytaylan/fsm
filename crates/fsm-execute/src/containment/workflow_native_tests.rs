@@ -221,9 +221,7 @@ fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
         if (failure.starts_with("crash-")
             || failure.starts_with("full-disk")
             || failure.starts_with("failed-stop")
-            || (failure.starts_with("active-stop")
-                && !failure.starts_with("active-stop-complete")
-                && !failure.starts_with("active-stop-timeout")))
+            || (failure.starts_with("active-stop") && !failure.starts_with("active-stop-complete")))
             && number(&record.body, "run_id").unwrap() == 1
         {
             assert!(matches!(disposition, Some("attempted" | "interrupted")));
