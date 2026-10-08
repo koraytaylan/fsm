@@ -575,7 +575,7 @@ fn validate_request(value: &Value) -> Result<(), String> {
         .get("payload")
         .ok_or("native request payload missing")?;
     match value.get("action").and_then(Value::as_str) {
-        Some("prepare") if payload == &Value::Null => Ok(()),
+        Some("prepare" | "prepare-owned") if payload == &Value::Null => Ok(()),
         Some("discard-prepared") => fsm_core::record::execution::NativeDomain::from_value(payload)
             .map(|_| ())
             .map_err(|error| error.to_string()),
@@ -800,5 +800,16 @@ mod tests {
         )
         .unwrap();
         assert!(validate_request(&value).is_ok());
+    }
+
+    #[test]
+    fn host_request_policy_accepts_owned_preparation_only_with_null_payload() {
+        for (payload, accepted) in [("null", true), ("0", false), ("{}", false)] {
+            let request = format!(
+                "{{\"action\":\"prepare-owned\",\"format\":\"fsm.native-request/1\",\"payload\":{payload}}}"
+            );
+            let value = parse(request.as_bytes(), &JsonLimits::DEFAULT).unwrap();
+            assert_eq!(validate_request(&value).is_ok(), accepted);
+        }
     }
 }
