@@ -143,6 +143,12 @@ fn workflow_handler() {
     else {
         return;
     };
+    #[cfg(target_os = "linux")]
+    assert_eq!(
+        std::io::stdin().read(&mut [0]).unwrap(),
+        0,
+        "workflow handlers must not inherit protocol stdin"
+    );
     let directory = PathBuf::from(
         arguments
             .iter()
