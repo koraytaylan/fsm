@@ -74,7 +74,13 @@ pub(super) fn restart_after_full_disk(
         .spawn()
         .unwrap();
     let until = Instant::now() + Duration::from_secs(3);
+    let mut observed_owner = Value::Null;
     loop {
+        if let Ok(owner) = fsm_cli::local_control::observe(&root, &directory.store(), 50)
+            && owner.get("admission_closed") == Some(&Value::Bool(true))
+        {
+            observed_owner = owner;
+        }
         if let Some(status) = stop.try_wait().unwrap() {
             assert!(!status.success());
             break;
@@ -111,12 +117,20 @@ pub(super) fn restart_after_full_disk(
     }
     // Independently interrogate the surviving original incarnation: a bounded
     // transport refusal alone cannot prove that it accepted stop or closed admission.
-    let owner = fsm_cli::local_control::observe(&root, &directory.store(), 1000).unwrap();
+    // Embedded shutdown may retire its endpoint as the terminal deadline
+    // expires; retain a genuine in-flight observation rather than infer stop
+    // acceptance from endpoint absence or the CLI's transport uncertainty.
+    if let Ok(owner) = fsm_cli::local_control::observe(&root, &directory.store(), 250) {
+        observed_owner = owner;
+    }
+    assert!(matches!(
+        observed_owner.get("phase").and_then(Value::as_str),
+        Some("stopping" | "uncertain")
+    ));
     assert_eq!(
-        owner.get("phase").and_then(Value::as_str),
-        Some("uncertain")
+        observed_owner.get("admission_closed"),
+        Some(&Value::Bool(true))
     );
-    assert_eq!(owner.get("admission_closed"), Some(&Value::Bool(true)));
     let domain = claim.domain().to_value();
     let receipt = PathBuf::from("/var/lib/fsm-containment")
         .join(text(&domain, "namespace"))
