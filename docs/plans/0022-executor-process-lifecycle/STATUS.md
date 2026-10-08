@@ -48,6 +48,8 @@ Frozen 1f7e011b..5a130b42 passes genuine original-event recovery through direct 
 
 Frozen 5008de0b..c9c2ef02 passes cold public tick recovery after actual stopped-host SIGKILL with removed or changed current handlers on stable/MSRV; review digest `b6c352b5491c26d8bb094b57ac0a587f150cc98f370b96460d5424cab7bb63aa`. Fresh configured-operator components recover protected original completion, append one settlement and the original event without another allocation or stopped record, preserve read-only state, replay nonmutatingly and drain with helpers retired and writer released. Focused lifecycle tests, all-target executor Clippy, formatting and size checks pass. This closes the retained-completion gap for public stopped-result recovery; remaining host acceptance and the full native/portable CI matrix keep 9401 in progress.
 
+Frozen f9172e3e..7b7b3992 passes genuine cold stopped-run public recovery behind a different physical writer on stable/MSRV; review digest `f6de20dd86fa107be0918ee3c28bc7e7998f47e1dc522785cb8461b9b2492e50`. Public ticks reach writer-unavailable without changing the original journal, claim or stopped ledger, then settle and deliver once after release without another allocation. Independently retained original completion subsequently returns AlreadySettled without append. Focused lifecycle tests, all-target executor Clippy, native enrolled authorization, formatting and size checks pass; remaining host acceptance and the full native/portable CI matrix keep 9401 in progress.
+
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:
 `cdcc311f66d08ae7b640731ed4a159d2aaf25863b59dd833afca7a99b3e9a9c9`.
