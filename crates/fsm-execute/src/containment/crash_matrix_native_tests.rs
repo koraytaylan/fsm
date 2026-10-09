@@ -929,7 +929,12 @@ fn verify(fixture: &Fixture, behavior: &str) {
                 .unwrap()
         );
         let allocation = number(&domain, "allocation").unwrap();
-        if behavior == "claimed-result" && claim.run_id() == 1 {
+        if (behavior == "claimed-result" && claim.run_id() == 1)
+            || matches!(
+                behavior,
+                "contract-cancel-standalone" | "contract-cancel-borrowed"
+            )
+        {
             // This cut never submitted a manager launch: missing memory evidence
             // is required here, while every actually launched successor retains
             // the unchanged positive memory/swap-limit verification below.

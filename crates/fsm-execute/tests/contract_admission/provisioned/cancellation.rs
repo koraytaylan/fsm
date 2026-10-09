@@ -45,14 +45,14 @@ pub(super) fn observe(
     let authority = PathBuf::from(manifest().get("authority").unwrap().as_str().unwrap());
     let domain = claim.domain().to_value();
     let allocation = domain.get("allocation").unwrap().as_num().unwrap();
-    let memory_receipt = authority.join(format!("fixture-memory-{allocation}.json"));
-    // Require actual contained startup before cancelling: otherwise this case
-    // could pass by closing an allocation that never launched its waiting gate.
+    let binding_receipt = authority.join(format!("binding-{allocation}.json"));
+    // The protected helper must bind the original claim before cancellation;
+    // systemd startup occurs only after entry permission and is forbidden here.
     let claimed = Store::open_read_only(store_path).unwrap();
     let claimed_records = claimed.records.clone();
     let claimed_state = claimed.state.clone();
     drop(claimed);
-    while !memory_receipt.try_exists().unwrap() {
+    while !binding_receipt.try_exists().unwrap() {
         let lines = tick(watcher, scheduler, runner, clock);
         assert_no_entry(resource);
         assert_eq!(runner.local_native_claims().next(), Some(&claim));
@@ -64,13 +64,19 @@ pub(super) fn observe(
         ));
         assert!(
             Instant::now() < deadline,
-            "original contained startup was not observed: {:?}",
+            "original protected binding was not observed: {:?}",
             lines
         );
         std::thread::sleep(Duration::from_millis(5));
     }
     let mut competing = Store::open(store_path).unwrap();
     let claim_hash = competing.current_execution_claim_hash(&claim).unwrap();
+    let binding = parse(&fs::read(&binding_receipt).unwrap(), &JsonLimits::DEFAULT).unwrap();
+    assert_eq!(binding.get("claim"), Some(&claim.to_value()));
+    assert_eq!(
+        binding.get("journal_claim"),
+        Some(&Value::Str(claim_hash.clone()))
+    );
     competing
         .cancel_instance_reason_on(clock, "original", "cancel-original", "before handler entry")
         .unwrap();
@@ -106,8 +112,12 @@ pub(super) fn observe(
             assert!(proof.matches_claim(&claim, &claim_hash));
             proof.check_store(store_path).unwrap();
             for name in [
+                format!("launch-{allocation}.json"),
+                format!("handoff-{allocation}.json"),
                 format!("entry-{allocation}.json"),
                 format!("entry-{allocation}.json.pending"),
+                format!("exec-status-{allocation}.json"),
+                format!("fixture-memory-{allocation}.json"),
             ] {
                 assert!(
                     !authority.join(name).try_exists().unwrap(),
