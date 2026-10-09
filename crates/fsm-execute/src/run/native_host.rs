@@ -50,7 +50,7 @@ impl Runner {
         handler: &crate::config::HandlerSpec,
         scheduler: &mut Scheduler,
     ) -> Result<(), ExecError> {
-        crate::contract::check_pending(snapshot, effect, scheduler.handler_table())?;
+        scheduler.check_pending_contract(snapshot, effect)?;
         #[cfg(target_os = "linux")]
         return self.native.queue(snapshot, effect, handler, scheduler);
         #[cfg(not(target_os = "linux"))]

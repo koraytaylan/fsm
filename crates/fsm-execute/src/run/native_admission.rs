@@ -351,6 +351,7 @@ impl NativeAdmissions {
         &mut self,
         store: &Store,
         table: &HandlerTable,
+        cache: Option<&crate::contract::AdmissionCache>,
     ) -> Option<Result<AdmissionRequest, ExecError>> {
         let pending = self
             .pending
@@ -368,8 +369,8 @@ impl NativeAdmissions {
         }
         // SPEC pending-contract refusal precedes any uncertain claim publication.
         // Keep the original prepared domain for authenticated cleanup on refusal.
-        let admission =
-            crate::contract::check_pending(store, &pending.effect, table).and_then(|()| {
+        let admission = crate::contract::check_pending_cached(store, &pending.effect, table, cache)
+            .and_then(|()| {
                 if table.handlers.get(&pending.effect.effect_name) == Some(&pending.handler) {
                     Ok(())
                 } else {
@@ -668,7 +669,7 @@ mod tests {
         let state = store.state.clone();
         let records = store.records.clone();
         let sequence = store.journal.last_seq;
-        let error = match admissions.take_ready(&store, &table).unwrap() {
+        let error = match admissions.take_ready(&store, &table, None).unwrap() {
             Err(error) => error,
             Ok(_) => panic!("incompatible preparation authorized claim publication"),
         };
@@ -722,7 +723,7 @@ mod tests {
     fn compatible_preparation_reaches_publication_phase_without_writing() {
         let (_directory, store, mut admissions, table) = prepared_contract();
         let records = store.records.clone();
-        assert!(admissions.take_ready(&store, &table).unwrap().is_ok());
+        assert!(admissions.take_ready(&store, &table, None).unwrap().is_ok());
         assert!(matches!(
             admissions.pending.values().next().unwrap().phase,
             Phase::ClaimUncertain(_)

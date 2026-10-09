@@ -494,7 +494,7 @@ fn queue_native_starts(
     let writer_allowed = runner.accepts_native_writer(store);
     for unstartable in scheduler.unstartable() {
         let result = if writer_allowed {
-            crate::contract::check_pending(store, &unstartable.effect, scheduler.handler_table())
+            scheduler.check_pending_contract(store, &unstartable.effect)
         } else {
             Err(ExecError::new(
                 "exec/mode",

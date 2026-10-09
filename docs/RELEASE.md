@@ -1928,3 +1928,12 @@ input, and finished workers explicitly close their
 connections despite retained shutdown descriptors. This correction does not
 establish native executor closure or interrupt application work outside socket
 I/O, and changes no journal or wire format.
+
+Shared native queue, pre-claim and bound-entry admission cache onlysuccessful
+structural analyses in a private scheduler-owned set of at most 128 digests,
+keyed by analyzer format, emitter/receiver, the complete available definition
+catalogue and full private handler settings; cache hits still reconstruct
+pending effects and recheck membership, concrete arguments and receiving
+outcomes, and restart clears evidence. Concrete reconstruction still incurs the
+journal-prefix replay cost at each decision. No public signature, error code,
+persisted format or version changes.

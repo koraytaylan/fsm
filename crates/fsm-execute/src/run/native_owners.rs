@@ -422,10 +422,11 @@ impl NativeOwners {
             if self.admission_is_closed() {
                 return self.apply_completed(store, clock, pipeline, scheduler);
             }
-            let request = match self
-                .admissions
-                .take_ready(store, scheduler.handler_table())?
-            {
+            let request = match self.admissions.take_ready(
+                store,
+                scheduler.handler_table(),
+                Some(scheduler.admission_cache()),
+            )? {
                 Ok(request) => request,
                 Err(error) => return Some(Err(error)),
             };
@@ -494,6 +495,7 @@ impl NativeOwners {
             pipeline,
             &self.admission_closed,
             scheduler.handler_table(),
+            Some(scheduler.admission_cache()),
         );
         // Settlement releases durable ownership before optional event delivery;
         // a later event error must not keep the consumed local slot occupied.
@@ -701,9 +703,10 @@ impl Owner {
         pipeline: &mut Pipeline,
         admission_closed: &AtomicBool,
         table: &crate::config::HandlerTable,
+        cache: Option<&crate::contract::AdmissionCache>,
     ) -> Result<(String, bool), ExecError> {
         if self.entry_ready() {
-            crate::contract::check_claimed(store, &self.claim, table)?;
+            crate::contract::check_claimed(store, &self.claim, table, cache)?;
             // A read-only or stale writer refusal leaves the bound owner intact;
             // only a validated entry attempt consumes its one-shot permission.
             let entry_requested = &mut self.entry_requested;

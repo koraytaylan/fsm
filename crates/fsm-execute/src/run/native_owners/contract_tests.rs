@@ -74,6 +74,7 @@ fn refuses_bound_entry(change: impl FnOnce(&mut HandlerTable), code: &str) {
             &mut Pipeline,
             &AtomicBool::new(false),
             &table,
+            None,
         )
         .unwrap_err();
     assert_eq!(error.code, code);
@@ -97,6 +98,7 @@ fn refuses_bound_entry(change: impl FnOnce(&mut HandlerTable), code: &str) {
             &mut Pipeline,
             &AtomicBool::new(false),
             &original,
+            None,
         )
         .unwrap_err();
     assert_eq!(repaired.code, "exec/mode");

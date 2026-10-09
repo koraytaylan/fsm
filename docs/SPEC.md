@@ -1414,6 +1414,17 @@ leave the journal, pending work, retry ledgers and request-id inventory unchange
 This read-only check alone MUST NOT authorize a physical start: the shared
 service still needs final writer/generation validation and lifecycle control.
 
+Shared native queue, pre-claim and bound-entry admission MAY reuse successful structural analysis from a
+private, process-local cache of at most 128 fixed-size digests; exceeding that
+bound MUST evict evidence rather than refuse otherwise compatible work.
+The key MUST include the analyzer format, historical emitter, current receiver,
+complete available definition catalogue and full private handler table identity.
+Configuration or definition changes MUST invalidate matching evidence, and
+restart MUST begin with an empty cache. Invalid/unknown structural reports MUST
+NOT be cached. A hit MUST still reconstruct the concrete pending effect and
+check running membership, actual arguments and current receiving outcomes;
+cached evidence MUST NOT become a persisted authorization token.
+
 Prepared native admission MUST repeat the pending-contract check against the
 healthy durable writer before entering uncertain claim publication, and MUST
 require the prepared handler to equal its current loaded-table entry. Refusal

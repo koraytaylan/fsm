@@ -202,6 +202,7 @@ pub struct Capped {
 /// The executor's brain.
 pub struct Scheduler {
     table: HandlerTable,
+    admission_cache: crate::contract::AdmissionCache,
     inflight: BTreeMap<String, Inflight>,
     local_claims: BTreeMap<String, Claim>,
     issued_polls: BTreeSet<(String, String, i64)>,
@@ -220,6 +221,24 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn admission_cache(&self) -> &crate::contract::AdmissionCache {
+        &self.admission_cache
+    }
+
+    pub(crate) fn check_pending_contract(
+        &self,
+        store: &fsm_store::store::Store,
+        effect: &PendingEffect,
+    ) -> Result<(), ExecError> {
+        crate::contract::check_pending_cached(
+            store,
+            effect,
+            &self.table,
+            Some(&self.admission_cache),
+        )
+    }
+
     pub(crate) fn handler_table(&self) -> &HandlerTable {
         &self.table
     }
@@ -228,6 +247,7 @@ impl Scheduler {
     pub fn new(table: HandlerTable) -> Self {
         Self {
             table,
+            admission_cache: crate::contract::AdmissionCache::default(),
             inflight: BTreeMap::new(),
             local_claims: BTreeMap::new(),
             issued_polls: BTreeSet::new(),
