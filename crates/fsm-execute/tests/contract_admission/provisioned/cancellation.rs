@@ -69,14 +69,23 @@ pub(super) fn observe(
         );
         std::thread::sleep(Duration::from_millis(5));
     }
-    let mut competing = Store::open(store_path).unwrap();
+    let mut competing = loop {
+        match Store::open(store_path) {
+            Ok(store) => break store,
+            Err(error) if error.code == "store/lock" => {
+                assert!(Instant::now() < deadline, "binding writer did not retire");
+                assert_no_entry(resource);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("competing writer failed: {error:?}"),
+        }
+    };
     let claim_hash = competing.current_execution_claim_hash(&claim).unwrap();
-    let binding = parse(&fs::read(&binding_receipt).unwrap(), &JsonLimits::DEFAULT).unwrap();
-    assert_eq!(binding.get("claim"), Some(&claim.to_value()));
-    assert_eq!(
-        binding.get("journal_claim"),
-        Some(&Value::Str(claim_hash.clone()))
-    );
+    // Binding is Root-private; the independent coordinator checks its exact
+    // claim and journal hash after this observer exits without granting access.
+    let binding = fs::symlink_metadata(&binding_receipt).unwrap();
+    assert!(binding.is_file() && binding.uid() == 0 && binding.nlink() == 1);
+    assert!(binding.len() > 0 && binding.mode() & 0o777 == 0o600);
     competing
         .cancel_instance_reason_on(clock, "original", "cancel-original", "before handler entry")
         .unwrap();
