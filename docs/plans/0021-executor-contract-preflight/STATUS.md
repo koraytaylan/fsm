@@ -26,6 +26,12 @@ cases remain ignored locally; unprovisioned routing proves no native side-effect
 acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
 full-prefix reconstruction cost stays documented.
 
+Cache proof `909cb8e0..fc52ae4d` passes six cache cases and executor all-target
+clippy/format/size/diff checks; removing catalogue identity makes the named
+missing-child case return stale compatibility and fail, while restoration passes.
+Frozen review `b946466fe81ee016f2deda537f6909f8ba049a6b41037df11e402c09de99fad3`
+indexes the milestone; this metadata-fault proof does not close native acceptance.
+
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
 clippy, format/size checks and control-option guard sensitivity; self-review
