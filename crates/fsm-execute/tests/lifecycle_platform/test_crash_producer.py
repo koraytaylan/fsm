@@ -88,7 +88,7 @@ class Retirement(unittest.TestCase):
                 self.assertEqual(evidence['scope'], 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
                 self.assertFalse(evidence['gate_released'])
-                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 1000 if private else 3900)
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 1200 if private else 3900)
                 if private:
                     host_build.assert_called_once()
                     boundary_build.assert_called_once()

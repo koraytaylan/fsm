@@ -103,6 +103,7 @@ fn provisioned_private_completion_owner_matrix() {
         ("boundary", "boundary-settled"),
         ("boundary", "boundary-deferred"),
         ("capacity", "capacity-held"),
+        ("private", "private-output"),
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -260,7 +261,9 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let mut command = Command::new("/usr/bin/python3");
     command.args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
         .arg(staging.join(artifact))
-        .args(["--exact", if private {
+        .args(["--exact", if behavior == "private-output" {
+            "mcp::host::tests::held_handlers::execution_host_inherited_output_pipes_allow_read_mutation_and_stop"
+        } else if private {
             "mcp::host::tests::held_handlers::execution_host_real_held_handler_allows_read_mutation_and_stop_without_release"
         } else if host == "capacity" {
             "service::lifecycle::tests::capacity::completion_capacity_keeps_effect_pending_until_original_reservations_release"
@@ -411,7 +414,9 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                     executable.to_str().unwrap(),
                     kind,
                     resource.to_str().unwrap(),
-                    if matches!(
+                    if behavior == "private-output" {
+                        "exit-root"
+                    } else if matches!(
                         behavior,
                         "collected-result"
                             | "closed-result"
@@ -442,6 +447,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "boundary-settled"
                             | "boundary-deferred"
                             | "capacity-held"
+                            | "private-output"
                     ) {
                         "hold-result"
                     } else {
@@ -463,6 +469,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "boundary-settled"
                         | "boundary-deferred"
                         | "capacity-held"
+                        | "private-output"
                 ) {
                     "30000"
                 } else {
@@ -549,6 +556,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "boundary-settled"
                     | "boundary-deferred"
                     | "capacity-held"
+                    | "private-output"
             ) {
                 1
             } else {

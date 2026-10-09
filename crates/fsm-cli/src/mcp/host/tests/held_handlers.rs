@@ -24,6 +24,21 @@ const HELD_MACHINE: &str = r#"{
 #[test]
 #[ignore = "requires disposable native CI, protected catalogue and exact staged handler fixture"]
 fn execution_host_real_held_handler_allows_read_mutation_and_stop_without_release() {
+    observe_held_handler(HandlerBarrier::RootHeld);
+}
+
+#[test]
+#[ignore = "requires disposable native CI and original descendants holding inherited pipes"]
+fn execution_host_inherited_output_pipes_allow_read_mutation_and_stop() {
+    observe_held_handler(HandlerBarrier::InheritedPipes);
+}
+
+enum HandlerBarrier {
+    RootHeld,
+    InheritedPipes,
+}
+
+fn observe_held_handler(barrier: HandlerBarrier) {
     let manifest = manifest();
     let store_path = PathBuf::from(field(&manifest, "store"));
     let resource = PathBuf::from(field(&manifest, "resource"));
@@ -68,7 +83,29 @@ fn execution_host_real_held_handler_allows_read_mutation_and_stop_without_releas
     }
     let root = fs::read_to_string(resource.join("root-entered")).unwrap();
     let root: u32 = root.trim().parse().unwrap();
-    let original = identity(root);
+    let original = if matches!(barrier, HandlerBarrier::InheritedPipes) {
+        let deadline = Instant::now() + Duration::from_secs(12);
+        while !resource.join("root-retired").is_file()
+            || fs::read_to_string(format!("/proc/{root}/stat")).is_ok_and(|stat| {
+                stat.rsplit_once(") ").unwrap().1.split_whitespace().next() != Some("Z")
+            })
+        {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        None
+    } else {
+        Some(identity(root))
+    };
+    let descendants = ["child", "grandchild"].map(|role| {
+        let pid = fs::read_to_string(resource.join(format!("{role}-entered")))
+            .unwrap()
+            .trim()
+            .parse::<u32>()
+            .unwrap();
+        assert!(!resource.join(format!("{role}-release")).exists());
+        (pid, identity(pid))
+    });
     let before = Store::open_read_only(&store_path).unwrap();
     assert_eq!(before.state.execution.unresolved().count(), 1);
     assert_eq!(before.state.instances["held"].pending.len(), 1);
@@ -94,11 +131,20 @@ fn execution_host_real_held_handler_allows_read_mutation_and_stop_without_releas
     assert!(mutation.result.is_ok());
     assert_eq!(mutation.committed_seq, prefix + 1);
     assert!(!resource.join("root-release").exists());
-    assert_eq!(
-        identity(root),
-        original,
-        "held original root must still exist"
-    );
+    if let Some(original) = original {
+        assert_eq!(
+            identity(root),
+            original,
+            "held original root must still exist"
+        );
+    }
+    for (pid, birth) in descendants {
+        assert_eq!(
+            identity(pid),
+            birth,
+            "original pipe holder must still exist"
+        );
+    }
     let observed = Store::open_read_only(&store_path).unwrap();
     assert_eq!(observed.state.execution.unresolved().count(), 1);
     assert_eq!(observed.state.instances["held"].pending.len(), 1);
