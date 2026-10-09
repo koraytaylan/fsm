@@ -1,9 +1,10 @@
 # Releasing
 
-Private MCP draft analysis now preserves independent definition findings while
+MCP `executor_check` now preserves independent definition findings while
 unavailable host tables remain explicitly unknown, including effect-free drafts
-and degraded/read-only authority; registry/session integration and task 9202
-acceptance remain pending, with no advertised capability or format change.
+and degraded/read-only authority; immutable host-session configuration supplies
+embedded analysis, with no private literals or approval tokens. Complete task
+9202 native/mode/authority acceptance remains pending; report formats are unchanged.
 
 Executor machine checks now reject `--control-dir` with usage exit 2, preserving
 the documented separation from execution options; private nested MCP literals

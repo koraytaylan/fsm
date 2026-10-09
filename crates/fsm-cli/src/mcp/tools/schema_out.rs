@@ -30,6 +30,90 @@ pub(super) fn schema_machine_create_out() -> Value {
     )
 }
 
+pub(super) fn schema_executor_check_out() -> Value {
+    use super::schema_common::{enum_str, ty_str_array};
+    let closed = |fields: Vec<(&str, Value)>| {
+        let required: Vec<_> = fields.iter().map(|(name, _)| *name).collect();
+        schema_obj(
+            fields
+                .iter()
+                .map(|(name, schema)| ((*name).into(), schema.clone()))
+                .collect(),
+            &required,
+            false,
+        )
+    };
+    let domain_cause = closed(vec![
+        ("code", ty("string")),
+        ("message", ty("string")),
+        ("hint", ty("string")),
+    ]);
+    let provenance = closed(vec![
+        ("mode", enum_str(&["writer", "read-only", "degraded"])),
+        ("table", enum_str(&["unavailable"])),
+    ]);
+    let cause = Value::Obj(BTreeMap::from([(
+        "oneOf".into(),
+        Value::Arr(vec![ty("null"), domain_cause, provenance]),
+    )]));
+    let finding = closed(vec![
+        ("code", ty("string")),
+        ("severity", enum_str(&["error", "unknown", "info"])),
+        ("machine_id", ty("string")),
+        ("path", ty("string")),
+        ("effect", ty_nullable("string")),
+        ("outcome", ty_nullable("string")),
+        ("message", ty("string")),
+        ("hint", ty("string")),
+        ("cause", cause),
+    ]);
+    let arguments = Value::Obj(BTreeMap::from([
+        ("type".into(), Value::Str("object".into())),
+        ("additionalProperties".into(), ty_nullable("string")),
+    ]));
+    let outcomes = schema_obj(
+        BTreeMap::from([
+            (
+                "on_ok".into(),
+                enum_str(&["no-outcome", "compatible", "invalid", "unknown"]),
+            ),
+            (
+                "on_failed".into(),
+                enum_str(&["no-outcome", "compatible", "invalid", "unknown"]),
+            ),
+        ]),
+        &[],
+        false,
+    );
+    let effect = closed(vec![
+        ("machine_id", ty("string")),
+        ("path", ty("string")),
+        ("effect", ty("string")),
+        ("arguments", arguments),
+        ("disposition", enum_str(&["automatic", "manual", "missing"])),
+        ("required_args", ty_array_of(ty("string"))),
+        ("outcomes", outcomes),
+    ]);
+    closed(vec![
+        ("format", enum_str(&["fsm.executor-check/1"])),
+        ("status", enum_str(&["compatible", "invalid", "unknown"])),
+        ("machine_id", ty_nullable("string")),
+        ("contract_id", ty_nullable("string")),
+        ("definitions", ty_str_array(32)),
+        (
+            "scope",
+            closed(vec![
+                ("effects_checked", ty("boolean")),
+                ("outcomes_checked", ty("boolean")),
+                ("dynamic_signals", ty("boolean")),
+            ]),
+        ),
+        ("findings", ty_array_of(finding)),
+        ("effects", ty_array_of(effect)),
+        ("progress", ty_str_array(4096)),
+    ])
+}
+
 pub(super) fn schema_machine_list_out() -> Value {
     let mut p = BTreeMap::new();
     p.insert("machines".into(), ty_array_of(machine_row()));

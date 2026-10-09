@@ -69,6 +69,13 @@ pub(super) struct Session {
 }
 
 impl Session {
+    fn operator_context(&self) -> OperatorContext {
+        OperatorContext {
+            table: self.operator_handlers.clone(),
+            #[cfg(target_os = "linux")]
+            control: self.native_control.clone(),
+        }
+    }
     /// Private host evidence for draft analysis, never a transport response.
     pub(in crate::mcp) fn operator_handlers(&self) -> Option<&fsm_execute::config::HandlerTable> {
         if !self.original.is_open() || self.mailbox.is_stopped() {
@@ -116,8 +123,9 @@ impl Session {
     pub(in crate::mcp) fn submit_hosted(
         &self,
         command: Command,
-        context: operation::HostedToolContext,
+        mut context: operation::HostedToolContext,
     ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
+        context.operator = self.operator_context();
         self.mailbox.admit(
             Arc::clone(&self.original),
             Operation::HostedTool {
@@ -131,8 +139,12 @@ impl Session {
         &self,
         command: Command,
     ) -> Result<mpsc::Receiver<Outcome>, AdmissionError> {
-        self.mailbox
-            .admit(Arc::clone(&self.original), Operation::Tool(command))
+        let operator =
+            (command.tool == "executor_check").then(|| Box::new(self.operator_context()));
+        self.mailbox.admit(
+            Arc::clone(&self.original),
+            Operation::Tool(command, operator),
+        )
     }
 
     /// Read operations share admission order and retained-allocation budgets.
@@ -173,6 +185,31 @@ impl Session {
     /// Cancel only admitted requests of this original session incarnation.
     pub(super) fn cancel(&self, rpc_id: &Value) -> usize {
         self.mailbox.cancel(self.original.generation, rpc_id)
+    }
+}
+
+/// Immutable table provenance carried by the original host session only.
+#[derive(Clone, Default)]
+pub(in crate::mcp) struct OperatorContext {
+    table: Option<Arc<fsm_execute::config::HandlerTable>>,
+    #[cfg(target_os = "linux")]
+    control: Option<fsm_execute::service::ExecutorControl>,
+}
+
+impl OperatorContext {
+    pub(in crate::mcp) fn table(&self) -> Option<&fsm_execute::config::HandlerTable> {
+        #[cfg(target_os = "linux")]
+        if self.control.as_ref().is_some_and(|control| {
+            let report = control.report();
+            report.admission_closed || report.phase != fsm_execute::service::ExecutorPhase::Running
+        }) {
+            return None;
+        }
+        self.table.as_deref()
+    }
+
+    pub(in crate::mcp) fn is_unavailable(&self) -> bool {
+        self.table.is_some() && self.table().is_none()
     }
 }
 
@@ -279,8 +316,25 @@ fn apply_command(
         ..Default::default()
     };
     let result = match &mut admitted.command {
-        Operation::Tool(command) => {
-            super::tools::dispatch_with(store, clock, &command.tool, &command.arguments, &context)
+        Operation::Tool(command, operator) => {
+            if let Some(operator) = operator {
+                super::tools::dispatch::dispatch_hosted(
+                    store,
+                    clock,
+                    &command.tool,
+                    &command.arguments,
+                    &context,
+                    operator,
+                )
+            } else {
+                super::tools::dispatch_with(
+                    store,
+                    clock,
+                    &command.tool,
+                    &command.arguments,
+                    &context,
+                )
+            }
         }
         Operation::HostedTool {
             command,
@@ -292,7 +346,14 @@ fn apply_command(
                 cancel: context.cancel.clone(),
                 ..Default::default()
             };
-            super::tools::dispatch_with(store, clock, &command.tool, &command.arguments, &context)
+            super::tools::dispatch::dispatch_hosted(
+                store,
+                clock,
+                &command.tool,
+                &command.arguments,
+                &context,
+                &hosted.operator,
+            )
         }
         Operation::Read(command) => match &command.operation {
             ReadOperation::ResourcesList => Ok(super::resources::list(Some(store))),

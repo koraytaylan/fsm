@@ -6,6 +6,7 @@ use super::Command;
 use crate::mcp::tools::elicitation::PreparedElicitation;
 
 pub(in crate::mcp) struct HostedToolContext {
+    pub(super) operator: super::OperatorContext,
     pub(super) metadata: Option<Value>,
     pub(super) notifier: crate::mcp::notify::Notifier,
     pub(super) adapter_bytes: usize,
@@ -18,6 +19,7 @@ impl HostedToolContext {
         output: &crate::mcp::notify::Notifier,
     ) -> Option<Self> {
         Some(Self {
+            operator: super::OperatorContext::default(),
             notifier: output.hosted_handle()?,
             metadata: metadata.cloned(),
             adapter_bytes: super::interaction::adapter_charge(metadata, rpc_id),
@@ -51,7 +53,7 @@ pub(in crate::mcp) enum ReadOperation {
 }
 
 pub(super) enum Operation {
-    Tool(Command),
+    Tool(Command, Option<Box<super::OperatorContext>>),
     HostedTool {
         command: Command,
         context: Box<HostedToolContext>,
@@ -67,7 +69,7 @@ pub(super) enum Operation {
 impl Operation {
     pub(super) fn rpc_id(&self) -> &Value {
         match self {
-            Self::Tool(command) => &command.rpc_id,
+            Self::Tool(command, _) => &command.rpc_id,
             Self::HostedTool { command, .. } => &command.rpc_id,
             Self::Read(command) => &command.rpc_id,
             Self::Prepare(command) => &command.rpc_id,
@@ -78,7 +80,7 @@ impl Operation {
 
     pub(super) fn take_rpc_id(&mut self) -> Value {
         let id = match self {
-            Self::Tool(command) => &mut command.rpc_id,
+            Self::Tool(command, _) => &mut command.rpc_id,
             Self::HostedTool { command, .. } => &mut command.rpc_id,
             Self::Read(command) => &mut command.rpc_id,
             Self::Prepare(command) => &mut command.rpc_id,

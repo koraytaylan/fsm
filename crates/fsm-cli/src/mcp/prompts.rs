@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::store::ErrorObj;
 
-pub const INSTRUCTIONS: &str = "Read fsm://docs/spec and fsm://executor for mode, handlers, arguments and outcome events. Workflow: machine_create (dry_run first) → instance_create → instance_send. Consult enabled_events and deadlines_pending. Writer mode: run effects, effect_ack, send outcome events and deadline_poll when due. Executor progress: autonomous runs effects, deadlines and recovery with quiet clients (keep stdio stdin open; HTTP disconnects do not stop the host). Legacy client_requests needs requests to drive ticks. Subscribe to fsm://instance/{id} for updates; polling and subscriptions only observe autonomous progress. Decimal values are JSON strings. Retry the SAME request_id after timeout; corrected content needs a NEW id. simulate runs without effects or deadline polls.";
+pub const INSTRUCTIONS: &str = "Read fsm://docs/spec and fsm://executor for mode, handlers, arguments and outcome events. Workflow: executor_check (repair and recheck) → machine_create (dry_run first) → instance_create → instance_send. Consult enabled_events and deadlines_pending. Writer mode: run effects, effect_ack, send outcome events and deadline_poll when due. Executor progress: autonomous runs effects, deadlines and recovery with quiet clients (keep stdio stdin open; HTTP disconnects do not stop the host). Legacy client_requests needs requests to drive ticks. Subscribe to fsm://instance/{id} for updates; polling and subscriptions only observe autonomous progress. Decimal values are JSON strings. Retry the SAME request_id after timeout; corrected content needs a NEW id. simulate runs without effects or deadline polls.";
 
 pub const AUTHOR_MACHINE: &str =
     "Guided flow to author, validate, and prove a new machine from a goal.";
@@ -173,7 +173,7 @@ fn author_machine(args: Option<&Value>) -> Result<Value, ErrorObj> {
          1. Read fsm://docs/spec for the spec format and expression grammar.\n\
          2. Draft the spec JSON (one state tree or orthogonal regions, typed context/events, transitions, optional deadlines, invariants).\n\
          3. Before declaring side effects, read fsm://executor. Match configured effect names and required_args, and declare the on_ok/on_failed events with fields matching their static payloads and clock stamps. Missing handlers remain pending; missing outcome events leave an acked workflow stalled. Handler stdout is not mapped into event payloads: operations over dynamic data need an operator-owned adapter. If no executor is configured, arrange manual execution or restart with serve --execute --handlers <file>. Read fsm://docs/embedding for setup.\n\
-         4. Call machine_create with dry_run until clean.\n\
+         4. Call executor_check with the draft spec; repair invalid findings and check again. Unknown means host evidence is unavailable, not approval. Then call machine_create with dry_run until clean.\n\
          5. Call machine_create to persist the definition.\n\
          6. simulate a happy path and a rejection path, checking traces.\n\
          7. instance_create and drive with instance_send; use the execution mode from fsm://executor. Autonomous embedded mode progresses through completion and recovery while the host runs; legacy client_requests mode requires repeated requests. Writer mode requires manual effects, outcome events, and due deadline polls."

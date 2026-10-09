@@ -14,6 +14,38 @@ pub(super) fn schema_machine_create_in() -> Value {
     schema_obj(p, &["spec"], false)
 }
 
+pub(super) fn schema_executor_check_in() -> Value {
+    let mut machine = ty("string");
+    if let Value::Obj(fields) = &mut machine {
+        fields.insert("minLength".into(), Value::Num("1".into()));
+    }
+    let mut schema = schema_obj(
+        BTreeMap::from([("spec".into(), ty("object")), ("machine".into(), machine)]),
+        &[],
+        false,
+    );
+    if let Value::Obj(fields) = &mut schema {
+        fields.insert(
+            "oneOf".into(),
+            Value::Arr(
+                ["spec", "machine"]
+                    .into_iter()
+                    .map(|selector| {
+                        Value::Obj(BTreeMap::from([
+                            ("type".into(), Value::Str("object".into())),
+                            (
+                                "required".into(),
+                                Value::Arr(vec![Value::Str(selector.into())]),
+                            ),
+                        ]))
+                    })
+                    .collect(),
+            ),
+        );
+    }
+    schema
+}
+
 pub(super) fn schema_machine_list_in() -> Value {
     let mut p = BTreeMap::new();
     p.insert("name_contains".into(), ty("string"));

@@ -903,7 +903,7 @@ it, so a hint cannot drift from the behaviour it describes.
 | `idempotentHint` | true for exactly the mutating tools — see below |
 | `openWorldHint` | false everywhere: no tool call reaches past one data directory. Effects reach the world; the executor runs them |
 
-The read-only tools are therefore `machine_list`, `machine_get`,
+The read-only tools are therefore `executor_check`, `machine_list`, `machine_get`,
 `machine_analyze`, `machine_diagram`, `instance_get`, `instance_list`,
 `instance_history`, `explain_step`, `journal_verify`, `journal_replay`, `store_doctor`, and `simulate`. The mutating ones are `machine_create`,
 `instance_create`, `instance_send`, `deadline_poll`, `effect_ack`,
@@ -1461,10 +1461,13 @@ machine reports expose only sanitized public contract metadata.
 
 ### The handler table: `fsm.handlers/1`
 
-Private MCP draft-analysis preparation retains independently compilable draft
-findings in writer-only, read-only and degraded modes, while reporting unknown
-active execution compatibility with explicit unavailable-table provenance;
-the draft-check tool is not yet registered or advertised.
+MCP `executor_check` accepts exactly one object `spec` or string `machine`,
+checks the original host's loaded table without creating anything, and returns
+the closed `fsm.executor-check/1` structural report. Repair invalid findings,
+check again, then use `machine_create`. Writer-only, read-only and degraded
+sessions retain independently available draft findings and explicitly report
+unknown execution evidence; clients cannot supply handler overrides or approval
+tokens, and a compatible report does not bypass current service admission.
 
 Optional `manual_effects` explicitly lists effects that the operator intends
 to acknowledge manually. It defaults to `[]`, accepts at most 256 unique,

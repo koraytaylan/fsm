@@ -35,6 +35,41 @@ fn collect_violations(
     got: &Value,
     out: &mut Vec<(String, String, String)>,
 ) {
+    if let Some(branches) = schema.get("oneOf").and_then(Value::as_arr) {
+        let matches = branches
+            .iter()
+            .filter(|branch| {
+                let mut violations = Vec::new();
+                collect_violations(path, branch, got, &mut violations);
+                violations.is_empty()
+            })
+            .count();
+        if matches != 1 {
+            out.push((
+                path.into(),
+                "exactly one selector".into(),
+                "both or neither".into(),
+            ));
+            return;
+        }
+    }
+    if let Some(minimum) = schema
+        .get("minLength")
+        .and_then(Value::as_num)
+        .and_then(|value| value.parse::<usize>().ok())
+    {
+        if got
+            .as_str()
+            .is_some_and(|value| value.chars().count() < minimum)
+        {
+            out.push((
+                path.into(),
+                format!("at least {minimum} characters"),
+                "short string".into(),
+            ));
+            return;
+        }
+    }
     if let Some(arr) = schema.get("enum").and_then(Value::as_arr) {
         let s = got.as_str().unwrap_or("");
         if !arr.iter().any(|x| x.as_str() == Some(s)) {
@@ -43,7 +78,22 @@ fn collect_violations(
             return;
         }
     }
-    let want = schema.get("type").and_then(Value::as_str).unwrap_or("");
+    let union = schema.get("type").and_then(Value::as_arr);
+    if let Some(types) = union {
+        let actual = type_name(got);
+        if !types.iter().any(|value| value.as_str() == Some(actual)) {
+            out.push((
+                path.into(),
+                "one of the declared types".into(),
+                actual.into(),
+            ));
+            return;
+        }
+    }
+    let want = schema
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| if union.is_some() { type_name(got) } else { "" });
     let ok = match want {
         "object" => got.is_obj(),
         "string" => got.is_str(),
@@ -51,6 +101,7 @@ fn collect_violations(
         "number" => got.is_num(),
         "integer" => got.is_num(),
         "array" => got.is_arr(),
+        "null" => matches!(got, Value::Null),
         "" => true,
         _ => true,
     };
@@ -159,6 +210,21 @@ fn collect_violations(
                             collect_violations(&p, pschema, v, out);
                         }
                         None => {}
+                    }
+                }
+            }
+            if let Some(additional_schema) = schema
+                .get("additionalProperties")
+                .filter(|value| value.is_obj())
+            {
+                for (key, value) in obj {
+                    if props.is_none_or(|fields| !fields.contains_key(key)) {
+                        let field = if path.is_empty() {
+                            key.clone()
+                        } else {
+                            format!("{path}.{key}")
+                        };
+                        collect_violations(&field, additional_schema, value, out);
                     }
                 }
             }

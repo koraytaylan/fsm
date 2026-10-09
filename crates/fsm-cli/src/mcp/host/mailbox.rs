@@ -393,7 +393,11 @@ pub(super) fn command_charge(command: &Command) -> usize {
 
 pub(super) fn operation_charge(operation: &Operation) -> usize {
     match operation {
-        Operation::Tool(command) => command_charge(command),
+        Operation::Tool(command, operator) => command_charge(command).saturating_add(
+            operator
+                .as_ref()
+                .map_or(0, |_| std::mem::size_of::<super::OperatorContext>()),
+        ),
         Operation::HostedTool { command, context } => command_charge(command)
             .saturating_add(std::mem::size_of::<super::operation::HostedToolContext>())
             .saturating_add(context.adapter_bytes)

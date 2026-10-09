@@ -132,6 +132,30 @@ pub fn dispatch_with(
     (spec.run)(store, clock, args).map_err(|e| attach_request_id(e, args))
 }
 
+/// Private host dispatch keeps operator configuration outside public request context.
+pub(in crate::mcp) fn dispatch_hosted(
+    store: &mut Store,
+    clock: &mut dyn Clock,
+    name: &str,
+    args: &Value,
+    context: &ToolCtx<'_>,
+    operator: &crate::mcp::host::OperatorContext,
+) -> Result<Value, ErrorObj> {
+    if name != "executor_check" {
+        return dispatch_with(store, clock, name, args, context);
+    }
+    validate_args(&super::schema_in::schema_executor_check_in(), args)?;
+    use super::handlers::ExecutionContext;
+    let execution = if let Some(table) = operator.table() {
+        ExecutionContext::Embedded(table)
+    } else if operator.is_unavailable() {
+        ExecutionContext::Degraded
+    } else {
+        ExecutionContext::Writer
+    };
+    super::handlers::check_executor(Some(store), args, execution)
+}
+
 /// Refuse a mutator on a server that holds no writer.
 ///
 /// The refusal happens here, before the handler runs, so the model gets one
@@ -211,6 +235,13 @@ pub fn dispatch_degraded(
         .ok_or_else(|| ErrorObj::new("req/args_invalid", format!("unknown tool {name}")))?;
     validate_args(&(spec.input_schema)(), args).map_err(|e| attach_request_id(e, args))?;
 
+    if name == "executor_check" {
+        return super::handlers::check_executor(
+            None,
+            args,
+            super::handlers::ExecutionContext::Degraded,
+        );
+    }
     if name == "machine_create" && args.get("dry_run").and_then(Value::as_bool) == Some(true) {
         // A definition is checked against the engine, not against the store,
         // so this needs nothing on disk.

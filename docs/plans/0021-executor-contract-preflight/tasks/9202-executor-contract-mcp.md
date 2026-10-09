@@ -25,6 +25,9 @@ touches:
   - crates/fsm-cli/src/mcp/prompts.rs
   - crates/fsm-cli/src/mcp/resources.rs
   - crates/fsm-cli/tests/executor_contract_mcp.rs
+  - crates/fsm-cli/tests/tool_schemas.rs
+  - crates/fsm-cli/tests/mcp_affordance_golden.rs
+  - crates/fsm-cli/tests/mcp_full.rs
   - crates/fsm-cli/tests/fixtures/contract/
   - crates/fsm-cli/tests/fixtures/transcripts/
   - crates/fsm-cli/tests/fixtures/mcp_live/

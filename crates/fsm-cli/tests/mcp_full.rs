@@ -107,10 +107,11 @@ fn assert_transcript(ver: &str) {
 }
 
 #[test]
-fn nineteen_tools_in_order() {
+fn registry_tools_in_order() {
     assert_eq!(
         names(),
         [
+            "executor_check",
             "machine_create",
             "machine_list",
             "machine_get",

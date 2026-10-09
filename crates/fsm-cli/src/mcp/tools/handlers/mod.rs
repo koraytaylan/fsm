@@ -1,5 +1,7 @@
 mod audit;
 mod executor;
+pub(super) use executor::run_executor_check;
+pub(in crate::mcp) use executor::{ExecutionContext, check as check_executor};
 mod instance;
 mod machine;
 mod simulate;

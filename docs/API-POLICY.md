@@ -823,10 +823,11 @@ journal hash domain. It does not grant execution authorization. Configured
 outcomes outside the effect phase remain unknown until outcome validation is
 integrated. This addition does not change the pure-core consumer boundary.
 
-Private MCP draft-analysis preparation uses the existing closed
+MCP `executor_check` adds a read-only tool using the existing closed
 `fsm.executor-check/1` envelope: unavailable host provenance occupies a finding's
 existing `cause`, with no new error code, persisted format, hash domain or public
-Rust signature. It does not yet register or advertise `executor_check`.
+Rust signature. Input and output schemas are closed; existing tools retain their
+order relative to each other, and executor discovery retains its existing format.
 
 ## Dependencies
 

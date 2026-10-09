@@ -1,4 +1,4 @@
-//! Read-only draft evidence; registry/session dispatch is integrated separately.
+//! Read-only draft evidence using the original session's private host table.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,13 +11,6 @@ use fsm_execute::{
 use crate::store::{ErrorObj, Store};
 
 /// Private host provenance, never supplied by a tool caller.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "private preparation for task 9202 session dispatch"
-    )
-)]
 pub(in crate::mcp) enum ExecutionContext<'a> {
     Embedded(&'a HandlerTable),
     Writer,
@@ -25,13 +18,6 @@ pub(in crate::mcp) enum ExecutionContext<'a> {
     Degraded,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "private preparation for task 9202 session dispatch"
-    )
-)]
 pub(in crate::mcp) fn check(
     store: Option<&Store>,
     arguments: &Value,
@@ -216,6 +202,14 @@ fn empty_report() -> Report {
         effects: Vec::new(),
         progress: BTreeSet::new(),
     }
+}
+
+pub(in crate::mcp::tools) fn run_executor_check(
+    store: &mut Store,
+    _clock: &mut dyn crate::clock::Clock,
+    arguments: &Value,
+) -> Result<Value, ErrorObj> {
+    check(Some(store), arguments, ExecutionContext::Writer)
 }
 
 #[cfg(test)]

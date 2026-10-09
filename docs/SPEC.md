@@ -1489,6 +1489,15 @@ included in machine reports. `--list-dead` retains its existing behavior.
 
 ## MCP draft contract evidence
 
+MCP MUST advertise read-only `executor_check` with closed arguments containing
+exactly one of object `spec` or nonempty string `machine`, and a closed output
+schema for the common structural report. Malformed selectors and overrides use
+the existing `req/args_invalid` tool-error convention. Checking MUST cause no
+clock read, poll, registration, request-id allocation, journal write or handler
+start; unrelated autonomous work MAY continue. Discovery and authoring guidance
+MUST teach check, repair, then create; reports are evidence, never approval
+tokens or an admission bypass. `fsm.executor/2` autonomous discovery is unchanged.
+
 Draft contract analysis MUST compile the supplied definition without registering
 it and MUST use only the immutable table loaded by its execution host; a client
 MUST NOT supply a handler override. Stored selectors and invocation catalogues

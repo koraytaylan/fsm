@@ -10,6 +10,7 @@ fn registry_order() {
     assert_eq!(
         names,
         [
+            "executor_check",
             "machine_create",
             "machine_list",
             "machine_get",
@@ -78,6 +79,9 @@ fn input_schemas_strict() {
 fn validate_accept_and_reject() {
     for t in registry() {
         let mut args = BTreeMap::new();
+        if t.name == "executor_check" {
+            args.insert("machine".into(), Value::Str("sample".into()));
+        }
         for r in (t.input_schema)()
             .get("required")
             .and_then(Value::as_arr)
