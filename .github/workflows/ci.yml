@@ -63,6 +63,11 @@ on:
           - settlement-closure-claim
           - handoff-closure-claim
         default: preparation-owner
+      contract_admission_only:
+        description: Run only native contract admission refusal and repair acceptance
+        required: false
+        type: boolean
+        default: false
       scheduling_owner_only:
         description: Run only the independent private scheduling slice
         required: false
@@ -83,7 +88,7 @@ env:
 
 jobs:
   gate:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.native_only && !inputs.owner_sensitivity_only && !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -187,8 +192,10 @@ jobs:
           mkdir -p "$native_cache"
           printf 'FSM_NATIVE_CACHE=%s\nTMPDIR=%s\nCARGO_TARGET_DIR=%s\n' "$native_cache" "$native_cache" "$native_cache/target" >> "$GITHUB_ENV"
       - run: rustup toolchain install ${{ matrix.rust }} --profile minimal
-      - name: Reject conflicting scoped owner modes
-        run: test '${{ inputs.completion_owner_only && inputs.scheduling_owner_only }}' != 'true'
+      - name: Reject conflicting scoped acceptance modes
+        run: |
+          test '${{ inputs.completion_owner_only && inputs.scheduling_owner_only }}' != 'true'
+          test '${{ inputs.contract_admission_only && (inputs.completion_owner_only || inputs.scheduling_owner_only || inputs.owner_sensitivity_only) }}' != 'true'
       - name: Native evidence producer checks
         run: |
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_crash_*.py'
@@ -196,29 +203,30 @@ jobs:
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_cli_artifact.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_completion_*.py'
           python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_scheduling_*.py'
+          python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p 'test_contract_admission_evidence.py'
       - name: Provisioned private host held-handler acceptance
-        if: ${{ !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         id: completion_owner
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
           --private-owner --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/completion-evidence/completion.json'
       - name: Verify frozen private host completion evidence
-        if: ${{ !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_completion_evidence.py \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/completion-evidence"
       - name: Provisioned private owner scheduling acceptance
-        if: ${{ !inputs.completion_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.contract_admission_only }}
         id: scheduling_owner
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
           --private-scheduling --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/scheduling-evidence/scheduling.json'
       - name: Verify frozen private owner scheduling evidence
-        if: ${{ !inputs.completion_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.contract_admission_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_scheduling_evidence.py \
             --source-commit "$GITHUB_SHA" \
@@ -245,41 +253,41 @@ jobs:
           path: ${{ env.FSM_NATIVE_CACHE }}/contract-admission-evidence
           if-no-files-found: error
       - name: Provisioned lifecycle candidate crash matrix
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         id: crash_matrix
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/crash_probe.py
           --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/crash-evidence/crash.json'
       - name: Verify frozen lifecycle crash evidence
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_crash_evidence.py \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/crash-evidence"
       - name: Provisioned native containment matrix
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         id: native_matrix
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/native_matrix.py
           --toolchain '${{ matrix.rust }}'
           --report-dir '${{ env.FSM_NATIVE_CACHE }}/native-evidence'
       - name: Verify frozen native containment evidence
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         run: |
           python3 crates/fsm-execute/tests/lifecycle_platform/verify_native_evidence.py \
             --source-commit "$GITHUB_SHA" \
             --rustc "$(rustc +${{ matrix.rust }} --version)" \
             --report-dir "$FSM_NATIVE_CACHE/native-evidence"
       - name: Provisioned original CLI workflow scenarios
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         run: >-
           python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
           --toolchain '${{ matrix.rust }}'
           --report '${{ env.FSM_NATIVE_CACHE }}/native-evidence/workflow.json'
       - name: Original executor upgrade inspection and drain
-        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only }}
+        if: ${{ !inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only }}
         run: |
           git fetch --depth=1 origin 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06
           git worktree add --detach "$FSM_NATIVE_CACHE/upgrade-source" 5730f17202cdeabd8c34f9b1c48fcf02f26b0e06
@@ -349,7 +357,7 @@ jobs:
   # properties of the resolved graph, so keep explicit cheap checks that do
   # not depend on the test matrix merely happening to compile the crates.
   zero-deps:
-    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.completion_owner_only && !inputs.scheduling_owner_only) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (!inputs.completion_owner_only && !inputs.scheduling_owner_only && !inputs.contract_admission_only) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
