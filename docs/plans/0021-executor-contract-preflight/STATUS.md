@@ -26,11 +26,13 @@ cases remain ignored locally; unprovisioned routing proves no native side-effect
 acceptance. Complete task 9103 inventory and plan-end gates remain outstanding;
 full-prefix reconstruction cost stays documented.
 
-Cache proof `909cb8e0..fc52ae4d` passes six cache cases and executor all-target
-clippy/format/size/diff checks; removing catalogue identity makes the named
-missing-child case return stale compatibility and fail, while restoration passes.
-Frozen review `b946466fe81ee016f2deda537f6909f8ba049a6b41037df11e402c09de99fad3`
-indexes the milestone; this metadata-fault proof does not close native acceptance.
+Cache/bound-entry proof range `909cb8e0..5918b02e` has six passing cache cases
+and four bound-entry cases, with executor all-target clippy/format/size/diff
+checks. Catalogue identity and bound contract guard neutralization each fail
+their named case; restored suites pass. Cancellation/acknowledgement preserve
+the retained bound owner and unconsumed entry permission. Frozen review
+`a4a864a0e44c963e09801401785884712c4211490d0bc8e8335de5b6ed4cae97`
+indexes prior scoped proofs; metadata fixtures do not close physical acceptance.
 
 CLI focused range `62bdbd5d..2cd48842` passes ten real-binary contract cases,
 17 executor documentation cases and five legacy session cases, CLI all-target
