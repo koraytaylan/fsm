@@ -18,17 +18,19 @@ loader.exec_module(probe)
 
 
 class Retirement(unittest.TestCase):
-    def exercise(self, name, clear=True, stages=False, timeout=False, missing=False, initial=True, export_error=False):
+    def exercise(self, name, clear=True, stages=False, timeout=False, missing=False, initial=True, export_error=False, selected=None):
         directory = CACHE / 'workflow-producer-mocked-checks'
         directory.mkdir(exist_ok=True)
         artifact = directory / 'mock-artifact'
         artifact.write_bytes(b'mocked artifact, never executed')
         report = directory / (name + '.json')
+        cases = tuple((case, count) for case, count in probe.CASES
+                      if selected is None or case == selected)
         markers = [f'FSM_NATIVE_WORKFLOW_CASE {case} {count}'.encode()
-                   for case, count in probe.CASES]
+                   for case, count in cases]
         if missing:
             markers.pop()
-        for case, _ in probe.CASES:
+        for case, _ in cases:
             if 'failed_stop::' in case:
                 markers.extend(f'FSM_NATIVE_RECONCILE_TRANSCRIPT {case} '.encode()
                                + json.dumps(dict(ordinal=ordinal, success=ordinal != 0)).encode()
@@ -47,7 +49,7 @@ class Retirement(unittest.TestCase):
         native = (subprocess.TimeoutExpired(['mock-native'], 300, output=output, stderr=b'partial')
                   if timeout else result)
         with (
-            patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, upgrade_source=None)),
+            patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, upgrade_source=None, case=selected)),
             patch.object(probe.authority, 'build_authority', return_value=artifact),
             patch.object(probe, 'build_cli', return_value=artifact),
             patch.object(probe.authority, 'authority_state_is_clear', side_effect=state),
@@ -77,7 +79,13 @@ class Retirement(unittest.TestCase):
             # The outer deadline covers every unchanged root-runner group bound;
             # it must not truncate the expanded inventory after 300 seconds.
             self.assertEqual(run.call_args_list[0].kwargs['timeout'],
-                             60 + sum(30 * count + 20 for _, count in probe.CASES))
+                             60 + sum(30 * count + 20 for _, count in cases))
+            self.assertEqual([row['case'] for row in evidence['cases']],
+                             [case for case, _ in cases])
+            filters = [argument for argument in run.call_args_list[0].args[0]
+                       if argument.startswith('FSM_NATIVE_WORKFLOW_FILTER=')]
+            self.assertEqual(filters, [] if selected is None else
+                             ['FSM_NATIVE_WORKFLOW_FILTER=' + selected])
             self.assertFalse(evidence['gate_released'])
             self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing)
             self.assertEqual(evidence['exit_code'], None if timeout else 0)
@@ -96,6 +104,12 @@ class Retirement(unittest.TestCase):
 
     def test_clear_success_removes_only_installed_identity(self):
         self.exercise('clear-success')
+
+    def test_selected_case_bounds_execution_and_evidence(self):
+        self.exercise('selected-success', selected=probe.CASES[0][0])
+
+    def test_selected_case_requires_its_original_marker(self):
+        self.exercise('selected-missing', selected=probe.CASES[0][0], missing=True)
 
     def test_unresolved_namespace_retains_authority(self):
         self.exercise('namespace-retained', clear=False)

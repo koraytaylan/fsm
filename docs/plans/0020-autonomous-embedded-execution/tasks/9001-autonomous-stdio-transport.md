@@ -18,6 +18,8 @@ touches:
   - crates/fsm-cli/tests/workflow_stdio/
   - crates/fsm-execute/src/containment/workflow_native_tests.rs
   - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_workflow_producer.py
+  - .github/workflows/focused-workflow.yml
   - crates/fsm-cli/tests/embedded_read_only.rs
   - crates/fsm-cli/tests/serve_modes.rs
   - crates/fsm-cli/tests/mcp_executor.rs
@@ -98,6 +100,10 @@ Focused acceptance review:
   subprocess fixture passes; CLI/provisioner test-target clippy and eight
   mocked producer retirement tests pass. Genuine native execution of this
   new case remains unexecuted, not a passed skip.
+- Manual focused CI accepts one exact native workflow case, forwarding the
+  original runner filter and retaining its source-bound report and log;
+  ten mocked producer checks pass, including bounded single-case execution
+  and refusal of a missing original case marker. The full gate is unchanged.
 - Success, transient retry, compensation, interrupted advance and a held real
   process/MCP handler with responsive reads remain to be matched to this
   original inventory; no landing OID or full-gate claim is assigned, and full

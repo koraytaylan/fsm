@@ -1,0 +1,49 @@
+# Manual task acceptance; full integration gates remain in ci.yml.
+name: focused-workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      case:
+        description: Exact provisioned original workflow test
+        required: true
+        type: string
+        default: workflow_stdio::quiet_retry::quiet_retry_finishes_without_observation_requests
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focused-workflow-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  workflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: "1"
+      RUSTFLAGS: --deny warnings
+      WORKFLOW_CASE: ${{ inputs.case }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare task cache
+        run: |
+          task_cache="$HOME/.cache/fsm-focused-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$task_cache"
+          printf 'TMPDIR=%s\nCARGO_TARGET_DIR=%s\nFSM_NATIVE_CACHE=%s\n' "$task_cache" "$task_cache/target" "$task_cache" >> "$GITHUB_ENV"
+      - run: rustup toolchain install stable --profile minimal
+      - name: Check workflow evidence producer
+        run: python3 -m unittest discover -s crates/fsm-execute/tests/lifecycle_platform -p test_workflow_producer.py
+      - name: Execute exact native workflow
+        run: >-
+          python3 crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
+          --toolchain stable --case "$WORKFLOW_CASE"
+          --report "$FSM_NATIVE_CACHE/evidence/workflow.json"
+      - name: Retain original evidence including failures
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-workflow
+          path: ${{ env.FSM_NATIVE_CACHE }}/evidence
+          if-no-files-found: error

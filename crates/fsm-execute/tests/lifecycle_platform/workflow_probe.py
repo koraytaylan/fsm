@@ -64,7 +64,10 @@ def main():
     parser.add_argument('--toolchain', choices=('stable', '1.89.0'), required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--upgrade-source', type=Path)
+    parser.add_argument('--case', choices=tuple(case for case, _ in CASES))
     args = parser.parse_args()
+    if args.case and args.upgrade_source:
+        parser.error('--case cannot be combined with --upgrade-source')
     assert __debug__
     repo = Path(__file__).resolve().parents[4]
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
@@ -73,7 +76,8 @@ def main():
     executable = authority.build_authority(repo, args.toolchain, 'build')
     workflow = build_cli(repo, args.toolchain, True)
     cli = build_cli(repo, args.toolchain, False)
-    cases = CASES
+    cases = tuple((case, count) for case, count in CASES
+                  if args.case is None or case == args.case)
     original = None
     if args.upgrade_source:
         baseline = args.upgrade_source.resolve()
@@ -138,6 +142,8 @@ def main():
                             'FSM_NATIVE_WORKFLOW_ORIGINAL_CLI_SHA256=' + original['cli_sha256'],
                             'FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_ARTIFACT=' + str(original_broker),
                             'FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_SHA256=' + original['broker_sha256']]
+        if args.case:
+            command[3:3] = ['FSM_NATIVE_WORKFLOW_FILTER=' + args.case]
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True,
                                     timeout=60 + sum(30 * count + 20 for _, count in cases))
