@@ -181,7 +181,9 @@ fn table(helper: &Path, resource: &Path, failures: &str) -> Value {
 fn verify_native_runs(fixture: &Fixture, failure: &str, staging: &Path) {
     use fsm_core::record::{RecordKind, execution::Claim};
     use fsm_store::store::VerifiedClosure;
-    let expected = if failure == "quiet-retry"
+    let expected = if failure == "contract-draft" {
+        1
+    } else if failure == "quiet-retry"
         || failure.starts_with("crash-")
         || failure.starts_with("full-disk")
         || failure.starts_with("failed-stop")
@@ -478,6 +480,17 @@ pub(super) fn run() {
         "FSM_NATIVE_WORKFLOW_CLI_SHA256",
     );
     let upgrade = std::env::var_os("FSM_NATIVE_WORKFLOW_UPGRADE").is_some();
+    let contract_mcp = if upgrade {
+        None
+    } else {
+        let artifact = staging.join("contract-mcp-test");
+        stage_artifact(
+            &artifact,
+            "FSM_NATIVE_CONTRACT_MCP_TEST_ARTIFACT",
+            "FSM_NATIVE_CONTRACT_MCP_TEST_SHA256",
+        );
+        Some(artifact)
+    };
     let original_cli = if upgrade {
         let original = staging.join("original-fsm");
         stage_artifact(
@@ -490,6 +503,7 @@ pub(super) fn run() {
         cli.clone()
     };
     let cases = [
+        ("native_draft_repair_execution", vec!["contract-draft"]),
         (
             "workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once",
             vec!["http-delete-active"],
@@ -684,6 +698,8 @@ pub(super) fn run() {
                     <= 107
             );
             let catalogue = table(&helper, &resource, failure);
+            let operator_table =
+                (case == "native_draft_repair_execution").then(|| catalogue.clone());
             let fixture = if failure.starts_with("full-disk") {
                 Fixture::new_for_full_disk_workflow(catalogue)
             } else {
@@ -693,7 +709,7 @@ pub(super) fn run() {
             brokers.push(workflow_broker(&fixture.directory, &fixture.store));
             let resource_identity = identity(&fs::symlink_metadata(&resource).unwrap());
             let home_identity = identity(&fs::symlink_metadata(&home).unwrap());
-            manifest.push(object([
+            let mut entry = object([
                 (
                     "directory",
                     Value::Str(fixture.store.to_str().unwrap().into()),
@@ -707,7 +723,14 @@ pub(super) fn run() {
                 ("resource_identity", resource_identity.clone()),
                 ("home_identity", home_identity.clone()),
                 ("memory_limits", limits.inventory()),
-            ]));
+            ]);
+            if let Some(table) = operator_table {
+                let Value::Obj(fields) = &mut entry else {
+                    unreachable!()
+                };
+                fields.insert("handlers".into(), table);
+            }
+            manifest.push(entry);
             faults.push(
                 failure
                     .starts_with("failed-stop")
@@ -733,7 +756,7 @@ pub(super) fn run() {
             .unwrap();
         let mut child = Command::new("/usr/bin/python3")
             .args(["-c", "import os,sys;os.setgroups([]);os.setgid(65534);os.setuid(65534);os.execv(sys.argv[1],sys.argv[1:])"])
-            .arg(&helper).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
+            .arg(if case == "native_draft_repair_execution" { contract_mcp.as_ref().unwrap() } else { &helper }).args(["--exact", case, "--ignored", "--nocapture", "--color", "never"])
             .env("FSM_NATIVE_WORKFLOW_MANIFEST", &manifest_path)
             .env("TMPDIR", &fixtures[0].store)
             .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log)

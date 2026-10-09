@@ -25,6 +25,12 @@ touches:
   - crates/fsm-cli/src/mcp/prompts.rs
   - crates/fsm-cli/src/mcp/resources.rs
   - crates/fsm-cli/tests/executor_contract_mcp.rs
+  - crates/fsm-cli/tests/contract_mcp/
+  - crates/fsm-execute/src/containment/workflow_native_tests.rs
+  - crates/fsm-execute/tests/lifecycle_platform/cli_artifact.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_cli_artifact.py
+  - crates/fsm-execute/tests/lifecycle_platform/workflow_probe.py
+  - crates/fsm-execute/tests/lifecycle_platform/test_workflow_producer.py
   - crates/fsm-cli/tests/tool_schemas.rs
   - crates/fsm-cli/tests/mcp_affordance_golden.rs
   - crates/fsm-cli/tests/mcp_full.rs

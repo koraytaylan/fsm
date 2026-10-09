@@ -1,5 +1,16 @@
 //! Real stdio discovery and read-only draft checks, independent of native provisioning.
 
+#[cfg(target_os = "linux")]
+#[path = "contract_mcp/native.rs"]
+mod native;
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires disposable native CI, protected original operator table and exact staged CLI/test artifacts"]
+fn native_draft_repair_execution() {
+    native::run();
+}
+
 use fsm_cli::{
     clock::FixedClock,
     mcp::tools::{registry, validate_args},
@@ -38,21 +49,25 @@ impl Drop for Directory {
 
 struct Client {
     child: Child,
-    input: ChildStdin,
+    input: Option<ChildStdin>,
     replies: mpsc::Receiver<Value>,
     reader: Option<std::thread::JoinHandle<()>>,
 }
 impl Client {
     fn start(path: &std::path::Path, read_only: bool) -> Self {
         let mut command = Command::new(env!("CARGO_BIN_EXE_fsm"));
+        command.stderr(Stdio::null());
         command.arg("--data-dir").arg(path).arg("serve");
         if read_only {
             command.arg("--read-only");
         }
+        Self::spawn(command)
+    }
+
+    fn spawn(mut command: Command) -> Self {
         let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
             .spawn()
             .unwrap();
         let input = child.stdin.take().unwrap();
@@ -70,7 +85,7 @@ impl Client {
         });
         let mut client = Self {
             child,
-            input,
+            input: Some(input),
             replies,
             reader: Some(reader),
         };
@@ -81,9 +96,11 @@ impl Client {
         );
         client
             .input
+            .as_mut()
+            .unwrap()
             .write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
             .unwrap();
-        client.input.flush().unwrap();
+        client.input.as_mut().unwrap().flush().unwrap();
         client
     }
     fn call(&mut self, id: u64, method: &str, parameters: Value) -> Value {
@@ -93,9 +110,13 @@ impl Client {
             ("method", Value::Str(method.into())),
             ("params", parameters),
         ]);
-        self.input.write_all(&canon_bytes(&request)).unwrap();
-        self.input.write_all(b"\n").unwrap();
-        self.input.flush().unwrap();
+        self.input
+            .as_mut()
+            .unwrap()
+            .write_all(&canon_bytes(&request))
+            .unwrap();
+        self.input.as_mut().unwrap().write_all(b"\n").unwrap();
+        self.input.as_mut().unwrap().flush().unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         loop {
             let reply = self

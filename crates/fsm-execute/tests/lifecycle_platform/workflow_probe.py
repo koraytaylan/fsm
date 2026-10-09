@@ -8,10 +8,11 @@ import subprocess
 import sys
 
 import authority_probe as authority
-from cli_artifact import build_cli
+from cli_artifact import build_cli, build_contract_mcp_test
 import workflow_failure_export
 
 CASES = (
+    ('native_draft_repair_execution', 1),
     ('workflow_http::native_http_delete_preserves_an_active_handler_and_completes_once', 1),
     ('workflow_http::native_http_success_retry_and_compensation_with_zero_sessions', 3),
     ('workflow_race::stdio_eof::broken_output_stops_live_tree_with_open_input_and_recovers', 1),
@@ -80,6 +81,7 @@ def main():
     executable = authority.build_authority(repo, args.toolchain, 'build')
     workflow = build_cli(repo, args.toolchain, True)
     cli = build_cli(repo, args.toolchain, False)
+    contract_mcp = None if args.upgrade_source else build_contract_mcp_test(repo, args.toolchain)
     cases = tuple((case, count) for case, count in CASES
                   if args.case is None or case == args.case)
     original = None
@@ -127,6 +129,8 @@ def main():
                   rustc=subprocess.check_output(['rustc', '+' + args.toolchain, '--version'], text=True).strip())
     if original:
         report['upgrade_original'] = original
+    if contract_mcp:
+        report['contract_mcp_sha256'] = digest(contract_mcp)
     timeout_error = None
     try:
         command = ['sudo', '-n', 'env', 'TMPDIR=' + os.environ['TMPDIR'],
@@ -146,6 +150,9 @@ def main():
                             'FSM_NATIVE_WORKFLOW_ORIGINAL_CLI_SHA256=' + original['cli_sha256'],
                             'FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_ARTIFACT=' + str(original_broker),
                             'FSM_NATIVE_WORKFLOW_ORIGINAL_BROKER_SHA256=' + original['broker_sha256']]
+        if contract_mcp:
+            command[3:3] = ['FSM_NATIVE_CONTRACT_MCP_TEST_ARTIFACT=' + str(contract_mcp),
+                            'FSM_NATIVE_CONTRACT_MCP_TEST_SHA256=' + report['contract_mcp_sha256']]
         if args.case:
             command[3:3] = ['FSM_NATIVE_WORKFLOW_FILTER=' + args.case]
         try:

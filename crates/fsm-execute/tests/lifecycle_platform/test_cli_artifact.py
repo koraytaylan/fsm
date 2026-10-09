@@ -108,5 +108,34 @@ class PrivateOwnerArtifact(unittest.TestCase):
             self.select([artifact(name='fsm_execute')], 101)
 
 
+class ContractMcpArtifact(unittest.TestCase):
+    def select(self, rows, exit_code=0):
+        encoded = b'\n'.join(json.dumps(row).encode() for row in rows)
+        result = subprocess.CompletedProcess([], exit_code, encoded, b'')
+        with patch.object(cli_artifact.subprocess, 'run', return_value=result) as run:
+            selected = cli_artifact.build_contract_mcp_test(Path('/fixture/repo'), 'stable')
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index('--test') + 1], 'executor_contract_mcp')
+        self.assertIn('--no-run', command)
+        self.assertEqual(run.call_args.kwargs['env']['CARGO_BUILD_JOBS'], '1')
+        return selected
+
+    def test_selects_only_the_exact_protocol_observer(self):
+        selected = self.select([artifact(), artifact(name='executor_contract_mcp', kind=['test'])])
+        self.assertEqual(selected, Path('/fixture/host-test'))
+
+    def test_refuses_wrong_kind_target_profile_or_ambiguous_artifact(self):
+        candidate = artifact(name='executor_contract_mcp', kind=['test'])
+        for rows in [[], [artifact()], [candidate, candidate],
+                     [artifact(name='executor_contract_mcp')],
+                     [artifact(name='executor_contract_mcp', kind=['test'], test=False)]]:
+            with self.subTest(rows=rows), self.assertRaises(AssertionError):
+                self.select(rows)
+
+    def test_failed_build_cannot_promote_an_old_observer(self):
+        with self.assertRaisesRegex(RuntimeError, 'Completion observer build failed'):
+            self.select([artifact(name='executor_contract_mcp', kind=['test'])], 101)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -24,6 +24,13 @@ def build_boundary_test(repo, toolchain):
                                  'async_completion', ['test'])
 
 
+def build_contract_mcp_test(repo, toolchain):
+    """Select the exact real-client draft/repair observer without running it."""
+    return build_completion_test(repo, toolchain, 'fsm-cli',
+                                 ['--test', 'executor_contract_mcp'],
+                                 'executor_contract_mcp', ['test'])
+
+
 def build_completion_test(repo, toolchain, package, selection, target, kind):
     """Require exactly one successful compiler-produced completion observer."""
     command = ['cargo', '+' + toolchain, 'test', '-p', package, *selection,

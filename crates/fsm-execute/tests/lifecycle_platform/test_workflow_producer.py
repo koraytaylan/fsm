@@ -52,6 +52,7 @@ class Retirement(unittest.TestCase):
             patch.object(probe.argparse.ArgumentParser, 'parse_args', return_value=SimpleNamespace(toolchain='stable', report=report, upgrade_source=None, case=selected)),
             patch.object(probe.authority, 'build_authority', return_value=artifact),
             patch.object(probe, 'build_cli', return_value=artifact),
+            patch.object(probe, 'build_contract_mcp_test', return_value=artifact),
             patch.object(probe.authority, 'authority_state_is_clear', side_effect=state),
             patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/retained-stage')} if stages else set()]),
             patch.object(probe.workflow_failure_export, 'export', return_value=[],
@@ -87,6 +88,10 @@ class Retirement(unittest.TestCase):
             self.assertEqual(filters, [] if selected is None else
                              ['FSM_NATIVE_WORKFLOW_FILTER=' + selected])
             self.assertFalse(evidence['gate_released'])
+            self.assertEqual(evidence['contract_mcp_sha256'], probe.digest(artifact))
+            command = run.call_args_list[0].args[0]
+            self.assertIn('FSM_NATIVE_CONTRACT_MCP_TEST_ARTIFACT=' + str(artifact), command)
+            self.assertIn('FSM_NATIVE_CONTRACT_MCP_TEST_SHA256=' + probe.digest(artifact), command)
             self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing)
             self.assertEqual(evidence['exit_code'], None if timeout else 0)
             if timeout:
