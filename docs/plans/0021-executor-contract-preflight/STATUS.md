@@ -1,10 +1,10 @@
-# Plan 0021 — Executor Contract Preflight — Unregistered
+# Plan 0021 — Executor Contract Preflight — In progress
 
 Task frontmatter is authoritative; the coordinator owns registration and completion.
 
 | Task | Status | Landing OID |
 |---|---|---|
-| [executor-contract-effects](tasks/9101-executor-contract-effects.md) | planned | — |
+| [executor-contract-effects](tasks/9101-executor-contract-effects.md) | in_progress | — |
 | [executor-contract-outcomes](tasks/9102-executor-contract-outcomes.md) | planned | — |
 | [executor-contract-admission](tasks/9103-executor-contract-admission.md) | planned | — |
 | [executor-contract-cli](tasks/9201-executor-contract-cli.md) | planned | — |
@@ -13,7 +13,7 @@ Task frontmatter is authoritative; the coordinator owns registration and complet
 
 Progress: 0/6 tasks completed.
 
-Independent effect, outcome and CLI checks have prior frozen reviews; recent focused stable/MSRV historical-definition and borrowed-analyzer checks passed at 1187b05f and 419f8be2. Pending-contract checking and the preparation hook are committed but final admission and current verification remain incomplete. Keep the plan unregistered and pause further admission wiring until the 0022 → 0020 critical path is closed.
+Manual Phase R binds the six-task bundle to validation base `15172d8298f271abfd0bd1d5b47617d1108ceefc` after plans 0022 and 0020 complete: closed frontmatter, repository-relative footprints and the acyclic local dependency graph pass, with uncreated deliverables explicitly inventoried; task-cache validation digest `4298d27510c4726206598590ca50efd51e0aeca49c5605aae9f004697820f1f7`. Task 9101 is in progress with 66 focused stable effect/configuration/public-surface checks passing; prior independent preparation remains subject to current task acceptance, and admission/MCP/final acceptance remain incomplete. Full gates run at plan completion.
 
 Historical STATUS evidence is retained outside the repository in the task-cache
 plan-status-archives directory, addressed by SHA-256:

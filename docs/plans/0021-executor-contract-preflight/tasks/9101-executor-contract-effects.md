@@ -19,7 +19,7 @@ touches:
   - docs/SPEC.md
   - docs/API-POLICY.md
   - docs/EMBEDDING.md
-status: planned
+status: in_progress
 merged_as: ""
 ---
 # Executor Contract Effect Analysis
