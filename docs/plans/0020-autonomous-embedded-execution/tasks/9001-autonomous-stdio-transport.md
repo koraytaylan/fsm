@@ -75,12 +75,19 @@ client no longer pauses its workflow.
 
 Focused acceptance review:
 
-- Six existing real-binary `autonomous_stdio` cases pass on the integrated
-  channel implementation: quiet deadlines with and without subscription,
-  broken stdout while stdin remains open, poll-interval refusals and exact
-  accepted boundaries, and installed protocol panic-hook cleanup. These
-  fixtures use empty handler tables and do not invoke containment helpers.
-- Success, transient retry, compensation, interrupted advance, a held real
-  handler with responsive reads, and production contention/degraded no-start
-  evidence remain to be matched to this original inventory; no landing OID
-  or full-gate claim is assigned. Full gates run at plan completion.
+- Eight real-binary `autonomous_stdio` cases and its portable sentinel fixture
+  pass: quiet deadlines with and without subscription, broken stdout with open
+  stdin, poll-interval refusals and exact accepted boundaries, installed
+  protocol panic-hook cleanup, competing-writer refresh and degraded diagnosis.
+- The production contention and damaged-journal cases configure an executable
+  sentinel handler with pending work and observe no marker or execution claim;
+  direct fixture execution verifies its marker behavior. Contention refreshes
+  an external committed event and cannot upgrade the original session when
+  its writer releases. Degraded mode reports an unreadable unhealthy journal,
+  serves diagnosis, refuses instance access and preserves its original bytes.
+  Focused clippy, formatting and diff checks pass; no containment helper was
+  invoked for this local acceptance slice.
+- Success, transient retry, compensation, interrupted advance and a held real
+  process/MCP handler with responsive reads remain to be matched to this
+  original inventory; no landing OID or full-gate claim is assigned, and full
+  gates remain due at plan completion.
