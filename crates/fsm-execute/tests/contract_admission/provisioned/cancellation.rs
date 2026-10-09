@@ -106,7 +106,9 @@ pub(super) fn observe(
         let current = Store::open_read_only(store_path).unwrap();
         assert_eq!(current.records, records);
         assert!(fsm_store::snapshot::store_states_eq(&state, &current.state));
-        if closure.try_exists().unwrap() {
+        // The Root receipt can precede local proof-worker retirement; require
+        // actual settlement backpressure before releasing the competing writer.
+        if closure.try_exists().unwrap() && writer_refused {
             let proof = fsm_store::store::VerifiedClosure::read(&closure).unwrap();
             assert!(proof.matches_claim(&claim, &claim_hash));
             proof.check_store(store_path).unwrap();
