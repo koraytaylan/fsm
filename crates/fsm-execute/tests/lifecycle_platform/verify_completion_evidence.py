@@ -33,7 +33,7 @@ def verify(repo, directory, commit, rustc):
             'private host inventory differs')
     require(digest(report['authority_sha256']) and digest(report['fixture_sha256'])
             and report['cli_strip'] == 'debuginfo', 'native executable identity missing')
-    require(set(report['artifacts']) == {'HOST', 'BOUNDARY', 'FIXTURE', 'CLI'}
+    require(set(report['artifacts']) == {'HOST', 'BOUNDARY', 'OWNER', 'FIXTURE', 'CLI'}
             and all(digest(row['sha256']) and isinstance(row['path'], str) and row['path']
                     for row in report['artifacts'].values()), 'staged artifact identity missing')
     command = report['command']

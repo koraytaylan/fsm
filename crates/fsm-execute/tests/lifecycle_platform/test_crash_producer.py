@@ -60,6 +60,7 @@ class Retirement(unittest.TestCase):
                 patch.object(probe, 'build_crash_artifacts', return_value={name: artifact for name in ('TEST', 'FIXTURE', 'CLI')}),
                 patch.object(probe, 'build_host_test', return_value=artifact) as host_build,
                 patch.object(probe, 'build_boundary_test', return_value=artifact) as boundary_build,
+                patch.object(probe, 'build_owner_test', return_value=artifact),
                 patch.object(probe.authority, 'authority_state_is_clear', side_effect=[initial, clear] if initial else [False]),
                 patch.object(probe, 'staging_paths', side_effect=[set(), {Path('/mock/stage')} if stages else set()]),
                 patch.object(probe.subprocess, 'check_output', side_effect=check_output) as checked,
@@ -87,11 +88,11 @@ class Retirement(unittest.TestCase):
                 self.assertEqual(evidence['scope'], 'public-and-private-held-handlers' if private else 'pre-publication-collected-candidates-supervisor-death-domain-close-journal-cuts-host-claim-enrolled-authorization-and-repeated-noisy-hosts')
                 self.assertEqual(evidence['passed'], clear and not stages and not timeout and not missing and not changed)
                 self.assertFalse(evidence['gate_released'])
-                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 800 if private else 3900)
+                self.assertEqual(run.call_args_list[0].kwargs['timeout'], 1000 if private else 3900)
                 if private:
                     host_build.assert_called_once()
                     boundary_build.assert_called_once()
-                    self.assertEqual(set(evidence['artifacts']), {'HOST', 'BOUNDARY', 'FIXTURE', 'CLI'})
+                    self.assertEqual(set(evidence['artifacts']), {'HOST', 'BOUNDARY', 'OWNER', 'FIXTURE', 'CLI'})
                     self.assertFalse(evidence['task_complete'])
                     self.assertIn('GITHUB_ACTIONS=true', evidence['command'])
                     self.assertEqual(evidence['command'][-5],

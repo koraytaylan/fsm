@@ -11,6 +11,12 @@ def build_host_test(repo, toolchain):
                                  'fsm_cli', ['lib'])
 
 
+def build_owner_test(repo, toolchain):
+    """Select the private lifecycle capacity observer without running it."""
+    return build_completion_test(repo, toolchain, 'fsm-execute', ['--lib'],
+                                 'fsm_execute', ['lib'])
+
+
 def build_boundary_test(repo, toolchain):
     """Select the public async completion integration test, without running it."""
     return build_completion_test(repo, toolchain, 'fsm-execute',

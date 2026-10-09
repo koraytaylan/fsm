@@ -87,6 +87,7 @@ fn provisioned_private_completion_owner_matrix() {
     for (name, variable) in [
         ("host-test", "HOST"),
         ("boundary-test", "BOUNDARY"),
+        ("owner-test", "OWNER"),
         ("fixture", "FIXTURE"),
         ("fsm", "CLI"),
     ] {
@@ -101,6 +102,7 @@ fn provisioned_private_completion_owner_matrix() {
         ("boundary", "boundary-held"),
         ("boundary", "boundary-settled"),
         ("boundary", "boundary-deferred"),
+        ("capacity", "capacity-held"),
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -248,10 +250,11 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
     let log_path = staging.join(format!("{host}-{kind}-{behavior}.log"));
     let log = fs::File::create(&log_path).unwrap();
     let private = host == "private";
-    let completion = private || host == "boundary";
+    let completion = private || matches!(host, "boundary" | "capacity");
     let artifact = match host {
         "private" => "host-test",
         "boundary" => "boundary-test",
+        "capacity" => "owner-test",
         _ => "matrix-test",
     };
     let mut command = Command::new("/usr/bin/python3");
@@ -259,6 +262,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if private {
             "mcp::host::tests::held_handlers::execution_host_real_held_handler_allows_read_mutation_and_stop_without_release"
+        } else if host == "capacity" {
+            "service::lifecycle::tests::capacity::completion_capacity_keeps_effect_pending_until_original_reservations_release"
         } else if behavior == "boundary-deferred" && kind == "process" {
             "native::async_completion_process_pending_writer_refusal_retains_completion"
         } else if behavior == "boundary-deferred" {
@@ -436,6 +441,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "boundary-held"
                             | "boundary-settled"
                             | "boundary-deferred"
+                            | "capacity-held"
                     ) {
                         "hold-result"
                     } else {
@@ -452,7 +458,11 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
             Value::Num(
                 if matches!(
                     behavior,
-                    "private-held" | "boundary-held" | "boundary-settled" | "boundary-deferred"
+                    "private-held"
+                        | "boundary-held"
+                        | "boundary-settled"
+                        | "boundary-deferred"
+                        | "capacity-held"
                 ) {
                     "30000"
                 } else {
@@ -538,6 +548,7 @@ fn verify(fixture: &Fixture, behavior: &str) {
                     | "boundary-held"
                     | "boundary-settled"
                     | "boundary-deferred"
+                    | "capacity-held"
             ) {
                 1
             } else {

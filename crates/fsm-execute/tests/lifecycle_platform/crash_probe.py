@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 import authority_probe as authority
-from cli_artifact import build_crash_artifacts, build_host_test, build_boundary_test
+from cli_artifact import build_crash_artifacts, build_host_test, build_boundary_test, build_owner_test
 from workflow_probe import digest
 import workflow_failure_export
 
@@ -19,7 +19,9 @@ PRIVATE_OWNER_CASES = (('private', 'process', 'private-held'),
                        ('boundary', 'process', 'boundary-settled'),
                        ('boundary', 'mcp', 'boundary-settled'),
                        ('boundary', 'process', 'boundary-deferred'),
-                       ('boundary', 'mcp', 'boundary-deferred'))
+                       ('boundary', 'mcp', 'boundary-deferred'),
+                       ('capacity', 'process', 'capacity-held'),
+                       ('capacity', 'mcp', 'capacity-held'))
 
 
 def staging_paths():
@@ -46,6 +48,7 @@ def main():
         artifacts.pop('TEST')
         artifacts['HOST'] = build_host_test(repo, args.toolchain)
         artifacts['BOUNDARY'] = build_boundary_test(repo, args.toolchain)
+        artifacts['OWNER'] = build_owner_test(repo, args.toolchain)
     assert authority.authority_state_is_clear()
     prior_stages = staging_paths()
     installer = ['sudo', '-n', sys.executable, str(Path(__file__).with_name('authority_install.py'))]
@@ -78,7 +81,7 @@ def main():
                         ('authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
                          if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
-        timeout = 800 if private else 3900
+        timeout = 1000 if private else 3900
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
             report['timed_out'] = False
