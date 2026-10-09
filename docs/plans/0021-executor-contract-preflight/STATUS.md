@@ -158,8 +158,11 @@ while the held-result fixture requires child and grandchild retirement too.
 The observer now releases the complete original tree; two actual portable
 process/MCP barrier tests and admission-target clippy pass, with format/size/diff
 checks passing. Frozen verdict
-`2ef57ffb09e92bf2174fdf040c850043aaa2deac263b5eaf9a97b04e54ce8e02`
-retains the failure evidence; focused native rerun and task completion remain open.
+`03fa46cd0789b958c3b540e7e30a0f2d3f0c3441121412f61465bab3991341ae`
+indexes the failure review and cancellation observer correction: Root-owned
+preallocated PID slots must remain readable and empty, while candidate and
+published markers must remain absent. Thirteen focused admission cases and
+admission-target clippy pass; focused native rerun and task completion remain open.
 
 Bound entry now reuses its freshly reconstructed effect from the same immutable
 writer, removing its duplicate prefix replay while retaining concrete admission

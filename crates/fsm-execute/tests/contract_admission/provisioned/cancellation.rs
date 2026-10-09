@@ -170,15 +170,19 @@ pub(super) fn observe(
 }
 
 fn assert_no_entry(resource: &std::path::Path) {
-    for marker in [
-        "root-entered",
-        "root-candidate",
-        "root-published",
-        "child-entered",
-        "grandchild-entered",
-    ] {
+    // The Root coordinator preallocates these PID slots so DynamicUser cleanup
+    // cannot unlink the independent observations; only nonempty slots show entry.
+    for role in ["root", "child", "grandchild"] {
+        let marker = format!("{role}-entered");
+        let observed = fs::read(resource.join(&marker)).unwrap();
         assert!(
-            !resource.join(marker).exists(),
+            observed.is_empty(),
+            "cancelled generation entered original handler: {marker}"
+        );
+    }
+    for marker in ["root-candidate", "root-published"] {
+        assert!(
+            !resource.join(marker).try_exists().unwrap(),
             "cancelled generation entered original handler: {marker}"
         );
     }
