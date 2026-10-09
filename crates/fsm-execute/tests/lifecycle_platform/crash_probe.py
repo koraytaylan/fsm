@@ -35,7 +35,9 @@ PRIVATE_SCHEDULING_CASES = (('private', 'process', 'schedule-success'),
              ('private', 'process', 'schedule-recovery'),
              ('private', 'mcp', 'schedule-recovery'),
              ('private', 'process', 'schedule-construction'),
-             ('private', 'mcp', 'schedule-construction'))
+             ('private', 'mcp', 'schedule-construction'),
+             ('private', 'process', 'schedule-fairness'),
+             ('private', 'mcp', 'schedule-fairness'))
 
 def staging_paths():
     return set(Path('/usr/libexec').glob('fsm-crash-*'))
@@ -104,7 +106,7 @@ def main():
                          if scheduling else 'authority::allocator::native_tests::crash_matrix::provisioned_private_completion_owner_matrix'
                          if private else 'authority::allocator::native_tests::crash_matrix::provisioned_lifecycle_candidate_matrix'),
                         '--ignored', '--nocapture', '--color', 'never'])
-        timeout = 1000 if scheduling else 1200 if private else 3900
+        timeout = 1200 if scheduling else 1200 if private else 3900
         try:
             result = subprocess.run(command, cwd=repo, capture_output=True, timeout=timeout)
             report['timed_out'] = False

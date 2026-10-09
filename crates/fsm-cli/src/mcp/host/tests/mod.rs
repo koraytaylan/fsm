@@ -13,6 +13,8 @@ mod scheduling;
 #[cfg(target_os = "linux")]
 mod scheduling_construction;
 #[cfg(target_os = "linux")]
+mod scheduling_fairness;
+#[cfg(target_os = "linux")]
 mod scheduling_handlers;
 #[cfg(target_os = "linux")]
 mod scheduling_recovery;

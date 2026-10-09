@@ -150,6 +150,7 @@ fn provisioned_private_scheduling_owner_matrix() {
         "schedule-compensation",
         "schedule-recovery",
         "schedule-construction",
+        "schedule-fairness",
     ] {
         for kind in ["process", "mcp"] {
             scenario(
@@ -181,6 +182,21 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         let path = resource.join(format!("{role}-entered"));
         fs::write(&path, b"").unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o666)).unwrap();
+    }
+    if behavior == "schedule-fairness" {
+        for name in ["busy", "quiet"] {
+            let directory = resource.join(name);
+            fs::DirBuilder::new()
+                .mode(0o777)
+                .create(&directory)
+                .unwrap();
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o777)).unwrap();
+            for role in ["root", "child", "grandchild"] {
+                let slot = directory.join(format!("{role}-entered"));
+                fs::write(&slot, b"").unwrap();
+                fs::set_permissions(slot, fs::Permissions::from_mode(0o666)).unwrap();
+            }
+        }
     }
     if behavior == "repeated-noisy" {
         for index in 0..12 {
@@ -310,6 +326,8 @@ fn scenario(staging: &Path, nonce: &str, case: Scenario) {
         .arg(staging.join(artifact))
         .args(["--exact", if behavior == "schedule-success" {
             "mcp::host::tests::held_handlers::autonomous_schedule_real_handler_success_without_another_command"
+        } else if behavior == "schedule-fairness" {
+            "mcp::host::tests::scheduling_fairness::autonomous_schedule_large_outbox_cannot_starve_another_native_instance"
         } else if behavior == "schedule-construction" {
             "mcp::host::tests::scheduling_construction::autonomous_schedule_restricted_modes_start_no_genuine_fixture"
         } else if behavior == "schedule-recovery" {
@@ -510,6 +528,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                             | "schedule-compensation"
                             | "schedule-recovery"
                             | "schedule-construction"
+                            | "schedule-fairness"
                     ) {
                         "hold-result"
                     } else {
@@ -535,6 +554,7 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
                         | "schedule-success"
                         | "schedule-recovery"
                         | "schedule-construction"
+                        | "schedule-fairness"
                 ) {
                     "30000"
                 } else {
@@ -576,6 +596,13 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         handler.insert("tool".into(), Value::Str("run".into()));
         handler.insert("arguments".into(), object([]));
     }
+    if behavior == "schedule-fairness" {
+        let argv = match handler.get_mut("argv").unwrap() {
+            Value::Arr(argv) => argv,
+            _ => unreachable!(),
+        };
+        argv[2] = Value::Str(resource.join("quiet").to_str().unwrap().into());
+    }
     let mut handlers = Vec::new();
     if behavior == "schedule-compensation" {
         handler.insert(
@@ -594,11 +621,29 @@ fn table(executable: &Path, resource: &Path, case: Scenario) -> Value {
         restore.insert("effect".into(), Value::Str("restore".into()));
         handlers.push(Value::Obj(restore));
     }
+    if behavior == "schedule-fairness" {
+        let mut busy = handler.clone();
+        busy.insert("effect".into(), Value::Str("busy".into()));
+        let argv = match busy.get_mut("argv").unwrap() {
+            Value::Arr(argv) => argv,
+            _ => unreachable!(),
+        };
+        argv[2] = Value::Str(resource.join("busy").to_str().unwrap().into());
+        handlers.push(Value::Obj(busy));
+    }
     handlers.push(Value::Obj(handler));
-    object([
+    let mut result = object([
         ("format", Value::Str("fsm.handlers/1".into())),
         ("handlers", Value::Arr(handlers)),
-    ])
+    ]);
+    if behavior == "schedule-fairness" {
+        let Value::Obj(fields) = &mut result else {
+            unreachable!()
+        };
+        fields.insert("max_inflight".into(), Value::Num("2".into()));
+        fields.insert("max_inflight_per_instance".into(), Value::Num("1".into()));
+    }
+    result
 }
 
 fn verify(fixture: &Fixture, behavior: &str) {
